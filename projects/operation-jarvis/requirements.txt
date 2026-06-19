@@ -1,0 +1,25 @@
+# Operation JARVIS runtime dependencies.
+# Focused scope: Discord/Pi interface, live Discord voice, dashboard phone camera, and Google Cast output.
+
+# Google Cast control. PyChromecast 13.x is compatible with the system Python 3.9 on this Mac.
+# If this project moves to Python 3.11+, this can likely be relaxed to PyChromecast>=14.
+PyChromecast==13.1.0
+
+# YouTube search/metadata used by scripts/tv.py youtube.
+yt-dlp
+
+# Avoid urllib3/OpenSSL warnings with macOS system Python 3.9 + LibreSSL.
+urllib3<2
+
+# Live Discord voice receive/playback and local JARVIS Piper TTS.
+audioop-lts==0.2.2
+davey==0.1.5
+discord.py==2.7.1
+discord-ext-voice-recv==0.5.2a179
+PyNaCl==1.5.0
+requests==2.33.1
+huggingface_hub==1.14.0
+piper-tts==1.4.2
+# Upstream acoustic wake-word gate for Discord voice before Whisper ASR.
+openwakeword==0.5.1
+onnxruntime>=1.16.0,<2

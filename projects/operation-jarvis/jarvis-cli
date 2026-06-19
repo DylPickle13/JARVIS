@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+# Feed action lifecycle events to the local dashboard by default. Set
+# JARVIS_DASHBOARD_EMIT_EVENTS=0 or JARVIS_DASHBOARD_AUTO_EVENTS=0 to suppress.
+if [[ "${JARVIS_DASHBOARD_AUTO_EVENTS:-1}" != "0" && -z "${JARVIS_DASHBOARD_URL:-}" ]]; then
+  export JARVIS_DASHBOARD_URL="${JARVIS_DASHBOARD_DEFAULT_URL:-http://127.0.0.1:8787}"
+fi
+export JARVIS_DASHBOARD_EMIT_EVENTS="${JARVIS_DASHBOARD_EMIT_EVENTS:-1}"
+
+if [ -x ".venv/bin/python" ]; then
+  exec .venv/bin/python jarvis.py "$@"
+fi
+exec python3 jarvis.py "$@"

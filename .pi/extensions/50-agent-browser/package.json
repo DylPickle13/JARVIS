@@ -1,0 +1,9 @@
+{
+  "name": "jarvis-pi-agent-browser",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "^1.53.0",
+    "typebox": "^1.2.14"
+  }
+}

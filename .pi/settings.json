@@ -1,0 +1,13 @@
+{
+  "defaultProvider": "omlx-64",
+  "defaultModel": "Qwen3.6-35B-A3B-6bit",
+  "packages": [
+    {
+      "source": "npm:pi-web-access",
+      "skills": []
+    }
+  ],
+  "skills": [
+    "!**"
+  ]
+}

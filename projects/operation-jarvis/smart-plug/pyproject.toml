@@ -1,0 +1,17 @@
+[project]
+name = "jarvis-smart-plug"
+version = "0.1.0"
+description = "Local control utilities for Kasa HS103 smart plugs."
+requires-python = ">=3.11"
+dependencies = [
+  # HS103 hardware v5 uses TP-Link's newer IOT KLAP v2 auth path.
+  # Use python-kasa PR #1625 until this fix lands in a normal PyPI release.
+  "python-kasa @ git+https://github.com/python-kasa/python-kasa.git@refs/pull/1625/head",
+]
+
+[project.scripts]
+plugctl = "smart_plug.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

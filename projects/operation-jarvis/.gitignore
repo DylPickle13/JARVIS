@@ -1,0 +1,29 @@
+.env
+.secrets/
+
+# Runtime/generated artifacts
+data/*
+!data/.gitkeep
+media/*
+!media/.gitkeep
+artifacts/
+staging/
+logs/
+**/logs/
+.pi/
+**/.pi/
+*.sqlite
+*.db
+*.log
+*.pid
+
+# Python/local environment
+.venv/
+__pycache__/
+*.py[cod]
+*.pyc
+*.egg-info/
+build/
+dist/
+
+.DS_Store

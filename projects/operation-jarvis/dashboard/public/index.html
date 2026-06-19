@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#02070c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="application-name" content="JARVIS" />
+    <meta name="apple-mobile-web-app-title" content="JARVIS" />
+    <title>JARVIS Alarm Clock Display</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/webp" href="/favicon.webp?v=1" />
+    <link rel="apple-touch-icon" href="/assets/pwa-icon-192.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="room-display alarm-clock-display">
+    <div class="jarvis-interface-bg" aria-hidden="true"></div>
+
+    <main class="display-screen alarm-screen">
+      <section id="display-error" class="display-error glass-panel" hidden></section>
+
+      <section class="alarm-layout" aria-label="JARVIS alarm clock dashboard">
+        <article class="alarm-clock-card glass-panel">
+          <div class="clock-card-header">
+            <a id="jarvis-brand" class="display-brand" href="/" data-discord-bot="unknown" data-discord-label="Bot status pending" aria-label="JARVIS alarm clock display · Discord bot status pending">
+              <span id="jarvis-brand-indicator" class="brand-mark arc-reactor-mark" role="img" aria-label="Discord bot status pending"><img src="/assets/arc-reactor.svg" alt="" /></span>
+              <span>
+                <strong>JARVIS</strong>
+                <small>Alarm clock display</small>
+              </span>
+            </a>
+            <div class="header-primary-stats" aria-live="polite" aria-label="Weather summary">
+              <span id="display-header-weather" class="header-status-chip" title="Weather loading" aria-label="Weather loading">🌡️ --°</span>
+            </div>
+            <div class="display-header-status" aria-live="polite" aria-label="Active Pi agents and date">
+              <span id="display-header-pi-sessions" class="header-status-chip" title="Active Pi sessions loading">Agents: 0</span>
+              <span id="display-date">EDT</span>
+            </div>
+          </div>
+          <div class="alarm-time-row" aria-live="polite">
+            <strong id="display-time">--:--</strong>
+            <span id="display-period">--</span>
+          </div>
+          <p id="alarm-date-line" class="alarm-date-line">Loading Toronto time…</p>
+        </article>
+
+        <section class="hud-mini-boxes" aria-label="JARVIS status indicators">
+          <article id="camera-card" class="hud-mini-card glass-panel tone-cyan camera-card" data-state="idle" aria-live="polite" aria-label="Dashboard camera">
+            <div class="camera-card-header">
+              <p class="eyebrow">Camera</p>
+            </div>
+            <aside id="camera-test-panel" class="camera-test-panel glass-panel" role="button" tabindex="0" aria-live="polite" aria-pressed="false" aria-label="Toggle camera preview">
+              <video id="camera-preview" autoplay muted playsinline></video>
+              <div class="camera-status-row">
+                <span class="camera-status-dot" aria-hidden="true"></span>
+                <strong id="camera-status">Camera standby</strong>
+              </div>
+            </aside>
+          </article>
+
+          <button id="omlx-64-card" class="hud-mini-card glass-panel tone-silver omlx-card" type="button" role="switch" data-omlx-server="64" data-state="idle" aria-live="polite" aria-checked="false" aria-label="Toggle OMLX-64 server" title="Tap to toggle OMLX-64 server">
+            <p class="eyebrow omlx-label">OMLX-64</p>
+            <span class="omlx-status-icon" role="img" aria-label="OMLX-64 server status unknown"></span>
+            <p class="hud-mini-detail omlx-detail">Tap to toggle</p>
+          </button>
+          <button id="omlx-card" class="hud-mini-card glass-panel tone-silver omlx-card" type="button" role="switch" data-omlx-server="16" data-state="idle" aria-live="polite" aria-checked="false" aria-label="Toggle OMLX-16 server" title="Tap to toggle OMLX-16 server">
+            <p id="display-server-state" class="eyebrow omlx-label">OMLX-16</p>
+            <span id="display-omlx-state" class="omlx-status-icon" role="img" aria-label="OMLX-16 server status unknown"></span>
+            <p id="display-omlx-detail" class="hud-mini-detail omlx-detail">Tap to toggle</p>
+          </button>
+          <button id="right-reserved-card-2" class="hud-mini-card glass-panel tone-silver raspberry-pi-card" type="button" data-state="idle" aria-live="polite" aria-label="Toggle Raspberry Pi room audio service" title="Tap to toggle Raspberry Pi room audio service">
+            <p class="eyebrow">RasPi</p>
+            <span id="display-raspberry-pi-icon" class="omlx-status-icon raspberry-pi-status-icon" role="img" aria-label="Raspberry Pi not checked"></span>
+            <p id="display-raspberry-pi-detail" class="hud-mini-detail">Tap to toggle</p>
+          </button>
+          <button id="right-reserved-card-3" class="hud-mini-card glass-panel tone-silver phone-adb-card" type="button" data-state="idle" aria-live="polite" aria-label="Ping phone ADB" title="Tap to ping phone ADB">
+            <p class="eyebrow">Phone</p>
+            <span id="display-phone-adb-icon" class="omlx-status-icon phone-adb-status-icon" role="img" aria-label="Phone ADB not checked"></span>
+            <p id="display-phone-adb-detail" class="hud-mini-detail">Tap to ping</p>
+          </button>
+
+          <button id="display-reload-button" class="hud-mini-card glass-panel tone-silver dashboard-refresh-card" type="button" aria-label="Reload dashboard" title="Reload dashboard">
+            <p class="eyebrow">Refresh</p>
+            <h1 aria-hidden="true">↻</h1>
+          </button>
+
+          <div id="smart-plug-grid" class="smart-plug-grid" aria-label="Smart plug toggles"></div>
+        </section>
+      </section>
+
+      <footer class="display-footer">
+        <span id="display-server">Dashboard telemetry pending</span>
+        <span id="display-refresh">—</span>
+      </footer>
+
+    </main>
+
+    <script src="/display.js" type="module"></script>
+  </body>
+</html>
