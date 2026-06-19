@@ -1,10 +1,12 @@
 # JARVIS
 
-JARVIS is the Discord-facing control layer for the Pi coding agent and the Operation JARVIS room stack. One main bot process handles Discord text chat, voice, attachments, Pi RPC sessions, scheduled jobs, memory/session search, and the local tools needed to reach the dashboard, phone, browser, Cast targets, and smart plugs.
+JARVIS is a Discord-facing control layer for the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent) and a local “Operation JARVIS” room stack. One main bot process handles Discord text chat, voice, attachments, Pi RPC sessions, scheduled jobs, memory/session search, and local tools for a dashboard, browser automation, phone status, Cast/Spotify media, smart plugs, and room audio.
 
-This root README is intentionally short. The detailed subsystem notes live in the linked project READMEs below.
+The repository is public by design, but it expects private local configuration. Secrets, device mappings, LAN hosts, SSH targets, runtime databases, generated media, and personal prompt overrides belong in ignored files such as `.env`, `.pi/APPEND_SYSTEM.md`, `.pi/ssh-hosts.json`, and Operation JARVIS hardware config files.
 
-## Current State (2026-05-25)
+This root README is a map and quick-start guide. Detailed subsystem notes live in the linked project READMEs below.
+
+## What’s Included
 
 - **Discord bot** — [`discord_bot.py`](discord_bot.py) runs a `discord.py` client for configured text channels and the `jarvis` voice channel text chat. It streams Pi output back into Discord, handles busy/cancel states, slash commands, attachments, voice-message transcription, and live voice integration.
 - **Pi RPC sessions** — [`llm.py`](llm.py) keeps persistent per-channel `pi --mode rpc` sessions with model/thinking controls, steering, cancellation, session deletion, manual compaction, and dashboard status publishing.
@@ -13,6 +15,16 @@ This root README is intentionally short. The detailed subsystem notes live in th
 - **Pi extensions** — [`.pi/extensions/`](.pi/extensions/) provides web/search helpers, lazy tool loading, memory, session search, Discord cron/ping/file upload tools, browser/phone/Google/Maps/YouTube integrations, and Operation JARVIS tools.
 - **Operation JARVIS** — [`projects/operation-jarvis/`](projects/operation-jarvis/) contains the room-facing stack: LAN dashboard, phone-camera vision, Cast/Spotify media, TP-Link Kasa smart plugs, and Raspberry Pi room audio.
 - **Runtime data** — `.env`, attachments, generated media/data, SQLite indexes, logs, cron runs, and Pi runtime status files are ignored by git.
+
+## Public/Private Configuration Model
+
+Tracked files provide generic defaults and placeholders. Local deployments should copy [`.env.example`](.env.example) to `.env` and fill in only local values there. Private files intentionally ignored by git include:
+
+- `.env` and environment-specific `.env.*` files.
+- `.pi/APPEND_SYSTEM.md` for private assistant persona/location/device guidance.
+- `.pi/ssh-hosts.json` for trusted SSH host aliases.
+- `projects/operation-jarvis/smart-plug/plugs.json` for local plug aliases and IPs.
+- Runtime folders for attachments, media captures, SQLite indexes, logs, Pi sessions, and scheduled-job runs.
 
 ## Repository Map
 
@@ -99,6 +111,13 @@ Baseline tools stay small: local file/shell helpers, web search/content fetching
 
 Use the Discord-specific tools for their narrow jobs: `discord_cron` for scheduled jobs, `discord_ping` only for explicit immediate pings, and `discord_send_file` only for verified local uploads to the current Discord channel.
 
+## Safety Notes
+
+- Keep `.env` and ignored hardware config files private.
+- Do not run duplicate Discord bot processes with the same token.
+- The provided smoke test is read-only/local and avoids hardware actions.
+- Tools that touch external services, browser sessions, SSH hosts, smart plugs, Cast devices, or Discord channels are intended to stay explicit and bounded.
+
 ## Deeper Docs
 
 - [Pi extensions and tool surface](.pi/docs/PI_EXTENSIONS.md)
@@ -111,3 +130,7 @@ Use the Discord-specific tools for their narrow jobs: `discord_cron` for schedul
 - [Smart plugs](projects/operation-jarvis/smart-plug/README.md)
 
 Do not run the standalone voice bot with the same Discord token while the main bot is running; the main bot already owns the voice subsystem.
+
+## License
+
+This project is released under the [MIT License](LICENSE).
