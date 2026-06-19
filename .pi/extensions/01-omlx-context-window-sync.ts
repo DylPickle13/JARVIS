@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+
 import type { ExtensionAPI, ProviderConfig, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_TIMEOUT_MS = 2500;
@@ -67,16 +70,59 @@ const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 	},
 ];
 
-function firstNonEmptyEnv(keys: string[]): string | undefined {
+function findAncestorFilePath(startDir: string, fileName: string): string | undefined {
+	let currentDir = resolve(startDir);
+	while (true) {
+		const candidate = join(currentDir, fileName);
+		if (existsSync(candidate)) return candidate;
+
+		const parentDir = dirname(currentDir);
+		if (parentDir === currentDir) return undefined;
+		currentDir = parentDir;
+	}
+}
+
+function unquoteDotEnvValue(value: string): string {
+	const trimmed = value.trim();
+	if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+		return trimmed
+			.slice(1, -1)
+			.replace(/\\n/g, "\n")
+			.replace(/\\r/g, "\r")
+			.replace(/\\t/g, "\t")
+			.replace(/\\"/g, '"')
+			.replace(/\\\\/g, "\\");
+	}
+	if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) return trimmed.slice(1, -1);
+	return trimmed.replace(/\s+#.*$/, "");
+}
+
+function loadDotEnvValues(): Record<string, string> {
+	const envPath = findAncestorFilePath(process.cwd(), ".env");
+	if (!envPath) return {};
+
+	const values: Record<string, string> = {};
+	for (const rawLine of readFileSync(envPath, "utf8").split(/\r?\n/)) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#")) continue;
+		const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+		if (!match) continue;
+		values[match[1]] = unquoteDotEnvValue(match[2]);
+	}
+	return values;
+}
+
+function firstNonEmptyEnv(keys: string[], dotenvValues: Record<string, string>): string | undefined {
 	for (const key of keys) {
-		const value = process.env[key];
+		const value = process.env[key] || dotenvValues[key];
 		if (typeof value === "string" && value.trim()) return value.trim();
 	}
 	return undefined;
 }
 
 function normalizeBaseUrl(raw: string): string {
-	return raw.trim().replace(/\/+$/, "");
+	const normalized = raw.trim().replace(/\/+$/, "");
+	return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
 }
 
 function toPositiveInt(value: unknown): number | undefined {
@@ -215,11 +261,12 @@ function mergedModels(seed: ProviderSeed, contextByModel: Map<string, number>): 
 }
 
 export default async function registerOmlxContextWindowSync(pi: ExtensionAPI) {
-	const apiKey = firstNonEmptyEnv(["OMLX_API_KEY", "DISCORD_VOICE_API_KEY"]) || "local";
+	const dotenvValues = loadDotEnvValues();
+	const apiKey = firstNonEmptyEnv(["OMLX_API_KEY", "DISCORD_VOICE_API_KEY"], dotenvValues) || "local";
 	const contextByBaseUrl = new Map<string, Promise<Map<string, number>>>();
 
 	const resolved = OMLX_PROVIDER_SEEDS.map((seed) => {
-		const baseUrl = normalizeBaseUrl(firstNonEmptyEnv(seed.baseUrlEnvKeys) || seed.defaultBaseUrl);
+		const baseUrl = normalizeBaseUrl(firstNonEmptyEnv(seed.baseUrlEnvKeys, dotenvValues) || seed.defaultBaseUrl);
 		const modelIds = seed.models.map((model) => model.id);
 		if (!contextByBaseUrl.has(baseUrl)) contextByBaseUrl.set(baseUrl, fetchContextWindows(baseUrl, modelIds));
 		return { seed, baseUrl, contextPromise: contextByBaseUrl.get(baseUrl)! };
