@@ -3,7 +3,6 @@ import { Type } from "typebox";
 
 type CanonicalToolGroup =
   | "memory"
-  | "maps"
   | "code_docs"
   | "jarvis"
   | "minecraft_jarvis"
@@ -33,12 +32,12 @@ const ALWAYS_ON_TOOLS = [
   "get_search_content",
   "reddit_thread",
   "minecraft_jarvis",
+  "maps",
   "load_tools",
 ] as const;
 
 const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   memory: ["memory"],
-  maps: ["google_maps"],
   code_docs: ["code_search"],
   jarvis: ["jarvis", "smart_plug"],
   minecraft_jarvis: ["minecraft_jarvis"],
@@ -67,12 +66,11 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
 
 const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   memory: "memory for durable project/local facts/preferences/workflows; never store secrets",
-  maps: "google_maps for places, local recommendations, hours, trips, and routes",
   code_docs: "code_search for external code/docs/API examples",
   jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, and local smart plugs",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   phone: "agent_phone for safe LG-H933 Android phone control via ADB refs/screenshots",
-  google: "google_workspace for Google Workspace only; YouTube/maps/code use their own groups; web and Reddit use always-on tools",
+  google: "google_workspace for Google Workspace only; YouTube/code use their own groups; web and Reddit use always-on tools",
   cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
   ping: "discord_ping only: explicit immediate Discord ping/notification",
   discord_file: "discord_send_file only: upload a verified local file to the current Discord channel when available",
@@ -91,13 +89,6 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Use `memory` only for stable durable facts, preferences, lessons, project notes, or workflows that should survive future sessions.",
       "Never store secrets, credentials, tokens, private personal data, or transient one-off details.",
       "Prefer `action: \"search\"` before writing new memories; keep new entries concise and tagged when useful.",
-    ],
-  },
-  maps: {
-    skill: "google-maps",
-    lines: [
-      "Use `google_maps` for places, local recommendations, trips, hours, and routes; it does not return weather data.",
-      "Include the user's location only when helpful and when it is known from current context or private local configuration.",
     ],
   },
   code_docs: {
@@ -144,10 +135,8 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   minecraft_jarvis: {
     skill: "minecraft-jarvis",
     lines: [
-      "Use `minecraft_jarvis({ message: \"...\" })` directly when commanding or chatting with the Minecraft jarvis bot from Pi; it is always on and does not require `load_tools`.",
-      "Minecraft bot chat uses `minecraft_jarvis({ message: \"tell me a joke\" })` or any other short plain-language message. Do not pre-interpret the request into in-game bot tools; the Minecraft Qwen bot decides how to respond or act safely.",
-      "Use this tool instead of SSH, shell commands, or slash-command shortcuts when the user asks you to send a command/message to the in-game jarvis bot.",
-      "Keep messages short and non-destructive. The Minecraft bot currently refuses unsupported dangerous actions like mining/building/combat/chests/fire/TNT unless future safe tools are added.",
+      "Use `minecraft_jarvis({ message })` directly for Minecraft bot chat/control; always on, no `load_tools` needed.",
+      "Do not substitute SSH/shell/slash commands; keep messages short, plain-language, and non-destructive.",
     ],
   },
   cron: {
@@ -322,8 +311,8 @@ function buildGuidanceSection(groups: readonly GuidanceGroup[], heading = "JARVI
   });
   return [
     `## ${heading}`,
-    "Use the tools described below directly and follow this playbook instead of guessing external command names.",
-    "If an expected tool is not actually present as a callable tool, stop and report that the tool schema did not refresh; never substitute a similarly named unrelated tool.",
+    "Use listed tools directly; do not guess external command names.",
+    "If an unlocked tool is missing from callable schema, report schema refresh failure.",
     ...sections,
   ].join("\n");
 }
@@ -332,7 +321,6 @@ function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
   if (groups.length === 0) return "";
   const lines: Record<GuidanceGroup, string> = {
     memory: "memory: use `memory` only for stable durable facts/preferences/lessons/workflows; never store secrets or sensitive personal data.",
-    maps: "maps: use `google_maps` for places, local recommendations, trips, hours, and routes; not weather.",
     code_docs: "code_docs: use `code_search` for external programming docs/API examples; use local grep/find/read for repo files first.",
     phone: "phone: use `agent_phone` directly; args are CLI tokens excluding the binary; start with `snapshot -i`, interact via `@refs`, and confirm sensitive actions.",
     google: "google: use `google_workspace` for Drive/Gmail/Docs/Sheets/Calendar only; use help/schema before guessing; writes need explicit intent.",
@@ -451,10 +439,10 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
-    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, and ssh are always on. Groups: memory, maps, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, ping=explicit Discord ping, discord_file=current-channel Discord upload, sessions, youtube, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
-    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, and load_tools. Common optional groups: memory, maps, code_docs, phone, cron, ping, discord_file, youtube, browser.",
+    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, maps, and ssh are always on. Groups: memory, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, ping=explicit Discord ping, discord_file=current-channel Discord upload, sessions, youtube, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
+    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, maps, and load_tools. Common optional groups: memory, code_docs, phone, cron, ping, discord_file, youtube, browser.",
     promptGuidelines: [
-      "Call load_tools before optional groups: memory, maps (google_maps), code_docs (code_search), jarvis, phone, google, cron, ping, discord_file, sessions, youtube, browser. Web tools (`web_search`, `fetch_content`, `get_search_content`), `reddit_thread`, `minecraft_jarvis`, and `ssh` are always on. There are no notify/discord/scheduled/research aliases.",
+      "Call load_tools before optional groups: memory, code_docs (code_search), jarvis, phone, google, cron, ping, discord_file, sessions, youtube, browser. Web tools (`web_search`, `fetch_content`, `get_search_content`), `reddit_thread`, `minecraft_jarvis`, `maps`, and `ssh` are always on. There are no notify/discord/scheduled/research aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; `discord_ping` sends an immediate explicit Discord ping; `discord_send_file` uploads a local file to the current Discord channel only when that context/tool is available. These are separate groups and are not interchangeable.",
       "For Reddit URLs or Reddit thread/listing requests, use always-on `reddit_thread` directly; do not use shell curl/wget against reddit.com.",
@@ -530,6 +518,14 @@ export default function lazyTools(pi: ExtensionAPI) {
   });
 
   pi.on("tool_call", (event) => {
+    const removedMapsToolName = ["google", "maps"].join("_");
+    if (event.toolName === removedMapsToolName) {
+      return {
+        block: true,
+        reason: "This removed location-grounding tool is disabled in this JARVIS Pi configuration. Use web_search/fetch_content with official sources, or a browser/manual route link when needed.",
+      };
+    }
+
     if (isDirectRedditShellFetch(event.toolName, event.input)) {
       return {
         block: true,
@@ -567,7 +563,7 @@ export default function lazyTools(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("load-tools", {
-    description: "Load lazy tool groups for this Pi session: /load-tools memory,maps,code_docs,jarvis,minecraft_jarvis,phone,google,cron,ping,discord_file,sessions,youtube,browser,all",
+    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,jarvis,minecraft_jarvis,phone,google,cron,ping,discord_file,sessions,youtube,browser,all",
     handler: async (args, ctx) => {
       const requested = args
         .split(/[\s,]+/)
@@ -575,7 +571,7 @@ export default function lazyTools(pi: ExtensionAPI) {
         .filter(Boolean) as ToolGroup[];
       const valid = requested.filter(isToolGroupName);
       if (valid.length === 0) {
-        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nGroups: ${LOADABLE_GROUPS_TEXT}\nCommon choices: maps=google_maps; code_docs=code_search; memory=durable memory; phone=LG-H933 Android control; cron=scheduled Discord jobs; ping=explicit Discord ping; browser=visible Chrome control. Web tools (web_search/fetch_content/get_search_content) are always on.`, "warning");
+        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nGroups: ${LOADABLE_GROUPS_TEXT}\nCommon choices: code_docs=code_search; memory=durable memory; phone=LG-H933 Android control; cron=scheduled Discord jobs; ping=explicit Discord ping; browser=visible Chrome control. Web tools (web_search/fetch_content/get_search_content) are always on.`, "warning");
         return;
       }
       const expandedGroups = expandGroups(valid);

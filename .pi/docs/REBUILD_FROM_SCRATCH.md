@@ -78,7 +78,7 @@ Minimum root `.env` for basic Discord/Pi operation:
 
 Then fill subsystem settings as needed:
 
-- Web/search: `PAID_GEMINI_API_KEY`, `MINIMAL_MODEL`, `GOOGLE_API_KEY`, `YOUTUBE_API_KEY`
+- Web/search: optional `EXA_API_KEY`; optional `GOOGLE_API_KEY`/`YOUTUBE_API_KEY` for YouTube-only lookups
 - oMLX/voice/vision/embeddings: `OMLX_API_KEY`, `DISCORD_VOICE_*`, `SESSION_SEARCH_*`, `JARVIS_DASHBOARD_CAMERA_*`
 - Discord helpers: `DISCORD_CRON_*`, `DISCORD_PING_*`, `JARVIS_DISCORD_SEND_FILE_MAX_BYTES`
 - Operation JARVIS: `JARVIS_DASHBOARD_*`, `SPOTIFY_*`, `KASA_*`
@@ -299,7 +299,7 @@ Do not run another bot process with the same token at the same time. The root bo
 |---|---|
 | Pi does not see custom tools | Run `pi list`, then `/reload`; verify files under `.pi/extensions/` and package installs under `.pi/npm/node_modules/`. |
 | Optional tool hidden | Call `load_tools({ groups: ["<group>"] })` or `/load-tools <group>`. |
-| Web search missing key | Run `/web-access-config`; check `PAID_GEMINI_API_KEY`, `MINIMAL_MODEL`, and `~/.pi/web-search.json`. |
+| Web search unavailable | Run `/web-access-config`; check Exa MCP/package availability, optional `EXA_API_KEY`, and `~/.pi/web-search.json`. |
 | Discord cron cannot post | Check `DISCORD_BOT_TOKEN`, guild/channel IDs, bot permissions, and `runner.py --json setup`. |
 | Session search fails | `status` first; then verify embedding endpoint/model and `SESSION_SEARCH_*` env vars. |
 | Memory recall absent | Check `JARVIS_MEMORY_AUTO_RECALL`, memory DB status, and whether relevant memories exist. |

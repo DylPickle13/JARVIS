@@ -87,7 +87,7 @@ All normal configuration lives in `.env`; [`.env.example`](.env.example) is the 
 - **Voice/oMLX/TTS** — ASR endpoint/model, wake-word gates, Piper voice settings, TTS streaming, and idle session refresh.
 - **Dashboard/room hardware** — dashboard URL, camera vision model, Raspberry Pi room-audio status, Android phone ADB status, and room-audio tuning.
 - **Local SSH machines (private)** — configure trusted SSH aliases locally with ignored `.pi/ssh-hosts.json` or `JARVIS_SSH_*` environment variables. See [`projects/operation-jarvis/README.md`](projects/operation-jarvis/README.md) for the current runbook.
-- **Tools** — Gemini/web access, Google/YouTube APIs, memory, session search embeddings, Discord cron/ping/file upload, and Kasa smart-plug credentials.
+- **Tools** — Exa-backed web access, Google/YouTube APIs, memory, session search embeddings, Discord cron/ping/file upload, and Kasa smart-plug credentials.
 
 ## Discord Usage
 
@@ -107,7 +107,7 @@ Legacy `>` control commands are not registered.
 
 Baseline tools stay small: local file/shell helpers, web search/content fetching, Reddit fetching, and `load_tools`. Optional groups are loaded on demand with `load_tools({ groups: [...] })`:
 
-`memory`, `sessions`, `cron`, `ping`, `discord_file`, `jarvis`, `browser`, `phone`, `google`, `maps`, `code_docs`, `youtube`, or `all`.
+`memory`, `sessions`, `cron`, `ping`, `discord_file`, `jarvis`, `browser`, `phone`, `google`, `code_docs`, `youtube`, or `all`.
 
 Use the Discord-specific tools for their narrow jobs: `discord_cron` for scheduled jobs, `discord_ping` only for explicit immediate pings, and `discord_send_file` only for verified local uploads to the current Discord channel.
 

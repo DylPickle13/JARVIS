@@ -98,13 +98,24 @@ function installWebAccessStatusSuppressor(pi: ExtensionAPI): void {
 	};
 }
 
-function configureWebAccess(cwd: string): { envPath?: string; model?: string; hasApiKey: boolean; hasYouTubeApiKey: boolean } {
+function configureWebAccess(cwd: string): { envPath?: string; hasExaApiKey: boolean; hasYouTubeApiKey: boolean } {
 	const envPath = findAncestorFilePath(cwd, ".env");
 	const dotenvValues = envPath ? parseDotEnvFile(envPath) : {};
 
-	const paidGeminiKey = (process.env.PAID_GEMINI_API_KEY || dotenvValues.PAID_GEMINI_API_KEY || "").trim();
-	if (!process.env.GEMINI_API_KEY && paidGeminiKey) {
-		process.env.GEMINI_API_KEY = paidGeminiKey;
+	// Gemini is intentionally disabled for this project. Do not load Gemini keys
+	// from .env or ambient process state into pi-web-access.
+	delete process.env.GEMINI_API_KEY;
+	delete process.env.PAID_GEMINI_API_KEY;
+	delete process.env.MINIMAL_MODEL;
+
+	const exaApiKey = (process.env.EXA_API_KEY || dotenvValues.EXA_API_KEY || "").trim();
+	if (!process.env.EXA_API_KEY && exaApiKey) {
+		process.env.EXA_API_KEY = exaApiKey;
+	}
+
+	const perplexityApiKey = (process.env.PERPLEXITY_API_KEY || dotenvValues.PERPLEXITY_API_KEY || "").trim();
+	if (!process.env.PERPLEXITY_API_KEY && perplexityApiKey) {
+		process.env.PERPLEXITY_API_KEY = perplexityApiKey;
 	}
 
 	const youtubeApiKey = (process.env.YOUTUBE_API_KEY || process.env.YOUTUBE_DATA_API_KEY || dotenvValues.YOUTUBE_API_KEY || dotenvValues.YOUTUBE_DATA_API_KEY || "").trim();
@@ -130,33 +141,28 @@ function configureWebAccess(cwd: string): { envPath?: string; model?: string; ha
 		if (fileKey) process.env.GOOGLE_API_KEY = fileKey;
 	}
 
-	const dotenvMinimalModel = (dotenvValues.MINIMAL_MODEL || "").trim();
-	if (!process.env.MINIMAL_MODEL && dotenvMinimalModel) {
-		process.env.MINIMAL_MODEL = dotenvMinimalModel;
-	}
-	const model = (process.env.MINIMAL_MODEL || "").trim() || undefined;
 	const existingConfig = loadExistingWebSearchConfig();
 	const nextConfig: Record<string, unknown> = {
 		...existingConfig,
-		provider: "gemini",
-		searchProvider: "gemini",
+		provider: "exa",
+		searchProvider: "exa",
 		workflow: "none",
 		allowBrowserCookies: false,
 	};
-	if (model) {
-		nextConfig.searchModel = model;
-	} else {
-		delete nextConfig.searchModel;
-	}
 
-	// Keep the paid key in the project .env. pi-web-access reads process.env.GEMINI_API_KEY,
-	// so we deliberately do not duplicate geminiApiKey into ~/.pi/web-search.json.
+	// Remove all Gemini-specific pi-web-access configuration. Exa is the default
+	// search provider; YouTube may still use GOOGLE_API_KEY/YOUTUBE_API_KEY.
 	delete nextConfig.geminiApiKey;
+	delete nextConfig.searchModel;
 
 	mkdirSync(dirname(WEB_SEARCH_CONFIG_PATH), { recursive: true });
 	writeFileSync(WEB_SEARCH_CONFIG_PATH, JSON.stringify(nextConfig, null, 2) + "\n", { mode: 0o600 });
 
-	return { envPath, model, hasApiKey: Boolean(process.env.GEMINI_API_KEY), hasYouTubeApiKey: Boolean(process.env.GOOGLE_API_KEY || process.env.YOUTUBE_API_KEY || process.env.YOUTUBE_DATA_API_KEY) };
+	return {
+		envPath,
+		hasExaApiKey: Boolean(process.env.EXA_API_KEY || existingConfig.exaApiKey),
+		hasYouTubeApiKey: Boolean(process.env.GOOGLE_API_KEY || process.env.YOUTUBE_API_KEY || process.env.YOUTUBE_DATA_API_KEY),
+	};
 }
 
 export default function registerPiWebAccessEnv(pi: ExtensionAPI) {
@@ -187,6 +193,13 @@ export default function registerPiWebAccessEnv(pi: ExtensionAPI) {
 		// workflow:"summary-review" or future config drift cannot pop open Chrome.
 		input.workflow = "none";
 
+		// Never allow Gemini-backed search through pi-web-access. Use Exa by default
+		// and avoid the extension's auto fallback chain reaching Gemini.
+		const provider = typeof input.provider === "string" ? input.provider.trim().toLowerCase() : "";
+		if (!provider || provider === "auto" || provider === "gemini") {
+			input.provider = "exa";
+		}
+
 		// Full-content search results are delivered by pi-web-access as separate
 		// background fetch notifications. Prefer the deterministic workflow:
 		// search snippets first, then one explicit batched fetch_content({ urls }) call.
@@ -194,12 +207,12 @@ export default function registerPiWebAccessEnv(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("web-access-config", {
-		description: "Show pi-web-access Gemini search configuration status",
+		description: "Show pi-web-access Exa search configuration status",
 		handler: async (_args, ctx) => {
 			const status = configureWebAccess(ctx.cwd);
 			ctx.ui.notify(
-				`pi-web-access: provider=gemini, MINIMAL_MODEL=${status.model ?? "missing"}, Gemini key=${status.hasApiKey ? "loaded" : "missing"}, YouTube key=${status.hasYouTubeApiKey ? "loaded" : "missing"}`,
-				status.hasApiKey && status.model ? "success" : "warning",
+				`pi-web-access: provider=exa, Exa key=${status.hasExaApiKey ? "configured" : "not configured; using zero-config Exa MCP fallback"}, YouTube key=${status.hasYouTubeApiKey ? "loaded" : "missing"}`,
+				"success",
 			);
 		},
 	});

@@ -1046,7 +1046,6 @@ DISCORD_BOT_TOOL_KEYS = {
     "fetch_content",
     "find",
     "get_search_content",
-    "google_maps",
     "grep",
     "load_tools",
     "ls",
@@ -1085,7 +1084,6 @@ TOOL_EMOJIS = {
     "fetch_content": "📄",
     "find": "🗂️",
     "get_search_content": "📥",
-    "google_maps": "📍",
     "google_workspace": "🏢",
     "grep": "🧶",
     "jarvis": "🤖",
@@ -1206,7 +1204,6 @@ TOOL_VOICE_START_NARRATIONS = {
     "fetch_content": "I’ll fetch the source content, sir.",
     "find": "I’ll find matching files, sir.",
     "get_search_content": "I’ll open the retrieved content, sir.",
-    "google_maps": "I’ll check the map, sir.",
     "google_workspace": "I’ll work in Google Workspace, sir.",
     "grep": "I’ll search the files, sir.",
     "jarvis": "I’ll consult the JARVIS subsystem, sir.",
@@ -1240,7 +1237,6 @@ TOOL_VOICE_FAILURE_NARRATIONS = {
     "fetch_content": "I couldn’t fetch that content, sir.",
     "find": "The file lookup failed, sir.",
     "get_search_content": "I couldn’t retrieve that content, sir.",
-    "google_maps": "The map lookup failed, sir.",
     "google_workspace": "The Google Workspace action failed, sir.",
     "grep": "The file search failed, sir.",
     "jarvis": "The JARVIS subsystem call failed, sir.",
@@ -1346,12 +1342,6 @@ def _tool_action_label(tool_name: str, args: object) -> str:
         response_id = _clean_tool_parameter(tool_args.get("responseId"))
         emoji = _tool_emoji("get_search_content")
         return f"{emoji} Opened fetched result \"{response_id}\"" if response_id else f"{emoji} Opened fetched result"
-
-
-    if tool_key == "google_maps":
-        prompt = _clean_tool_parameter(tool_args.get("prompt"))
-        emoji = _tool_emoji("google_maps")
-        return f"{emoji} Checked maps for \"{prompt}\"" if prompt else f"{emoji} Checked maps"
 
     if tool_key == "youtube_api":
         action = _first_tool_arg(tool_args, "action", "resource", max_length=40)
@@ -1537,9 +1527,6 @@ def _tool_failure_label(tool_name: str, args: object) -> str:
     if tool_key == "get_search_content":
         response_id = _clean_tool_parameter(tool_args.get("responseId"))
         return f"❌ {emoji} Could not open fetched result \"{response_id}\"" if response_id else f"❌ {emoji} Could not open fetched result"
-    if tool_key == "google_maps":
-        prompt = _clean_tool_parameter(tool_args.get("prompt"))
-        return f"❌ {emoji} Map lookup failed for \"{prompt}\"" if prompt else f"❌ {emoji} Map lookup failed"
     if tool_key == "youtube_api":
         query = _first_tool_arg(tool_args, "query", "id", max_length=120)
         return f"❌ {emoji} YouTube lookup failed for \"{query}\"" if query else f"❌ {emoji} YouTube lookup failed"

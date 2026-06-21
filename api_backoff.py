@@ -96,7 +96,7 @@ def _compute_delay_seconds(attempt_number: int) -> float:
 def call_with_exponential_backoff(
     operation: Callable[[], T],
     *,
-    description: str = "Gemini API call",
+    description: str = "API call",
     max_attempts: int | None = DEFAULT_MAX_ATTEMPTS,
     cancellation_check: Callable[[], None] | None = None,
 ) -> T:

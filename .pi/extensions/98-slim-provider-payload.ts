@@ -22,14 +22,12 @@ function compactInstructions(instructions: string, payload: any): string {
     /Guidelines:\n(?:- [^\n]*\n)+(?:\n)/,
     [
       "Guidelines:",
-      "- Use bash/read/grep/find/ls/edit/write for coding; edit exact unique text and batch disjoint edits in one call.",
-      "- Ask one clarification only when required; otherwise proceed.",
-      "- Load `memory` before durable-memory work; store only stable facts/preferences/lessons/workflows, never secrets/sensitive data.",
-      "- Use always-on `web_search`/`fetch_content`/`get_search_content` for web and URL research and always-on `reddit_thread` for Reddit threads/listings; load `maps` for google_maps and `code_docs` for code_search.",
-      "- Do not use shell curl/wget against reddit.com for thread content; Reddit often returns verification HTML.",
-      "- Call load_tools before optional groups: memory, maps, code_docs, jarvis, phone, google, cron, ping, discord_file, sessions, youtube, browser. Use always-on `minecraft_jarvis` directly for Minecraft bot chat/control.",
-      "- For questions about whether a cron/scheduled job exists, load `cron` and use `discord_cron` first; do not grep files or inspect OS crontab unless explicitly asked for OS cron/launchd.",
-      "- Be concise and show file paths.",
+      "- Coding: use bash/read/grep/find/ls/edit/write; exact unique edits, batch disjoint edits.",
+      "- Ask one clarification only if required.",
+      "- Memory: load `memory` first; stable facts only; no secrets/sensitive data.",
+      "- Web: `web_search` discovery, `fetch_content` pages, `get_search_content` stored results, `reddit_thread` Reddit; no shell Reddit.",
+      "- Optional groups require `load_tools`; cron/scheduled-job checks use `discord_cron` first unless OS cron/launchd is explicitly requested.",
+      "- Be concise; show paths.",
       "",
     ].join("\n"),
   );
@@ -50,14 +48,14 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   grep: "Search file contents; supports path/glob/context/limit.",
   find: "Find files by glob; optional path/limit.",
   ls: "List a directory; optional path/limit.",
+  ssh: "Run SSH command on trusted host.",
   memory: "Durable project memory: search/remember/update/forget/list/status. No secrets.",
   web_search: "Cited web search/research; discovery only. Do not use includeContent; batch selected URLs with fetch_content.",
-  google_maps: "Google Maps places/routes/hours/local recommendations.",
   code_search: "Search external code/docs/API examples.",
   fetch_content: "Fetch/extract URL(s)/GitHub/YouTube/local video; batch selected research URLs in one urls array.",
-  get_search_content: "Retrieve stored search/fetch/maps content by responseId.",
+  get_search_content: "Retrieve stored search/fetch content by responseId.",
   reddit_thread: "Fetch public Reddit thread/subreddit listing.",
-  load_tools: "Load optional groups. web_search, fetch_content, get_search_content, reddit_thread, and minecraft_jarvis are always on. Groups: memory, maps, code_docs, jarvis, phone, google, cron, ping, discord_file, sessions, youtube, browser, all.",
+  load_tools: "Load optional groups. web_search, fetch_content, get_search_content, reddit_thread, and minecraft_jarvis are always on. Groups: memory, code_docs, jarvis, phone, google, cron, ping, discord_file, sessions, youtube, browser, all.",
   agent_phone: "Android phone control via safe CLI-token args.",
   jarvis: "Operation JARVIS dashboard/camera/Cast helper.",
   smart_plug: "Local smart-plug control.",
@@ -93,6 +91,21 @@ function stripNestedSchemaMetadata(value: any): any {
   return copy;
 }
 
+function stripEnumValue(value: any, enumValue: string): any {
+  if (Array.isArray(value)) return value.map((child) => stripEnumValue(child, enumValue));
+  if (!value || typeof value !== "object") return value;
+
+  const copy: any = { ...value };
+  if (Array.isArray(copy.enum)) {
+    copy.enum = copy.enum.filter((item: unknown) => item !== enumValue);
+  }
+  for (const [key, child] of Object.entries(copy)) {
+    if (key === "enum") continue;
+    copy[key] = stripEnumValue(child, enumValue);
+  }
+  return copy;
+}
+
 const SCHEMA_STRIP_TOOLS = new Set([
   "read",
   "bash",
@@ -101,10 +114,10 @@ const SCHEMA_STRIP_TOOLS = new Set([
   "grep",
   "find",
   "ls",
+  "ssh",
   "ask_user",
   "memory",
   "web_search",
-  "google_maps",
   "code_search",
   "fetch_content",
   "get_search_content",
@@ -148,11 +161,16 @@ function compactTool(tool: any): any {
 
   if (copy.parameters) copy.parameters = stripNestedSchemaMetadata(copy.parameters);
   if (copy.input_schema) copy.input_schema = stripNestedSchemaMetadata(copy.input_schema);
+  if (name === "web_search") {
+    if (copy.parameters) copy.parameters = stripEnumValue(copy.parameters, "gemini");
+    if (copy.input_schema) copy.input_schema = stripEnumValue(copy.input_schema, "gemini");
+  }
   if (copy.function && typeof copy.function === "object") {
     copy.function = { ...copy.function };
     if (override && typeof copy.function.description === "string") copy.function.description = override;
     if (copy.function.strict === false) delete copy.function.strict;
     if (copy.function.parameters) copy.function.parameters = stripNestedSchemaMetadata(copy.function.parameters);
+    if (name === "web_search" && copy.function.parameters) copy.function.parameters = stripEnumValue(copy.function.parameters, "gemini");
   }
 
   return copy;
