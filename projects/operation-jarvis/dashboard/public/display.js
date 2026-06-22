@@ -812,7 +812,10 @@ function connectWebSocket() {
     }
 
     if (payload.type === 'camera-command') {
-      handleCameraCommand(payload);
+      postCameraCommandResult(payload, {
+        ok: false,
+        error: 'Dashboard camera client is disabled on this display.'
+      }).catch(() => {});
       return;
     }
 
@@ -847,7 +850,7 @@ setInterval(() => {
 }, 1000);
 
 const urlParams = new URLSearchParams(window.location.search);
-const autoStartCamera = urlParams.get('camera') === '1' || urlParams.get('cam') === '1';
+const autoStartCamera = false;
 
 function clampClientNumber(value, min, max, fallback) {
   if (value === null || value === undefined || value === '') return fallback;
@@ -1213,7 +1216,7 @@ for (const [index, serverId] of Array.from(omlxControlById.keys()).entries()) {
   window.setTimeout(() => pingOmlxStatus(serverId), 500 + (index * 200));
 }
 window.setTimeout(pingRaspberryPi, 900);
-window.setTimeout(pingPhoneAdb, 1100);
+if (phoneAdbButton) window.setTimeout(pingPhoneAdb, 1100);
 window.setTimeout(() => refreshSmartPlugStatuses({ force: true }), 1300);
 
 if (autoStartCamera) {
@@ -1228,6 +1231,6 @@ setInterval(() => {
     window.setTimeout(() => pingOmlxStatus(serverId), index * 200);
   }
   window.setTimeout(pingRaspberryPi, 700);
-  window.setTimeout(pingPhoneAdb, 1100);
+  if (phoneAdbButton) window.setTimeout(pingPhoneAdb, 1100);
 }, INDICATOR_REFRESH_INTERVAL_MS);
 setInterval(() => refreshSmartPlugStatuses({ silent: true }), 5_000);

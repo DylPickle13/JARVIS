@@ -3,7 +3,7 @@
 Unified project for a practical real-world JARVIS loop using:
 
 1. **Discord** — command surface, conversation, files, live voice calls, and audit log.
-2. **Dashboard phone camera** — browser/PWA camera preview, photos, short videos, and visual analysis.
+2. **Dashboard phone voice** — browser/PWA wake word, phone microphone capture, Mac-side STT/LLM/TTS, and phone speaker playback.
 3. **Google Cast** — spoken output plus TV/speaker media control.
 4. **Dashboard** — LAN holographic HUD, telemetry, artifacts, and allowlisted room controls.
 5. **Smart plugs** — local TP-Link Kasa HS103 control for devices around the house.
@@ -14,14 +14,15 @@ Unified project for a practical real-world JARVIS loop using:
 Created: 2026-05-14<br>
 Integrated live Discord voice subsystem: 2026-05-15<br>
 Integrated LAN dashboard/HUD: 2026-05-17<br>
-Promoted dashboard phone camera to primary vision source: 2026-05-17<br>
-Integrated local Kasa smart plugs: 2026-05-23
+Tested dashboard phone camera as a vision source: 2026-05-17<br>
+Integrated local Kasa smart plugs: 2026-05-23<br>
+Added dashboard phone voice mode and removed the camera panel from the active HUD: 2026-06-21
 
 ## Architecture
 
 ```text
 Discord = interface + log + live voice calls
-Dashboard phone camera = eyes/capture
+Dashboard phone voice = portable wake-word mic/speaker endpoint
 Cast = room speaker/media output
 Dashboard = LAN HUD/control room
 Smart plugs = local house device power control
@@ -56,7 +57,7 @@ The Pi-facing room tool is loaded through the optional Pi tool group:
 load_tools({ groups: ["jarvis"] })
 ```
 
-After the `jarvis` group is loaded, use the `jarvis` tool directly. It wraps dashboard-camera capture, visual analysis, and Cast output. If a smaller/local model is unsure, the safe guide call is:
+After the `jarvis` group is loaded, use the `jarvis` tool directly. It wraps Cast output, smart plugs, status checks, and legacy dashboard-camera actions. If a smaller/local model is unsure, the safe guide call is:
 
 ```json
 { "action": "help" }
@@ -70,12 +71,12 @@ projects/operation-jarvis/
 ├── jarvis-cli                  # wrapper for jarvis.py
 ├── voice/                      # Discord voice ASR → Pi RPC → Piper TTS subsystem
 ├── raspberry-pi/               # Pi hardware, helper scripts, docs, and room_audio subsystem
-├── dashboard/                  # LAN HUD/control surface + phone camera client
+├── dashboard/                  # LAN HUD/control surface + dashboard phone voice client
 ├── smart-plug/                 # local TP-Link Kasa HS103 control subsystem
 ├── scripts/
 │   ├── connect_chromecast.py   # Cast target resolution
 │   └── tv.py                   # focused Cast command implementation used by jarvis.py
-├── media/                      # dashboard camera captures and analysis artifacts
+├── media/                      # local media/artifacts, including legacy dashboard-camera captures
 ├── data/                       # Cast speech/runtime artifacts
 ├── requirements.txt
 ├── pyproject.toml
@@ -89,7 +90,7 @@ Guide/status actions:
 - `help`
 - `status`
 
-Dashboard camera actions:
+Legacy dashboard camera actions (client UI is currently disabled on the active HUD):
 
 - `look` / `photo`
 - `video`
@@ -150,7 +151,7 @@ python discord_bot.py
 |---|---|---|
 | Main Discord bot | `cd /path/to/JARVIS && python discord_bot.py` | Owns text, Pi RPC, and live Discord voice. Do not run duplicate bot tokens. |
 | Operation CLI status | `./jarvis-cli --json status --no-cast` | Safe local smoke check from this folder. |
-| Dashboard | `cd dashboard && npm start` | LAN HUD and camera/control surface. |
+| Dashboard | `cd dashboard && npm start` | LAN HUD, dashboard voice, and control surface. |
 | Dashboard service | `cd dashboard && npm run install-service` | Installs login LaunchAgent. |
 | Smart plugs | `./jarvis-cli plug-list` | Requires smart-plug venv/credentials. |
 | Room audio server | `.venv/bin/python raspberry-pi/room_audio/room_audio_server.py --host 0.0.0.0 --port 8791` | Mac-side bridge used by Pi client. |
@@ -200,11 +201,8 @@ cd /path/to/JARVIS/projects/operation-jarvis
 ./jarvis-cli --json status --no-cast
 ./jarvis-cli --json status --device speakers
 
-# Dashboard camera
-./jarvis-cli look
-./jarvis-cli video --duration 10
-./jarvis-cli video-until --max-duration 60 'a person is visible'
-./jarvis-cli analyze-view 'Describe what is visible.'
+# Dashboard voice status
+curl -s http://127.0.0.1:8787/api/jarvis/dashboard-voice/status | python3 -m json.tool
 
 # Cast
 ./jarvis-cli cast-status --device speakers
@@ -234,23 +232,26 @@ cd /path/to/JARVIS/projects/operation-jarvis
 
 ```
 
-## Dashboard phone camera
+## Dashboard phone voice
 
-The dashboard lives in [`dashboard/`](dashboard/). Its fullscreen PWA opens on the dedicated phone with the front camera off by default for lower power use; tap the preview or open with `?camera=1` to start it. The server can command the browser client over `/ws` and receives uploaded captures under:
+The dashboard lives in [`dashboard/`](dashboard/). Its fullscreen PWA now exposes a left-side **Voice** card instead of the old camera panel. Tap **Voice** to arm browser-side `hey_jarvis` wake detection; after a wake hit, the phone captures a short WAV, sends it to the Mac dashboard server, receives Mac-generated Piper audio, and plays the response through the phone speaker.
 
 ```text
-projects/operation-jarvis/media/dashboard-camera/
+Phone dashboard wake word + mic
+  -> dashboard server /api/jarvis/dashboard-voice/turn
+  -> existing Mac room-audio server for oMLX Whisper, Pi RPC, and Piper TTS
+  -> phone dashboard audio playback
 ```
 
-Direct endpoints:
+The Raspberry Pi room-audio endpoint remains independent. The right-side **Phone** ADB tile remains on the HUD.
+
+Direct status endpoint:
 
 ```bash
-curl http://127.0.0.1:8787/api/jarvis/camera/status
-curl -X POST http://127.0.0.1:8787/api/jarvis/camera/snapshot -H 'content-type: application/json' -d '{"quality":0.86}'
-curl -X POST http://127.0.0.1:8787/api/jarvis/camera/record -H 'content-type: application/json' -d '{"durationSeconds":5}'
+curl -s http://127.0.0.1:8787/api/jarvis/dashboard-voice/status | python3 -m json.tool
 ```
 
-Android Chrome requires the dashboard origin to be treated as secure for camera access. For the dedicated LAN phone, whitelist the dashboard origin in Chrome's **Insecure origins treated as secure** flag or serve the dashboard over HTTPS.
+Microphone access requires a secure browser context. On Android Chrome over LAN HTTP, whitelist the dashboard origin in **Insecure origins treated as secure** or serve the dashboard over HTTPS.
 
 ## LAN dashboard
 
@@ -305,7 +306,7 @@ Credentials load from `smart-plug/.env`, `projects/operation-jarvis/.env`, then 
 
 | Subsystem | Canonical docs | Runtime owner |
 |---|---|---|
-| Dashboard/HUD/camera | [`dashboard/README.md`](dashboard/README.md) | Node server / LaunchAgent |
+| Dashboard/HUD/phone voice | [`dashboard/README.md`](dashboard/README.md) | Node server / LaunchAgent |
 | Live Discord voice | [`voice/README.md`](voice/README.md) | Root `discord_bot.py` |
 | Raspberry Pi endpoint | [`raspberry-pi/README.md`](raspberry-pi/README.md) | Pi SSH/systemd + Mac room server |
 | Room audio | [`raspberry-pi/room_audio/README.md`](raspberry-pi/room_audio/README.md) | Pi client + Mac HTTP bridge |

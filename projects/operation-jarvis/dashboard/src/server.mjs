@@ -107,9 +107,19 @@ const WEATHER_LOCATION = process.env.JARVIS_DASHBOARD_WEATHER_LOCATION || 'Confi
 const WEATHER_STATUS_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_WEATHER_STATUS_TIMEOUT_MS || '2500', 10);
 const WEATHER_STATUS_CACHE_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_WEATHER_STATUS_CACHE_MS || String(10 * 60_000), 10);
 const WEATHER_STATUS_ERROR_CACHE_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_WEATHER_STATUS_ERROR_CACHE_MS || '30000', 10);
+const DASHBOARD_CAMERA_CLIENT_ENABLED = /^(1|true|yes|on)$/i.test(process.env.JARVIS_DASHBOARD_CAMERA_CLIENT_ENABLED || 'false');
 const CAMERA_COMMAND_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_CAMERA_COMMAND_TIMEOUT_MS || '30000', 10);
 const CAMERA_RECORD_MAX_DURATION_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_CAMERA_RECORD_MAX_DURATION_MS || '20000', 10);
 const CAMERA_UPLOAD_MAX_BYTES = Number.parseInt(process.env.JARVIS_DASHBOARD_CAMERA_UPLOAD_MAX_BYTES || String(64 * 1024 * 1024), 10);
+const DASHBOARD_VOICE_MAX_BYTES = Number.parseInt(process.env.JARVIS_DASHBOARD_VOICE_MAX_BYTES || String(12 * 1024 * 1024), 10);
+const DASHBOARD_VOICE_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_VOICE_TIMEOUT_MS || '45000', 10);
+const DASHBOARD_VOICE_ROOM_AUDIO_URL = String(
+  process.env.JARVIS_DASHBOARD_VOICE_ROOM_AUDIO_URL
+  || process.env.JARVIS_DASHBOARD_RASPBERRY_PI_ROOM_AUDIO_SERVER_URL
+  || process.env.JARVIS_ROOM_AUDIO_SERVER_URL
+  || 'http://127.0.0.1:8791'
+).replace(/\/+$/, '');
+const DASHBOARD_VOICE_ROOM_AUDIO_TOKEN = process.env.JARVIS_DASHBOARD_VOICE_ROOM_AUDIO_TOKEN || process.env.JARVIS_ROOM_AUDIO_TOKEN || '';
 const PHONE_ADB_SERIAL = process.env.JARVIS_DASHBOARD_PHONE_ADB_SERIAL || '';
 const PHONE_ADB_PATH = process.env.JARVIS_DASHBOARD_PHONE_ADB_PATH || '$HOME/.local/share/android-platform-tools/platform-tools/adb';
 const PHONE_ADB_SSH_HOST = process.env.JARVIS_DASHBOARD_PHONE_ADB_SSH_HOST || '';
@@ -149,6 +159,7 @@ const contentTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.css', 'text/css; charset=utf-8'],
   ['.js', 'text/javascript; charset=utf-8'],
+  ['.mjs', 'text/javascript; charset=utf-8'],
   ['.json', 'application/json; charset=utf-8'],
   ['.webmanifest', 'application/manifest+json; charset=utf-8'],
   ['.svg', 'image/svg+xml'],
@@ -157,6 +168,8 @@ const contentTypes = new Map([
   ['.jpeg', 'image/jpeg'],
   ['.ico', 'image/x-icon'],
   ['.webp', 'image/webp'],
+  ['.wasm', 'application/wasm'],
+  ['.onnx', 'application/octet-stream'],
   ['.mp4', 'video/mp4'],
   ['.mov', 'video/quicktime'],
   ['.m4v', 'video/x-m4v'],
@@ -183,12 +196,21 @@ function getLanAddresses() {
   return addresses.sort((a, b) => a.interface.localeCompare(b.interface));
 }
 
+function dashboardHeaders(extra = {}) {
+  return {
+    'cross-origin-opener-policy': 'same-origin',
+    'cross-origin-embedder-policy': 'require-corp',
+    'cross-origin-resource-policy': 'same-origin',
+    ...extra
+  };
+}
+
 function json(res, statusCode, body) {
   const payload = JSON.stringify(body, null, 2);
-  res.writeHead(statusCode, {
+  res.writeHead(statusCode, dashboardHeaders({
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store'
-  });
+  }));
   res.end(payload);
 }
 
@@ -2595,6 +2617,203 @@ async function handlePhoneAdbPing(req, res) {
   json(res, 200, await readPhoneAdbStatus());
 }
 
+function dashboardVoiceRoomHeaders(extra = {}) {
+  const headers = {
+    accept: 'application/json',
+    ...extra
+  };
+  if (DASHBOARD_VOICE_ROOM_AUDIO_TOKEN) headers['x-jarvis-room-token'] = DASHBOARD_VOICE_ROOM_AUDIO_TOKEN;
+  return headers;
+}
+
+async function postJsonWithTimeout(url, payload, { timeoutMs = DASHBOARD_VOICE_TIMEOUT_MS, headers = {} } = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1_000, Number(timeoutMs) || DASHBOARD_VOICE_TIMEOUT_MS));
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...headers
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(body.error || `HTTP ${response.status}`);
+      error.statusCode = response.status;
+      error.payload = body;
+      throw error;
+    }
+    return body;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readDashboardVoiceStatus() {
+  const checkedAt = new Date().toISOString();
+  const startedMs = Date.now();
+  if (!DASHBOARD_VOICE_ROOM_AUDIO_URL) {
+    return {
+      ok: false,
+      status: 'offline',
+      label: 'NOT CONFIGURED',
+      roomAudioUrl: '',
+      checkedAt,
+      durationMs: Date.now() - startedMs,
+      error: 'Dashboard voice room-audio URL is not configured.'
+    };
+  }
+  try {
+    const health = await fetchJsonWithTimeout(`${DASHBOARD_VOICE_ROOM_AUDIO_URL}/health`, {
+      timeoutMs: Math.min(DASHBOARD_VOICE_TIMEOUT_MS, 3000),
+      headers: dashboardVoiceRoomHeaders()
+    });
+    return {
+      ok: Boolean(health.ok),
+      status: health.ok ? 'online' : 'offline',
+      label: health.ok ? 'ONLINE' : 'OFFLINE',
+      roomAudioUrl: DASHBOARD_VOICE_ROOM_AUDIO_URL,
+      service: health.service || 'operation-jarvis-room-audio',
+      asyncAckSupported: Boolean(health.asyncAckSupported),
+      processingAckEnabled: Boolean(health.processingAckEnabled),
+      processingAckText: health.processingAckText || '',
+      model: health.model || '',
+      thinking: health.thinking || '',
+      checkedAt,
+      durationMs: Date.now() - startedMs,
+      error: health.ok ? '' : (health.error || 'Room-audio service is not healthy.')
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 'offline',
+      label: 'OFFLINE',
+      roomAudioUrl: DASHBOARD_VOICE_ROOM_AUDIO_URL,
+      checkedAt,
+      durationMs: Date.now() - startedMs,
+      error: error?.message || 'Dashboard voice room-audio service is unavailable.'
+    };
+  }
+}
+
+async function handleDashboardVoiceRequest(req, res) {
+  const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const pathname = requestUrl.pathname.replace(/\/+$/, '') || '/';
+
+  if (pathname === '/api/jarvis/dashboard-voice/status' || pathname === '/api/jarvis/dashboard-voice') {
+    if (!['GET', 'POST'].includes(req.method || 'GET')) {
+      json(res, 405, { ok: false, error: 'Method not allowed' });
+      return;
+    }
+    json(res, 200, await readDashboardVoiceStatus());
+    return;
+  }
+
+  if (pathname === '/api/jarvis/dashboard-voice/client-event') {
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, error: 'Method not allowed. Use POST.' });
+      return;
+    }
+    try {
+      const payload = await readJsonBody(req, 8 * 1024);
+      const level = payload.level === 'error' ? 'error' : 'warn';
+      const message = String(payload.message || payload.error || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+      const detail = String(payload.detail || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+      const state = String(payload.state || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      const userAgent = String(req.headers['user-agent'] || '').slice(0, 180);
+      console[level](`[dashboard-voice-client] state=${state || 'unknown'} message=${message || 'unknown'} detail=${detail || '-'} ua=${userAgent}`);
+      json(res, 200, { ok: true });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error?.message || 'Invalid client event.' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/jarvis/dashboard-voice/turn-result') {
+    if (req.method !== 'GET') {
+      json(res, 405, { ok: false, error: 'Method not allowed. Use GET.' });
+      return;
+    }
+    const turnId = String(requestUrl.searchParams.get('id') || '').trim();
+    if (!turnId) {
+      json(res, 400, { ok: false, error: 'id is required' });
+      return;
+    }
+    try {
+      const payload = await fetchJsonWithTimeout(`${DASHBOARD_VOICE_ROOM_AUDIO_URL}/turn-result?id=${encodeURIComponent(turnId)}`, {
+        timeoutMs: DASHBOARD_VOICE_TIMEOUT_MS,
+        headers: dashboardVoiceRoomHeaders()
+      });
+      json(res, payload.ok === false ? 502 : 200, {
+        ...payload,
+        source: 'dashboard-phone',
+        outputTarget: 'phone'
+      });
+    } catch (error) {
+      json(res, error.statusCode || 502, { ok: false, turnId, error: error?.message || 'Failed to poll dashboard voice turn.' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/jarvis/dashboard-voice/turn') {
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, error: 'Method not allowed. Use POST.' });
+      return;
+    }
+    let body;
+    try {
+      body = await readBufferBody(req, DASHBOARD_VOICE_MAX_BYTES);
+    } catch (error) {
+      json(res, error.statusCode || 400, { ok: false, error: error.message });
+      return;
+    }
+    if (!body || body.length < 44) {
+      json(res, 400, { ok: false, error: 'Dashboard voice upload was empty or too small.' });
+      return;
+    }
+    const mime = String(req.headers['content-type'] || 'audio/wav').split(';')[0].trim().toLowerCase();
+    if (mime && mime !== 'audio/wav' && mime !== 'audio/x-wav' && mime !== 'application/octet-stream') {
+      json(res, 415, { ok: false, error: `Unsupported dashboard voice content-type: ${mime}. Send audio/wav.` });
+      return;
+    }
+    try {
+      const wakeScore = Number.parseFloat(String(req.headers['x-jarvis-dashboard-voice-wake-score'] || '0')) || 0;
+      const durationMs = Number.parseInt(String(req.headers['x-jarvis-dashboard-voice-duration-ms'] || '0'), 10) || 0;
+      const payload = await postJsonWithTimeout(`${DASHBOARD_VOICE_ROOM_AUDIO_URL}/turn`, {
+        audioWavBase64: body.toString('base64'),
+        requireWakeWord: false,
+        asyncAck: true,
+        source: 'dashboard-phone',
+        outputTarget: 'phone',
+        durationMs,
+        wakeScore
+      }, {
+        timeoutMs: DASHBOARD_VOICE_TIMEOUT_MS,
+        headers: dashboardVoiceRoomHeaders()
+      });
+      const statusCode = payload.ok === false ? 502 : 200;
+      json(res, statusCode, {
+        ...payload,
+        source: 'dashboard-phone',
+        outputTarget: 'phone',
+        proxiedBy: 'operation-jarvis-dashboard'
+      });
+    } catch (error) {
+      json(res, error.statusCode || 502, {
+        ok: false,
+        error: error?.message || 'Dashboard voice turn failed.',
+        roomAudioUrl: DASHBOARD_VOICE_ROOM_AUDIO_URL
+      });
+    }
+    return;
+  }
+
+  json(res, 404, { ok: false, error: 'Unknown dashboard voice endpoint' });
+}
+
 let cachedSmartPlugConfig = null;
 let cachedSmartPlugConfigAt = 0;
 let cachedSmartPlugStatuses = null;
@@ -3136,11 +3355,11 @@ async function handleJarvisArtifactFile(req, res) {
     const fileStat = await stat(filePath);
     if (!fileStat.isFile()) throw new Error('Not a file');
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, {
+    res.writeHead(200, dashboardHeaders({
       'content-type': contentTypes.get(ext) || 'application/octet-stream',
       'cache-control': 'no-store',
       'content-length': fileStat.size
-    });
+    }));
     createReadStream(filePath).pipe(res);
   } catch {
     json(res, 404, { ok: false, error: 'Artifact not found.' });
@@ -3202,12 +3421,12 @@ function broadcastWebSocket(data) {
 }
 
 function openEventStream(req, res) {
-  res.writeHead(200, {
+  res.writeHead(200, dashboardHeaders({
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-store, no-transform',
     connection: 'keep-alive',
     'x-accel-buffering': 'no'
-  });
+  }));
   res.write(`event: hello\ndata: ${JSON.stringify({ ok: true, reloadSequence })}\n\n`);
   eventClients.add(res);
 
@@ -3308,8 +3527,8 @@ function rememberCameraCapture(capture) {
 
 function getDashboardCameraStatus() {
   return {
-    ok: wsClients.size > 0,
-    status: wsClients.size > 0 ? 'ready' : 'offline',
+    ok: DASHBOARD_CAMERA_CLIENT_ENABLED && wsClients.size > 0,
+    status: DASHBOARD_CAMERA_CLIENT_ENABLED ? (wsClients.size > 0 ? 'ready' : 'offline') : 'disabled',
     websocketClients: wsClients.size,
     pendingRequests: pendingCameraCommands.size,
     recentCaptures: recentCameraCaptures.slice(0, 8),
@@ -3383,6 +3602,10 @@ function buildCameraCommandMessage(pending) {
 async function handleCameraCommandRequest(req, res, kind) {
   if (req.method !== 'POST') {
     json(res, 405, { ok: false, error: 'Method not allowed. Use POST.' });
+    return;
+  }
+  if (!DASHBOARD_CAMERA_CLIENT_ENABLED) {
+    json(res, 410, { ok: false, error: 'Dashboard camera client is disabled on the active HUD.' });
     return;
   }
   if (!clientCanUseDebugEndpoint(req)) {
@@ -3602,18 +3825,18 @@ async function serveStatic(req, res) {
     }
 
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, {
+    res.writeHead(200, dashboardHeaders({
       'content-type': contentTypes.get(ext) || 'application/octet-stream',
       'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
       pragma: 'no-cache',
       expires: '0'
-    });
+    }));
     createReadStream(filePath).pipe(res);
   } catch {
-    res.writeHead(404, {
+    res.writeHead(404, dashboardHeaders({
       'content-type': 'text/plain; charset=utf-8',
       'cache-control': 'no-store'
-    });
+    }));
     res.end('Not found');
   }
 }
@@ -3629,6 +3852,11 @@ const server = createServer(async (req, res) => {
 
     if (req.url?.startsWith('/api/jarvis/phone-adb')) {
       await handlePhoneAdbPing(req, res);
+      return;
+    }
+
+    if (req.url?.startsWith('/api/jarvis/dashboard-voice')) {
+      await handleDashboardVoiceRequest(req, res);
       return;
     }
 
@@ -3722,6 +3950,7 @@ const server = createServer(async (req, res) => {
         debugEndpointsEnabled: ENABLE_DEBUG_ENDPOINTS,
         ambientPulsesEnabled: ENABLE_AMBIENT_PULSES,
         camera: getDashboardCameraStatus(),
+        dashboardVoice: await readDashboardVoiceStatus(),
         lanUrls: lanAddresses.map(({ address }) => `http://${address}:${PORT}`),
         lanAddresses
       });

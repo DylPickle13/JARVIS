@@ -12,6 +12,12 @@ const WEB_RESEARCH_WORKFLOW_PROMPT = [
 	"- When full pages are needed, choose the best URLs and fetch them with one batched fetch_content({ urls: [...] }) call.",
 	"- Wait for that fetch_content result before final answers/docs, and ignore any delayed web-search-content-ready status messages.",
 ].join("\n");
+const GEMINI_DISABLED_PROMPT = [
+	"Web access policy:",
+	"- Gemini-backed web access is intentionally disabled in this project.",
+	"- Do not ask for or suggest GEMINI_API_KEY, Gemini API setup, or signing into gemini.google.com.",
+	"- Use Exa-backed web_search by default; use provider:'youtube' only for YouTube Data API metadata/search.",
+].join("\n");
 
 function findAncestorFilePath(startDir: string, fileName: string): string | undefined {
 	let currentDir = resolve(startDir);
@@ -76,26 +82,91 @@ function firstNonEmptyLine(pathValue: string | undefined): string | undefined {
 	return undefined;
 }
 
+type SanitizeResult<T> = { value: T; changed: boolean };
+
+const WEB_ACCESS_WRAPPER_VERSION = 2;
+const GEMINI_FALLBACK_LINE_RE = /^\s*(?:[-•]|\d+[.)])?\s*(?:Set\s+GEMINI_API_KEY\b.*|GEMINI_API_KEY\s+not\s+configured.*|Sign\s+into\s+(?:gemini\.google\.com|Google)\b.*|Gemini\s+search\s+unavailable.*|Gemini\s+(?:API|Web):.*|Full\s+video\s+understanding\s+requires\s+Gemini\s+access.*|Video\s+analysis\s+requires\s+Gemini\s+access.*|Could\s+not\s+extract\s+YouTube\s+video\s+content\.\s+Sign\s+into\s+Google.*|Unable\s+to\s+authenticate\s+with\s+Gemini\..*)\s*$/i;
+
+function sanitizeGeminiFallbackText(text: string): SanitizeResult<string> {
+	let output = text
+		.replace(/Could not extract YouTube video content\. Sign into Google in Chrome for automatic access, or set GEMINI_API_KEY\.?/gi, "Could not extract YouTube video content with the non-Gemini fallbacks available.")
+		.replace(/Full video understanding requires Gemini access\. Set GEMINI_API_KEY or sign into Google in Chrome\.?/gi, "Full video understanding is disabled in this JARVIS web-access setup.")
+		.replace(/Video analysis requires Gemini access\. Either:/gi, "Video analysis is disabled in this JARVIS web-access setup.")
+		.replace(/Gemini search unavailable\. Either:/gi, "Gemini search is disabled in this JARVIS web-access setup. Use provider:'exa'.")
+		.replace(/No search provider available\. Either:/gi, "No search provider available. Zero-config Exa MCP is attempted automatically; if it fails, check network access to https://mcp.exa.ai/mcp. Optional fallbacks:");
+
+	const filteredLines = output.split(/\r?\n/).filter((line) => !GEMINI_FALLBACK_LINE_RE.test(line));
+	output = filteredLines.join("\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.replace(/Fallback options:\s*\n\s*$/g, "Fallback options:\n  • Verify the URL/DNS and try again\n  • Use web_search with provider:'exa' to find content about this topic")
+		.trimEnd();
+
+	return { value: output, changed: output !== text };
+}
+
+function sanitizeWebAccessValue(value: unknown, seen = new WeakSet<object>()): SanitizeResult<unknown> {
+	if (typeof value === "string") return sanitizeGeminiFallbackText(value);
+	if (!value || typeof value !== "object") return { value, changed: false };
+	if (seen.has(value)) return { value, changed: false };
+	seen.add(value);
+
+	if (Array.isArray(value)) {
+		let changed = false;
+		const sanitized = value.map((item) => {
+			const result = sanitizeWebAccessValue(item, seen);
+			changed ||= result.changed;
+			return result.value;
+		});
+		return { value: changed ? sanitized : value, changed };
+	}
+
+	let changed = false;
+	const source = value as Record<string, unknown>;
+	const sanitized: Record<string, unknown> = {};
+	for (const [key, item] of Object.entries(source)) {
+		const result = sanitizeWebAccessValue(item, seen);
+		changed ||= result.changed;
+		sanitized[key] = result.value;
+	}
+	return { value: changed ? { ...source, ...sanitized } : value, changed };
+}
+
 function installWebAccessStatusSuppressor(pi: ExtensionAPI): void {
 	const piAny = pi as any;
-	if (piAny.__jarvisWebAccessStatusSuppressor || typeof piAny.sendMessage !== "function") return;
-
-	const originalSendMessage = piAny.sendMessage.bind(pi);
+	if (piAny.__jarvisWebAccessStatusSuppressorVersion === WEB_ACCESS_WRAPPER_VERSION) return;
 	piAny.__jarvisWebAccessStatusSuppressor = true;
-	piAny.sendMessage = (message: any, options?: any) => {
-		const customType = message && typeof message === "object" ? message.customType : undefined;
+	piAny.__jarvisWebAccessStatusSuppressorVersion = WEB_ACCESS_WRAPPER_VERSION;
 
-		// pi-web-access stores fetched content before it emits this notification.
-		// Dropping the notification prevents background includeContent jobs from
-		// appearing as new user-like turns if any legacy/manual call still starts one.
-		if (customType === "web-search-content-ready") return undefined;
+	if (typeof piAny.sendMessage === "function") {
+		const originalSendMessage = piAny.sendMessage.bind(pi);
+		piAny.sendMessage = (message: any, options?: any) => {
+			const customType = message && typeof message === "object" ? message.customType : undefined;
 
-		if (customType === "web-search-error") {
-			return originalSendMessage(message, { ...options, triggerTurn: false });
-		}
+			// pi-web-access stores fetched content before it emits this notification.
+			// Dropping the notification prevents background includeContent jobs from
+			// appearing as new user-like turns if any legacy/manual call still starts one.
+			if (customType === "web-search-content-ready") return undefined;
 
-		return originalSendMessage(message, options);
-	};
+			const sanitizedMessage = sanitizeWebAccessValue(message).value;
+			if (customType === "web-search-error") {
+				return originalSendMessage(sanitizedMessage, { ...options, triggerTurn: false });
+			}
+
+			return originalSendMessage(sanitizedMessage, options);
+		};
+	}
+
+	if (typeof piAny.appendEntry === "function") {
+		const originalAppendEntry = piAny.appendEntry.bind(pi);
+		piAny.appendEntry = (...args: any[]) => {
+			const customType = typeof args[0] === "string" ? args[0] : undefined;
+			if (customType === "web-search-results") {
+				const sanitized = sanitizeWebAccessValue(args[1]);
+				if (sanitized.changed) args[1] = sanitized.value;
+			}
+			return originalAppendEntry(...args);
+		};
+	}
 }
 
 function configureWebAccess(cwd: string): { envPath?: string; hasExaApiKey: boolean; hasYouTubeApiKey: boolean } {
@@ -173,8 +244,10 @@ export default function registerPiWebAccessEnv(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", (event) => {
-		if (event.systemPrompt.includes(WEB_RESEARCH_WORKFLOW_PROMPT)) return undefined;
-		return { systemPrompt: `${event.systemPrompt}\n\n${WEB_RESEARCH_WORKFLOW_PROMPT}` };
+		const additions = [WEB_RESEARCH_WORKFLOW_PROMPT, GEMINI_DISABLED_PROMPT]
+			.filter((prompt) => !event.systemPrompt.includes(prompt));
+		if (additions.length === 0) return undefined;
+		return { systemPrompt: `${event.systemPrompt}\n\n${additions.join("\n\n")}` };
 	});
 
 	pi.on("input", (event) => {
@@ -184,9 +257,15 @@ export default function registerPiWebAccessEnv(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", async (event) => {
-		if (event.toolName !== "web_search") return;
+		if (event.toolName !== "web_search" && event.toolName !== "fetch_content") return;
 		const input = event.input as Record<string, unknown> | undefined;
 		if (!input || typeof input !== "object" || Array.isArray(input)) return;
+
+		if (event.toolName === "fetch_content") {
+			// pi-web-access' model override is only for Gemini-backed video/URL paths.
+			delete input.model;
+			return;
+		}
 
 		// pi-web-access opens the browser-backed curator whenever workflow is not exactly
 		// "none". Force it off for every web_search call so model-supplied
@@ -206,12 +285,23 @@ export default function registerPiWebAccessEnv(pi: ExtensionAPI) {
 		input.includeContent = false;
 	});
 
+	pi.on("tool_result", (event) => {
+		if (!["web_search", "fetch_content", "get_search_content", "youtube_api"].includes(event.toolName)) return undefined;
+
+		const content = sanitizeWebAccessValue(event.content);
+		const details = sanitizeWebAccessValue(event.details);
+		const patch: Record<string, unknown> = {};
+		if (content.changed) patch.content = content.value;
+		if (details.changed) patch.details = details.value;
+		return Object.keys(patch).length > 0 ? patch : undefined;
+	});
+
 	pi.registerCommand("web-access-config", {
 		description: "Show pi-web-access Exa search configuration status",
 		handler: async (_args, ctx) => {
 			const status = configureWebAccess(ctx.cwd);
 			ctx.ui.notify(
-				`pi-web-access: provider=exa, Exa key=${status.hasExaApiKey ? "configured" : "not configured; using zero-config Exa MCP fallback"}, YouTube key=${status.hasYouTubeApiKey ? "loaded" : "missing"}`,
+				`pi-web-access: provider=exa, Gemini disabled, Exa key=${status.hasExaApiKey ? "configured" : "not configured; using zero-config Exa MCP fallback"}, YouTube key=${status.hasYouTubeApiKey ? "loaded" : "missing"}`,
 				"success",
 			);
 		},

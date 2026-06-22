@@ -2,3 +2,4 @@ node_modules/
 logs/*.log
 .DS_Store
 .env
+public/vendor/

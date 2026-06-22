@@ -350,8 +350,6 @@ The upstream wake-word gate is technically compatible with the Discord voice pip
 
 ## Roadmap
 
-- Add an optional HUD indicator for the latest remote capture command.
-- Add Discord-friendly artifact posting for the latest dashboard-camera capture.
-- Consider optional microphone capture in the dashboard PWA if a future workflow requires it.
-- Add a dashboard settings overlay for camera resolution/quality.
+- Dashboard phone voice mode is now the active dashboard-side audio direction: browser-side `hey_jarvis` wake detection, WAV upload to the Mac room-audio pipeline, and phone speaker playback.
+- Tune dashboard voice thresholds on the real phone: wake threshold, mic gain, silence timeout, max utterance length, and secure-origin setup.
 - Consider a custom openWakeWord model for the shorter “Jarvis” wake phrase.

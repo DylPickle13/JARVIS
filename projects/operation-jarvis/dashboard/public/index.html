@@ -47,18 +47,12 @@
         </article>
 
         <section class="hud-mini-boxes" aria-label="JARVIS status indicators">
-          <article id="camera-card" class="hud-mini-card glass-panel tone-cyan camera-card" data-state="idle" aria-live="polite" aria-label="Dashboard camera">
-            <div class="camera-card-header">
-              <p class="eyebrow">Camera</p>
-            </div>
-            <aside id="camera-test-panel" class="camera-test-panel glass-panel" role="button" tabindex="0" aria-live="polite" aria-pressed="false" aria-label="Toggle camera preview">
-              <video id="camera-preview" autoplay muted playsinline></video>
-              <div class="camera-status-row">
-                <span class="camera-status-dot" aria-hidden="true"></span>
-                <strong id="camera-status">Camera standby</strong>
-              </div>
-            </aside>
-          </article>
+          <button id="dashboard-voice-card" class="hud-mini-card glass-panel tone-silver dashboard-voice-card" type="button" data-state="off" aria-live="polite" aria-pressed="false" aria-label="Enable dashboard voice mode" title="Tap to arm dashboard voice mode">
+            <p class="eyebrow">Voice</p>
+            <span id="dashboard-voice-icon" class="omlx-status-icon dashboard-voice-status-icon" role="img" aria-label="Dashboard voice off"></span>
+            <p id="dashboard-voice-detail" class="hud-mini-detail">Tap to arm</p>
+          </button>
+          <audio id="dashboard-voice-audio" preload="auto"></audio>
 
           <button id="omlx-64-card" class="hud-mini-card glass-panel tone-silver omlx-card" type="button" role="switch" data-omlx-server="64" data-state="idle" aria-live="polite" aria-checked="false" aria-label="Toggle OMLX-64 server" title="Tap to toggle OMLX-64 server">
             <p class="eyebrow omlx-label">OMLX-64</p>
@@ -98,5 +92,6 @@
     </main>
 
     <script src="/display.js" type="module"></script>
+    <script src="/dashboard-voice.js" type="module"></script>
   </body>
 </html>

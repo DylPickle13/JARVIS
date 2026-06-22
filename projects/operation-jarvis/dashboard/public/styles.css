@@ -1510,7 +1510,7 @@ h1 {
 
 .hud-mini-boxes {
   --hud-card-width: clamp(96px, 16vmin, 145px);
-  --camera-panel-width: clamp(126px, 19.5vmin, 182px);
+  --camera-panel-width: clamp(104px, 14.5vmin, 136px);
   --hud-card-height: clamp(64px, 10.6vmin, 96px);
   position: absolute;
   z-index: 4;
@@ -1639,6 +1639,8 @@ h1 {
 
 .hud-mini-card.omlx-card:hover,
 .hud-mini-card.omlx-card:focus-visible,
+#dashboard-voice-card.dashboard-voice-card:hover,
+#dashboard-voice-card.dashboard-voice-card:focus-visible,
 #right-reserved-card-2.raspberry-pi-card:hover,
 #right-reserved-card-2.raspberry-pi-card:focus-visible,
 #right-reserved-card-3.phone-adb-card:hover,
@@ -1653,6 +1655,7 @@ h1 {
 }
 
 .hud-mini-card.omlx-card[aria-busy="true"] .omlx-status-icon,
+#dashboard-voice-card.dashboard-voice-card[aria-busy="true"] .dashboard-voice-status-icon,
 #right-reserved-card-2.raspberry-pi-card[aria-busy="true"] .raspberry-pi-status-icon,
 #right-reserved-card-3.phone-adb-card[aria-busy="true"] .phone-adb-status-icon,
 #display-reload-button.dashboard-refresh-card[aria-busy="true"] h1,
@@ -1724,6 +1727,81 @@ h1 {
 
 #camera-card[data-state="idle"] {
   --tone: var(--silver);
+}
+
+#dashboard-voice-card.dashboard-voice-card {
+  grid-column: 1;
+  grid-row: 4 / 6;
+  width: var(--camera-panel-width);
+  max-width: var(--camera-panel-width);
+  height: 100%;
+  justify-self: start;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: clamp(4px, .9vmin, 8px);
+  padding: clamp(6px, 1vmin, 10px);
+  appearance: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  border-color: rgba(138, 243, 255, .40);
+}
+
+#dashboard-voice-card .eyebrow {
+  margin: 0;
+  font-size: clamp(1.02rem, 2.7vmin, 1.45rem);
+  line-height: .9;
+  letter-spacing: -.035em;
+}
+
+#dashboard-voice-card .dashboard-voice-status-icon {
+  width: clamp(28px, 4.8vmin, 42px);
+  margin: clamp(1px, .35vmin, 4px) 0;
+}
+
+#dashboard-voice-card .hud-mini-detail {
+  max-width: 96%;
+  white-space: normal;
+  line-height: 1.12;
+  font-size: clamp(.5rem, 1.15vmin, .68rem);
+}
+
+#dashboard-voice-card[data-state="off"] {
+  --tone: var(--silver);
+  --status-indicator: #61758d;
+  --status-glow: rgba(97,117,141,.42);
+}
+
+#dashboard-voice-card[data-state="arming"],
+#dashboard-voice-card[data-state="wake"],
+#dashboard-voice-card[data-state="processing"] {
+  --tone: var(--amber);
+  --status-indicator: var(--amber);
+  --status-glow: rgba(255,209,102,.72);
+}
+
+#dashboard-voice-card[data-state="listening"],
+#dashboard-voice-card[data-state="speaking"] {
+  --tone: #6fa8ff;
+  --status-indicator: #6fa8ff;
+  --status-glow: rgba(111,168,255,.78);
+}
+
+#dashboard-voice-card[data-state="recording"] {
+  --tone: var(--green);
+  --status-indicator: var(--green);
+  --status-glow: rgba(141,255,202,.72);
+}
+
+#dashboard-voice-card[data-state="error"] {
+  --tone: #ff2f22;
+  --status-indicator: #ff2f22;
+  --status-glow: rgba(255,47,34,.78);
+}
+
+#dashboard-voice-audio {
+  display: none;
 }
 
 .hud-mini-card.omlx-card .eyebrow,
@@ -1882,6 +1960,7 @@ h1 {
 }
 
 .hud-mini-card.omlx-card .omlx-status-icon,
+.dashboard-voice-status-icon,
 .raspberry-pi-status-icon,
 .phone-adb-status-icon,
 .smart-plug-status-icon {
@@ -1955,7 +2034,7 @@ h1 {
 @media (orientation: portrait), (max-width: 720px) {
   .hud-mini-boxes {
     --hud-card-width: clamp(84px, 25vw, 112px);
-    --camera-panel-width: clamp(110px, 32vw, 146px);
+    --camera-panel-width: clamp(96px, 25vw, 118px);
     --hud-card-height: clamp(58px, 16vw, 78px);
     inset: clamp(7px, 1.7vmin, 14px);
   }
@@ -1969,7 +2048,7 @@ h1 {
 @media (orientation: landscape) and (max-height: 390px) {
   .hud-mini-boxes {
     --hud-card-width: 88px;
-    --camera-panel-width: 118px;
+    --camera-panel-width: 104px;
     --hud-card-height: 56px;
     inset: 7px;
     gap: 5px;
@@ -1986,8 +2065,23 @@ h1 {
   .hud-mini-detail { display: none; }
   .smart-plug-grid { --smart-plug-gap: 5px; }
   .smart-plug-card .eyebrow { font-size: clamp(.9rem, 2.45vmin, 1.28rem); letter-spacing: .075em; }
-  #camera-card { width: var(--camera-panel-width); max-width: var(--camera-panel-width); gap: 4px; padding: 5px; }
-  #camera-card .eyebrow { font-size: 1.08rem; line-height: .82; }
+  #camera-card,
+  #dashboard-voice-card.dashboard-voice-card { width: var(--camera-panel-width); max-width: var(--camera-panel-width); gap: 3px; padding: 5px; }
+  #dashboard-voice-card.dashboard-voice-card { grid-row: 4 / 6; }
+  #camera-card .eyebrow,
+  #dashboard-voice-card .eyebrow { font-size: .9rem; line-height: .86; }
+  #dashboard-voice-card .dashboard-voice-status-icon { width: 22px; margin: 0; }
+  #dashboard-voice-card .hud-mini-detail {
+    display: -webkit-box;
+    max-width: 100%;
+    margin-top: 0;
+    overflow: hidden;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: .48rem;
+    line-height: 1.08;
+  }
   .jarvis-status-card h1 { font-size: 2.25rem; }
   .omlx-status-icon { width: 24px; }
   .jarvis-status-card p:not(.eyebrow) { display: none; }
