@@ -10,6 +10,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const VOICE_SAMPLE_RATE = 16_000;
 const WAKE_FRAME_SIZE = 1_280;
 const DEFAULT_SILENCE_RMS = 0.007;
+const AUDIO_UNLOCK_TIMEOUT_MS = 800;
 const SILENT_WAV_DATA_URL = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
 
 const voiceConfig = {
@@ -253,7 +254,8 @@ async function unlockPhoneAudio() {
   try {
     voiceAudioEl.muted = true;
     voiceAudioEl.src = SILENT_WAV_DATA_URL;
-    await voiceAudioEl.play();
+    const playPromise = Promise.resolve(voiceAudioEl.play()).catch(() => {});
+    await Promise.race([playPromise, waitMs(AUDIO_UNLOCK_TIMEOUT_MS)]);
     voiceAudioEl.pause();
     voiceAudioEl.currentTime = 0;
   } catch {
@@ -307,6 +309,7 @@ async function playBase64Audio(base64, contentType = 'audio/wav', detail = 'Spea
 function handleAudioChunk(event) {
   const samples = event?.samples;
   if (!samples?.length) return;
+  if (turnInFlight && !recording) return;
   const level = rms(samples);
   const now = Date.now();
   rememberRingChunk(samples);
@@ -371,6 +374,7 @@ function handleWakeDetected(event = {}) {
     wakeScore: Number.isFinite(score) ? score : 0
   };
   lastRecordingUiAt = 0;
+  wakeEngine?.setDetectionPaused?.(true);
   reportVoiceClientEvent('warn', `wake detected score=${recording.wakeScore.toFixed(3)}`, event.isSpeechActive ? 'speech active' : 'speech inactive');
   setVoiceState('wake', 'Wake detected');
 }
@@ -383,7 +387,7 @@ async function finalizeRecording(reason) {
   setVoiceState('processing', 'Thinking');
 
   try {
-    await stopWakeListening({ keepEnabled: true });
+    wakeEngine?.setDetectionPaused?.(true);
     const samples = flattenChunks(current.chunks);
     const durationMs = samples.length / current.sampleRate * 1000;
     if (durationMs < 500) throw new Error('No usable speech was captured.');
@@ -401,10 +405,15 @@ async function finalizeRecording(reason) {
     ringChunks = [];
     ringSampleCount = 0;
     if (modeEnabled) {
-      await startWakeListening().catch((error) => {
-        modeEnabled = false;
-        setVoiceState('error', shortText(error?.message || 'Wake restart failed', 86));
-      });
+      if (wakeEngine) {
+        wakeEngine.setDetectionPaused?.(false, { reset: true });
+        setVoiceState('listening', 'Listening');
+      } else {
+        await startWakeListening().catch((error) => {
+          modeEnabled = false;
+          setVoiceState('error', shortText(error?.message || 'Wake restart failed', 86));
+        });
+      }
     } else {
       setVoiceState('off');
     }
@@ -503,6 +512,7 @@ async function startWakeListening() {
       keywords: ['hey_jarvis'],
       detectionThreshold: voiceConfig.threshold,
       cooldownMs: 3500,
+      useVad: false,
       debug: voiceConfig.debug
     });
 
@@ -531,7 +541,9 @@ async function startWakeListening() {
       })
     ];
 
+    const wakeLoadStartedAt = performance.now();
     await engine.load();
+    reportVoiceClientEvent('warn', `wake model loaded ${Math.round(performance.now() - wakeLoadStartedAt)}ms`, 'startup timing');
     if (!modeEnabled) {
       for (const unsubscribe of wakeUnsubscribers) unsubscribe?.();
       wakeUnsubscribers = [];
@@ -540,7 +552,9 @@ async function startWakeListening() {
     }
     const mediaStream = pendingMicStream;
     pendingMicStream = null;
+    const wakeStartStartedAt = performance.now();
     await engine.start({ gain: voiceConfig.gain, mediaStream });
+    reportVoiceClientEvent('warn', `wake audio started ${Math.round(performance.now() - wakeStartStartedAt)}ms`, 'startup timing');
     wakeEngine = engine;
     ringChunks = [];
     ringSampleCount = 0;
@@ -577,9 +591,8 @@ async function armVoiceMode({ auto = false } = {}) {
   setVoiceState('arming', 'Starting');
   try {
     const micPromise = requestPhoneMicStream();
-    const unlockPromise = unlockPhoneAudio();
+    void unlockPhoneAudio();
     await micPromise;
-    await unlockPromise.catch(() => {});
     await startWakeListening();
     if (auto) reportVoiceClientEvent('warn', 'voice auto-armed', 'dashboard load');
   } catch (error) {

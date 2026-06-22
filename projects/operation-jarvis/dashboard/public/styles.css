@@ -1511,6 +1511,8 @@ h1 {
 .hud-mini-boxes {
   --hud-card-width: clamp(96px, 16vmin, 145px);
   --camera-panel-width: clamp(104px, 14.5vmin, 136px);
+  --voice-card-width: clamp(92px, 12.5vmin, 120px);
+  --voice-card-height-scale: 1.62;
   --hud-card-height: clamp(64px, 10.6vmin, 96px);
   position: absolute;
   z-index: 4;
@@ -1732,15 +1734,16 @@ h1 {
 #dashboard-voice-card.dashboard-voice-card {
   grid-column: 1;
   grid-row: 4 / 6;
-  width: var(--camera-panel-width);
-  max-width: var(--camera-panel-width);
-  height: 100%;
+  width: var(--voice-card-width);
+  max-width: var(--voice-card-width);
+  height: min(100%, calc(var(--hud-card-height) * var(--voice-card-height-scale)));
   justify-self: start;
+  align-self: end;
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: clamp(4px, .9vmin, 8px);
-  padding: clamp(6px, 1vmin, 10px);
+  gap: clamp(3px, .75vmin, 7px);
+  padding: clamp(5px, .85vmin, 8px);
   appearance: none;
   color: var(--text);
   font: inherit;
@@ -1750,13 +1753,13 @@ h1 {
 
 #dashboard-voice-card .eyebrow {
   margin: 0;
-  font-size: clamp(1.02rem, 2.7vmin, 1.45rem);
+  font-size: clamp(.95rem, 2.45vmin, 1.32rem);
   line-height: .9;
   letter-spacing: -.035em;
 }
 
 #dashboard-voice-card .dashboard-voice-status-icon {
-  width: clamp(28px, 4.8vmin, 42px);
+  width: clamp(24px, 4.25vmin, 36px);
   margin: clamp(1px, .35vmin, 4px) 0;
 }
 
@@ -1764,7 +1767,8 @@ h1 {
   max-width: 96%;
   white-space: normal;
   line-height: 1.12;
-  font-size: clamp(.5rem, 1.15vmin, .68rem);
+  font-size: clamp(.76rem, 1.7vmin, .98rem);
+  font-weight: 800;
 }
 
 #dashboard-voice-card[data-state="off"] {
@@ -2035,6 +2039,8 @@ h1 {
   .hud-mini-boxes {
     --hud-card-width: clamp(84px, 25vw, 112px);
     --camera-panel-width: clamp(96px, 25vw, 118px);
+    --voice-card-width: clamp(84px, 22vw, 106px);
+    --voice-card-height-scale: 1.56;
     --hud-card-height: clamp(58px, 16vw, 78px);
     inset: clamp(7px, 1.7vmin, 14px);
   }
@@ -2049,6 +2055,8 @@ h1 {
   .hud-mini-boxes {
     --hud-card-width: 88px;
     --camera-panel-width: 104px;
+    --voice-card-width: 92px;
+    --voice-card-height-scale: 1.58;
     --hud-card-height: 56px;
     inset: 7px;
     gap: 5px;
@@ -2065,12 +2073,11 @@ h1 {
   .hud-mini-detail { display: none; }
   .smart-plug-grid { --smart-plug-gap: 5px; }
   .smart-plug-card .eyebrow { font-size: clamp(.9rem, 2.45vmin, 1.28rem); letter-spacing: .075em; }
-  #camera-card,
-  #dashboard-voice-card.dashboard-voice-card { width: var(--camera-panel-width); max-width: var(--camera-panel-width); gap: 3px; padding: 5px; }
-  #dashboard-voice-card.dashboard-voice-card { grid-row: 4 / 6; }
+  #camera-card { width: var(--camera-panel-width); max-width: var(--camera-panel-width); }
+  #dashboard-voice-card.dashboard-voice-card { width: var(--voice-card-width); max-width: var(--voice-card-width); grid-row: 4 / 6; gap: 3px; padding: 5px; }
   #camera-card .eyebrow,
   #dashboard-voice-card .eyebrow { font-size: .9rem; line-height: .86; }
-  #dashboard-voice-card .dashboard-voice-status-icon { width: 22px; margin: 0; }
+  #dashboard-voice-card .dashboard-voice-status-icon { width: 20px; margin: 0; }
   #dashboard-voice-card .hud-mini-detail {
     display: -webkit-box;
     max-width: 100%;
@@ -2079,8 +2086,9 @@ h1 {
     white-space: normal;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
-    font-size: .48rem;
-    line-height: 1.08;
+    font-size: .72rem;
+    line-height: 1.06;
+    font-weight: 850;
   }
   .jarvis-status-card h1 { font-size: 2.25rem; }
   .omlx-status-icon { width: 24px; }

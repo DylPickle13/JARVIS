@@ -3825,11 +3825,17 @@ async function serveStatic(req, res) {
     }
 
     const ext = path.extname(filePath).toLowerCase();
+    const cacheableVendorAsset = pathname.startsWith('/vendor/onnxruntime-web/') || ext === '.onnx' || ext === '.wasm';
+    const cacheHeaders = cacheableVendorAsset
+      ? { 'cache-control': 'public, max-age=31536000, immutable' }
+      : {
+          'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          pragma: 'no-cache',
+          expires: '0'
+        };
     res.writeHead(200, dashboardHeaders({
       'content-type': contentTypes.get(ext) || 'application/octet-stream',
-      'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-      pragma: 'no-cache',
-      expires: '0'
+      ...cacheHeaders
     }));
     createReadStream(filePath).pipe(res);
   } catch {

@@ -13,6 +13,12 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/webp" href="/favicon.webp?v=1" />
     <link rel="apple-touch-icon" href="/assets/pwa-icon-192.png" />
+    <link rel="modulepreload" href="/vendor/openwakeword/WakeWordEngine.js" />
+    <link rel="modulepreload" href="/vendor/onnxruntime-web/ort.wasm.min.mjs" />
+    <link rel="preload" href="/vendor/onnxruntime-web/ort-wasm-simd-threaded.wasm" as="fetch" type="application/wasm" crossorigin />
+    <link rel="preload" href="/vendor/openwakeword/models/melspectrogram.onnx" as="fetch" crossorigin />
+    <link rel="preload" href="/vendor/openwakeword/models/embedding_model.onnx" as="fetch" crossorigin />
+    <link rel="preload" href="/vendor/openwakeword/models/hey_jarvis_v0.1.onnx" as="fetch" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body class="room-display alarm-clock-display">
