@@ -9,8 +9,7 @@ type CanonicalToolGroup =
   | "phone"
   | "google"
   | "cron"
-  | "ping"
-  | "discord_file"
+  | "discord"
   | "sessions"
   | "youtube"
   | "browser";
@@ -44,8 +43,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   phone: ["agent_phone"],
   google: ["google_workspace"],
   cron: ["discord_cron"],
-  ping: ["discord_ping"],
-  discord_file: ["discord_send_file"],
+  discord: ["discord_ping", "discord_send_file"],
   sessions: ["session_search"],
   youtube: ["youtube_api"],
   browser: [
@@ -72,8 +70,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   phone: "agent_phone for safe LG-H933 Android phone control via ADB refs/screenshots",
   google: "google_workspace for Google Workspace only; YouTube/code use their own groups; web and Reddit use always-on tools",
   cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
-  ping: "discord_ping only: explicit immediate Discord ping/notification",
-  discord_file: "discord_send_file only: upload a verified local file to the current Discord channel when available",
+  discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
   sessions: "session_search over prior Pi/JARVIS sessions",
   youtube: "youtube_api for public YouTube search/metadata",
   browser: "visible non-headless Chrome control via screenshots, clicks, typing, scrolling, tabs, and page extraction",
@@ -144,7 +141,7 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
     lines: [
       "Use `discord_cron` only for Pi/JARVIS scheduled jobs whose output posts to Discord, including questions like 'what cron jobs are running?', 'what scheduled jobs exist?', or 'is there a briefing cron job?'.",
       "For existence checks by job name, call `discord_cron({ action: \"list\" })` and filter the returned jobs; do not grep the repository or inspect OS crontab unless the user explicitly asks for OS cron/launchd.",
-      "This is not an immediate notification tool or file-upload tool. For a one-off explicit ping use `ping`/`discord_ping`; for a Discord attachment use `discord_file`/`discord_send_file`.",
+      "This is not an immediate notification tool or file-upload tool. For immediate Discord pings, notifications, or file delivery, load the `discord` group and use `discord_ping` or `discord_send_file` as appropriate.",
       "Do not fall back to shell/system crontab inspection unless the user explicitly asks for OS-level cron/launchd jobs; these Discord-backed jobs are managed by `discord_cron`.",
       "Do not start/restart the main JARVIS Discord bot unless the user explicitly asks.",
       "Common actions: `status`, `list`, `add`, `remove`, `enable`, `disable`, `run`, `runs`, `output`, `setup`, `install_cron`, and `uninstall_cron`.",
@@ -153,20 +150,16 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Treat remove/disable/uninstall/setup changes as mutating operations: require clear user intent and summarize what changed.",
     ],
   },
-  ping: {
-    skill: "explicit-discord-ping",
+  discord: {
+    skill: "immediate Discord pings and file delivery",
     lines: [
-      "Use `discord_ping` only when the user explicitly instructs you to use/call/run the Discord ping tool or clearly asks for an explicit Discord ping/notification via this tool.",
-      "This is not scheduled-job management or file upload. For scheduled recurring/one-time jobs that post to Discord, use `cron`/`discord_cron`; for attachments, use `discord_file`/`discord_send_file`.",
-      "Send the ping only after the requested condition is verified complete; keep the message concise and outcome-focused.",
-    ],
-  },
-  discord_file: {
-    skill: "discord current-channel file upload",
-    lines: [
-      "Use `discord_send_file` only to upload a verified local file to the current Discord channel when running inside a Discord session.",
-      "This is not a notification tool or scheduled-job tool. For explicit pings use `ping`/`discord_ping`; for scheduled jobs use `cron`/`discord_cron`.",
-      "If `discord_send_file` is unavailable, report that the current session has no Discord file-upload context rather than substituting another Discord helper.",
+      "Use `load_tools({ groups: [\"discord\"] })` before immediate Discord notifications or file delivery; then call the unlocked `discord_ping` or `discord_send_file` directly.",
+      "Use `discord_ping` when the user clearly asks to be pinged/notified on Discord, says 'ping me', or asks to send files/results to them by Discord; include `attachmentPath` or `attachmentPaths` when files are part of the request.",
+      "Use `discord_send_file` only to upload a verified local file to the current Discord channel when running inside a Discord session and the tool is available.",
+      "If the user asks 'ping me/send me these files', prefer `discord_ping` with attachments; do not require a current-channel context.",
+      "Use `discord_cron` only for scheduled or recurring jobs whose output posts to Discord.",
+      "Verify requested files or conditions before sending; keep Discord messages concise and outcome-focused.",
+      "If `discord_send_file` is unavailable, do not substitute it for current-channel uploads; report the unavailable context unless a user-facing ping with attachments satisfies the request.",
     ],
   },
   sessions: {
@@ -327,8 +320,7 @@ function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
     jarvis: "jarvis: use `jarvis` for camera/Cast and `smart_plug` for plugs; keep recordings bounded and speech short.",
     minecraft_jarvis: "minecraft_jarvis: use `minecraft_jarvis({ message })` for the Minecraft bot; do not substitute SSH, shell, or slash-command shortcuts.",
     cron: "cron: use `discord_cron` only for Discord-posted scheduled jobs; OS cron/launchd only if explicitly requested.",
-    ping: "ping: use `discord_ping` only for explicit immediate Discord pings/notifications; not for scheduled jobs or file uploads.",
-    discord_file: "discord_file: use `discord_send_file` only for verified local file uploads to the current Discord channel.",
+    discord: "discord: use `discord_ping` for immediate Discord pings/notifications, with attachments when requested; use `discord_send_file` only for current-channel uploads when available.",
     sessions: "sessions: use `session_search` search first; status for freshness; index only if requested/stale.",
     youtube: "youtube: use `youtube_api` for public YouTube search/metadata; do not use `google_workspace` for YouTube.",
     browser: "browser: use visible Chrome tools after `browser_open`; screenshot before coordinate clicks, verify after actions, and ask before sensitive/private/account actions.",
@@ -439,12 +431,12 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
-    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, maps, and ssh are always on. Groups: memory, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, ping=explicit Discord ping, discord_file=current-channel Discord upload, sessions, youtube, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
-    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, maps, and load_tools. Common optional groups: memory, code_docs, phone, cron, ping, discord_file, youtube, browser.",
+    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, maps, and ssh are always on. Groups: memory, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, discord=immediate Discord pings/file delivery, sessions, youtube, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
+    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, maps, and load_tools. Common optional groups: memory, code_docs, phone, cron, discord, youtube, browser.",
     promptGuidelines: [
-      "Call load_tools before optional groups: memory, code_docs (code_search), jarvis, phone, google, cron, ping, discord_file, sessions, youtube, browser. Web tools (`web_search`, `fetch_content`, `get_search_content`), `reddit_thread`, `minecraft_jarvis`, `maps`, and `ssh` are always on. There are no notify/discord/scheduled/research aliases.",
+      "Call load_tools before optional groups: memory, code_docs (code_search), jarvis, phone, google, cron, discord, sessions, youtube, browser. Web tools (`web_search`, `fetch_content`, `get_search_content`), `reddit_thread`, `minecraft_jarvis`, `maps`, and `ssh` are always on. There are no aliases for removed split Discord groups or for scheduled/research tools.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
-      "Discord map: `discord_cron` manages scheduled jobs that post to Discord; `discord_ping` sends an immediate explicit Discord ping; `discord_send_file` uploads a local file to the current Discord channel only when that context/tool is available. These are separate groups and are not interchangeable.",
+      "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
       "For Reddit URLs or Reddit thread/listing requests, use always-on `reddit_thread` directly; do not use shell curl/wget against reddit.com.",
       "For ordinary web research, use always-on `web_search`; for known URL extraction/full content, use always-on `fetch_content`; for stored search/content details, use always-on `get_search_content`. Only load `youtube` when the dedicated `youtube_api` search/metadata tool is needed. Only load `browser` when the user needs a real visible Chrome session controlled by screenshots/clicks/typing.",
       "After load_tools succeeds, use the exact unlocked tool and returned playbook. If a required tool is unavailable, say so; if a tool was listed as unlocked but is not callable, report schema refresh failure rather than substituting another tool.",
@@ -457,7 +449,26 @@ export default function lazyTools(pi: ExtensionAPI) {
     }),
     executionMode: "sequential",
     async execute(_toolCallId, params) {
-      const groups = Array.isArray(params.groups) ? (params.groups as ToolGroup[]) : [];
+      const requestedGroups = Array.isArray(params.groups)
+        ? (params.groups as unknown[]).map((group) => String(group).trim().toLowerCase()).filter(Boolean)
+        : [];
+      const invalidGroups = requestedGroups.filter((group) => !isToolGroupName(group));
+      if (invalidGroups.length > 0) {
+        const validGroupNames = [...GROUP_NAMES, "all"].join(", ");
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Invalid tool group(s): ${invalidGroups.join(", ")}. Valid groups: ${validGroupNames}. No aliases are supported.`,
+            },
+          ],
+          details: {
+            invalidGroups,
+            validGroups: validGroupNames,
+          },
+        };
+      }
+      const groups = requestedGroups as ToolGroup[];
       const expandedGroups = expandGroups(groups);
       const visibleGroups = mergeProviderVisibleGroups(expandedGroups);
       const executionTools = primeExecutionToolSet(pi);
@@ -563,15 +574,16 @@ export default function lazyTools(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("load-tools", {
-    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,jarvis,minecraft_jarvis,phone,google,cron,ping,discord_file,sessions,youtube,browser,all",
+    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,jarvis,minecraft_jarvis,phone,google,cron,discord,sessions,youtube,browser,all",
     handler: async (args, ctx) => {
       const requested = args
         .split(/[\s,]+/)
         .map((part) => part.trim().toLowerCase())
-        .filter(Boolean) as ToolGroup[];
+        .filter(Boolean);
+      const invalid = requested.filter((group) => !isToolGroupName(group));
       const valid = requested.filter(isToolGroupName);
-      if (valid.length === 0) {
-        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nGroups: ${LOADABLE_GROUPS_TEXT}\nCommon choices: code_docs=code_search; memory=durable memory; phone=LG-H933 Android control; cron=scheduled Discord jobs; ping=explicit Discord ping; browser=visible Chrome control. Web tools (web_search/fetch_content/get_search_content) are always on.`, "warning");
+      if (invalid.length > 0 || valid.length === 0) {
+        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nGroups: ${LOADABLE_GROUPS_TEXT}\nCommon choices: code_docs=code_search; memory=durable memory; phone=LG-H933 Android control; cron=scheduled Discord jobs; discord=immediate Discord pings/file delivery; browser=visible Chrome control. Web tools (web_search/fetch_content/get_search_content) are always on.\n${invalid.length > 0 ? `Invalid group(s): ${invalid.join(", ")}. No aliases are supported.` : ""}`, "warning");
         return;
       }
       const expandedGroups = expandGroups(valid);

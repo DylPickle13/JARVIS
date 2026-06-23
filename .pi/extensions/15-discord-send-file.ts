@@ -227,12 +227,13 @@ export default function registerDiscordSendFile(pi: ExtensionAPI) {
     name: "discord_send_file",
     label: "Discord Send File",
     description:
-      "Upload a verified local file to the current Discord channel. Discord sessions only; not for pings or scheduled jobs.",
-    promptSnippet: "Upload a verified local file to the current Discord channel; Discord sessions only",
+      "Upload a verified local file to the current Discord channel. Discord sessions/current-channel context only; use discord_ping for user-facing pings or file delivery to the configured user.",
+    promptSnippet: "Upload a verified local file to the current Discord channel; Discord sessions/current-channel context only",
     promptGuidelines: [
-      "Use discord_send_file only to upload a local file that already exists and has been verified, when the user asks for an attachment or file delivery in the current Discord channel.",
-      "Do not use discord_send_file for notifications, pings, or scheduled jobs; use discord_ping or discord_cron for those separate purposes.",
-      "If there is no active Discord channel context, report that this tool is unavailable rather than substituting another Discord helper.",
+      "Use discord_send_file only to upload a local file that already exists and has been verified, when the user asks for an attachment or file delivery to the current Discord channel.",
+      "If the user asks to be pinged/notified or says to send files to them on Discord, use discord_ping with attachmentPath or attachmentPaths instead.",
+      "Do not use discord_send_file for scheduled jobs; use discord_cron for scheduled jobs whose output should post to Discord.",
+      "If there is no active Discord channel context, report that this tool is unavailable rather than substituting another current-channel upload helper.",
     ],
     parameters: Type.Object({
       path: Type.String({ description: "Local file path." }),

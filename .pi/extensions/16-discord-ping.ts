@@ -847,15 +847,14 @@ export default function registerDiscordPing(pi: ExtensionAPI) {
     name: "discord_ping",
     label: "Discord Ping",
     description:
-      "Send an explicit one-off Discord ping/notification to the configured user in #jarvis-helpers → pings. Use only when the user explicitly instructs the agent to use/call/run discord_ping; not for scheduled jobs.",
-    promptSnippet: "Use only when the user explicitly says to use the discord_ping / Discord Ping tool for a one-off notification",
+      "Send an immediate one-off Discord ping/notification to the configured user in #jarvis-helpers → pings, optionally with local file attachments. Use for explicit user-facing pings or file delivery; not for scheduled jobs.",
+    promptSnippet: "Use for immediate user-facing Discord pings/notifications, including attachments when requested",
     promptGuidelines: [
-      "Use discord_ping only when the user explicitly tells you to use/call/run the discord_ping tool (or says to use the Discord Ping tool) for a one-off Discord notification.",
-      "Do not infer permission from a completed task, from routine completion behavior, or from phrases like 'let me know', 'notify me', or 'ping me' unless the user also explicitly says to use this tool.",
+      "Use discord_ping when the user clearly asks to be pinged/notified on Discord, says 'ping me', or asks to send files/results to them by Discord.",
+      "Use attachmentPath or attachmentPaths when local files are part of the requested ping or file delivery; verify the files exist before sending.",
       "Do not use discord_ping for scheduled or recurring jobs; use discord_cron for scheduled jobs whose output should post to Discord.",
       "Call discord_ping only after you have verified the specifically requested goal is actually complete or the requested condition is satisfied.",
       "Keep the ping message concise and outcome-focused; include what completed and any key result the user asked to wait for.",
-      "Attach local files with attachmentPath or attachmentPaths only when the user asks for attachments or when the attachment is central to the requested ping.",
       "Do not use discord_ping for routine progress updates, speculative results, or messages not intended as an explicit Discord notification.",
     ],
     parameters: Type.Object({

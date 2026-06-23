@@ -109,11 +109,11 @@ export default function registerDiscordCron(pi: ExtensionAPI) {
     name: "discord_cron",
     label: "Discord Cron",
     description:
-      "Manage Pi/JARVIS scheduled jobs whose output is posted to Discord. Use this for scheduled jobs only; use discord_ping for explicit one-off pings/notifications.",
-    promptSnippet: "Inspect/manage scheduled Pi/JARVIS jobs posted to Discord; not for immediate Discord pings",
+      "Manage Pi/JARVIS scheduled jobs whose output is posted to Discord. Use this for scheduled jobs only; use the discord group for immediate pings, notifications, or file delivery.",
+    promptSnippet: "Inspect/manage scheduled Pi/JARVIS jobs posted to Discord; not for immediate Discord delivery",
     promptGuidelines: [
       "Use discord_cron only for Pi/JARVIS scheduled jobs posted to Discord, including questions about existing/running scheduled jobs; do not inspect system crontab unless OS-level cron/launchd is explicitly requested.",
-      "Do not use discord_cron for immediate pings/notifications; use discord_ping only when the user explicitly requests that ping tool.",
+      "Do not use discord_cron for immediate pings, notifications, or file delivery; load the discord group and use discord_ping or discord_send_file as appropriate.",
       "Do not start/restart the main JARVIS Discord bot unless the user explicitly asks.",
       "Use discord_cron action:'add' with schedule and prompt to create a job; schedule examples include +5m, interval-like strings, cron, or ISO depending on the runner.",
       "Use discord_cron status/list/runs/output to inspect jobs and results before changing them; run starts a detached manual job whose output is posted to Discord.",
