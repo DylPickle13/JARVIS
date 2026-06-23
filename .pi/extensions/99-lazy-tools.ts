@@ -29,7 +29,6 @@ const ALWAYS_ON_TOOLS = [
   "web_search",
   "fetch_content",
   "get_search_content",
-  "reddit_thread",
   "minecraft_jarvis",
   "maps",
   "load_tools",
@@ -68,7 +67,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, and local smart plugs",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   phone: "agent_phone for safe LG-H933 Android phone control via ADB refs/screenshots",
-  google: "google_workspace for Google Workspace only; YouTube/code use their own groups; web and Reddit use always-on tools",
+  google: "google_workspace for Google Workspace only; YouTube/code use their own groups; web uses always-on tools",
   cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
   discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
   sessions: "session_search over prior Pi/JARVIS sessions",
@@ -176,7 +175,6 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
     lines: [
       "Use `youtube_api` for public YouTube search and metadata when the ordinary `web_search` YouTube provider is not enough.",
       "Do not route YouTube work through `google_workspace`; Google Workspace is for Drive/Gmail/Docs/Sheets/Calendar only.",
-      "For Reddit URLs, use always-on `reddit_thread` directly; do not shell-fetch reddit.com pages.",
     ],
   },
   browser: {
@@ -285,14 +283,6 @@ function isAlwaysOnToolName(toolName: string): boolean {
 
 function groupsForToolName(toolName: string): ConcreteToolGroup[] {
   return GROUP_NAMES.filter((group) => TOOL_GROUPS[group].includes(toolName));
-}
-
-function isDirectRedditShellFetch(toolName: string, input: unknown): boolean {
-  if (toolName !== "bash" || !input || typeof input !== "object" || Array.isArray(input)) return false;
-  const command = (input as { command?: unknown }).command;
-  if (typeof command !== "string") return false;
-  if (!/https?:\/\/(?:www\.|old\.|np\.|new\.)?reddit\.com\//i.test(command) && !/https?:\/\/redd\.it\//i.test(command)) return false;
-  return /(^|[;&|\s])(curl|wget|http|https|python3?|node|ruby|perl)\b/i.test(command);
 }
 
 function buildGuidanceSection(groups: readonly GuidanceGroup[], heading = "JARVIS unlocked-tool guidance"): string {
@@ -431,13 +421,12 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
-    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, maps, and ssh are always on. Groups: memory, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, discord=immediate Discord pings/file delivery, sessions, youtube, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
-    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, reddit_thread, minecraft_jarvis, maps, and load_tools. Common optional groups: memory, code_docs, phone, cron, discord, youtube, browser.",
+    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, minecraft_jarvis, maps, and ssh are always on. Groups: memory, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, discord=immediate Discord pings/file delivery, sessions, youtube, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
+    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, minecraft_jarvis, maps, and load_tools. Common optional groups: memory, code_docs, phone, cron, discord, youtube, browser.",
     promptGuidelines: [
-      "Call load_tools before optional groups: memory, code_docs (code_search), jarvis, phone, google, cron, discord, sessions, youtube, browser. Web tools (`web_search`, `fetch_content`, `get_search_content`), `reddit_thread`, `minecraft_jarvis`, `maps`, and `ssh` are always on. There are no aliases for removed split Discord groups or for scheduled/research tools.",
+      "Call load_tools before optional groups: memory, code_docs (code_search), jarvis, phone, google, cron, discord, sessions, youtube, browser. Web tools (`web_search`, `fetch_content`, `get_search_content`), `minecraft_jarvis`, `maps`, and `ssh` are always on. There are no aliases for removed split Discord groups or for scheduled/research tools.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
-      "For Reddit URLs or Reddit thread/listing requests, use always-on `reddit_thread` directly; do not use shell curl/wget against reddit.com.",
       "For ordinary web research, use always-on `web_search`; for known URL extraction/full content, use always-on `fetch_content`; for stored search/content details, use always-on `get_search_content`. Only load `youtube` when the dedicated `youtube_api` search/metadata tool is needed. Only load `browser` when the user needs a real visible Chrome session controlled by screenshots/clicks/typing.",
       "After load_tools succeeds, use the exact unlocked tool and returned playbook. If a required tool is unavailable, say so; if a tool was listed as unlocked but is not callable, report schema refresh failure rather than substituting another tool.",
     ],
@@ -534,13 +523,6 @@ export default function lazyTools(pi: ExtensionAPI) {
       return {
         block: true,
         reason: "This removed location-grounding tool is disabled in this JARVIS Pi configuration. Use web_search/fetch_content with official sources, or a browser/manual route link when needed.",
-      };
-    }
-
-    if (isDirectRedditShellFetch(event.toolName, event.input)) {
-      return {
-        block: true,
-        reason: "Do not fetch Reddit threads with shell curl/wget/http/python/node; Reddit often returns verification/captcha HTML. Use always-on `reddit_thread` for Reddit URLs; use always-on `web_search` first only to discover Reddit URLs.",
       };
     }
 

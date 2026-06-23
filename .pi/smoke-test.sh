@@ -226,7 +226,6 @@ expected_extensions=(
   .pi/extensions/15-discord-send-file.ts
   .pi/extensions/16-discord-ping.ts
   .pi/extensions/20-session-search.ts
-  .pi/extensions/25-reddit-access.ts
   .pi/extensions/30-google-access.ts
   .pi/extensions/35-memory.ts
   .pi/extensions/45-jarvis.ts
@@ -237,7 +236,6 @@ expected_extensions=(
   .pi/extensions/55-ssh-exec.ts
   .pi/extensions/98-slim-provider-payload.ts
   .pi/extensions/99-lazy-tools.ts
-  .pi/extensions/lib/reddit-access.ts
 )
 for path in "${expected_extensions[@]}"; do
   require_file "extension source" "$path"

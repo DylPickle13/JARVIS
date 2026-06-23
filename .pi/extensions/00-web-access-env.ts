@@ -18,7 +18,6 @@ const GEMINI_DISABLED_PROMPT = [
 	"- Do not ask for or suggest GEMINI_API_KEY, Gemini API setup, or signing into gemini.google.com.",
 	"- Use Exa-backed web_search by default; use provider:'youtube' only for YouTube Data API metadata/search.",
 ].join("\n");
-
 function findAncestorFilePath(startDir: string, fileName: string): string | undefined {
 	let currentDir = resolve(startDir);
 	while (true) {

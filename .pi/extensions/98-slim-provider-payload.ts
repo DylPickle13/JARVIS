@@ -25,7 +25,7 @@ function compactInstructions(instructions: string, payload: any): string {
       "- Coding: use bash/read/grep/find/ls/edit/write; exact unique edits, batch disjoint edits.",
       "- Ask one clarification only if required.",
       "- Memory: load `memory` first; stable facts only; no secrets/sensitive data.",
-      "- Web: `web_search` discovery, `fetch_content` pages, `get_search_content` stored results, `reddit_thread` Reddit; no shell Reddit.",
+      "- Web: `web_search` discovery, `fetch_content` pages, `get_search_content` stored results.",
       "- Optional groups require `load_tools`; cron/scheduled-job checks use `discord_cron` first unless OS cron/launchd is explicitly requested.",
       "- Be concise; show paths.",
       "",
@@ -54,8 +54,7 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   code_search: "Search external code/docs/API examples.",
   fetch_content: "Fetch/extract URL(s)/GitHub/YouTube/local video; batch selected research URLs in one urls array.",
   get_search_content: "Retrieve stored search/fetch content by responseId.",
-  reddit_thread: "Fetch public Reddit thread/subreddit listing.",
-  load_tools: "Load optional groups. web_search, fetch_content, get_search_content, reddit_thread, and minecraft_jarvis are always on. Groups: memory, code_docs, jarvis, phone, google, cron, discord, sessions, youtube, browser, all.",
+  load_tools: "Load optional groups. web_search, fetch_content, get_search_content, and minecraft_jarvis are always on. Groups: memory, code_docs, jarvis, phone, google, cron, discord, sessions, youtube, browser, all.",
   agent_phone: "Android phone control via safe CLI-token args.",
   jarvis: "Operation JARVIS dashboard/camera/Cast helper.",
   smart_plug: "Local smart-plug control.",
@@ -145,7 +144,6 @@ const SCHEMA_STRIP_TOOLS = new Set([
   "browser_extract",
   "browser_tabs",
   "browser_close",
-  "reddit_thread",
 ]);
 
 function compactTool(tool: any): any {

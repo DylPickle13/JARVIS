@@ -905,13 +905,23 @@ def run_direct_stdout_for_job(conn: sqlite3.Connection, job: sqlite3.Row) -> dic
         )
 
     LOGGER.info("Finished scheduled command run_id=%s job=%s status=%s duration=%.1fs", run_id, job["name"], status, duration)
-    if stdout.strip():
-        safe_post_job_discord(conn, job, stdout)
-    elif error:
+    if status == "success":
+        if stdout.strip():
+            safe_post_job_discord(conn, job, stdout)
+    else:
+        failure_parts = [f"Failure reason:\n{error.strip() if error else 'No error details captured.'}"]
+        if stdout.strip():
+            failure_parts.append(f"Last stdout:\n{stdout.strip()}")
         safe_post_job_discord(
             conn,
             job,
-            f"❌ Scheduled command failed: **{job['name']}**\nRun: `{run_id}`\nDuration: `{duration:.1f}s`\n\n{error}",
+            (
+                f"❌ Scheduled command error: **{job['name']}**\n"
+                f"Run: `{run_id}`\n"
+                f"Duration: `{duration:.1f}s`\n"
+                f"Exit: `{exit_code if exit_code is not None else 'unknown'}`\n\n"
+                + "\n\n".join(failure_parts)
+            ),
         )
 
     return {
@@ -996,12 +1006,25 @@ def run_pi_for_job(conn: sqlite3.Connection, job: sqlite3.Row, *, forced: bool =
         )
 
     LOGGER.info("Finished scheduled Pi run_id=%s job=%s status=%s duration=%.1fs", run_id, job["name"], status, duration)
-    body = assistant.strip() or error or "No assistant output captured."
-    if status == "success" and assistant.strip() and job_posts_success_body_only(job):
-        msg = body
+    if status == "success":
+        body = assistant.strip() or "No assistant output captured."
+        if assistant.strip() and job_posts_success_body_only(job):
+            msg = body
+        else:
+            msg = f"✅ Scheduled Pi job success: **{job['name']}**\nRun: `{run_id}`\nDuration: `{duration:.1f}s`\n\n{body}"
     else:
-        icon = "✅" if status == "success" else "❌"
-        msg = f"{icon} Scheduled Pi job {status}: **{job['name']}**\nRun: `{run_id}`\nDuration: `{duration:.1f}s`\n\n{body}"
+        failure_parts = [f"Failure reason:\n{error.strip() if error else 'No error details captured.'}"]
+        if assistant.strip():
+            failure_parts.append(f"Last assistant output:\n{assistant.strip()}")
+        elif stdout.strip():
+            failure_parts.append(f"Last raw output:\n{stdout.strip()[-4000:]}")
+        msg = (
+            f"❌ Scheduled Pi job error: **{job['name']}**\n"
+            f"Run: `{run_id}`\n"
+            f"Duration: `{duration:.1f}s`\n"
+            f"Exit: `{exit_code if exit_code is not None else 'unknown'}`\n\n"
+            + "\n\n".join(failure_parts)
+        )
     safe_post_job_discord(conn, job, msg)
     return {
         "run_id": run_id,

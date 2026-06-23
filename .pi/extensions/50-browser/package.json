@@ -1,5 +1,5 @@
 {
-  "name": "jarvis-pi-agent-browser",
+  "name": "jarvis-pi-browser",
   "private": true,
   "type": "module",
   "dependencies": {

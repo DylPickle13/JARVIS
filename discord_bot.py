@@ -1060,7 +1060,6 @@ DISCORD_BOT_TOOL_KEYS = {
     "discord_ping",
     "google_workspace",
     "jarvis",
-    "reddit_thread",
     "session_search",
     "smart_plug",
     "youtube_api",
@@ -1098,7 +1097,6 @@ TOOL_EMOJIS = {
     "minecraft_jarvis": "⛏️",
     "parallel": "🔀",
     "read": "📖",
-    "reddit_thread": "👽",
     "session_search": "🧭",
     "smart_plug": "🔌",
     "ssh": "🔗",
@@ -1219,7 +1217,6 @@ TOOL_VOICE_START_NARRATIONS = {
     "parallel": "I’ll run those in parallel, sir.",
     "ssh": "I’ll connect over SSH, sir.",
     "read": "I’ll inspect the file, sir.",
-    "reddit_thread": "I’ll check Reddit, sir.",
     "session_search": "I’ll search the previous sessions, sir.",
     "smart_plug": "I’ll adjust the smart plug, sir.",
     "web_search": "I’ll search the web, sir.",
@@ -1252,7 +1249,6 @@ TOOL_VOICE_FAILURE_NARRATIONS = {
     "parallel": "The parallel tools failed, sir.",
     "ssh": "The SSH command failed, sir.",
     "read": "I couldn’t read the file, sir.",
-    "reddit_thread": "The Reddit lookup failed, sir.",
     "session_search": "The session search failed, sir.",
     "smart_plug": "The smart plug action failed, sir.",
     "web_search": "The web search failed, sir.",
@@ -1350,11 +1346,6 @@ def _tool_action_label(tool_name: str, args: object) -> str:
         if action and query:
             return f"{emoji} Checked YouTube {action} for \"{query}\""
         return f"{emoji} Checked YouTube {action}" if action else f"{emoji} Checked YouTube"
-
-    if tool_key == "reddit_thread":
-        url = _first_tool_arg(tool_args, "url", max_length=120)
-        emoji = _tool_emoji("reddit_thread")
-        return f"{emoji} Checked Reddit thread/listing \"{url}\"" if url else f"{emoji} Checked Reddit"
 
     if tool_key == "discord_cron":
         action = _first_tool_arg(tool_args, "action", max_length=40)
@@ -1530,9 +1521,6 @@ def _tool_failure_label(tool_name: str, args: object) -> str:
     if tool_key == "youtube_api":
         query = _first_tool_arg(tool_args, "query", "id", max_length=120)
         return f"❌ {emoji} YouTube lookup failed for \"{query}\"" if query else f"❌ {emoji} YouTube lookup failed"
-    if tool_key == "reddit_thread":
-        url = _first_tool_arg(tool_args, "url", max_length=120)
-        return f"❌ {emoji} Reddit lookup failed for \"{url}\"" if url else f"❌ {emoji} Reddit lookup failed"
     if tool_key == "discord_ping":
         message = _first_tool_arg(tool_args, "message", max_length=140)
         return f"❌ {emoji} Could not send Discord ping: \"{message}\"" if message else f"❌ {emoji} Could not send Discord ping"

@@ -105,7 +105,7 @@ Legacy `>` control commands are not registered.
 
 ## Pi Tool Surface
 
-Baseline tools stay small: local file/shell helpers, web search/content fetching, Reddit fetching, and `load_tools`. Optional groups are loaded on demand with `load_tools({ groups: [...] })`:
+Baseline tools stay small: local file/shell helpers, web search/content fetching, and `load_tools`. Optional groups are loaded on demand with `load_tools({ groups: [...] })`:
 
 `memory`, `sessions`, `cron`, `discord`, `jarvis`, `browser`, `phone`, `google`, `code_docs`, `youtube`, or `all`.
 

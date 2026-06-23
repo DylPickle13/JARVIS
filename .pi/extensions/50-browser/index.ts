@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { BrowserManager } from "./browser-manager";
 import { registerBrowserTools } from "./tools";
 
-export default function registerAgentBrowser(pi: ExtensionAPI) {
+export default function registerBrowser(pi: ExtensionAPI) {
   let browser: BrowserManager | null = null;
 
   const getBrowser = () => {
