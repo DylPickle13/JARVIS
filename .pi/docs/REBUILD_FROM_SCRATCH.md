@@ -1,6 +1,6 @@
 # Rebuild JARVIS From Scratch
 
-Updated: 2026-05-30 EDT
+Updated: 2026-06-24 EDT
 
 This runbook rebuilds the JARVIS repo, Pi extensions, Discord bot, and local tool surface from a fresh machine or fresh clone. It assumes you have access to the private secrets that are intentionally not stored in git.
 
@@ -19,6 +19,7 @@ Back up or be prepared to recreate:
 | Durable JARVIS memory | `.pi/memory/memory.sqlite*` | Optional but valuable | Project memories; ignored by git. |
 | Discord scheduled jobs | `.pi/discord-cron/discord-cron.sqlite*` | Optional but valuable | If absent, recreate jobs via `discord_cron add`. |
 | Session-search index | `.pi/session-search/index.sqlite*` | No | Can be rebuilt from session files. |
+| Browser profile | `~/.pi/agent/browser-profile` or `PI_BROWSER_PROFILE_DIR` | Optional | Preserves visible-browser cookies/session state. Do not commit. |
 | Google Workspace OAuth | external `gws` token/config store | If Workspace tools are used | Run `gws auth ...` if not restored. |
 | Phone/ADB host SSH keys | `~/.ssh/...` and configured ADB host config | If phone/dashboard status is used | See [`projects/phone/README.md`](../../projects/phone/README.md). |
 | Operation media/data artifacts | `projects/operation-jarvis/data/*`, `projects/operation-jarvis/media/*` | Optional | Captures, TTS files, runtime state; ignored by git. |
@@ -29,7 +30,7 @@ On the Mac host:
 
 ```bash
 # Homebrew if needed: https://brew.sh/
-brew install node python ffmpeg git trash
+brew install node python ffmpeg git trash poppler
 ```
 
 Also install/configure as needed:
@@ -37,7 +38,8 @@ Also install/configure as needed:
 - Pi CLI: [pi.dev](https://pi.dev) / `@earendil-works/pi-coding-agent`.
 - `gws` CLI for Google Workspace access.
 - Android platform-tools, SSH, and optional `scrcpy` for the phone stack.
-- Access to the local oMLX/OpenAI-compatible endpoints used for ASR, vision, and embeddings.
+- Google Chrome or Chromium for the visible browser extension.
+- Access to the local oMLX/OpenAI-compatible endpoints used for Pi provider setup, PDF conversion, ASR, vision, and embeddings.
 
 Install or update Pi:
 
@@ -78,9 +80,11 @@ Minimum root `.env` for basic Discord/Pi operation:
 
 Then fill subsystem settings as needed:
 
-- Web/search: optional `EXA_API_KEY`; optional `GOOGLE_API_KEY`/`YOUTUBE_API_KEY` for YouTube-only lookups
-- oMLX/voice/vision/embeddings: `OMLX_API_KEY`, `DISCORD_VOICE_*`, `SESSION_SEARCH_*`, `JARVIS_DASHBOARD_CAMERA_*`
+- Web/search: optional `EXA_API_KEY`; optional `YOUTUBE_API_KEY` for dedicated YouTube metadata/search
+- Maps: `GOOGLE_MAPS_API_KEY` plus optional `GOOGLE_MAPS_DEFAULT_*` and `GOOGLE_MAPS_HOME_ADDRESS`
+- oMLX/PDF/voice/vision/embeddings: `OMLX_API_KEY`, `OMLX_64_BASE_URL`, optional `OMLX_PDF_*`, `DISCORD_VOICE_*`, `SESSION_SEARCH_*`, `JARVIS_DASHBOARD_CAMERA_*`
 - Discord helpers: `DISCORD_CRON_*`, `DISCORD_PING_*`, `JARVIS_DISCORD_SEND_FILE_MAX_BYTES`
+- Browser: optional `PI_BROWSER_CHROME_PATH`, `PI_BROWSER_PROFILE_DIR`, `PI_BROWSER_KEEP_OPEN_ON_SHUTDOWN`
 - Operation JARVIS: `JARVIS_DASHBOARD_*`, `SPOTIFY_*`, `KASA_*`
 - Phone/dashboard status: `JARVIS_DASHBOARD_PHONE_*`
 
@@ -118,10 +122,19 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt -e .
 ```
 
-## 5. Install Node/dashboard dependencies
+## 5. Install Node/dashboard/browser dependencies
+
+Dashboard dependencies:
 
 ```bash
 cd /path/to/JARVIS/projects/operation-jarvis/dashboard
+npm install
+```
+
+Visible-browser extension dependencies:
+
+```bash
+cd /path/to/JARVIS/.pi/extensions/50-browser
 npm install
 ```
 
@@ -156,7 +169,7 @@ npm:pi-web-access
 Current observed versions on this machine when this runbook was written:
 
 ```text
-pi-web-access@0.10.7
+pi-web-access@0.12.0
 ```
 
 For exact reproducibility, pin package versions in `.pi/settings.json` or reinstall with explicit npm versions. For ordinary maintenance, the unpinned package names allow updates.
@@ -169,6 +182,9 @@ If you have backups, restore them now before smoke tests:
 # Examples only; adjust backup paths.
 cp /backup/JARVIS/.pi/memory/memory.sqlite* .pi/memory/ 2>/dev/null || true
 cp /backup/JARVIS/.pi/discord-cron/discord-cron.sqlite* .pi/discord-cron/ 2>/dev/null || true
+cp /backup/JARVIS/.pi/session-search/index.sqlite* .pi/session-search/ 2>/dev/null || true
+# Optional browser profile restore, if backed up:
+# rsync -a /backup/pi-browser-profile/ ~/.pi/agent/browser-profile/
 ```
 
 If you restored old Pi session JSONL files, rebuild session search later with:
@@ -212,15 +228,39 @@ Dashboard check:
 curl -s http://127.0.0.1:8787/api/jarvis/status | python3 -m json.tool
 ```
 
-Browser automation check:
+Browser automation checks:
 
 ```bash
+# Read-only install/presence checks; does not launch Chrome.
+test -f .pi/extensions/50-browser/index.ts
+test -d .pi/extensions/50-browser/node_modules
+```
+
+Inside Pi, only when you intentionally want to launch/control the visible browser:
+
+```text
+/load-tools browser
+browser_status({})
+browser_open({ url: "about:blank" })
+browser_close({})
+```
+
+PDF fallback check:
+
+```bash
+pdftotext -v
 ```
 
 Google Workspace check, if installed:
 
 ```bash
 gws --help
+```
+
+Maps check, if `GOOGLE_MAPS_API_KEY` is configured:
+
+```text
+maps({ query: "status" })
 ```
 
 Phone check, only after explicit permission/authentication:
@@ -234,7 +274,7 @@ A simple Pi session should show baseline tools plus `load_tools`. Inside Pi, che
 
 ```text
 /lazy-tools
-/load-tools memory,sessions
+/load-tools memory,sessions,browser
 /reset-tools
 ```
 
@@ -282,6 +322,8 @@ Do not run another bot process with the same token at the same time. The root bo
 
 - [ ] `pi --version` works.
 - [ ] `pi list` shows `pi-web-access`.
+- [ ] `ffmpeg -version` and `pdftotext -v` work.
+- [ ] Browser extension dependencies exist under `.pi/extensions/50-browser/node_modules`.
 - [ ] Root `.venv` imports `discord.py` and runs `python discord_bot.py`.
 - [ ] `.env` exists locally and is not tracked by git.
 - [ ] `/lazy-tools` works in Pi.
@@ -291,15 +333,20 @@ Do not run another bot process with the same token at the same time. The root bo
 - [ ] `jarvis-cli --json status --no-cast` works.
 - [ ] Dashboard starts and answers `/api/jarvis/status`.
 - [ ] `gws --help` and `google_workspace` work if Workspace access is needed.
+- [ ] `maps({ query: "status" })` works if Maps access is needed.
+- [ ] Browser tools load with `/load-tools browser`; `browser_open` is used only when launching Chrome is intended.
 - [ ] Phone control is still guarded by explicit permission/authentication before use in shared sessions.
 
 ## 12. Troubleshooting quick map
 
 | Symptom | First check |
 |---|---|
-| Pi does not see custom tools | Run `pi list`, then `/reload`; verify files under `.pi/extensions/` and package installs under `.pi/npm/node_modules/`. |
+| Pi does not see custom tools | Run `pi list`, then `/reload`; verify files under `.pi/extensions/`, `.pi/extensions/50-browser/node_modules`, and package installs under `.pi/npm/node_modules/`. |
 | Optional tool hidden | Call `load_tools({ groups: ["<group>"] })` or `/load-tools <group>`. |
 | Web search unavailable | Run `/web-access-config`; check Exa MCP/package availability, optional `EXA_API_KEY`, and `~/.pi/web-search.json`. |
+| Maps unavailable | Check `GOOGLE_MAPS_API_KEY`; confirm Places API (New), Geocoding API, and Routes API are enabled for the key. |
+| Browser tools unavailable | Run `npm install` in `.pi/extensions/50-browser`; check Google Chrome path or set `PI_BROWSER_CHROME_PATH`. |
+| PDF reads fail | Check local oMLX `OMLX_PDF_*` settings first; ensure `pdftotext` from `poppler` is installed for fallback. |
 | Discord cron cannot post | Check `DISCORD_BOT_TOKEN`, guild/channel IDs, bot permissions, and `runner.py --json setup`. |
 | Session search fails | `status` first; then verify embedding endpoint/model and `SESSION_SEARCH_*` env vars. |
 | Memory recall absent | Check `JARVIS_MEMORY_AUTO_RECALL`, memory DB status, and whether relevant memories exist. |

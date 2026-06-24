@@ -1,5 +1,7 @@
 # System Prompt Token Audit Workflow
 
+Updated: 2026-06-24 EDT
+
 This note records how to measure a Pi agent system-prompt footprint for future slimming work.
 
 ## What is being measured
@@ -93,7 +95,7 @@ export default function captureProviderPayload(pi: ExtensionAPI) {
 TS
 
 rm -f /tmp/pi-system-prompt-meta.json /tmp/pi-provider-payload.json
-(pi -p --no-session --provider openai-codex --model gpt-5.5 "system prompt audit probe" \
+(pi -p --no-session "system prompt audit probe" \
   >/tmp/pi-prompt-capture.out 2>/tmp/pi-prompt-capture.err; echo exit:$?)
 
 rm -f .pi/extensions/zzzz-capture-provider-payload.ts
@@ -194,8 +196,9 @@ For this project, the relevant slimming files have been:
 - `.pi/extensions/99-lazy-tools.ts`
 - `.pi/APPEND_SYSTEM.md`
 - `.pi/extensions/35-memory.ts` for memory auto-recall size
+- `.pi/extensions/01-omlx-provider-setup-and-recovery.ts` for local model/provider registration and recovery behavior
 
-## Current reference point from 2026-06-19
+## Last recorded reference point from 2026-06-19
 
 After the SSH schema trim and safe-bundle trim, a fresh baseline capture showed roughly:
 
@@ -203,6 +206,8 @@ After the SSH schema trim and safe-bundle trim, a fresh baseline capture showed 
 - Baseline tool schemas: `5,033` chars across 14 tools
 - Full provider payload: `8,545` chars
 - Rough static prompt/tool baseline: about `~2.1k` token-ish by chars/4
+
+The current 2026-06-24 tool surface also includes always-on `maps`, `minecraft_jarvis`, `ssh`, web/fetch tools, and lazy browser/Discord/Google/phone/session groups. Rerun Method B after prompt-slimming changes to capture a fresh exact component breakdown.
 
 Previous pre-slimming captures were roughly:
 
@@ -214,6 +219,7 @@ Previous pre-slimming captures were roughly:
 
 - Do not commit or publish captured provider payloads. They can contain local context, memories, and prompt text.
 - The capture command starts a fresh non-session Pi run. It measures the baseline visible tool set, not optional groups loaded in an existing interactive session.
+- Baseline currently includes project always-on tools such as `ssh`, web/fetch tools, `minecraft_jarvis`, `maps`, and `load_tools`; use `/load-tools` in an interactive session if you need to measure optional groups separately.
 - To measure exact provider tokens, use Method A after a real request. To see what contributes to size, use Method B.
 - If prompt caching is active, use `effectiveInput = input + cacheRead + cacheWrite` for full effective input.
 - If memory auto-recall is enabled, the memory block can change depending on the probe prompt. Use a representative prompt for realistic measurements.

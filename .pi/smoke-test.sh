@@ -173,6 +173,7 @@ require_command "pi"
 require_command "node"
 require_command "npm"
 require_command "ffmpeg"
+warn_command "pdftotext"
 warn_command "trash"
 warn_command "gws"
 
@@ -196,10 +197,16 @@ fi
 if command -v ffmpeg >/dev/null 2>&1; then
   run_check "ffmpeg version" ffmpeg -version
 fi
+if command -v pdftotext >/dev/null 2>&1; then
+  run_check "pdftotext version" pdftotext -v
+fi
 
 section "Local package/install presence"
 warn_file "project .env" ".env"
 require_file "pi-web-access package" ".pi/npm/node_modules/pi-web-access/package.json"
+require_file "browser extension package" ".pi/extensions/50-browser/package.json"
+require_file "browser extension package lock" ".pi/extensions/50-browser/package-lock.json"
+require_file "browser extension node_modules" ".pi/extensions/50-browser/node_modules"
 warn_file "dashboard package.json" "projects/operation-jarvis/dashboard/package.json"
 warn_file "dashboard node_modules" "projects/operation-jarvis/dashboard/node_modules"
 warn_executable "Operation JARVIS venv Python" "projects/operation-jarvis/.venv/bin/python"
@@ -211,6 +218,7 @@ if command -v node >/dev/null 2>&1; then
 const fs = require('fs');
 for (const path of [
   '.pi/npm/node_modules/pi-web-access/package.json',
+  '.pi/extensions/50-browser/package.json',
 ]) {
   const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
   console.log(`${pkg.name}@${pkg.version}`);
@@ -219,27 +227,51 @@ NODE
 fi
 
 section "Extension inventory"
-expected_extensions=(
+expected_extension_roots=(
   .pi/extensions/00-web-access-env.ts
+  .pi/extensions/01-omlx-provider-setup-and-recovery.ts
   .pi/extensions/04-delete-current-session.ts
   .pi/extensions/10-discord-cron.ts
   .pi/extensions/15-discord-send-file.ts
   .pi/extensions/16-discord-ping.ts
   .pi/extensions/20-session-search.ts
   .pi/extensions/30-google-access.ts
+  .pi/extensions/34-maps.ts
   .pi/extensions/35-memory.ts
   .pi/extensions/45-jarvis.ts
   .pi/extensions/46-local-pi-session-status.ts
   .pi/extensions/47-token-rate-status.ts
   .pi/extensions/48-agent-phone.ts
+  .pi/extensions/50-browser
   .pi/extensions/50-minecraft-jarvis-chat.ts
   .pi/extensions/55-ssh-exec.ts
+  .pi/extensions/60-pdf-read-result.ts
   .pi/extensions/98-slim-provider-payload.ts
   .pi/extensions/99-lazy-tools.ts
 )
-for path in "${expected_extensions[@]}"; do
+for path in "${expected_extension_roots[@]}"; do
+  require_file "extension root" "$path"
+done
+
+expected_extension_files=(
+  .pi/extensions/50-browser/browser-manager.ts
+  .pi/extensions/50-browser/index.ts
+  .pi/extensions/50-browser/package.json
+  .pi/extensions/50-browser/tools.ts
+  .pi/extensions/50-browser/stealth-patches.ts
+)
+for path in "${expected_extension_files[@]}"; do
   require_file "extension source" "$path"
 done
+
+expected_extension_roots_sorted="$(printf '%s\n' "${expected_extension_roots[@]}" | sort)"
+actual_extension_roots_sorted="$(find .pi/extensions -maxdepth 1 \( \( -type f -name '*.ts' \) -o -type d \) ! -path .pi/extensions ! -name lib | sort)"
+if [[ "$actual_extension_roots_sorted" == "$expected_extension_roots_sorted" ]]; then
+  pass "extension root inventory matches smoke-test manifest"
+else
+  fail "extension root inventory differs from smoke-test manifest"
+  diff -u <(printf '%s\n' "$expected_extension_roots_sorted") <(printf '%s\n' "$actual_extension_roots_sorted") 2>&1 | indent
+fi
 
 section "CLI import/help checks"
 if [[ -n "$PYTHON_BIN" ]]; then
