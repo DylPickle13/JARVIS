@@ -263,7 +263,7 @@ DISCORD_VOICE_CHANNEL_NAME = (
 ).strip().lower()
 QWEN35_9B_PROVIDER = "omlx"
 QWEN35_9B_MODEL_ID = "Qwen3.5-9B-4bit"
-QWEN35_9B_COMPAT_MODEL_RE = re.compile(r"(?:^|/)Qwen3\.5-9B(-oQ[456]-mtp|-4bit)$", re.IGNORECASE)
+QWEN35_9B_COMPAT_MODEL_RE = re.compile(r"(?:^|/)Qwen3\.5-9B(-oQ[56]-mtp|-4bit)$", re.IGNORECASE)
 DISCORD_TEXT_QWEN35_9B_MODEL = config.get_str_env(
     "DISCORD_TEXT_QWEN35_9B_MODEL",
     f"{QWEN35_9B_PROVIDER}/{QWEN35_9B_MODEL_ID}",
@@ -460,7 +460,7 @@ def _is_qwen35_9b_model(model: str) -> bool:
     """Detect Qwen3.5 9B session selections for consistent routing.
 
     Matches the current secondary 16GB oMLX model (Qwen3.5-9B-4bit) and
-    older Qwen3.5 9B IDs (oQ4/oQ5/oQ6-mtp) so all are coerced to the
+    older Qwen3.5 9B IDs (oQ5/oQ6-mtp) so all are coerced to the
     configured replacement model for this channel.
     """
     return bool(QWEN35_9B_COMPAT_MODEL_RE.search(model.strip()))

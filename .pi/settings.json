@@ -1,6 +1,11 @@
 {
   "defaultProvider": "omlx-64",
   "defaultModel": "Qwen3.6-35B-A3B-6bit",
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 8192,
+    "keepRecentTokens": 8000
+  },
   "packages": [
     {
       "source": "npm:pi-web-access",

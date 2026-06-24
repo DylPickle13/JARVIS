@@ -337,7 +337,7 @@ def _delete_temporary_paths(paths: list[Path]) -> None:
 
 DEFAULT_VOICE_BASE_URL = "http://127.0.0.1:8000/v1"
 DEFAULT_VOICE_ASR_MODEL = "mlx-community/whisper-large-v3-turbo-asr-4bit"
-DEFAULT_VOICE_LLM_MODEL = "Qwen3.5-9B-oQ4-mtp"
+DEFAULT_VOICE_LLM_MODEL = "Qwen3.5-9B-4bit"
 DEFAULT_VOICE_TTS_BACKEND = "piper"
 DEFAULT_VOICE_TTS_PIPER_REPO_ID = "jgkawell/jarvis"
 DEFAULT_VOICE_TTS_PIPER_QUALITY = "high"

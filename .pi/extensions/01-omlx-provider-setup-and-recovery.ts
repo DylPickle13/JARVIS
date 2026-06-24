@@ -260,7 +260,142 @@ function mergedModels(seed: ProviderSeed, contextByModel: Map<string, number>): 
 	}));
 }
 
-export default async function registerOmlxContextWindowSync(pi: ExtensionAPI) {
+const OMLX_PREFILL_MEMORY_GUARD_PATTERNS = [
+	/oMLX prefill memory guard rejected/i,
+	/Prefill would require ~?[\d.]+\s*(?:[KMGT]i?B|[KMGT]?B)? peak.*\bKV\+SDPA\b.*\bceiling\b/i,
+	/Prefill would require .* but .* ceiling is .*reduce context length/i,
+];
+
+const OMLX_PROMPT_TOO_LONG_PATTERNS = [
+	/Prompt too long:\s*[\d,]+\s+tokens\s+exceeds\s+max\s+context\s+window\s+of\s+[\d,]+\s+tokens/i,
+	/Prompt too long:.*exceeds\s+max\s+context\s+window/i,
+];
+
+const OMLX_PREFILL_MEMORY_RECOVERY_PROMPT =
+	"Continue the interrupted task from the compacted context. Do not redo completed searches or repeat already completed tool work unless necessary. Answer the original user request using the retained findings. If memory pressure still blocks more tool use, provide the best concise answer from the compacted context.";
+
+const OMLX_PREFILL_MEMORY_COMPACTION_INSTRUCTIONS =
+	"Recover from an oMLX prefill memory guard error. Summarize aggressively: preserve the active user request, key facts/findings, source URLs, decisions made, and exactly what remains to do. Drop verbose raw search/page content, repeated snippets, long product/job descriptions, and the memory guard error text itself.";
+
+function isOmlxProvider(provider: unknown): boolean {
+	return typeof provider === "string" && (provider === "omlx" || provider.startsWith("omlx-"));
+}
+
+function isOmlxPrefillMemoryGuardError(errorMessage: string): boolean {
+	const normalized = errorMessage.replace(/\s+/g, " ").trim();
+	return OMLX_PREFILL_MEMORY_GUARD_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function isOmlxPromptTooLongError(errorMessage: string): boolean {
+	const normalized = errorMessage.replace(/\s+/g, " ").trim();
+	return OMLX_PROMPT_TOO_LONG_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function parsePositiveIntEnv(name: string, fallback: number): number {
+	const parsed = Number.parseInt(process.env[name] ?? "", 10);
+	return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function messageText(message: { content?: unknown }): string {
+	const content = message.content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.map((part) => {
+			if (part && typeof part === "object" && (part as Record<string, unknown>).type === "text") {
+				return String((part as Record<string, unknown>).text ?? "");
+			}
+			return "";
+		})
+		.join("");
+}
+
+function registerOmlxPromptTooLongOverflowNormalizer(pi: ExtensionAPI) {
+	pi.on("message_end", (event, ctx) => {
+		const message = event.message;
+		if (message.role !== "assistant") return;
+		if (message.stopReason !== "error") return;
+		if (!isOmlxProvider(message.provider) && !isOmlxProvider(ctx.model?.provider)) return;
+
+		const errorMessage = String(message.errorMessage ?? "");
+		if (!errorMessage || errorMessage.includes("context_length_exceeded")) return;
+		if (!isOmlxPromptTooLongError(errorMessage)) return;
+
+		return {
+			message: {
+				...message,
+				errorMessage: `context_length_exceeded: ${errorMessage}`,
+			},
+		};
+	});
+}
+
+function registerOmlxPrefillMemoryRecovery(pi: ExtensionAPI) {
+	const maxConsecutiveRecoveries = parsePositiveIntEnv("OMLX_PREFILL_MEMORY_MAX_RECOVERIES", 3);
+	let consecutiveRecoveries = 0;
+	let recoveryInFlight = false;
+	let recoveryPromptQueued = false;
+
+	const sendRecoveryPrompt = () => {
+		recoveryPromptQueued = true;
+		try {
+			pi.sendUserMessage(OMLX_PREFILL_MEMORY_RECOVERY_PROMPT, { deliverAs: "followUp" });
+		} catch {
+			try {
+				pi.sendUserMessage(OMLX_PREFILL_MEMORY_RECOVERY_PROMPT);
+			} catch {
+				recoveryPromptQueued = false;
+			}
+		}
+	};
+
+	pi.on("message_end", (event, ctx) => {
+		const message = event.message;
+		if (message.role === "user") {
+			if (recoveryPromptQueued && messageText(message).includes(OMLX_PREFILL_MEMORY_RECOVERY_PROMPT.slice(0, 80))) {
+				recoveryPromptQueued = false;
+				return;
+			}
+			consecutiveRecoveries = 0;
+			return;
+		}
+		if (message.role !== "assistant") return;
+		if (message.stopReason !== "error") {
+			consecutiveRecoveries = 0;
+			return;
+		}
+		if (!isOmlxProvider(message.provider) && !isOmlxProvider(ctx.model?.provider)) return;
+
+		const errorMessage = String(message.errorMessage ?? "");
+		if (!errorMessage || !isOmlxPrefillMemoryGuardError(errorMessage)) return;
+		if (recoveryInFlight || consecutiveRecoveries >= maxConsecutiveRecoveries) return;
+
+		consecutiveRecoveries += 1;
+		recoveryInFlight = true;
+
+		setTimeout(() => {
+			try {
+				ctx.compact({
+					customInstructions: OMLX_PREFILL_MEMORY_COMPACTION_INSTRUCTIONS,
+					onComplete: () => {
+						recoveryInFlight = false;
+						setTimeout(sendRecoveryPrompt, 0);
+					},
+					onError: () => {
+						recoveryInFlight = false;
+					},
+				});
+			} catch {
+				recoveryInFlight = false;
+			}
+		}, 0);
+	});
+}
+
+export default async function registerOmlxProviderSetupAndRecovery(pi: ExtensionAPI) {
+	registerOmlxPromptTooLongOverflowNormalizer(pi);
+	registerOmlxPrefillMemoryRecovery(pi);
+
 	const dotenvValues = loadDotEnvValues();
 	const apiKey = firstNonEmptyEnv(["OMLX_API_KEY", "DISCORD_VOICE_API_KEY"], dotenvValues) || "local";
 	const contextByBaseUrl = new Map<string, Promise<Map<string, number>>>();
