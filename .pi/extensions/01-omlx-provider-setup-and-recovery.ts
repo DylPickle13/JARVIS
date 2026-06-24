@@ -310,7 +310,7 @@ function messageText(message: { content?: unknown }): string {
 		.join("");
 }
 
-function registerOmlxPromptTooLongOverflowNormalizer(pi: ExtensionAPI) {
+function registerOmlxOverflowNormalizer(pi: ExtensionAPI) {
 	pi.on("message_end", (event, ctx) => {
 		const message = event.message;
 		if (message.role !== "assistant") return;
@@ -319,7 +319,9 @@ function registerOmlxPromptTooLongOverflowNormalizer(pi: ExtensionAPI) {
 
 		const errorMessage = String(message.errorMessage ?? "");
 		if (!errorMessage || errorMessage.includes("context_length_exceeded")) return;
-		if (!isOmlxPromptTooLongError(errorMessage)) return;
+		const isRecoverableOverflow =
+			isOmlxPromptTooLongError(errorMessage) || isOmlxPrefillMemoryGuardError(errorMessage);
+		if (!isRecoverableOverflow) return;
 
 		return {
 			message: {
@@ -367,7 +369,8 @@ function registerOmlxPrefillMemoryRecovery(pi: ExtensionAPI) {
 		if (!isOmlxProvider(message.provider) && !isOmlxProvider(ctx.model?.provider)) return;
 
 		const errorMessage = String(message.errorMessage ?? "");
-		if (!errorMessage || !isOmlxPrefillMemoryGuardError(errorMessage)) return;
+		if (!errorMessage || errorMessage.includes("context_length_exceeded")) return;
+		if (!isOmlxPrefillMemoryGuardError(errorMessage)) return;
 		if (recoveryInFlight || consecutiveRecoveries >= maxConsecutiveRecoveries) return;
 
 		consecutiveRecoveries += 1;
@@ -393,7 +396,7 @@ function registerOmlxPrefillMemoryRecovery(pi: ExtensionAPI) {
 }
 
 export default async function registerOmlxProviderSetupAndRecovery(pi: ExtensionAPI) {
-	registerOmlxPromptTooLongOverflowNormalizer(pi);
+	registerOmlxOverflowNormalizer(pi);
 	registerOmlxPrefillMemoryRecovery(pi);
 
 	const dotenvValues = loadDotEnvValues();

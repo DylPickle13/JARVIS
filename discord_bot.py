@@ -251,7 +251,7 @@ DISCORD_TARGET_CHANNEL_NAMES = tuple(
         channel_name.strip().lower()
         for channel_name in os.getenv(
             "DISCORD_TARGET_CHANNEL_NAMES",
-            os.getenv("DISCORD_TARGET_CHANNEL_NAME", "jarvis-chat1,jarvis-chat2,jarvis-chat3"),
+            os.getenv("DISCORD_TARGET_CHANNEL_NAME", "jarvis-chat"),
         ).split(",")
         if channel_name.strip()
     )
