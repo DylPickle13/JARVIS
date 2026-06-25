@@ -30,6 +30,7 @@ const ALWAYS_ON_TOOLS = [
   "get_search_content",
   "minecraft_jarvis",
   "maps",
+  "generate_image",
   "load_tools",
 ] as const;
 
@@ -408,10 +409,10 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
-    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, minecraft_jarvis, maps, and ssh are always on. Groups: memory, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, discord=immediate Discord pings/file delivery, sessions, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
-    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, minecraft_jarvis, maps, and load_tools. Common optional groups: memory, code_docs, google (Calendar/Gmail/Drive/Docs/Sheets), phone, cron, discord, browser.",
+    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, minecraft_jarvis, maps, ssh, and generate_image are always on. Groups: memory, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, discord=immediate Discord pings/file delivery, sessions, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
+    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, minecraft_jarvis, maps, generate_image, and load_tools. Common optional groups: memory, code_docs, google (Calendar/Gmail/Drive/Docs/Sheets), phone, cron, discord, browser.",
     promptGuidelines: [
-      "Call load_tools before optional groups: memory, code_docs (code_search), jarvis, phone, google, cron, discord, sessions, browser. For Google intents (calendar/events/schedule, Gmail/email/mail, Drive/files/folders, Docs, Sheets), load `google`; use `calendar_events`, `drive_download_folder`, or generic `call` as appropriate. Web tools (`web_search`, `fetch_content`, `get_search_content`), `minecraft_jarvis`, `maps`, and `ssh` are always on. There are no aliases for removed split Discord groups or for scheduled/research tools.",
+      "Call load_tools before optional groups: memory, code_docs (code_search), jarvis, phone, google, cron, discord, sessions, browser. For Google intents (calendar/events/schedule, Gmail/email/mail, Drive/files/folders, Docs, Sheets), load `google`; use `calendar_events`, `drive_download_folder`, or generic `call` as appropriate. Web tools (`web_search`, `fetch_content`, `get_search_content`), `minecraft_jarvis`, `maps`, `ssh`, and `generate_image` are always on. There are no aliases for removed split Discord groups or for scheduled/research tools.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
       "For ordinary web research, use always-on `web_search`; for YouTube metadata/search, use always-on `web_search` with `provider: \"youtube\"`; for known URL extraction/full content, use always-on `fetch_content`; for stored search/content details, use always-on `get_search_content`. Only load `browser` when the user needs a real visible Chrome session controlled by screenshots/clicks/typing.",

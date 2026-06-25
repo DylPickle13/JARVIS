@@ -4,6 +4,7 @@
 /memory
 /attachments
 /generated_audio/
+/generated-images/
 /projects/*
 !/projects/operation-jarvis/
 !/projects/operation-jarvis/**
