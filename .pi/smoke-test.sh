@@ -240,12 +240,13 @@ expected_extension_roots=(
   .pi/extensions/35-memory.ts
   .pi/extensions/45-jarvis.ts
   .pi/extensions/46-local-pi-session-status.ts
-  .pi/extensions/47-token-rate-status.ts
   .pi/extensions/48-agent-phone.ts
   .pi/extensions/50-browser
   .pi/extensions/50-minecraft-jarvis-chat.ts
   .pi/extensions/55-ssh-exec.ts
+  .pi/extensions/56-github-cli.ts
   .pi/extensions/60-pdf-read-result.ts
+  .pi/extensions/70-image-generation.ts
   .pi/extensions/98-slim-provider-payload.ts
   .pi/extensions/99-lazy-tools.ts
 )

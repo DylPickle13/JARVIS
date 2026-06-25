@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-06-24 EDT
+Updated: 2026-06-25 EDT
 
 The local Pi extension inventory lives in `.pi/extensions/`. `.pi/smoke-test.sh` keeps a read-only manifest check so added or removed extension roots are visible during smoke testing. The manifest intentionally ignores the shared `.pi/extensions/lib/` directory.
 
@@ -27,12 +27,13 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `35-memory.ts` — durable project-local memory.
 - `45-jarvis.ts` — Operation JARVIS dashboard/Cast plus `smart_plug`.
 - `46-local-pi-session-status.ts` — dashboard-visible local Pi session heartbeat.
-- `47-token-rate-status.ts` — UI token-rate status.
 - `48-agent-phone.ts` — guarded LG-H933 Android phone adapter.
 - `50-browser/` — visible Chrome browser control via Playwright CDP.
 - `50-minecraft-jarvis-chat.ts` — Minecraft jarvis bot chat/control.
 - `55-ssh-exec.ts` — configured SSH command execution.
+- `56-github-cli.ts` — guarded GitHub CLI adapter.
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
+- `70-image-generation.ts` — local Qwen image generation via mac-mini-64.
 - `98-slim-provider-payload.ts` — provider payload/schema slimming.
 - `99-lazy-tools.ts` — lazy optional tool-group visibility.
 
@@ -44,6 +45,7 @@ Always-on/baseline tools exposed by this project include local coding tools plus
 - `web_search`, `fetch_content`, `get_search_content`
 - `minecraft_jarvis`
 - `maps`
+- `github_cli`
 - `load_tools`
 
 Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-tools`:
@@ -52,6 +54,7 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 |---|---|
 | `memory` | `memory` |
 | `code_docs` | `code_search` |
+| `image` | `generate_image` |
 | `jarvis` | `jarvis`, `smart_plug` |
 | `phone` | `agent_phone` |
 | `google` | `google_workspace` |

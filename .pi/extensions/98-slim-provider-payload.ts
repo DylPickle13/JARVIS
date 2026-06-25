@@ -56,7 +56,7 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   get_search_content: "Retrieve stored search/fetch content by responseId.",
   minecraft_jarvis: "Minecraft bot chat/control; short safe plain-language messages.",
   maps: "Ask Google Maps about places, addresses, coordinates, routes, travel time, or local searches.",
-  load_tools: "Load optional groups. Baseline: coding, ssh, web/search/fetch, maps, minecraft_jarvis. Groups: memory, code_docs, image, jarvis, phone, google, cron, discord, sessions, browser, all.",
+  load_tools: "Load optional groups. Baseline: coding, ssh, web/search/fetch, maps, minecraft_jarvis, github_cli. Groups: memory, code_docs, image, jarvis, phone, google, cron, discord, sessions, browser, all.",
   agent_phone: "Android phone control via safe CLI-token args.",
   jarvis: "Operation JARVIS dashboard/camera/Cast helper.",
   smart_plug: "Local smart-plug control.",
@@ -77,6 +77,7 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   browser_extract: "Extract readable text and optional links from current Chrome page.",
   browser_tabs: "List, switch, or close visible Chrome tabs.",
   browser_close: "Close active Chrome tab or entire browser.",
+  github_cli: "Run official gh CLI with args; loads GitHub token from .env and redacts it.",
 };
 
 function stripNestedSchemaMetadata(value: any): any {
@@ -145,6 +146,7 @@ const SCHEMA_STRIP_TOOLS = new Set([
   "browser_extract",
   "browser_tabs",
   "browser_close",
+  "github_cli",
 ]);
 
 function compactTool(tool: any): any {
