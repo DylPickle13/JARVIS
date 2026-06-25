@@ -4,6 +4,8 @@ import { dirname, join, resolve } from "node:path";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { findAncestorFile as findAncestorFilePath, parseDotEnvFile } from "./lib/env";
+
 const WEB_SEARCH_CONFIG_PATH = join(homedir(), ".pi", "web-search.json");
 const FETCH_STATUS_RE = /^Content fetched for \d+\/\d+ URLs \[[^\]]+\]\. Full page content now available\.?$/i;
 const WEB_RESEARCH_WORKFLOW_PROMPT = [
@@ -18,49 +20,6 @@ const GEMINI_DISABLED_PROMPT = [
 	"- Do not ask for or suggest GEMINI_API_KEY, Gemini API setup, or signing into gemini.google.com.",
 	"- Use Exa-backed web_search by default; use provider:'youtube' only for YouTube Data API metadata/search.",
 ].join("\n");
-function findAncestorFilePath(startDir: string, fileName: string): string | undefined {
-	let currentDir = resolve(startDir);
-	while (true) {
-		const candidate = join(currentDir, fileName);
-		if (existsSync(candidate)) return candidate;
-
-		const parentDir = dirname(currentDir);
-		if (parentDir === currentDir) return undefined;
-		currentDir = parentDir;
-	}
-}
-
-function unquoteDotEnvValue(value: string): string {
-	const trimmed = value.trim();
-	if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
-		return trimmed
-			.slice(1, -1)
-			.replace(/\\n/g, "\n")
-			.replace(/\\r/g, "\r")
-			.replace(/\\t/g, "\t")
-			.replace(/\\"/g, '"')
-			.replace(/\\\\/g, "\\");
-	}
-	if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
-		return trimmed.slice(1, -1);
-	}
-	return trimmed.replace(/\s+#.*$/, "");
-}
-
-function parseDotEnvFile(envPath: string): Record<string, string> {
-	const values: Record<string, string> = {};
-	const content = readFileSync(envPath, "utf8");
-	for (const rawLine of content.split(/\r?\n/)) {
-		const line = rawLine.trim();
-		if (!line || line.startsWith("#")) continue;
-
-		const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-		if (!match) continue;
-		values[match[1]] = unquoteDotEnvValue(match[2]);
-	}
-	return values;
-}
-
 function loadExistingWebSearchConfig(): Record<string, unknown> {
 	if (!existsSync(WEB_SEARCH_CONFIG_PATH)) return {};
 	try {
@@ -285,7 +244,7 @@ export default function registerPiWebAccessEnv(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_result", (event) => {
-		if (!["web_search", "fetch_content", "get_search_content", "youtube_api"].includes(event.toolName)) return undefined;
+		if (!["web_search", "fetch_content", "get_search_content"].includes(event.toolName)) return undefined;
 
 		const content = sanitizeWebAccessValue(event.content);
 		const details = sanitizeWebAccessValue(event.details);

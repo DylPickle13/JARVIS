@@ -4,6 +4,9 @@ import { dirname, join, relative, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
+import { findAncestorFile, parseDotEnvFile } from "./lib/env";
+import { truncate } from "./lib/text";
+
 const ACTIONS = [
   "status",
   "services",
@@ -18,47 +21,6 @@ const ACTIONS = [
 ] as const;
 function StringEnum(values: readonly string[], options?: Record<string, unknown>) {
   return Type.Union(values.map((value) => Type.Literal(value)), options);
-}
-
-function findAncestorFile(startDir: string, fileName: string): string | undefined {
-  let current = resolve(startDir);
-  while (true) {
-    const candidate = join(current, fileName);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
-}
-
-function unquoteDotEnvValue(rawValue: string): string {
-  const trimmed = rawValue.trim();
-  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed
-      .slice(1, -1)
-      .replace(/\\n/g, "\n")
-      .replace(/\\r/g, "\r")
-      .replace(/\\t/g, "\t")
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, "\\");
-  }
-  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed.replace(/\s+#.*$/, "");
-}
-
-function parseDotEnvFile(envPath: string | undefined): Record<string, string> {
-  if (!envPath || !existsSync(envPath)) return {};
-  const values: Record<string, string> = {};
-  for (const rawLine of readFileSync(envPath, "utf8").split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-    if (!match) continue;
-    values[match[1]] = unquoteDotEnvValue(match[2]);
-  }
-  return values;
 }
 
 function firstNonEmptyLine(pathValue: string | undefined): string | undefined {
@@ -101,10 +63,6 @@ function loadGoogleEnv(cwd: string): { envPath?: string; apiKey?: string; apiKey
   }
 
   return { envPath, apiKey: apiKey || undefined, apiKeySource, dotenv };
-}
-
-function truncate(text: string, max = 20_000): string {
-  return text.length > max ? `${text.slice(0, max)}\n… truncated …` : text;
 }
 
 function redactText(text: string, secrets: Array<string | undefined>): string {
@@ -731,8 +689,8 @@ async function runWorkspace(pi: ExtensionAPI, cwd: string, params: any, signal?:
     const formattedOutput = formatMaybeJson(rawOutput, Boolean(params.pretty));
     const ok = result.code === 0;
     const text = ok
-      ? `Google Workspace ${action} succeeded.\nCommand: ${commandText}\n\n${truncate(formattedOutput)}`
-      : `Google Workspace ${action} failed (exit ${result.code}).\nCommand: ${commandText}\n\n${truncate(formattedOutput)}`;
+      ? `Google Workspace ${action} succeeded.\nCommand: ${commandText}\n\n${truncate(formattedOutput, 20_000)}`
+      : `Google Workspace ${action} failed (exit ${result.code}).\nCommand: ${commandText}\n\n${truncate(formattedOutput, 20_000)}`;
 
     return {
       content: [{ type: "text" as const, text }],
@@ -771,35 +729,7 @@ async function runWorkspace(pi: ExtensionAPI, cwd: string, params: any, signal?:
   }
 }
 
-
-function isYouTubeRequest(params: any): boolean {
-  const explicit = String(params.product ?? params.serviceType ?? params.kind ?? "").trim().toLowerCase();
-  if (explicit === "workspace" || explicit === "gws") return false;
-  if (explicit === "youtube" || explicit === "yt") return true;
-
-  const action = String(params.action ?? "").trim().toLowerCase();
-  if (ACTIONS.includes(action as any)) return false;
-  if (["search", "videos", "channels"].includes(action)) return true;
-
-  const hasWorkspacePath = params.path !== undefined || params.service !== undefined || params.command !== undefined || params.args !== undefined;
-  const youtubeResource = typeof params.resource === "string" && ["search", "videos", "channels", "playlists", "playlistitems", "commentthreads", "comments"].includes(params.resource.toLowerCase());
-  return !hasWorkspacePath && (
-    params.query !== undefined ||
-    params.id !== undefined ||
-    params.ids !== undefined ||
-    params.includeRaw !== undefined ||
-    params.maxPages !== undefined ||
-    youtubeResource
-  );
-}
-
 async function executeGoogleWorkspace(pi: ExtensionAPI, cwd: string, params: any, signal?: AbortSignal, onUpdate?: (update: any) => void) {
-  if (isYouTubeRequest(params)) {
-    return {
-      content: [{ type: "text" as const, text: "YouTube Data API has been moved out of google_workspace. Load `youtube` for `youtube_api`, or use always-on `web_search` with provider:'youtube'." }],
-      details: { ok: false, error: "youtube moved to web_access", replacementTools: ["load_tools youtube -> youtube_api", "web_search provider:'youtube'"] },
-    };
-  }
   const action = String(params.action ?? "").trim().toLowerCase();
   if (action === "drive_download_folder") return runDriveDownloadFolder(pi, cwd, { ...params, product: "workspace" }, signal, onUpdate);
   return runWorkspace(pi, cwd, { ...params, product: "workspace" }, signal, onUpdate);
@@ -809,15 +739,14 @@ const GOOGLE_TOOL_DESCRIPTION =
   "Google Workspace via the gws CLI for Drive/Gmail/Docs/Sheets/Calendar.";
 const GOOGLE_TOOL_PROMPT_SNIPPET = "Google Workspace gws CLI";
 const GOOGLE_TOOL_PROMPT_GUIDELINES = [
-  "Use google_workspace for Drive/Gmail/Docs/Sheets/Calendar; do not guess shell commands like gdrive, gapi, or gsutil for Workspace tasks.",
-  "For Drive files, call google_workspace with product:'workspace', action:'call', path:['drive','files','list'], and params such as {pageSize:20, fields:'files(id,name,mimeType,modifiedTime,webViewLink),nextPageToken'}.",
-  "To download a whole Google Drive folder recursively, use action:'drive_download_folder' with folderId or exact folderName/name and destination/dest; add dryRun:true to list/count without writing files. It handles subfolders, Google editor exports, and Drive JSON media files.",
-  "Use google_workspace action:'help' or action:'schema' when unsure about a Workspace API path or parameter instead of guessing.",
-  "For YouTube Data API search/metadata, load `youtube` for youtube_api, or use always-on web_search with provider:'youtube'.",
+  "Use google_workspace for Workspace intents: Calendar/events/schedule, Gmail/email/mail, Drive/files/folders, Docs, and Sheets; do not guess shell commands like gdrive, gapi, or gsutil.",
+  "Actions: calendar_events for Calendar, drive_download_folder for recursive Drive folders, generic call with path for Workspace APIs, status/services/help/schema for discovery, and auth/raw only when needed.",
+  "Call examples: Calendar action:'calendar_events'; Drive list path:['drive','files','list']; Gmail list path:['gmail','users','messages','list'], params:{userId:'me',maxResults:10}; Docs/Sheets use call plus help/schema.",
+  "Drive folder download: use action:'drive_download_folder' with folderId preferred (or exact unique folderName/name) and destination/dest under cwd; add dryRun:true to count without writes, and only use overwrite:true with explicit intent. Supports subfolders, Google editor exports, JSON media, and manifests.",
   "Never pass API keys. Workspace writes/destructive actions require explicit user intent; include IDs/body and verify with a read/list call when feasible.",
 ] as const;
 const GOOGLE_TOOL_PARAMETERS = Type.Object({
-  product: Type.Optional(Type.Literal("workspace", { description: "Workspace only; YouTube lives under web_access/youtube_api." })),
+  product: Type.Optional(Type.Literal("workspace", { description: "Workspace product selector." })),
   action: Type.Optional(StringEnum(ACTIONS, { description: "status/services/help/schema/call/calendar_events/drive_download_folder/raw/auth/api." })),
   path: Type.Optional(Type.Array(Type.String(), { description: "gws path, e.g. ['drive','files','list']." })),
   service: Type.Optional(Type.String({ description: "Workspace service." })),
@@ -893,7 +822,7 @@ function registerGoogleCommand(pi: ExtensionAPI, commandName: string, descriptio
       try {
         if (!trimmed || trimmed === "status") {
           const envStatus = loadGoogleEnv(ctx.cwd);
-          const status = `google_workspace: gws=${gwsExecutable()}; .env=${envStatus.envPath ?? "not found"}; YouTube uses load_tools group youtube or always-on web_search`;
+          const status = `google_workspace: gws=${gwsExecutable()}; .env=${envStatus.envPath ?? "not found"}`;
           ctx.ui.notify(status, "info");
           return;
         }
@@ -903,10 +832,6 @@ function registerGoogleCommand(pi: ExtensionAPI, commandName: string, descriptio
         if (product === "workspace" || product === "gws") {
           const result = await executeGoogleWorkspace(pi, ctx.cwd, { product: "workspace", action: "raw", args: words });
           ctx.ui.notify(String(result.content?.[0]?.text ?? "Done").slice(0, 4000), result.details?.ok === false ? "error" : "info");
-          return;
-        }
-        if (product === "youtube" || product === "yt") {
-          ctx.ui.notify("YouTube moved out of google_workspace. Load `youtube` for youtube_api, or use always-on web_search provider:'youtube'.", "warning");
           return;
         }
         ctx.ui.notify("Usage: /google_workspace status | workspace <gws args...>", "warning");

@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join } from "node:path";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
@@ -14,6 +14,9 @@ import {
   withFileMutationQueue,
   type TruncationResult,
 } from "@earendil-works/pi-coding-agent";
+
+import { envValue, findAncestorFile, parseDotEnv } from "./lib/env";
+import { normalizePathInput } from "./lib/path";
 
 const DEFAULT_OMLX_BASE_URL = "http://127.0.0.1:8000";
 const DEFAULT_OMLX_PDF_MODEL = "MarkItDown";
@@ -39,71 +42,9 @@ interface PdfReadDetails {
   truncation?: TruncationResult;
 }
 
-function findAncestorFile(startDir: string, fileName: string): string | undefined {
-  let current = resolve(startDir || process.cwd());
-  while (true) {
-    const candidate = join(current, fileName);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
-}
-
-function parseDotEnv(envPath: string | undefined): Record<string, string> {
-  if (!envPath) return {};
-  const values: Record<string, string> = {};
-  let text = "";
-  try {
-    text = readFileSync(envPath, "utf8");
-  } catch {
-    return values;
-  }
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-    if (!match) continue;
-    let value = match[2].trim();
-    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
-      value = value
-        .slice(1, -1)
-        .replace(/\\n/g, "\n")
-        .replace(/\\r/g, "\r")
-        .replace(/\\t/g, "\t")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
-    } else if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
-      value = value.slice(1, -1);
-    } else {
-      value = value.replace(/\s+#.*$/, "").trim();
-    }
-    values[match[1]] = value;
-  }
-  return values;
-}
-
-function envValue(name: string, cwd: string, dotenv?: Record<string, string>): string {
-  const direct = process.env[name]?.trim();
-  if (direct) return direct;
-  const env = dotenv ?? parseDotEnv(findAncestorFile(cwd, ".env"));
-  return env[name]?.trim() ?? "";
-}
-
 function normalizeBaseUrl(raw: string): string {
   const value = raw.trim().replace(/\/+$/, "");
   return value.endsWith("/v1") ? value.slice(0, -3) : value;
-}
-
-function normalizePathInput(rawPath: string, cwd: string): string {
-  let cleaned = rawPath.trim();
-  if (cleaned.startsWith("@")) cleaned = cleaned.slice(1).trim();
-  if (cleaned.startsWith("~")) {
-    const home = process.env.HOME || "";
-    if (cleaned === "~") return home;
-    if (cleaned.startsWith("~/")) return join(home, cleaned.slice(2));
-  }
-  return resolve(cwd || process.cwd(), cleaned);
 }
 
 function isPdfReadEvent(event: any): event is { input: { path: string }; isError?: boolean } {

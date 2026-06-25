@@ -5,6 +5,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
+import { truncate } from "./lib/text";
+
 type MinecraftJarvisParams = {
   message: string;
   from?: string;
@@ -36,10 +38,6 @@ function cleanMessage(value: unknown): string {
 function boundedWaitSeconds(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.max(0, Math.min(Math.round(value), 30));
-}
-
-function truncate(text: string, max = 12000): string {
-  return text.length > max ? `${text.slice(0, max)}\n… truncated …` : text;
 }
 
 function buildRemoteScript(params: Required<Pick<MinecraftJarvisParams, "message" | "from" | "target" | "waitSeconds">>): string {

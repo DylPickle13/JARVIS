@@ -11,7 +11,6 @@ type CanonicalToolGroup =
   | "cron"
   | "discord"
   | "sessions"
-  | "youtube"
   | "browser";
 type ToolGroup = CanonicalToolGroup | "all";
 type ConcreteToolGroup = CanonicalToolGroup;
@@ -44,7 +43,6 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   cron: ["discord_cron"],
   discord: ["discord_ping", "discord_send_file"],
   sessions: ["session_search"],
-  youtube: ["youtube_api"],
   browser: [
     "browser_status",
     "browser_open",
@@ -67,11 +65,10 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, and local smart plugs",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   phone: "agent_phone for safe LG-H933 Android phone control via ADB refs/screenshots",
-  google: "google_workspace for Google Workspace only; YouTube/code use their own groups; web uses always-on tools",
+  google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
   cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
   discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
   sessions: "session_search over prior Pi/JARVIS sessions",
-  youtube: "youtube_api for public YouTube search/metadata",
   browser: "visible non-headless Chrome control via screenshots, clicks, typing, scrolling, tabs, and page extraction",
 };
 
@@ -108,13 +105,11 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   google: {
     skill: "google-access",
     lines: [
-      "Use `google_workspace` for Drive/Gmail/Docs/Sheets/Calendar; do not guess shell commands like `gdrive`, `gapi`, or `gsutil` for Workspace tasks.",
-      "Drive list example: `google_workspace({ product: \"workspace\", action: \"call\", path: [\"drive\", \"files\", \"list\"], params: { pageSize: 20, fields: \"files(id,name,mimeType,modifiedTime,webViewLink),nextPageToken\" }, pretty: true })`.",
-      "Drive recursive folder download example: `google_workspace({ product: \"workspace\", action: \"drive_download_folder\", folderId: \"...\", destination: \"projects/name\" })`; add `dryRun: true` to list/count without writing files. It handles subfolders, Google editor exports, and JSON media files.",
-      "Discovery examples: `action: \"services\"`, `action: \"help\"` with `path`, or `action: \"schema\"` with `target: \"drive.files.list\"`; use these instead of guessing unknown API paths/params.",
-      "Calendar shortcut: `google_workspace({ action: \"calendar_events\", calendarId: \"primary\", when: \"upcoming\", maxResults: 10, pretty: true })`.",
+      "Use `google_workspace` for Workspace intents: Calendar/events/schedule, Gmail/email/mail, Drive/files/folders, Docs, and Sheets; do not guess shell commands like `gdrive`, `gapi`, or `gsutil`.",
+      "Actions: `calendar_events` for Calendar, `drive_download_folder` for recursive Drive folders, generic `call` with `path` for Workspace APIs, `status`/`services`/`help`/`schema` for discovery, and `auth`/`raw` only when needed.",
+      "Examples: Calendar `google_workspace({ action: \"calendar_events\", calendarId: \"primary\", when: \"upcoming\", maxResults: 10, pretty: true })`; Drive list `path:[\"drive\",\"files\",\"list\"]`; Gmail list `path:[\"gmail\",\"users\",\"messages\",\"list\"], params:{ userId:\"me\", maxResults:10 }`; Docs/Sheets use `call` plus `help`/`schema`.",
+      "Drive folder download: use `action: \"drive_download_folder\"`, prefer `folderId` (exact unique `folderName` also works), keep `destination` under cwd, use `dryRun: true` to count without writes, and only use `overwrite: true` with explicit intent. Supports subfolders, Google editor exports, JSON media, and manifests.",
       "Workspace writes/destructive calls require explicit user intent; include IDs, request body under `json`/`body`, and verify with a read/list call when feasible. Never pass API keys/secrets in params.",
-      "For public YouTube metadata/search, use always-on `web_search` with `provider: \"youtube\"` or load `youtube` for `youtube_api`; YouTube is not part of `google_workspace`.",
     ],
   },
   jarvis: {
@@ -168,13 +163,6 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Start with `action: \"search\"`, a natural-language `query`, and a small `limit`; set `includeText: true` only when snippets are insufficient.",
       "Use `action: \"status\"` to check freshness. Use `action: \"index\"` only when requested or when status/search results indicate the index is stale.",
       "Search results cite session files/chunks; use them to answer concisely or decide which raw session file to inspect next.",
-    ],
-  },
-  youtube: {
-    skill: "youtube metadata/search",
-    lines: [
-      "Use `youtube_api` for public YouTube search and metadata when the ordinary `web_search` YouTube provider is not enough.",
-      "Do not route YouTube work through `google_workspace`; Google Workspace is for Drive/Gmail/Docs/Sheets/Calendar only.",
     ],
   },
   browser: {
@@ -306,13 +294,12 @@ function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
     memory: "memory: use `memory` only for stable durable facts/preferences/lessons/workflows; never store secrets or sensitive personal data.",
     code_docs: "code_docs: use `code_search` for external programming docs/API examples; use local grep/find/read for repo files first.",
     phone: "phone: use `agent_phone` directly; args are CLI tokens excluding the binary; start with `snapshot -i`, interact via `@refs`, and confirm sensitive actions.",
-    google: "google: use `google_workspace` for Drive/Gmail/Docs/Sheets/Calendar only; use help/schema before guessing; writes need explicit intent.",
+    google: "google: use `google_workspace` for Calendar/events, Gmail/mail, Drive files/folders, Docs, and Sheets; use `calendar_events`, `drive_download_folder`, or generic `call` with help/schema; writes need explicit intent.",
     jarvis: "jarvis: use `jarvis` for camera/Cast and `smart_plug` for plugs; keep recordings bounded and speech short.",
     minecraft_jarvis: "minecraft_jarvis: use `minecraft_jarvis({ message })` for the Minecraft bot; do not substitute SSH, shell, or slash-command shortcuts.",
     cron: "cron: use `discord_cron` only for Discord-posted scheduled jobs; OS cron/launchd only if explicitly requested.",
     discord: "discord: use `discord_ping` for immediate Discord pings/notifications, with attachments when requested; use `discord_send_file` only for current-channel uploads when available.",
     sessions: "sessions: use `session_search` search first; status for freshness; index only if requested/stale.",
-    youtube: "youtube: use `youtube_api` for public YouTube search/metadata; do not use `google_workspace` for YouTube.",
     browser: "browser: use visible Chrome tools after `browser_open`; screenshot before coordinate clicks, verify after actions, and ask before sensitive/private/account actions.",
   };
   return ["Compact playbook:", ...groups.map((group) => `- ${lines[group]}`)].join("\n");
@@ -421,13 +408,13 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
-    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, minecraft_jarvis, maps, and ssh are always on. Groups: memory, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, discord=immediate Discord pings/file delivery, sessions, youtube, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
-    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, minecraft_jarvis, maps, and load_tools. Common optional groups: memory, code_docs, phone, cron, discord, youtube, browser.",
+    description: 'Load optional schemas for this session. web_search, fetch_content, get_search_content, minecraft_jarvis, maps, and ssh are always on. Groups: memory, code_docs, jarvis, phone, google, cron=scheduled Discord jobs, discord=immediate Discord pings/file delivery, sessions, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
+    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, minecraft_jarvis, maps, and load_tools. Common optional groups: memory, code_docs, google (Calendar/Gmail/Drive/Docs/Sheets), phone, cron, discord, browser.",
     promptGuidelines: [
-      "Call load_tools before optional groups: memory, code_docs (code_search), jarvis, phone, google, cron, discord, sessions, youtube, browser. Web tools (`web_search`, `fetch_content`, `get_search_content`), `minecraft_jarvis`, `maps`, and `ssh` are always on. There are no aliases for removed split Discord groups or for scheduled/research tools.",
+      "Call load_tools before optional groups: memory, code_docs (code_search), jarvis, phone, google, cron, discord, sessions, browser. For Google intents (calendar/events/schedule, Gmail/email/mail, Drive/files/folders, Docs, Sheets), load `google`; use `calendar_events`, `drive_download_folder`, or generic `call` as appropriate. Web tools (`web_search`, `fetch_content`, `get_search_content`), `minecraft_jarvis`, `maps`, and `ssh` are always on. There are no aliases for removed split Discord groups or for scheduled/research tools.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
-      "For ordinary web research, use always-on `web_search`; for known URL extraction/full content, use always-on `fetch_content`; for stored search/content details, use always-on `get_search_content`. Only load `youtube` when the dedicated `youtube_api` search/metadata tool is needed. Only load `browser` when the user needs a real visible Chrome session controlled by screenshots/clicks/typing.",
+      "For ordinary web research, use always-on `web_search`; for YouTube metadata/search, use always-on `web_search` with `provider: \"youtube\"`; for known URL extraction/full content, use always-on `fetch_content`; for stored search/content details, use always-on `get_search_content`. Only load `browser` when the user needs a real visible Chrome session controlled by screenshots/clicks/typing.",
       "After load_tools succeeds, use the exact unlocked tool and returned playbook. If a required tool is unavailable, say so; if a tool was listed as unlocked but is not callable, report schema refresh failure rather than substituting another tool.",
     ],
     parameters: Type.Object({
@@ -556,7 +543,7 @@ export default function lazyTools(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("load-tools", {
-    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,jarvis,minecraft_jarvis,phone,google,cron,discord,sessions,youtube,browser,all",
+    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,jarvis,minecraft_jarvis,phone,google,cron,discord,sessions,browser,all",
     handler: async (args, ctx) => {
       const requested = args
         .split(/[\s,]+/)

@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
+import { truncate } from "../lib/text";
 import type { BrowserManager } from "./browser-manager";
 
 const MouseButton = ["left", "right", "middle"] as const;
@@ -19,10 +20,6 @@ async function pace(): Promise<void> {
   const elapsed = Date.now() - lastBrowserActionAt;
   if (elapsed < minGap) await new Promise((resolve) => setTimeout(resolve, minGap - elapsed));
   lastBrowserActionAt = Date.now();
-}
-
-function truncate(text: string, max = 12000): string {
-  return text.length > max ? `${text.slice(0, max)}\n… truncated …` : text;
 }
 
 function compactJson(value: unknown): string {

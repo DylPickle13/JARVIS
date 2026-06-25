@@ -80,7 +80,7 @@ Minimum root `.env` for basic Discord/Pi operation:
 
 Then fill subsystem settings as needed:
 
-- Web/search: optional `EXA_API_KEY`; optional `YOUTUBE_API_KEY` for dedicated YouTube metadata/search
+- Web/search: optional `EXA_API_KEY`; optional `YOUTUBE_API_KEY` or `GOOGLE_API_KEY` for `web_search` YouTube metadata/search
 - Maps: `GOOGLE_MAPS_API_KEY` plus optional `GOOGLE_MAPS_DEFAULT_*` and `GOOGLE_MAPS_HOME_ADDRESS`
 - oMLX/PDF/voice/vision/embeddings: `OMLX_API_KEY`, `OMLX_64_BASE_URL`, optional `OMLX_PDF_*`, `DISCORD_VOICE_*`, `SESSION_SEARCH_*`, `JARVIS_DASHBOARD_CAMERA_*`
 - Discord helpers: `DISCORD_CRON_*`, `DISCORD_PING_*`, `JARVIS_DISCORD_SEND_FILE_MAX_BYTES`

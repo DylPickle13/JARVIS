@@ -4,6 +4,15 @@ Updated: 2026-06-24 EDT
 
 The local Pi extension inventory lives in `.pi/extensions/`. `.pi/smoke-test.sh` keeps a read-only manifest check so added or removed extension roots are visible during smoke testing. The manifest intentionally ignores the shared `.pi/extensions/lib/` directory.
 
+## Shared extension utilities
+
+Shared helpers live under `.pi/extensions/lib/` and are imported by project-local extensions; they are not standalone extension roots.
+
+- `lib/env.ts` — `.env` discovery/parsing and env lookup helpers.
+- `lib/path.ts` — safe user path normalization helpers.
+- `lib/text.ts` — truncation and byte/message formatting helpers.
+- `lib/discord.ts` — Discord filename and multipart request helpers.
+
 ## Extension roots covered by smoke test
 
 - `00-web-access-env.ts` — web/search environment defaults.
@@ -49,7 +58,6 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `cron` | `discord_cron` |
 | `discord` | `discord_ping`, `discord_send_file` |
 | `sessions` | `session_search` |
-| `youtube` | `youtube_api` |
 | `browser` | `browser_status`, `browser_open`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_upload`, `browser_key`, `browser_scroll`, `browser_wait`, `browser_extract`, `browser_tabs`, `browser_close` |
 
 `minecraft_jarvis` remains accepted as a compatibility group but the tool is already always on.

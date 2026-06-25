@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -6,39 +6,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
+import { findAncestorFile, parseDotEnv } from "./lib/env";
+import { truncate } from "./lib/text";
+
 const ACTIONS = ["search", "status", "index", "install_cron", "uninstall_cron"] as const;
-
-function findAncestorFile(startDir: string, fileName: string): string | undefined {
-  let current = resolve(startDir);
-  while (true) {
-    const candidate = join(current, fileName);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
-}
-
-function parseDotEnv(envPath: string | undefined): Record<string, string> {
-  if (!envPath) return {};
-  const values: Record<string, string> = {};
-  for (const raw of readFileSync(envPath, "utf8").split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-    if (!match) continue;
-    let value = match[2].trim();
-    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
-      value = value.slice(1, -1).replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
-    } else if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
-      value = value.slice(1, -1);
-    } else {
-      value = value.replace(/\s+#.*$/, "");
-    }
-    values[match[1]] = value;
-  }
-  return values;
-}
 
 function runnerPath(cwd: string): string {
   return findAncestorFile(cwd, ".pi/session-search/session_search.py") ?? join(cwd, ".pi", "session-search", "session_search.py");
@@ -60,10 +31,6 @@ function pythonPath(cwd: string): string {
 
 function actionToCommand(action: string): string {
   return action.replace(/_/g, "-");
-}
-
-function truncate(text: string, max = 14000): string {
-  return text.length > max ? `${text.slice(0, max)}\n… truncated …` : text;
 }
 
 function formatResult(result: any): string {

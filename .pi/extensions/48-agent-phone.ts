@@ -6,6 +6,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
+import { truncate } from "./lib/text";
+
 const DEFAULT_JARVIS_ROOT = resolve(process.env.JARVIS_ROOT || process.cwd());
 const IMAGE_COMMANDS = new Set(["screenshot", "snapshot"]);
 
@@ -44,10 +46,6 @@ function pythonPath(cwd: string): string {
 function agentPhoneScript(cwd: string): string {
   const root = findProjectRoot(cwd);
   return join(root, "projects", "phone", "agent_phone.py");
-}
-
-function truncate(text: string, max = 20000): string {
-  return text.length > max ? `${text.slice(0, max)}\n… truncated …` : text;
 }
 
 function commandName(args: string[]): string | undefined {
@@ -215,7 +213,7 @@ export default function registerAgentPhone(pi: ExtensionAPI) {
         throw new Error(payload?.error || payload?.text || result.stderr.trim() || result.stdout.trim() || `agent-phone exited with code ${result.code}`);
       }
 
-      const text = truncate(String(payload?.text || result.stdout.trim() || "agent-phone completed."));
+      const text = truncate(String(payload?.text || result.stdout.trim() || "agent-phone completed."), 20_000);
       const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [{ type: "text", text }];
       const imagePath = imagePathFromPayload(payload);
       const attach = shouldAttachImage(params, payload);

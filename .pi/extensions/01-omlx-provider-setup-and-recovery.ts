@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-
 import type { ExtensionAPI, ProviderConfig, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+
+import { findAncestorFile, parseDotEnv } from "./lib/env";
 
 const DEFAULT_TIMEOUT_MS = 2500;
 const LOCAL_ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } as const;
@@ -70,46 +69,8 @@ const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 	},
 ];
 
-function findAncestorFilePath(startDir: string, fileName: string): string | undefined {
-	let currentDir = resolve(startDir);
-	while (true) {
-		const candidate = join(currentDir, fileName);
-		if (existsSync(candidate)) return candidate;
-
-		const parentDir = dirname(currentDir);
-		if (parentDir === currentDir) return undefined;
-		currentDir = parentDir;
-	}
-}
-
-function unquoteDotEnvValue(value: string): string {
-	const trimmed = value.trim();
-	if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
-		return trimmed
-			.slice(1, -1)
-			.replace(/\\n/g, "\n")
-			.replace(/\\r/g, "\r")
-			.replace(/\\t/g, "\t")
-			.replace(/\\"/g, '"')
-			.replace(/\\\\/g, "\\");
-	}
-	if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) return trimmed.slice(1, -1);
-	return trimmed.replace(/\s+#.*$/, "");
-}
-
 function loadDotEnvValues(): Record<string, string> {
-	const envPath = findAncestorFilePath(process.cwd(), ".env");
-	if (!envPath) return {};
-
-	const values: Record<string, string> = {};
-	for (const rawLine of readFileSync(envPath, "utf8").split(/\r?\n/)) {
-		const line = rawLine.trim();
-		if (!line || line.startsWith("#")) continue;
-		const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-		if (!match) continue;
-		values[match[1]] = unquoteDotEnvValue(match[2]);
-	}
-	return values;
+	return parseDotEnv(findAncestorFile(process.cwd(), ".env"));
 }
 
 function firstNonEmptyEnv(keys: string[], dotenvValues: Record<string, string>): string | undefined {

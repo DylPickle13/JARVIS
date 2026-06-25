@@ -6,6 +6,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
+import { truncate } from "./lib/text";
+
 const DEFAULT_JARVIS_ROOT = resolve(process.env.JARVIS_ROOT || process.cwd());
 const ACTIONS = [
   "help",
@@ -152,10 +154,6 @@ function pythonPath(cwd: string): string {
   const rootPython = join(root, ".venv", "bin", "python");
   if (existsSync(rootPython)) return rootPython;
   return "python3";
-}
-
-function truncate(text: string, max = 12000): string {
-  return text.length > max ? `${text.slice(0, max)}\n… truncated …` : text;
 }
 
 function textFromPayload(payload: any): string {

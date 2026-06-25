@@ -1,8 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+
+import { findAncestorFile, parseDotEnvFile } from "./lib/env";
+import { truncate } from "./lib/text";
 
 type DotEnv = Record<string, string>;
 type MapsEnv = {
@@ -27,45 +30,6 @@ const PICKERING = {
   lng: -79.0868,
   radiusMeters: 25_000,
 };
-
-function findAncestorFile(startDir: string, fileName: string): string | undefined {
-  let current = resolve(startDir);
-  while (true) {
-    const candidate = resolve(current, fileName);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
-}
-
-function unquoteDotEnvValue(rawValue: string): string {
-  const trimmed = rawValue.trim();
-  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed
-      .slice(1, -1)
-      .replace(/\\n/g, "\n")
-      .replace(/\\r/g, "\r")
-      .replace(/\\t/g, "\t")
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, "\\");
-  }
-  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) return trimmed.slice(1, -1);
-  return trimmed.replace(/\s+#.*$/, "").trim();
-}
-
-function parseDotEnvFile(path: string | undefined): DotEnv {
-  if (!path || !existsSync(path)) return {};
-  const values: DotEnv = {};
-  for (const rawLine of readFileSync(path, "utf8").split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-    if (!match) continue;
-    values[match[1]] = unquoteDotEnvValue(match[2]);
-  }
-  return values;
-}
 
 function firstNonEmptyLine(pathValue: string | undefined): string | undefined {
   if (!pathValue) return undefined;
@@ -151,10 +115,6 @@ function redact(text: string, env: MapsEnv): string {
   output = output.replace(/((?:key|api_key|apiKey|X-Goog-Api-Key)=)[^&\s]+/gi, "$1<redacted>");
   output = output.replace(/("(?:key|apiKey|api_key|X-Goog-Api-Key)"\s*:\s*")[^"]+(")/gi, "$1<redacted>$2");
   return output;
-}
-
-function truncate(text: string, max = 16_000): string {
-  return text.length > max ? `${text.slice(0, max)}\n… truncated …` : text;
 }
 
 function requireApiKey(env: MapsEnv): string {
@@ -403,7 +363,7 @@ async function runPlaceSearch(query: string, env: MapsEnv, signal?: AbortSignal)
   lines.push("Powered by Google Maps.");
 
   return {
-    content: [{ type: "text" as const, text: truncate(lines.join("\n")) }],
+    content: [{ type: "text" as const, text: truncate(lines.join("\n"), 16_000) }],
     details: { ok: true, intent: "place_search", query, textQuery, attribution: "Powered by Google Maps", places },
   };
 }
@@ -446,7 +406,7 @@ async function runPlaceCoordinateLookup(query: string, target: string, env: Maps
   lines.push("Powered by Google Maps.");
 
   return {
-    content: [{ type: "text" as const, text: truncate(lines.join("\n")) }],
+    content: [{ type: "text" as const, text: truncate(lines.join("\n"), 16_000) }],
     details: { ok: true, intent: "place_coordinate_lookup", query, target, attribution: "Powered by Google Maps", fallbackReason, places },
   };
 }
@@ -491,7 +451,7 @@ async function runGeocode(query: string, env: MapsEnv, signal?: AbortSignal) {
   lines.push("Powered by Google Maps.");
 
   return {
-    content: [{ type: "text" as const, text: truncate(lines.join("\n")) }],
+    content: [{ type: "text" as const, text: truncate(lines.join("\n"), 16_000) }],
     details: { ok: true, intent: mode, query, target, attribution: "Powered by Google Maps", results },
   };
 }
@@ -569,7 +529,7 @@ async function runRoute(query: string, env: MapsEnv, signal?: AbortSignal) {
   lines.push("Powered by Google Maps.");
 
   return {
-    content: [{ type: "text" as const, text: truncate(lines.join("\n")) }],
+    content: [{ type: "text" as const, text: truncate(lines.join("\n"), 16_000) }],
     details: { ok: true, intent: "route", query, routeRequest: parsed, attribution: "Powered by Google Maps", route },
   };
 }
