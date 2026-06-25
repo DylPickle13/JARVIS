@@ -19,11 +19,14 @@ type HostConfig = {
   shellType?: "posix" | "windows-cmd" | "windows-powershell";
 };
 
+type AspectRatio = "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "21:9";
+type ImageSizePreset = "small" | "standard" | "large";
+
 type GenerateImageParams = {
   prompt: string;
   negativePrompt?: string;
-  width?: number;
-  height?: number;
+  aspectRatio?: AspectRatio;
+  size?: ImageSizePreset;
   steps?: number;
   seed?: number;
   inputImagePath?: string;
@@ -42,6 +45,8 @@ type RemoteResult = {
   negativePrompt?: string;
   width?: number;
   height?: number;
+  aspectRatio?: AspectRatio;
+  size?: ImageSizePreset;
   steps?: number;
   seed?: number;
   mode?: "text-to-image" | "image-to-image";
@@ -66,8 +71,8 @@ const HOST_ALIAS = (process.env.IMAGE_GENERATION_HOST_ALIAS || "mac-mini-64").tr
 const DEFAULT_HOST_CONFIG_PATH = join(process.cwd(), ".pi", "ssh-hosts.json");
 const HOST_CONFIG_PATH = (process.env.IMAGE_GENERATION_SSH_HOSTS_CONFIG || DEFAULT_HOST_CONFIG_PATH).trim();
 const DEFAULT_NEGATIVE_PROMPT = "blurry, low quality, watermark, distorted, deformed";
-const DEFAULT_WIDTH = 1024;
-const DEFAULT_HEIGHT = 1024;
+const DEFAULT_ASPECT_RATIO: AspectRatio = "1:1";
+const DEFAULT_SIZE: ImageSizePreset = "standard";
 const DEFAULT_STEPS = 20;
 const DEFAULT_TIMEOUT_SECONDS = 1200;
 const DEFAULT_IMAGE_STRENGTH = 0.4;
@@ -77,6 +82,40 @@ const DEFAULT_MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
 const MAX_INPUT_IMAGE_BYTES = positiveInteger(process.env.IMAGE_GENERATION_MAX_INPUT_IMAGE_BYTES, DEFAULT_MAX_INPUT_IMAGE_BYTES);
 const LOCAL_OUTPUT_DIR = process.env.IMAGE_GENERATION_LOCAL_OUTPUT_DIR || "generated-images";
 const INPUT_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp"]);
+const ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"] as const;
+const SIZE_PRESETS = ["small", "standard", "large"] as const;
+const DIMENSION_PRESETS: Record<ImageSizePreset, Record<AspectRatio, { width: number; height: number }>> = {
+  small: {
+    "1:1": { width: 768, height: 768 },
+    "16:9": { width: 1024, height: 576 },
+    "9:16": { width: 576, height: 1024 },
+    "4:3": { width: 896, height: 672 },
+    "3:4": { width: 672, height: 896 },
+    "3:2": { width: 960, height: 640 },
+    "2:3": { width: 640, height: 960 },
+    "21:9": { width: 1152, height: 512 },
+  },
+  standard: {
+    "1:1": { width: 1024, height: 1024 },
+    "16:9": { width: 1344, height: 768 },
+    "9:16": { width: 768, height: 1344 },
+    "4:3": { width: 1152, height: 864 },
+    "3:4": { width: 864, height: 1152 },
+    "3:2": { width: 1216, height: 832 },
+    "2:3": { width: 832, height: 1216 },
+    "21:9": { width: 1536, height: 640 },
+  },
+  large: {
+    "1:1": { width: 1280, height: 1280 },
+    "16:9": { width: 1536, height: 864 },
+    "9:16": { width: 864, height: 1536 },
+    "4:3": { width: 1344, height: 1024 },
+    "3:4": { width: 1024, height: 1344 },
+    "3:2": { width: 1472, height: 960 },
+    "2:3": { width: 960, height: 1472 },
+    "21:9": { width: 1792, height: 768 },
+  },
+};
 
 function cleanString(value: unknown): string {
   return String(value ?? "")
@@ -120,6 +159,26 @@ function optionalFloat(value: unknown, field: string, min: number, max: number):
   if (!Number.isFinite(parsed)) throw new Error(`${field} must be a finite number`);
   if (parsed < min || parsed > max) throw new Error(`${field} must be between ${min} and ${max}`);
   return parsed;
+}
+
+function parseAspectRatio(value: unknown): AspectRatio {
+  const candidate = cleanString(value || DEFAULT_ASPECT_RATIO) as AspectRatio;
+  if (!(ASPECT_RATIOS as readonly string[]).includes(candidate)) throw new Error(`aspectRatio must be one of: ${ASPECT_RATIOS.join(", ")}`);
+  return candidate;
+}
+
+function parseSizePreset(value: unknown): ImageSizePreset {
+  const candidate = cleanString(value || DEFAULT_SIZE).toLowerCase() as ImageSizePreset;
+  if (!(SIZE_PRESETS as readonly string[]).includes(candidate)) throw new Error(`size must be one of: ${SIZE_PRESETS.join(", ")}`);
+  return candidate;
+}
+
+function dimensionsFor(aspectRatio: AspectRatio, size: ImageSizePreset): { width: number; height: number } {
+  return DIMENSION_PRESETS[size][aspectRatio];
+}
+
+function stringEnum(values: readonly string[], options?: Record<string, unknown>) {
+  return Type.Union(values.map((value) => Type.Literal(value)) as any, options as any);
 }
 
 function expandLocalPath(value: string): string {
@@ -278,6 +337,7 @@ function resultText(result: RemoteResult, localPath: string, metadataLocalPath?:
     metadataLocalPath ? `Metadata: ${metadataLocalPath}` : undefined,
     cleanedRemotePaths.length > 0 ? `Remote cleanup: deleted ${cleanedRemotePaths.length} file(s).` : undefined,
     `Model: ${MODEL}`, 
+    result.aspectRatio ? `Aspect ratio: ${result.aspectRatio}${result.size ? ` (${result.size})` : ""}` : undefined,
     `Seed: ${result.seed ?? "unknown"}`,
     `Steps: ${result.steps ?? "unknown"}`,
     `Size: ${result.width ?? "?"}x${result.height ?? "?"}, ${formatBytes(result.sizeBytes)}`,
@@ -305,8 +365,9 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
   const prompt = cleanPrompt(params.prompt);
   if (!prompt) throw new Error("generate_image requires a non-empty prompt.");
   const negativePrompt = cleanPrompt(params.negativePrompt || DEFAULT_NEGATIVE_PROMPT);
-  const width = optionalInteger(params.width, "width", 256, 2048) ?? DEFAULT_WIDTH;
-  const height = optionalInteger(params.height, "height", 256, 2048) ?? DEFAULT_HEIGHT;
+  const aspectRatio = parseAspectRatio(params.aspectRatio);
+  const sizePreset = parseSizePreset(params.size);
+  const { width, height } = dimensionsFor(aspectRatio, sizePreset);
   const steps = optionalInteger(params.steps, "steps", 1, 50) ?? DEFAULT_STEPS;
   const seed = optionalInteger(params.seed, "seed", 0, 2_147_483_647);
   const timeoutSeconds = optionalInteger(params.timeoutSeconds, "timeoutSeconds", 60, 7200) ?? DEFAULT_TIMEOUT_SECONDS;
@@ -335,8 +396,8 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
     filename,
     prompt,
     negativePrompt,
-    width,
-    height,
+    aspectRatio,
+    size: sizePreset,
     steps,
     seed,
     timeoutSeconds,
@@ -427,6 +488,8 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
         remote: remoteResult,
         inputImagePath: inputImage?.path,
         imageStrength: resolvedImageStrength,
+        aspectRatio,
+        size: sizePreset,
         cleanedRemotePaths,
         inlined: shouldInline,
         sizeBytes: stat.size,
@@ -462,15 +525,15 @@ export default function registerImageGeneration(pi: ExtensionAPI) {
     promptGuidelines: [
       "Use generate_image when sir asks to create, generate, render, or make an image locally.",
       `generate_image uses only ${MODEL}; do not offer or request alternate image models for this tool.`,
-      "Keep prompts visually descriptive. Default to 1024x1024 and 20 steps unless sir asks for a specific size or speed/quality tradeoff.",
+      `Keep prompts visually descriptive. Default to aspectRatio ${DEFAULT_ASPECT_RATIO}, size ${DEFAULT_SIZE}, and 20 steps unless sir asks for a specific aspect/size or speed/quality tradeoff.`,
       "For guided edits, provide inputImagePath with a local PNG/JPEG/WebP/BMP and describe the desired transformation in prompt. Use imageStrength around 0.4 by default; higher values preserve more source-image influence.",
       "Do not use ComfyUI, browser image tools, Draw Things, or shell commands for ordinary image generation/editing; call generate_image directly.",
     ],
     parameters: Type.Object({
       prompt: Type.String({ description: "Detailed image prompt to render." }),
       negativePrompt: Type.Optional(Type.String({ description: `Optional negative prompt. Defaults to: ${DEFAULT_NEGATIVE_PROMPT}` })),
-      width: Type.Optional(Type.Number({ description: `Image width in pixels, 256-2048. Default ${DEFAULT_WIDTH}.` })),
-      height: Type.Optional(Type.Number({ description: `Image height in pixels, 256-2048. Default ${DEFAULT_HEIGHT}.` })),
+      aspectRatio: Type.Optional(stringEnum(ASPECT_RATIOS, { description: `Image aspect ratio. Default ${DEFAULT_ASPECT_RATIO}.` })),
+      size: Type.Optional(stringEnum(SIZE_PRESETS, { description: `Output size preset. Default ${DEFAULT_SIZE}.` })),
       steps: Type.Optional(Type.Number({ description: `Inference steps, 1-50. Default ${DEFAULT_STEPS}.` })),
       seed: Type.Optional(Type.Number({ description: "Optional seed, 0-2147483647. If omitted, the remote worker chooses a random seed." })),
       inputImagePath: Type.Optional(Type.String({ description: "Optional local source image path for guided image-to-image editing. Supported: PNG, JPG/JPEG, WebP, BMP. The source is copied to mac-mini-64 temporarily and deleted after generation." })),
