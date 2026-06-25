@@ -348,7 +348,7 @@ function resultText(result: RemoteResult, localPath: string, metadataLocalPath?:
 
 function safeRemoteCleanupPaths(baseDir: string, paths: Array<string | undefined | null>): string[] {
   const normalizedBase = baseDir.replace(/\/+$/, "");
-  const allowedPrefixes = [`${normalizedBase}/outputs/`, `${normalizedBase}/inputs/`];
+  const allowedPrefixes = [`${normalizedBase}/outputs/`, `${normalizedBase}/inputs/`, `${normalizedBase}/runtime/pids/`];
   return [...new Set(paths
     .map((path) => cleanString(path))
     .filter((path) => path && allowedPrefixes.some((prefix) => path.startsWith(prefix))))];
@@ -359,6 +359,88 @@ async function cleanupRemoteFiles(pi: ExtensionAPI, host: HostConfig, baseDir: s
   if (safePaths.length === 0) return [];
   await runSsh(pi, host, `rm -f ${safePaths.map(shellQuote).join(" ")}`, 60_000, signal);
   return safePaths;
+}
+
+function remotePidFile(baseDir: string, jobId: string): string {
+  return `${baseDir.replace(/\/+$/, "")}/runtime/pids/${jobId}.json`;
+}
+
+function remoteCancelScript(baseDir: string, jobId: string, paths: Array<string | undefined | null>): string {
+  const pidFile = remotePidFile(baseDir, jobId);
+  const safePaths = safeRemoteCleanupPaths(baseDir, [pidFile, ...paths]);
+  const searchPatterns = [...new Set([pidFile, jobId, ...paths.map((path) => cleanString(path)).filter(Boolean)])];
+  const searchPatternArgs = searchPatterns.map(shellQuote).join(" ");
+  const cleanupLine = safePaths.length > 0 ? `rm -f ${safePaths.map(shellQuote).join(" ")} 2>/dev/null || true` : ":";
+  return `set +e
+PID_FILE=${shellQuote(pidFile)}
+JOB_ID=${shellQuote(jobId)}
+THIS_PGID="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')"
+
+kill_one() {
+  pid="$1"
+  [ -n "$pid" ] || return 0
+  [ "$pid" = "$$" ] && return 0
+  [ "$pid" = "$PPID" ] && return 0
+  case "$pid" in *[!0-9]* ) return 0;; esac
+  pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')"
+  if [ -n "$pgid" ] && [ "$pgid" != "$THIS_PGID" ]; then
+    kill -TERM "-$pgid" 2>/dev/null || true
+  fi
+  kill -TERM "$pid" 2>/dev/null || true
+}
+
+kill_one_force() {
+  pid="$1"
+  [ -n "$pid" ] || return 0
+  [ "$pid" = "$$" ] && return 0
+  [ "$pid" = "$PPID" ] && return 0
+  case "$pid" in *[!0-9]* ) return 0;; esac
+  pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')"
+  if [ -n "$pgid" ] && [ "$pgid" != "$THIS_PGID" ]; then
+    kill -KILL "-$pgid" 2>/dev/null || true
+  fi
+  kill -KILL "$pid" 2>/dev/null || true
+}
+
+pid_file_pids() {
+  [ -f "$PID_FILE" ] || return 0
+  python3 - "$PID_FILE" <<'PY'
+import json
+import sys
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+except Exception:
+    data = {}
+for key in ("childPgid", "childPid", "workerPid"):
+    value = data.get(key)
+    if isinstance(value, int):
+        print(value)
+    elif isinstance(value, str) and value.isdigit():
+        print(value)
+PY
+}
+
+for pid in $(pid_file_pids); do kill_one "$pid"; done
+for pattern in ${searchPatternArgs}; do
+  [ -n "$pattern" ] || continue
+  pgrep -f "$pattern" 2>/dev/null | while IFS= read -r pid; do kill_one "$pid"; done
+done
+sleep 2
+for pid in $(pid_file_pids); do kill_one_force "$pid"; done
+for pattern in ${searchPatternArgs}; do
+  [ -n "$pattern" ] || continue
+  pgrep -f "$pattern" 2>/dev/null | while IFS= read -r pid; do kill_one_force "$pid"; done
+done
+${cleanupLine}`;
+}
+
+async function cancelRemoteImageJob(pi: ExtensionAPI, host: HostConfig, baseDir: string, jobId: string, paths: Array<string | undefined | null>): Promise<void> {
+  try {
+    await runSsh(pi, host, remoteCancelScript(baseDir, jobId, paths), 30_000);
+  } catch {
+    // Cancellation is best-effort and must not mask the original abort/error.
+  }
 }
 
 async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, signal?: AbortSignal, onUpdate?: (partial: any) => void, cwd = process.cwd()) {
@@ -391,6 +473,9 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
   const remoteInputsDir = `${baseDir}/inputs`;
   const remoteJobFile = `${remoteInputsDir}/${jobId}.json`;
   const remoteInputImagePath = inputImage ? `${remoteInputsDir}/${jobId}-input${inputImage.extension}` : undefined;
+  const expectedRemoteOutputPath = `${baseDir}/outputs/${filename}`;
+  const expectedRemoteMetadataPath = expectedRemoteOutputPath.replace(/\.png$/i, ".metadata.json");
+  const remoteCancelPaths = [remoteJobFile, remoteInputImagePath, expectedRemoteOutputPath, expectedRemoteMetadataPath];
   const job = {
     jobId,
     filename,
@@ -423,7 +508,7 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
     }
   } catch (error) {
     try {
-      await cleanupRemoteFiles(pi, host, baseDir, [remoteJobFile, remoteInputImagePath], signal);
+      await cleanupRemoteFiles(pi, host, baseDir, [remoteJobFile, remoteInputImagePath], signal?.aborted ? undefined : signal);
     } catch {
       // Best-effort upload-stage cleanup only; preserve the original error.
     }
@@ -437,6 +522,14 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
     `${shellQuote(`${baseDir}/bin/image-generate`)} --job-file ${shellQuote(remoteJobFile)}`,
   ].join("\n");
   let remoteResult: RemoteResult | undefined;
+  let cancelPromise: Promise<void> | undefined;
+  const startRemoteCancel = () => {
+    cancelPromise ??= cancelRemoteImageJob(pi, host, baseDir, jobId, remoteCancelPaths);
+    return cancelPromise;
+  };
+  const abortHandler = () => { void startRemoteCancel(); };
+  if (signal?.aborted) abortHandler();
+  else signal?.addEventListener("abort", abortHandler, { once: true });
   try {
     const generation = await pi.exec("ssh", sshArgs(host, remoteCommand), { timeout: (timeoutSeconds + 60) * 1000, signal });
     remoteResult = parseRemoteResult(generation.stdout, generation.stderr, generation.code);
@@ -467,7 +560,7 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
     }
 
     onUpdate?.({ content: [{ type: "text" as const, text: "Deleting remote image inputs and outputs from mac-mini-64..." }] });
-    const cleanedRemotePaths = await cleanupRemoteFiles(pi, host, baseDir, [remoteResult.remotePath, remoteResult.metadataPath, remoteJobFile, remoteInputImagePath], signal);
+    const cleanedRemotePaths = await cleanupRemoteFiles(pi, host, baseDir, [remoteResult.remotePath, remoteResult.metadataPath, remoteJobFile, remoteInputImagePath, remotePidFile(baseDir, jobId)], signal?.aborted ? undefined : signal);
 
     const stat = statSync(localPath);
     const shouldInline = inlineImage && stat.size <= MAX_INLINE_BYTES;
@@ -496,12 +589,15 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
       },
     };
   } catch (error) {
+    if (signal?.aborted) await startRemoteCancel();
     try {
-      await cleanupRemoteFiles(pi, host, baseDir, [remoteResult?.remotePath, remoteResult?.metadataPath, remoteJobFile, remoteInputImagePath], signal);
+      await cleanupRemoteFiles(pi, host, baseDir, [remoteResult?.remotePath, remoteResult?.metadataPath, ...remoteCancelPaths, remotePidFile(baseDir, jobId)], signal?.aborted ? undefined : signal);
     } catch {
       // Best-effort cleanup only; preserve the original generation/copy error.
     }
     throw error;
+  } finally {
+    signal?.removeEventListener("abort", abortHandler);
   }
 }
 

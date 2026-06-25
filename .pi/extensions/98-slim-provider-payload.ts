@@ -54,7 +54,9 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   code_search: "Search external code/docs/API examples.",
   fetch_content: "Fetch/extract URL(s)/GitHub/YouTube/local video; batch selected research URLs in one urls array.",
   get_search_content: "Retrieve stored search/fetch content by responseId.",
-  load_tools: "Load optional groups. web_search, fetch_content, get_search_content, and minecraft_jarvis are always on. Groups: memory, code_docs, jarvis, phone, google, cron, discord, sessions, browser, all.",
+  minecraft_jarvis: "Minecraft bot chat/control; short safe plain-language messages.",
+  maps: "Ask Google Maps about places, addresses, coordinates, routes, travel time, or local searches.",
+  load_tools: "Load optional groups. Baseline: coding, ssh, web/search/fetch, maps, minecraft_jarvis. Groups: memory, code_docs, image, jarvis, phone, google, cron, discord, sessions, browser, all.",
   agent_phone: "Android phone control via safe CLI-token args.",
   jarvis: "Operation JARVIS dashboard/camera/Cast helper.",
   smart_plug: "Local smart-plug control.",
@@ -121,6 +123,7 @@ const SCHEMA_STRIP_TOOLS = new Set([
   "get_search_content",
   "load_tools",
   "minecraft_jarvis",
+  "maps",
   // Optional lazy-loaded tools: preserve top-level descriptions, strip nested prose.
   "agent_phone",
   "jarvis",
