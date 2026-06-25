@@ -51,5 +51,6 @@ download.html
 .DS_Store
 
 /.pi/ssh-hosts.json
+.pi/settings.json
 
 /.pi/history-rewrite-old-head.txt

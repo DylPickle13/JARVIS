@@ -1,6 +1,6 @@
 {
-  "defaultProvider": "omlx-64",
-  "defaultModel": "Qwen3.6-35B-A3B-6bit",
+  "defaultProvider": "your-provider-here",
+  "defaultModel": "your-model-here",
   "compaction": {
     "enabled": true,
     "reserveTokens": 8192,
@@ -14,5 +14,8 @@
   ],
   "skills": [
     "!**"
+  ],
+  "enabledModels": [
+    "your-provider-here/your-model-here"
   ]
 }
