@@ -14,7 +14,6 @@ davey==0.1.5
 discord.py==2.7.1
 discord-ext-voice-recv==0.5.2a179
 distro==1.9.0
-duckduckgo_search_api==0.1.5
 frozenlist==1.8.0
 google-auth==2.49.2
 google-genai==1.73.1

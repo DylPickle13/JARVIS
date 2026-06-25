@@ -107,7 +107,9 @@ Legacy `>` control commands are not registered.
 
 Baseline tools stay small: local file/shell helpers, web search/content fetching, and `load_tools`. Optional groups are loaded on demand with `load_tools({ groups: [...] })`:
 
-`memory`, `sessions`, `cron`, `discord`, `jarvis`, `browser`, `phone`, `google`, `code_docs`, `youtube`, or `all`.
+`memory`, `code_docs`, `image`, `jarvis`, `phone`, `google`, `cron`, `discord`, `sessions`, `browser`, or `all`.
+
+YouTube metadata/search uses the always-on `web_search` tool with `provider: "youtube"`; it is not a `load_tools` group.
 
 Use the Discord-specific tools for their narrow jobs: `discord_cron` for scheduled jobs, `discord_ping` for immediate user-facing pings/notifications and attachments, and `discord_send_file` only for verified local uploads to the current Discord channel.
 
