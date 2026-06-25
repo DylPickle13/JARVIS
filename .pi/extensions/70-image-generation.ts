@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -26,6 +26,8 @@ type GenerateImageParams = {
   height?: number;
   steps?: number;
   seed?: number;
+  inputImagePath?: string;
+  imageStrength?: number;
   filename?: string;
   timeoutSeconds?: number;
   inlineImage?: boolean;
@@ -42,6 +44,8 @@ type RemoteResult = {
   height?: number;
   steps?: number;
   seed?: number;
+  mode?: "text-to-image" | "image-to-image";
+  imageStrength?: number;
   elapsedSeconds?: number;
   remotePath?: string;
   metadataPath?: string | null;
@@ -66,9 +70,13 @@ const DEFAULT_WIDTH = 1024;
 const DEFAULT_HEIGHT = 1024;
 const DEFAULT_STEPS = 20;
 const DEFAULT_TIMEOUT_SECONDS = 1200;
+const DEFAULT_IMAGE_STRENGTH = 0.4;
 const DEFAULT_MAX_INLINE_BYTES = 8 * 1024 * 1024;
 const MAX_INLINE_BYTES = positiveInteger(process.env.IMAGE_GENERATION_MAX_INLINE_BYTES, DEFAULT_MAX_INLINE_BYTES);
+const DEFAULT_MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
+const MAX_INPUT_IMAGE_BYTES = positiveInteger(process.env.IMAGE_GENERATION_MAX_INPUT_IMAGE_BYTES, DEFAULT_MAX_INPUT_IMAGE_BYTES);
 const LOCAL_OUTPUT_DIR = process.env.IMAGE_GENERATION_LOCAL_OUTPUT_DIR || "generated-images";
+const INPUT_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp"]);
 
 function cleanString(value: unknown): string {
   return String(value ?? "")
@@ -81,6 +89,12 @@ function cleanPrompt(value: unknown): string {
   return String(value ?? "")
     .replace(/\r\n?/g, "\n")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .trim();
+}
+
+function cleanPath(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
     .trim();
 }
 
@@ -100,10 +114,31 @@ function optionalInteger(value: unknown, field: string, min: number, max: number
   return rounded;
 }
 
+function optionalFloat(value: unknown, field: string, min: number, max: number): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new Error(`${field} must be a finite number`);
+  if (parsed < min || parsed > max) throw new Error(`${field} must be between ${min} and ${max}`);
+  return parsed;
+}
+
 function expandLocalPath(value: string): string {
   if (value === "~") return homedir();
   if (value.startsWith("~/")) return join(homedir(), value.slice(2));
   return value;
+}
+
+function resolveInputImagePath(value: unknown, cwd: string): { path: string; sizeBytes: number; extension: string } | undefined {
+  const requested = cleanPath(value);
+  if (!requested) return undefined;
+  const localPath = resolve(cwd, expandLocalPath(requested));
+  if (!existsSync(localPath)) throw new Error(`inputImagePath does not exist: ${localPath}`);
+  const stat = statSync(localPath);
+  if (!stat.isFile()) throw new Error(`inputImagePath must be a file: ${localPath}`);
+  if (stat.size > MAX_INPUT_IMAGE_BYTES) throw new Error(`inputImagePath is too large: ${formatBytes(stat.size)}; max ${formatBytes(MAX_INPUT_IMAGE_BYTES)}`);
+  const extension = extname(localPath).toLowerCase();
+  if (!INPUT_IMAGE_EXTENSIONS.has(extension)) throw new Error(`inputImagePath must be one of: ${[...INPUT_IMAGE_EXTENSIONS].join(", ")}`);
+  return { path: localPath, sizeBytes: stat.size, extension };
 }
 
 function expandRemotePath(value: string, homeDir: string): string {
@@ -232,8 +267,12 @@ function formatBytes(bytes: number | undefined): string {
 }
 
 function resultText(result: RemoteResult, localPath: string, metadataLocalPath?: string, inlined?: boolean, cleanedRemotePaths: string[] = []): string {
+  const modeLine = result.mode === "image-to-image"
+    ? `Mode: guided image edit${typeof result.imageStrength === "number" ? `, strength ${result.imageStrength}` : ""}`
+    : "Mode: text-to-image";
   return [
     "Generated image with Qwen-Image-2512-8bit.",
+    modeLine,
     `Local: ${localPath}`,
     result.remotePath ? `Remote source deleted after copy: ${HOST_ALIAS}:${result.remotePath}` : undefined,
     metadataLocalPath ? `Metadata: ${metadataLocalPath}` : undefined,
@@ -272,6 +311,10 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
   const seed = optionalInteger(params.seed, "seed", 0, 2_147_483_647);
   const timeoutSeconds = optionalInteger(params.timeoutSeconds, "timeoutSeconds", 60, 7200) ?? DEFAULT_TIMEOUT_SECONDS;
   const inlineImage = params.inlineImage !== false;
+  const inputImage = resolveInputImagePath(params.inputImagePath, cwd);
+  const imageStrength = optionalFloat(params.imageStrength, "imageStrength", 0, 1);
+  if (imageStrength !== undefined && !inputImage) throw new Error("imageStrength requires inputImagePath.");
+  const resolvedImageStrength = inputImage ? imageStrength ?? DEFAULT_IMAGE_STRENGTH : undefined;
 
   const host = resolveHost();
   const baseDir = remoteBaseDir(host);
@@ -286,6 +329,7 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
   const localJobFile = join(localJobsDir, `${jobId}.json`);
   const remoteInputsDir = `${baseDir}/inputs`;
   const remoteJobFile = `${remoteInputsDir}/${jobId}.json`;
+  const remoteInputImagePath = inputImage ? `${remoteInputsDir}/${jobId}-input${inputImage.extension}` : undefined;
   const job = {
     jobId,
     filename,
@@ -296,71 +340,106 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
     steps,
     seed,
     timeoutSeconds,
+    ...(remoteInputImagePath ? { inputImagePath: remoteInputImagePath, imageStrength: resolvedImageStrength } : {}),
   };
   writeFileSync(localJobFile, JSON.stringify(job, null, 2), "utf8");
 
   onUpdate?.({ content: [{ type: "text" as const, text: `Preparing ${HOST_ALIAS} image job ${jobId}...` }] });
-  await runSsh(pi, host, `mkdir -p ${shellQuote(remoteInputsDir)} ${shellQuote(`${baseDir}/outputs`)} ${shellQuote(`${baseDir}/logs`)}`, 30_000, signal);
-  await runScp(pi, host, [localJobFile, remoteSpec(host, remoteJobFile)], 60_000, signal);
+  await runSsh(pi, host, `mkdir -p ${shellQuote(remoteInputsDir)} ${shellQuote(`${baseDir}/outputs`)}`, 30_000, signal);
+  try {
+    try {
+      if (inputImage && remoteInputImagePath) {
+        onUpdate?.({ content: [{ type: "text" as const, text: `Uploading source image (${formatBytes(inputImage.sizeBytes)}) to ${HOST_ALIAS}...` }] });
+        await runScp(pi, host, [inputImage.path, remoteSpec(host, remoteInputImagePath)], 120_000, signal);
+      }
+      await runScp(pi, host, [localJobFile, remoteSpec(host, remoteJobFile)], 60_000, signal);
+    } finally {
+      try {
+        rmSync(localJobFile, { force: true });
+      } catch {
+        // Best-effort local prompt/job cleanup.
+      }
+    }
+  } catch (error) {
+    try {
+      await cleanupRemoteFiles(pi, host, baseDir, [remoteJobFile, remoteInputImagePath], signal);
+    } catch {
+      // Best-effort upload-stage cleanup only; preserve the original error.
+    }
+    throw error;
+  }
 
-  onUpdate?.({ content: [{ type: "text" as const, text: `Generating image on ${HOST_ALIAS} with ${MODEL} (${width}x${height}, ${steps} steps)...` }] });
+  const modeText = inputImage ? `guided edit, strength ${resolvedImageStrength}` : "text-to-image";
+  onUpdate?.({ content: [{ type: "text" as const, text: `Generating image on ${HOST_ALIAS} with ${MODEL} (${width}x${height}, ${steps} steps, ${modeText})...` }] });
   const remoteCommand = [
     `export IMAGE_GENERATION_DIR=${shellQuote(baseDir)}`,
     `${shellQuote(`${baseDir}/bin/image-generate`)} --job-file ${shellQuote(remoteJobFile)}`,
   ].join("\n");
-  const generation = await pi.exec("ssh", sshArgs(host, remoteCommand), { timeout: (timeoutSeconds + 60) * 1000, signal });
-  const remoteResult = parseRemoteResult(generation.stdout, generation.stderr, generation.code);
-  if (generation.code !== 0 || generation.killed || remoteResult.ok !== true) {
-    throw new Error([
-      `Image generation failed on ${HOST_ALIAS}.`,
-      remoteResult.error ? `error: ${remoteResult.error}` : undefined,
-      remoteResult.stage ? `stage: ${(remoteResult as any).stage}` : undefined,
-      remoteResult.stderrTail ? `stderr: ${remoteResult.stderrTail}` : undefined,
-      remoteResult.stdoutTail ? `stdout: ${remoteResult.stdoutTail}` : undefined,
-      !remoteResult.error && generation.stderr ? `ssh stderr: ${generation.stderr}` : undefined,
-    ].filter(Boolean).join("\n"));
-  }
-  if (!remoteResult.remotePath) throw new Error("Remote worker succeeded but did not return remotePath.");
-
-  const localPath = join(localOutputDir, basename(remoteResult.remotePath));
-  onUpdate?.({ content: [{ type: "text" as const, text: `Copying image back to ${localPath}...` }] });
-  await runScp(pi, host, [remoteSpec(host, remoteResult.remotePath), localPath], 120_000, signal);
-
-  let metadataLocalPath: string | undefined;
-  if (remoteResult.metadataPath) {
-    metadataLocalPath = localPath.replace(/\.png$/i, ".metadata.json");
-    try {
-      await runScp(pi, host, [remoteSpec(host, remoteResult.metadataPath), metadataLocalPath], 60_000, signal);
-    } catch {
-      metadataLocalPath = undefined;
+  let remoteResult: RemoteResult | undefined;
+  try {
+    const generation = await pi.exec("ssh", sshArgs(host, remoteCommand), { timeout: (timeoutSeconds + 60) * 1000, signal });
+    remoteResult = parseRemoteResult(generation.stdout, generation.stderr, generation.code);
+    if (generation.code !== 0 || generation.killed || remoteResult.ok !== true) {
+      throw new Error([
+        `Image generation failed on ${HOST_ALIAS}.`,
+        remoteResult.error ? `error: ${remoteResult.error}` : undefined,
+        remoteResult.stage ? `stage: ${(remoteResult as any).stage}` : undefined,
+        remoteResult.stderrTail ? `stderr: ${remoteResult.stderrTail}` : undefined,
+        remoteResult.stdoutTail ? `stdout: ${remoteResult.stdoutTail}` : undefined,
+        !remoteResult.error && generation.stderr ? `ssh stderr: ${generation.stderr}` : undefined,
+      ].filter(Boolean).join("\n"));
     }
+    if (!remoteResult.remotePath) throw new Error("Remote worker succeeded but did not return remotePath.");
+
+    const localPath = join(localOutputDir, basename(remoteResult.remotePath));
+    onUpdate?.({ content: [{ type: "text" as const, text: `Copying image back to ${localPath}...` }] });
+    await runScp(pi, host, [remoteSpec(host, remoteResult.remotePath), localPath], 120_000, signal);
+
+    let metadataLocalPath: string | undefined;
+    if (remoteResult.metadataPath) {
+      metadataLocalPath = localPath.replace(/\.png$/i, ".metadata.json");
+      try {
+        await runScp(pi, host, [remoteSpec(host, remoteResult.metadataPath), metadataLocalPath], 60_000, signal);
+      } catch {
+        metadataLocalPath = undefined;
+      }
+    }
+
+    onUpdate?.({ content: [{ type: "text" as const, text: "Deleting remote image inputs and outputs from mac-mini-64..." }] });
+    const cleanedRemotePaths = await cleanupRemoteFiles(pi, host, baseDir, [remoteResult.remotePath, remoteResult.metadataPath, remoteJobFile, remoteInputImagePath], signal);
+
+    const stat = statSync(localPath);
+    const shouldInline = inlineImage && stat.size <= MAX_INLINE_BYTES;
+    const content: any[] = [{ type: "text" as const, text: resultText(remoteResult, localPath, metadataLocalPath, shouldInline, cleanedRemotePaths) }];
+    if (shouldInline) {
+      content.push({ type: "image" as const, data: readFileSync(localPath).toString("base64"), mimeType: "image/png" });
+    }
+
+    return {
+      content,
+      details: {
+        ok: true,
+        model: MODEL,
+        host: HOST_ALIAS,
+        jobId,
+        localPath,
+        metadataLocalPath,
+        remote: remoteResult,
+        inputImagePath: inputImage?.path,
+        imageStrength: resolvedImageStrength,
+        cleanedRemotePaths,
+        inlined: shouldInline,
+        sizeBytes: stat.size,
+      },
+    };
+  } catch (error) {
+    try {
+      await cleanupRemoteFiles(pi, host, baseDir, [remoteResult?.remotePath, remoteResult?.metadataPath, remoteJobFile, remoteInputImagePath], signal);
+    } catch {
+      // Best-effort cleanup only; preserve the original generation/copy error.
+    }
+    throw error;
   }
-
-  onUpdate?.({ content: [{ type: "text" as const, text: "Deleting remote image copy from mac-mini-64..." }] });
-  const cleanedRemotePaths = await cleanupRemoteFiles(pi, host, baseDir, [remoteResult.remotePath, remoteResult.metadataPath, remoteJobFile], signal);
-
-  const stat = statSync(localPath);
-  const shouldInline = inlineImage && stat.size <= MAX_INLINE_BYTES;
-  const content: any[] = [{ type: "text" as const, text: resultText(remoteResult, localPath, metadataLocalPath, shouldInline, cleanedRemotePaths) }];
-  if (shouldInline) {
-    content.push({ type: "image" as const, data: readFileSync(localPath).toString("base64"), mimeType: "image/png" });
-  }
-
-  return {
-    content,
-    details: {
-      ok: true,
-      model: MODEL,
-      host: HOST_ALIAS,
-      jobId,
-      localPath,
-      metadataLocalPath,
-      remote: remoteResult,
-      cleanedRemotePaths,
-      inlined: shouldInline,
-      sizeBytes: stat.size,
-    },
-  };
 }
 
 function formatDuration(ms: number): string {
@@ -374,17 +453,18 @@ function elapsedFooter(state: RenderState, isPartial: boolean, theme: any): stri
   return theme.fg("muted", `${label} ${formatDuration(Math.max(0, endTime - state.startedAt))}`);
 }
 
-export default function registerJarvisImage(pi: ExtensionAPI) {
+export default function registerImageGeneration(pi: ExtensionAPI) {
   pi.registerTool({
     name: "generate_image",
     label: "Generate Image",
-    description: `Generate exactly one image on mac-mini-64 using the single approved headless model: ${MODEL}. The tool sends the prompt over SSH, runs mflux/Qwen on the Mini, copies the PNG back locally, and returns the local path plus optional inline PNG. No alternate models or fallback models are available.`,
-    promptSnippet: "Generate a local PNG image on mac-mini-64 with Qwen-Image-2512-8bit and copy it back to this project.",
+    description: `Generate exactly one image on mac-mini-64 using the single approved headless model: ${MODEL}. The tool sends the prompt, and optionally a local source image for guided image-to-image editing, over SSH; runs mflux/Qwen on the Mini; copies the PNG back locally; and returns the local path plus optional inline PNG. No alternate models or fallback models are available.`,
+    promptSnippet: "Generate a local PNG image, or guided edit from a local source image, on mac-mini-64 with Qwen-Image-2512-8bit and copy it back to this project.",
     promptGuidelines: [
       "Use generate_image when sir asks to create, generate, render, or make an image locally.",
       `generate_image uses only ${MODEL}; do not offer or request alternate image models for this tool.`,
       "Keep prompts visually descriptive. Default to 1024x1024 and 20 steps unless sir asks for a specific size or speed/quality tradeoff.",
-      "Do not use ComfyUI, browser image tools, Draw Things, or shell commands for ordinary image generation; call generate_image directly.",
+      "For guided edits, provide inputImagePath with a local PNG/JPEG/WebP/BMP and describe the desired transformation in prompt. Use imageStrength around 0.4 by default; higher values preserve more source-image influence.",
+      "Do not use ComfyUI, browser image tools, Draw Things, or shell commands for ordinary image generation/editing; call generate_image directly.",
     ],
     parameters: Type.Object({
       prompt: Type.String({ description: "Detailed image prompt to render." }),
@@ -393,6 +473,8 @@ export default function registerJarvisImage(pi: ExtensionAPI) {
       height: Type.Optional(Type.Number({ description: `Image height in pixels, 256-2048. Default ${DEFAULT_HEIGHT}.` })),
       steps: Type.Optional(Type.Number({ description: `Inference steps, 1-50. Default ${DEFAULT_STEPS}.` })),
       seed: Type.Optional(Type.Number({ description: "Optional seed, 0-2147483647. If omitted, the remote worker chooses a random seed." })),
+      inputImagePath: Type.Optional(Type.String({ description: "Optional local source image path for guided image-to-image editing. Supported: PNG, JPG/JPEG, WebP, BMP. The source is copied to mac-mini-64 temporarily and deleted after generation." })),
+      imageStrength: Type.Optional(Type.Number({ description: `Optional source-image guidance strength, 0-1. Requires inputImagePath. Default ${DEFAULT_IMAGE_STRENGTH}. Higher values preserve more source-image influence.` })),
       filename: Type.Optional(Type.String({ description: "Optional output filename stem or .png filename. Sanitized." })),
       timeoutSeconds: Type.Optional(Type.Number({ description: `Optional generation timeout, 60-7200 seconds. Default ${DEFAULT_TIMEOUT_SECONDS}.` })),
       inlineImage: Type.Optional(Type.Boolean({ description: "Whether to attach the PNG inline to the tool result. Default true; large files are path-only." })),
