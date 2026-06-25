@@ -406,7 +406,8 @@ DISCORD_VOICE_MESSAGE_MAX_BYTES = config.get_int_env(
 )
 # Discord views allow at most 25 components. Reserve one slot for the quota button.
 MAX_MODEL_BUTTONS = 24
-CONFIG_MENU_TIMEOUT_SECONDS = 600
+# Keep each config panel active until a newer /jarvis model panel replaces it.
+CONFIG_MENU_TIMEOUT_SECONDS: float | None = None
 QUOTAS_SCRIPT_PATH = PROJECT_ROOT / "projects" / "quotas" / "quotas.py"
 QUOTAS_LATEST_PATH = PROJECT_ROOT / "projects" / "quotas" / "data" / "latest.json"
 QUOTA_CHECK_TIMEOUT_SECONDS = config.get_int_env(
@@ -2170,9 +2171,21 @@ class _ConfigView(discord.ui.View):
             )
 
     async def check_quota(self, interaction: discord.Interaction) -> None:
+        if not self.bot._is_active_config_view(self.channel_key, self):
+            await interaction.response.send_message(
+                f"This config panel has been replaced. Use `{SLASH_CONFIG_COMMAND}` for the active panel.",
+                ephemeral=True,
+            )
+            return
         await self.bot._handle_quota_check(interaction, self.channel_key)
 
     async def select_model(self, interaction: discord.Interaction, model: str) -> None:
+        if not self.bot._is_active_config_view(self.channel_key, self):
+            await interaction.response.send_message(
+                f"This config panel has been replaced. Use `{SLASH_CONFIG_COMMAND}` for the active panel.",
+                ephemeral=True,
+            )
+            return
         await self.bot._handle_model_selection(interaction, self.channel_key, model)
 
 
@@ -2192,6 +2205,8 @@ class JarvisDiscordBot:
         self._slash_commands_synced = False
         self._channel_locks: dict[str, asyncio.Lock] = {}
         self._rpc_sessions: dict[str, llm.PiRpcSession] = {}
+        self._active_config_views: dict[str, _ConfigView] = {}
+        self._active_config_messages: dict[str, object | None] = {}
         self._active_channel_tasks: dict[str, asyncio.Task[object]] = {}
         self._active_stream_responses: dict[str, _StreamingResponse] = {}
         self._workout_tracker = (
@@ -2687,6 +2702,42 @@ class JarvisDiscordBot:
         total_model_count = len(models)
         return models[:MAX_MODEL_BUTTONS], total_model_count, current_model
 
+    def _is_active_config_view(self, channel_key: str, view: _ConfigView) -> bool:
+        return self._active_config_views.get(channel_key) is view
+
+    async def _retire_config_panel(self, message: object | None, view: _ConfigView | None) -> None:
+        if view is None:
+            return
+        if message is not None:
+            try:
+                await message.edit(view=None)  # type: ignore[attr-defined]
+            except discord.NotFound:
+                view.stop()
+                return
+            except Exception:
+                LOGGER.debug("Failed to remove stale Discord config panel buttons", exc_info=True)
+                return
+        view.stop()
+
+    async def _activate_config_panel(
+        self,
+        channel_key: str,
+        message: object | None,
+        view: _ConfigView,
+        *,
+        retire_previous: bool,
+    ) -> None:
+        previous_view = self._active_config_views.get(channel_key)
+        previous_message = self._active_config_messages.get(channel_key)
+        self._active_config_views[channel_key] = view
+        self._active_config_messages[channel_key] = message
+        if previous_view is None or previous_view is view:
+            return
+        if retire_previous:
+            await self._retire_config_panel(previous_message, previous_view)
+        else:
+            previous_view.stop()
+
     def _build_config_embed(
         self,
         channel_key: str,
@@ -2759,13 +2810,16 @@ class JarvisDiscordBot:
             embed = self._build_config_embed(channel_key, channel, quota_report=quota_report)
             view = _ConfigView(bot=self, channel_key=channel_key, channel=channel)
             if interaction.message is not None:
-                await interaction.message.edit(embed=embed, view=view)
+                message = await interaction.message.edit(embed=embed, view=view)
+                await self._activate_config_panel(channel_key, message, view, retire_previous=False)
             await interaction.followup.send("Quota refreshed.", ephemeral=True)
         except Exception as exc:
             LOGGER.exception("Failed to refresh quota from Discord config panel")
             embed = self._build_config_embed(channel_key, channel, quota_error=str(exc))
             if interaction.message is not None:
-                await interaction.message.edit(embed=embed, view=_ConfigView(bot=self, channel_key=channel_key, channel=channel))
+                view = _ConfigView(bot=self, channel_key=channel_key, channel=channel)
+                message = await interaction.message.edit(embed=embed, view=view)
+                await self._activate_config_panel(channel_key, message, view, retire_previous=False)
             await interaction.followup.send(f"Failed to refresh quota: {exc}", ephemeral=True)
 
     @staticmethod
@@ -2823,7 +2877,8 @@ class JarvisDiscordBot:
         view = _ConfigView(bot=self, channel_key=channel_key, channel=channel)
         if interaction.message is not None:
             try:
-                await interaction.message.edit(embed=embed, view=view)
+                message = await interaction.message.edit(embed=embed, view=view)
+                await self._activate_config_panel(channel_key, message, view, retire_previous=False)
             except Exception:
                 LOGGER.exception("Failed to update config panel for channel %s", channel_key)
 
@@ -2990,10 +3045,13 @@ class JarvisDiscordBot:
             channel,
             append_system_prompt=self._append_system_prompt_for_channel(channel),
         )
-        await interaction.followup.send(
+        view = _ConfigView(bot=self, channel_key=channel_key, channel=channel)
+        message = await interaction.followup.send(
             embed=self._build_config_embed(channel_key, channel),
-            view=_ConfigView(bot=self, channel_key=channel_key, channel=channel),
+            view=view,
+            wait=True,
         )
+        await self._activate_config_panel(channel_key, message, view, retire_previous=True)
 
     async def _handle_slash_thinking(self, interaction: discord.Interaction, level: str | None = None) -> None:
         channel = await self._require_slash_text_channel(interaction)
