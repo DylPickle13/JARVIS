@@ -63,6 +63,11 @@ def get_str_env(name: str, default: str = "", *, strip: bool = True) -> str:
     return value.strip() if strip else value
 
 
+def get_bool_env(name: str, default: bool = False) -> bool:
+    raw_default = "1" if default else "0"
+    return get_str_env(name, raw_default).lower() in {"1", "true", "yes", "on"}
+
+
 def get_int_env(name: str, default: int, *, minimum: int = 0) -> int:
     raw = get_str_env(name, str(default))
     try:
