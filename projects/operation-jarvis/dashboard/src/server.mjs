@@ -51,6 +51,7 @@ const OMLX_16_DEFAULT_BASE_URL = 'http://127.0.0.1:8000/v1';
 const OMLX_64_DEFAULT_BASE_URL = '';
 const OMLX_SHARED_API_KEY = process.env.JARVIS_DASHBOARD_OMLX_API_KEY || process.env.DISCORD_VOICE_API_KEY || process.env.OMLX_API_KEY || '';
 const OMLX_STATUS_CACHE_MS = parseInteger(process.env.JARVIS_DASHBOARD_OMLX_STATUS_CACHE_MS, 5000);
+const OMLX_USAGE_CACHE_MS = parseInteger(process.env.JARVIS_DASHBOARD_OMLX_USAGE_CACHE_MS, 900);
 const OMLX_SERVERS = new Map([
   ['16', buildOmlxServerConfig({
     id: '16',
@@ -99,7 +100,10 @@ const OMLX_RUNTIME = new Map(Array.from(OMLX_SERVERS.keys(), (id) => [id, {
   cachedStatus: null,
   cachedStatusAt: 0,
   pendingStatus: null,
-  pendingControl: null
+  pendingControl: null,
+  cachedUsage: null,
+  cachedUsageAt: 0,
+  pendingUsage: null
 }]));
 const WEATHER_LATITUDE = Number.parseFloat(process.env.JARVIS_DASHBOARD_WEATHER_LATITUDE || '0');
 const WEATHER_LONGITUDE = Number.parseFloat(process.env.JARVIS_DASHBOARD_WEATHER_LONGITUDE || '0');
@@ -1695,6 +1699,15 @@ function parseInteger(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function numericOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function arrayOfStrings(value) {
+  return Array.isArray(value) ? value.map((entry) => String(entry || '').trim()).filter(Boolean) : [];
+}
+
 function buildOmlxServerConfig(config = {}) {
   const id = String(config.id || DEFAULT_OMLX_SERVER_ID);
   const baseUrl = normalizeOpenAiBaseUrl(config.baseUrl || OMLX_16_DEFAULT_BASE_URL);
@@ -1759,7 +1772,10 @@ function getOmlxRuntime(serverId = DEFAULT_OMLX_SERVER_ID) {
       cachedStatus: null,
       cachedStatusAt: 0,
       pendingStatus: null,
-      pendingControl: null
+      pendingControl: null,
+      cachedUsage: null,
+      cachedUsageAt: 0,
+      pendingUsage: null
     });
   }
   return OMLX_RUNTIME.get(normalized);
@@ -1898,6 +1914,156 @@ async function readOmlxStatus(serverOrOptions = DEFAULT_OMLX_SERVER_ID, maybeOpt
   } finally {
     runtime.pendingStatus = null;
   }
+}
+
+function normalizeOmlxUsageModel(model = {}) {
+  return {
+    id: String(model.id || ''),
+    loaded: Boolean(model.loaded),
+    isLoading: Boolean(model.is_loading),
+    pinned: Boolean(model.pinned),
+    engineType: String(model.engine_type || ''),
+    modelType: String(model.model_type || ''),
+    lastAccess: numericOrNull(model.last_access),
+    estimatedSize: numericOrNull(model.estimated_size),
+    actualSize: numericOrNull(model.actual_size),
+    maxContextWindow: numericOrNull(model.max_context_window),
+    maxTokens: numericOrNull(model.max_tokens)
+  };
+}
+
+async function readOmlxUsage(serverId = DEFAULT_OMLX_SERVER_ID, options = {}) {
+  const server = getOmlxServerConfig(serverId);
+  if (!server) return unknownOmlxServerStatus(serverId);
+
+  const runtime = getOmlxRuntime(server.id);
+  const force = Boolean(options?.force);
+  const now = Date.now();
+  if (!force && runtime.cachedUsage && now - runtime.cachedUsageAt < OMLX_USAGE_CACHE_MS) return runtime.cachedUsage;
+  if (!force && runtime.pendingUsage) return runtime.pendingUsage;
+
+  runtime.pendingUsage = (async () => {
+    const checkedAt = new Date().toISOString();
+    const startedMs = Date.now();
+    const headers = omlxHeaders(server);
+    const statusUrl = `${server.rootUrl}/api/status`;
+    const modelStatusUrl = `${server.baseUrl}/models/status`;
+
+    try {
+      const apiStatus = await fetchJsonWithTimeout(statusUrl, { timeoutMs: server.statusTimeoutMs, headers });
+      let modelStatus = null;
+      try {
+        modelStatus = await fetchJsonWithTimeout(modelStatusUrl, { timeoutMs: Math.max(500, server.statusTimeoutMs), headers });
+      } catch {
+        // Per-model status is detail; aggregate status remains useful without it.
+      }
+
+      const rawModels = Array.isArray(modelStatus?.models) ? modelStatus.models : [];
+      const models = rawModels
+        .filter((model) => {
+          const engineType = String(model?.engine_type || model?.model_type || '').toLowerCase();
+          return model?.id && engineType !== 'markitdown' && model?.source_type !== 'builtin' && (model.loaded || model.is_loading);
+        })
+        .map(normalizeOmlxUsageModel);
+      const loadedModels = arrayOfStrings(apiStatus?.loaded_models);
+      for (const modelId of loadedModels) {
+        if (!models.some((model) => model.id === modelId)) {
+          models.push({
+            id: modelId,
+            loaded: true,
+            isLoading: false,
+            pinned: false,
+            engineType: '',
+            modelType: '',
+            lastAccess: null,
+            estimatedSize: null,
+            actualSize: null,
+            maxContextWindow: null,
+            maxTokens: null
+          });
+        }
+      }
+
+      const memoryUsed = numericOrNull(apiStatus?.model_memory_used ?? modelStatus?.current_model_memory);
+      const memoryMax = numericOrNull(apiStatus?.model_memory_max ?? modelStatus?.final_ceiling);
+      return {
+        ok: true,
+        status: 'online',
+        serverId: server.id,
+        name: server.name,
+        baseUrl: server.baseUrl,
+        rootUrl: server.rootUrl,
+        version: apiStatus?.version || '',
+        uptimeSeconds: numericOrNull(apiStatus?.uptime_seconds),
+        defaultModel: apiStatus?.default_model || '',
+        activeRequests: numericOrNull(apiStatus?.active_requests) ?? 0,
+        waitingRequests: numericOrNull(apiStatus?.waiting_requests) ?? 0,
+        totalRequests: numericOrNull(apiStatus?.total_requests),
+        totalPromptTokens: numericOrNull(apiStatus?.total_prompt_tokens),
+        totalCompletionTokens: numericOrNull(apiStatus?.total_completion_tokens),
+        totalCachedTokens: numericOrNull(apiStatus?.total_cached_tokens),
+        cacheEfficiency: numericOrNull(apiStatus?.cache_efficiency),
+        avgPrefillTps: numericOrNull(apiStatus?.avg_prefill_tps),
+        avgGenerationTps: numericOrNull(apiStatus?.avg_generation_tps),
+        memoryUsed,
+        memoryMax,
+        memoryUsedText: apiStatus?.model_memory_used_formatted || '',
+        memoryMaxText: apiStatus?.model_memory_max_formatted || '',
+        modelCount: numericOrNull(apiStatus?.models_discovered ?? modelStatus?.model_count),
+        loadedCount: numericOrNull(apiStatus?.models_loaded ?? modelStatus?.loaded_count),
+        loadingCount: numericOrNull(apiStatus?.models_loading),
+        loadedModels,
+        models,
+        checkedAt,
+        durationMs: Date.now() - startedMs
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 'offline',
+        serverId: server.id,
+        name: server.name,
+        baseUrl: server.baseUrl,
+        rootUrl: server.rootUrl,
+        activeRequests: 0,
+        waitingRequests: 0,
+        loadedModels: [],
+        models: [],
+        error: error?.name === 'AbortError' ? 'Timed out' : (error?.message || 'Unavailable'),
+        checkedAt,
+        durationMs: Date.now() - startedMs
+      };
+    }
+  })();
+
+  try {
+    runtime.cachedUsage = await runtime.pendingUsage;
+    runtime.cachedUsageAt = Date.now();
+    return runtime.cachedUsage;
+  } finally {
+    runtime.pendingUsage = null;
+  }
+}
+
+async function readAllOmlxUsage(options = {}) {
+  const servers = await Promise.all(Array.from(OMLX_SERVERS.keys(), (serverId) => readOmlxUsage(serverId, options)));
+  const onlineServers = servers.filter((server) => server.ok);
+  const totals = servers.reduce((acc, server) => {
+    acc.activeRequests += Number(server.activeRequests || 0);
+    acc.waitingRequests += Number(server.waitingRequests || 0);
+    acc.loadedModels += Array.isArray(server.models) ? server.models.filter((model) => model.loaded).length : 0;
+    if (Number.isFinite(Number(server.memoryUsed))) acc.memoryUsed += Number(server.memoryUsed);
+    if (Number.isFinite(Number(server.memoryMax))) acc.memoryMax += Number(server.memoryMax);
+    return acc;
+  }, { activeRequests: 0, waitingRequests: 0, loadedModels: 0, memoryUsed: 0, memoryMax: 0 });
+
+  return {
+    ok: onlineServers.length > 0,
+    generatedAt: new Date().toISOString(),
+    pollMs: 1000,
+    totals,
+    servers
+  };
 }
 
 function shellQuote(value = '') {
@@ -2124,6 +2290,15 @@ async function handleOmlxRequest(req, res) {
   }
 
   const pathname = normalizeOmlxRequestPath(requestUrl.pathname);
+  if (pathname === '/api/jarvis/omlx/usage') {
+    if (!['GET', 'POST'].includes(req.method || 'GET')) {
+      json(res, 405, { ok: false, error: 'Method not allowed' });
+      return;
+    }
+    json(res, 200, await readAllOmlxUsage({ force: requestUrl.searchParams.get('force') === '1' }));
+    return;
+  }
+
   if (pathname === '/api/jarvis/omlx/server/toggle' || pathname === '/api/jarvis/omlx/toggle') {
     if (req.method !== 'POST') {
       json(res, 405, { ok: false, error: 'Method not allowed. Use POST.' });

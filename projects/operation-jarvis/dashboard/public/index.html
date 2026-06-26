@@ -53,6 +53,10 @@
         </article>
 
         <section class="hud-mini-boxes" aria-label="JARVIS status indicators">
+          <section id="active-models-card" class="active-models-card glass-panel" data-pressure="idle" aria-live="polite" aria-label="Active oMLX models" hidden>
+            <div id="active-models-list" class="active-models-list" aria-label="Loaded oMLX models"></div>
+          </section>
+
           <button id="dashboard-voice-card" class="hud-mini-card glass-panel tone-silver dashboard-voice-card" type="button" data-state="off" aria-live="polite" aria-pressed="false" aria-label="Enable dashboard voice mode" title="Tap to arm dashboard voice mode">
             <p class="eyebrow">Voice</p>
             <span id="dashboard-voice-icon" class="omlx-status-icon dashboard-voice-status-icon" role="img" aria-label="Dashboard voice off"></span>
@@ -60,16 +64,6 @@
           </button>
           <audio id="dashboard-voice-audio" preload="auto"></audio>
 
-          <button id="omlx-64-card" class="hud-mini-card glass-panel tone-silver omlx-card" type="button" role="switch" data-omlx-server="64" data-state="idle" aria-live="polite" aria-checked="false" aria-label="Toggle OMLX-64 server" title="Tap to toggle OMLX-64 server">
-            <p class="eyebrow omlx-label">OMLX-64</p>
-            <span class="omlx-status-icon" role="img" aria-label="OMLX-64 server status unknown"></span>
-            <p class="hud-mini-detail omlx-detail">Tap to toggle</p>
-          </button>
-          <button id="omlx-card" class="hud-mini-card glass-panel tone-silver omlx-card" type="button" role="switch" data-omlx-server="16" data-state="idle" aria-live="polite" aria-checked="false" aria-label="Toggle OMLX-16 server" title="Tap to toggle OMLX-16 server">
-            <p id="display-server-state" class="eyebrow omlx-label">OMLX-16</p>
-            <span id="display-omlx-state" class="omlx-status-icon" role="img" aria-label="OMLX-16 server status unknown"></span>
-            <p id="display-omlx-detail" class="hud-mini-detail omlx-detail">Tap to toggle</p>
-          </button>
           <button id="right-reserved-card-2" class="hud-mini-card glass-panel tone-silver raspberry-pi-card" type="button" data-state="idle" aria-live="polite" aria-label="Toggle Raspberry Pi room audio service" title="Tap to toggle Raspberry Pi room audio service">
             <p class="eyebrow">RasPi</p>
             <span id="display-raspberry-pi-icon" class="omlx-status-icon raspberry-pi-status-icon" role="img" aria-label="Raspberry Pi not checked"></span>
