@@ -1916,19 +1916,144 @@ async function readOmlxStatus(serverOrOptions = DEFAULT_OMLX_SERVER_ID, maybeOpt
   }
 }
 
-function normalizeOmlxUsageModel(model = {}) {
+function safeOmlxRequestId(value) {
+  return String(value || '').trim().slice(0, 96);
+}
+
+function safeOmlxDetail(value, maxLength = 80) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function normalizeOmlxWaitingRequest(entry = {}) {
+  const requestId = safeOmlxRequestId(entry.request_id ?? entry.requestId);
   return {
-    id: String(model.id || ''),
+    requestId,
+    queuePosition: numericOrNull(entry.queue_position ?? entry.queuePosition),
+    elapsedSeconds: numericOrNull(entry.elapsed_seconds ?? entry.elapsedSeconds),
+    promptTokens: numericOrNull(entry.prompt_tokens ?? entry.promptTokens)
+  };
+}
+
+function normalizeOmlxPrefillingRequest(entry = {}) {
+  const requestId = safeOmlxRequestId(entry.request_id ?? entry.requestId);
+  return {
+    requestId,
+    processed: numericOrNull(entry.processed),
+    total: numericOrNull(entry.total),
+    speed: numericOrNull(entry.speed),
+    eta: numericOrNull(entry.eta),
+    elapsed: numericOrNull(entry.elapsed),
+    phase: safeOmlxDetail(entry.phase || 'prefill', 32) || 'prefill',
+    detail: safeOmlxDetail(entry.detail || '', 48) || null,
+    promptTokens: numericOrNull(entry.prompt_tokens ?? entry.promptTokens),
+    cachedTokens: numericOrNull(entry.cached_tokens ?? entry.cachedTokens),
+    scoredTokens: numericOrNull(entry.scored_tokens ?? entry.scoredTokens),
+    selectedTokens: numericOrNull(entry.selected_tokens ?? entry.selectedTokens)
+  };
+}
+
+function normalizeOmlxGeneratingRequest(entry = {}) {
+  const requestId = safeOmlxRequestId(entry.request_id ?? entry.requestId);
+  return {
+    requestId,
+    elapsedSeconds: numericOrNull(entry.elapsed_seconds ?? entry.elapsedSeconds),
+    generatedTokens: numericOrNull(entry.generated_tokens ?? entry.generatedTokens),
+    tokensPerSecond: numericOrNull(entry.tokens_per_second ?? entry.tokensPerSecond),
+    lastActivityAgeSeconds: numericOrNull(entry.last_activity_age_seconds ?? entry.lastActivityAgeSeconds),
+    promptTokens: numericOrNull(entry.prompt_tokens ?? entry.promptTokens),
+    maxTokens: numericOrNull(entry.max_tokens ?? entry.maxTokens)
+  };
+}
+
+function normalizeOmlxActivity(entry = {}) {
+  const requestId = safeOmlxRequestId(entry.request_id ?? entry.requestId);
+  return {
+    requestId,
+    kind: safeOmlxDetail(entry.kind || 'activity', 32) || 'activity',
+    startedAt: numericOrNull(entry.started_at ?? entry.startedAt),
+    lastActivityAt: numericOrNull(entry.last_activity_at ?? entry.lastActivityAt),
+    totalItems: numericOrNull(entry.total_items ?? entry.totalItems)
+  };
+}
+
+function normalizeOmlxMemoryPressure(pressure = {}) {
+  if (!pressure || typeof pressure !== 'object') return null;
+  return {
+    enabled: Boolean(pressure.enabled),
+    currentBytes: numericOrNull(pressure.current_bytes ?? pressure.currentBytes),
+    softBytes: numericOrNull(pressure.soft_bytes ?? pressure.softBytes),
+    hardBytes: numericOrNull(pressure.hard_bytes ?? pressure.hardBytes),
+    currentText: safeOmlxDetail(pressure.current_formatted || pressure.currentText || '', 24),
+    softText: safeOmlxDetail(pressure.soft_formatted || pressure.softText || '', 24),
+    hardText: safeOmlxDetail(pressure.hard_formatted || pressure.hardText || '', 24),
+    pressureLevel: safeOmlxDetail(pressure.pressure_level || pressure.pressureLevel || 'ok', 24) || 'ok'
+  };
+}
+
+function normalizeOmlxUsageModel(model = {}) {
+  const waiting = Array.isArray(model.waiting) ? model.waiting.map(normalizeOmlxWaitingRequest).filter((entry) => entry.requestId) : [];
+  const prefilling = Array.isArray(model.prefilling) ? model.prefilling.map(normalizeOmlxPrefillingRequest).filter((entry) => entry.requestId) : [];
+  const generating = Array.isArray(model.generating) ? model.generating.map(normalizeOmlxGeneratingRequest).filter((entry) => entry.requestId) : [];
+  const activities = Array.isArray(model.activities) ? model.activities.map(normalizeOmlxActivity).filter((entry) => entry.requestId || entry.kind) : [];
+  const liveActiveRequests = prefilling.length + generating.length + activities.length;
+  const liveWaitingRequests = waiting.length;
+  const activeRequests = Math.max(numericOrNull(model.active_requests ?? model.activeRequests) ?? 0, liveActiveRequests);
+  const waitingRequests = Math.max(numericOrNull(model.waiting_requests ?? model.waitingRequests) ?? 0, liveWaitingRequests);
+
+  return {
+    id: String(model.id || '').trim(),
     loaded: Boolean(model.loaded),
-    isLoading: Boolean(model.is_loading),
+    isLoading: Boolean(model.is_loading ?? model.isLoading),
     pinned: Boolean(model.pinned),
-    engineType: String(model.engine_type || ''),
-    modelType: String(model.model_type || ''),
-    lastAccess: numericOrNull(model.last_access),
-    estimatedSize: numericOrNull(model.estimated_size),
-    actualSize: numericOrNull(model.actual_size),
-    maxContextWindow: numericOrNull(model.max_context_window),
-    maxTokens: numericOrNull(model.max_tokens)
+    engineType: String(model.engine_type || model.engineType || ''),
+    modelType: String(model.model_type || model.modelType || ''),
+    lastAccess: numericOrNull(model.last_access ?? model.lastAccess),
+    estimatedSize: numericOrNull(model.estimated_size ?? model.estimatedSize),
+    actualSize: numericOrNull(model.actual_size ?? model.actualSize),
+    maxContextWindow: numericOrNull(model.max_context_window ?? model.maxContextWindow),
+    maxTokens: numericOrNull(model.max_tokens ?? model.maxTokens),
+    activeRequests,
+    waitingRequests,
+    waiting,
+    prefilling,
+    generating,
+    activities,
+    idleSeconds: numericOrNull(model.idle_seconds ?? model.idleSeconds),
+    ttlRemainingSeconds: numericOrNull(model.ttl_remaining_seconds ?? model.ttlRemainingSeconds)
+  };
+}
+
+function mergeOmlxUsageModels(base = {}, detail = {}) {
+  const merged = { ...base, ...detail };
+  merged.loaded = Boolean(base.loaded || detail.loaded);
+  merged.isLoading = Boolean(base.isLoading || detail.isLoading);
+  merged.pinned = Boolean(base.pinned || detail.pinned);
+  if (!merged.engineType) merged.engineType = base.engineType || detail.engineType || '';
+  if (!merged.modelType) merged.modelType = base.modelType || detail.modelType || '';
+  for (const key of ['lastAccess', 'estimatedSize', 'actualSize', 'maxContextWindow', 'maxTokens', 'idleSeconds', 'ttlRemainingSeconds']) {
+    if (merged[key] === null || merged[key] === undefined) merged[key] = base[key] ?? detail[key] ?? null;
+  }
+  for (const key of ['waiting', 'prefilling', 'generating', 'activities']) {
+    merged[key] = Array.isArray(detail[key]) ? detail[key] : (Array.isArray(base[key]) ? base[key] : []);
+  }
+  merged.activeRequests = detail.activeRequests ?? base.activeRequests ?? 0;
+  merged.waitingRequests = detail.waitingRequests ?? base.waitingRequests ?? 0;
+  return merged;
+}
+
+function normalizeOmlxAdminActiveModels(activeModels = {}) {
+  const models = Array.isArray(activeModels?.models)
+    ? activeModels.models
+      .map(normalizeOmlxUsageModel)
+      .filter((model) => model.id && model.id.toLowerCase() !== 'markitdown')
+    : [];
+  return {
+    models,
+    totalActiveRequests: numericOrNull(activeModels?.total_active_requests ?? activeModels?.totalActiveRequests),
+    totalWaitingRequests: numericOrNull(activeModels?.total_waiting_requests ?? activeModels?.totalWaitingRequests),
+    modelMemoryUsed: numericOrNull(activeModels?.model_memory_used ?? activeModels?.modelMemoryUsed),
+    modelMemoryMax: numericOrNull(activeModels?.model_memory_max ?? activeModels?.modelMemoryMax),
+    memoryPressure: normalizeOmlxMemoryPressure(activeModels?.memory_pressure ?? activeModels?.memoryPressure)
   };
 }
 
@@ -1948,15 +2073,15 @@ async function readOmlxUsage(serverId = DEFAULT_OMLX_SERVER_ID, options = {}) {
     const headers = omlxHeaders(server);
     const statusUrl = `${server.rootUrl}/api/status`;
     const modelStatusUrl = `${server.baseUrl}/models/status`;
+    const adminStatsUrl = `${server.rootUrl}/admin/api/stats`;
 
     try {
       const apiStatus = await fetchJsonWithTimeout(statusUrl, { timeoutMs: server.statusTimeoutMs, headers });
-      let modelStatus = null;
-      try {
-        modelStatus = await fetchJsonWithTimeout(modelStatusUrl, { timeoutMs: Math.max(500, server.statusTimeoutMs), headers });
-      } catch {
-        // Per-model status is detail; aggregate status remains useful without it.
-      }
+      const [modelStatus, adminStats] = await Promise.all([
+        fetchJsonWithTimeout(modelStatusUrl, { timeoutMs: Math.max(500, server.statusTimeoutMs), headers }).catch(() => null),
+        fetchJsonWithTimeout(adminStatsUrl, { timeoutMs: Math.max(700, server.statusTimeoutMs), headers }).catch(() => null)
+      ]);
+      const adminActiveModels = normalizeOmlxAdminActiveModels(adminStats?.active_models);
 
       const rawModels = Array.isArray(modelStatus?.models) ? modelStatus.models : [];
       const models = rawModels
@@ -1965,27 +2090,35 @@ async function readOmlxUsage(serverId = DEFAULT_OMLX_SERVER_ID, options = {}) {
           return model?.id && engineType !== 'markitdown' && model?.source_type !== 'builtin' && (model.loaded || model.is_loading);
         })
         .map(normalizeOmlxUsageModel);
-      const loadedModels = arrayOfStrings(apiStatus?.loaded_models);
-      for (const modelId of loadedModels) {
-        if (!models.some((model) => model.id === modelId)) {
-          models.push({
-            id: modelId,
-            loaded: true,
-            isLoading: false,
-            pinned: false,
-            engineType: '',
-            modelType: '',
-            lastAccess: null,
-            estimatedSize: null,
-            actualSize: null,
-            maxContextWindow: null,
-            maxTokens: null
-          });
+      const modelsById = new Map(models.map((model) => [model.id, model]));
+      for (const activeModel of adminActiveModels.models) {
+        const existing = modelsById.get(activeModel.id);
+        if (existing) {
+          const merged = mergeOmlxUsageModels(existing, activeModel);
+          modelsById.set(activeModel.id, merged);
+          const index = models.findIndex((model) => model.id === activeModel.id);
+          if (index >= 0) models[index] = merged;
+        } else {
+          modelsById.set(activeModel.id, activeModel);
+          models.push(activeModel);
         }
       }
 
-      const memoryUsed = numericOrNull(apiStatus?.model_memory_used ?? modelStatus?.current_model_memory);
-      const memoryMax = numericOrNull(apiStatus?.model_memory_max ?? modelStatus?.final_ceiling);
+      const loadedModels = arrayOfStrings(apiStatus?.loaded_models);
+      for (const modelId of loadedModels) {
+        if (!modelsById.has(modelId)) {
+          const model = normalizeOmlxUsageModel({ id: modelId, loaded: true });
+          modelsById.set(modelId, model);
+          models.push(model);
+        }
+      }
+
+      const memoryUsed = adminActiveModels.modelMemoryUsed ?? numericOrNull(apiStatus?.model_memory_used ?? modelStatus?.current_model_memory);
+      const memoryMax = adminActiveModels.modelMemoryMax ?? numericOrNull(apiStatus?.model_memory_max ?? modelStatus?.final_ceiling);
+      const computedActiveRequests = models.reduce((sum, model) => sum + Number(model.activeRequests || 0), 0);
+      const computedWaitingRequests = models.reduce((sum, model) => sum + Number(model.waitingRequests || 0), 0);
+      const activeRequests = Math.max(adminActiveModels.totalActiveRequests ?? numericOrNull(apiStatus?.active_requests) ?? 0, computedActiveRequests);
+      const waitingRequests = Math.max(adminActiveModels.totalWaitingRequests ?? numericOrNull(apiStatus?.waiting_requests) ?? 0, computedWaitingRequests);
       return {
         ok: true,
         status: 'online',
@@ -1996,8 +2129,8 @@ async function readOmlxUsage(serverId = DEFAULT_OMLX_SERVER_ID, options = {}) {
         version: apiStatus?.version || '',
         uptimeSeconds: numericOrNull(apiStatus?.uptime_seconds),
         defaultModel: apiStatus?.default_model || '',
-        activeRequests: numericOrNull(apiStatus?.active_requests) ?? 0,
-        waitingRequests: numericOrNull(apiStatus?.waiting_requests) ?? 0,
+        activeRequests,
+        waitingRequests,
         totalRequests: numericOrNull(apiStatus?.total_requests),
         totalPromptTokens: numericOrNull(apiStatus?.total_prompt_tokens),
         totalCompletionTokens: numericOrNull(apiStatus?.total_completion_tokens),
@@ -2007,8 +2140,10 @@ async function readOmlxUsage(serverId = DEFAULT_OMLX_SERVER_ID, options = {}) {
         avgGenerationTps: numericOrNull(apiStatus?.avg_generation_tps),
         memoryUsed,
         memoryMax,
-        memoryUsedText: apiStatus?.model_memory_used_formatted || '',
-        memoryMaxText: apiStatus?.model_memory_max_formatted || '',
+        memoryUsedText: adminActiveModels.memoryPressure?.currentText || apiStatus?.model_memory_used_formatted || '',
+        memoryMaxText: adminActiveModels.memoryPressure?.hardText || apiStatus?.model_memory_max_formatted || '',
+        memoryPressure: adminActiveModels.memoryPressure,
+        liveTelemetry: Boolean(adminStats?.active_models),
         modelCount: numericOrNull(apiStatus?.models_discovered ?? modelStatus?.model_count),
         loadedCount: numericOrNull(apiStatus?.models_loaded ?? modelStatus?.loaded_count),
         loadingCount: numericOrNull(apiStatus?.models_loading),
