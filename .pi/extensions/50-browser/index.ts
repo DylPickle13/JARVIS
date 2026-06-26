@@ -1,17 +1,17 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { BrowserManager } from "./browser-manager";
+import { DaemonBrowserManager } from "./daemon-browser-manager";
 import { registerBrowserTools } from "./tools";
 
 export default function registerBrowser(pi: ExtensionAPI) {
-  let browser: BrowserManager | null = null;
+  let browser: DaemonBrowserManager | null = null;
 
-  const getBrowser = () => {
-    if (!browser) browser = new BrowserManager();
+  const getBrowser = (): DaemonBrowserManager => {
+    if (!browser) browser = new DaemonBrowserManager();
     return browser;
   };
 
-  registerBrowserTools(pi, getBrowser);
+  registerBrowserTools(pi, getBrowser as any);
 
   pi.on("session_shutdown", async () => {
     if (process.env.PI_BROWSER_KEEP_OPEN_ON_SHUTDOWN === "1") return;
@@ -37,12 +37,13 @@ export default function registerBrowser(pi: ExtensionAPI) {
       if (action === "close") {
         await browser?.close(true);
         browser = null;
-        ctx.ui.notify("Closed visible browser.", "success");
+        ctx.ui.notify("Browser bridge remains connected; closed/detached only this tool handle.", "success");
         return;
       }
       if (action === "profile") {
-        const profileDir = getBrowser().profileDir;
-        ctx.ui.notify(`Browser profile: ${profileDir}`, "info");
+        const current = getBrowser();
+        const profile = `${current.profileDir}${current.profileDirectory ? ` (${current.profileDirectory})` : ""}`;
+        ctx.ui.notify(`Browser daemon: ${current.daemonUrl}\nProfile: ${profile}`, "info");
         return;
       }
       ctx.ui.notify("Usage: /browser status | open <url> | close | profile", "warning");

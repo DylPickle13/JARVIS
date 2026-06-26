@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import { truncate } from "../lib/text";
-import type { BrowserManager } from "./browser-manager";
+import type { DaemonBrowserManager as BrowserManager } from "./daemon-browser-manager";
 
 const MouseButton = ["left", "right", "middle"] as const;
 const ScrollDirection = ["up", "down", "left", "right"] as const;
@@ -30,7 +30,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
   pi.registerTool({
     name: "browser_status",
     label: "Browser Status",
-    description: "Return status for the lazy visible Chrome browser: running state, profile path, active tab, and open tabs.",
+    description: "Return status for the lazy visible Chrome browser: launch/attach mode, running state, profile/CDP path, active tab, and open tabs.",
     promptSnippet: "Inspect the visible browser state and open tabs.",
     promptGuidelines: ["Use browser_status to check whether the visible browser is already open before opening many tabs."],
     parameters: Type.Object({}),
@@ -43,7 +43,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
   pi.registerTool({
     name: "browser_open",
     label: "Browser Open",
-    description: "Open a URL in the visible Chrome browser. Starts Chrome lazily if needed. Uses a persistent browser profile.",
+    description: "Open a URL in the visible Chrome browser through the persistent local Chrome bridge daemon.",
     promptSnippet: "Open/navigate the visible Chrome browser to a URL.",
     promptGuidelines: [
       "Use browser_open only after the browser group has been loaded. Prefer browser_screenshot after navigation to verify the page visually.",
@@ -259,13 +259,18 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
   pi.registerTool({
     name: "browser_close",
     label: "Browser Close",
-    description: "Close the active tab or the entire visible browser. The persistent profile remains on disk.",
+    description: "Close the active tab, or release this tool handle while keeping the persistent Chrome bridge alive.",
     promptSnippet: "Close browser tab or whole visible browser.",
     parameters: Type.Object({ all: Type.Optional(Type.Boolean({ description: "Close entire browser. Defaults to true. false closes active tab only." })) }),
     async execute(_id, params, signal) {
       if (signal?.aborted) throw new Error("browser_close cancelled");
-      await getBrowser().close(params.all !== false);
-      return { content: [{ type: "text", text: params.all === false ? "Closed active browser tab." : "Closed visible browser." }], details: { closedAll: params.all !== false } };
+      const browser = getBrowser();
+      await browser.close(params.all !== false);
+      const closedAll = params.all !== false;
+      return {
+        content: [{ type: "text", text: params.all === false ? "Closed active browser tab." : "Browser bridge remains connected." }],
+        details: { closedAll, bridgeKeptAlive: closedAll },
+      };
     },
   });
 }
