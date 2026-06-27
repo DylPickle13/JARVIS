@@ -9,7 +9,7 @@ import discord
 import requests
 
 import config
-from jarvis_discord.formatting import format_bytes, format_discord_block_quote
+from discord_support.formatting import format_bytes, format_discord_block_quote
 
 PROJECT_ROOT = config.PROJECT_ROOT
 config.load_project_env(config.DOTENV_PATH)

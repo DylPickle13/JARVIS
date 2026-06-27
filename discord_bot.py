@@ -16,7 +16,7 @@ from typing import Callable
 import discord
 import requests
 import config
-from jarvis_discord.attachments import (
+from discord_support.attachments import (
     build_rpc_image_attachments as _build_rpc_image_attachments,
     compose_user_message as _compose_user_message,
     delete_temporary_paths as _delete_temporary_paths,
@@ -25,14 +25,14 @@ from jarvis_discord.attachments import (
     save_message_attachments as _save_message_attachments,
     transcribe_voice_message_paths as _transcribe_voice_message_paths,
 )
-from jarvis_discord.formatting import (
+from discord_support.formatting import (
     format_voice_steering_marker as _format_voice_steering_marker,
     truncate_discord_label as _truncate_discord_label,
     truncate_discord_value as _truncate_discord_value,
 )
-from jarvis_discord.instance_lock import acquire_single_instance_lock as _acquire_single_instance_lock
-from jarvis_discord.streaming import _StreamingResponse
-from jarvis_discord.tool_labels import _tool_voice_narration
+from discord_support.instance_lock import acquire_single_instance_lock as _acquire_single_instance_lock
+from discord_support.streaming import _StreamingResponse
+from discord_support.tool_labels import _tool_voice_narration
 
 PROJECT_ROOT = config.PROJECT_ROOT
 DOTENV_PATH = config.DOTENV_PATH
@@ -375,6 +375,7 @@ def _format_quota_summary(report: dict[str, object] | None, *, error: str | None
         primary = usage.get("primary") if isinstance(usage, dict) and isinstance(usage.get("primary"), dict) else {}
         secondary = usage.get("secondary") if isinstance(usage, dict) and isinstance(usage.get("secondary"), dict) else {}
         credits = usage.get("credits") if isinstance(usage, dict) and isinstance(usage.get("credits"), dict) else {}
+        reset_credits = usage.get("rate_limit_reset_credits") if isinstance(usage, dict) and isinstance(usage.get("rate_limit_reset_credits"), dict) else {}
         codex_bits = [str(usage.get("plan_type") or "unknown plan") if isinstance(usage, dict) else "unknown plan"]
         if primary:
             codex_bits.append(f"5h {_format_quota_percent(primary.get('used_percent'))} used")
@@ -382,6 +383,8 @@ def _format_quota_summary(report: dict[str, object] | None, *, error: str | None
             codex_bits.append(f"weekly {_format_quota_percent(secondary.get('used_percent'))} used")
         if credits and credits.get("balance") is not None:
             codex_bits.append(f"credits {_format_quota_number(credits.get('balance'))}")
+        if reset_credits and reset_credits.get("available_count") is not None:
+            codex_bits.append(f"banked resets {_format_quota_number(reset_credits.get('available_count'))}")
         lines.append(f"Codex: {'; '.join(codex_bits)}")
     else:
         lines.append("Codex: no saved data")

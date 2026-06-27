@@ -7,11 +7,11 @@ import time
 import discord
 
 import config
-from jarvis_discord.formatting import (
+from discord_support.formatting import (
     chunk_text as _chunk_text,
     format_steering_marker as _format_steering_marker,
 )
-from jarvis_discord.tool_labels import (
+from discord_support.tool_labels import (
     _is_discord_send_file_tool,
     _tool_action_label,
     _tool_failure_label,
