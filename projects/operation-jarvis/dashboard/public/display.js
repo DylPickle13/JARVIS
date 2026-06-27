@@ -174,6 +174,27 @@ function shortDashboardModelName(raw = '') {
   return value.length > 34 ? `${value.slice(0, 31)}…` : value;
 }
 
+function compactDashboardModelName(raw = '') {
+  const value = shortDashboardModelName(raw)
+    .replace(/[-_](instruct|chat|mlx|gguf|awq|gptq|q\d+(_k_m)?|\d+bit|fp16|bf16)$/i, '')
+    .replace(/[-_](instruct|chat|mlx|gguf|awq|gptq|q\d+(_k_m)?|\d+bit|fp16|bf16)$/i, '');
+  const size = value.match(/(?:^|[-_])(\d+(?:\.\d+)?B)(?:[-_]|$)/i)?.[1]?.toUpperCase();
+  if (/qwen/i.test(value) && size) return `Q${size}`;
+  if (/llama/i.test(value) && size) return `L${size}`;
+  if (/mistral/i.test(value) && size) return `M${size}`;
+  if (/mixtral/i.test(value) && size) return `Mix${size}`;
+  if (/gemma/i.test(value) && size) return `G${size}`;
+  if (/deepseek/i.test(value) && size) return `DS${size}`;
+  if (/phi/i.test(value) && size) return `Phi${size}`;
+  return value.length > 10 ? `${value.slice(0, 9)}…` : value;
+}
+
+function compactOmlxServerLabel(server = {}) {
+  const serverId = String(server.serverId || '').trim();
+  if (serverId) return serverId.replace(/^omlx[-_]?/i, '');
+  return String(server.name || 'OMLX').replace(/^OMLX[-_]?/i, '') || 'OMLX';
+}
+
 function clearActiveModelsList() {
   if (!activeModelsListEl) return;
   while (activeModelsListEl.firstChild) activeModelsListEl.removeChild(activeModelsListEl.firstChild);
@@ -188,7 +209,7 @@ function makeActiveModelsNode(tag, className = '', text = '') {
 
 function appendActiveModelsEmpty(server, container) {
   const empty = makeActiveModelsNode('div', 'active-models-empty');
-  empty.textContent = server.ok ? 'No loaded models' : (server.error || 'Server offline');
+  empty.textContent = server.ok ? 'idle' : (server.error ? 'offline' : 'offline');
   container.appendChild(empty);
 }
 
@@ -207,7 +228,7 @@ function formatDashboardSeconds(value, compact = false) {
 function formatDashboardTps(value) {
   const tps = finiteDashboardNumber(value);
   if (tps === null || tps <= 0) return '';
-  return `${tps >= 100 ? Math.round(tps) : tps.toFixed(1)} tok/s`;
+  return `${tps >= 100 ? Math.round(tps) : tps.toFixed(1)}t/s`;
 }
 
 function shortDashboardRequestId(value = '') {
@@ -228,6 +249,11 @@ function activeModelRequestCounts(model = {}) {
     generating,
     activities
   };
+}
+
+function activeModelRailPriority(model = {}) {
+  const counts = activeModelRequestCounts(model);
+  return (counts.active * 1000) + (counts.waiting * 100) + (model.isLoading ? 20 : 0) + (model.loaded ? 10 : 0) + (model.pinned ? 1 : 0);
 }
 
 function appendActiveModelLiveLine(container, phase, title, detail = '', options = {}) {
@@ -258,30 +284,30 @@ function appendActiveModelLiveRows(row, model = {}) {
   let shown = 0;
 
   for (const item of prefilling) {
-    if (shown >= 3) break;
+    if (shown >= 2) break;
     const processed = finiteDashboardNumber(item.processed);
     const total = finiteDashboardNumber(item.total);
     const pct = processed !== null && total && total > 0 ? Math.max(0, Math.min(99, (processed / total) * 100)) : null;
-    const title = `${shortDashboardRequestId(item.requestId)} · prefilling`;
+    const title = 'PF';
     const details = [];
-    if (processed !== null && total) details.push(`${formatCompactDashboardNumber(processed)} / ${formatCompactDashboardNumber(total)} tok`);
+    if (processed !== null && total) details.push(`${formatCompactDashboardNumber(processed)}/${formatCompactDashboardNumber(total)}`);
     const elapsed = formatDashboardSeconds(item.elapsed, true);
     if (elapsed) details.push(elapsed);
     const tps = formatDashboardTps(item.speed);
     const eta = formatDashboardSeconds(item.eta, true);
-    const perf = [tps, eta ? `${eta} left` : ''].filter(Boolean).join(', ');
+    const perf = [tps, eta ? `${eta}` : ''].filter(Boolean).join(' · ');
     appendActiveModelLiveLine(live, 'prefill', title, details.join(' · '), {
       progressPercent: pct,
-      subdetail: perf ? `(${perf})` : ''
+      subdetail: perf
     });
     shown += 1;
   }
 
   for (const item of generating) {
-    if (shown >= 3) break;
-    const title = `${shortDashboardRequestId(item.requestId)} · generating`;
+    if (shown >= 2) break;
+    const title = 'GEN';
     const details = [];
-    if (finiteDashboardNumber(item.generatedTokens) !== null) details.push(`${formatCompactDashboardNumber(item.generatedTokens)} tok`);
+    if (finiteDashboardNumber(item.generatedTokens) !== null) details.push(`${formatCompactDashboardNumber(item.generatedTokens)}`);
     const tps = formatDashboardTps(item.tokensPerSecond);
     if (tps) details.push(tps);
     const elapsed = formatDashboardSeconds(item.elapsedSeconds, true);
@@ -291,9 +317,9 @@ function appendActiveModelLiveRows(row, model = {}) {
   }
 
   for (const item of waiting) {
-    if (shown >= 3) break;
+    if (shown >= 2) break;
     const position = finiteDashboardNumber(item.queuePosition);
-    const title = `${shortDashboardRequestId(item.requestId)} · queued${position ? ` #${position}` : ''}`;
+    const title = `queue${position ? ` #${position}` : ''}`;
     const details = [];
     if (finiteDashboardNumber(item.promptTokens) !== null) details.push(`${formatCompactDashboardNumber(item.promptTokens)} tok`);
     const elapsed = formatDashboardSeconds(item.elapsedSeconds, true);
@@ -303,14 +329,171 @@ function appendActiveModelLiveRows(row, model = {}) {
   }
 
   for (const item of activities) {
-    if (shown >= 3) break;
-    appendActiveModelLiveLine(live, 'activity', `${shortDashboardRequestId(item.requestId)} · ${item.kind || 'activity'}`);
+    if (shown >= 2) break;
+    appendActiveModelLiveLine(live, 'activity', item.kind || 'activity');
     shown += 1;
   }
 
   const remaining = prefilling.length + generating.length + waiting.length + activities.length - shown;
   if (remaining > 0) appendActiveModelLiveLine(live, 'more', `+${remaining} more`);
   if (shown > 0 || remaining > 0) row.appendChild(live);
+}
+
+function activeModelsServerRequestTotal(server = {}) {
+  return Number(server.activeRequests || 0) + Number(server.waitingRequests || 0);
+}
+
+function activeModelsServerUiState(server = {}) {
+  if (!server.ok) return 'offline';
+  if (activeModelsServerRequestTotal(server) > 0) return 'active';
+  if ((Array.isArray(server.models) ? server.models : []).some((model) => model.isLoading)) return 'loading';
+  return 'online';
+}
+
+function activeModelsModelRequestTotal(model = {}) {
+  const counts = activeModelRequestCounts(model);
+  return counts.active + counts.waiting;
+}
+
+function primaryActiveModelsModel(server = {}) {
+  const models = Array.isArray(server.models) ? server.models : [];
+  return [...models].sort((a, b) => activeModelRailPriority(b) - activeModelRailPriority(a))[0] || null;
+}
+
+function selectActiveModelsFocus(servers = []) {
+  const candidates = [];
+  const serverBias = (server = {}) => String(server.serverId || '') === '64' ? 2 : (String(server.serverId || '') === '16' ? 1 : 0);
+  const addCandidate = (rank, server, model = null, kind = 'idle', item = null) => {
+    candidates.push({ rank: rank + serverBias(server), server, model, kind, item });
+  };
+
+  for (const server of servers) {
+    const models = Array.isArray(server.models) ? [...server.models].sort((a, b) => activeModelRailPriority(b) - activeModelRailPriority(a)) : [];
+    for (const model of models) {
+      const counts = activeModelRequestCounts(model);
+      const prefilling = Array.isArray(model.prefilling) ? model.prefilling : [];
+      const generating = Array.isArray(model.generating) ? model.generating : [];
+      const waiting = Array.isArray(model.waiting) ? model.waiting : [];
+      if (prefilling.length) addCandidate(6000, server, model, 'prefill', prefilling[0]);
+      if (generating.length) addCandidate(5000, server, model, 'generate', generating[0]);
+      if (waiting.length) addCandidate(4000, server, model, 'queued', waiting[0]);
+      else if (counts.waiting > 0) addCandidate(3900, server, model, 'queued', null);
+      if (counts.active > 0) addCandidate(3000, server, model, 'active', null);
+      if (model.isLoading) addCandidate(2000, server, model, 'loading', null);
+      if (model.loaded) addCandidate(1000, server, model, 'ready', null);
+    }
+    if (!models.length) addCandidate(server.ok ? 20 : 10, server, null, server.ok ? 'idle' : 'offline', null);
+  }
+
+  return candidates.sort((a, b) => b.rank - a.rank)[0] || null;
+}
+
+function appendActiveModelsFocusProgress(container, percent) {
+  const progress = finiteDashboardNumber(percent);
+  if (progress === null) return;
+  const clamped = Math.max(0, Math.min(100, progress));
+  const track = makeActiveModelsNode('div', 'active-models-focus-progress');
+  const fill = makeActiveModelsNode('i');
+  fill.style.width = `${clamped}%`;
+  track.appendChild(fill);
+  container.appendChild(track);
+}
+
+function appendActiveModelsFocusDetail(container, text, className = '') {
+  if (!text) return;
+  container.appendChild(makeActiveModelsNode('div', `active-models-focus-detail${className ? ` ${className}` : ''}`, text));
+}
+
+function appendActiveModelsFocusPeers(container, focus, servers = []) {
+  const peers = servers.filter((server) => server !== focus?.server);
+  if (!peers.length) return;
+  const peerBox = makeActiveModelsNode('div', 'active-models-focus-peers');
+  for (const server of peers) {
+    const peer = makeActiveModelsNode('div', 'active-models-focus-peer');
+    peer.dataset.state = activeModelsServerUiState(server);
+    const dot = makeActiveModelsNode('span', 'active-models-focus-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    const label = makeActiveModelsNode('strong', '', compactOmlxServerLabel(server));
+    peer.append(dot, label);
+    const requests = activeModelsServerRequestTotal(server);
+    if (requests > 0) peer.appendChild(makeActiveModelsNode('span', '', `${requests}R`));
+    else if (!server.ok) peer.appendChild(makeActiveModelsNode('span', '', 'OFF'));
+    peerBox.appendChild(peer);
+  }
+  container.appendChild(peerBox);
+}
+
+function appendActiveModelsFocus(container, focus, servers = []) {
+  const focusNode = makeActiveModelsNode('section', 'active-models-focus');
+  focusNode.dataset.kind = focus?.kind || 'idle';
+  focusNode.dataset.state = activeModelsServerUiState(focus?.server || {});
+
+  const server = focus?.server || servers[0] || { ok: false, serverId: '—', name: 'OMLX', models: [] };
+  const model = focus?.model || primaryActiveModelsModel(server);
+  const modelRequests = model ? activeModelsModelRequestTotal(model) : 0;
+  const serverRequests = activeModelsServerRequestTotal(server);
+
+  const serverLine = makeActiveModelsNode('div', 'active-models-focus-server');
+  const dot = makeActiveModelsNode('span', 'active-models-focus-dot');
+  dot.setAttribute('aria-hidden', 'true');
+  const serverLabel = makeActiveModelsNode('strong', '', compactOmlxServerLabel(server));
+  serverLabel.title = server.name || `OMLX-${server.serverId || ''}`;
+  serverLine.append(dot, serverLabel);
+  if (!server.ok) serverLine.appendChild(makeActiveModelsNode('span', 'active-models-focus-pill', 'OFF'));
+  focusNode.appendChild(serverLine);
+
+  if (model) {
+    const modelBlock = makeActiveModelsNode('div', 'active-models-focus-model-block');
+    const modelTitle = makeActiveModelsNode('strong', 'active-models-focus-model', compactDashboardModelName(model.id));
+    modelTitle.title = model.id || '';
+    modelBlock.appendChild(modelTitle);
+    const chipText = modelRequests > 0
+      ? `${modelRequests} REQ`
+      : (model.isLoading ? 'LOAD' : (model.loaded ? 'RDY' : (model.pinned ? 'PIN' : '')));
+    if (chipText) modelBlock.appendChild(makeActiveModelsNode('span', 'active-models-focus-chip', chipText));
+    focusNode.appendChild(modelBlock);
+  }
+
+  const phase = makeActiveModelsNode('div', 'active-models-focus-phase');
+  const kind = focus?.kind || (model ? 'ready' : (server.ok ? 'idle' : 'offline'));
+  const item = focus?.item || {};
+
+  if (kind === 'prefill') {
+    const processed = finiteDashboardNumber(item.processed);
+    const total = finiteDashboardNumber(item.total);
+    const pct = processed !== null && total && total > 0 ? Math.max(0, Math.min(100, (processed / total) * 100)) : null;
+    phase.textContent = 'PREFILL';
+    focusNode.appendChild(phase);
+    focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-percent', pct !== null ? `${Math.round(pct)}%` : 'PF'));
+    appendActiveModelsFocusProgress(focusNode, pct);
+    appendActiveModelsFocusDetail(focusNode, formatDashboardTps(item.speed), 'accent');
+  } else if (kind === 'generate') {
+    phase.textContent = 'GEN';
+    focusNode.appendChild(phase);
+    appendActiveModelsFocusDetail(focusNode, formatDashboardTps(item.tokensPerSecond), 'accent');
+  } else if (kind === 'queued') {
+    const position = finiteDashboardNumber(item.queuePosition);
+    phase.textContent = 'QUEUE';
+    focusNode.appendChild(phase);
+    focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-metric', position ? `#${position}` : `${modelRequests || serverRequests || 1} REQ`));
+    appendActiveModelsFocusDetail(focusNode, formatDashboardSeconds(item.elapsedSeconds, true), 'accent');
+  } else if (kind === 'active') {
+    phase.textContent = 'ACTIVE';
+    focusNode.appendChild(phase);
+    focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-metric', `${modelRequests || serverRequests || 1} REQ`));
+  } else if (kind === 'loading') {
+    phase.textContent = 'LOADING';
+    focusNode.appendChild(phase);
+  } else if (kind === 'ready') {
+    // Per-model RDY chip already communicates readiness; keep the focus rail uncluttered.
+  } else {
+    focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-metric', server.ok ? 'IDLE' : 'OFF'));
+  }
+
+  const spacer = makeActiveModelsNode('div', 'active-models-focus-spacer');
+  focusNode.appendChild(spacer);
+  appendActiveModelsFocusPeers(focusNode, focus, servers);
+  container.appendChild(focusNode);
 }
 
 function updateActiveModelsChrome(payload = {}, servers = []) {
@@ -322,9 +505,13 @@ function updateActiveModelsChrome(payload = {}, servers = []) {
   const memoryMax = finiteDashboardNumber(totals.memoryMax) ?? servers.reduce((sum, server) => sum + (finiteDashboardNumber(server.memoryMax) ?? 0), 0);
   const memoryPct = memoryMax > 0 ? Math.max(0, Math.min(100, (memoryUsed / memoryMax) * 100)) : 0;
 
-  if (activeModelsSummaryEl) activeModelsSummaryEl.textContent = 'Active Models';
+  const totalRequests = activeRequests + waitingRequests;
+  const onlineServers = servers.filter((server) => server.ok).length;
+  if (activeModelsSummaryEl) activeModelsSummaryEl.textContent = 'OMLX';
   if (activeModelsStatusEl) {
-    activeModelsStatusEl.textContent = activeRequests > 0 ? `${activeRequests} active` : `${loadedModels} loaded`;
+    activeModelsStatusEl.textContent = totalRequests > 0
+      ? `${totalRequests} REQ`
+      : (loadedModels > 0 ? `${loadedModels} RDY` : (onlineServers > 0 ? 'IDLE' : 'OFF'));
   }
   if (activeModelsMemoryFillEl) activeModelsMemoryFillEl.style.width = `${memoryPct}%`;
   if (activeModelsMemoryTextEl) {
@@ -333,7 +520,9 @@ function updateActiveModelsChrome(payload = {}, servers = []) {
       : 'Memory pending';
   }
   if (activeModelsFooterEl) {
-    activeModelsFooterEl.textContent = `Active: ${activeRequests}${waitingRequests ? ` · Queued: ${waitingRequests}` : ''}`;
+    activeModelsFooterEl.textContent = totalRequests > 0
+      ? `A ${activeRequests}${waitingRequests ? ` · Q ${waitingRequests}` : ''}`
+      : `${onlineServers}/${servers.length || 2} ONLINE`;
   }
 }
 
@@ -369,50 +558,7 @@ function renderActiveModelsUsage(payload = {}) {
   activeModelsCard.hidden = false;
   clearActiveModelsList();
 
-  for (const server of servers) {
-    const serverNode = makeActiveModelsNode('section', 'active-models-server');
-    const serverState = !server.ok
-      ? 'offline'
-      : (Number(server.activeRequests || 0) > 0 ? 'active' : (server.models.some((model) => model.isLoading) ? 'loading' : 'online'));
-    serverNode.dataset.state = serverState;
-
-    const heading = makeActiveModelsNode('header', 'active-models-server-header');
-    const titleLine = makeActiveModelsNode('div', 'active-models-server-title-line');
-    const dot = makeActiveModelsNode('span', 'active-models-server-dot');
-    dot.setAttribute('aria-hidden', 'true');
-    const title = makeActiveModelsNode('strong', '', server.name || `OMLX-${server.serverId || ''}`);
-    const meta = makeActiveModelsNode('span', '', server.ok
-      ? `${Number(server.activeRequests || 0)} active · ${Number(server.waitingRequests || 0)} queued`
-      : 'offline');
-    titleLine.append(dot, title);
-    heading.append(titleLine, meta);
-    serverNode.appendChild(heading);
-
-    if (!server.models.length) {
-      appendActiveModelsEmpty(server, serverNode);
-      activeModelsListEl.appendChild(serverNode);
-      continue;
-    }
-
-    for (const model of server.models) {
-      const row = makeActiveModelsNode('article', 'active-model-row');
-      const rowHeader = makeActiveModelsNode('div', 'active-model-row-header');
-      const modelTitle = makeActiveModelsNode('strong', '', shortDashboardModelName(model.id));
-      modelTitle.title = model.id || '';
-      const chips = makeActiveModelsNode('span', 'active-model-chips');
-      const counts = activeModelRequestCounts(model);
-      const totalRequests = counts.active + counts.waiting;
-      if (model.loaded) chips.appendChild(makeActiveModelsNode('b', '', 'loaded'));
-      if (model.isLoading) chips.appendChild(makeActiveModelsNode('b', '', 'loading'));
-      if (totalRequests) chips.appendChild(makeActiveModelsNode('b', '', `${totalRequests} req`));
-      if (model.pinned) chips.appendChild(makeActiveModelsNode('b', '', 'pinned'));
-      rowHeader.append(modelTitle, chips);
-      row.appendChild(rowHeader);
-      appendActiveModelLiveRows(row, model);
-      serverNode.appendChild(row);
-    }
-    activeModelsListEl.appendChild(serverNode);
-  }
+  appendActiveModelsFocus(activeModelsListEl, selectActiveModelsFocus(servers), servers);
 }
 
 async function refreshActiveModelsUsage() {

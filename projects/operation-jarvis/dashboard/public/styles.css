@@ -1510,7 +1510,7 @@ h1 {
 
 .hud-mini-boxes {
   --hud-card-width: clamp(96px, 16vmin, 145px);
-  --active-models-card-width: clamp(210px, 16vw, 280px);
+  --active-models-card-width: var(--hud-card-width);
   --camera-panel-width: clamp(104px, 14.5vmin, 136px);
   --voice-card-width: clamp(92px, 12.5vmin, 120px);
   --voice-card-height-scale: 1.62;
@@ -1591,12 +1591,12 @@ h1 {
   height: 100%;
   pointer-events: auto;
   overflow: hidden;
-  padding: clamp(12px, 1.45vmin, 18px);
+  padding: clamp(7px, .95vmin, 10px);
   border-color: rgba(138, 243, 255, .36);
   border-radius: clamp(16px, 2.5vmin, 22px);
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: clamp(6px, .75vmin, 9px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(5px, .7vmin, 8px);
   background:
     linear-gradient(135deg, rgba(138,243,255,.11), transparent 38%),
     linear-gradient(180deg, rgba(179,34,24,.14), transparent 68%),
@@ -1624,12 +1624,39 @@ h1 {
 .active-models-card[data-pressure="critical"],
 .active-models-card[data-pressure="offline"] { --tone: #ff2f22; }
 
+.active-models-rail-header,
 .active-models-header,
 .active-models-memory,
 .active-models-list,
 .active-models-footer {
   position: relative;
   z-index: 1;
+}
+
+.active-models-rail-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 2px 5px;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+}
+
+.active-models-rail-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f4feff;
+  font-size: clamp(1.18rem, 2.7vmin, 1.5rem);
+  font-weight: 950;
+  letter-spacing: .08em;
+  line-height: 1;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--tone), transparent 42%);
+}
+
+.active-models-rail-header .active-models-status {
+  display: none;
 }
 
 .active-models-header {
@@ -1678,9 +1705,9 @@ h1 {
   color: color-mix(in srgb, var(--tone), white 14%);
   border: 1px solid color-mix(in srgb, var(--tone), transparent 45%);
   border-radius: 999px;
-  padding: 4px 7px;
+  padding: 3px 5px;
   background: color-mix(in srgb, var(--tone), transparent 90%);
-  font-size: clamp(.54rem, .68vw, .66rem);
+  font-size: clamp(.52rem, 1.05vmin, .62rem);
   font-weight: 950;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -1718,7 +1745,8 @@ h1 {
 .active-model-size,
 .active-model-stats,
 .active-models-footer,
-.active-models-empty {
+.active-models-empty,
+.active-models-more {
   margin: 0;
   color: var(--muted);
   font-size: clamp(.76rem, .92vw, .88rem);
@@ -1729,20 +1757,24 @@ h1 {
 .active-models-list {
   grid-row: auto;
   min-height: 0;
-  display: grid;
-  align-content: start;
-  gap: clamp(2px, .35vmin, 4px);
+  display: block;
   overflow: hidden;
   padding-right: 1px;
 }
 
 .active-models-server {
+  min-width: 0;
   display: grid;
-  gap: 3px;
-  padding: clamp(5px, .65vmin, 7px);
+  gap: 5px;
+  padding: clamp(6px, .82vmin, 8px);
   border: 1px solid rgba(255,255,255,.075);
-  border-radius: clamp(10px, 1.5vmin, 13px);
+  border-radius: clamp(10px, 1.45vmin, 13px);
   background: rgba(255,255,255,.038);
+}
+
+.active-models-server[data-state="active"] {
+  border-color: color-mix(in srgb, var(--reactor), transparent 52%);
+  background: linear-gradient(180deg, rgba(138,243,255,.095), rgba(255,255,255,.035));
 }
 
 .active-models-server[data-state="offline"] { opacity: .72; }
@@ -1757,7 +1789,7 @@ h1 {
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: 1px;
+  gap: 3px;
 }
 
 .active-model-row-header {
@@ -1771,13 +1803,13 @@ h1 {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .active-models-server-dot {
   flex: 0 0 auto;
-  width: clamp(9px, 1.1vw, 12px);
-  height: clamp(9px, 1.1vw, 12px);
+  width: clamp(7px, .95vmin, 9px);
+  height: clamp(7px, .95vmin, 9px);
   border-radius: 999px;
   background: #6fa8ff;
   box-shadow: 0 0 12px rgba(111,168,255,.78), inset 0 0 5px rgba(255,255,255,.28);
@@ -1803,23 +1835,37 @@ h1 {
 
 .active-models-server-header strong {
   color: color-mix(in srgb, var(--tone), white 16%);
-  font-size: clamp(1rem, 1.28vw, 1.15rem);
-  letter-spacing: .01em;
+  font-size: clamp(1.32rem, 3.05vmin, 1.72rem);
+  letter-spacing: -.035em;
+  line-height: .95;
 }
 
 .active-models-server-header span {
-  color: var(--dim);
-  font-size: clamp(.75rem, .92vw, .86rem);
-  font-weight: 900;
+  color: color-mix(in srgb, var(--tone), white 12%);
+  font-size: clamp(.78rem, 1.72vmin, .95rem);
+  font-weight: 950;
+  line-height: 1;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
+.active-models-server-header > span {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid color-mix(in srgb, var(--tone), transparent 60%);
+  border-radius: 999px;
+  padding: 3px 5px;
+  background: color-mix(in srgb, var(--tone), transparent 91%);
+}
+
 .active-model-row {
+  min-width: 0;
   display: grid;
-  gap: 3px;
-  padding: clamp(5px, .62vmin, 7px);
-  border-radius: 10px;
+  gap: 5px;
+  padding: clamp(6px, .78vmin, 8px);
+  border-radius: 9px;
   background: rgba(0,0,0,.16);
   border: 1px solid rgba(255,255,255,.05);
 }
@@ -1832,9 +1878,11 @@ h1 {
 }
 
 .active-model-row-header strong {
+  width: 100%;
   color: #f4feff;
-  font-size: clamp(.98rem, 1.18vw, 1.15rem);
-  line-height: 1.04;
+  font-size: clamp(1.06rem, 2.28vmin, 1.28rem);
+  letter-spacing: -.025em;
+  line-height: 1.02;
 }
 
 .active-model-chips {
@@ -1850,9 +1898,9 @@ h1 {
   color: color-mix(in srgb, var(--tone), white 18%);
   border: 1px solid color-mix(in srgb, var(--tone), transparent 50%);
   border-radius: 999px;
-  padding: 2px 5px;
+  padding: 3px 6px;
   background: color-mix(in srgb, var(--tone), transparent 90%);
-  font-size: clamp(.58rem, .7vw, .68rem);
+  font-size: clamp(.74rem, 1.62vmin, .92rem);
   line-height: 1;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1885,9 +1933,9 @@ h1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 6px;
-  row-gap: 3px;
-  padding: 4px 5px;
+  column-gap: 5px;
+  row-gap: 4px;
+  padding: 5px 6px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--phase-tone), transparent 93%);
   border: 1px solid color-mix(in srgb, var(--phase-tone), transparent 72%);
@@ -1909,7 +1957,7 @@ h1 {
 
 .active-model-live-line strong {
   color: color-mix(in srgb, var(--phase-tone), white 22%);
-  font-size: clamp(.58rem, .72vw, .68rem);
+  font-size: clamp(.78rem, 1.68vmin, .96rem);
   font-weight: 950;
   letter-spacing: .02em;
   text-transform: uppercase;
@@ -1918,18 +1966,19 @@ h1 {
 
 .active-model-live-line span {
   color: #aebdca;
-  font-size: clamp(.56rem, .68vw, .64rem);
-  font-weight: 820;
+  font-size: clamp(.72rem, 1.52vmin, .88rem);
+  font-weight: 850;
   line-height: 1.05;
 }
 
 .active-model-progress-track {
   grid-column: 1 / -1;
   width: 100%;
-  height: 4px;
+  height: 10px;
+  overflow: hidden;
   border-radius: 999px;
-  background: rgba(255,255,255,.105);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+  background: rgba(255,255,255,.18);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 0 14px color-mix(in srgb, var(--phase-tone), transparent 72%);
 }
 
 .active-model-progress-track i {
@@ -1937,9 +1986,11 @@ h1 {
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--phase-tone), #0b4a70 14%), color-mix(in srgb, var(--phase-tone), white 18%));
-  box-shadow: 0 0 10px color-mix(in srgb, var(--phase-tone), transparent 45%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--phase-tone), #0b4a70 4%), color-mix(in srgb, var(--phase-tone), white 34%));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--phase-tone), transparent 36%);
+  transition: width 180ms linear;
 }
+
 
 .active-model-live-pct {
   color: color-mix(in srgb, var(--phase-tone), white 20%) !important;
@@ -1956,20 +2007,222 @@ h1 {
   color: color-mix(in srgb, var(--phase-tone), white 12%) !important;
 }
 
-.active-models-empty {
-  padding: 7px 8px;
-  border-radius: 10px;
+.active-models-empty,
+.active-models-more {
+  padding: 6px 7px;
+  border-radius: 8px;
   background: rgba(255,255,255,.035);
   color: var(--dim);
+  font-size: clamp(.8rem, 1.68vmin, .98rem);
+  text-transform: uppercase;
 }
 
 .active-models-footer {
   color: var(--dim);
+  text-align: center;
   text-transform: uppercase;
-  letter-spacing: .07em;
+  letter-spacing: .06em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: clamp(.76rem, 1.58vmin, .92rem);
+}
+
+.active-models-focus {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(8px, 1.35vmin, 13px);
+  overflow: hidden;
+}
+
+.active-models-focus-server {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: clamp(5px, .8vmin, 8px);
+}
+
+.active-models-focus-dot {
+  flex: 0 0 auto;
+  width: clamp(8px, 1.35vmin, 12px);
+  height: clamp(8px, 1.35vmin, 12px);
+  border-radius: 999px;
+  background: #6fa8ff;
+  box-shadow: 0 0 13px rgba(111,168,255,.82), inset 0 0 5px rgba(255,255,255,.28);
+}
+
+.active-models-focus[data-state="loading"] .active-models-focus-server .active-models-focus-dot,
+.active-models-focus-peer[data-state="loading"] .active-models-focus-dot {
+  background: var(--amber);
+  box-shadow: 0 0 13px rgba(255,209,102,.82), inset 0 0 5px rgba(255,255,255,.28);
+}
+
+.active-models-focus[data-state="offline"] .active-models-focus-server .active-models-focus-dot,
+.active-models-focus-peer[data-state="offline"] .active-models-focus-dot {
+  background: #ff2f22;
+  box-shadow: 0 0 13px rgba(255,47,34,.82), inset 0 0 5px rgba(255,255,255,.2);
+}
+
+.active-models-focus-server strong {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--tone), white 22%);
+  font-size: clamp(2rem, 5.2vmin, 2.8rem);
+  font-weight: 950;
+  letter-spacing: -.08em;
+  line-height: .84;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--tone), transparent 42%);
+}
+
+.active-models-focus-pill,
+.active-models-focus-chip {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--tone), white 18%);
+  border: 1px solid color-mix(in srgb, var(--tone), transparent 48%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tone), transparent 89%);
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.active-models-focus-pill {
+  padding: 4px 7px;
+  font-size: clamp(.74rem, 1.55vmin, .95rem);
+}
+
+.active-models-focus-model-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(5px, .8vmin, 8px);
+}
+
+.active-models-focus-model {
+  max-width: 100%;
+  overflow: hidden;
+  color: #f4feff;
+  font-size: clamp(1.8rem, 4.25vmin, 2.42rem);
+  font-weight: 950;
+  letter-spacing: -.08em;
+  line-height: .88;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 16px rgba(244,254,255,.2);
+}
+
+.active-models-focus-chip {
+  padding: 5px 8px;
+  font-size: clamp(.86rem, 1.9vmin, 1.08rem);
+}
+
+.active-models-focus-phase {
+  color: color-mix(in srgb, var(--tone), white 15%);
+  font-size: clamp(1.04rem, 2.35vmin, 1.34rem);
+  font-weight: 950;
+  letter-spacing: .08em;
+  line-height: .95;
+  text-transform: uppercase;
+}
+
+.active-models-focus-percent,
+.active-models-focus-metric {
+  color: #fff;
+  font-weight: 950;
+  letter-spacing: -.1em;
+  line-height: .82;
+  text-shadow: 0 0 22px color-mix(in srgb, var(--tone), transparent 38%);
+}
+
+.active-models-focus-percent {
+  font-size: clamp(2.85rem, 7.7vmin, 4.4rem);
+}
+
+.active-models-focus-metric {
+  font-size: clamp(1.9rem, 4.8vmin, 2.85rem);
+}
+
+.active-models-focus-progress {
+  width: 100%;
+  height: clamp(13px, 2.15vmin, 18px);
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(20, 55, 78, .72);
+  box-shadow: inset 0 0 0 1px rgba(138,243,255,.24), 0 0 20px rgba(22,159,255,.32);
+}
+
+.active-models-focus-progress i {
+  display: block;
+  width: 0;
+  min-width: 3px;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #168dff 0%, #2fd6ff 58%, #bdf8ff 100%);
+  box-shadow: 0 0 20px rgba(47,214,255,.82), 0 0 8px rgba(255,255,255,.35) inset;
+  transition: width 180ms linear;
+}
+
+.active-models-focus[data-kind="idle"] .active-models-focus-metric,
+.active-models-focus[data-kind="offline"] .active-models-focus-metric {
+  font-size: clamp(1.65rem, 3.9vmin, 2.2rem);
+  letter-spacing: -.04em;
+}
+
+.active-models-focus-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: #c8d8e4;
+  font-size: clamp(.94rem, 2.05vmin, 1.18rem);
+  font-weight: 900;
+  line-height: 1.02;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-models-focus-detail.accent {
+  color: color-mix(in srgb, var(--tone), white 14%);
+}
+
+.active-models-focus-spacer {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.active-models-focus-peers {
+  display: grid;
+  gap: clamp(5px, .85vmin, 8px);
+}
+
+.active-models-focus-peer {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.04);
+}
+
+.active-models-focus-peer strong {
+  color: color-mix(in srgb, var(--tone), white 10%);
+  font-size: clamp(1.1rem, 2.65vmin, 1.5rem);
+  font-weight: 950;
+  letter-spacing: -.04em;
+  line-height: .9;
+}
+
+.active-models-focus-peer span:not(.active-models-focus-dot) {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: clamp(.72rem, 1.45vmin, .86rem);
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 #camera-card {
@@ -2426,7 +2679,7 @@ h1 {
 @media (orientation: portrait), (max-width: 720px) {
   .hud-mini-boxes {
     --hud-card-width: clamp(84px, 25vw, 112px);
-    --active-models-card-width: clamp(145px, 31vw, 175px);
+    --active-models-card-width: var(--hud-card-width);
     --camera-panel-width: clamp(96px, 25vw, 118px);
     --voice-card-width: clamp(84px, 22vw, 106px);
     --voice-card-height-scale: 1.56;
@@ -2443,7 +2696,7 @@ h1 {
 @media (orientation: landscape) and (max-height: 390px) {
   .hud-mini-boxes {
     --hud-card-width: 88px;
-    --active-models-card-width: 145px;
+    --active-models-card-width: var(--hud-card-width);
     --camera-panel-width: 104px;
     --voice-card-width: 92px;
     --voice-card-height-scale: 1.58;

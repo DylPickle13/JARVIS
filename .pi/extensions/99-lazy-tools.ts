@@ -73,7 +73,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
   discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
   sessions: "session_search over prior Pi/JARVIS sessions",
-  browser: "visible non-headless Chrome control via screenshots, clicks, typing, scrolling, tabs, and page extraction",
+  browser: "visible Chrome for rendered/interactive web: screenshots/clicks/typing/uploads/extract",
 };
 
 const GROUP_NAMES = Object.keys(TOOL_GROUPS) as ConcreteToolGroup[];
@@ -180,12 +180,9 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   browser: {
     skill: "visible browser control",
     lines: [
-      "Use `load_tools({ groups: [\"browser\"] })` before controlling the visible Chrome browser, then call the unlocked `browser_*` tools directly.",
-      "Typical flow: `browser_open({ url })` → `browser_screenshot({})` → interact with `browser_click`, `browser_type`, `browser_scroll`, or `browser_key` → re-run `browser_screenshot` to verify results.",
-      "Clicking options: prefer `selector` or `text` when obvious; use `x`/`y` viewport coordinates only from the latest screenshot.",
-      "Use `browser_extract` for page text/links when DOM text is more useful than another screenshot; use `browser_upload` only for explicitly approved local files; use `browser_tabs` to list/switch/close tabs.",
-      "Do not automate logins, purchases, account/security changes, private content, CAPTCHA solving, or access-control bypasses without explicit user confirmation. If a CAPTCHA appears, stop and ask sir to solve it manually.",
-      "The browser uses real headful Chrome with a persistent profile; keep actions bounded, human-paced, and respectful of site terms.",
+      "`browser` = real visible persistent Chrome: open/screenshot/click/type/scroll/key/extract/tabs/upload.",
+      "Load for open/use/check sites, rendered/interactive/logged-in/JS/forms/upload/download/screenshot/web-app tasks; web_search/fetch_content=text-only; don't ask just to load.",
+      "Flow: open→screenshot→act→screenshot/extract. Prefer selector/text; coords from latest screenshot. Ask before private/account/purchase/destructive/submit; stop for CAPTCHA.",
     ],
   },
 };
@@ -313,7 +310,7 @@ function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
     cron: "cron: use `discord_cron` only for Discord-posted scheduled jobs; OS cron/launchd only if explicitly requested.",
     discord: "discord: use `discord_ping` for immediate Discord pings/notifications, with attachments when requested; use `discord_send_file` only for current-channel uploads when available.",
     sessions: "sessions: use `session_search` search first; status for freshness; index only if requested/stale.",
-    browser: "browser: use visible Chrome tools after `browser_open`; screenshot before coordinate clicks, verify after actions, and ask before sensitive/private/account actions.",
+    browser: "browser: load for rendered/interactive/logged-in/forms/screenshots/open-use-check; web=text; verify; ask before sensitive."
   };
   return ["Compact playbook:", ...groups.map((group) => `- ${lines[group]}`)].join("\n");
 }
@@ -421,13 +418,13 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
-    description: 'Load optional schemas for this session. Baseline includes local coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, and github_cli. Groups: memory, code_docs, image=generate_image, jarvis, phone, google, cron=scheduled Discord jobs, discord=immediate Discord pings/file delivery, sessions, browser=visible Chrome control, all. No aliases. The minecraft_jarvis group remains accepted for compatibility but loading it is unnecessary.',
-    promptSnippet: "Load optional tool groups on demand. Baseline includes local coding tools plus ssh, web_search, fetch_content, get_search_content, minecraft_jarvis, maps, github_cli, and load_tools. Common optional groups: memory, code_docs, image (generate_image), google (Calendar/Gmail/Drive/Docs/Sheets), phone, cron, discord, browser.",
+    description: 'Load optional schemas. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Groups: memory, code_docs, image, jarvis, phone, google, cron, discord, sessions, browser=visible Chrome, all. No aliases; minecraft_jarvis is already on.',
+    promptSnippet: "Load optional groups. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Common: memory, code_docs, image, google, phone, cron, discord, browser=visible Chrome.",
     promptGuidelines: [
       "Call load_tools before optional groups: memory, code_docs, image, jarvis, phone, google, cron, discord, sessions, browser. GitHub/`gh` => always-on `github_cli`; never bash `gh`. Local `git` status/diff/add/commit/log/branch => bash. If `github_cli` unavailable, report tool failure. For Google intents, load `google`. Web/search/fetch, github_cli, minecraft_jarvis, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
-      "For ordinary web research, use always-on `web_search`; for YouTube metadata/search, use always-on `web_search` with `provider: \"youtube\"`; for known URL extraction/full content, use always-on `fetch_content`; for stored search/content details, use always-on `get_search_content`. Only load `browser` when the user needs a real visible Chrome session controlled by screenshots/clicks/typing.",
+      "Web: `web_search`=discover (`provider: \"youtube\"` for YouTube), `fetch_content`=static, `get_search_content`=stored. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
       "After load_tools succeeds, use the exact unlocked tool and returned playbook. If a required tool is unavailable, say so; if a tool was listed as unlocked but is not callable, report schema refresh failure rather than substituting another tool.",
     ],
     parameters: Type.Object({
