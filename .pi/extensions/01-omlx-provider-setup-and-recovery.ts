@@ -330,7 +330,9 @@ function registerOmlxPrefillMemoryRecovery(pi: ExtensionAPI) {
 		if (!isOmlxProvider(message.provider) && !isOmlxProvider(ctx.model?.provider)) return;
 
 		const errorMessage = String(message.errorMessage ?? "");
-		if (!errorMessage || errorMessage.includes("context_length_exceeded")) return;
+		if (!errorMessage) return;
+		// Pi/OpenAI-compatible clients may prefix the same oMLX memory-guard body with
+		// `context_length_exceeded`; still recover if the underlying body matches.
 		if (!isOmlxPrefillMemoryGuardError(errorMessage)) return;
 		if (recoveryInFlight || consecutiveRecoveries >= maxConsecutiveRecoveries) return;
 
