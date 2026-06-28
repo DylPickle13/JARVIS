@@ -46,10 +46,17 @@ function formatResult(result: any): string {
     return truncate(lines.join("\n"));
   }
   if (typeof result.pending_files === "number") {
-    return `Session search index status: ${result.indexed_files}/${result.session_files} files indexed, ${result.pending_files} pending, ${result.changed_files} changed, ${result.chunks} chunks, ${result.embeddings} embeddings.\nDB: ${result.db_path}\nModel: ${result.model}\nEndpoint: ${result.endpoint}`;
+    const quality = typeof result.quality_metadata_files === "number"
+      ? `\nQuality metadata: ${result.quality_helpful_files ?? 0} helpful, ${result.quality_pruned_files ?? 0} pruned, ${result.quality_deleted_files ?? 0} deleted (${result.quality_metadata_files} analyzed).`
+      : "";
+    return `Session search index status: ${result.indexed_files}/${result.session_files} files indexed, ${result.pending_files} pending, ${result.changed_files} changed, ${result.chunks} chunks, ${result.embeddings} embeddings.${quality}\nDB: ${result.db_path}\nModel: ${result.model}\nEndpoint: ${result.endpoint}`;
   }
   if (typeof result.indexed_files === "number") {
-    return `Session index: ${result.indexed_files} files / ${result.indexed_chunks ?? 0} chunks indexed, ${result.skipped_files ?? 0} skipped, ${result.removed_files ?? 0} removed in ${result.duration_seconds ?? "?"}s.`;
+    const quality = result.quality_policy && result.quality_policy !== "none"
+      ? ` ${result.quality_policy} pruning: ${result.quality_kept_files ?? 0} kept, ${result.quality_pruned_files ?? 0} pruned, ${result.deleted_pruned_files ?? 0} deleted, ${result.deferred_pruned_files ?? 0} deferred; ${result.pruned_index_chunks ?? 0} chunks removed.`
+      : "";
+    const manifest = result.delete_manifest ? ` Manifest: ${result.delete_manifest}` : "";
+    return `Session index: ${result.indexed_files} files / ${result.indexed_chunks ?? 0} chunks indexed, ${result.skipped_files ?? 0} skipped, ${result.removed_files ?? 0} removed in ${result.duration_seconds ?? "?"}s.${quality}${manifest}`;
   }
   if (result.message) return String(result.message);
   return JSON.stringify(result, null, 2);
@@ -74,6 +81,9 @@ export default function registerSessionSearch(pi: ExtensionAPI) {
       includeText: Type.Optional(Type.Boolean({ description: "Full chunk text." })),
       rebuild: Type.Optional(Type.Boolean({ description: "Re-embed all." })),
       maxFiles: Type.Optional(Type.Number({ description: "Index file cap." })),
+      qualityPolicy: Type.Optional(StringEnum(["none", "hybrid", "strict"] as const, { description: "Optional session retention/indexing policy." })),
+      deletePruned: Type.Optional(Type.Boolean({ description: "Delete raw sessions rejected by the quality policy." })),
+      minAgeMinutes: Type.Optional(Type.Number({ description: "Minimum file age before deleting pruned sessions." })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const runner = runnerPath(ctx.cwd);
@@ -88,6 +98,9 @@ export default function registerSessionSearch(pi: ExtensionAPI) {
       } else if (params.action === "index") {
         if (params.rebuild) args.push("--rebuild");
         if (params.maxFiles) args.push("--max-files", String(params.maxFiles));
+        if (params.qualityPolicy) args.push("--quality-policy", params.qualityPolicy);
+        if (params.deletePruned) args.push("--delete-pruned");
+        if (params.minAgeMinutes !== undefined) args.push("--min-age-minutes", String(params.minAgeMinutes));
       }
 
       const timeout = params.action === "index" ? 3_600_000 : 300_000;
