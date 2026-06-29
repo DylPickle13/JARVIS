@@ -208,6 +208,23 @@ function clearActiveModelsList() {
   while (activeModelsListEl.firstChild) activeModelsListEl.removeChild(activeModelsListEl.firstChild);
 }
 
+function syncHeaderWeatherPosition() {
+  if (!headerWeatherEl || !activeModelsCard || activeModelsCard.hidden) return;
+  headerWeatherEl.style.transform = 'translateX(0px)';
+  const cardRect = activeModelsCard.getBoundingClientRect();
+  const weatherRect = headerWeatherEl.getBoundingClientRect();
+  const targetCenter = cardRect.left + (cardRect.width / 2);
+  const weatherCenter = weatherRect.left + (weatherRect.width / 2);
+  const offset = targetCenter - weatherCenter;
+  if (!Number.isFinite(offset)) return;
+  headerWeatherEl.style.transform = `translateX(${Math.round(offset)}px)`;
+}
+
+function scheduleHeaderWeatherPositionSync() {
+  if (!headerWeatherEl || !activeModelsCard) return;
+  requestAnimationFrame(syncHeaderWeatherPosition);
+}
+
 function syncActiveModelsCardWidth() {
   if (!activeModelsCard || !smartPlugGrid || activeModelsCard.hidden) return;
   const cardRect = activeModelsCard.getBoundingClientRect();
@@ -215,6 +232,7 @@ function syncActiveModelsCardWidth() {
   const targetWidth = plugRect.left - cardRect.left;
   if (!Number.isFinite(targetWidth) || targetWidth <= 0) return;
   activeModelsCard.style.setProperty('--active-models-card-width', `${Math.round(targetWidth)}px`);
+  scheduleHeaderWeatherPositionSync();
 }
 
 function scheduleActiveModelsCardWidthSync() {
@@ -1086,6 +1104,7 @@ function renderWeather(weather = {}) {
     headerWeatherEl.dataset.state = weather.ok ? 'online' : 'offline';
     headerWeatherEl.title = weatherTitle;
     headerWeatherEl.setAttribute('aria-label', `Weather ${temperatureText} · ${detail}`);
+    scheduleHeaderWeatherPositionSync();
   }
 
   if (!weatherCard) return;
@@ -1761,11 +1780,13 @@ reloadButton?.addEventListener('click', () => {
 window.addEventListener('resize', () => {
   queueCameraPanelPosition();
   scheduleActiveModelsCardWidthSync();
+  scheduleHeaderWeatherPositionSync();
   scheduleRightHudCardWidthSync();
 }, { passive: true });
 window.addEventListener('orientationchange', () => {
   queueCameraPanelPosition();
   scheduleActiveModelsCardWidthSync();
+  scheduleHeaderWeatherPositionSync();
   scheduleRightHudCardWidthSync();
 }, { passive: true });
 document.addEventListener('visibilitychange', () => {

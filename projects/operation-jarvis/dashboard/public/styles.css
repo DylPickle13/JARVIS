@@ -1090,6 +1090,11 @@ h1 {
 #display-header-air,
 #display-header-pi-sessions { text-transform: none; }
 
+#display-header-weather {
+  display: inline-block;
+  will-change: transform;
+}
+
 #display-header-air {
   max-width: min(42vw, 360px);
   overflow: hidden;
