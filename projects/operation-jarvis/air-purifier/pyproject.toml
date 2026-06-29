@@ -1,0 +1,15 @@
+[project]
+name = "jarvis-air-purifier"
+version = "0.1.0"
+description = "VeSync/Levoit air purifier control utilities for Operation JARVIS."
+requires-python = ">=3.11"
+dependencies = [
+  "pyvesync==3.4.2",
+]
+
+[project.scripts]
+purifierctl = "air_purifier.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

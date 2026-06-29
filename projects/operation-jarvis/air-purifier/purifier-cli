@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+if [ -x ".venv/bin/python" ]; then
+  exec .venv/bin/python -m air_purifier.cli "$@"
+fi
+
+for candidate in /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 python3.13 python3.12 python3.11 python3; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    exec "$candidate" -m air_purifier.cli "$@"
+  fi
+done
+
+echo "purifier-cli: Python 3.11+ not found" >&2
+exit 1
