@@ -40,8 +40,8 @@
             <div class="header-primary-stats" aria-live="polite" aria-label="Weather summary">
               <span id="display-header-weather" class="header-status-chip" title="Weather loading" aria-label="Weather loading">🌡️ --°</span>
             </div>
-            <div class="display-header-status" aria-live="polite" aria-label="Active Pi agents and date">
-              <span id="display-header-pi-sessions" class="header-status-chip" title="Active Pi sessions loading">Agents: 0</span>
+            <div class="display-header-status" aria-live="polite" aria-label="Air purifier status and current date">
+              <span id="display-header-air" class="header-status-chip" data-state="unknown" title="Air purifier status loading">AIR --</span>
               <span id="display-date">EDT</span>
             </div>
           </div>
@@ -59,8 +59,13 @@
               <span id="active-models-status" class="active-models-status">IDLE</span>
             </header>
             <div id="active-models-list" class="active-models-list" aria-label="Loaded oMLX models"></div>
-            <footer id="active-models-footer" class="active-models-footer">Active: 0</footer>
           </section>
+
+          <button id="dashboard-agents-card" class="hud-mini-card glass-panel tone-silver dashboard-agents-card" type="button" data-state="idle" aria-live="polite" aria-label="Refresh active agent status" title="Refresh active agent status">
+            <p class="eyebrow">Agents</p>
+            <h1 id="display-agents-count">0</h1>
+            <p id="display-agents-detail" class="hud-mini-detail">Idle</p>
+          </button>
 
           <button id="dashboard-voice-card" class="hud-mini-card glass-panel tone-silver dashboard-voice-card" type="button" data-state="off" aria-live="polite" aria-pressed="false" aria-label="Enable dashboard voice mode" title="Tap to arm dashboard voice mode">
             <p class="eyebrow">Voice</p>

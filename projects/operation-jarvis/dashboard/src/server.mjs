@@ -148,6 +148,11 @@ const SMART_PLUG_CONFIG = process.env.JARVIS_DASHBOARD_SMART_PLUG_CONFIG || path
 const SMART_PLUG_CLI = process.env.JARVIS_DASHBOARD_SMART_PLUG_CLI || path.join(SMART_PLUG_ROOT, '.venv', 'bin', 'plugctl');
 const SMART_PLUG_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_SMART_PLUG_TIMEOUT_MS || '8000', 10);
 const SMART_PLUG_STATUS_CACHE_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_SMART_PLUG_STATUS_CACHE_MS || '1500', 10);
+const AIR_PURIFIER_ROOT = process.env.JARVIS_DASHBOARD_AIR_PURIFIER_ROOT || path.join(operationRoot, 'air-purifier');
+const AIR_PURIFIER_CLI = process.env.JARVIS_DASHBOARD_AIR_PURIFIER_CLI || path.join(AIR_PURIFIER_ROOT, 'purifier-cli');
+const AIR_PURIFIER_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_AIR_PURIFIER_TIMEOUT_MS || '8000', 10);
+const AIR_PURIFIER_STATUS_CACHE_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_AIR_PURIFIER_STATUS_CACHE_MS || String(60_000), 10);
+const AIR_PURIFIER_ERROR_CACHE_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_AIR_PURIFIER_ERROR_CACHE_MS || '30000', 10);
 
 function normalizeOpenAiBaseUrl(rawBaseUrl) {
   const baseUrl = String(rawBaseUrl || '').trim().replace(/\/+$/, '');
@@ -3295,6 +3300,147 @@ async function toggleSmartPlug(name) {
   return normalizeSmartPlugStatus(payload, plugConfig, startedMs, checkedAt);
 }
 
+let cachedAirPurifierStatus = null;
+let cachedAirPurifierStatusAt = 0;
+let pendingAirPurifierStatus = null;
+
+function airPurifierNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeAirPurifierMode(value) {
+  const mode = String(value || '').trim().toLowerCase();
+  if (!mode || mode === 'none' || mode === 'null' || mode === 'unknown') return '';
+  return mode;
+}
+
+function normalizeAirPurifierStatus(raw = {}, startedMs = Date.now(), checkedAt = new Date().toISOString()) {
+  const pm25 = airPurifierNumber(raw.pm25);
+  const filterLife = airPurifierNumber(raw.filter_life);
+  const fanLevel = airPurifierNumber(raw.fan_level ?? raw.fan_set_level);
+  const isOn = raw.is_on === true || raw.isOn === true
+    ? true
+    : (raw.is_on === false || raw.isOn === false ? false : null);
+  const mode = normalizeAirPurifierMode(raw.mode);
+  const modeLabel = mode === 'manual' && fanLevel !== null
+    ? `FAN ${Math.round(fanLevel)}`
+    : (mode ? mode.toUpperCase() : 'ON');
+  const filterLabel = filterLife !== null ? `${Math.round(filterLife)}%` : '';
+  const pmLabel = pm25 !== null ? `PM2.5: ${Math.round(pm25)}` : '';
+  const pieces = isOn === false
+    ? ['AIR OFF', filterLabel]
+    : ['AIR', pmLabel, isOn === true ? modeLabel : '', filterLabel];
+  const summary = pieces.filter(Boolean).join(' · ').replace(/^AIR · /, 'AIR ');
+  const state = isOn === false
+    ? 'off'
+    : (pm25 === null ? (isOn === true ? 'online' : 'unknown') : (pm25 <= 12 ? 'good' : (pm25 <= 35 ? 'moderate' : 'bad')));
+
+  return {
+    ok: true,
+    status: state,
+    summary: summary || 'AIR --',
+    name: raw.name || '',
+    model: raw.model || '',
+    isOn,
+    pm25,
+    mode,
+    fanLevel,
+    filterLife,
+    checkedAt,
+    durationMs: Date.now() - startedMs
+  };
+}
+
+async function runAirPurifierCtl(commandArgs, { timeoutMs = AIR_PURIFIER_TIMEOUT_MS } = {}) {
+  const executable = await pathExists(AIR_PURIFIER_CLI) ? AIR_PURIFIER_CLI : 'purifierctl';
+  try {
+    const { stdout, stderr } = await execFileAsync(executable, ['--json', ...commandArgs], {
+      cwd: AIR_PURIFIER_ROOT,
+      env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' },
+      timeout: Math.max(1000, Number(timeoutMs) || AIR_PURIFIER_TIMEOUT_MS),
+      maxBuffer: 256 * 1024
+    });
+    const payload = parseJsonMaybe(stdout) || {};
+    if (stderr?.trim()) payload.stderr = stderr.trim();
+    return payload;
+  } catch (error) {
+    const payload = parseJsonMaybe(error.stdout || '') || parseJsonMaybe(error.stderr || '') || {};
+    const message = payload.error
+      || String(error.stderr || '').trim()
+      || String(error.stdout || '').trim()
+      || (error.killed ? 'Air purifier command timed out' : error.message)
+      || 'Air purifier status failed';
+    const wrapped = new Error(message.split(/\r?\n/).slice(0, 3).join(' · '));
+    wrapped.payload = payload;
+    throw wrapped;
+  }
+}
+
+function fallbackAirPurifierStatus(error, checkedAt = new Date().toISOString(), startedMs = Date.now()) {
+  if (cachedAirPurifierStatus?.ok) {
+    return {
+      ...cachedAirPurifierStatus,
+      status: 'stale',
+      stale: true,
+      error: error?.message || 'Air purifier status stale',
+      checkedAt,
+      durationMs: Date.now() - startedMs
+    };
+  }
+  return {
+    ok: false,
+    status: 'offline',
+    summary: 'AIR --',
+    name: '',
+    model: '',
+    isOn: null,
+    pm25: null,
+    mode: '',
+    fanLevel: null,
+    filterLife: null,
+    checkedAt,
+    durationMs: Date.now() - startedMs,
+    error: error?.message || 'Air purifier status unavailable'
+  };
+}
+
+async function readAirPurifierStatus({ force = false } = {}) {
+  const now = Date.now();
+  const cacheMs = cachedAirPurifierStatus?.ok ? AIR_PURIFIER_STATUS_CACHE_MS : AIR_PURIFIER_ERROR_CACHE_MS;
+  if (!force && cachedAirPurifierStatus && cacheMs > 0 && now - cachedAirPurifierStatusAt < cacheMs) return cachedAirPurifierStatus;
+  if (!force && pendingAirPurifierStatus) return pendingAirPurifierStatus;
+
+  pendingAirPurifierStatus = (async () => {
+    const checkedAt = new Date().toISOString();
+    const startedMs = Date.now();
+    try {
+      const payload = await runAirPurifierCtl(['status']);
+      return normalizeAirPurifierStatus(payload, startedMs, checkedAt);
+    } catch (error) {
+      return fallbackAirPurifierStatus(error, checkedAt, startedMs);
+    }
+  })();
+
+  try {
+    cachedAirPurifierStatus = await pendingAirPurifierStatus;
+    cachedAirPurifierStatusAt = Date.now();
+    return cachedAirPurifierStatus;
+  } finally {
+    pendingAirPurifierStatus = null;
+  }
+}
+
+async function handleAirPurifierRequest(req, res) {
+  const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (!['GET', 'POST'].includes(req.method || 'GET')) {
+    json(res, 405, { ok: false, error: 'Method not allowed' });
+    return;
+  }
+  const force = requestUrl.searchParams.get('force') === '1' || req.method === 'POST';
+  json(res, 200, await readAirPurifierStatus({ force }));
+}
+
 async function handleSmartPlugRequest(req, res) {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
@@ -3481,11 +3627,12 @@ async function handleJarvisDisplay(_req, res) {
   });
   const local = jarvisPayload.local || {};
   const state = deriveRoomDisplayState(jarvisPayload);
-  const [piSessions, omlx16, omlx64, weather, piCost, discordBot] = await Promise.all([
+  const [piSessions, omlx16, omlx64, weather, airPurifier, piCost, discordBot] = await Promise.all([
     readPiSessionStatus(),
     readOmlxStatus('16', { force: true }),
     readOmlxStatus('64', { force: true }),
     readWeatherStatus(),
+    readAirPurifierStatus(),
     readPiSessionCostStatus(),
     readDiscordBotStatus()
   ]);
@@ -3519,6 +3666,7 @@ async function handleJarvisDisplay(_req, res) {
       '64': omlx64
     },
     weather,
+    airPurifier,
     camera: cameraStatus,
     last: lastEvent ? {
       action: lastEvent.action || lastEvent.eventType || 'event',
@@ -4188,6 +4336,11 @@ const server = createServer(async (req, res) => {
 
     if (req.url?.startsWith('/api/jarvis/smart-plugs')) {
       await handleSmartPlugRequest(req, res);
+      return;
+    }
+
+    if (req.url?.startsWith('/api/jarvis/air-purifier')) {
+      await handleAirPurifierRequest(req, res);
       return;
     }
 

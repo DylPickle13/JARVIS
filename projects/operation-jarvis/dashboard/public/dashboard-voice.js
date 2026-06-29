@@ -1,6 +1,7 @@
 import { WakeWordEngine } from '/vendor/openwakeword/WakeWordEngine.js';
 
 const voiceCard = document.querySelector('#dashboard-voice-card');
+const voiceLabelEl = voiceCard?.querySelector('.eyebrow');
 const voiceDetailEl = document.querySelector('#dashboard-voice-detail');
 const voiceIconEl = document.querySelector('#dashboard-voice-icon');
 const voiceAudioEl = document.querySelector('#dashboard-voice-audio');
@@ -131,8 +132,20 @@ function setVoiceState(state, detail = '') {
     speaking: 'Speaking',
     error: 'Error'
   };
+  const topLabels = {
+    off: 'Voice',
+    arming: 'Starting',
+    listening: 'Listening',
+    wake: 'Wake',
+    recording: 'Recording',
+    processing: 'Thinking',
+    speaking: 'Speaking',
+    error: 'Error'
+  };
   const label = labels[state] || labels.off;
   const displayDetail = detail || defaults[state] || defaults.off;
+  const displayLabel = topLabels[state] || topLabels.off;
+  const secondaryDetail = state === 'error' && detail ? shortText(displayDetail, 36) : '';
 
   voiceCard.dataset.state = state;
   voiceCard.classList.remove(...toneClasses);
@@ -142,7 +155,8 @@ function setVoiceState(state, detail = '') {
   voiceCard.setAttribute('aria-label', `${label}. ${displayDetail}`);
   voiceCard.title = `${label}. ${displayDetail}`;
 
-  if (voiceDetailEl) voiceDetailEl.textContent = displayDetail;
+  if (voiceLabelEl) voiceLabelEl.textContent = displayLabel;
+  if (voiceDetailEl) voiceDetailEl.textContent = secondaryDetail;
   if (voiceIconEl) voiceIconEl.setAttribute('aria-label', label);
 }
 

@@ -10,6 +10,10 @@ const cameraPreview = document.querySelector('#camera-preview');
 const cameraStatus = document.querySelector('#camera-status');
 const cameraCard = document.querySelector('#camera-card');
 const reloadButton = document.querySelector('#display-reload-button');
+const dashboardAgentsButton = document.querySelector('#dashboard-agents-card');
+const dashboardAgentsCountEl = document.querySelector('#display-agents-count');
+const dashboardAgentsDetailEl = document.querySelector('#display-agents-detail');
+const dashboardVoiceButton = document.querySelector('#dashboard-voice-card');
 const raspberryPiButton = document.querySelector('#right-reserved-card-2');
 const raspberryPiIconEl = document.querySelector('#display-raspberry-pi-icon');
 const raspberryPiDetailEl = document.querySelector('#display-raspberry-pi-detail');
@@ -24,6 +28,7 @@ const weatherCard = document.querySelector('#weather-card');
 const weatherTempEl = document.querySelector('#display-weather-temp');
 const weatherDetailEl = document.querySelector('#display-weather-detail');
 const headerWeatherEl = document.querySelector('#display-header-weather');
+const headerAirEl = document.querySelector('#display-header-air');
 const headerPiSessionsEl = document.querySelector('#display-header-pi-sessions');
 const activeModelsCard = document.querySelector('#active-models-card');
 const activeModelsSummaryEl = document.querySelector('#active-models-summary');
@@ -42,9 +47,11 @@ const omlxControlById = new Map(omlxButtons.map((button) => {
     detailEl: button.querySelector('.omlx-detail, .hud-mini-detail')
   }];
 }));
+const hudMiniBoxes = document.querySelector('.hud-mini-boxes');
 const smartPlugGrid = document.querySelector('#smart-plug-grid');
 let smartPlugButtons = Array.from(document.querySelectorAll('[data-smart-plug]'));
 const smartPlugButtonByName = new Map(smartPlugButtons.map((button) => [button.dataset.smartPlug, button]));
+const rightHudButtons = [dashboardAgentsButton, raspberryPiButton, phoneAdbButton, dashboardVoiceButton, reloadButton].filter(Boolean);
 const serverEl = document.querySelector('#display-server');
 const refreshEl = document.querySelector('#display-refresh');
 
@@ -179,6 +186,7 @@ function compactDashboardModelName(raw = '') {
     .replace(/[-_](instruct|chat|mlx|gguf|awq|gptq|q\d+(_k_m)?|\d+bit|fp16|bf16)$/i, '')
     .replace(/[-_](instruct|chat|mlx|gguf|awq|gptq|q\d+(_k_m)?|\d+bit|fp16|bf16)$/i, '');
   const size = value.match(/(?:^|[-_])(\d+(?:\.\d+)?B)(?:[-_]|$)/i)?.[1]?.toUpperCase();
+  if (/embed(?:ding)?/i.test(value)) return 'EMBED';
   if (/qwen/i.test(value) && size) return `Q${size}`;
   if (/llama/i.test(value) && size) return `L${size}`;
   if (/mistral/i.test(value) && size) return `M${size}`;
@@ -198,6 +206,37 @@ function compactOmlxServerLabel(server = {}) {
 function clearActiveModelsList() {
   if (!activeModelsListEl) return;
   while (activeModelsListEl.firstChild) activeModelsListEl.removeChild(activeModelsListEl.firstChild);
+}
+
+function syncActiveModelsCardWidth() {
+  if (!activeModelsCard || !smartPlugGrid || activeModelsCard.hidden) return;
+  const cardRect = activeModelsCard.getBoundingClientRect();
+  const plugRect = smartPlugGrid.getBoundingClientRect();
+  const targetWidth = plugRect.left - cardRect.left;
+  if (!Number.isFinite(targetWidth) || targetWidth <= 0) return;
+  activeModelsCard.style.setProperty('--active-models-card-width', `${Math.round(targetWidth)}px`);
+}
+
+function scheduleActiveModelsCardWidthSync() {
+  if (!activeModelsCard || !smartPlugGrid) return;
+  requestAnimationFrame(syncActiveModelsCardWidth);
+}
+
+function syncRightHudCardWidth() {
+  if (!hudMiniBoxes || !rightHudButtons.length) return;
+  const anchor = smartPlugButtonByName.get('tv') || smartPlugButtons[smartPlugButtons.length - 1] || smartPlugGrid;
+  const edgeButton = reloadButton || rightHudButtons[0];
+  if (!anchor || !edgeButton) return;
+  const anchorRect = anchor.getBoundingClientRect();
+  const edgeRect = edgeButton.getBoundingClientRect();
+  const targetWidth = edgeRect.right - anchorRect.right;
+  if (!Number.isFinite(targetWidth) || targetWidth <= 0) return;
+  hudMiniBoxes.style.setProperty('--right-hud-card-width', `${Math.round(targetWidth)}px`);
+}
+
+function scheduleRightHudCardWidthSync() {
+  if (!hudMiniBoxes || !rightHudButtons.length) return;
+  requestAnimationFrame(syncRightHudCardWidth);
 }
 
 function makeActiveModelsNode(tag, className = '', text = '') {
@@ -449,7 +488,7 @@ function appendActiveModelsFocus(container, focus, servers = []) {
     modelBlock.appendChild(modelTitle);
     const chipText = modelRequests > 0
       ? `${modelRequests} REQ`
-      : (model.isLoading ? 'LOAD' : (model.loaded ? 'RDY' : (model.pinned ? 'PIN' : '')));
+      : (model.isLoading ? 'LOAD' : (model.loaded ? 'READY' : (model.pinned ? 'PIN' : '')));
     if (chipText) modelBlock.appendChild(makeActiveModelsNode('span', 'active-models-focus-chip', chipText));
     focusNode.appendChild(modelBlock);
   }
@@ -475,17 +514,15 @@ function appendActiveModelsFocus(container, focus, servers = []) {
     const position = finiteDashboardNumber(item.queuePosition);
     phase.textContent = 'QUEUE';
     focusNode.appendChild(phase);
-    focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-metric', position ? `#${position}` : `${modelRequests || serverRequests || 1} REQ`));
-    appendActiveModelsFocusDetail(focusNode, formatDashboardSeconds(item.elapsedSeconds, true), 'accent');
+    if (position) focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-metric', `#${position}`));
   } else if (kind === 'active') {
     phase.textContent = 'ACTIVE';
     focusNode.appendChild(phase);
-    focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-metric', `${modelRequests || serverRequests || 1} REQ`));
   } else if (kind === 'loading') {
     phase.textContent = 'LOADING';
     focusNode.appendChild(phase);
   } else if (kind === 'ready') {
-    // Per-model RDY chip already communicates readiness; keep the focus rail uncluttered.
+    // Per-model READY chip already communicates readiness; keep the focus rail uncluttered.
   } else {
     focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-metric', server.ok ? 'IDLE' : 'OFF'));
   }
@@ -511,7 +548,7 @@ function updateActiveModelsChrome(payload = {}, servers = []) {
   if (activeModelsStatusEl) {
     activeModelsStatusEl.textContent = totalRequests > 0
       ? `${totalRequests} REQ`
-      : (loadedModels > 0 ? `${loadedModels} RDY` : (onlineServers > 0 ? 'IDLE' : 'OFF'));
+      : (loadedModels > 0 ? `${loadedModels} READY` : (onlineServers > 0 ? 'IDLE' : 'OFF'));
   }
   if (activeModelsMemoryFillEl) activeModelsMemoryFillEl.style.width = `${memoryPct}%`;
   if (activeModelsMemoryTextEl) {
@@ -558,7 +595,12 @@ function renderActiveModelsUsage(payload = {}) {
   activeModelsCard.hidden = false;
   clearActiveModelsList();
 
-  appendActiveModelsFocus(activeModelsListEl, selectActiveModelsFocus(servers), servers);
+  const stack = makeActiveModelsNode('div', 'active-models-fixed-stack');
+  for (const server of servers) {
+    appendActiveModelsFocus(stack, selectActiveModelsFocus([server]), [server]);
+  }
+  activeModelsListEl.appendChild(stack);
+  scheduleActiveModelsCardWidthSync();
 }
 
 async function refreshActiveModelsUsage() {
@@ -859,6 +901,7 @@ function renderSmartPlugStatus(status = {}) {
   if (labelEl) labelEl.textContent = label;
   if (iconEl) iconEl.setAttribute('aria-label', title);
   if (detailEl) detailEl.textContent = detail;
+  scheduleRightHudCardWidthSync();
 }
 
 function renderAllSmartPlugsChecking() {
@@ -1006,6 +1049,25 @@ function renderDiscordBotStatus(discordBot = {}) {
   if (jarvisBrandIndicator) {
     jarvisBrandIndicator.setAttribute('aria-label', label);
   }
+}
+
+function renderAirPurifier(air = {}) {
+  if (!headerAirEl) return;
+  const summary = String(air.summary || '').trim() || 'AIR --';
+  const pieces = [];
+  if (air.name) pieces.push(air.name);
+  if (Number.isFinite(Number(air.pm25))) pieces.push(`PM2.5 ${Math.round(Number(air.pm25))}`);
+  if (air.mode) pieces.push(String(air.mode).toUpperCase());
+  if (Number.isFinite(Number(air.filterLife))) pieces.push(`Filter ${Math.round(Number(air.filterLife))}%`);
+  const detail = air.ok === false
+    ? (air.error || 'Air purifier unavailable')
+    : (pieces.join(' · ') || summary);
+  const updated = air.checkedAt ? ` · updated ${formatRelative(air.checkedAt)}` : '';
+
+  headerAirEl.textContent = summary;
+  headerAirEl.dataset.state = air.ok === false ? 'offline' : (air.status || 'unknown');
+  headerAirEl.title = `${detail}${updated}`;
+  headerAirEl.setAttribute('aria-label', `Air purifier ${summary}. ${detail}`);
 }
 
 function renderWeather(weather = {}) {
@@ -1174,6 +1236,31 @@ async function toggleOmlxServer(serverId = '16') {
   return pending;
 }
 
+function renderAgentsCard({ activeCount = 0, localActive = 0, discordGenerating = 0, localOpen = 0, discordOpen = 0, ok = true, detail = '' } = {}) {
+  if (!dashboardAgentsButton) return;
+  const safeActiveCount = Number.isFinite(Number(activeCount)) ? Number(activeCount) : 0;
+  const safeLocalActive = Number.isFinite(Number(localActive)) ? Number(localActive) : 0;
+  const safeDiscordGenerating = Number.isFinite(Number(discordGenerating)) ? Number(discordGenerating) : 0;
+  const safeOpenIdle = Math.max(0, Number(localOpen || 0) + Number(discordOpen || 0));
+  const state = ok === false ? 'error' : (safeActiveCount > 0 ? 'active' : 'idle');
+  const detailText = detail || (state === 'error'
+    ? 'Unavailable'
+    : (safeActiveCount > 0 ? `${safeActiveCount} active` : (safeOpenIdle > 0 ? `${safeOpenIdle} idle` : 'Idle')));
+  const title = state === 'error'
+    ? detailText
+    : (safeActiveCount > 0
+      ? `${safeActiveCount} active Pi session${safeActiveCount === 1 ? '' : 's'} · ${safeLocalActive} local/direct · ${safeDiscordGenerating} Discord`
+      : `No active Pi sessions · ${safeOpenIdle} open idle`);
+
+  dashboardAgentsButton.classList.remove(...toneClasses);
+  dashboardAgentsButton.classList.add(state === 'error' ? 'tone-orange' : (state === 'active' ? 'tone-green' : 'tone-silver'));
+  dashboardAgentsButton.dataset.state = state;
+  dashboardAgentsButton.title = title;
+  dashboardAgentsButton.setAttribute('aria-label', `Refresh active agent status. ${title}`);
+  if (dashboardAgentsCountEl) dashboardAgentsCountEl.textContent = String(safeActiveCount);
+  if (dashboardAgentsDetailEl) dashboardAgentsDetailEl.textContent = detailText;
+}
+
 function renderDisplay(payload) {
   latestDisplayPayload = payload;
   const state = payload.state || {};
@@ -1195,6 +1282,7 @@ function renderDisplay(payload) {
   const sessionDetail = activeCount === 0
     ? `No active Pi sessions · ${localOpen + discordOpen} open idle`
     : `${activeCount} active Pi session${activeCount === 1 ? '' : 's'} · ${localActive} local/direct · ${discordGenerating} Discord`;
+  renderAgentsCard({ activeCount, localActive, discordGenerating, localOpen, discordOpen, ok: payload.ok, detail: activeCount > 0 ? `${activeCount} active` : ((localOpen + discordOpen) > 0 ? `${localOpen + discordOpen} idle` : 'Idle') });
   if (stateDetail) stateDetail.textContent = sessionDetail;
   if (headerPiSessionsEl) {
     headerPiSessionsEl.textContent = `Agents: ${activeCount}`;
@@ -1204,6 +1292,7 @@ function renderDisplay(payload) {
 
   syncDashboardUptime(payload.server || {});
   renderWeather(payload.weather || {});
+  renderAirPurifier(payload.airPurifier || {});
   renderDiscordBotStatus(payload.discordBot || {});
   const omlxServers = payload.omlxServers || {};
   renderOmlxStatus('16', omlxServers['16'] || payload.omlx || {});
@@ -1234,11 +1323,13 @@ async function refreshDisplay() {
     }
     if (stateLabel) stateLabel.textContent = '0';
     if (stateDetail) stateDetail.textContent = `Pi session status unavailable: ${error.message}`;
+    renderAgentsCard({ ok: false, detail: `Unavailable` });
     if (headerPiSessionsEl) {
       headerPiSessionsEl.textContent = 'Agents: 0';
       headerPiSessionsEl.dataset.state = 'idle';
       headerPiSessionsEl.title = `Pi session status unavailable: ${error.message}`;
     }
+    renderAirPurifier({ ok: false, summary: 'AIR --', error: error.message });
     renderDiscordBotStatus({ ok: false, running: false, error: error.message });
     for (const serverId of omlxControlById.keys()) {
       renderOmlxStatus(serverId, {
@@ -1653,13 +1744,30 @@ for (const button of smartPlugButtons) {
   addSmartPlugClickHandler(button);
 }
 
+dashboardAgentsButton?.addEventListener('click', async () => {
+  dashboardAgentsButton.setAttribute('aria-busy', 'true');
+  try {
+    await refreshDisplay();
+  } finally {
+    dashboardAgentsButton.setAttribute('aria-busy', 'false');
+  }
+});
+
 reloadButton?.addEventListener('click', () => {
   reloadButton.setAttribute('aria-busy', 'true');
   window.location.reload();
 });
 
-window.addEventListener('resize', queueCameraPanelPosition, { passive: true });
-window.addEventListener('orientationchange', queueCameraPanelPosition, { passive: true });
+window.addEventListener('resize', () => {
+  queueCameraPanelPosition();
+  scheduleActiveModelsCardWidthSync();
+  scheduleRightHudCardWidthSync();
+}, { passive: true });
+window.addEventListener('orientationchange', () => {
+  queueCameraPanelPosition();
+  scheduleActiveModelsCardWidthSync();
+  scheduleRightHudCardWidthSync();
+}, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   if (cameraStream) queueCameraPanelPosition();
@@ -1671,6 +1779,7 @@ if (document.fonts?.ready) {
 }
 
 for (const serverId of omlxControlById.keys()) renderOmlxStatus(serverId, { state: 'idle' });
+renderAgentsCard({ activeCount: 0, detail: 'Idle' });
 renderRaspberryPiStatus({ state: 'idle' });
 renderPhoneAdbStatus({ state: 'idle' });
 renderActiveModelsUsage({
