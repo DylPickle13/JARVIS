@@ -44,13 +44,17 @@ const ACTIONS = [
   "plug-toggle",
   "plug-discover",
   "plug-save-discovery",
+  "purifier-status",
+  "purifier-set",
 ] as const;
 const DEVICES = ["tv", "speakers"] as const;
 const MUTE_STATES = ["on", "off", "toggle"] as const;
 const SMART_PLUG_ACTIONS = ["list", "status", "on", "off", "toggle", "discover", "save-discovery"] as const;
+const PURIFIER_SETTINGS = ["power", "mode", "speed", "display", "child-lock", "light-detection", "auto-preference", "timer"] as const;
 
 type JarvisAction = typeof ACTIONS[number];
 type SmartPlugAction = typeof SMART_PLUG_ACTIONS[number];
+type PurifierSetting = typeof PURIFIER_SETTINGS[number];
 type Device = typeof DEVICES[number];
 
 type JarvisParams = {
@@ -114,6 +118,12 @@ type JarvisParams = {
   plugConfig?: string;
   discoveryTarget?: string;
   plugTimeout?: number;
+  purifier?: string;
+  setting?: PurifierSetting;
+  value?: string;
+  minutes?: number;
+  roomSize?: number;
+  purifierTimeout?: number;
 };
 
 type SmartPlugParams = {
@@ -547,6 +557,29 @@ function buildJarvisArgs(params: JarvisParams): string[] {
     return args;
   }
 
+  if (action === "purifier-status") {
+    const args = ["purifier-status"];
+    add(args, "--purifier", params.purifier);
+    add(args, "--purifier-timeout", params.purifierTimeout);
+    return args;
+  }
+
+  if (action === "purifier-set") {
+    const setting = requireText(params.setting, "setting") as PurifierSetting;
+    const args = ["purifier-set"];
+    add(args, "--purifier", params.purifier);
+    add(args, "--purifier-timeout", params.purifierTimeout);
+    add(args, "--state", params.state);
+    add(args, "--level", params.level);
+    add(args, "--minutes", params.minutes);
+    add(args, "--room-size", params.roomSize);
+    args.push(setting);
+    if (params.value !== undefined && params.value !== null && String(params.value).trim()) {
+      args.push(String(params.value).trim());
+    }
+    return args;
+  }
+
   throw new Error(`Unsupported Operation JARVIS action: ${action}`);
 }
 
@@ -634,6 +667,10 @@ function timeoutMs(params: JarvisParams): number {
     case "plug-discover":
     case "plug-save-discovery":
       return Math.ceil(((params.plugTimeout ?? 30) + 90) * 1000);
+    case "purifier-status":
+      return Math.ceil(((params.purifierTimeout ?? 150) + 30) * 1000);
+    case "purifier-set":
+      return Math.ceil(((params.purifierTimeout ?? 150) + 60) * 1000);
     default:
       return 180_000;
   }
@@ -695,10 +732,11 @@ export default function registerJarvis(pi: ExtensionAPI) {
       "Spotify calls: `cast-spotify-devices` lists currently visible Spotify Connect devices; `cast-spotify` plays a `query`/`spotifyUri` or resumes with `resume:true`; `cast-spotify-pause`, `cast-spotify-next`, `cast-spotify-previous`, and `cast-spotify-volume` control playback. `cast-spotify-queue-add` adds a track/episode using `query` or `spotifyUri` plus optional `spotifyQueueType`; `cast-spotify-queue` reads the current queue; `cast-spotify-seek` seeks with `position`/`timestamp` like 1:30 or `positionMs`; `cast-spotify-shuffle` uses `state` on/off/toggle; `cast-spotify-repeat` uses `repeatState` off/context/track/toggle. Spotify credentials are already loaded from local .env when present; do not ask for or expose secrets.",
       "Spotify target guide: use `device:\"tv\"` and `device:\"speakers\"` for configured Cast aliases. Use `spotifyDeviceName` for an explicit Spotify Connect target from local private config or from `cast-spotify-devices`. Prefer names over device IDs because Spotify IDs can change.",
       "Common smart-plug calls: `plug-list`; `plug-status` with `plug`; `plug-on`/`plug-off`/`plug-toggle` with a configured plug name from local private config or from `plug-list`.",
+      "Air purifier calls use exactly two actions: `purifier-status` for all read-only status/filter/air-quality info, and `purifier-set` with `setting` for writes. Supported purifier settings: power, mode, speed, display, child-lock, light-detection, auto-preference, timer. Use `value` for string values, `level` for speed, `minutes` for timer, and `state` for on/off/toggle where appropriate. VeSync writes may take up to a minute; wait for the tool result before issuing another purifier command.",
       "Always keep camera recording bounded. Keep spoken output brief; put detailed audit text in Discord.",
     ],
     parameters: Type.Object({
-      action: StringEnum(ACTIONS, { description: "Choose one exact action. Use help for a safe machine-readable guide. Common: status, look, video, analyze-view, speak, cast-status, cast-spotify, cast-spotify-pause, cast-spotify-next, cast-spotify-previous, cast-spotify-volume, cast-spotify-queue-add, cast-spotify-queue, cast-spotify-seek, cast-spotify-shuffle, cast-spotify-repeat, plug-status, plug-on, plug-off." }),
+      action: StringEnum(ACTIONS, { description: "Choose one exact action. Use help for a safe machine-readable guide. Common: status, look, video, analyze-view, speak, cast-status, cast-spotify, plug-status, plug-on, plug-off, purifier-status, purifier-set." }),
       device: Type.Optional(StringEnum(DEVICES, { description: "Cast target alias: tv or speakers. Defaults to tv for media/status and speakers for speech/volume/mute/Spotify. Configure the underlying local device names privately." })),
       text: Type.Optional(Type.String({ description: "Required for action=speak. Short text to speak aloud; keep detailed answers in Discord." })),
       question: Type.Optional(Type.String({ description: "Preferred visual question for analyze-view. Use this instead of prompt for normal requests." })),
@@ -732,6 +770,12 @@ export default function registerJarvis(pi: ExtensionAPI) {
       plugConfig: Type.Optional(Type.String({ description: "Optional smart-plug plugs.json path override." })),
       discoveryTarget: Type.Optional(Type.String({ description: "Optional Kasa discovery broadcast target, e.g. a LAN broadcast address." })),
       plugTimeout: Type.Optional(Type.Number({ description: "Smart-plug command timeout seconds." })),
+      purifier: Type.Optional(Type.String({ description: "Optional VeSync air purifier name/CID/model override. Usually omit; default is configured locally in air-purifier/.env." })),
+      setting: Type.Optional(StringEnum(PURIFIER_SETTINGS, { description: "Required for purifier-set. Choose one setting: power, mode, speed, display, child-lock, light-detection, auto-preference, or timer." })),
+      value: Type.Optional(Type.String({ description: "purifier-set value. Examples: power on/off/toggle; mode auto/manual/sleep/pet; display on/off; auto-preference default/quiet/efficient; timer clear." })),
+      minutes: Type.Optional(Type.Number({ description: "purifier-set setting=timer: timer minutes, 1..1440." })),
+      roomSize: Type.Optional(Type.Number({ description: "purifier-set setting=auto-preference: optional room size in square feet." })),
+      purifierTimeout: Type.Optional(Type.Number({ description: "Air purifier command timeout seconds; writes can take up to a minute to reflect." })),
 
       duration: Type.Optional(Type.Number({ description: "Required and >0 for video. Optional analysis duration seconds for analyze-view; default about 3." })),
       maxDuration: Type.Optional(Type.Number({ description: "video-until positive safety cap seconds; default 60. Always bound monitoring." })),

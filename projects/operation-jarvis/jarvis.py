@@ -70,6 +70,8 @@ TV_SCRIPT = CAST_SCRIPTS_DIR / "tv.py"
 CAST_AUDIO_DIR = OPERATION_ROOT / "data" / "cast-audio"
 SMART_PLUG_DIR = OPERATION_ROOT / "smart-plug"
 SMART_PLUG_CONFIG = SMART_PLUG_DIR / "plugs.json"
+AIR_PURIFIER_DIR = OPERATION_ROOT / "air-purifier"
+AIR_PURIFIER_CLI = AIR_PURIFIER_DIR / "purifier-cli"
 
 DEFAULT_SPEAK_DEVICE = "speakers"
 DEFAULT_MEDIA_DEVICE = "tv"
@@ -78,6 +80,7 @@ DEFAULT_CAMERA_TIMEOUT = float(os.environ.get("JARVIS_DASHBOARD_CAMERA_TIMEOUT",
 DEFAULT_CAMERA_SNAPSHOT_QUALITY = float(os.environ.get("JARVIS_DASHBOARD_CAMERA_QUALITY", "0.86"))
 DEFAULT_CAST_TIMEOUT = 45.0
 DEFAULT_SMART_PLUG_TIMEOUT = 30.0
+DEFAULT_AIR_PURIFIER_TIMEOUT = 150.0
 DEFAULT_LOOK_DURATION = 3.0
 DEFAULT_LOOK_INTERVAL = 999.0
 DEFAULT_MONITOR_DURATION = 60.0
@@ -109,6 +112,12 @@ TORCH_CHOICES = ("on", "off", "toggle")
 MUTE_STATES = ("on", "off", "toggle")
 SPOTIFY_QUEUE_TYPES = ("track", "episode")
 SPOTIFY_REPEAT_STATES = ("off", "context", "track", "toggle")
+PURIFIER_SETTINGS = ("power", "mode", "speed", "display", "child-lock", "light-detection", "auto-preference", "timer")
+PURIFIER_POWER_STATES = ("on", "off", "toggle")
+PURIFIER_MODES = ("auto", "manual", "sleep", "pet")
+PURIFIER_SPEEDS = (1, 2, 3, 4)
+PURIFIER_ON_OFF_STATES = ("on", "off")
+PURIFIER_AUTO_PREFERENCES = ("default", "efficient", "quiet")
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
 # Import only target-resolution helpers from the bundled Cast scripts.
@@ -233,6 +242,39 @@ def smart_plug_config_path(args: argparse.Namespace) -> Path:
         return SMART_PLUG_CONFIG
     path = Path(str(raw)).expanduser()
     return path if path.is_absolute() else (OPERATION_ROOT / path)
+
+
+def run_air_purifier_command(args: list[str], *, timeout: float) -> dict[str, Any]:
+    if not AIR_PURIFIER_CLI.exists():
+        raise JarvisError(f"Air-purifier CLI not found: {AIR_PURIFIER_CLI}")
+
+    command = [str(AIR_PURIFIER_CLI), "--json", *args]
+    result = subprocess.run(
+        command,
+        cwd=str(AIR_PURIFIER_DIR),
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+    )
+    stdout = strip_ansi(result.stdout).strip()
+    stderr = strip_ansi(result.stderr).strip()
+    data: Any
+    try:
+        data = json.loads(stdout) if stdout else {}
+    except json.JSONDecodeError:
+        data = {"stdout": stdout}
+    if result.returncode != 0:
+        message = ""
+        if isinstance(data, dict):
+            message = str(data.get("error") or "")
+        raise JarvisError(message or stderr or stdout or f"purifier-cli exited with code {result.returncode}")
+    return {
+        "ok": True,
+        "command": command,
+        "stdout": stdout,
+        "stderr": stderr,
+        "data": data if isinstance(data, dict) else {"value": data},
+    }
 
 
 def run_smart_plug_command(args: list[str], *, timeout: float, config_path: Optional[Path] = None, discovery_target: Optional[str] = None) -> dict[str, Any]:
@@ -825,7 +867,7 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
         "guide": {
             "tool": "jarvis",
             "availability": "optional provider-visible tool group; load with load_tools({groups:[\"jarvis\"]})",
-            "scope": "Discord interface/log + dashboard phone camera capture/analysis + Google Cast speech/media + Spotify Connect playback/control + local Kasa smart-plug control",
+            "scope": "Discord interface/log + dashboard phone camera capture/analysis + Google Cast speech/media + Spotify Connect playback/control + local Kasa smart-plug control + VeSync/Levoit air purifier control",
             "defaults": {
                 "dashboardUrl": DEFAULT_DASHBOARD_URL,
                 "speechDevice": DEFAULT_SPEAK_DEVICE,
@@ -852,10 +894,15 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
                 "source": "smart-plug/plugs.json or --plug-config",
                 "note": "Run plug-list to see locally configured plug aliases.",
             },
+            "airPurifierTarget": {
+                "source": "air-purifier/.env",
+                "note": "Default purifier is configured locally as JARVIS_AIR_PURIFIER_NAME. Use purifier-status before changing settings.",
+            },
             "safeChecks": [
                 {"action": "help"},
                 {"action": "status", "noCast": True},
                 {"action": "cast-status", "device": DEFAULT_SPEAK_DEVICE},
+                {"action": "purifier-status"},
             ],
             "cameraActions": {
                 "look": {"required": [], "example": {"action": "look"}},
@@ -882,6 +929,27 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
                 "cast-spotify-seek": {"required": ["position or positionMs"], "defaultDevice": "speakers", "example": {"action": "cast-spotify-seek", "device": "speakers", "position": "1:30"}},
                 "cast-spotify-shuffle": {"required": [], "defaultDevice": "speakers", "states": ["on", "off", "toggle"], "example": {"action": "cast-spotify-shuffle", "device": "speakers", "state": "toggle"}},
                 "cast-spotify-repeat": {"required": [], "defaultDevice": "speakers", "states": ["off", "context", "track", "toggle"], "example": {"action": "cast-spotify-repeat", "device": "speakers", "repeatState": "toggle"}},
+            },
+            "purifierActions": {
+                "purifier-status": {"required": [], "example": {"action": "purifier-status"}},
+                "purifier-set": {
+                    "required": ["setting"],
+                    "settings": {
+                        "power": ["on", "off", "toggle"],
+                        "mode": ["auto", "manual", "sleep", "pet"],
+                        "speed": [1, 2, 3, 4],
+                        "display": ["on", "off"],
+                        "child-lock": ["on", "off"],
+                        "light-detection": ["on", "off"],
+                        "auto-preference": ["default", "efficient", "quiet"],
+                        "timer": "minutes, or value='clear'",
+                    },
+                    "examples": [
+                        {"action": "purifier-set", "setting": "mode", "value": "sleep"},
+                        {"action": "purifier-set", "setting": "speed", "level": 2},
+                        {"action": "purifier-set", "setting": "timer", "minutes": 60},
+                    ],
+                },
             },
             "smartPlugActions": {
                 "plug-list": {"required": [], "example": {"action": "plug-list"}},
@@ -920,6 +988,8 @@ def handle_status(args: argparse.Namespace) -> dict[str, Any]:
             "castScriptExists": TV_SCRIPT.exists(),
             "smartPlugSubsystemExists": SMART_PLUG_DIR.exists(),
             "smartPlugConfigExists": SMART_PLUG_CONFIG.exists(),
+            "airPurifierSubsystemExists": AIR_PURIFIER_DIR.exists(),
+            "airPurifierCliExists": AIR_PURIFIER_CLI.exists(),
         },
         "camera": camera_status,
         "smartPlug": {
@@ -927,6 +997,11 @@ def handle_status(args: argparse.Namespace) -> dict[str, Any]:
             "config": str(SMART_PLUG_CONFIG),
             "python": choose_smart_plug_python(),
             "configured": SMART_PLUG_CONFIG.exists(),
+        },
+        "airPurifier": {
+            "root": str(AIR_PURIFIER_DIR),
+            "cli": str(AIR_PURIFIER_CLI),
+            "configured": AIR_PURIFIER_CLI.exists(),
         },
     }
     if not args.no_cast:
@@ -1335,6 +1410,191 @@ def handle_cast_spotify_repeat(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
+def add_air_purifier_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--purifier", default=None, help="Optional VeSync purifier name/CID/model override")
+    parser.add_argument("--purifier-timeout", type=float, default=DEFAULT_AIR_PURIFIER_TIMEOUT, help="Air-purifier command timeout seconds")
+
+
+def purifier_summary(status: dict[str, Any]) -> str:
+    name = status.get("name") or "Air purifier"
+    power = status.get("power") or ("on" if status.get("is_on") else "off")
+    mode = status.get("mode") or "unknown"
+    fan = status.get("fan_level")
+    pm25 = status.get("pm25")
+    filter_life = status.get("filter_life")
+    display = status.get("display_status") or status.get("display_set_status")
+    bits = [f"{name}: {power}", f"mode {mode}"]
+    if fan is not None:
+        bits.append(f"fan {fan}")
+    if pm25 is not None:
+        bits.append(f"PM2.5 {pm25}")
+    if filter_life is not None:
+        bits.append(f"filter {filter_life}%")
+    if display is not None:
+        bits.append(f"display {display}")
+    return ", ".join(bits) + "."
+
+
+def _purifier_device_args(args: argparse.Namespace) -> list[str]:
+    purifier = (getattr(args, "purifier", None) or "").strip()
+    return [purifier] if purifier else []
+
+
+def _canon_purifier_setting(value: str) -> str:
+    setting = (value or "").strip().lower().replace("_", "-").replace(" ", "-")
+    aliases = {
+        "lock": "child-lock",
+        "childlock": "child-lock",
+        "child-lock": "child-lock",
+        "display-lock": "child-lock",
+        "light": "light-detection",
+        "light-detect": "light-detection",
+        "light-detection": "light-detection",
+        "auto": "auto-preference",
+        "auto-pref": "auto-preference",
+        "auto-preference": "auto-preference",
+        "preference": "auto-preference",
+        "fan": "speed",
+        "fan-speed": "speed",
+        "speed": "speed",
+        "mode": "mode",
+        "power": "power",
+        "timer": "timer",
+        "display": "display",
+    }
+    return aliases.get(setting, setting)
+
+
+def _canon_on_off(value: str, *, allow_toggle: bool = False) -> str:
+    clean = (value or "").strip().lower().replace("_", "-").replace(" ", "-")
+    aliases = {
+        "true": "on",
+        "yes": "on",
+        "enable": "on",
+        "enabled": "on",
+        "start": "on",
+        "turn-on": "on",
+        "false": "off",
+        "no": "off",
+        "disable": "off",
+        "disabled": "off",
+        "stop": "off",
+        "turn-off": "off",
+        "flip": "toggle",
+    }
+    clean = aliases.get(clean, clean)
+    valid = set(PURIFIER_ON_OFF_STATES)
+    if allow_toggle:
+        valid.add("toggle")
+    if clean not in valid:
+        raise JarvisError(f"Expected {'on/off/toggle' if allow_toggle else 'on/off'}, got {value!r}")
+    return clean
+
+
+def _value_from_args(args: argparse.Namespace) -> str:
+    values = getattr(args, "value", None) or []
+    return " ".join(values).strip()
+
+
+def _purifier_set_cli_args(args: argparse.Namespace) -> list[str]:
+    setting = _canon_purifier_setting(args.setting)
+    value = _value_from_args(args)
+    state = getattr(args, "state", None)
+    level = getattr(args, "level", None)
+    minutes = getattr(args, "minutes", None)
+    purifier = _purifier_device_args(args)
+
+    if setting not in PURIFIER_SETTINGS:
+        raise JarvisError(f"Unsupported purifier setting {args.setting!r}; expected one of {', '.join(PURIFIER_SETTINGS)}")
+
+    if setting == "power":
+        desired = _canon_on_off(value or state or "", allow_toggle=True)
+        return [desired, *purifier]
+
+    if setting == "mode":
+        mode = (value or "").strip().lower()
+        if mode not in PURIFIER_MODES:
+            raise JarvisError(f"Invalid purifier mode {mode!r}; expected one of {', '.join(PURIFIER_MODES)}")
+        return ["mode", mode, *purifier]
+
+    if setting == "speed":
+        raw_level = level if level is not None else value
+        try:
+            speed = int(raw_level)
+        except (TypeError, ValueError) as exc:
+            raise JarvisError("Purifier speed requires level 1-4") from exc
+        if speed not in PURIFIER_SPEEDS:
+            raise JarvisError("Purifier speed must be 1, 2, 3, or 4")
+        return ["speed", str(speed), *purifier]
+
+    if setting == "display":
+        desired = _canon_on_off(value or state or "")
+        return ["display", desired, *purifier]
+
+    if setting == "child-lock":
+        desired = _canon_on_off(value or state or "")
+        return ["child-lock", desired, *purifier]
+
+    if setting == "light-detection":
+        desired = _canon_on_off(value or state or "")
+        return ["light-detection", desired, *purifier]
+
+    if setting == "auto-preference":
+        preference = (value or "").strip().lower()
+        if preference not in PURIFIER_AUTO_PREFERENCES:
+            raise JarvisError(f"Invalid auto preference {preference!r}; expected one of {', '.join(PURIFIER_AUTO_PREFERENCES)}")
+        cli_args = ["auto-preference", preference, *purifier]
+        room_size = getattr(args, "room_size", None)
+        if room_size is not None:
+            cli_args.extend(["--room-size", str(room_size)])
+        return cli_args
+
+    if setting == "timer":
+        if (value or "").strip().lower() in {"clear", "cancel", "off", "none"}:
+            return ["clear-timer", *purifier]
+        raw_minutes = minutes if minutes is not None else value
+        try:
+            timer_minutes = int(raw_minutes)
+        except (TypeError, ValueError) as exc:
+            raise JarvisError("Purifier timer requires minutes, or value='clear'") from exc
+        if timer_minutes <= 0 or timer_minutes > 1440:
+            raise JarvisError("Purifier timer minutes must be between 1 and 1440")
+        return ["timer", str(timer_minutes), *purifier]
+
+    raise JarvisError(f"Unsupported purifier setting {setting!r}")
+
+
+def handle_purifier_status(args: argparse.Namespace) -> dict[str, Any]:
+    result = run_air_purifier_command(
+        ["status", *_purifier_device_args(args)],
+        timeout=args.purifier_timeout,
+    )
+    status = result.get("data") if isinstance(result.get("data"), dict) else {}
+    return {
+        "ok": True,
+        "action": "purifier-status",
+        "airPurifierRoot": str(AIR_PURIFIER_DIR),
+        "purifier": status,
+        "summary": purifier_summary(status),
+        "airPurifier": result,
+    }
+
+
+def handle_purifier_set(args: argparse.Namespace) -> dict[str, Any]:
+    cli_args = _purifier_set_cli_args(args)
+    result = run_air_purifier_command(cli_args, timeout=args.purifier_timeout)
+    status = result.get("data") if isinstance(result.get("data"), dict) else {}
+    return {
+        "ok": True,
+        "action": "purifier-set",
+        "setting": _canon_purifier_setting(args.setting),
+        "airPurifierRoot": str(AIR_PURIFIER_DIR),
+        "purifier": status,
+        "summary": purifier_summary(status),
+        "airPurifier": result,
+    }
+
+
 def add_smart_plug_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--plug-config", default=None, help=f"Smart-plug config path; default: {SMART_PLUG_CONFIG}")
     parser.add_argument("--discovery-target", default=None, help="Kasa discovery broadcast target, e.g. a LAN broadcast address")
@@ -1603,6 +1863,20 @@ def build_parser() -> argparse.ArgumentParser:
     cast_spotify_repeat.add_argument("--cast-timeout", type=float, default=DEFAULT_CAST_TIMEOUT)
     add_spotify_control_options(cast_spotify_repeat)
     cast_spotify_repeat.set_defaults(func=handle_cast_spotify_repeat)
+
+    purifier_status = subparsers.add_parser("purifier-status", help="Show Levoit/VeSync air purifier status")
+    add_air_purifier_options(purifier_status)
+    purifier_status.set_defaults(func=handle_purifier_status)
+
+    purifier_set = subparsers.add_parser("purifier-set", help="Set one air purifier setting")
+    add_air_purifier_options(purifier_set)
+    purifier_set.add_argument("setting", choices=PURIFIER_SETTINGS, help="Setting to control")
+    purifier_set.add_argument("value", nargs="*", help="Setting value, e.g. on/off/auto/sleep/clear")
+    purifier_set.add_argument("--level", type=int, default=None, help="Speed level for setting=speed, 1-4")
+    purifier_set.add_argument("--state", choices=PURIFIER_POWER_STATES, default=None, help="Power/display/lock state convenience field")
+    purifier_set.add_argument("--minutes", type=int, default=None, help="Timer minutes for setting=timer")
+    purifier_set.add_argument("--room-size", type=int, default=None, help="Room size in square feet for setting=auto-preference")
+    purifier_set.set_defaults(func=handle_purifier_set)
 
     plug_list = subparsers.add_parser("plug-list", help="List configured smart plugs")
     add_smart_plug_options(plug_list)
