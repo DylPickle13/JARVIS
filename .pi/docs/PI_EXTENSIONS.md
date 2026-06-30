@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-06-25 EDT
+Updated: 2026-06-30 EDT
 
 The local Pi extension inventory lives in `.pi/extensions/`. `.pi/smoke-test.sh` keeps a read-only manifest check so added or removed extension roots are visible during smoke testing. The manifest intentionally ignores the shared `.pi/extensions/lib/` directory.
 
@@ -68,6 +68,27 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
 
 `minecraft_jarvis` remains accepted as a compatibility group but the tool is already always on.
+
+## Local media generation worker
+
+The `image` and `video` groups use the private worker repo [`DylPickle13/local-media-generation`](https://github.com/DylPickle13/local-media-generation) on `mac-mini-64`.
+
+- Canonical remote directory: `/Users/dylanrapanan/media-generation`
+- Compatibility symlink: `/Users/dylanrapanan/image-generation -> media-generation`
+- Local copied outputs: `generated-images/` and `generated-videos/` in this JARVIS repo, both ignored by git
+- Pi extensions default to `~/media-generation`, export both `MEDIA_GENERATION_DIR` and legacy `IMAGE_GENERATION_DIR`, and set `JARVIS_GENERATION_SYNC=0` because the extensions handle their own copy-back and remote cleanup.
+- Manual/README worker runs leave sync enabled: successful outputs copy back through SSH alias `jarvis-vm`, then remote media is deleted only after copy-back succeeds.
+
+Remote verification on `mac-mini-64`:
+
+```bash
+cd ~/media-generation
+bin/image-generate --health
+bin/video-generate --health
+bin/smoke-test
+```
+
+The worker `--health` JSON includes `sync.image` and `sync.video` checks confirming `jarvis-vm` can write to `/Users/gemma/JARVIS/generated-images/` and `/Users/gemma/JARVIS/generated-videos/`. `bin/smoke-test` is a fast compile/health/fake-sync test; it does not run model inference.
 
 ## Verification
 
