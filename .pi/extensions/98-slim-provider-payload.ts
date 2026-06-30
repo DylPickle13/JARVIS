@@ -4,18 +4,16 @@ function toolName(tool: any): string | undefined {
   return typeof tool?.name === "string" ? tool.name : typeof tool?.function?.name === "string" ? tool.function.name : undefined;
 }
 
-function compactAvailableTools(payload: any): string {
-  const names = Array.isArray(payload?.tools) ? payload.tools.map(toolName).filter(Boolean) : [];
-  if (names.length === 0) return "Available tools are provided in the tool schema list.\n";
-  return `Available tools: ${names.join(", ")}.\n`;
+function compactAvailableTools(_payload: any): string {
+  return "";
 }
 
 function compactInstructions(instructions: string, payload: any): string {
   let text = instructions;
 
   text = text.replace(
-    /Available tools:\n(?:- [^\n]*\n)+\nIn addition to the tools above, you may have access to other custom tools depending on the project\.\n/,
-    `${compactAvailableTools(payload)}\n`,
+    /Available tools:\n(?:- [^\n]*\n)+\nIn addition to the tools above, you may have access to other custom tools depending on the project\.\n\n?/,
+    compactAvailableTools(payload),
   );
 
   text = text.replace(
@@ -54,11 +52,11 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   code_search: "Search external code/docs/API examples.",
   fetch_content: "Fetch/extract URL(s)/GitHub/YouTube/local video; batch selected research URLs in one urls array.",
   get_search_content: "Retrieve stored search/fetch content by responseId.",
-  minecraft_jarvis: "Minecraft bot chat/control; short safe plain-language messages.",
+  minecraft_jarvis: "Minecraft bot chat/control; use direct short plain messages; no SSH/shell/slash.",
   maps: "Ask Google Maps about places, addresses, coordinates, routes, travel time, or local searches.",
-  load_tools: "Load optional groups incl browser=visible Chrome for rendered/interactive web; plus memory, code_docs, image, jarvis, phone, google, cron, discord, sessions, all.",
+  load_tools: "Load optional groups incl browser=visible Chrome for rendered/interactive web; plus memory, code_docs, image, video, jarvis, phone, google, cron, discord, sessions, all.",
   agent_phone: "Android phone control via safe CLI-token args.",
-  jarvis: "Operation JARVIS dashboard/camera/Cast helper.",
+  jarvis: "Operation JARVIS dashboard/camera/Cast/Spotify/air-purifier helper.",
   smart_plug: "Local smart-plug control.",
   google_workspace: "Google Workspace API for Drive/Gmail/Docs/Sheets/Calendar.",
   discord_cron: "Manage scheduled Pi/JARVIS jobs posted to Discord.",

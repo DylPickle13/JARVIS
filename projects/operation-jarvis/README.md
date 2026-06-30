@@ -7,7 +7,8 @@ Unified project for a practical real-world JARVIS loop using:
 3. **Google Cast** — spoken output plus TV/speaker media control.
 4. **Dashboard** — LAN holographic HUD, telemetry, artifacts, and allowlisted room controls.
 5. **Smart plugs** — local TP-Link Kasa HS103 control for devices around the house.
-6. **Raspberry Pi room audio** — always-listening room microphone/speaker endpoint.
+6. **Air purifier** — direct VeSync/Levoit Vital 200S-P status and control through `purifier-status` and `purifier-set`.
+7. **Raspberry Pi room audio** — always-listening room microphone/speaker endpoint.
 
 **Local/private operations note:** this README intentionally contains LAN IPs, device names, service paths, and other local runbook details. Keep it private; do not publish without redaction.
 
@@ -16,7 +17,8 @@ Integrated live Discord voice subsystem: 2026-05-15<br>
 Integrated LAN dashboard/HUD: 2026-05-17<br>
 Tested dashboard phone camera as a vision source: 2026-05-17<br>
 Integrated local Kasa smart plugs: 2026-05-23<br>
-Added dashboard phone voice mode and removed the camera panel from the active HUD: 2026-06-21
+Added dashboard phone voice mode and removed the camera panel from the active HUD: 2026-06-21<br>
+Integrated Levoit/VeSync air purifier control: 2026-06-28
 
 ## Architecture
 
@@ -26,6 +28,7 @@ Dashboard phone voice = portable wake-word mic/speaker endpoint
 Cast = room speaker/media output
 Dashboard = LAN HUD/control room
 Smart plugs = local house device power control
+Air purifier = VeSync/Levoit air quality, filter, and purifier controls
 Raspberry Pi room audio = room mic/speaker bridge
 ```
 
@@ -57,7 +60,7 @@ The Pi-facing room tool is loaded through the optional Pi tool group:
 load_tools({ groups: ["jarvis"] })
 ```
 
-After the `jarvis` group is loaded, use the `jarvis` tool directly. It wraps Cast output, smart plugs, status checks, and legacy dashboard-camera actions. If a smaller/local model is unsure, the safe guide call is:
+After the `jarvis` group is loaded, use the `jarvis` tool directly. It wraps Cast output, smart plugs, air-purifier actions, status checks, and legacy dashboard-camera actions. If a smaller/local model is unsure, the safe guide call is:
 
 ```json
 { "action": "help" }
@@ -154,6 +157,7 @@ python discord_bot.py
 | Dashboard | `cd dashboard && npm start` | LAN HUD, dashboard voice, and control surface. |
 | Dashboard service | `cd dashboard && npm run install-service` | Installs login LaunchAgent. |
 | Smart plugs | `./jarvis-cli plug-list` | Requires smart-plug venv/credentials. |
+| Air purifier | `./jarvis-cli purifier-status` | Requires air-purifier venv/VeSync credentials. |
 | Room audio server | `.venv/bin/python raspberry-pi/room_audio/room_audio_server.py --host 0.0.0.0 --port 8791` | Mac-side bridge used by Pi client. |
 | Pi room audio client | `raspberry-pi/scripts/install-room-audio-service.sh` | Deploys/refreshes Pi systemd service. |
 
@@ -311,6 +315,7 @@ Credentials load from `smart-plug/.env`, `projects/operation-jarvis/.env`, then 
 | Raspberry Pi endpoint | [`raspberry-pi/README.md`](raspberry-pi/README.md) | Pi SSH/systemd + Mac room server |
 | Room audio | [`raspberry-pi/room_audio/README.md`](raspberry-pi/room_audio/README.md) | Pi client + Mac HTTP bridge |
 | Smart plugs | [`smart-plug/README.md`](smart-plug/README.md) | Dedicated Python 3.11+ venv |
+| Air purifier | [`air-purifier/README.md`](air-purifier/README.md) | Dedicated Python 3.11+ venv, VeSync/Levoit |
 | Cast/Spotify | this README + `scripts/tv.py` | `jarvis-cli` / Pi tool |
 
 ## Live Discord voice

@@ -50,6 +50,8 @@ def _print_status(status: PurifierStatus, as_json: bool = False) -> None:
         bits.append(f"pm2.5={payload.get('pm25')}")
     if payload.get("filter_life") is not None:
         bits.append(f"filter={payload.get('filter_life')}%")
+    if payload.get("verification_pending"):
+        bits.append("verification=pending")
     if status.cid:
         bits.append(f"cid={status.cid}")
     print("  ".join(bits))
@@ -93,7 +95,7 @@ def _doctor_payload() -> dict[str, Any]:
         "dependencies": deps.as_dict(),
         "notes": [
             "Pair the purifier in the VeSync app before running list/status/control commands.",
-            "This subsystem is standalone and is not wired into JARVIS tools yet.",
+            "This subsystem is available through Operation JARVIS purifier-status/purifier-set tools.",
         ],
     }
 

@@ -25,7 +25,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `30-google-access.ts` — Google Workspace tool.
 - `34-maps.ts` — Google Maps places/geocode/routes natural-language tool.
 - `35-memory.ts` — durable project-local memory.
-- `45-jarvis.ts` — Operation JARVIS dashboard/Cast plus `smart_plug`.
+- `45-jarvis.ts` — Operation JARVIS dashboard/Cast, smart plugs, and VeSync/Levoit air purifier actions.
 - `46-local-pi-session-status.ts` — dashboard-visible local Pi session heartbeat.
 - `48-agent-phone.ts` — guarded LG-H933 Android phone adapter.
 - `50-browser/` — visible Chrome browser control via Playwright CDP.
@@ -34,6 +34,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `56-github-cli.ts` — guarded GitHub CLI adapter.
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `70-image-generation.ts` — local Qwen image generation via mac-mini-64.
+- `71-video-generation.ts` — local Wan/MLX-Gen MP4 video generation via mac-mini-64.
 - `98-slim-provider-payload.ts` — provider payload/schema slimming.
 - `99-lazy-tools.ts` — lazy optional tool-group visibility.
 
@@ -55,6 +56,7 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `memory` | `memory` |
 | `code_docs` | `code_search` |
 | `image` | `generate_image` |
+| `video` | `generate_video` |
 | `jarvis` | `jarvis`, `smart_plug` |
 | `phone` | `agent_phone` |
 | `google` | `google_workspace` |
@@ -62,6 +64,8 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `discord` | `discord_ping`, `discord_send_file` |
 | `sessions` | `session_search` |
 | `browser` | `browser_status`, `browser_open`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_upload`, `browser_key`, `browser_scroll`, `browser_wait`, `browser_extract`, `browser_tabs`, `browser_close` |
+
+The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
 
 `minecraft_jarvis` remains accepted as a compatibility group but the tool is already always on.
 

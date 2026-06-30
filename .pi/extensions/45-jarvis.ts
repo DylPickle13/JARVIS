@@ -722,8 +722,8 @@ export default function registerJarvis(pi: ExtensionAPI) {
   pi.registerTool({
     name: "jarvis",
     label: "Operation JARVIS",
-    description: "Operation JARVIS tool loaded on demand with load_tools({ groups: [\"jarvis\"] }) for dashboard phone camera vision, Google Cast speech/media, Spotify Connect control, and local Kasa smart-plug control. Safe guide: action=help. Safe local status: action=status with noCast=true. Required fields: speak text; cast-youtube query; cast-play-url url; cast-volume/cast-spotify-volume level; cast-spotify query/spotifyUri/resume; cast-spotify-queue-add query/spotifyUri; cast-spotify-seek position/positionMs; video duration; video-until condition; plug actions need plug.",
-    promptSnippet: "Operation JARVIS (load group `jarvis` first): `jarvis({action:\"help\"})` for guide; dashboard-camera look/video/analyze; Cast speak/status/volume/youtube; Spotify devices/play/pause/next/previous/volume/queue/seek/shuffle/repeat; smart plugs plug-list/status/on/off/toggle.",
+    description: "Operation JARVIS tool loaded on demand with load_tools({ groups: [\"jarvis\"] }) for dashboard phone camera vision, Google Cast speech/media, Spotify Connect control, local Kasa smart-plug control, and VeSync/Levoit air-purifier control. Safe guide: action=help. Safe local status: action=status with noCast=true. Required fields: speak text; cast-youtube query; cast-play-url url; cast-volume/cast-spotify-volume level; cast-spotify query/spotifyUri/resume; cast-spotify-queue-add query/spotifyUri; cast-spotify-seek position/positionMs; video duration; video-until condition; plug actions need plug; purifier-set needs setting.",
+    promptSnippet: "Operation JARVIS (load group `jarvis` first): `jarvis({action:\"help\"})` for guide; dashboard-camera look/video/analyze; Cast speak/status/volume/youtube; Spotify controls; smart plugs plug-list/status/on/off/toggle; air purifier purifier-status and purifier-set (mode sleep/auto/manual/pet, speed 1-4).",
     promptGuidelines: [
       "Only use `jarvis` after the `jarvis` tool group has been loaded with load_tools({ groups: [\"jarvis\"] }); then call `jarvis` directly.",
       "Use `jarvis({ action: \"help\" })` if you are unsure of parameters. Safe checks: `status` with `noCast: true`, or `cast-status` for a specific device.",
@@ -732,7 +732,7 @@ export default function registerJarvis(pi: ExtensionAPI) {
       "Spotify calls: `cast-spotify-devices` lists currently visible Spotify Connect devices; `cast-spotify` plays a `query`/`spotifyUri` or resumes with `resume:true`; `cast-spotify-pause`, `cast-spotify-next`, `cast-spotify-previous`, and `cast-spotify-volume` control playback. `cast-spotify-queue-add` adds a track/episode using `query` or `spotifyUri` plus optional `spotifyQueueType`; `cast-spotify-queue` reads the current queue; `cast-spotify-seek` seeks with `position`/`timestamp` like 1:30 or `positionMs`; `cast-spotify-shuffle` uses `state` on/off/toggle; `cast-spotify-repeat` uses `repeatState` off/context/track/toggle. Spotify credentials are already loaded from local .env when present; do not ask for or expose secrets.",
       "Spotify target guide: use `device:\"tv\"` and `device:\"speakers\"` for configured Cast aliases. Use `spotifyDeviceName` for an explicit Spotify Connect target from local private config or from `cast-spotify-devices`. Prefer names over device IDs because Spotify IDs can change.",
       "Common smart-plug calls: `plug-list`; `plug-status` with `plug`; `plug-on`/`plug-off`/`plug-toggle` with a configured plug name from local private config or from `plug-list`.",
-      "Air purifier calls use exactly two actions: `purifier-status` for all read-only status/filter/air-quality info, and `purifier-set` with `setting` for writes. Supported purifier settings: power, mode, speed, display, child-lock, light-detection, auto-preference, timer. Use `value` for string values, `level` for speed, `minutes` for timer, and `state` for on/off/toggle where appropriate. VeSync writes may take up to a minute; wait for the tool result before issuing another purifier command.",
+      "Air purifier calls use exactly two actions: `purifier-status` for all read-only status/filter/air-quality info, and `purifier-set` with `setting` for writes. Supported purifier settings: power, mode, speed, display, child-lock, light-detection, auto-preference, timer. Modes are auto/manual/sleep/pet; fan speeds are 1-4. Use `value` for string values, `level` for speed, `minutes` for timer, and `state` for on/off/toggle where appropriate. VeSync writes may take more than a minute; wait for the tool result and, if it says verification_pending, report accepted/pending and check status later instead of sending fallback commands.",
       "Always keep camera recording bounded. Keep spoken output brief; put detailed audit text in Discord.",
     ],
     parameters: Type.Object({
@@ -760,7 +760,7 @@ export default function registerJarvis(pi: ExtensionAPI) {
       spotifyClientId: Type.Optional(Type.String({ description: "Optional Spotify app client ID (else SPOTIFY_CLIENT_ID env)." })),
       spotifyClientSecret: Type.Optional(Type.String({ description: "Optional Spotify app client secret (else SPOTIFY_CLIENT_SECRET env)." })),
       spotifyRefreshToken: Type.Optional(Type.String({ description: "Optional Spotify refresh token (else SPOTIFY_REFRESH_TOKEN env)." })),
-      level: Type.Optional(Type.Number({ description: "Required for cast-volume and cast-spotify-volume. Volume level 0..100." })),
+      level: Type.Optional(Type.Number({ description: "Required for cast-volume/cast-spotify-volume (0..100). Also used for purifier-set setting=speed; purifier fan speed is 1..4." })),
       state: Type.Optional(StringEnum(MUTE_STATES, { description: "cast-mute state; default on. Also used for cast-spotify-shuffle as on/off/toggle." })),
       quitApp: Type.Optional(Type.Boolean({ description: "cast-stop: quit current Cast app for a stronger stop. Defaults true; set false to stop media only and leave the app open." })),
       enqueue: Type.Optional(Type.Boolean({ description: "YouTube actions: enqueue instead of play now." })),
@@ -772,10 +772,10 @@ export default function registerJarvis(pi: ExtensionAPI) {
       plugTimeout: Type.Optional(Type.Number({ description: "Smart-plug command timeout seconds." })),
       purifier: Type.Optional(Type.String({ description: "Optional VeSync air purifier name/CID/model override. Usually omit; default is configured locally in air-purifier/.env." })),
       setting: Type.Optional(StringEnum(PURIFIER_SETTINGS, { description: "Required for purifier-set. Choose one setting: power, mode, speed, display, child-lock, light-detection, auto-preference, or timer." })),
-      value: Type.Optional(Type.String({ description: "purifier-set value. Examples: power on/off/toggle; mode auto/manual/sleep/pet; display on/off; auto-preference default/quiet/efficient; timer clear." })),
+      value: Type.Optional(Type.String({ description: "purifier-set value. Examples: power on/off/toggle; mode auto/manual/sleep/pet; display on/off; child-lock on/off; light-detection on/off; auto-preference default/quiet/efficient; timer clear." })),
       minutes: Type.Optional(Type.Number({ description: "purifier-set setting=timer: timer minutes, 1..1440." })),
       roomSize: Type.Optional(Type.Number({ description: "purifier-set setting=auto-preference: optional room size in square feet." })),
-      purifierTimeout: Type.Optional(Type.Number({ description: "Air purifier command timeout seconds; writes can take up to a minute to reflect." })),
+      purifierTimeout: Type.Optional(Type.Number({ description: "Air purifier command timeout seconds; default 150. Writes can take more than a minute to reflect; accepted-but-stale writes may return verification_pending." })),
 
       duration: Type.Optional(Type.Number({ description: "Required and >0 for video. Optional analysis duration seconds for analyze-view; default about 3." })),
       maxDuration: Type.Optional(Type.Number({ description: "video-until positive safety cap seconds; default 60. Always bound monitoring." })),
@@ -810,6 +810,7 @@ export default function registerJarvis(pi: ExtensionAPI) {
       if (params.maxDuration !== undefined && params.maxDuration <= 0) throw new Error("maxDuration must be greater than 0");
       if (params.interval !== undefined && params.interval <= 0) throw new Error("interval must be greater than 0");
       if (params.level !== undefined && (params.level < 0 || params.level > 100)) throw new Error("level must be between 0 and 100");
+      if (params.action === "purifier-set" && params.setting === "speed" && params.level !== undefined && (params.level < 1 || params.level > 4)) throw new Error("purifier speed level must be between 1 and 4");
       if (params.positionMs !== undefined && params.positionMs < 0) throw new Error("positionMs must be 0 or greater");
       if (params.limit !== undefined && params.limit <= 0) throw new Error("limit must be greater than 0");
       if (params.maxChars !== undefined && params.maxChars < 0) throw new Error("maxChars must be 0 or greater");

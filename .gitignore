@@ -5,6 +5,7 @@
 /attachments
 /generated_audio/
 /generated-images/
+/generated-videos/
 /logs/
 /projects/*
 !/projects/operation-jarvis/

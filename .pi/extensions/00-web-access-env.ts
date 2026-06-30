@@ -8,18 +8,10 @@ import { findAncestorFile as findAncestorFilePath, parseDotEnvFile } from "./lib
 
 const WEB_SEARCH_CONFIG_PATH = join(homedir(), ".pi", "web-search.json");
 const FETCH_STATUS_RE = /^Content fetched for \d+\/\d+ URLs \[[^\]]+\]\. Full page content now available\.?$/i;
-const WEB_RESEARCH_WORKFLOW_PROMPT = [
-	"Web research workflow:",
-	"- Use web_search for discovery/snippets only; do not set includeContent:true.",
-	"- When full pages are needed, choose the best URLs and fetch them with one batched fetch_content({ urls: [...] }) call.",
-	"- Wait for that fetch_content result before final answers/docs, and ignore any delayed web-search-content-ready status messages.",
-].join("\n");
-const GEMINI_DISABLED_PROMPT = [
-	"Web access policy:",
-	"- Gemini-backed web access is intentionally disabled in this project.",
-	"- Do not ask for or suggest GEMINI_API_KEY, Gemini API setup, or signing into gemini.google.com.",
-	"- Use Exa-backed web_search by default; use provider:'youtube' only for YouTube Data API metadata/search.",
-].join("\n");
+const WEB_RESEARCH_WORKFLOW_PROMPT =
+	"Web: `web_search` for snippets only (no includeContent); batch selected pages with `fetch_content({ urls })`; wait for fetch and ignore delayed web-search-content-ready notices.";
+const GEMINI_DISABLED_PROMPT =
+	"Web policy: Gemini web is disabled; never suggest GEMINI_API_KEY/Gemini login. Default Exa; use provider:'youtube' only for YouTube metadata/search.";
 function loadExistingWebSearchConfig(): Record<string, unknown> {
 	if (!existsSync(WEB_SEARCH_CONFIG_PATH)) return {};
 	try {

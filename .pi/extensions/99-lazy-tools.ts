@@ -5,6 +5,7 @@ type CanonicalToolGroup =
   | "memory"
   | "code_docs"
   | "image"
+  | "video"
   | "jarvis"
   | "minecraft_jarvis"
   | "phone"
@@ -39,6 +40,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   memory: ["memory"],
   code_docs: ["code_search"],
   image: ["generate_image"],
+  video: ["generate_video"],
   jarvis: ["jarvis", "smart_plug"],
   minecraft_jarvis: ["minecraft_jarvis"],
   phone: ["agent_phone"],
@@ -66,7 +68,8 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   memory: "memory for durable project/local facts/preferences/workflows; never store secrets",
   code_docs: "code_search for external code/docs/API examples",
   image: "generate_image for local Qwen image generation or guided edits",
-  jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, and local smart plugs",
+  video: "generate_video for local Wan/MLX-Gen video generation or image-to-video clips",
+  jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, local smart plugs, and VeSync/Levoit air purifier control",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   phone: "agent_phone for safe LG-H933 Android phone control via ADB refs/screenshots",
   google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
@@ -99,8 +102,16 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
     skill: "image generation",
     lines: [
       "Use `generate_image` for local PNG image generation or guided image edits on mac-mini-64.",
-      "Provide a detailed visual prompt; for guided edits, pass a local inputImagePath and use imageStrength around 0.4 by default.",
+      "Default high-quality image profile is large 16:9, 30 steps. Provide a detailed visual prompt; for guided edits, pass a local inputImagePath and use imageStrength around 0.4 by default.",
       "Do not use shell, browser, ComfyUI, Draw Things, or alternate image generators unless explicitly requested.",
+    ],
+  },
+  video: {
+    skill: "video generation",
+    lines: [
+      "Use `generate_video` for local MP4 video generation or image-to-video clips on mac-mini-64.",
+      "Default high-quality profile is large 16:9, 4 seconds, 24 fps, 20 steps. Use `seconds`, not frames; the worker converts seconds to Wan's internal frame count.",
+      "For image-to-video, pass a local inputImagePath and describe camera/subject motion. Do not substitute SSH/manual worker calls unless debugging.",
     ],
   },
   phone: {
@@ -127,11 +138,12 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   jarvis: {
     skill: "operation-jarvis",
     lines: [
-      "Use `load_tools({ groups: [\"jarvis\"] })` before using Operation JARVIS, dashboard camera, Cast actions, or smart-plug control; then call the unlocked `jarvis` or `smart_plug` tool directly.",
-      "Safe checks: `jarvis({ action: \"help\" })`, `jarvis({ action: \"status\", noCast: true })`, `jarvis({ action: \"cast-status\", device: \"speakers\" })`, or `smart_plug({ action: \"list\" })`.",
+      "Use `load_tools({ groups: [\"jarvis\"] })` before using Operation JARVIS, dashboard camera, Cast actions, smart-plug control, or air-purifier control; then call the unlocked `jarvis` or `smart_plug` tool directly.",
+      "Safe checks: `jarvis({ action: \"help\" })`, `jarvis({ action: \"status\", noCast: true })`, `jarvis({ action: \"cast-status\", device: \"speakers\" })`, `smart_plug({ action: \"list\" })`, or `jarvis({ action: \"purifier-status\" })`.",
       "Dashboard camera actions: `jarvis({ action: \"look\" })`, `jarvis({ action: \"video\", duration: 5 })`, `jarvis({ action: \"video-until\", condition: \"a person is visible\", maxDuration: 60 })`, or `jarvis({ action: \"analyze-view\", question: \"What is visible?\" })`.",
       "Cast actions: `jarvis({ action: \"speak\", text: \"JARVIS online.\", device: \"speakers\" })`, `jarvis({ action: \"cast-status\", device: \"tv\" })`, `jarvis({ action: \"cast-volume\", level: 25 })`, `jarvis({ action: \"cast-youtube\", query: \"relaxing jazz\", device: \"tv\" })`, and related `cast-mute`, `cast-stop`, `cast-play-url` actions.",
       "Smart-plug actions use the dedicated local-only tool: `smart_plug({ action: \"status\", plug: \"<configured-plug-name>\" })`, `smart_plug({ action: \"on\", plug: \"<configured-plug-name>\" })`, `smart_plug({ action: \"off\", plug: \"<configured-plug-name>\" })`, or `smart_plug({ action: \"toggle\", plug: \"<configured-plug-name>\" })`. Run `smart_plug({ action: \"list\" })` to see local aliases.",
+      "Air-purifier actions use exactly two `jarvis` actions: `jarvis({ action: \"purifier-status\" })` for read-only status/filter/air-quality info, and `jarvis({ action: \"purifier-set\", setting: \"mode\", value: \"auto\" })` for writes. Supported settings: power, mode, speed, display, child-lock, light-detection, auto-preference, timer. VeSync writes may take more than a minute; wait for the tool result before issuing another purifier command.",
       "Always keep camera recording bounded. For spoken output, keep text short and keep full details in Discord.",
     ],
   },
@@ -302,10 +314,11 @@ function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
   const lines: Record<GuidanceGroup, string> = {
     memory: "memory: use `memory` only for stable durable facts/preferences/lessons/workflows; never store secrets or sensitive personal data.",
     code_docs: "code_docs: use `code_search` for external programming docs/API examples; use local grep/find/read for repo files first.",
-    image: "image: use `generate_image` for local Qwen image generation/editing; provide detailed prompts and local inputImagePath for guided edits.",
+    image: "image: use `generate_image` for local Qwen image generation/editing; default large 16:9, 30 steps; provide local inputImagePath for guided edits.",
+    video: "video: use `generate_video` for local Wan/MLX-Gen MP4 generation; use seconds, not frames; pass inputImagePath for image-to-video.",
     phone: "phone: use `agent_phone` directly; args are CLI tokens excluding the binary; start with `snapshot -i`, interact via `@refs`, and confirm sensitive actions.",
     google: "google: use `google_workspace` for Calendar/events, Gmail/mail, Drive files/folders, Docs, and Sheets; use `calendar_events`, `drive_download_folder`, or generic `call` with help/schema; writes need explicit intent.",
-    jarvis: "jarvis: use `jarvis` for camera/Cast and `smart_plug` for plugs; keep recordings bounded and speech short.",
+    jarvis: "jarvis: use `jarvis` for camera/Cast/air purifier and `smart_plug` for plugs; use `purifier-status` before purifier writes; keep recordings bounded and speech short.",
     minecraft_jarvis: "minecraft_jarvis: use `minecraft_jarvis({ message })` for the Minecraft bot; do not substitute SSH, shell, or slash-command shortcuts.",
     cron: "cron: use `discord_cron` only for Discord-posted scheduled jobs; OS cron/launchd only if explicitly requested.",
     discord: "discord: use `discord_ping` for immediate Discord pings/notifications, with attachments when requested; use `discord_send_file` only for current-channel uploads when available.",
@@ -353,13 +366,12 @@ function filterProviderTools(tools: any[] | undefined, visible: Set<string>): an
   return filtered;
 }
 
-function rewriteAvailableToolsText(text: string, visibleToolNames: readonly string[]): string {
-  const line = `Available tools: ${visibleToolNames.join(", ")}.\n`;
+function rewriteAvailableToolsText(text: string, _visibleToolNames: readonly string[]): string {
   let rewritten = text.replace(
-    /Available tools:\n(?:- [^\n]*\n)+(?:\nIn addition to the tools above, you may have access to other custom tools depending on the project\.\n)?/,
-    `${line}\n`,
+    /Available tools:\n(?:- [^\n]*\n)+(?:\nIn addition to the tools above, you may have access to other custom tools depending on the project\.\n)?\n?/,
+    "",
   );
-  rewritten = rewritten.replace(/Available tools(?: are provided in the tool schema list|: [^\n]*)\.\n/, line);
+  rewritten = rewritten.replace(/Available tools(?: are provided in the tool schema list|: [^\n]*)\.\n\n?/, "");
   return rewritten;
 }
 
@@ -418,10 +430,10 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
-    description: 'Load optional schemas. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Groups: memory, code_docs, image, jarvis, phone, google, cron, discord, sessions, browser=visible Chrome, all. No aliases; minecraft_jarvis is already on.',
-    promptSnippet: "Load optional groups. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Common: memory, code_docs, image, google, phone, cron, discord, browser=visible Chrome.",
+    description: 'Load optional schemas. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Groups: memory, code_docs, image, video, jarvis=dashboard/Cast/smart plugs/air purifier, phone, google, cron, discord, sessions, browser=visible Chrome, all. No aliases; minecraft_jarvis is already on.',
+    promptSnippet: "Load optional groups. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Common: memory, code_docs, image, video, jarvis for dashboard/Cast/smart plugs/air purifier, google, phone, cron, discord, browser=visible Chrome.",
     promptGuidelines: [
-      "Call load_tools before optional groups: memory, code_docs, image, jarvis, phone, google, cron, discord, sessions, browser. GitHub/`gh` => always-on `github_cli`; never bash `gh`. Local `git` status/diff/add/commit/log/branch => bash. If `github_cli` unavailable, report tool failure. For Google intents, load `google`. Web/search/fetch, github_cli, minecraft_jarvis, maps, and ssh are always on; no removed-tool aliases.",
+      "Call load_tools before optional groups: memory, code_docs, image, video, jarvis, phone, google, cron, discord, sessions, browser. For dashboard/Cast/smart-plug/air-purifier intents, load `jarvis`. GitHub/`gh` => always-on `github_cli`; never bash `gh`. Local `git` status/diff/add/commit/log/branch => bash. If `github_cli` unavailable, report tool failure. For Google intents, load `google`. Web/search/fetch, github_cli, minecraft_jarvis, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
       "Web: `web_search`=discover (`provider: \"youtube\"` for YouTube), `fetch_content`=static, `get_search_content`=stored. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
@@ -503,7 +515,7 @@ export default function lazyTools(pi: ExtensionAPI) {
     // Always return the pre-prime prompt so enabling the execution registry does
     // not leak every optional tool's prompt snippets/guidelines into the model.
     primeExecutionToolSet(pi);
-    const guidanceGroups = unique(["minecraft_jarvis", ...providerVisibleGroupsArray()]) as GuidanceGroup[];
+    const guidanceGroups = providerVisibleGroupsArray() as GuidanceGroup[];
     const guidance = buildGuidanceSection(guidanceGroups, "JARVIS active tool guidance");
     return {
       systemPrompt: guidance ? `${event.systemPrompt}\n\n${guidance}` : event.systemPrompt,
@@ -553,7 +565,7 @@ export default function lazyTools(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("load-tools", {
-    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,image,jarvis,minecraft_jarvis,phone,google,cron,discord,sessions,browser,all",
+    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,image,video,jarvis,minecraft_jarvis,phone,google,cron,discord,sessions,browser,all",
     handler: async (args, ctx) => {
       const requested = args
         .split(/[\s,]+/)
@@ -562,7 +574,7 @@ export default function lazyTools(pi: ExtensionAPI) {
       const invalid = requested.filter((group) => !isToolGroupName(group));
       const valid = requested.filter(isToolGroupName);
       if (invalid.length > 0 || valid.length === 0) {
-        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nGroups: ${LOADABLE_GROUPS_TEXT}\nCommon choices: code_docs=code_search; image=generate_image; memory=durable memory; phone=LG-H933 Android control; cron=scheduled Discord jobs; discord=immediate Discord pings/file delivery; browser=visible Chrome control. Web tools (web_search/fetch_content/get_search_content) and github_cli are always on.\n${invalid.length > 0 ? `Invalid group(s): ${invalid.join(", ")}. No aliases are supported.` : ""}`, "warning");
+        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nGroups: ${LOADABLE_GROUPS_TEXT}\nCommon choices: code_docs=code_search; image=generate_image; video=generate_video; memory=durable memory; phone=LG-H933 Android control; cron=scheduled Discord jobs; discord=immediate Discord pings/file delivery; browser=visible Chrome control. Web tools (web_search/fetch_content/get_search_content) and github_cli are always on.\n${invalid.length > 0 ? `Invalid group(s): ${invalid.join(", ")}. No aliases are supported.` : ""}`, "warning");
         return;
       }
       const expandedGroups = expandGroups(valid);

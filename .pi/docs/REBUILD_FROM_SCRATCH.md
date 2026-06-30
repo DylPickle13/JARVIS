@@ -13,7 +13,7 @@ Back up or be prepared to recreate:
 | Data | Path / owner | Required? | Notes |
 |---|---|---:|---|
 | Main secrets | `.env` | Yes | Recreate from [`.env.example`](../../.env.example). Never commit. |
-| Operation JARVIS secrets | `projects/operation-jarvis/.env`, `projects/operation-jarvis/smart-plug/.env` | If used | Can also be consolidated into root `.env` for many settings. |
+| Operation JARVIS secrets | `projects/operation-jarvis/.env`, `projects/operation-jarvis/smart-plug/.env`, `projects/operation-jarvis/air-purifier/.env` | If used | Can also be consolidated into root `.env` for many settings. |
 | Pi auth/session provider state | `~/.pi/agent/` | Usually | Contains Pi login/auth and session history unless API keys are used. |
 | Project Pi sessions | `~/.pi/agent/sessions/<project-session-dir>` | Optional | Needed for historical session continuity. |
 | Durable JARVIS memory | `.pi/memory/memory.sqlite*` | Optional but valuable | Project memories; ignored by git. |
@@ -85,7 +85,7 @@ Then fill subsystem settings as needed:
 - oMLX/PDF/voice/vision/embeddings: `OMLX_API_KEY`, `OMLX_64_BASE_URL`, optional `OMLX_PDF_*`, `DISCORD_VOICE_*`, `SESSION_SEARCH_*`, `JARVIS_DASHBOARD_CAMERA_*`
 - Discord helpers: `DISCORD_CRON_*`, `DISCORD_PING_*`, `JARVIS_DISCORD_SEND_FILE_MAX_BYTES`
 - Browser: optional `PI_BROWSER_CHROME_PATH`, `PI_BROWSER_PROFILE_DIR`, `PI_BROWSER_KEEP_OPEN_ON_SHUTDOWN`
-- Operation JARVIS: `JARVIS_DASHBOARD_*`, `SPOTIFY_*`, `KASA_*`
+- Operation JARVIS: `JARVIS_DASHBOARD_*`, `SPOTIFY_*`, `KASA_*`, `VESYNC_*`, `JARVIS_AIR_PURIFIER_*`
 - Phone/dashboard status: `JARVIS_DASHBOARD_PHONE_*`
 
 Never commit `.env` or copied secret files.
@@ -220,6 +220,7 @@ Operation JARVIS safe checks:
 cd /path/to/JARVIS/projects/operation-jarvis
 ./jarvis-cli --json help
 ./jarvis-cli --json status --no-cast
+./jarvis-cli --json purifier-status
 ```
 
 Dashboard check:

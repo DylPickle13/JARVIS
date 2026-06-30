@@ -2,12 +2,12 @@
 """Unified Operation JARVIS adapter.
 
 This is the single local adapter for the focused Operation JARVIS scope:
-Discord + dashboard phone camera + Google Cast + smart plugs.
+Discord + dashboard phone camera + Google Cast + smart plugs + air purifier.
 
 The dashboard phone is the camera surface. This adapter requests photos/videos
 from the LAN dashboard, analyzes snapshots with an OpenAI-compatible VLM,
 combines perception with Cast speech/media output, and controls local Kasa
-smart plugs around the house.
+smart plugs plus the VeSync/Levoit air purifier.
 """
 
 from __future__ import annotations
@@ -863,7 +863,7 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
     return {
         "ok": True,
         "action": "help",
-        "summary": "Operation JARVIS help: load the optional jarvis tool group first, then call the jarvis tool directly for dashboard-camera, Cast/Spotify, or smart-plug workflows.",
+        "summary": "Operation JARVIS help: load the optional jarvis tool group first, then call the jarvis tool directly for dashboard-camera, Cast/Spotify, smart-plug, or air-purifier workflows.",
         "guide": {
             "tool": "jarvis",
             "availability": "optional provider-visible tool group; load with load_tools({groups:[\"jarvis\"]})",
@@ -896,7 +896,9 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
             },
             "airPurifierTarget": {
                 "source": "air-purifier/.env",
-                "note": "Default purifier is configured locally as JARVIS_AIR_PURIFIER_NAME. Use purifier-status before changing settings.",
+                "note": "Default purifier is configured locally as JARVIS_AIR_PURIFIER_NAME. Use purifier-status before changing settings. VeSync writes can lag; accepted-but-stale writes return verification_pending instead of a hard failure.",
+                "supportedModes": list(PURIFIER_MODES),
+                "supportedFanSpeeds": list(PURIFIER_SPEEDS),
             },
             "safeChecks": [
                 {"action": "help"},
@@ -934,6 +936,7 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
                 "purifier-status": {"required": [], "example": {"action": "purifier-status"}},
                 "purifier-set": {
                     "required": ["setting"],
+                    "writeSemantics": "If a write returns verification_pending, report that VeSync accepted it and check status later; do not immediately issue fallback commands unless explicitly asked.",
                     "settings": {
                         "power": ["on", "off", "toggle"],
                         "mode": ["auto", "manual", "sleep", "pet"],
@@ -1432,6 +1435,14 @@ def purifier_summary(status: dict[str, Any]) -> str:
         bits.append(f"filter {filter_life}%")
     if display is not None:
         bits.append(f"display {display}")
+    supported_modes = status.get("supported_modes")
+    if isinstance(supported_modes, list) and supported_modes:
+        bits.append("modes " + "/".join(str(mode) for mode in supported_modes))
+    supported_fan_levels = status.get("supported_fan_levels")
+    if isinstance(supported_fan_levels, list) and supported_fan_levels:
+        bits.append("speeds " + "/".join(str(level) for level in supported_fan_levels))
+    if status.get("verification_pending"):
+        bits.append("write accepted; verification pending")
     return ", ".join(bits) + "."
 
 

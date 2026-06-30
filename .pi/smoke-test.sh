@@ -247,6 +247,7 @@ expected_extension_roots=(
   .pi/extensions/56-github-cli.ts
   .pi/extensions/60-pdf-read-result.ts
   .pi/extensions/70-image-generation.ts
+  .pi/extensions/71-video-generation.ts
   .pi/extensions/98-slim-provider-payload.ts
   .pi/extensions/99-lazy-tools.ts
   .pi/extensions/max-thinking-on-model-select.ts
@@ -256,11 +257,12 @@ for path in "${expected_extension_roots[@]}"; do
 done
 
 expected_extension_files=(
-  .pi/extensions/50-browser/browser-manager.ts
+  .pi/extensions/50-browser/chrome-bridge-daemon.mjs
+  .pi/extensions/50-browser/daemon-browser-manager.ts
   .pi/extensions/50-browser/index.ts
+  .pi/extensions/50-browser/package-lock.json
   .pi/extensions/50-browser/package.json
   .pi/extensions/50-browser/tools.ts
-  .pi/extensions/50-browser/stealth-patches.ts
 )
 for path in "${expected_extension_files[@]}"; do
   require_file "extension source" "$path"

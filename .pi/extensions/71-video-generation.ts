@@ -19,38 +19,41 @@ type HostConfig = {
   shellType?: "posix" | "windows-cmd" | "windows-powershell";
 };
 
-type AspectRatio = "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "21:9";
-type ImageSizePreset = "small" | "standard" | "large";
+type VideoAspectRatio = "16:9" | "9:16" | "1:1" | "4:3" | "3:4";
+type VideoSizePreset = "small" | "standard" | "large";
 
-type GenerateImageParams = {
+type GenerateVideoParams = {
   prompt: string;
   negativePrompt?: string;
-  aspectRatio?: AspectRatio;
-  size?: ImageSizePreset;
+  aspectRatio?: VideoAspectRatio;
+  size?: VideoSizePreset;
+  seconds?: number;
+  durationSeconds?: number;
+  fps?: number;
   steps?: number;
+  guidance?: number;
   seed?: number;
   inputImagePath?: string;
-  imageStrength?: number;
   filename?: string;
   timeoutSeconds?: number;
-  inlineImage?: boolean;
 };
 
-type RemoteResult = {
+type RemoteVideoResult = {
   ok?: boolean;
   error?: string;
   model?: string;
   jobId?: string;
-  prompt?: string;
-  negativePrompt?: string;
   width?: number;
   height?: number;
-  aspectRatio?: AspectRatio;
-  size?: ImageSizePreset;
+  aspectRatio?: VideoAspectRatio;
+  size?: VideoSizePreset;
+  frames?: number;
+  fps?: number;
+  durationSeconds?: number;
   steps?: number;
+  guidance?: number;
   seed?: number;
-  mode?: "text-to-image" | "image-to-image";
-  imageStrength?: number;
+  mode?: "text-to-video" | "image-to-video";
   elapsedSeconds?: number;
   remotePath?: string;
   metadataPath?: string | null;
@@ -58,6 +61,7 @@ type RemoteResult = {
   stdoutTail?: string;
   stderrTail?: string;
   stage?: string;
+  downloadCommand?: string;
 };
 
 type RenderState = {
@@ -66,54 +70,45 @@ type RenderState = {
   interval?: ReturnType<typeof setInterval>;
 };
 
-const MODEL = "mlx-community/Qwen-Image-2512-8bit";
-const HOST_ALIAS = (process.env.IMAGE_GENERATION_HOST_ALIAS || "mac-mini-64").trim();
+const VIDEO_MODEL = "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit";
+const HOST_ALIAS = (process.env.VIDEO_GENERATION_HOST_ALIAS || process.env.IMAGE_GENERATION_HOST_ALIAS || "mac-mini-64").trim();
 const DEFAULT_HOST_CONFIG_PATH = join(process.cwd(), ".pi", "ssh-hosts.json");
-const HOST_CONFIG_PATH = (process.env.IMAGE_GENERATION_SSH_HOSTS_CONFIG || DEFAULT_HOST_CONFIG_PATH).trim();
-const DEFAULT_NEGATIVE_PROMPT = "blurry, low quality, watermark, distorted, deformed";
-const DEFAULT_ASPECT_RATIO: AspectRatio = "16:9";
-const DEFAULT_SIZE: ImageSizePreset = "large";
-const DEFAULT_STEPS = 30;
-const DEFAULT_TIMEOUT_SECONDS = 1200;
-const DEFAULT_IMAGE_STRENGTH = 0.4;
-const DEFAULT_MAX_INLINE_BYTES = 8 * 1024 * 1024;
-const MAX_INLINE_BYTES = positiveInteger(process.env.IMAGE_GENERATION_MAX_INLINE_BYTES, DEFAULT_MAX_INLINE_BYTES);
+const HOST_CONFIG_PATH = (process.env.VIDEO_GENERATION_SSH_HOSTS_CONFIG || process.env.IMAGE_GENERATION_SSH_HOSTS_CONFIG || DEFAULT_HOST_CONFIG_PATH).trim();
+const DEFAULT_ASPECT_RATIO: VideoAspectRatio = "16:9";
+const DEFAULT_SIZE: VideoSizePreset = "large";
+const DEFAULT_DURATION_SECONDS = 4;
+const DEFAULT_FPS = 24;
+const MAX_INTERNAL_FRAMES = 121;
+const DEFAULT_STEPS = 20;
+const DEFAULT_GUIDANCE = 5;
+const DEFAULT_TIMEOUT_SECONDS = 7200;
 const DEFAULT_MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
-const MAX_INPUT_IMAGE_BYTES = positiveInteger(process.env.IMAGE_GENERATION_MAX_INPUT_IMAGE_BYTES, DEFAULT_MAX_INPUT_IMAGE_BYTES);
-const LOCAL_OUTPUT_DIR = process.env.IMAGE_GENERATION_LOCAL_OUTPUT_DIR || "generated-images";
+const MAX_INPUT_IMAGE_BYTES = positiveInteger(process.env.VIDEO_GENERATION_MAX_INPUT_IMAGE_BYTES, DEFAULT_MAX_INPUT_IMAGE_BYTES);
+const LOCAL_OUTPUT_DIR = process.env.VIDEO_GENERATION_LOCAL_OUTPUT_DIR || "generated-videos";
 const INPUT_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp"]);
-const ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"] as const;
+const ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"] as const;
 const SIZE_PRESETS = ["small", "standard", "large"] as const;
-const DIMENSION_PRESETS: Record<ImageSizePreset, Record<AspectRatio, { width: number; height: number }>> = {
+const DIMENSION_PRESETS: Record<VideoSizePreset, Record<VideoAspectRatio, { width: number; height: number }>> = {
   small: {
-    "1:1": { width: 768, height: 768 },
-    "16:9": { width: 1024, height: 576 },
-    "9:16": { width: 576, height: 1024 },
-    "4:3": { width: 896, height: 672 },
-    "3:4": { width: 672, height: 896 },
-    "3:2": { width: 960, height: 640 },
-    "2:3": { width: 640, height: 960 },
-    "21:9": { width: 1152, height: 512 },
+    "16:9": { width: 448, height: 256 },
+    "9:16": { width: 256, height: 448 },
+    "1:1": { width: 384, height: 384 },
+    "4:3": { width: 512, height: 384 },
+    "3:4": { width: 384, height: 512 },
   },
   standard: {
-    "1:1": { width: 1024, height: 1024 },
-    "16:9": { width: 1344, height: 768 },
-    "9:16": { width: 768, height: 1344 },
-    "4:3": { width: 1152, height: 864 },
-    "3:4": { width: 864, height: 1152 },
-    "3:2": { width: 1216, height: 832 },
-    "2:3": { width: 832, height: 1216 },
-    "21:9": { width: 1536, height: 640 },
+    "16:9": { width: 832, height: 480 },
+    "9:16": { width: 480, height: 832 },
+    "1:1": { width: 512, height: 512 },
+    "4:3": { width: 768, height: 576 },
+    "3:4": { width: 576, height: 768 },
   },
   large: {
-    "1:1": { width: 1280, height: 1280 },
-    "16:9": { width: 1536, height: 864 },
-    "9:16": { width: 864, height: 1536 },
-    "4:3": { width: 1344, height: 1024 },
-    "3:4": { width: 1024, height: 1344 },
-    "3:2": { width: 1472, height: 960 },
-    "2:3": { width: 960, height: 1472 },
-    "21:9": { width: 1792, height: 768 },
+    "16:9": { width: 1280, height: 704 },
+    "9:16": { width: 704, height: 1280 },
+    "1:1": { width: 704, height: 704 },
+    "4:3": { width: 1024, height: 768 },
+    "3:4": { width: 768, height: 1024 },
   },
 };
 
@@ -161,20 +156,29 @@ function optionalFloat(value: unknown, field: string, min: number, max: number):
   return parsed;
 }
 
-function parseAspectRatio(value: unknown): AspectRatio {
-  const candidate = cleanString(value || DEFAULT_ASPECT_RATIO) as AspectRatio;
+function parseAspectRatio(value: unknown): VideoAspectRatio {
+  const candidate = cleanString(value || DEFAULT_ASPECT_RATIO) as VideoAspectRatio;
   if (!(ASPECT_RATIOS as readonly string[]).includes(candidate)) throw new Error(`aspectRatio must be one of: ${ASPECT_RATIOS.join(", ")}`);
   return candidate;
 }
 
-function parseSizePreset(value: unknown): ImageSizePreset {
-  const candidate = cleanString(value || DEFAULT_SIZE).toLowerCase() as ImageSizePreset;
+function parseSizePreset(value: unknown): VideoSizePreset {
+  const candidate = cleanString(value || DEFAULT_SIZE).toLowerCase() as VideoSizePreset;
   if (!(SIZE_PRESETS as readonly string[]).includes(candidate)) throw new Error(`size must be one of: ${SIZE_PRESETS.join(", ")}`);
   return candidate;
 }
 
-function dimensionsFor(aspectRatio: AspectRatio, size: ImageSizePreset): { width: number; height: number } {
+function dimensionsFor(aspectRatio: VideoAspectRatio, size: VideoSizePreset): { width: number; height: number } {
   return DIMENSION_PRESETS[size][aspectRatio];
+}
+
+function nearestWanFrameCount(target: number): number {
+  const min = 5;
+  const bounded = Math.max(min, Math.min(MAX_INTERNAL_FRAMES, Math.round(target)));
+  if (bounded % 4 === 1) return bounded;
+  const up = bounded + ((1 - bounded) % 4 + 4) % 4;
+  const down = bounded - ((bounded - 1) % 4 + 4) % 4;
+  return up <= MAX_INTERNAL_FRAMES ? Math.max(min, up) : Math.max(min, down);
 }
 
 function stringEnum(values: readonly string[], options?: Record<string, unknown>) {
@@ -245,13 +249,13 @@ function loadHostConfigs(): HostConfig[] {
 function resolveHost(): HostConfig {
   const hosts = loadHostConfigs();
   const host = hosts.find((candidate) => candidate.aliases.map((alias) => alias.toLowerCase()).includes(HOST_ALIAS.toLowerCase()));
-  if (!host) throw new Error(`Image host alias ${HOST_ALIAS} not found in ${HOST_CONFIG_PATH}`);
-  if (!host.hostName || !host.user) throw new Error(`Image host ${HOST_ALIAS} is missing hostName or user`);
+  if (!host) throw new Error(`Video host alias ${HOST_ALIAS} not found in ${HOST_CONFIG_PATH}`);
+  if (!host.hostName || !host.user) throw new Error(`Video host ${HOST_ALIAS} is missing hostName or user`);
   return host;
 }
 
 function remoteBaseDir(host: HostConfig): string {
-  const configured = cleanString(process.env.IMAGE_GENERATION_REMOTE_DIR);
+  const configured = cleanString(process.env.VIDEO_GENERATION_REMOTE_DIR || process.env.IMAGE_GENERATION_REMOTE_DIR);
   return expandRemotePath(configured || `${host.homeDir}/image-generation`, host.homeDir);
 }
 
@@ -303,13 +307,13 @@ async function runScp(pi: ExtensionAPI, host: HostConfig, args: string[], timeou
   return result;
 }
 
-function parseRemoteResult(stdout: string, stderr: string, code: number): RemoteResult {
+function parseRemoteResult(stdout: string, stderr: string, code: number): RemoteVideoResult {
   const lines = stdout.trim().split(/\n+/).filter(Boolean);
   const candidate = lines[lines.length - 1] || "";
   try {
-    return JSON.parse(candidate) as RemoteResult;
+    return JSON.parse(candidate) as RemoteVideoResult;
   } catch (error: any) {
-    throw new Error(`Remote image worker did not return JSON (exit ${code}). stdout=${stdout.slice(-2000)} stderr=${stderr.slice(-2000)} parse=${error.message}`);
+    throw new Error(`Remote video worker did not return JSON (exit ${code}). stdout=${stdout.slice(-2000)} stderr=${stderr.slice(-2000)} parse=${error.message}`);
   }
 }
 
@@ -325,24 +329,24 @@ function formatBytes(bytes: number | undefined): string {
   return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-function resultText(result: RemoteResult, localPath: string, metadataLocalPath?: string, inlined?: boolean, cleanedRemotePaths: string[] = []): string {
-  const modeLine = result.mode === "image-to-image"
-    ? `Mode: guided image edit${typeof result.imageStrength === "number" ? `, strength ${result.imageStrength}` : ""}`
-    : "Mode: text-to-image";
+function resultText(result: RemoteVideoResult, localPath: string, metadataLocalPath?: string, cleanedRemotePaths: string[] = []): string {
+  const modeLine = result.mode === "image-to-video" ? "Mode: image-to-video" : "Mode: text-to-video";
   return [
-    "Generated image with Qwen-Image-2512-8bit.",
+    "Generated video with local Wan2.2 TI2V-5B via MLX-Gen.",
     modeLine,
     `Local: ${localPath}`,
     result.remotePath ? `Remote source deleted after copy: ${HOST_ALIAS}:${result.remotePath}` : undefined,
     metadataLocalPath ? `Metadata: ${metadataLocalPath}` : undefined,
     cleanedRemotePaths.length > 0 ? `Remote cleanup: deleted ${cleanedRemotePaths.length} file(s).` : undefined,
-    `Model: ${MODEL}`, 
+    `Model: ${VIDEO_MODEL}`,
     result.aspectRatio ? `Aspect ratio: ${result.aspectRatio}${result.size ? ` (${result.size})` : ""}` : undefined,
     `Seed: ${result.seed ?? "unknown"}`,
     `Steps: ${result.steps ?? "unknown"}`,
+    typeof result.guidance === "number" ? `Guidance: ${result.guidance}` : undefined,
+    `Frames/FPS: ${result.frames ?? "?"}/${result.fps ?? "?"}`,
+    typeof result.durationSeconds === "number" ? `Duration: ${result.durationSeconds.toFixed(2)}s` : undefined,
     `Size: ${result.width ?? "?"}x${result.height ?? "?"}, ${formatBytes(result.sizeBytes)}`,
     typeof result.elapsedSeconds === "number" ? `Elapsed: ${result.elapsedSeconds.toFixed(1)}s` : undefined,
-    inlined ? "Image is attached inline." : `Image not inlined because it exceeds ${formatBytes(MAX_INLINE_BYTES)} or inlineImage=false.`,
   ].filter(Boolean).join("\n");
 }
 
@@ -435,7 +439,7 @@ done
 ${cleanupLine}`;
 }
 
-async function cancelRemoteImageJob(pi: ExtensionAPI, host: HostConfig, baseDir: string, jobId: string, paths: Array<string | undefined | null>): Promise<void> {
+async function cancelRemoteVideoJob(pi: ExtensionAPI, host: HostConfig, baseDir: string, jobId: string, paths: Array<string | undefined | null>): Promise<void> {
   try {
     await runSsh(pi, host, remoteCancelScript(baseDir, jobId, paths), 30_000);
   } catch {
@@ -443,27 +447,32 @@ async function cancelRemoteImageJob(pi: ExtensionAPI, host: HostConfig, baseDir:
   }
 }
 
-async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, signal?: AbortSignal, onUpdate?: (partial: any) => void, cwd = process.cwd()) {
+async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, signal?: AbortSignal, onUpdate?: (partial: any) => void, cwd = process.cwd()) {
   const prompt = cleanPrompt(params.prompt);
-  if (!prompt) throw new Error("generate_image requires a non-empty prompt.");
-  const negativePrompt = cleanPrompt(params.negativePrompt || DEFAULT_NEGATIVE_PROMPT);
+  if (!prompt) throw new Error("generate_video requires a non-empty prompt.");
+  const negativePrompt = cleanPrompt(params.negativePrompt || "");
   const aspectRatio = parseAspectRatio(params.aspectRatio);
   const sizePreset = parseSizePreset(params.size);
   const { width, height } = dimensionsFor(aspectRatio, sizePreset);
-  const steps = optionalInteger(params.steps, "steps", 1, 50) ?? DEFAULT_STEPS;
+  const fps = optionalInteger(params.fps, "fps", 1, 24) ?? DEFAULT_FPS;
+  const seconds = optionalFloat(params.seconds ?? params.durationSeconds, "seconds", 0.5, 15) ?? DEFAULT_DURATION_SECONDS;
+  const requestedFrames = seconds * fps;
+  if (requestedFrames > MAX_INTERNAL_FRAMES) {
+    throw new Error(`seconds at ${fps} fps would require ${requestedFrames.toFixed(1)} frames; max is ${MAX_INTERNAL_FRAMES} frames (~${(MAX_INTERNAL_FRAMES / fps).toFixed(2)}s at ${fps} fps). Lower seconds or fps.`);
+  }
+  const frames = nearestWanFrameCount(requestedFrames);
+  const resolvedDurationSeconds = frames / fps;
+  const steps = optionalInteger(params.steps, "steps", 1, 60) ?? DEFAULT_STEPS;
+  const guidance = optionalFloat(params.guidance, "guidance", 0, 20) ?? DEFAULT_GUIDANCE;
   const seed = optionalInteger(params.seed, "seed", 0, 2_147_483_647);
-  const timeoutSeconds = optionalInteger(params.timeoutSeconds, "timeoutSeconds", 60, 7200) ?? DEFAULT_TIMEOUT_SECONDS;
-  const inlineImage = params.inlineImage !== false;
+  const timeoutSeconds = optionalInteger(params.timeoutSeconds, "timeoutSeconds", 60, 14400) ?? DEFAULT_TIMEOUT_SECONDS;
   const inputImage = resolveInputImagePath(params.inputImagePath, cwd);
-  const imageStrength = optionalFloat(params.imageStrength, "imageStrength", 0, 1);
-  if (imageStrength !== undefined && !inputImage) throw new Error("imageStrength requires inputImagePath.");
-  const resolvedImageStrength = inputImage ? imageStrength ?? DEFAULT_IMAGE_STRENGTH : undefined;
 
   const host = resolveHost();
   const baseDir = remoteBaseDir(host);
-  const jobId = safeSlug(`img-${timestampSlug()}-${randomUUID().slice(0, 8)}`, `img-${Date.now()}`);
-  const filename = safeSlug(params.filename, jobId).replace(/\.png$/i, "") + ".png";
-  const localRuntimeDir = resolve(cwd, ".pi", "runtime", "image-generation");
+  const jobId = safeSlug(`vid-${timestampSlug()}-${randomUUID().slice(0, 8)}`, `vid-${Date.now()}`);
+  const filename = safeSlug(params.filename, jobId).replace(/\.mp4$/i, "") + ".mp4";
+  const localRuntimeDir = resolve(cwd, ".pi", "runtime", "video-generation");
   const localJobsDir = join(localRuntimeDir, "jobs");
   const localOutputDir = resolve(cwd, LOCAL_OUTPUT_DIR);
   mkdirSync(localJobsDir, { recursive: true });
@@ -473,25 +482,29 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
   const remoteInputsDir = `${baseDir}/inputs`;
   const remoteJobFile = `${remoteInputsDir}/${jobId}.json`;
   const remoteInputImagePath = inputImage ? `${remoteInputsDir}/${jobId}-input${inputImage.extension}` : undefined;
-  const expectedRemoteOutputPath = `${baseDir}/outputs/${filename}`;
-  const expectedRemoteMetadataPath = expectedRemoteOutputPath.replace(/\.png$/i, ".metadata.json");
+  const expectedRemoteOutputPath = `${baseDir}/outputs/videos/${filename}`;
+  const expectedRemoteMetadataPath = expectedRemoteOutputPath.replace(/\.mp4$/i, ".metadata.json");
   const remoteCancelPaths = [remoteJobFile, remoteInputImagePath, expectedRemoteOutputPath, expectedRemoteMetadataPath];
   const job = {
     jobId,
     filename,
+    model: VIDEO_MODEL,
     prompt,
     negativePrompt,
     aspectRatio,
     size: sizePreset,
+    seconds,
+    fps,
     steps,
+    guidance,
     seed,
     timeoutSeconds,
-    ...(remoteInputImagePath ? { inputImagePath: remoteInputImagePath, imageStrength: resolvedImageStrength } : {}),
+    ...(remoteInputImagePath ? { inputImagePath: remoteInputImagePath } : {}),
   };
   writeFileSync(localJobFile, JSON.stringify(job, null, 2), "utf8");
 
-  onUpdate?.({ content: [{ type: "text" as const, text: `Preparing ${HOST_ALIAS} image job ${jobId}...` }] });
-  await runSsh(pi, host, `mkdir -p ${shellQuote(remoteInputsDir)} ${shellQuote(`${baseDir}/outputs`)}`, 30_000, signal);
+  onUpdate?.({ content: [{ type: "text" as const, text: `Preparing ${HOST_ALIAS} video job ${jobId}...` }] });
+  await runSsh(pi, host, `mkdir -p ${shellQuote(remoteInputsDir)} ${shellQuote(`${baseDir}/outputs/videos`)}`, 30_000, signal);
   try {
     try {
       if (inputImage && remoteInputImagePath) {
@@ -515,16 +528,16 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
     throw error;
   }
 
-  const modeText = inputImage ? `guided edit, strength ${resolvedImageStrength}` : "text-to-image";
-  onUpdate?.({ content: [{ type: "text" as const, text: `Generating image on ${HOST_ALIAS} with ${MODEL} (${width}x${height}, ${steps} steps, ${modeText})...` }] });
+  const modeText = inputImage ? "image-to-video" : "text-to-video";
+  onUpdate?.({ content: [{ type: "text" as const, text: `Generating video on ${HOST_ALIAS} with ${VIDEO_MODEL} (${width}x${height}, ${frames} frames @ ${fps} fps, ${steps} steps, ${modeText})...` }] });
   const remoteCommand = [
     `export IMAGE_GENERATION_DIR=${shellQuote(baseDir)}`,
-    `${shellQuote(`${baseDir}/bin/image-generate`)} --job-file ${shellQuote(remoteJobFile)}`,
+    `${shellQuote(`${baseDir}/bin/video-generate`)} --job-file ${shellQuote(remoteJobFile)}`,
   ].join("\n");
-  let remoteResult: RemoteResult | undefined;
+  let remoteResult: RemoteVideoResult | undefined;
   let cancelPromise: Promise<void> | undefined;
   const startRemoteCancel = () => {
-    cancelPromise ??= cancelRemoteImageJob(pi, host, baseDir, jobId, remoteCancelPaths);
+    cancelPromise ??= cancelRemoteVideoJob(pi, host, baseDir, jobId, remoteCancelPaths);
     return cancelPromise;
   };
   const abortHandler = () => { void startRemoteCancel(); };
@@ -535,23 +548,25 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
     remoteResult = parseRemoteResult(generation.stdout, generation.stderr, generation.code);
     if (generation.code !== 0 || generation.killed || remoteResult.ok !== true) {
       throw new Error([
-        `Image generation failed on ${HOST_ALIAS}.`,
+        `Video generation failed on ${HOST_ALIAS}.`,
         remoteResult.error ? `error: ${remoteResult.error}` : undefined,
         remoteResult.stage ? `stage: ${(remoteResult as any).stage}` : undefined,
+        remoteResult.downloadCommand ? `download: ${remoteResult.downloadCommand}` : undefined,
         remoteResult.stderrTail ? `stderr: ${remoteResult.stderrTail}` : undefined,
         remoteResult.stdoutTail ? `stdout: ${remoteResult.stdoutTail}` : undefined,
         !remoteResult.error && generation.stderr ? `ssh stderr: ${generation.stderr}` : undefined,
       ].filter(Boolean).join("\n"));
     }
-    if (!remoteResult.remotePath) throw new Error("Remote worker succeeded but did not return remotePath.");
+    const remoteOutputPath = remoteResult.remotePath;
+    if (!remoteOutputPath) throw new Error("Remote worker succeeded but did not return remotePath.");
 
-    const localPath = join(localOutputDir, basename(remoteResult.remotePath));
-    onUpdate?.({ content: [{ type: "text" as const, text: `Copying image back to ${localPath}...` }] });
-    await runScp(pi, host, [remoteSpec(host, remoteResult.remotePath), localPath], 120_000, signal);
+    const localPath = join(localOutputDir, basename(remoteOutputPath));
+    onUpdate?.({ content: [{ type: "text" as const, text: `Copying video back to ${localPath}...` }] });
+    await runScp(pi, host, [remoteSpec(host, remoteOutputPath), localPath], 600_000, signal);
 
     let metadataLocalPath: string | undefined;
     if (remoteResult.metadataPath) {
-      metadataLocalPath = localPath.replace(/\.png$/i, ".metadata.json");
+      metadataLocalPath = localPath.replace(/\.mp4$/i, ".metadata.json");
       try {
         await runScp(pi, host, [remoteSpec(host, remoteResult.metadataPath), metadataLocalPath], 60_000, signal);
       } catch {
@@ -559,32 +574,27 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
       }
     }
 
-    onUpdate?.({ content: [{ type: "text" as const, text: "Deleting remote image inputs and outputs from mac-mini-64..." }] });
-    const cleanedRemotePaths = await cleanupRemoteFiles(pi, host, baseDir, [remoteResult.remotePath, remoteResult.metadataPath, remoteJobFile, remoteInputImagePath, remotePidFile(baseDir, jobId)], signal?.aborted ? undefined : signal);
+    onUpdate?.({ content: [{ type: "text" as const, text: "Deleting remote video inputs and outputs from mac-mini-64..." }] });
+    const cleanedRemotePaths = await cleanupRemoteFiles(pi, host, baseDir, [remoteOutputPath, remoteResult.metadataPath, remoteJobFile, remoteInputImagePath, remotePidFile(baseDir, jobId)], signal?.aborted ? undefined : signal);
 
     const stat = statSync(localPath);
-    const shouldInline = inlineImage && stat.size <= MAX_INLINE_BYTES;
-    const content: any[] = [{ type: "text" as const, text: resultText(remoteResult, localPath, metadataLocalPath, shouldInline, cleanedRemotePaths) }];
-    if (shouldInline) {
-      content.push({ type: "image" as const, data: readFileSync(localPath).toString("base64"), mimeType: "image/png" });
-    }
-
     return {
-      content,
+      content: [{ type: "text" as const, text: resultText(remoteResult, localPath, metadataLocalPath, cleanedRemotePaths) }],
       details: {
         ok: true,
-        model: MODEL,
+        model: VIDEO_MODEL,
         host: HOST_ALIAS,
         jobId,
         localPath,
         metadataLocalPath,
         remote: remoteResult,
         inputImagePath: inputImage?.path,
-        imageStrength: resolvedImageStrength,
         aspectRatio,
         size: sizePreset,
+        frames,
+        fps,
+        durationSeconds: resolvedDurationSeconds,
         cleanedRemotePaths,
-        inlined: shouldInline,
         sizeBytes: stat.size,
       },
     };
@@ -612,35 +622,38 @@ function elapsedFooter(state: RenderState, isPartial: boolean, theme: any): stri
   return theme.fg("muted", `${label} ${formatDuration(Math.max(0, endTime - state.startedAt))}`);
 }
 
-export default function registerImageGeneration(pi: ExtensionAPI) {
+export default function registerVideoGeneration(pi: ExtensionAPI) {
   pi.registerTool({
-    name: "generate_image",
-    label: "Generate Image",
-    description: `Generate exactly one image on mac-mini-64 using the single approved headless model: ${MODEL}. The tool sends the prompt, and optionally a local source image for guided image-to-image editing, over SSH; runs mflux/Qwen on the Mini; copies the PNG back locally; and returns the local path plus optional inline PNG. No alternate models or fallback models are available.`,
-    promptSnippet: "Generate a local PNG image, or guided edit from a local source image, on mac-mini-64 with Qwen-Image-2512-8bit and copy it back to this project.",
+    name: "generate_video",
+    label: "Generate Video",
+    description: `Generate exactly one short local MP4 on mac-mini-64 using the approved headless video model: ${VIDEO_MODEL}. The tool sends the prompt, and optionally a local source image for first-frame image-to-video, over SSH; runs MLX-Gen/Wan on the Mini; copies the MP4 back locally; and returns the local path. No hosted video models or fallback models are used.`,
+    promptSnippet: "Generate a local MP4 video, or first-frame image-to-video clip from a local source image, on mac-mini-64 with Wan2.2 TI2V-5B and copy it back to this project.",
     promptGuidelines: [
-      "Use generate_image when sir asks to create, generate, render, or make an image locally.",
-      `generate_image uses only ${MODEL}; do not offer or request alternate image models for this tool.`,
-      `Keep prompts visually descriptive. Default to the high-quality profile: aspectRatio ${DEFAULT_ASPECT_RATIO}, size ${DEFAULT_SIZE}, and ${DEFAULT_STEPS} steps unless sir asks for a specific aspect/size or speed/quality tradeoff.`,
-      "For guided edits, provide inputImagePath with a local PNG/JPEG/WebP/BMP and describe the desired transformation in prompt. Use imageStrength around 0.4 by default; higher values preserve more source-image influence.",
-      "Do not use ComfyUI, browser image tools, Draw Things, or shell commands for ordinary image generation/editing; call generate_image directly.",
+      "Use generate_video when sir asks to create, generate, render, or make a video locally.",
+      `generate_video uses only ${VIDEO_MODEL}; do not offer or request alternate video models for this tool.`,
+      `Default to the high-quality profile: aspectRatio ${DEFAULT_ASPECT_RATIO}, size ${DEFAULT_SIZE}, ${DEFAULT_DURATION_SECONDS}s, ${DEFAULT_FPS} fps, and ${DEFAULT_STEPS} steps unless sir asks for a specific speed/quality tradeoff.`,
+      "For image-to-video, provide inputImagePath with a local PNG/JPEG/WebP/BMP and describe the desired camera motion or subject motion in prompt.",
+      "Use seconds, not frames. The worker converts seconds to Wan's required 4n+1 frame count internally and caps at 121 internal frames.",
+      "Large default videos can take a long time on the Mac mini; use small or standard only when sir asks for faster previews.",
+      "Do not use browser video tools, ComfyUI, or shell commands for ordinary local video generation; call generate_video directly.",
     ],
     parameters: Type.Object({
-      prompt: Type.String({ description: "Detailed image prompt to render." }),
-      negativePrompt: Type.Optional(Type.String({ description: `Optional negative prompt. Defaults to: ${DEFAULT_NEGATIVE_PROMPT}` })),
-      aspectRatio: Type.Optional(stringEnum(ASPECT_RATIOS, { description: `Image aspect ratio. Default ${DEFAULT_ASPECT_RATIO}.` })),
-      size: Type.Optional(stringEnum(SIZE_PRESETS, { description: `Output size preset. Default ${DEFAULT_SIZE}.` })),
-      steps: Type.Optional(Type.Number({ description: `Inference steps, 1-50. Default ${DEFAULT_STEPS}.` })),
+      prompt: Type.String({ description: "Detailed video prompt to render." }),
+      negativePrompt: Type.Optional(Type.String({ description: "Optional negative prompt. Blank by default, using the model route defaults where applicable." })),
+      aspectRatio: Type.Optional(stringEnum(ASPECT_RATIOS, { description: `Video aspect ratio. Default ${DEFAULT_ASPECT_RATIO}.` })),
+      size: Type.Optional(stringEnum(SIZE_PRESETS, { description: `Output size preset. Default ${DEFAULT_SIZE}; small/standard are faster preview modes.` })),
+      seconds: Type.Optional(Type.Number({ description: `Requested duration in seconds, 0.5-15. Default ${DEFAULT_DURATION_SECONDS}. The worker converts seconds to Wan's 4n+1 internal frame count and caps at ${MAX_INTERNAL_FRAMES} frames; at 24 fps the practical max is about 5 seconds.` })),
+      fps: Type.Optional(Type.Number({ description: `Frames per second, 1-24. Default ${DEFAULT_FPS}.` })),
+      steps: Type.Optional(Type.Number({ description: `Inference steps, 1-60. Default ${DEFAULT_STEPS}.` })),
+      guidance: Type.Optional(Type.Number({ description: `Guidance scale, 0-20. Default ${DEFAULT_GUIDANCE}.` })),
       seed: Type.Optional(Type.Number({ description: "Optional seed, 0-2147483647. If omitted, the remote worker chooses a random seed." })),
-      inputImagePath: Type.Optional(Type.String({ description: "Optional local source image path for guided image-to-image editing. Supported: PNG, JPG/JPEG, WebP, BMP. The source is copied to mac-mini-64 temporarily and deleted after generation." })),
-      imageStrength: Type.Optional(Type.Number({ description: `Optional source-image guidance strength, 0-1. Requires inputImagePath. Default ${DEFAULT_IMAGE_STRENGTH}. Higher values preserve more source-image influence.` })),
-      filename: Type.Optional(Type.String({ description: "Optional output filename stem or .png filename. Sanitized." })),
-      timeoutSeconds: Type.Optional(Type.Number({ description: `Optional generation timeout, 60-7200 seconds. Default ${DEFAULT_TIMEOUT_SECONDS}.` })),
-      inlineImage: Type.Optional(Type.Boolean({ description: "Whether to attach the PNG inline to the tool result. Default true; large files are path-only." })),
+      inputImagePath: Type.Optional(Type.String({ description: "Optional local source image path for image-to-video. Supported: PNG, JPG/JPEG, WebP, BMP. The source is copied to mac-mini-64 temporarily and deleted after generation." })),
+      filename: Type.Optional(Type.String({ description: "Optional output filename stem or .mp4 filename. Sanitized." })),
+      timeoutSeconds: Type.Optional(Type.Number({ description: `Optional generation timeout, 60-14400 seconds. Default ${DEFAULT_TIMEOUT_SECONDS}.` })),
     }),
     executionMode: "sequential",
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      return generateImage(pi, params as GenerateImageParams, signal, onUpdate, ctx.cwd);
+      return generateVideo(pi, params as GenerateVideoParams, signal, onUpdate, ctx.cwd);
     },
     renderCall(args, theme, context) {
       const state = context.state as RenderState;
@@ -650,7 +663,7 @@ export default function registerImageGeneration(pi: ExtensionAPI) {
       }
       const prompt = cleanString((args as any).prompt).slice(0, 90) || "...";
       const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
-      text.setText(`${theme.fg("toolTitle", "generate_image")} ${theme.fg("muted", MODEL)} ${theme.fg("toolOutput", prompt)}`);
+      text.setText(`${theme.fg("toolTitle", "generate_video")} ${theme.fg("muted", VIDEO_MODEL)} ${theme.fg("toolOutput", prompt)}`);
       return text;
     },
     renderResult(result, options, theme, context) {
@@ -667,7 +680,7 @@ export default function registerImageGeneration(pi: ExtensionAPI) {
       }
       const localPath = result.details?.localPath ? String(result.details.localPath) : "";
       const ok = result.details?.ok === true;
-      const label = options.isPartial ? theme.fg("toolTitle", "generate_image") : ok ? theme.fg("success", "✓ generated image") : theme.fg("warning", "image generation");
+      const label = options.isPartial ? theme.fg("toolTitle", "generate_video") : ok ? theme.fg("success", "✓ generated video") : theme.fg("warning", "video generation");
       const footer = elapsedFooter(state, options.isPartial, theme);
       const lines = [label, localPath ? theme.fg("accent", localPath) : undefined, footer].filter(Boolean);
       const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
@@ -676,13 +689,23 @@ export default function registerImageGeneration(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("image-health", {
-    description: "Check the mac-mini-64 headless image generator health.",
+  pi.registerCommand("video-health", {
+    description: "Check the mac-mini-64 headless video generator health.",
     handler: async (_args, ctx) => {
       const host = resolveHost();
       const baseDir = remoteBaseDir(host);
-      const result = await runSsh(pi, host, `${shellQuote(`${baseDir}/bin/image-generate`)} --health`, 30_000, ctx.signal);
+      const result = await runSsh(pi, host, `${shellQuote(`${baseDir}/bin/video-generate`)} --health`, 30_000, ctx.signal);
       ctx.ui.notify(result.stdout.trim() || "No health output", "info");
+    },
+  });
+
+  pi.registerCommand("video-download-model", {
+    description: "Download/cache the approved mac-mini-64 local video model.",
+    handler: async (_args, ctx) => {
+      const host = resolveHost();
+      const baseDir = remoteBaseDir(host);
+      const result = await runSsh(pi, host, `${shellQuote(`${baseDir}/bin/video-generate`)} --download-model`, 7_500_000, ctx.signal);
+      ctx.ui.notify(result.stdout.trim() || "No download output", "info");
     },
   });
 }

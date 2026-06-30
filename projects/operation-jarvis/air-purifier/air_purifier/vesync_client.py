@@ -4,7 +4,7 @@ import asyncio
 import importlib.metadata
 import sys
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Iterable
 
 from .config import Settings, normalize_name
@@ -73,6 +73,10 @@ class PurifierStatus:
     supported_modes: tuple[str, ...]
     supported_fan_levels: tuple[int, ...]
     supported_auto_preferences: tuple[str, ...]
+    write_accepted: bool = False
+    verification_pending: bool = False
+    verification_description: str | None = None
+    verification_warning: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -103,6 +107,10 @@ class PurifierStatus:
             "supported_modes": list(self.supported_modes),
             "supported_fan_levels": list(self.supported_fan_levels),
             "supported_auto_preferences": list(self.supported_auto_preferences),
+            "write_accepted": self.write_accepted,
+            "verification_pending": self.verification_pending,
+            "verification_description": self.verification_description,
+            "verification_warning": self.verification_warning,
         }
 
 
@@ -142,7 +150,12 @@ class AirPurifierController:
             # Toggle may legitimately end either on or off. Poll once so the returned status is fresh.
             await asyncio.sleep(min(5.0, self.settings.write_wait_seconds))
             await target.update()
-            return _status_from_device(target)
+            return replace(
+                _status_from_device(target),
+                write_accepted=True,
+                verification_pending=False,
+                verification_description="power toggle",
+            )
 
     async def set_mode(self, mode: str, device: str | None = None) -> PurifierStatus:
         mode = mode.lower().strip()
@@ -169,8 +182,14 @@ class AirPurifierController:
                 raise AirPurifierError(f"VeSync did not confirm fan speed {level} for {target.device_name!r}")
             return await self._wait_for_status(
                 target,
-                lambda status: _clean_value(status.fan_set_level) == level or _clean_value(status.fan_level) == level,
-                f"fan speed {level}",
+                lambda status: (
+                    _clean_value(status.mode) == "manual"
+                    and (
+                        _clean_value(status.fan_set_level) == level
+                        or _clean_value(status.fan_level) == level
+                    )
+                ),
+                f"manual fan speed {level}",
             )
 
     async def set_display(self, on: bool, device: str | None = None) -> PurifierStatus:
@@ -270,19 +289,33 @@ class AirPurifierController:
         deadline = asyncio.get_running_loop().time() + max(0.0, self.settings.write_wait_seconds)
         last_status: PurifierStatus | None = None
         # Poll fairly quickly at first, then settle into a five-second cadence.
-        delay = 3.0
+        delay = min(3.0, max(0.0, self.settings.write_wait_seconds))
         while True:
             await asyncio.sleep(delay)
             await target.update()
             last_status = _status_from_device(target)
             if predicate(last_status):
-                return last_status
-            if asyncio.get_running_loop().time() >= deadline:
-                raise AirPurifierError(
-                    f"VeSync accepted {description}, but the purifier did not report the expected state "
-                    f"within {self.settings.write_wait_seconds:.0f}s. Last status: {last_status.as_dict()}"
+                return replace(
+                    last_status,
+                    write_accepted=True,
+                    verification_pending=False,
+                    verification_description=description,
                 )
-            delay = 5.0
+
+            now = asyncio.get_running_loop().time()
+            if now >= deadline:
+                warning = (
+                    f"VeSync accepted {description}, but the purifier did not report the expected state "
+                    f"within {self.settings.write_wait_seconds:.0f}s. Last status may still be stale."
+                )
+                return replace(
+                    last_status,
+                    write_accepted=True,
+                    verification_pending=True,
+                    verification_description=description,
+                    verification_warning=warning,
+                )
+            delay = min(5.0, max(0.25, deadline - now))
 
     async def _resolve_device(self, manager: Any, requested: str | None = None) -> Any:
         purifiers = await self._purifiers(manager)

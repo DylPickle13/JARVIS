@@ -101,5 +101,5 @@ def load_settings() -> Settings:
         country_code=(os.environ.get("VESYNC_COUNTRY_CODE") or "CA").upper(),
         time_zone=os.environ.get("VESYNC_TIME_ZONE") or "America/Toronto",
         default_device=default_device,
-        write_wait_seconds=float(os.environ.get("JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS", "60") or "60"),
+        write_wait_seconds=float(os.environ.get("JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS", "150") or "150"),
     )

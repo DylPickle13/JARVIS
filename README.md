@@ -1,6 +1,6 @@
 # JARVIS
 
-JARVIS is a Discord-facing control layer for the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent) and a local “Operation JARVIS” room stack. One main bot process handles Discord text chat, voice, attachments, Pi RPC sessions, scheduled jobs, memory/session search, and local tools for a dashboard, browser automation, phone status, Cast/Spotify media, smart plugs, and room audio.
+JARVIS is a Discord-facing control layer for the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent) and a local “Operation JARVIS” room stack. One main bot process handles Discord text chat, voice, attachments, Pi RPC sessions, scheduled jobs, memory/session search, and local tools for a dashboard, browser automation, phone status, Cast/Spotify media, smart plugs, the Levoit air purifier, and room audio.
 
 The repository is public by design, but it expects private local configuration. Secrets, device mappings, LAN hosts, SSH targets, runtime databases, generated media, and personal prompt overrides belong in ignored files such as `.env`, `.pi/APPEND_SYSTEM.md`, `.pi/ssh-hosts.json`, and Operation JARVIS hardware config files.
 
@@ -13,7 +13,7 @@ This root README is a map and quick-start guide. Detailed subsystem notes live i
 - **Inputs** — text prompts, saved file attachments, native image attachments, and Discord mobile voice messages transcribed through an OpenAI-compatible oMLX Whisper endpoint.
 - **Live voice** — [`projects/operation-jarvis/voice/`](projects/operation-jarvis/voice/) is loaded by the main bot: Discord PCM → openWakeWord → oMLX Whisper ASR → Pi RPC → Piper JARVIS TTS → Discord playback.
 - **Pi extensions** — [`.pi/extensions/`](.pi/extensions/) provides web/search helpers, lazy tool loading, memory, session search, Discord cron/ping/file upload tools, browser/phone/Google/Maps/YouTube integrations, and Operation JARVIS tools.
-- **Operation JARVIS** — [`projects/operation-jarvis/`](projects/operation-jarvis/) contains the room-facing stack: LAN dashboard, phone-camera vision, Cast/Spotify media, TP-Link Kasa smart plugs, and Raspberry Pi room audio.
+- **Operation JARVIS** — [`projects/operation-jarvis/`](projects/operation-jarvis/) contains the room-facing stack: LAN dashboard, phone-camera vision, Cast/Spotify media, TP-Link Kasa smart plugs, Levoit/VeSync air-purifier control, and Raspberry Pi room audio.
 - **Runtime data** — `.env`, attachments, generated media/data, SQLite indexes, logs, cron runs, and Pi runtime status files are ignored by git.
 
 ## Public/Private Configuration Model
@@ -118,7 +118,7 @@ Use the Discord-specific tools for their narrow jobs: `discord_cron` for schedul
 - Keep `.env` and ignored hardware config files private.
 - Do not run duplicate Discord bot processes with the same token.
 - The provided smoke test is read-only/local and avoids hardware actions.
-- Tools that touch external services, browser sessions, SSH hosts, smart plugs, Cast devices, or Discord channels are intended to stay explicit and bounded.
+- Tools that touch external services, browser sessions, SSH hosts, smart plugs, the air purifier, Cast devices, or Discord channels are intended to stay explicit and bounded.
 
 ## Deeper Docs
 
@@ -130,6 +130,7 @@ Use the Discord-specific tools for their narrow jobs: `discord_cron` for schedul
 - [Raspberry Pi endpoint](projects/operation-jarvis/raspberry-pi/README.md)
 - [Raspberry Pi room audio](projects/operation-jarvis/raspberry-pi/room_audio/README.md)
 - [Smart plugs](projects/operation-jarvis/smart-plug/README.md)
+- [Air purifier](projects/operation-jarvis/air-purifier/README.md)
 
 Do not run the standalone voice bot with the same Discord token while the main bot is running; the main bot already owns the voice subsystem.
 
