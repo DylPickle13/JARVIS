@@ -255,8 +255,8 @@ function resolveHost(): HostConfig {
 }
 
 function remoteBaseDir(host: HostConfig): string {
-  const configured = cleanString(process.env.VIDEO_GENERATION_REMOTE_DIR || process.env.IMAGE_GENERATION_REMOTE_DIR);
-  return expandRemotePath(configured || `${host.homeDir}/image-generation`, host.homeDir);
+  const configured = cleanString(process.env.MEDIA_GENERATION_REMOTE_DIR || process.env.VIDEO_GENERATION_REMOTE_DIR || process.env.IMAGE_GENERATION_REMOTE_DIR);
+  return expandRemotePath(configured || `${host.homeDir}/media-generation`, host.homeDir);
 }
 
 function remoteSpec(host: HostConfig, remotePath: string): string {
@@ -531,7 +531,9 @@ async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, sign
   const modeText = inputImage ? "image-to-video" : "text-to-video";
   onUpdate?.({ content: [{ type: "text" as const, text: `Generating video on ${HOST_ALIAS} with ${VIDEO_MODEL} (${width}x${height}, ${frames} frames @ ${fps} fps, ${steps} steps, ${modeText})...` }] });
   const remoteCommand = [
+    `export MEDIA_GENERATION_DIR=${shellQuote(baseDir)}`,
     `export IMAGE_GENERATION_DIR=${shellQuote(baseDir)}`,
+    "export JARVIS_GENERATION_SYNC=0",
     `${shellQuote(`${baseDir}/bin/video-generate`)} --job-file ${shellQuote(remoteJobFile)}`,
   ].join("\n");
   let remoteResult: RemoteVideoResult | undefined;

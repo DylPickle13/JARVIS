@@ -251,8 +251,8 @@ function resolveHost(): HostConfig {
 }
 
 function remoteBaseDir(host: HostConfig): string {
-  const configured = cleanString(process.env.IMAGE_GENERATION_REMOTE_DIR);
-  return expandRemotePath(configured || `${host.homeDir}/image-generation`, host.homeDir);
+  const configured = cleanString(process.env.MEDIA_GENERATION_REMOTE_DIR || process.env.IMAGE_GENERATION_REMOTE_DIR);
+  return expandRemotePath(configured || `${host.homeDir}/media-generation`, host.homeDir);
 }
 
 function remoteSpec(host: HostConfig, remotePath: string): string {
@@ -518,7 +518,9 @@ async function generateImage(pi: ExtensionAPI, params: GenerateImageParams, sign
   const modeText = inputImage ? `guided edit, strength ${resolvedImageStrength}` : "text-to-image";
   onUpdate?.({ content: [{ type: "text" as const, text: `Generating image on ${HOST_ALIAS} with ${MODEL} (${width}x${height}, ${steps} steps, ${modeText})...` }] });
   const remoteCommand = [
+    `export MEDIA_GENERATION_DIR=${shellQuote(baseDir)}`,
     `export IMAGE_GENERATION_DIR=${shellQuote(baseDir)}`,
+    "export JARVIS_GENERATION_SYNC=0",
     `${shellQuote(`${baseDir}/bin/image-generate`)} --job-file ${shellQuote(remoteJobFile)}`,
   ].join("\n");
   let remoteResult: RemoteResult | undefined;
