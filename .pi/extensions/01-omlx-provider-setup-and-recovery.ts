@@ -271,6 +271,253 @@ function messageText(message: { content?: unknown }): string {
 		.join("");
 }
 
+type EmergencyMessage = {
+	role?: string;
+	content?: unknown;
+	command?: unknown;
+	output?: unknown;
+	summary?: unknown;
+	stopReason?: unknown;
+	errorMessage?: unknown;
+	provider?: unknown;
+	model?: unknown;
+};
+
+type EmergencyPreparation = {
+	messagesToSummarize: EmergencyMessage[];
+	turnPrefixMessages: EmergencyMessage[];
+	previousSummary?: string;
+	firstKeptEntryId: string;
+	tokensBefore: number;
+	fileOps?: unknown;
+};
+
+type EmergencyCompactionDetails = {
+	readFiles: string[];
+	modifiedFiles: string[];
+};
+
+const OMLX_EMERGENCY_KEEP_NONE_ENTRY_ID = "__omlx_emergency_compaction_keep_no_prior_messages__";
+const OMLX_EMERGENCY_URL_RE = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
+
+function normalizeSnippet(text: string): string {
+	return text.replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function truncateSnippet(text: string, maxChars: number): string {
+	const normalized = normalizeSnippet(text);
+	if (normalized.length <= maxChars) return normalized;
+	const keep = Math.max(0, maxChars - 40);
+	return `${normalized.slice(0, keep).trimEnd()}\n… [truncated]`;
+}
+
+function contentToText(content: unknown, maxChars = 6000): string {
+	if (typeof content === "string") return truncateSnippet(content, maxChars);
+	if (!Array.isArray(content)) return "";
+
+	const parts: string[] = [];
+	for (const part of content) {
+		if (!part || typeof part !== "object") continue;
+		const typed = part as Record<string, unknown>;
+		const type = String(typed.type ?? "");
+		if (type === "text" && typeof typed.text === "string") {
+			parts.push(typed.text);
+		} else if (type === "toolCall") {
+			const name = typeof typed.name === "string" ? typed.name : "tool";
+			let args = "";
+			try {
+				args = typed.arguments === undefined ? "" : truncateSnippet(JSON.stringify(typed.arguments), 500);
+			} catch {
+				args = "";
+			}
+			parts.push(args ? `[tool call: ${name} ${args}]` : `[tool call: ${name}]`);
+		} else if (typeof typed.text === "string") {
+			parts.push(typed.text);
+		}
+	}
+	return truncateSnippet(parts.join("\n"), maxChars);
+}
+
+function emergencyMessageText(message: EmergencyMessage, maxChars = 6000): string {
+	const role = String(message.role ?? "");
+	if (role === "bashExecution") {
+		const command = typeof message.command === "string" ? message.command : "";
+		const output = typeof message.output === "string" ? message.output : "";
+		return truncateSnippet(`Command: ${command}\nOutput: ${output}`, maxChars);
+	}
+	if (role === "compactionSummary" || role === "branchSummary") {
+		return truncateSnippet(String(message.summary ?? ""), maxChars);
+	}
+	return contentToText(message.content, maxChars);
+}
+
+function messageFromEntry(entry: unknown): EmergencyMessage | undefined {
+	if (!entry || typeof entry !== "object") return undefined;
+	const typed = entry as Record<string, unknown>;
+	if (typed.type !== "message" || !typed.message || typeof typed.message !== "object") return undefined;
+	return typed.message as EmergencyMessage;
+}
+
+function latestAssistantErrorMessage(branchEntries: readonly unknown[]): EmergencyMessage | undefined {
+	for (let i = branchEntries.length - 1; i >= 0; i--) {
+		const message = messageFromEntry(branchEntries[i]);
+		if (message?.role === "assistant" && message.stopReason === "error") return message;
+	}
+	return undefined;
+}
+
+function uniqueLimited(values: Iterable<string>, limit: number): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const value of values) {
+		const cleaned = value.trim().replace(/[),.;]+$/, "");
+		if (!cleaned || seen.has(cleaned)) continue;
+		seen.add(cleaned);
+		out.push(cleaned);
+		if (out.length >= limit) break;
+	}
+	return out;
+}
+
+function extractUrls(text: string, limit: number): string[] {
+	return uniqueLimited(text.match(OMLX_EMERGENCY_URL_RE) ?? [], limit);
+}
+
+function usefulLine(line: string): string | undefined {
+	const cleaned = normalizeSnippet(line.replace(/^\s*[|>]\s?/, ""));
+	if (!cleaned || cleaned.length < 4 || cleaned.length > 420) return undefined;
+	if (/^(?:[{}\[\],:]|"[^"]*"\s*[:,]?)+$/.test(cleaned)) return undefined;
+	if (/\b(?:base64|data:image|__NEXT_DATA__|webpack|script|stylesheet|aria-|class=|style=)\b/i.test(cleaned)) return undefined;
+	if (/https?:\/\//i.test(cleaned)) return cleaned;
+	if (/^(?:[-*•]|\d+[.)])\s+/.test(cleaned)) return cleaned;
+	if (/\b(?:goal|objective|request|constraint|must|do not|don't|skip|exclude|include|found|selected|candidate|title|company|location|source|freshness|link|url|posted|tracker|duplicate|error|blocked|next|todo|remaining|apply|job|role|fit)\b/i.test(cleaned)) {
+		return cleaned;
+	}
+	return undefined;
+}
+
+function collectUsefulLines(messages: EmergencyMessage[], limit: number): string[] {
+	const lines: string[] = [];
+	for (const message of messages) {
+		const role = String(message.role ?? "");
+		if (role === "user") continue;
+		const text = emergencyMessageText(message, 9000);
+		for (const rawLine of text.split("\n")) {
+			const line = usefulLine(rawLine);
+			if (line) lines.push(line);
+		}
+	}
+	return uniqueLimited(lines.slice(-Math.max(limit * 2, limit)), limit);
+}
+
+function importantRequestLines(text: string, limit: number): string[] {
+	const lines: string[] = [];
+	for (const rawLine of text.split("\n")) {
+		const line = usefulLine(rawLine);
+		if (!line) continue;
+		if (/\b(?:objective|critical|runtime|hard constraints?|must|do not|don't|only|skip|exclude|include|target|return|final output|tracker|posted within|past 24|source)\b/i.test(line)) {
+			lines.push(line);
+		}
+	}
+	return uniqueLimited(lines, limit);
+}
+
+function activeRequestSummary(messages: EmergencyMessage[]): string {
+	const userTexts = messages
+		.filter((message) => message.role === "user")
+		.map((message) => emergencyMessageText(message, 9000))
+		.filter(Boolean);
+	if (userTexts.length === 0) return "Continue the active user request from the preserved context.";
+
+	const first = userTexts[0];
+	const latest = userTexts[userTexts.length - 1];
+	const parts = [`Initial request excerpt:\n${truncateSnippet(first, 1400)}`];
+	if (latest && latest !== first) parts.push(`Latest user follow-up excerpt:\n${truncateSnippet(latest, 900)}`);
+	const important = importantRequestLines(first, 18);
+	if (important.length > 0) parts.push(`Important request constraints:\n${important.map((line) => `- ${line}`).join("\n")}`);
+	return parts.join("\n\n");
+}
+
+function stringsFromMaybeSet(value: unknown): string[] {
+	if (value instanceof Set) return [...value].filter((item): item is string => typeof item === "string");
+	if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
+	return [];
+}
+
+function fileDetailsFromFileOps(fileOps: unknown): EmergencyCompactionDetails {
+	if (!fileOps || typeof fileOps !== "object") return { readFiles: [], modifiedFiles: [] };
+	const typed = fileOps as Record<string, unknown>;
+	const read = new Set(stringsFromMaybeSet(typed.read));
+	const modified = new Set([...stringsFromMaybeSet(typed.edited), ...stringsFromMaybeSet(typed.written)]);
+	return {
+		readFiles: [...read].filter((file) => !modified.has(file)).sort(),
+		modifiedFiles: [...modified].sort(),
+	};
+}
+
+function buildEmergencyOverflowCompaction(preparation: EmergencyPreparation, branchEntries: readonly unknown[]) {
+	const maxSummaryChars = parsePositiveIntEnv("OMLX_EMERGENCY_COMPACTION_MAX_SUMMARY_CHARS", 10000);
+	const maxUrls = parsePositiveIntEnv("OMLX_EMERGENCY_COMPACTION_MAX_URLS", 30);
+	const maxNotes = parsePositiveIntEnv("OMLX_EMERGENCY_COMPACTION_MAX_NOTES", 28);
+	const messages = [...preparation.messagesToSummarize, ...preparation.turnPrefixMessages];
+	const branchMessages = branchEntries.map(messageFromEntry).filter((message): message is EmergencyMessage => Boolean(message));
+	const extractionMessages = messages.length > 0 ? messages : branchMessages;
+	const latestError = latestAssistantErrorMessage(branchEntries);
+	const details = fileDetailsFromFileOps(preparation.fileOps);
+	const previousSummary = preparation.previousSummary ? truncateSnippet(preparation.previousSummary, 1800) : "";
+	const request = activeRequestSummary(extractionMessages);
+	const notes = collectUsefulLines(extractionMessages, maxNotes);
+	const allText = [previousSummary, ...extractionMessages.map((message) => emergencyMessageText(message, 7000))].join("\n");
+	const urls = extractUrls(allText, maxUrls);
+	const latestErrorText = latestError?.errorMessage ? truncateSnippet(String(latestError.errorMessage), 900) : "";
+
+	const sections = [
+		"## Emergency Overflow Compaction",
+		"Generated locally because oMLX hit a context overflow. Verbose raw tool, browser, search, and page output before this checkpoint was intentionally discarded; no pre-compaction messages are kept in live context.",
+		"## Active Request",
+		request,
+	];
+	if (previousSummary) sections.push("## Previous Compaction Summary", previousSummary);
+	if (notes.length > 0) sections.push("## Preserved Useful Notes", notes.map((line) => `- ${line}`).join("\n"));
+	if (urls.length > 0) sections.push("## Preserved URLs", urls.map((url) => `- ${url}`).join("\n"));
+	if (details.readFiles.length > 0 || details.modifiedFiles.length > 0) {
+		sections.push(
+			"## Files Touched",
+			`Read: ${details.readFiles.length ? details.readFiles.join(", ") : "none"}\nModified: ${details.modifiedFiles.length ? details.modifiedFiles.join(", ") : "none"}`,
+		);
+	}
+	if (latestErrorText) sections.push("## Latest Overflow Error", latestErrorText);
+	sections.push(
+		"## Continuation Instructions",
+		"Continue the active request from this compacted context. Do not redo completed searches or repeat already completed tool work unless necessary. If enough findings are preserved, finalize from them. If more work is needed, keep it bounded and preserve concise findings instead of raw page dumps.",
+	);
+
+	return {
+		summary: truncateSnippet(sections.join("\n\n"), maxSummaryChars),
+		details,
+	};
+}
+
+function registerOmlxEmergencyOverflowCompaction(pi: ExtensionAPI) {
+	pi.on("session_before_compact", (event, ctx) => {
+		if (event.reason !== "overflow") return;
+		const latestError = latestAssistantErrorMessage(event.branchEntries);
+		if (!isOmlxProvider(ctx.model?.provider) && !isOmlxProvider(latestError?.provider)) return;
+
+		const { summary, details } = buildEmergencyOverflowCompaction(event.preparation as EmergencyPreparation, event.branchEntries);
+		return {
+			compaction: {
+				summary,
+				// Deliberately keep no raw pre-compaction messages. The local summary above
+				// replaces them so the retry cannot overflow on retained browser/tool output.
+				firstKeptEntryId: OMLX_EMERGENCY_KEEP_NONE_ENTRY_ID,
+				tokensBefore: event.preparation.tokensBefore,
+				details,
+			},
+		};
+	});
+}
+
 function registerOmlxOverflowNormalizer(pi: ExtensionAPI) {
 	pi.on("message_end", (event, ctx) => {
 		const message = event.message;
@@ -360,6 +607,7 @@ function registerOmlxPrefillMemoryRecovery(pi: ExtensionAPI) {
 
 export default async function registerOmlxProviderSetupAndRecovery(pi: ExtensionAPI) {
 	registerOmlxOverflowNormalizer(pi);
+	registerOmlxEmergencyOverflowCompaction(pi);
 	registerOmlxPrefillMemoryRecovery(pi);
 
 	const dotenvValues = loadDotEnvValues();
