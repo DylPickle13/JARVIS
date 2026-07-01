@@ -400,9 +400,19 @@ function activeModelsServerRequestTotal(server = {}) {
   return Number(server.activeRequests || 0) + Number(server.waitingRequests || 0);
 }
 
+function activeModelsServerHasRequest(server = {}) {
+  if (activeModelsServerRequestTotal(server) > 0) return true;
+  return (Array.isArray(server.models) ? server.models : []).some((model) => activeModelsModelRequestTotal(model) > 0);
+}
+
+function shouldRenderActiveModelsServer(server = {}) {
+  const serverId = String(server.serverId || '').trim().replace(/^omlx[-_]?/i, '');
+  return serverId !== '16' || activeModelsServerHasRequest(server);
+}
+
 function activeModelsServerUiState(server = {}) {
   if (!server.ok) return 'offline';
-  if (activeModelsServerRequestTotal(server) > 0) return 'active';
+  if (activeModelsServerHasRequest(server)) return 'active';
   if ((Array.isArray(server.models) ? server.models : []).some((model) => model.isLoading)) return 'loading';
   return 'online';
 }
@@ -439,7 +449,10 @@ function selectActiveModelsFocus(servers = []) {
       if (model.isLoading) addCandidate(2000, server, model, 'loading', null);
       if (model.loaded) addCandidate(1000, server, model, 'ready', null);
     }
-    if (!models.length) addCandidate(server.ok ? 20 : 10, server, null, server.ok ? 'idle' : 'offline', null);
+    if (!models.length) {
+      if (activeModelsServerHasRequest(server)) addCandidate(3000, server, null, 'active', null);
+      else addCandidate(server.ok ? 20 : 10, server, null, server.ok ? 'idle' : 'offline', null);
+    }
   }
 
   return candidates.sort((a, b) => b.rank - a.rank)[0] || null;
@@ -596,6 +609,7 @@ function renderActiveModelsUsage(payload = {}) {
         return model.loaded || model.isLoading || counts.active > 0 || counts.waiting > 0;
       }) : []
     }))
+    .filter(shouldRenderActiveModelsServer)
     .sort((a, b) => {
       const rank = (server) => String(server.serverId || '') === '64' ? 0 : (String(server.serverId || '') === '16' ? 1 : 2);
       return rank(a) - rank(b);
