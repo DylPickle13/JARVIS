@@ -122,6 +122,10 @@ DISCORD_EXTRA_PI_MODEL_OPTIONS = tuple(
         if model
     )
 )
+DISCORD_HIDDEN_PI_MODEL_OPTIONS = {
+    "github-copilot/gpt-5.4-mini",
+    "github-copilot/gpt-5.3-codex",
+}
 DEFAULT_DISCORD_VOICE_PI_MODEL = "omlx-64/Qwen3.6-35B-A3B-6bit"
 DISCORD_VOICE_PI_MODEL = config.get_str_env("DISCORD_VOICE_PI_MODEL", DEFAULT_DISCORD_VOICE_PI_MODEL)
 
@@ -1009,7 +1013,7 @@ class JarvisDiscordBot:
         models: list[str] = []
         for model in (*llm.DISCORD_PI_MODEL_OPTIONS, *DISCORD_EXTRA_PI_MODEL_OPTIONS, current_model):
             model = _coerce_model_for_channel(model, channel_key, channel)
-            if model and model not in models:
+            if model and model not in DISCORD_HIDDEN_PI_MODEL_OPTIONS and model not in models:
                 models.append(model)
         return models, current_model
 
