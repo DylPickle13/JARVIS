@@ -21,6 +21,7 @@ type HostConfig = {
 
 type VideoAspectRatio = "16:9" | "9:16" | "1:1" | "4:3" | "3:4";
 type VideoSizePreset = "small" | "standard" | "large";
+type VideoPipeline = "distilled" | "two-stage" | "two-stages-hq" | "one-stage";
 
 type GenerateVideoParams = {
   prompt: string;
@@ -31,7 +32,11 @@ type GenerateVideoParams = {
   durationSeconds?: number;
   fps?: number;
   steps?: number;
-  guidance?: number;
+  cfgScale?: number;
+  guidance?: number; // legacy alias for cfgScale
+  pipeline?: VideoPipeline;
+  lowRam?: boolean;
+  enhancePrompt?: boolean;
   seed?: number;
   inputImagePath?: string;
   filename?: string;
@@ -51,9 +56,17 @@ type RemoteVideoResult = {
   fps?: number;
   durationSeconds?: number;
   steps?: number;
-  guidance?: number;
+  cfgScale?: number;
+  guidance?: number; // legacy alias for cfgScale
+  pipeline?: VideoPipeline;
+  lowRam?: boolean;
+  enhancePrompt?: boolean;
+  supportsAudio?: boolean;
+  hasAudio?: boolean;
+  audioSampleRate?: number;
+  audioChannels?: string;
   seed?: number;
-  mode?: "text-to-video" | "image-to-video";
+  mode?: "text-to-video" | "image-to-video" | "text-to-audio-video" | "image-to-audio-video";
   elapsedSeconds?: number;
   remotePath?: string;
   metadataPath?: string | null;
@@ -70,18 +83,21 @@ type RenderState = {
   interval?: ReturnType<typeof setInterval>;
 };
 
-const VIDEO_MODEL = "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit";
+const VIDEO_MODEL = "dgrauet/ltx-2.3-mlx-q8";
 const HOST_ALIAS = (process.env.VIDEO_GENERATION_HOST_ALIAS || process.env.IMAGE_GENERATION_HOST_ALIAS || "mac-mini-64").trim();
 const DEFAULT_HOST_CONFIG_PATH = join(process.cwd(), ".pi", "ssh-hosts.json");
 const HOST_CONFIG_PATH = (process.env.VIDEO_GENERATION_SSH_HOSTS_CONFIG || process.env.IMAGE_GENERATION_SSH_HOSTS_CONFIG || DEFAULT_HOST_CONFIG_PATH).trim();
 const DEFAULT_ASPECT_RATIO: VideoAspectRatio = "16:9";
-const DEFAULT_SIZE: VideoSizePreset = "large";
+const DEFAULT_SIZE: VideoSizePreset = "standard";
 const DEFAULT_DURATION_SECONDS = 4;
 const DEFAULT_FPS = 24;
-const MAX_INTERNAL_FRAMES = 121;
-const DEFAULT_STEPS = 20;
-const DEFAULT_GUIDANCE = 5;
-const DEFAULT_TIMEOUT_SECONDS = 7200;
+const LTX_FRAME_COUNTS = [33, 65, 97, 129] as const;
+const MAX_INTERNAL_FRAMES = 129;
+const DEFAULT_STEPS = 30;
+const DEFAULT_CFG_SCALE = 3;
+const DEFAULT_PIPELINE: VideoPipeline = "two-stage";
+const DEFAULT_LOW_RAM = true;
+const DEFAULT_TIMEOUT_SECONDS = 10800;
 const DEFAULT_MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
 const MAX_INPUT_IMAGE_BYTES = positiveInteger(process.env.VIDEO_GENERATION_MAX_INPUT_IMAGE_BYTES, DEFAULT_MAX_INPUT_IMAGE_BYTES);
 const LOCAL_OUTPUT_DIR = process.env.VIDEO_GENERATION_LOCAL_OUTPUT_DIR || "generated-videos";
@@ -90,22 +106,22 @@ const ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"] as const;
 const SIZE_PRESETS = ["small", "standard", "large"] as const;
 const DIMENSION_PRESETS: Record<VideoSizePreset, Record<VideoAspectRatio, { width: number; height: number }>> = {
   small: {
-    "16:9": { width: 448, height: 256 },
-    "9:16": { width: 256, height: 448 },
+    "16:9": { width: 512, height: 320 },
+    "9:16": { width: 320, height: 512 },
     "1:1": { width: 384, height: 384 },
     "4:3": { width: 512, height: 384 },
     "3:4": { width: 384, height: 512 },
   },
   standard: {
-    "16:9": { width: 832, height: 480 },
-    "9:16": { width: 480, height: 832 },
+    "16:9": { width: 768, height: 448 },
+    "9:16": { width: 448, height: 768 },
     "1:1": { width: 512, height: 512 },
     "4:3": { width: 768, height: 576 },
     "3:4": { width: 576, height: 768 },
   },
   large: {
-    "16:9": { width: 1280, height: 704 },
-    "9:16": { width: 704, height: 1280 },
+    "16:9": { width: 1024, height: 576 },
+    "9:16": { width: 576, height: 1024 },
     "1:1": { width: 704, height: 704 },
     "4:3": { width: 1024, height: 768 },
     "3:4": { width: 768, height: 1024 },
@@ -172,13 +188,21 @@ function dimensionsFor(aspectRatio: VideoAspectRatio, size: VideoSizePreset): { 
   return DIMENSION_PRESETS[size][aspectRatio];
 }
 
-function nearestWanFrameCount(target: number): number {
-  const min = 5;
-  const bounded = Math.max(min, Math.min(MAX_INTERNAL_FRAMES, Math.round(target)));
-  if (bounded % 4 === 1) return bounded;
-  const up = bounded + ((1 - bounded) % 4 + 4) % 4;
-  const down = bounded - ((bounded - 1) % 4 + 4) % 4;
-  return up <= MAX_INTERNAL_FRAMES ? Math.max(min, up) : Math.max(min, down);
+function nearestLtxFrameCount(target: number): number {
+  const rounded = Math.round(target);
+  return LTX_FRAME_COUNTS.reduce((best, candidate) => {
+    const bestScore = Math.abs(best - rounded) + (best < rounded ? 0.1 : 0);
+    const candidateScore = Math.abs(candidate - rounded) + (candidate < rounded ? 0.1 : 0);
+    return candidateScore < bestScore ? candidate : best;
+  }, LTX_FRAME_COUNTS[0]);
+}
+
+function parsePipeline(value: unknown): VideoPipeline {
+  const candidate = cleanString(value || DEFAULT_PIPELINE).toLowerCase();
+  const aliases: Record<string, VideoPipeline> = { quality: "two-stage", hq: "two-stages-hq", preview: "distilled", fast: "distilled", default: DEFAULT_PIPELINE };
+  const resolved = (aliases[candidate] || candidate) as VideoPipeline;
+  if (!["distilled", "two-stage", "two-stages-hq", "one-stage"].includes(resolved)) throw new Error("pipeline must be one of: distilled, two-stage, two-stages-hq, one-stage");
+  return resolved;
 }
 
 function stringEnum(values: readonly string[], options?: Record<string, unknown>) {
@@ -330,21 +354,23 @@ function formatBytes(bytes: number | undefined): string {
 }
 
 function resultText(result: RemoteVideoResult, localPath: string, metadataLocalPath?: string, cleanedRemotePaths: string[] = []): string {
-  const modeLine = result.mode === "image-to-video" ? "Mode: image-to-video" : "Mode: text-to-video";
+  const modeLine = result.mode === "image-to-audio-video" ? "Mode: image-to-audio-video" : "Mode: text-to-audio-video";
   return [
-    "Generated video with local Wan2.2 TI2V-5B via MLX-Gen.",
+    "Generated audio-video with local LTX-2.3 Q8 via MLX.",
     modeLine,
     `Local: ${localPath}`,
     result.remotePath ? `Remote source deleted after copy: ${HOST_ALIAS}:${result.remotePath}` : undefined,
     metadataLocalPath ? `Metadata: ${metadataLocalPath}` : undefined,
     cleanedRemotePaths.length > 0 ? `Remote cleanup: deleted ${cleanedRemotePaths.length} file(s).` : undefined,
     `Model: ${VIDEO_MODEL}`,
+    result.pipeline ? `Pipeline: ${result.pipeline}` : undefined,
     result.aspectRatio ? `Aspect ratio: ${result.aspectRatio}${result.size ? ` (${result.size})` : ""}` : undefined,
     `Seed: ${result.seed ?? "unknown"}`,
     `Steps: ${result.steps ?? "unknown"}`,
-    typeof result.guidance === "number" ? `Guidance: ${result.guidance}` : undefined,
+    typeof result.cfgScale === "number" ? `CFG: ${result.cfgScale}` : undefined,
     `Frames/FPS: ${result.frames ?? "?"}/${result.fps ?? "?"}`,
     typeof result.durationSeconds === "number" ? `Duration: ${result.durationSeconds.toFixed(2)}s` : undefined,
+    result.hasAudio ? `Audio: ${result.audioSampleRate ?? "?"} Hz ${result.audioChannels ?? ""}` : "Audio: not detected",
     `Size: ${result.width ?? "?"}x${result.height ?? "?"}, ${formatBytes(result.sizeBytes)}`,
     typeof result.elapsedSeconds === "number" ? `Elapsed: ${result.elapsedSeconds.toFixed(1)}s` : undefined,
   ].filter(Boolean).join("\n");
@@ -455,17 +481,20 @@ async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, sign
   const sizePreset = parseSizePreset(params.size);
   const { width, height } = dimensionsFor(aspectRatio, sizePreset);
   const fps = optionalInteger(params.fps, "fps", 1, 24) ?? DEFAULT_FPS;
-  const seconds = optionalFloat(params.seconds ?? params.durationSeconds, "seconds", 0.5, 15) ?? DEFAULT_DURATION_SECONDS;
+  const seconds = optionalFloat(params.seconds ?? params.durationSeconds, "seconds", 0.5, 5.375) ?? DEFAULT_DURATION_SECONDS;
   const requestedFrames = seconds * fps;
   if (requestedFrames > MAX_INTERNAL_FRAMES) {
     throw new Error(`seconds at ${fps} fps would require ${requestedFrames.toFixed(1)} frames; max is ${MAX_INTERNAL_FRAMES} frames (~${(MAX_INTERNAL_FRAMES / fps).toFixed(2)}s at ${fps} fps). Lower seconds or fps.`);
   }
-  const frames = nearestWanFrameCount(requestedFrames);
+  const frames = nearestLtxFrameCount(requestedFrames);
   const resolvedDurationSeconds = frames / fps;
   const steps = optionalInteger(params.steps, "steps", 1, 60) ?? DEFAULT_STEPS;
-  const guidance = optionalFloat(params.guidance, "guidance", 0, 20) ?? DEFAULT_GUIDANCE;
+  const cfgScale = optionalFloat(params.cfgScale ?? params.guidance, "cfgScale", 0, 20) ?? DEFAULT_CFG_SCALE;
+  const pipeline = parsePipeline(params.pipeline);
+  const lowRam = params.lowRam !== false;
+  const enhancePrompt = params.enhancePrompt === true;
   const seed = optionalInteger(params.seed, "seed", 0, 2_147_483_647);
-  const timeoutSeconds = optionalInteger(params.timeoutSeconds, "timeoutSeconds", 60, 14400) ?? DEFAULT_TIMEOUT_SECONDS;
+  const timeoutSeconds = optionalInteger(params.timeoutSeconds, "timeoutSeconds", 60, 21600) ?? DEFAULT_TIMEOUT_SECONDS;
   const inputImage = resolveInputImagePath(params.inputImagePath, cwd);
 
   const host = resolveHost();
@@ -496,7 +525,10 @@ async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, sign
     seconds,
     fps,
     steps,
-    guidance,
+    cfgScale,
+    pipeline,
+    lowRam,
+    enhancePrompt,
     seed,
     timeoutSeconds,
     ...(remoteInputImagePath ? { inputImagePath: remoteInputImagePath } : {}),
@@ -528,8 +560,8 @@ async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, sign
     throw error;
   }
 
-  const modeText = inputImage ? "image-to-video" : "text-to-video";
-  onUpdate?.({ content: [{ type: "text" as const, text: `Generating video on ${HOST_ALIAS} with ${VIDEO_MODEL} (${width}x${height}, ${frames} frames @ ${fps} fps, ${steps} steps, ${modeText})...` }] });
+  const modeText = inputImage ? "image-to-audio-video" : "text-to-audio-video";
+  onUpdate?.({ content: [{ type: "text" as const, text: `Generating audio-video on ${HOST_ALIAS} with ${VIDEO_MODEL} (${width}x${height}, ${frames} frames @ ${fps} fps, ${steps} steps, ${pipeline}, ${modeText})...` }] });
   const remoteCommand = [
     `export MEDIA_GENERATION_DIR=${shellQuote(baseDir)}`,
     `export IMAGE_GENERATION_DIR=${shellQuote(baseDir)}`,
@@ -596,6 +628,9 @@ async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, sign
         frames,
         fps,
         durationSeconds: resolvedDurationSeconds,
+        pipeline,
+        cfgScale,
+        hasAudio: remoteResult.hasAudio,
         cleanedRemotePaths,
         sizeBytes: stat.size,
       },
@@ -628,30 +663,33 @@ export default function registerVideoGeneration(pi: ExtensionAPI) {
   pi.registerTool({
     name: "generate_video",
     label: "Generate Video",
-    description: `Generate exactly one short local MP4 on mac-mini-64 using the approved headless video model: ${VIDEO_MODEL}. The tool sends the prompt, and optionally a local source image for first-frame image-to-video, over SSH; runs MLX-Gen/Wan on the Mini; copies the MP4 back locally; and returns the local path. No hosted video models or fallback models are used.`,
-    promptSnippet: "Generate a local MP4 video, or first-frame image-to-video clip from a local source image, on mac-mini-64 with Wan2.2 TI2V-5B and copy it back to this project.",
+    description: `Generate exactly one short local MP4 with synchronized audio on mac-mini-64 using the approved headless LTX-2.3 Q8 MLX model: ${VIDEO_MODEL}. The tool sends the prompt, and optionally a local source image for image-to-audio-video, over SSH; runs ltx-2-mlx on the Mini; copies the MP4 back locally; and returns the local path. No hosted video models or fallback models are used.`,
+    promptSnippet: "Generate a local MP4 with synchronized audio, or image-to-audio-video clip from a local source image, on mac-mini-64 with LTX-2.3 Q8 MLX and copy it back to this project.",
     promptGuidelines: [
       "Use generate_video when sir asks to create, generate, render, or make a video locally.",
       `generate_video uses only ${VIDEO_MODEL}; do not offer or request alternate video models for this tool.`,
-      `Default to the high-quality profile: aspectRatio ${DEFAULT_ASPECT_RATIO}, size ${DEFAULT_SIZE}, ${DEFAULT_DURATION_SECONDS}s, ${DEFAULT_FPS} fps, and ${DEFAULT_STEPS} steps unless sir asks for a specific speed/quality tradeoff.`,
-      "For image-to-video, provide inputImagePath with a local PNG/JPEG/WebP/BMP and describe the desired camera motion or subject motion in prompt.",
-      "Use seconds, not frames. The worker converts seconds to Wan's required 4n+1 frame count internally and caps at 121 internal frames.",
-      "Large default videos can take a long time on the Mac mini; use small or standard only when sir asks for faster previews.",
-      "Do not use browser video tools, ComfyUI, or shell commands for ordinary local video generation; call generate_video directly.",
+      `Default to the LTX quality profile: aspectRatio ${DEFAULT_ASPECT_RATIO}, size ${DEFAULT_SIZE}, ${DEFAULT_DURATION_SECONDS}s, ${DEFAULT_FPS} fps, pipeline ${DEFAULT_PIPELINE}, and ${DEFAULT_STEPS} stage-1 steps unless sir asks for a specific speed/quality tradeoff.`,
+      "For image-to-audio-video, provide inputImagePath with a local PNG/JPEG/WebP/BMP and describe the desired camera motion, subject motion, ambience, sound effects, and dialogue/audio cues in prompt.",
+      "Use seconds, not frames. The worker converts seconds to LTX-friendly frame counts (33/65/97/129) and caps at 129 frames, about 5.4s at 24 fps.",
+      "Large/default audio-video clips can take a long time on the Mac mini; use pipeline distilled and size small for faster previews.",
+      "Do not use browser video tools, ComfyUI, or shell commands for ordinary local video/audio generation; call generate_video directly.",
     ],
     parameters: Type.Object({
       prompt: Type.String({ description: "Detailed video prompt to render." }),
-      negativePrompt: Type.Optional(Type.String({ description: "Optional negative prompt. Blank by default, using the model route defaults where applicable." })),
+      negativePrompt: Type.Optional(Type.String({ description: "Legacy optional negative prompt; LTX worker currently ignores this field." })),
       aspectRatio: Type.Optional(stringEnum(ASPECT_RATIOS, { description: `Video aspect ratio. Default ${DEFAULT_ASPECT_RATIO}.` })),
       size: Type.Optional(stringEnum(SIZE_PRESETS, { description: `Output size preset. Default ${DEFAULT_SIZE}; small/standard are faster preview modes.` })),
-      seconds: Type.Optional(Type.Number({ description: `Requested duration in seconds, 0.5-15. Default ${DEFAULT_DURATION_SECONDS}. The worker converts seconds to Wan's 4n+1 internal frame count and caps at ${MAX_INTERNAL_FRAMES} frames; at 24 fps the practical max is about 5 seconds.` })),
+      seconds: Type.Optional(Type.Number({ description: `Requested duration in seconds, 0.5-5.375. Default ${DEFAULT_DURATION_SECONDS}. The worker converts seconds to LTX frame counts 33/65/97/129; at 24 fps max is about 5.375 seconds.` })),
       fps: Type.Optional(Type.Number({ description: `Frames per second, 1-24. Default ${DEFAULT_FPS}.` })),
-      steps: Type.Optional(Type.Number({ description: `Inference steps, 1-60. Default ${DEFAULT_STEPS}.` })),
-      guidance: Type.Optional(Type.Number({ description: `Guidance scale, 0-20. Default ${DEFAULT_GUIDANCE}.` })),
+      steps: Type.Optional(Type.Number({ description: `Stage-1/one-stage inference steps, 1-60. Default ${DEFAULT_STEPS}.` })),
+      pipeline: Type.Optional(stringEnum(["distilled", "two-stage", "two-stages-hq", "one-stage"], { description: `LTX pipeline. Default ${DEFAULT_PIPELINE}; distilled is fastest, two-stages-hq is slowest/highest quality.` })),
+      cfgScale: Type.Optional(Type.Number({ description: `CFG scale, 0-20. Default ${DEFAULT_CFG_SCALE}.` })),
+      lowRam: Type.Optional(Type.Boolean({ description: `Use ltx-2-mlx low-RAM block streaming. Default ${DEFAULT_LOW_RAM}.` })),
+      enhancePrompt: Type.Optional(Type.Boolean({ description: "Use Gemma prompt enhancement before generation. Default false." })),
       seed: Type.Optional(Type.Number({ description: "Optional seed, 0-2147483647. If omitted, the remote worker chooses a random seed." })),
       inputImagePath: Type.Optional(Type.String({ description: "Optional local source image path for image-to-video. Supported: PNG, JPG/JPEG, WebP, BMP. The source is copied to mac-mini-64 temporarily and deleted after generation." })),
       filename: Type.Optional(Type.String({ description: "Optional output filename stem or .mp4 filename. Sanitized." })),
-      timeoutSeconds: Type.Optional(Type.Number({ description: `Optional generation timeout, 60-14400 seconds. Default ${DEFAULT_TIMEOUT_SECONDS}.` })),
+      timeoutSeconds: Type.Optional(Type.Number({ description: `Optional generation timeout, 60-21600 seconds. Default ${DEFAULT_TIMEOUT_SECONDS}.` })),
     }),
     executionMode: "sequential",
     async execute(_toolCallId, params, signal, onUpdate, ctx) {

@@ -68,7 +68,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   memory: "memory for durable project/local facts/preferences/workflows; never store secrets",
   code_docs: "code_search for external code/docs/API examples",
   image: "generate_image for local Qwen image generation or guided edits",
-  video: "generate_video for local Wan/MLX-Gen video generation or image-to-video clips",
+  video: "generate_video for local LTX-2.3 Q8 MLX audio-video generation or image-to-audio-video clips",
   jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, local smart plugs, and VeSync/Levoit air purifier control",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   phone: "agent_phone for safe LG-H933 Android phone control via ADB refs/screenshots",
@@ -109,9 +109,9 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   video: {
     skill: "video generation",
     lines: [
-      "Use `generate_video` for local MP4 video generation or image-to-video clips on mac-mini-64.",
-      "Default high-quality profile is large 16:9, 4 seconds, 24 fps, 20 steps. Use `seconds`, not frames; the worker converts seconds to Wan's internal frame count.",
-      "For image-to-video, pass a local inputImagePath and describe camera/subject motion. Do not substitute SSH/manual worker calls unless debugging.",
+      "Use `generate_video` for local MP4 generation with synchronized audio or image-to-audio-video clips on mac-mini-64.",
+      "Default LTX-2.3 Q8 quality profile is standard 16:9, 4 seconds, 24 fps, two-stage pipeline, low-RAM streaming. Use `seconds`, not frames; the worker converts seconds to LTX frame counts.",
+      "For image-to-audio-video, pass a local inputImagePath and describe camera/subject motion plus ambience, sound effects, and dialogue/audio cues. Do not substitute SSH/manual worker calls unless debugging.",
     ],
   },
   phone: {
@@ -315,7 +315,7 @@ function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
     memory: "memory: use `memory` only for stable durable facts/preferences/lessons/workflows; never store secrets or sensitive personal data.",
     code_docs: "code_docs: use `code_search` for external programming docs/API examples; use local grep/find/read for repo files first.",
     image: "image: use `generate_image` for local Qwen image generation/editing; default large 16:9, 30 steps; provide local inputImagePath for guided edits.",
-    video: "video: use `generate_video` for local Wan/MLX-Gen MP4 generation; use seconds, not frames; pass inputImagePath for image-to-video.",
+    video: "video: use `generate_video` for local LTX-2.3 Q8 MLX MP4 generation with synchronized audio; use seconds, not frames; pass inputImagePath for image-to-audio-video.",
     phone: "phone: use `agent_phone` directly; args are CLI tokens excluding the binary; start with `snapshot -i`, interact via `@refs`, and confirm sensitive actions.",
     google: "google: use `google_workspace` for Calendar/events, Gmail/mail, Drive files/folders, Docs, and Sheets; use `calendar_events`, `drive_download_folder`, or generic `call` with help/schema; writes need explicit intent.",
     jarvis: "jarvis: home control/camera/Cast/purifier; lights/plugs/switches => `smart_plug`, no shell/CLI unless tool fails; use `purifier-status` before purifier writes; keep recordings bounded and speech short.",

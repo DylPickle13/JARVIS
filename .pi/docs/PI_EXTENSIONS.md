@@ -34,7 +34,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `56-github-cli.ts` — guarded GitHub CLI adapter.
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `70-image-generation.ts` — local Qwen image generation via mac-mini-64.
-- `71-video-generation.ts` — local Wan/MLX-Gen MP4 video generation via mac-mini-64.
+- `71-video-generation.ts` — local LTX-2.3 Q8 MLX MP4 audio-video generation via mac-mini-64.
 - `98-slim-provider-payload.ts` — provider payload/schema slimming.
 - `99-lazy-tools.ts` — lazy optional tool-group visibility.
 
@@ -76,6 +76,7 @@ The `image` and `video` groups use the private worker repo [`DylPickle13/local-m
 - Canonical remote directory: `/Users/dylanrapanan/media-generation`
 - Compatibility symlink: `/Users/dylanrapanan/image-generation -> media-generation`
 - Local copied outputs: `generated-images/` and `generated-videos/` in this JARVIS repo, both ignored by git
+- Video generation uses `dgrauet/ltx-2.3-mlx-q8` through `ltx-2-mlx`, producing MP4s with synchronized stereo audio by default.
 - Pi extensions default to `~/media-generation`, export both `MEDIA_GENERATION_DIR` and legacy `IMAGE_GENERATION_DIR`, and set `JARVIS_GENERATION_SYNC=0` because the extensions handle their own copy-back and remote cleanup.
 - Manual/README worker runs leave sync enabled: successful outputs copy back through SSH alias `jarvis-vm`, then remote media is deleted only after copy-back succeeds.
 
@@ -88,7 +89,7 @@ bin/video-generate --health
 bin/smoke-test
 ```
 
-The worker `--health` JSON includes `sync.image` and `sync.video` checks confirming `jarvis-vm` can write to `/Users/gemma/JARVIS/generated-images/` and `/Users/gemma/JARVIS/generated-videos/`. `bin/smoke-test` is a fast compile/health/fake-sync test; it does not run model inference.
+The worker `--health` JSON includes `sync.image` and `sync.video` checks confirming `jarvis-vm` can write to `/Users/gemma/JARVIS/generated-images/` and `/Users/gemma/JARVIS/generated-videos/`; video health also reports the LTX model/text-encoder cache state and `supportsAudio:true`. `bin/smoke-test` is a fast compile/health/fake-sync test; it does not run model inference.
 
 ## Verification
 
