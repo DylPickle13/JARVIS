@@ -480,6 +480,33 @@ def job_posts_success_body_only(job: sqlite3.Row | dict[str, Any]) -> bool:
     return any(identifier and identifier in targets for identifier in identifiers)
 
 
+def validate_success_output(job: sqlite3.Row | dict[str, Any], assistant_text: str) -> str | None:
+    """Return an error string when a job's nominally successful output is clearly invalid."""
+    load_dotenv()
+    identifiers = {
+        str(_job_value(job, "name", "") or "").strip().casefold(),
+        str(_job_value(job, "id", "") or "").strip().casefold(),
+    }
+    text = (assistant_text or "").strip()
+
+    # Built-in guard for the daily job-search report: this job posts body-only,
+    # so tiny outputs like "OK" or "I" otherwise look like successes in Discord.
+    if {"daily-job-search", "job_ca728bbf8731"} & identifiers:
+        if len(text) < 80:
+            return f"Output validation failed: daily-job-search output was too short ({len(text)} chars)."
+        if not text.startswith("☀️ Daily Job Picks"):
+            return "Output validation failed: daily-job-search output must start with '☀️ Daily Job Picks'."
+
+    # Optional generic prefix rules: DISCORD_CRON_REQUIRED_OUTPUT_PREFIXES="job=prefix,other=prefix".
+    for rule in _split_env_csv(os.environ.get("DISCORD_CRON_REQUIRED_OUTPUT_PREFIXES", "")):
+        if "=" not in rule:
+            continue
+        target, prefix = rule.split("=", 1)
+        if target.strip().casefold() in identifiers and prefix and not text.startswith(prefix):
+            return f"Output validation failed: expected output to start with {prefix!r}."
+    return None
+
+
 def discord_thread_name(job_name: str) -> str:
     name = re.sub(r"\s+", " ", str(job_name or "")).strip() or "unnamed-cron-job"
     return name[:100]
@@ -980,6 +1007,11 @@ def run_pi_for_job(conn: sqlite3.Connection, job: sqlite3.Row, *, forced: bool =
     if stderr.strip():
         stderr_tail = stderr[-4000:]
         error = f"{error}\n\nstderr tail:\n{stderr_tail}" if error else f"stderr tail:\n{stderr_tail}"
+    if status == "success":
+        validation_error = validate_success_output(job, assistant)
+        if validation_error:
+            status = "error"
+            error = validation_error
 
     artifacts = write_run_artifacts(
         run_id=run_id,
