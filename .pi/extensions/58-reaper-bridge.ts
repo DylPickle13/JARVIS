@@ -167,6 +167,11 @@ export default function reaperBridgeExtension(pi: ExtensionAPI) {
       "Use reaper_lua only after loading the reaper tool group. Send complete inline Lua that returns JSON-safe tables for inspection results.",
       "For edits via reaper_lua, include any desired reaper.Undo_BeginBlock()/Undo_EndBlock() directly in the Lua code; the bridge intentionally does not hardcode actions or safety wrappers.",
       "Do not save temporary task scripts for REAPER work; pass Lua inline through reaper_lua.",
+      "Do not guess REAPER/ReaScript API signatures. Before using any unfamiliar REAPER API call, inspect the official ReaScript docs, local bridge examples, or known project examples.",
+      "Official ReaScript API docs: https://www.reaper.fm/sdk/reascript/reascripthelp.html",
+      "If a REAPER API call returns an unexpected value/type, stop immediately and look up the API before retrying. Do not make a second guessed attempt.",
+      "Capture all return values for REAPER API functions unless the signature has been verified. Many REAPER functions return multiple values, e.g. local ok, name = reaper.GetTrackName(track, \"\") not C-style mutable buffers.",
+      "For common checks, you may also use: reaper.APIExists(\"FunctionName\")",
     ],
     parameters: Type.Object({
       code: Type.String({ description: "Lua code to execute inside REAPER. Return a table/string/number/boolean/nil for JSON output." }),

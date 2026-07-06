@@ -199,6 +199,9 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Use `reaper_lua` for live-session inspection or edits by sending inline Lua only. Do not save temporary task scripts for REAPER work.",
       "For edits, write any desired `reaper.Undo_BeginBlock()` / `reaper.Undo_EndBlock()` directly in the Lua snippet; the bridge intentionally has no hardcoded action wrappers.",
       "Return JSON-safe Lua tables from `reaper_lua` so results are easy to inspect.",
+      "Do not guess REAPER/ReaScript API signatures. Before using any unfamiliar REAPER API call, inspect official docs, local bridge examples, or known project examples.",
+      "If a REAPER API call returns an unexpected value/type, stop immediately and look up the API before retrying. Do not make a second guessed attempt.",
+      "Capture all return values for REAPER API functions unless the signature has been verified.",
     ],
   },
   browser: {
