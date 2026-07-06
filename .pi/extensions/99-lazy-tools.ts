@@ -13,7 +13,8 @@ type CanonicalToolGroup =
   | "cron"
   | "discord"
   | "sessions"
-  | "browser";
+  | "browser"
+  | "reaper";
 type ToolGroup = CanonicalToolGroup | "all";
 type ConcreteToolGroup = CanonicalToolGroup;
 type GuidanceGroup = ConcreteToolGroup;
@@ -48,6 +49,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   cron: ["discord_cron"],
   discord: ["discord_ping", "discord_send_file"],
   sessions: ["session_search"],
+  reaper: ["reaper_ping", "reaper_lua"],
   browser: [
     "browser_status",
     "browser_open",
@@ -76,6 +78,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
   discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
   sessions: "session_search over prior Pi/JARVIS sessions",
+  reaper: "reaper_ping/reaper_lua for the live REAPER session on mac-mini-16 via inline Lua bridge",
   browser: "visible Chrome for rendered/interactive web: screenshots/clicks/typing/uploads/extract",
 };
 
@@ -187,6 +190,15 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Start with `action: \"search\"`, a natural-language `query`, and a small `limit`; set `includeText: true` only when snippets are insufficient.",
       "Use `action: \"status\"` to check freshness. Use `action: \"index\"` only when requested or when status/search results indicate the index is stale.",
       "Search results cite session files/chunks; use them to answer concisely or decide which raw session file to inspect next.",
+    ],
+  },
+  reaper: {
+    skill: "live REAPER inline Lua bridge",
+    lines: [
+      "Use `reaper_ping` and `reaper_lua` only after loading the `reaper` group; these tools talk to the live REAPER instance on mac-mini-16.",
+      "Use `reaper_lua` for live-session inspection or edits by sending inline Lua only. Do not save temporary task scripts for REAPER work.",
+      "For edits, write any desired `reaper.Undo_BeginBlock()` / `reaper.Undo_EndBlock()` directly in the Lua snippet; the bridge intentionally has no hardcoded action wrappers.",
+      "Return JSON-safe Lua tables from `reaper_lua` so results are easy to inspect.",
     ],
   },
   browser: {
@@ -323,6 +335,7 @@ function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
     cron: "cron: use `discord_cron` only for Discord-posted scheduled jobs; OS cron/launchd only if explicitly requested.",
     discord: "discord: use `discord_ping` for immediate Discord pings/notifications, with attachments when requested; use `discord_send_file` only for current-channel uploads when available.",
     sessions: "sessions: use `session_search` search first; status for freshness; index only if requested/stale.",
+    reaper: "reaper: use `reaper_ping`/`reaper_lua` for the live REAPER session on mac-mini-16; send inline Lua only, no saved task scripts; include undo blocks in Lua when editing.",
     browser: "browser: load for rendered/interactive/logged-in/forms/screenshots/open-use-check; web=text; verify; ask before sensitive."
   };
   return ["Compact playbook:", ...groups.map((group) => `- ${lines[group]}`)].join("\n");
@@ -430,10 +443,10 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
-    description: 'Load optional schemas. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Groups: memory, code_docs, image, video, jarvis=lights/plugs/dashboard/Cast/air purifier, phone, google, cron, discord, sessions, browser=visible Chrome, all. No aliases; minecraft_jarvis is already on.',
-    promptSnippet: "Load optional groups. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Common: memory, code_docs, image, video, jarvis for lights/plugs/switches/dashboard/Cast/air purifier, google, phone, cron, discord, browser=visible Chrome.",
+    description: 'Load optional schemas. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Groups: memory, code_docs, image, video, jarvis=lights/plugs/dashboard/Cast/air purifier, phone, google, cron, discord, sessions, reaper=live REAPER inline Lua, browser=visible Chrome, all. No aliases; minecraft_jarvis is already on.',
+    promptSnippet: "Load optional groups. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Common: memory, code_docs, image, video, jarvis for lights/plugs/switches/dashboard/Cast/air purifier, google, phone, cron, discord, reaper=live REAPER inline Lua, browser=visible Chrome.",
     promptGuidelines: [
-      "Call load_tools before optional groups: memory, code_docs, image, video, jarvis, phone, google, cron, discord, sessions, browser. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, camera/view, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => always-on `github_cli`; never bash `gh`. Local `git` status/diff/add/commit/log/branch => bash. If `github_cli` unavailable, report tool failure. For Google intents, load `google`. Web/search/fetch, github_cli, minecraft_jarvis, maps, and ssh are always on; no removed-tool aliases.",
+      "Call load_tools before optional groups: memory, code_docs, image, video, jarvis, phone, google, cron, discord, sessions, reaper, browser. For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, camera/view, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => always-on `github_cli`; never bash `gh`. Local `git` status/diff/add/commit/log/branch => bash. If `github_cli` unavailable, report tool failure. For Google intents, load `google`. Web/search/fetch, github_cli, minecraft_jarvis, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
       "Web: `web_search`=discover (`provider: \"youtube\"` for YouTube), `fetch_content`=static, `get_search_content`=stored. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
@@ -565,7 +578,7 @@ export default function lazyTools(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("load-tools", {
-    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,image,video,jarvis,minecraft_jarvis,phone,google,cron,discord,sessions,browser,all",
+    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,image,video,jarvis,minecraft_jarvis,phone,google,cron,discord,sessions,reaper,browser,all",
     handler: async (args, ctx) => {
       const requested = args
         .split(/[\s,]+/)
@@ -574,7 +587,7 @@ export default function lazyTools(pi: ExtensionAPI) {
       const invalid = requested.filter((group) => !isToolGroupName(group));
       const valid = requested.filter(isToolGroupName);
       if (invalid.length > 0 || valid.length === 0) {
-        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nGroups: ${LOADABLE_GROUPS_TEXT}\nCommon choices: code_docs=code_search; image=generate_image; video=generate_video; memory=durable memory; phone=LG-H933 Android control; cron=scheduled Discord jobs; discord=immediate Discord pings/file delivery; browser=visible Chrome control. Web tools (web_search/fetch_content/get_search_content) and github_cli are always on.\n${invalid.length > 0 ? `Invalid group(s): ${invalid.join(", ")}. No aliases are supported.` : ""}`, "warning");
+        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nGroups: ${LOADABLE_GROUPS_TEXT}\nCommon choices: code_docs=code_search; image=generate_image; video=generate_video; memory=durable memory; phone=LG-H933 Android control; cron=scheduled Discord jobs; discord=immediate Discord pings/file delivery; reaper=live REAPER inline Lua; browser=visible Chrome control. Web tools (web_search/fetch_content/get_search_content) and github_cli are always on.\n${invalid.length > 0 ? `Invalid group(s): ${invalid.join(", ")}. No aliases are supported.` : ""}`, "warning");
         return;
       }
       const expandedGroups = expandGroups(valid);
