@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-const HIGHEST_THINKING_LEVEL = "xhigh";
+const HIGHEST_THINKING_LEVEL = "max";
 
 export default function maxThinkingOnModelSelect(pi: ExtensionAPI) {
   pi.on("model_select", async (event) => {
@@ -11,7 +11,7 @@ export default function maxThinkingOnModelSelect(pi: ExtensionAPI) {
     }
 
     // Pi clamps this to the selected model's highest supported level:
-    // xhigh -> high -> medium -> low -> minimal -> off.
+    // max -> xhigh -> high -> medium -> low -> minimal -> off.
     pi.setThinkingLevel(HIGHEST_THINKING_LEVEL);
   });
 }
