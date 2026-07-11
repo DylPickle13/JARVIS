@@ -207,6 +207,11 @@ require_file "pi-web-access package" ".pi/npm/node_modules/pi-web-access/package
 require_file "browser extension package" ".pi/extensions/50-browser/package.json"
 require_file "browser extension package lock" ".pi/extensions/50-browser/package-lock.json"
 require_file "browser extension node_modules" ".pi/extensions/50-browser/node_modules"
+require_file "shared extension runtime package" ".pi/extensions/lib/package.json"
+require_file "shared extension runtime package lock" ".pi/extensions/lib/package-lock.json"
+require_file "SSH PTY dependency" ".pi/extensions/lib/node_modules/node-pty/package.json"
+require_file "headless terminal dependency" ".pi/extensions/lib/node_modules/@xterm/headless/package.json"
+require_file "SSH PTY helper" ".pi/extensions/lib/ssh-pty.ts"
 warn_file "dashboard package.json" "projects/operation-jarvis/dashboard/package.json"
 warn_file "dashboard node_modules" "projects/operation-jarvis/dashboard/node_modules"
 warn_executable "Operation JARVIS venv Python" "projects/operation-jarvis/.venv/bin/python"
@@ -219,6 +224,9 @@ const fs = require('fs');
 for (const path of [
   '.pi/npm/node_modules/pi-web-access/package.json',
   '.pi/extensions/50-browser/package.json',
+  '.pi/extensions/lib/package.json',
+  '.pi/extensions/lib/node_modules/node-pty/package.json',
+  '.pi/extensions/lib/node_modules/@xterm/headless/package.json',
 ]) {
   const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
   console.log(`${pkg.name}@${pkg.version}`);
@@ -245,6 +253,7 @@ expected_extension_roots=(
   .pi/extensions/50-minecraft-jarvis-chat.ts
   .pi/extensions/55-ssh-exec.ts
   .pi/extensions/56-github-cli.ts
+  .pi/extensions/58-reaper-bridge.ts
   .pi/extensions/60-pdf-read-result.ts
   .pi/extensions/70-image-generation.ts
   .pi/extensions/71-video-generation.ts
@@ -263,6 +272,9 @@ expected_extension_files=(
   .pi/extensions/50-browser/package-lock.json
   .pi/extensions/50-browser/package.json
   .pi/extensions/50-browser/tools.ts
+  .pi/extensions/lib/package-lock.json
+  .pi/extensions/lib/package.json
+  .pi/extensions/lib/ssh-pty.ts
 )
 for path in "${expected_extension_files[@]}"; do
   require_file "extension source" "$path"

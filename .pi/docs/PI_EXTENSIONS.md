@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-06-30 EDT
+Updated: 2026-07-10 EDT
 
 The local Pi extension inventory lives in `.pi/extensions/`. `.pi/smoke-test.sh` keeps a read-only manifest check so added or removed extension roots are visible during smoke testing. The manifest intentionally ignores the shared `.pi/extensions/lib/` directory.
 
@@ -12,6 +12,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `lib/path.ts` — safe user path normalization helpers.
 - `lib/text.ts` — truncation and byte/message formatting helpers.
 - `lib/discord.ts` — Discord filename and multipart request helpers.
+- `lib/ssh-pty.ts` — local `node-pty` wrapper and headless xterm screen used for bidirectional SSH terminal sessions. Runtime dependencies are declared in `lib/package.json`.
 
 ## Extension roots covered by smoke test
 
@@ -30,8 +31,9 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `48-agent-phone.ts` — guarded LG-H933 Android phone adapter.
 - `50-browser/` — visible Chrome browser control via Playwright CDP.
 - `50-minecraft-jarvis-chat.ts` — Minecraft jarvis bot chat/control.
-- `55-ssh-exec.ts` — configured SSH command execution.
+- `55-ssh-exec.ts` — unrestricted configured SSH execution plus directly attached and stateful interactive PTY sessions.
 - `56-github-cli.ts` — guarded GitHub CLI adapter.
+- `58-reaper-bridge.ts` — live REAPER inline-Lua bridge.
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `70-image-generation.ts` — local Qwen image generation via mac-mini-64.
 - `71-video-generation.ts` — local LTX-2.3 Q8 MLX MP4 audio-video generation via mac-mini-64.
@@ -68,6 +70,26 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
 
 `minecraft_jarvis` remains accepted as a compatibility group but the tool is already always on.
+
+## SSH execution and interactive terminals
+
+The always-on `ssh` tool restricts connection selection to private configured host aliases, identities, users, and allowed remote working directories. It does not restrict command content.
+
+- Captured command: `ssh({ command: "hostname" })` or `action: "exec"`.
+- Local Pi TUI terminal: `ssh({ command: "vim file.txt", pty: true })`. Pi suspends its TUI, runs `ssh -tt` with inherited terminal I/O, and restores Pi when SSH exits.
+- Discord/RPC terminal: start a stateful PTY with `ssh({ action: "start", command: "vim file.txt" })`; use the returned `sessionId` with `input`, `read`, `resize`, `signal`, and `close` actions.
+- Send a line with `action: "input"`, `input: "text"`, and `key: "ENTER"`. Named keys include arrows, Escape, Backspace, Ctrl-C, Ctrl-D, Ctrl-Z, and Ctrl-L.
+- `action: "read"` returns the current rendered terminal screen (so full-screen editors and TUIs remain intelligible) and consumes pending transcript output by default; pass `consume: false` to retain pending output.
+- `action: "list"` lists active/exited sessions in the current Pi process.
+
+Stateful sessions are process-local, retain a bounded terminal-output tail, expire after an idle period, and close on Pi session shutdown. Configure these with `JARVIS_SSH_INTERACTIVE_IDLE_SECONDS` and `JARVIS_SSH_INTERACTIVE_OUTPUT_BYTES`.
+
+Install the PTY dependency after a fresh clone:
+
+```bash
+cd /path/to/JARVIS/.pi/extensions/lib
+npm install
+```
 
 ## Local media generation worker
 

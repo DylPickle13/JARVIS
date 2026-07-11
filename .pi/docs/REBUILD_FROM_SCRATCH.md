@@ -138,6 +138,13 @@ cd /path/to/JARVIS/.pi/extensions/50-browser
 npm install
 ```
 
+Shared extension runtime dependencies (currently `node-pty` for interactive SSH terminals):
+
+```bash
+cd /path/to/JARVIS/.pi/extensions/lib
+npm install
+```
+
 Start the dashboard manually:
 
 ```bash

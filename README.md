@@ -86,7 +86,7 @@ All normal configuration lives in `.env`; [`.env.example`](.env.example) is the 
 - **Pi/model** — Pi command, workdir, RPC timeout, default text model, voice model override, thinking level, and `/jarvis model` options.
 - **Voice/oMLX/TTS** — ASR endpoint/model, wake-word gates, Piper voice settings, TTS streaming, and idle session refresh.
 - **Dashboard/room hardware** — dashboard URL, camera vision model, Raspberry Pi room-audio status, Android phone ADB status, and room-audio tuning.
-- **Local SSH machines (private)** — configure trusted SSH aliases locally with ignored `.pi/ssh-hosts.json` or `JARVIS_SSH_*` environment variables. See [`projects/operation-jarvis/README.md`](projects/operation-jarvis/README.md) for the current runbook.
+- **Local SSH machines (private)** — configure trusted SSH aliases locally with ignored `.pi/ssh-hosts.json` or `JARVIS_SSH_*` environment variables. The `ssh` tool supports unrestricted captured commands, directly attached local-TUI terminals, and stateful Discord/RPC PTY sessions. See [`.pi/docs/PI_EXTENSIONS.md`](.pi/docs/PI_EXTENSIONS.md).
 - **Tools** — Exa-backed web access, Google/YouTube APIs, memory, session search embeddings, Discord cron/ping/file upload, and Kasa smart-plug credentials.
 
 ## Discord Usage

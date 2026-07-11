@@ -293,6 +293,17 @@ def _format_quota_percent(value: object) -> str:
     return f"{formatted}%" if formatted != "?" else "?"
 
 
+def _format_quota_window(window: dict[str, object], label: str) -> str:
+    bits = [f"{label} {_format_quota_percent(window.get('used_percent'))} used"]
+    try:
+        reset_after_seconds = float(window.get("reset_after_seconds"))
+    except (TypeError, ValueError):
+        reset_after_seconds = None
+    if reset_after_seconds is not None and reset_after_seconds >= 0:
+        bits.append(f"resets in {_format_seconds(reset_after_seconds)}")
+    return "; ".join(bits)
+
+
 def _format_compaction_result(data: dict[str, object]) -> str:
     tokens_before = data.get("tokensBefore")
     token_text = ""
@@ -371,7 +382,6 @@ def _format_quota_summary(report: dict[str, object] | None, *, error: str | None
     checked_at = _discord_timestamp(report.get("checked_at"))
     providers = report.get("providers") if isinstance(report.get("providers"), dict) else {}
     codex = providers.get("openai-codex") if isinstance(providers, dict) else None
-    copilot = providers.get("github-copilot") if isinstance(providers, dict) else None
     lines = [f"Last checked: {checked_at}"]
 
     if isinstance(codex, dict):
@@ -382,9 +392,9 @@ def _format_quota_summary(report: dict[str, object] | None, *, error: str | None
         reset_credits = usage.get("rate_limit_reset_credits") if isinstance(usage, dict) and isinstance(usage.get("rate_limit_reset_credits"), dict) else {}
         codex_bits = [str(usage.get("plan_type") or "unknown plan") if isinstance(usage, dict) else "unknown plan"]
         if primary:
-            codex_bits.append(f"5h {_format_quota_percent(primary.get('used_percent'))} used")
+            codex_bits.append(_format_quota_window(primary, "5h"))
         if secondary:
-            codex_bits.append(f"weekly {_format_quota_percent(secondary.get('used_percent'))} used")
+            codex_bits.append(_format_quota_window(secondary, "weekly"))
         if credits and credits.get("balance") is not None:
             codex_bits.append(f"credits {_format_quota_number(credits.get('balance'))}")
         if reset_credits and reset_credits.get("available_count") is not None:
@@ -392,52 +402,6 @@ def _format_quota_summary(report: dict[str, object] | None, *, error: str | None
         lines.append(f"Codex: {'; '.join(codex_bits)}")
     else:
         lines.append("Codex: no saved data")
-
-    if isinstance(copilot, dict):
-        usage = copilot.get("usage") if isinstance(copilot.get("usage"), dict) else {}
-        ai_credits = usage.get("ai_credits") if isinstance(usage, dict) and isinstance(usage.get("ai_credits"), dict) else {}
-        premium = (
-            usage.get("legacy_premium_interactions")
-            if isinstance(usage, dict) and isinstance(usage.get("legacy_premium_interactions"), dict)
-            else usage.get("premium_interactions") if isinstance(usage, dict) and isinstance(usage.get("premium_interactions"), dict) else {}
-        )
-        plan = "unknown plan"
-        if isinstance(usage, dict):
-            allowance = usage.get("plan_allowance") if isinstance(usage.get("plan_allowance"), dict) else {}
-            plan = allowance.get("label") or usage.get("plan") or usage.get("access_type_sku") or "unknown plan"
-        if ai_credits:
-            used = ai_credits.get("used")
-            entitlement = ai_credits.get("entitlement")
-            remaining = ai_credits.get("remaining")
-            if used is not None and entitlement is not None:
-                lines.append(
-                    "Copilot: "
-                    f"{plan}; AI credits {_format_quota_number(used)}/"
-                    f"{_format_quota_number(entitlement)} used, "
-                    f"{_format_quota_number(remaining)} left"
-                )
-            elif used is not None:
-                lines.append(f"Copilot: {plan}; AI credits {_format_quota_number(used)} used")
-            elif ai_credits.get("entitlement_per_user") is not None:
-                lines.append(
-                    "Copilot: "
-                    f"{plan}; AI credits {_format_quota_number(ai_credits.get('entitlement_per_user'))}/user/mo pooled"
-                )
-            else:
-                lines.append(f"Copilot: {plan}; AI credits unavailable")
-        elif isinstance(usage, dict) and usage.get("billing_model") == "ai_credits":
-            lines.append(f"Copilot: {plan}; token billing active, AI credits unavailable")
-        elif premium:
-            lines.append(
-                "Copilot: "
-                f"{plan}; premium {_format_quota_number(premium.get('used'))}/"
-                f"{_format_quota_number(premium.get('entitlement'))} used, "
-                f"{_format_quota_number(premium.get('remaining'))} left"
-            )
-        else:
-            lines.append(f"Copilot: {plan}")
-    else:
-        lines.append("Copilot: no saved data")
 
     return _truncate_discord_value("\n".join(lines))
 
@@ -1077,16 +1041,11 @@ class JarvisDiscordBot:
         if quota_report is None and quota_error is None:
             quota_report = _load_latest_quota_report()
         embed = discord.Embed(
-            title="JARVIS configuration",
-            description=(
-                "Runtime settings for this Discord bot. Secrets are intentionally hidden. "
-                "Use the model buttons below to switch this channel's model; in the voice channel text chat, "
-                "this targets the LLM used by the voice pipeline."
-            ),
+            title="Models",
             color=discord.Color.dark_teal(),
         )
         embed.add_field(name="Current model", value=f"`{current_model}`", inline=False)
-        embed.add_field(name="Configured model options", value=f"`{model_options}`", inline=False)
+        embed.add_field(name="Configured model options", value=model_options, inline=False)
         if total_model_count > len(models):
             embed.add_field(
                 name="Model buttons",
