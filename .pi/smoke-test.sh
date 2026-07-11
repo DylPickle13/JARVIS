@@ -259,7 +259,7 @@ expected_extension_roots=(
   .pi/extensions/71-video-generation.ts
   .pi/extensions/98-slim-provider-payload.ts
   .pi/extensions/99-lazy-tools.ts
-  .pi/extensions/max-thinking-on-model-select.ts
+  .pi/extensions/xhigh-thinking-on-model-select.ts
 )
 for path in "${expected_extension_roots[@]}"; do
   require_file "extension root" "$path"
