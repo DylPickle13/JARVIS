@@ -123,6 +123,7 @@ DISCORD_EXTRA_PI_MODEL_OPTIONS = tuple(
     )
 )
 DISCORD_HIDDEN_PI_MODEL_OPTIONS = {
+    "openai-codex/gpt-5.5",
     "github-copilot/gpt-5.4-mini",
     "github-copilot/gpt-5.3-codex",
 }
