@@ -55,6 +55,9 @@ STRICT_MIN_USER_MESSAGES = 15
 STRICT_MIN_TOTAL_TOKENS = 500_000
 STRICT_MIN_TOTAL_COST = 1.0
 DEFAULT_DELETE_MIN_AGE_MINUTES = 60
+PRIVATE_FILE_MODE = 0o600
+PRIVATE_DIR_MODE = 0o700
+SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 
 
 def sanitize_text(value: str) -> str:
@@ -159,14 +162,36 @@ def embedding_dimensions() -> int | None:
     return value
 
 
+def secure_database_permissions(db_path: Path) -> None:
+    for path in (db_path, *(Path(f"{db_path}{suffix}") for suffix in SQLITE_SIDECAR_SUFFIXES)):
+        try:
+            path.chmod(PRIVATE_FILE_MODE)
+        except FileNotFoundError:
+            pass
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    init_db(conn)
-    return conn
+    db_path.parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_DIR_MODE)
+    if db_path.parent.resolve() == DEFAULT_DB_PATH.parent.resolve():
+        db_path.parent.chmod(PRIVATE_DIR_MODE)
+
+    previous_umask = os.umask(0o077)
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        db_path.chmod(PRIVATE_FILE_MODE)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        init_db(conn)
+        secure_database_permissions(db_path)
+        return conn
+    except Exception:
+        if conn is not None:
+            conn.close()
+        raise
+    finally:
+        os.umask(previous_umask)
 
 
 def init_db(conn: sqlite3.Connection) -> None:
@@ -245,8 +270,16 @@ def init_db(conn: sqlite3.Connection) -> None:
 @contextlib.contextmanager
 def index_lock(db_path: Path):
     lock_path = db_path.with_suffix(db_path.suffix + ".lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("w") as handle:
+    lock_path.parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_DIR_MODE)
+    if lock_path.parent.resolve() == DEFAULT_DB_PATH.parent.resolve():
+        lock_path.parent.chmod(PRIVATE_DIR_MODE)
+    fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, PRIVATE_FILE_MODE)
+    try:
+        os.fchmod(fd, PRIVATE_FILE_MODE)
+    except Exception:
+        os.close(fd)
+        raise
+    with os.fdopen(fd, "w") as handle:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
@@ -470,8 +503,17 @@ def deletion_manifest_path(db_path: Path) -> Path:
 
 def write_deletion_manifest(db_path: Path, payload: dict[str, Any]) -> str:
     manifest_path = deletion_manifest_path(db_path)
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    manifest_path.parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_DIR_MODE)
+    if manifest_path.parent.resolve() == DEFAULT_DB_PATH.parent.resolve():
+        manifest_path.parent.chmod(PRIVATE_DIR_MODE)
+    fd = os.open(manifest_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, PRIVATE_FILE_MODE)
+    try:
+        os.fchmod(fd, PRIVATE_FILE_MODE)
+    except Exception:
+        os.close(fd)
+        raise
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     return str(manifest_path)
 
 

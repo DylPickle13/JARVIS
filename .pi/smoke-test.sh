@@ -54,6 +54,28 @@ require_file() {
   fi
 }
 
+file_mode() {
+  local path="$1"
+  stat -f '%Lp' "$path" 2>/dev/null || stat -c '%a' "$path" 2>/dev/null
+}
+
+require_mode() {
+  local label="$1"
+  local path="$2"
+  local expected="$3"
+  if [[ ! -e "$path" ]]; then
+    fail "$label missing ($path)"
+    return
+  fi
+  local actual
+  actual="$(file_mode "$path")"
+  if [[ "$actual" == "$expected" ]]; then
+    pass "$label mode=$actual ($path)"
+  else
+    fail "$label expected mode=$expected, got ${actual:-unknown} ($path)"
+  fi
+}
+
 warn_file() {
   local label="$1"
   local path="$2"
@@ -171,6 +193,26 @@ require_file "lazy tools extension" ".pi/extensions/99-lazy-tools.ts"
 require_file "provider payload slimming extension" ".pi/extensions/98-slim-provider-payload.ts"
 require_executable "smoke test script" ".pi/smoke-test.sh"
 
+section "Private local permissions"
+require_mode "project secrets" ".env" "600"
+require_mode "Pi settings" ".pi/settings.json" "600"
+require_mode "local system context" ".pi/APPEND_SYSTEM.md" "600"
+require_mode "SSH host allowlist" ".pi/ssh-hosts.json" "600"
+for directory in .pi/runtime .pi/memory .pi/session-search .pi/discord-cron; do
+  require_mode "private directory" "$directory" "700"
+done
+while IFS= read -r path; do
+  require_mode "private runtime file" "$path" "600"
+done < <(find .pi .pi/memory .pi/session-search .pi/discord-cron -maxdepth 1 -type f \
+  \( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -name '*.sqlite-journal' \
+     -o -name '*.sqlite.lock' -o -name 'deleted-sessions-*.json' \) -print 2>/dev/null)
+if [[ -d .pi/runtime/pi-web-access ]]; then
+  require_mode "scoped web-access directory" ".pi/runtime/pi-web-access" "700"
+fi
+if [[ -e .pi/runtime/pi-web-access/web-search.json ]]; then
+  require_mode "scoped web-access config" ".pi/runtime/pi-web-access/web-search.json" "600"
+fi
+
 section "Core commands"
 require_command "pi"
 require_command "node"
@@ -253,6 +295,7 @@ fi
 
 section "Extension inventory"
 expected_extension_roots=(
+  .pi/extensions/00-private-permissions.ts
   .pi/extensions/00-web-access-env.ts
   .pi/extensions/01-omlx-provider-setup-and-recovery.ts
   .pi/extensions/04-delete-current-session.ts

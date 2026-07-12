@@ -56,6 +56,9 @@ DISCORD_SUPPRESS_EMBEDS_FLAG = 1 << 2
 LOCK_STALE_SECONDS = 20 * 60
 DEFAULT_PATH = config.DEFAULT_SCHEDULER_PATH
 DIRECT_STDOUT_MODEL = "__direct_stdout__"
+PRIVATE_FILE_MODE = 0o600
+PRIVATE_DIR_MODE = 0o700
+SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 
 
 def _split_env_csv(raw: str) -> tuple[str, ...]:
@@ -143,16 +146,37 @@ def save_config(config: dict[str, Any]) -> None:
     _remove_legacy_config()
 
 
+def secure_database_permissions() -> None:
+    for path in (DB_PATH, *(Path(f"{DB_PATH}{suffix}") for suffix in SQLITE_SIDECAR_SUFFIXES)):
+        try:
+            path.chmod(PRIVATE_FILE_MODE)
+        except FileNotFoundError:
+            pass
+
+
 def connect() -> sqlite3.Connection:
-    DISCORD_CRON_DIR.mkdir(parents=True, exist_ok=True)
-    if LEGACY_DB_PATH.exists() and not DB_PATH.exists():
-        LEGACY_DB_PATH.replace(DB_PATH)
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    init_db(conn)
-    return conn
+    DISCORD_CRON_DIR.mkdir(parents=True, exist_ok=True, mode=PRIVATE_DIR_MODE)
+    DISCORD_CRON_DIR.chmod(PRIVATE_DIR_MODE)
+
+    previous_umask = os.umask(0o077)
+    conn: sqlite3.Connection | None = None
+    try:
+        if LEGACY_DB_PATH.exists() and not DB_PATH.exists():
+            LEGACY_DB_PATH.replace(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        DB_PATH.chmod(PRIVATE_FILE_MODE)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        init_db(conn)
+        secure_database_permissions()
+        return conn
+    except Exception:
+        if conn is not None:
+            conn.close()
+        raise
+    finally:
+        os.umask(previous_umask)
 
 
 def init_db(conn: sqlite3.Connection) -> None:

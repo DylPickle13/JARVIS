@@ -70,10 +70,11 @@ If you use a different path, update path-sensitive values in `.env`, `.pi/settin
 
 ```bash
 cd /path/to/JARVIS
-cp .env.example .env
-cp .pi/settings.example.json .pi/settings.json
-cp .pi/APPEND_SYSTEM.example.md .pi/APPEND_SYSTEM.md
-cp .pi/ssh-hosts.example.json .pi/ssh-hosts.json
+install -m 600 .env.example .env
+install -m 600 .pi/settings.example.json .pi/settings.json
+install -m 600 .pi/APPEND_SYSTEM.example.md .pi/APPEND_SYSTEM.md
+install -m 600 .pi/ssh-hosts.example.json .pi/ssh-hosts.json
+install -d -m 700 .pi/runtime .pi/memory .pi/session-search .pi/discord-cron
 ```
 
 Customize these ignored local files before starting Pi:
@@ -83,7 +84,9 @@ Customize these ignored local files before starting Pi:
 - `.pi/APPEND_SYSTEM.md`: restore preferred address, timezone, aliases, and local operating rules.
 - `.pi/ssh-hosts.json`: replace example hosts with only explicitly trusted machines and narrow allowed directory prefixes.
 
-If private backups exist, restore them instead of copying the templates. Do not commit the resulting local files. The templates are deliberately safe and cannot reproduce private host addresses, usernames, key locations, device aliases, or personal preferences without customization.
+If private backups exist, restore them instead of copying the templates, then run `chmod 600` on the four local files and `chmod 700` on the private directories shown above. Do not commit the resulting local files. The templates are deliberately safe and cannot reproduce private host addresses, usernames, key locations, device aliases, or personal preferences without customization.
+
+`.pi/extensions/00-private-permissions.ts` reapplies these owner-only modes whenever Pi starts. The memory, session-search, and Discord-cron runners also enforce mode `0600` on their SQLite databases, WAL/SHM/journal sidecars, locks, and deletion manifests, with mode `0700` on their default data directories.
 
 Minimum root `.env` for basic Discord/Pi operation:
 
@@ -345,7 +348,8 @@ Do not run another bot process with the same token at the same time. The root bo
 - [ ] Browser extension dependencies exist under `.pi/extensions/50-browser/node_modules`.
 - [ ] Root `.venv` imports `discord.py` and runs `python discord_bot.py`.
 - [ ] `.env`, `.pi/settings.json`, `.pi/APPEND_SYSTEM.md`, and `.pi/ssh-hosts.json` were privately restored or created from their tracked templates.
-- [ ] All four local files remain ignored by git.
+- [ ] All four local files remain ignored by git and have mode `0600`.
+- [ ] `.pi/runtime`, `.pi/memory`, `.pi/session-search`, and `.pi/discord-cron` have mode `0700`; private databases and sidecars have mode `0600`.
 - [ ] `.pi/settings.json` retains `npm:pi-web-access@0.13.0`; `pi list` and the installed package metadata agree.
 - [ ] `/lazy-tools` works in Pi.
 - [ ] `memory.py --json status` works.

@@ -25,6 +25,9 @@ SCHEMA_VERSION = "2"
 KINDS = {"preference", "fact", "lesson", "project", "workflow"}
 SCOPES = {"global", "project", "discord-channel"}
 MAX_TEXT_CHARS = 8000
+PRIVATE_FILE_MODE = 0o600
+PRIVATE_DIR_MODE = 0o700
+SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 
 
 class MemoryError(RuntimeError):
@@ -81,16 +84,38 @@ def env_int(name: str, default: int, minimum: int = 0) -> int:
     return value
 
 
+def secure_database_permissions(db_path: Path) -> None:
+    for path in (db_path, *(Path(f"{db_path}{suffix}") for suffix in SQLITE_SIDECAR_SUFFIXES)):
+        try:
+            path.chmod(PRIVATE_FILE_MODE)
+        except FileNotFoundError:
+            pass
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA secure_delete=ON")
-    init_db(conn)
-    purge_legacy_deleted_memories(conn)
-    return conn
+    db_path.parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_DIR_MODE)
+    if db_path.parent.resolve() == DEFAULT_DB_PATH.parent.resolve():
+        db_path.parent.chmod(PRIVATE_DIR_MODE)
+
+    previous_umask = os.umask(0o077)
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        db_path.chmod(PRIVATE_FILE_MODE)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA secure_delete=ON")
+        init_db(conn)
+        purge_legacy_deleted_memories(conn)
+        secure_database_permissions(db_path)
+        return conn
+    except Exception:
+        if conn is not None:
+            conn.close()
+        raise
+    finally:
+        os.umask(previous_umask)
 
 
 def init_db(conn: sqlite3.Connection) -> None:

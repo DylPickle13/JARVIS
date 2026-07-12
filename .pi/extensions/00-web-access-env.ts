@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -184,8 +184,10 @@ function configureWebAccess(cwd: string): { configPath: string; envPath?: string
 	delete nextConfig.cloudflareApiKey;
 	delete nextConfig.searchModel;
 
-	mkdirSync(WEB_SEARCH_CONFIG_DIR, { recursive: true });
+	mkdirSync(WEB_SEARCH_CONFIG_DIR, { recursive: true, mode: 0o700 });
+	chmodSync(WEB_SEARCH_CONFIG_DIR, 0o700);
 	writeFileSync(WEB_SEARCH_CONFIG_PATH, JSON.stringify(nextConfig, null, 2) + "\n", { mode: 0o600 });
+	chmodSync(WEB_SEARCH_CONFIG_PATH, 0o600);
 
 	return {
 		configPath: WEB_SEARCH_CONFIG_PATH,
