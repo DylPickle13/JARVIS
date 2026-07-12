@@ -113,11 +113,17 @@ Microphone access requires a secure browser context. On Android Chrome over LAN 
 
 ## Run automatically at login
 
-This installs the `com.operation-jarvis.dashboard` LaunchAgent.
+This installs the `com.operation-jarvis.dashboard` LaunchAgent. When the repository-level `.env` exists, the service loads it with Node's `--env-file` option so dashboard configuration survives service reinstalls and login restarts. Set `JARVIS_DASHBOARD_ENV_FILE` while installing to use a different env file. Explicit `HOST` and `PORT` installer values take precedence over values in the env file.
 
 ```bash
 cd /path/to/JARVIS/projects/operation-jarvis/dashboard
 npm run install-service
+```
+
+Optional custom environment file:
+
+```bash
+JARVIS_DASHBOARD_ENV_FILE=/path/to/private-dashboard.env npm run install-service
 ```
 
 Uninstall:
