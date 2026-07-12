@@ -1,18 +1,21 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { findAncestorFile as findAncestorFilePath, parseDotEnvFile } from "./lib/env";
 
-const WEB_SEARCH_CONFIG_PATH = join(homedir(), ".pi", "web-search.json");
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const WEB_SEARCH_CONFIG_DIR = join(PROJECT_ROOT, ".pi", "runtime", "pi-web-access");
+const WEB_SEARCH_CONFIG_PATH = join(WEB_SEARCH_CONFIG_DIR, "web-search.json");
+const WEB_ACCESS_ENTRYPOINT = join(PROJECT_ROOT, ".pi", "npm", "node_modules", "pi-web-access", "index.ts");
 const FETCH_STATUS_RE = /^Content fetched for \d+\/\d+ URLs \[[^\]]+\]\. Full page content now available\.?$/i;
 const WEB_RESEARCH_WORKFLOW_PROMPT =
 	"Web: `web_search` for snippets only (no includeContent); batch selected pages with `fetch_content({ urls })`; wait for fetch and ignore delayed web-search-content-ready notices.";
 const GEMINI_DISABLED_PROMPT =
 	"Web policy: Gemini web is disabled; never suggest GEMINI_API_KEY/Gemini login. Default Exa; use provider:'youtube' only for YouTube metadata/search.";
-function loadExistingWebSearchConfig(): Record<string, unknown> {
+function loadScopedWebSearchConfig(): Record<string, unknown> {
 	if (!existsSync(WEB_SEARCH_CONFIG_PATH)) return {};
 	try {
 		return JSON.parse(readFileSync(WEB_SEARCH_CONFIG_PATH, "utf8")) as Record<string, unknown>;
@@ -119,7 +122,7 @@ function installWebAccessStatusSuppressor(pi: ExtensionAPI): void {
 	}
 }
 
-function configureWebAccess(cwd: string): { envPath?: string; hasExaApiKey: boolean; hasYouTubeApiKey: boolean } {
+function configureWebAccess(cwd: string): { configPath: string; envPath?: string; hasExaApiKey: boolean; hasYouTubeApiKey: boolean } {
 	const envPath = findAncestorFilePath(cwd, ".env");
 	const dotenvValues = envPath ? parseDotEnvFile(envPath) : {};
 
@@ -127,7 +130,10 @@ function configureWebAccess(cwd: string): { envPath?: string; hasExaApiKey: bool
 	// from .env or ambient process state into pi-web-access.
 	delete process.env.GEMINI_API_KEY;
 	delete process.env.PAID_GEMINI_API_KEY;
+	delete process.env.GOOGLE_GEMINI_BASE_URL;
 	delete process.env.MINIMAL_MODEL;
+	delete process.env.PI_ALLOW_BROWSER_COOKIES;
+	delete process.env.FEYNMAN_ALLOW_BROWSER_COOKIES;
 
 	const exaApiKey = (process.env.EXA_API_KEY || dotenvValues.EXA_API_KEY || "").trim();
 	if (!process.env.EXA_API_KEY && exaApiKey) {
@@ -162,7 +168,7 @@ function configureWebAccess(cwd: string): { envPath?: string; hasExaApiKey: bool
 		if (fileKey) process.env.GOOGLE_API_KEY = fileKey;
 	}
 
-	const existingConfig = loadExistingWebSearchConfig();
+	const existingConfig = loadScopedWebSearchConfig();
 	const nextConfig: Record<string, unknown> = {
 		...existingConfig,
 		provider: "exa",
@@ -174,20 +180,44 @@ function configureWebAccess(cwd: string): { envPath?: string; hasExaApiKey: bool
 	// Remove all Gemini-specific pi-web-access configuration. Exa is the default
 	// search provider; YouTube may still use GOOGLE_API_KEY/YOUTUBE_API_KEY.
 	delete nextConfig.geminiApiKey;
+	delete nextConfig.geminiBaseUrl;
+	delete nextConfig.cloudflareApiKey;
 	delete nextConfig.searchModel;
 
-	mkdirSync(dirname(WEB_SEARCH_CONFIG_PATH), { recursive: true });
+	mkdirSync(WEB_SEARCH_CONFIG_DIR, { recursive: true });
 	writeFileSync(WEB_SEARCH_CONFIG_PATH, JSON.stringify(nextConfig, null, 2) + "\n", { mode: 0o600 });
 
 	return {
+		configPath: WEB_SEARCH_CONFIG_PATH,
 		envPath,
 		hasExaApiKey: Boolean(process.env.EXA_API_KEY || existingConfig.exaApiKey),
 		hasYouTubeApiKey: Boolean(process.env.GOOGLE_API_KEY || process.env.YOUTUBE_API_KEY || process.env.YOUTUBE_DATA_API_KEY),
 	};
 }
 
-export default function registerPiWebAccessEnv(pi: ExtensionAPI) {
+export default async function registerPiWebAccessEnv(pi: ExtensionAPI) {
 	installWebAccessStatusSuppressor(pi);
+
+	// The package's own extension is disabled in project settings. Import it here
+	// while PI_CODING_AGENT_DIR points at a JARVIS-only config directory, then
+	// restore the process setting so other Pi components retain their normal state.
+	// pi-web-access resolves its config path during module initialization.
+	configureWebAccess(PROJECT_ROOT);
+	if (!existsSync(WEB_ACCESS_ENTRYPOINT)) {
+		throw new Error(`Pinned pi-web-access entrypoint not found: ${WEB_ACCESS_ENTRYPOINT}`);
+	}
+	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = WEB_SEARCH_CONFIG_DIR;
+	try {
+		const webAccessModule = await import(pathToFileURL(WEB_ACCESS_ENTRYPOINT).href);
+		if (typeof webAccessModule.default !== "function") {
+			throw new Error(`Invalid pi-web-access entrypoint: ${WEB_ACCESS_ENTRYPOINT}`);
+		}
+		await webAccessModule.default(pi);
+	} finally {
+		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+	}
 
 	pi.on("session_start", async (_event, ctx) => {
 		configureWebAccess(ctx.cwd);
@@ -251,7 +281,7 @@ export default function registerPiWebAccessEnv(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			const status = configureWebAccess(ctx.cwd);
 			ctx.ui.notify(
-				`pi-web-access: provider=exa, Gemini disabled, Exa key=${status.hasExaApiKey ? "configured" : "not configured; using zero-config Exa MCP fallback"}, YouTube key=${status.hasYouTubeApiKey ? "loaded" : "missing"}`,
+				`pi-web-access: provider=exa, Gemini disabled, project config=${status.configPath}, Exa key=${status.hasExaApiKey ? "configured" : "not configured; using zero-config Exa MCP fallback"}, YouTube key=${status.hasYouTubeApiKey ? "loaded" : "missing"}`,
 				"success",
 			);
 		},

@@ -162,6 +162,9 @@ require_file "root README" "readme.md"
 require_file "env template" ".env.example"
 require_file "root requirements" "requirements.txt"
 require_file "Pi settings" ".pi/settings.json"
+require_file "Pi settings template" ".pi/settings.example.json"
+require_file "local context template" ".pi/APPEND_SYSTEM.example.md"
+require_file "SSH hosts template" ".pi/ssh-hosts.example.json"
 require_file "Pi extension docs" ".pi/docs/PI_EXTENSIONS.md"
 require_file "rebuild runbook" ".pi/docs/REBUILD_FROM_SCRATCH.md"
 require_file "lazy tools extension" ".pi/extensions/99-lazy-tools.ts"
@@ -219,8 +222,22 @@ warn_executable "smart-plug venv Python" "projects/operation-jarvis/smart-plug/.
 warn_file "Google Chrome app" "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 if command -v node >/dev/null 2>&1; then
-  run_check "Read local Pi package versions" node - <<'NODE'
+  run_check "Read local Pi package versions and verify web-access pin" node - <<'NODE'
 const fs = require('fs');
+const expectedWebAccess = '0.13.0';
+const installedWebAccess = JSON.parse(fs.readFileSync('.pi/npm/node_modules/pi-web-access/package.json', 'utf8'));
+const localSettings = JSON.parse(fs.readFileSync('.pi/settings.json', 'utf8'));
+const settingsTemplate = JSON.parse(fs.readFileSync('.pi/settings.example.json', 'utf8'));
+for (const [label, settings] of [['local settings', localSettings], ['settings template', settingsTemplate]]) {
+  const webAccess = settings.packages?.find?.((entry) => entry?.source === `npm:pi-web-access@${expectedWebAccess}`);
+  if (!webAccess) throw new Error(`${label} does not pin pi-web-access@${expectedWebAccess}`);
+  if (!Array.isArray(webAccess.extensions) || webAccess.extensions.length !== 0) {
+    throw new Error(`${label} must disable direct pi-web-access extension autoload`);
+  }
+}
+if (installedWebAccess.version !== expectedWebAccess) {
+  throw new Error(`installed pi-web-access is ${installedWebAccess.version}, expected ${expectedWebAccess}`);
+}
 for (const path of [
   '.pi/npm/node_modules/pi-web-access/package.json',
   '.pi/extensions/50-browser/package.json',
@@ -246,6 +263,7 @@ expected_extension_roots=(
   .pi/extensions/30-google-access.ts
   .pi/extensions/34-maps.ts
   .pi/extensions/35-memory.ts
+  .pi/extensions/42-scheduled-prompts.ts
   .pi/extensions/45-jarvis.ts
   .pi/extensions/46-local-pi-session-status.ts
   .pi/extensions/48-agent-phone.ts

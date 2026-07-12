@@ -16,7 +16,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 
 ## Extension roots covered by smoke test
 
-- `00-web-access-env.ts` — web/search environment defaults.
+- `00-web-access-env.ts` — project-scoped `pi-web-access` bootstrap plus JARVIS web/search policy; never mutates or consumes global `~/.pi/web-search.json`.
 - `01-omlx-provider-setup-and-recovery.ts` — local oMLX provider registration plus prompt-too-long/prefill-memory recovery.
 - `04-delete-current-session.ts` — current-session cleanup command.
 - `10-discord-cron.ts` — scheduled Discord-backed Pi jobs.

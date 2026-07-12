@@ -1,6 +1,6 @@
 # Rebuild JARVIS From Scratch
 
-Updated: 2026-06-24 EDT
+Updated: 2026-07-12 EDT
 
 This runbook rebuilds the JARVIS repo, Pi extensions, Discord bot, and local tool surface from a fresh machine or fresh clone. It assumes you have access to the private secrets that are intentionally not stored in git.
 
@@ -13,6 +13,9 @@ Back up or be prepared to recreate:
 | Data | Path / owner | Required? | Notes |
 |---|---|---:|---|
 | Main secrets | `.env` | Yes | Recreate from [`.env.example`](../../.env.example). Never commit. |
+| Project Pi settings | `.pi/settings.json` | Yes | Machine/model choices; recreate from [`.pi/settings.example.json`](../settings.example.json) or restore a private backup. |
+| Local system-prompt context | `.pi/APPEND_SYSTEM.md` | Recommended | Preferences and machine-specific operating rules; recreate from [`.pi/APPEND_SYSTEM.example.md`](../APPEND_SYSTEM.example.md). |
+| Trusted SSH host allowlist | `.pi/ssh-hosts.json` | If SSH tools are used | Hostnames/IPs, usernames, key paths, and allowed directories; recreate from [`.pi/ssh-hosts.example.json`](../ssh-hosts.example.json). Never put private keys in this file. |
 | Operation JARVIS secrets | `projects/operation-jarvis/.env`, `projects/operation-jarvis/smart-plug/.env`, `projects/operation-jarvis/air-purifier/.env` | If used | Can also be consolidated into root `.env` for many settings. |
 | Pi auth/session provider state | `~/.pi/agent/` | Usually | Contains Pi login/auth and session history unless API keys are used. |
 | Project Pi sessions | `~/.pi/agent/sessions/<project-session-dir>` | Optional | Needed for historical session continuity. |
@@ -68,8 +71,19 @@ If you use a different path, update path-sensitive values in `.env`, `.pi/settin
 ```bash
 cd /path/to/JARVIS
 cp .env.example .env
-# Fill .env from the private secret store.
+cp .pi/settings.example.json .pi/settings.json
+cp .pi/APPEND_SYSTEM.example.md .pi/APPEND_SYSTEM.md
+cp .pi/ssh-hosts.example.json .pi/ssh-hosts.json
 ```
+
+Customize these ignored local files before starting Pi:
+
+- `.env`: restore secrets from the private secret store.
+- `.pi/settings.json`: replace placeholder provider/model values while retaining the pinned package source.
+- `.pi/APPEND_SYSTEM.md`: restore preferred address, timezone, aliases, and local operating rules.
+- `.pi/ssh-hosts.json`: replace example hosts with only explicitly trusted machines and narrow allowed directory prefixes.
+
+If private backups exist, restore them instead of copying the templates. Do not commit the resulting local files. The templates are deliberately safe and cannot reproduce private host addresses, usernames, key locations, device aliases, or personal preferences without customization.
 
 Minimum root `.env` for basic Discord/Pi operation:
 
@@ -159,27 +173,24 @@ npm run install-service
 
 ## 6. Reinstall Pi packages/extensions
 
-Project package config lives in [`.pi/settings.json`](../settings.json). Reinstall the local Pi packages:
+The ignored project package config lives in `.pi/settings.json`; its safe tracked template is [`.pi/settings.example.json`](../settings.example.json). Both specify the reviewed `pi-web-access` release exactly. They intentionally filter out the package's direct extension autoload: `.pi/extensions/00-web-access-env.ts` imports it through a project-scoped configuration bootstrap so JARVIS never rewrites or consumes another Pi project's global `~/.pi/web-search.json`. Reinstall that exact package version:
 
 ```bash
 cd /path/to/JARVIS
-pi install -l npm:pi-web-access
+pi install -l npm:pi-web-access@0.13.0
 pi list
 ```
 
-Expected project packages:
+Expected project package source and installed version:
 
 ```text
-npm:pi-web-access
+npm:pi-web-access@0.13.0
+pi-web-access@0.13.0
 ```
 
-Current observed versions on this machine when this runbook was written:
+Do not replace the exact version with a range or unversioned source during a rebuild. Keep `"extensions": []` on the package entry; removing that filter would load a second copy against shared global configuration. Pi packages execute with full system access, so review an upgrade before intentionally changing the pinned version in both settings files.
 
-```text
-pi-web-access@0.12.0
-```
-
-For exact reproducibility, pin package versions in `.pi/settings.json` or reinstall with explicit npm versions. For ordinary maintenance, the unpinned package names allow updates.
+JARVIS generates its private web-access configuration at `.pi/runtime/pi-web-access/web-search.json`. That file is ignored runtime state and may be recreated automatically. Provider/workflow policy belongs in `.pi/extensions/00-web-access-env.ts`; secrets remain in `.env`. Other Pi projects may independently use `~/.pi/web-search.json`, which JARVIS leaves untouched.
 
 ## 7. Restore optional runtime databases
 
@@ -333,7 +344,9 @@ Do not run another bot process with the same token at the same time. The root bo
 - [ ] `ffmpeg -version` and `pdftotext -v` work.
 - [ ] Browser extension dependencies exist under `.pi/extensions/50-browser/node_modules`.
 - [ ] Root `.venv` imports `discord.py` and runs `python discord_bot.py`.
-- [ ] `.env` exists locally and is not tracked by git.
+- [ ] `.env`, `.pi/settings.json`, `.pi/APPEND_SYSTEM.md`, and `.pi/ssh-hosts.json` were privately restored or created from their tracked templates.
+- [ ] All four local files remain ignored by git.
+- [ ] `.pi/settings.json` retains `npm:pi-web-access@0.13.0`; `pi list` and the installed package metadata agree.
 - [ ] `/lazy-tools` works in Pi.
 - [ ] `memory.py --json status` works.
 - [ ] `session_search.py --json status` works; `index` works if embedding endpoint is available.
@@ -351,7 +364,7 @@ Do not run another bot process with the same token at the same time. The root bo
 |---|---|
 | Pi does not see custom tools | Run `pi list`, then `/reload`; verify files under `.pi/extensions/`, `.pi/extensions/50-browser/node_modules`, and package installs under `.pi/npm/node_modules/`. |
 | Optional tool hidden | Call `load_tools({ groups: ["<group>"] })` or `/load-tools <group>`. |
-| Web search unavailable | Run `/web-access-config`; check Exa MCP/package availability, optional `EXA_API_KEY`, and `~/.pi/web-search.json`. |
+| Web search unavailable | Run `/web-access-config`; check Exa MCP/package availability, optional `EXA_API_KEY`, and JARVIS's scoped `.pi/runtime/pi-web-access/web-search.json`. JARVIS does not use global `~/.pi/web-search.json`. |
 | Maps unavailable | Check `GOOGLE_MAPS_API_KEY`; confirm Places API (New), Geocoding API, and Routes API are enabled for the key. |
 | Browser tools unavailable | Run `npm install` in `.pi/extensions/50-browser`; check Google Chrome path or set `PI_BROWSER_CHROME_PATH`. |
 | PDF reads fail | Check local oMLX `OMLX_PDF_*` settings first; ensure `pdftotext` from `poppler` is installed for fallback. |

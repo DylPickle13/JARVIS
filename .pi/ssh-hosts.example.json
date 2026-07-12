@@ -1,0 +1,38 @@
+[
+  {
+    "aliases": [
+      "primary-server"
+    ],
+    "description": "Example trusted POSIX host",
+    "hostName": "192.0.2.10",
+    "user": "your-user",
+    "identityFile": "~/.ssh/your_private_key",
+    "defaultCwd": "~",
+    "allowedCwdPrefixes": [
+      "~",
+      "/home/your-user"
+    ],
+    "connectTimeoutSeconds": 8,
+    "homeDir": "/home/your-user",
+    "shell": "bash -lc",
+    "shellType": "posix"
+  },
+  {
+    "aliases": [
+      "windows-host"
+    ],
+    "description": "Example trusted Windows host",
+    "hostName": "192.0.2.20",
+    "user": "your-user",
+    "identityFile": "~/.ssh/your_private_key",
+    "defaultCwd": "~",
+    "allowedCwdPrefixes": [
+      "~",
+      "C:\\Users\\your-user"
+    ],
+    "connectTimeoutSeconds": 8,
+    "homeDir": "C:\\Users\\your-user",
+    "shell": "cmd.exe /c",
+    "shellType": "windows-cmd"
+  }
+]
