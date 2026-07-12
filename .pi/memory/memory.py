@@ -21,7 +21,7 @@ from typing import Any, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = PROJECT_ROOT / ".pi" / "memory" / "memory.sqlite"
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 KINDS = {"preference", "fact", "lesson", "project", "workflow"}
 SCOPES = {"global", "project", "discord-channel"}
 MAX_TEXT_CHARS = 8000
@@ -87,7 +87,9 @@ def connect(db_path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA secure_delete=ON")
     init_db(conn)
+    purge_legacy_deleted_memories(conn)
     return conn
 
 
@@ -138,6 +140,27 @@ def init_db(conn: sqlite3.Connection) -> None:
         (SCHEMA_VERSION,),
     )
     conn.commit()
+
+
+def secure_compact(conn: sqlite3.Connection) -> None:
+    """Remove recoverable deleted content from SQLite pages and WAL files."""
+    conn.commit()
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.execute("VACUUM")
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+
+def purge_legacy_deleted_memories(conn: sqlite3.Connection) -> int:
+    """Permanently remove rows left by the former soft-delete implementation."""
+    count = int(conn.execute("SELECT COUNT(*) FROM memories WHERE deleted_at IS NOT NULL").fetchone()[0])
+    if count == 0:
+        return 0
+    with conn:
+        conn.execute("DELETE FROM memories_fts WHERE id IN (SELECT id FROM memories WHERE deleted_at IS NOT NULL)")
+        conn.execute("DELETE FROM events WHERE memory_id IN (SELECT id FROM memories WHERE deleted_at IS NOT NULL)")
+        conn.execute("DELETE FROM memories WHERE deleted_at IS NOT NULL")
+    secure_compact(conn)
+    return count
 
 
 def parse_tags(raw: str | None) -> list[str]:
@@ -386,15 +409,14 @@ def command_update(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[s
 def command_forget(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, Any]:
     if not args.id:
         raise MemoryError("forget requires --id")
-    memory = require_memory(conn, args.id)
-    now = utc_now()
+    memory_id = str(args.id)
+    require_memory(conn, memory_id)
     with conn:
-        conn.execute("UPDATE memories SET deleted_at = ?, updated_at = ? WHERE id = ?", (now, now, args.id))
-        conn.execute("DELETE FROM memories_fts WHERE id = ?", (args.id,))
-        log_event(conn, "forget", args.id, memory["text"][:300])
-    memory["deleted_at"] = now
-    memory["updated_at"] = now
-    return {"ok": True, "memory": memory, "message": f"Forgot memory {args.id}."}
+        conn.execute("DELETE FROM memories_fts WHERE id = ?", (memory_id,))
+        conn.execute("DELETE FROM events WHERE memory_id = ?", (memory_id,))
+        conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+    secure_compact(conn)
+    return {"ok": True, "id": memory_id, "message": f"Permanently purged memory {memory_id}."}
 
 
 def command_search(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, Any]:
@@ -469,7 +491,6 @@ def build_parser() -> argparse.ArgumentParser:
     def add_common_filters(p: argparse.ArgumentParser) -> None:
         p.add_argument("--kind", choices=sorted(KINDS))
         p.add_argument("--scope", choices=sorted(SCOPES))
-        p.add_argument("--include-deleted", action="store_true")
         p.add_argument("--limit", type=int, default=10)
 
     p_search = sub.add_parser("search", help="search memories")
@@ -507,7 +528,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--confidence", type=float)
     p_update.set_defaults(func=command_update)
 
-    p_forget = sub.add_parser("forget", help="soft-delete a memory")
+    p_forget = sub.add_parser("forget", help="permanently purge a memory and its event history")
     p_forget.add_argument("--id", required=True)
     p_forget.set_defaults(func=command_forget)
 

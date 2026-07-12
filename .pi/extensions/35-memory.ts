@@ -37,8 +37,7 @@ function discordChannelId(): string {
 
 function memoryLine(memory: any): string {
   const tags = Array.isArray(memory.tags) && memory.tags.length ? ` tags=${memory.tags.join(",")}` : "";
-  const deleted = memory.deleted_at ? " [deleted]" : "";
-  return `${memory.id} [${memory.kind}/${memory.scope}] ${memory.text}${tags}${deleted}`;
+  return `${memory.id} [${memory.kind}/${memory.scope}] ${memory.text}${tags}`;
 }
 
 function formatResult(result: any): string {
@@ -72,7 +71,6 @@ function buildArgs(params: any, ctxCwd: string): string[] {
     if (params.limit) args.push("--limit", String(params.limit));
     if (params.kind) args.push("--kind", params.kind);
     if (params.scope) args.push("--scope", params.scope);
-    if (params.includeDeleted) args.push("--include-deleted");
   } else if (params.action === "remember") {
     if (!params.text) throw new Error("memory remember requires text");
     args.push("--text", params.text);
@@ -99,7 +97,6 @@ function buildArgs(params: any, ctxCwd: string): string[] {
     if (params.limit) args.push("--limit", String(params.limit));
     if (params.kind) args.push("--kind", params.kind);
     if (params.scope) args.push("--scope", params.scope);
-    if (params.includeDeleted) args.push("--include-deleted");
   }
 
   return args;
@@ -130,7 +127,7 @@ export default function registerMemory(pi: ExtensionAPI) {
       "Single action-dispatched project-local durable memory tool: search/remember/update/forget/list/status. Never store secrets or sensitive personal data.",
     promptSnippet: "Use memory with action=search/remember/update/forget/list/status",
     promptGuidelines: [
-      "Use the single memory tool with the appropriate action; search memory when durable preferences/facts may matter; remember only explicit/stable safe info; never store secrets/sensitive data; forget on request.",
+      "Use the single memory tool with the appropriate action; search memory when durable preferences/facts may matter; remember only explicit/stable safe info; never store secrets/sensitive data; forget permanently purges the memory and its event history.",
     ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS, { description: "Operation." }),
@@ -143,7 +140,6 @@ export default function registerMemory(pi: ExtensionAPI) {
       confidence: Type.Optional(Type.Number({ description: "0..1 confidence." })),
       source: Type.Optional(Type.String({ description: "Source note." })),
       limit: Type.Optional(Type.Number({ description: "Result limit." })),
-      includeDeleted: Type.Optional(Type.Boolean({ description: "Include deleted." })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const args = buildArgs(params, ctx.cwd);
