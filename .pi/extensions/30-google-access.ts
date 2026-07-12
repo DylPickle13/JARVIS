@@ -585,6 +585,9 @@ async function runDriveDownloadFolder(pi: ExtensionAPI, cwd: string, params: any
     if (!isPathWithin(cwd, destination)) {
       throw new Error(`Destination must be inside the current working directory because gws --output rejects outside paths. cwd=${cwd}; destination=${destination}`);
     }
+    if (resolve(destination) === resolve(cwd)) {
+      throw new Error("Destination must be a child directory of the current working directory; refusing to use or overwrite the project root.");
+    }
 
     const dryRun = Boolean(params.dryRun);
     if (existsSync(destination)) {
