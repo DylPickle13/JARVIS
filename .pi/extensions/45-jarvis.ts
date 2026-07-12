@@ -6,6 +6,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
+import { findAncestorFile, parseDotEnv } from "./lib/env";
 import { truncate } from "./lib/text";
 
 const DEFAULT_JARVIS_ROOT = resolve(process.env.JARVIS_ROOT || process.cwd());
@@ -51,6 +52,16 @@ const DEVICES = ["tv", "speakers"] as const;
 const MUTE_STATES = ["on", "off", "toggle"] as const;
 const SMART_PLUG_ACTIONS = ["list", "status", "on", "off", "toggle", "discover", "save-discovery"] as const;
 const PURIFIER_SETTINGS = ["power", "mode", "speed", "display", "child-lock", "light-detection", "auto-preference", "timer"] as const;
+const SPOTIFY_CREDENTIAL_ENV_KEYS = [
+  "SPOTIFY_CLIENT_ID",
+  "SPOTIFY_CLIENT_SECRET",
+  "SPOTIFY_REFRESH_TOKEN",
+  "SPOTIFY_SP_DC",
+  "SPOTIFY_SP_KEY",
+  "SP_DC",
+  "SP_KEY",
+] as const;
+const SENSITIVE_RESULT_KEY_RE = /(?:authorization|password|secret|token|spotify.*(?:client.?id|sp.?dc|sp.?key)|sp.?dc|sp.?key)/i;
 
 type JarvisAction = typeof ACTIONS[number];
 type SmartPlugAction = typeof SMART_PLUG_ACTIONS[number];
@@ -79,9 +90,6 @@ type JarvisParams = {
   positionMs?: number;
   repeatState?: "off" | "context" | "track" | "toggle";
   limit?: number;
-  spotifyClientId?: string;
-  spotifyClientSecret?: string;
-  spotifyRefreshToken?: string;
   level?: number;
   state?: "on" | "off" | "toggle";
   quitApp?: boolean;
@@ -166,6 +174,44 @@ function pythonPath(cwd: string): string {
   return "python3";
 }
 
+function spotifyCredentialValues(cwd: string, operationDir: string): string[] {
+  const projectEnv = parseDotEnv(findAncestorFile(cwd, ".env"));
+  const operationEnv = parseDotEnv(join(operationDir, ".env"));
+  const values = new Set<string>();
+  for (const key of SPOTIFY_CREDENTIAL_ENV_KEYS) {
+    for (const value of [process.env[key], operationEnv[key], projectEnv[key]]) {
+      const cleaned = value?.trim();
+      if (cleaned && cleaned.length >= 6) values.add(cleaned);
+    }
+  }
+  return [...values];
+}
+
+function redactCredentialText(value: unknown, secrets: readonly string[]): string {
+  let text = String(value ?? "");
+  for (const secret of secrets) text = text.split(secret).join("[REDACTED_CREDENTIAL]");
+  return text
+    .replace(/(--spotify-(?:client-id|client-secret|refresh-token|sp-dc|sp-key)\s+)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1[REDACTED_CREDENTIAL]")
+    .replace(/((?:SPOTIFY_(?:CLIENT_ID|CLIENT_SECRET|REFRESH_TOKEN|SP_DC|SP_KEY)|SP_(?:DC|KEY))\s*=\s*)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1[REDACTED_CREDENTIAL]")
+    .replace(/((?:Authorization|Proxy-Authorization)\s*:\s*(?:Bearer|Basic)\s+)\S+/gi, "$1[REDACTED_CREDENTIAL]");
+}
+
+function redactSensitiveValue(value: unknown, secrets: readonly string[], seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") return redactCredentialText(value, secrets);
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => redactSensitiveValue(item, secrets, seen));
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    redacted[key] = SENSITIVE_RESULT_KEY_RE.test(key)
+      ? "[REDACTED_CREDENTIAL]"
+      : redactSensitiveValue(item, secrets, seen);
+  }
+  return redacted;
+}
+
 function textFromPayload(payload: any): string {
   if (!payload) return "No Operation JARVIS output.";
   if (payload.action === "help" || payload.guide) {
@@ -216,9 +262,8 @@ function appendSpeakArgs(args: string[], params: JarvisParams) {
 }
 
 function appendSpotifyControlArgs(args: string[], params: JarvisParams) {
-  add(args, "--spotify-client-id", params.spotifyClientId);
-  add(args, "--spotify-client-secret", params.spotifyClientSecret);
-  add(args, "--spotify-refresh-token", params.spotifyRefreshToken);
+  // Spotify credentials are intentionally loaded only by the local adapter from
+  // environment files. Never accept or persist them in model-visible tool calls.
   add(args, "--spotify-device-name", params.spotifyDeviceName);
   add(args, "--spotify-device-id", params.spotifyDeviceId);
 }
@@ -694,17 +739,22 @@ async function runJarvis(
 
   const command = ["--json", ...args];
   const python = pythonPath(cwd);
+  const secrets = spotifyCredentialValues(cwd, operationDir);
   const result = await pi.exec(python, [adapterPath, ...command], { signal, timeout });
-  const raw = (result.stdout.trim() || result.stderr.trim()).trim();
+  const stdout = redactCredentialText(result.stdout.trim(), secrets);
+  const stderr = redactCredentialText(result.stderr.trim(), secrets);
+  const raw = (stdout || stderr).trim();
   let payload: any;
   try {
     payload = raw ? JSON.parse(raw) : { ok: result.code === 0 };
   } catch {
-    payload = { ok: result.code === 0, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+    payload = { ok: result.code === 0, stdout, stderr };
   }
+  payload = redactSensitiveValue(payload, secrets) as any;
 
   if (result.code !== 0 || payload?.ok === false) {
-    throw new Error(payload?.error || result.stderr.trim() || result.stdout.trim() || `jarvis.py exited with code ${result.code}`);
+    const message = payload?.error || stderr || stdout || `jarvis.py exited with code ${result.code}`;
+    throw new Error(redactCredentialText(message, secrets));
   }
 
   return {
@@ -712,7 +762,7 @@ async function runJarvis(
     details: {
       ok: true,
       adapterPath,
-      command: [python, adapterPath, ...command],
+      command: redactSensitiveValue([python, adapterPath, ...command], secrets),
       ...payload,
     },
   };
@@ -757,9 +807,6 @@ export default function registerJarvis(pi: ExtensionAPI) {
       positionMs: Type.Optional(Type.Number({ description: "cast-spotify-seek explicit seek position in milliseconds." })),
       repeatState: Type.Optional(StringEnum(["off", "context", "track", "toggle"] as const, { description: "cast-spotify-repeat state; default toggle. context repeats playlist/album, track repeats one item, off disables." })),
       limit: Type.Optional(Type.Number({ description: "cast-spotify-queue maximum queue items to read; default 20." })),
-      spotifyClientId: Type.Optional(Type.String({ description: "Optional Spotify app client ID (else SPOTIFY_CLIENT_ID env)." })),
-      spotifyClientSecret: Type.Optional(Type.String({ description: "Optional Spotify app client secret (else SPOTIFY_CLIENT_SECRET env)." })),
-      spotifyRefreshToken: Type.Optional(Type.String({ description: "Optional Spotify refresh token (else SPOTIFY_REFRESH_TOKEN env)." })),
       level: Type.Optional(Type.Number({ description: "Required for cast-volume/cast-spotify-volume (0..100). Also used for purifier-set setting=speed; purifier fan speed is 1..4." })),
       state: Type.Optional(StringEnum(MUTE_STATES, { description: "cast-mute state; default on. Also used for cast-spotify-shuffle as on/off/toggle." })),
       quitApp: Type.Optional(Type.Boolean({ description: "cast-stop: quit current Cast app for a stronger stop. Defaults true; set false to stop media only and leave the app open." })),
