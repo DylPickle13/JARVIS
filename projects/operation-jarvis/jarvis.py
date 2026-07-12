@@ -634,7 +634,7 @@ def analyze_image_with_omlx(
     primary_model = args.model or DEFAULT_VISION_MODEL
     fallback_model = args.fallback_model if args.fallback_model is not None else DEFAULT_VISION_FALLBACK_MODEL
     models = [primary_model] + ([fallback_model] if fallback_model else [])
-    last_error: Optional[BaseException] = None
+    last_error: Optional[Exception] = None
 
     for model in models:
         payload = {
@@ -664,7 +664,7 @@ def analyze_image_with_omlx(
             if not text:
                 raise JarvisError("VLM returned an empty response")
             return text
-        except BaseException as exc:
+        except Exception as exc:
             last_error = exc
             continue
 
