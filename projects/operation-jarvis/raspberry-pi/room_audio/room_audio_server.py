@@ -591,6 +591,9 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         if path == "/turn-result":
+            if not self._authorized():
+                self._send_json({"ok": False, "error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                return
             turn_id = (parse_qs(parsed.query).get("id") or [""])[0].strip()
             if not turn_id:
                 self._send_json({"ok": False, "error": "id is required"}, HTTPStatus.BAD_REQUEST)
