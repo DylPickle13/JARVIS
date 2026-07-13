@@ -352,12 +352,19 @@ fi
 
 section "CLI import/help checks"
 if [[ -n "$PYTHON_BIN" ]]; then
-  run_check "Root Python dependency import check" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" - <<'PY'
-import aiohttp  # noqa: F401
+  run_check "Root Python direct dependency import check" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" - <<'PY'
+import audioop  # noqa: F401
+import davey  # noqa: F401
 import discord  # noqa: F401
-import dotenv  # noqa: F401
+from discord.ext import voice_recv  # noqa: F401
+from huggingface_hub import hf_hub_download  # noqa: F401
+import nacl  # noqa: F401
+import numpy  # noqa: F401
+import onnxruntime  # noqa: F401
+import openwakeword  # noqa: F401
+from piper import PiperVoice, SynthesisConfig  # noqa: F401
 import requests  # noqa: F401
-print('root python imports ok')
+print('root direct runtime imports ok')
 PY
   run_check "memory CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/memory/memory.py --help
   run_check "session-search CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/session-search/session_search.py --help

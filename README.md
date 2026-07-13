@@ -1,6 +1,6 @@
 # JARVIS
 
-JARVIS is a Discord-facing control layer for the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent) and a local “Operation JARVIS” room stack. One main bot process handles Discord text chat, voice, attachments, Pi RPC sessions, scheduled jobs, memory/session search, and local tools for a dashboard, browser automation, phone status, Cast/Spotify media, smart plugs, the Levoit air purifier, and room audio.
+JARVIS is a Discord-facing control layer for the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent) and a local “Operation JARVIS” room stack. The main bot process handles Discord text chat, live voice, attachments, and persistent Pi RPC sessions. The repository also provides scheduled jobs, memory/session search, and local tools for a dashboard, browser automation, phone status, Cast/Spotify media, smart plugs, the Levoit air purifier, and room audio.
 
 The repository is public by design, but it expects private local configuration. Secrets, device mappings, LAN hosts, SSH targets, runtime databases, generated media, and personal prompt overrides belong in ignored files such as `.env`, `.pi/APPEND_SYSTEM.md`, `.pi/ssh-hosts.json`, and Operation JARVIS hardware config files.
 
@@ -18,7 +18,7 @@ This root README is a map and quick-start guide. Detailed subsystem notes live i
 
 ## Public/Private Configuration Model
 
-Tracked files provide generic defaults and placeholders. Local deployments should copy [`.env.example`](.env.example) to `.env` and fill in only local values there. Private files intentionally ignored by git include:
+Tracked files provide generic defaults and placeholders. Local deployments should copy [`.env.example`](.env.example)—the primary template for common deployment settings—to `.env` and fill in only local values there. Advanced subsystem settings may retain safe source defaults or be documented in the relevant project README. Private files intentionally ignored by git include:
 
 - `.env` and environment-specific `.env.*` files.
 - `.pi/APPEND_SYSTEM.md` for private assistant persona/location/device guidance.
@@ -33,41 +33,45 @@ Tracked files provide generic defaults and placeholders. Local deployments shoul
 | [`discord_bot.py`](discord_bot.py) | Main Discord bot: text channels, slash commands, attachments, voice-message ASR, live voice wiring. |
 | [`llm.py`](llm.py) | Pi CLI/RPC process management and persistent Discord channel sessions. |
 | [`config.py`](config.py), [`api_backoff.py`](api_backoff.py) | Shared environment, logging, paths, and retry helpers. |
-| [`.env.example`](.env.example) | Full configuration template. Copy to `.env`; never commit secrets. |
+| [`.env.example`](.env.example) | Primary tracked configuration template. Copy to `.env`; never commit secrets. |
 | [`.pi/docs/`](.pi/docs/) | Cold-rebuild and Pi extension/tool documentation. |
 | [`.pi/extensions/`](.pi/extensions/) | Project Pi extensions and lazy tool groups. |
 | [`.pi/memory/`](.pi/memory/) | SQLite-backed project memory runner. |
 | [`.pi/session-search/`](.pi/session-search/) | Semantic search over prior Pi/JARVIS sessions. |
 | [`.pi/discord-cron/`](.pi/discord-cron/) | Independent scheduled Pi jobs that post results to Discord. |
 | [`projects/operation-jarvis/`](projects/operation-jarvis/) | Dashboard, voice, room audio, Cast/media, camera vision, and smart-plug subsystems. |
-| [`attachments/`](attachments/) | Runtime Discord attachment storage, ignored by git. |
+| `attachments/` | Runtime Discord attachment storage, created locally and ignored by git. |
 
 ## Quick Start
 
 Requirements:
 
-- Python 3.10+
+- Python 3.13+; Python 3.13 is the tested/recommended runtime for the current voice dependency pins
 - Pi CLI on `PATH`
 - Discord bot token with Message Content and Voice States intents enabled
 - oMLX/OpenAI-compatible endpoints for voice ASR, local models, and embeddings as configured
 - `ffmpeg` for Discord voice playback
-- Node.js for the dashboard
+- Node.js 20+ for the dashboard
 
 ```bash
 cd /path/to/JARVIS
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 cp .env.example .env
 # edit .env with local tokens, model endpoints, and device settings
 .pi/smoke-test.sh  # read-only/local; does not start services or touch hardware
 python discord_bot.py
 ```
 
+The root [`requirements.txt`](requirements.txt) intentionally lists direct dependencies for the main bot and its loaded live-voice module; pip resolves their transitive packages. Operation JARVIS Cast, smart-plug, and purifier components use the dedicated environments documented in the subsystem READMEs.
+
 Run the dashboard separately when needed:
 
 ```bash
 cd /path/to/JARVIS/projects/operation-jarvis/dashboard
+npm install
 npm start
 ```
 
@@ -80,7 +84,7 @@ cd /path/to/JARVIS/projects/operation-jarvis
 
 ## Configuration
 
-All normal configuration lives in `.env`; [`.env.example`](.env.example) is the source of truth for available settings. Main groups:
+Common deployment configuration lives in `.env`; [`.env.example`](.env.example) is the tracked template. Advanced tuning knobs may use source defaults and are documented with their subsystem. Main groups:
 
 - **Discord** — bot token, target channels, stream throttles, attachment caps, auto-thread members, voice-message ASR, and live voice channel.
 - **Pi/model** — Pi command, workdir, RPC timeout, default text model, voice model override, thinking level, and `/jarvis model` options.
@@ -105,9 +109,11 @@ Legacy `>` control commands are not registered.
 
 ## Pi Tool Surface
 
-Baseline tools stay small: local file/shell helpers, web search/content fetching, and `load_tools`. Optional groups are loaded on demand with `load_tools({ groups: [...] })`:
+Baseline tools include local coding/file helpers plus `ssh`, `web_search`, `fetch_content`, `get_search_content`, `minecraft_jarvis`, `maps`, `github_cli`, and `load_tools`. Optional groups are loaded on demand with `load_tools({ groups: [...] })`:
 
-`memory`, `code_docs`, `image`, `video`, `jarvis`, `phone`, `google`, `cron`, `discord`, `sessions`, `browser`, or `all`.
+`memory`, `code_docs`, `image`, `video`, `jarvis`, `phone`, `google`, `cron`, `discord`, `sessions`, `browser`, `reaper`, or `all`.
+
+`minecraft_jarvis` is already always on; its compatibility group remains accepted but does not need to be loaded.
 
 YouTube metadata/search uses the always-on `web_search` tool with `provider: "youtube"`; it is not a `load_tools` group.
 

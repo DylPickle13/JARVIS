@@ -33,7 +33,7 @@ On the Mac host:
 
 ```bash
 # Homebrew if needed: https://brew.sh/
-brew install node python ffmpeg git trash poppler
+brew install node python@3.13 ffmpeg git trash poppler
 ```
 
 Also install/configure as needed:
@@ -109,11 +109,11 @@ Never commit `.env` or copied secret files.
 
 ## 4. Install Python dependencies
 
-Root bot environment:
+Root bot environment (Python 3.13+ is required; 3.13 is the tested/recommended runtime):
 
 ```bash
 cd /path/to/JARVIS
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt

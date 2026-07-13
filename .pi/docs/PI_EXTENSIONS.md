@@ -66,6 +66,7 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `cron` | `discord_cron` |
 | `discord` | `discord_ping`, `discord_send_file` |
 | `sessions` | `session_search` |
+| `reaper` | `reaper_ping`, `reaper_lua` |
 | `browser` | `browser_status`, `browser_open`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_upload`, `browser_key`, `browser_scroll`, `browser_wait`, `browser_extract`, `browser_tabs`, `browser_close` |
 
 The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.

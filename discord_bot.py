@@ -271,12 +271,17 @@ def _model_button_label(index: int, model: str) -> str:
 
 
 def _format_seconds(seconds: float) -> str:
-    if seconds < 60:
-        return f"{seconds:g}s"
-    minutes = seconds / 60
-    if minutes < 60:
-        return f"{minutes:g}m"
-    return f"{minutes / 60:g}h"
+    total_seconds = max(0, int(round(seconds)))
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+    if total_seconds < 60 * 60:
+        return f"{total_seconds // 60}m"
+    if total_seconds < 2 * 24 * 60 * 60:
+        hours = total_seconds / (60 * 60)
+        return f"{hours:.1f}".rstrip("0").rstrip(".") + "h"
+    days, remainder = divmod(total_seconds, 24 * 60 * 60)
+    hours = remainder // (60 * 60)
+    return f"{days}d {hours}h" if hours else f"{days}d"
 
 
 def _format_quota_number(value: object) -> str:
@@ -389,13 +394,22 @@ def _format_quota_summary(report: dict[str, object] | None, *, error: str | None
         usage = codex.get("usage") if isinstance(codex.get("usage"), dict) else {}
         primary = usage.get("primary") if isinstance(usage, dict) and isinstance(usage.get("primary"), dict) else {}
         secondary = usage.get("secondary") if isinstance(usage, dict) and isinstance(usage.get("secondary"), dict) else {}
+        five_hour = usage.get("five_hour") if isinstance(usage, dict) and isinstance(usage.get("five_hour"), dict) else {}
+        weekly = usage.get("weekly") if isinstance(usage, dict) and isinstance(usage.get("weekly"), dict) else {}
+        if isinstance(usage, dict) and "five_hour" not in usage:
+            five_hour = primary
+        if isinstance(usage, dict) and "weekly" not in usage:
+            weekly = secondary
+        primary_limit = usage.get("primary_limit") if isinstance(usage, dict) and isinstance(usage.get("primary_limit"), dict) else {}
         credits = usage.get("credits") if isinstance(usage, dict) and isinstance(usage.get("credits"), dict) else {}
         reset_credits = usage.get("rate_limit_reset_credits") if isinstance(usage, dict) and isinstance(usage.get("rate_limit_reset_credits"), dict) else {}
         codex_bits = [str(usage.get("plan_type") or "unknown plan") if isinstance(usage, dict) else "unknown plan"]
-        if primary:
-            codex_bits.append(_format_quota_window(primary, "5h"))
-        if secondary:
-            codex_bits.append(_format_quota_window(secondary, "weekly"))
+        if primary_limit.get("enforced") is False:
+            codex_bits.append("5h limit temporarily removed")
+        elif five_hour:
+            codex_bits.append(_format_quota_window(five_hour, "5h"))
+        if weekly:
+            codex_bits.append(_format_quota_window(weekly, "weekly"))
         if credits and credits.get("balance") is not None:
             codex_bits.append(f"credits {_format_quota_number(credits.get('balance'))}")
         if reset_credits and reset_credits.get("available_count") is not None:
