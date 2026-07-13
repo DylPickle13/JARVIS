@@ -111,13 +111,13 @@ Legacy `>` control commands are not registered.
 
 Baseline tools include local coding/file helpers plus `ssh`, `web_search`, `fetch_content`, `get_search_content`, `minecraft_jarvis`, `maps`, `github_cli`, and `load_tools`. Optional groups are loaded on demand with `load_tools({ groups: [...] })`:
 
-`memory`, `code_docs`, `image`, `video`, `jarvis`, `phone`, `google`, `cron`, `discord`, `sessions`, `browser`, `reaper`, or `all`.
+`memory`, `code_docs`, `image`, `video`, `jarvis`, `phone`, `google`, `cron`, `discord`, `sessions`, `browser`, `reaper`, `gx10`, or `all`.
 
 `minecraft_jarvis` is already always on; its compatibility group remains accepted but does not need to be loaded.
 
 YouTube metadata/search uses the always-on `web_search` tool with `provider: "youtube"`; it is not a `load_tools` group.
 
-Use `image`/`video` for local media generation through `mac-mini-64:/Users/dylanrapanan/media-generation`; video uses local LTX-2.3 Q8 MLX and produces MP4s with synchronized audio. Generated files copy back to ignored `generated-images/` and `generated-videos/`. Use the Discord-specific tools for their narrow jobs: `discord_cron` for scheduled jobs, `discord_ping` for immediate user-facing pings/notifications and attachments, and `discord_send_file` only for verified local uploads to the current Discord channel.
+Use `image`/`video` for local media generation through `mac-mini-64:/Users/dylanrapanan/media-generation`; video uses local LTX-2.3 Q8 MLX and produces MP4s with synchronized audio. Generated files copy back to ignored `generated-images/` and `generated-videos/`. In the `gx10` group, use `gx10_get` for ordinary read-only live-patch questions, `gx10_find` for semantic discovery, and `gx10_lua` only for custom low-level work or explicitly approved verified transactions on mac-mini-16, without depending on REAPER. Use the Discord-specific tools for their narrow jobs: `discord_cron` for scheduled jobs, `discord_ping` for immediate user-facing pings/notifications and attachments, and `discord_send_file` only for verified local uploads to the current Discord channel.
 
 ## Safety Notes
 

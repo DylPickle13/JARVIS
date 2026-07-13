@@ -24,7 +24,7 @@ function compactInstructions(instructions: string, payload: any): string {
       "- Ask one clarification only if required.",
       "- Memory: load `memory` first; stable facts only; no secrets/sensitive data.",
       "- Web: `web_search` discover, `fetch_content` text/pages, `get_search_content` stored; load `browser` for rendered/interactive/logged-in/forms/screenshots/open-use-check sites.",
-      "- Optional groups require `load_tools`; lights/plugs/switches/Cast/camera/purifier => load `jarvis` and use `smart_plug`/`jarvis`, no shell/file fallback unless the tool fails; cron checks use `discord_cron` unless OS cron/launchd is explicit.",
+      "- Optional tool schemas require `load_tools`; its schema description is the canonical group inventory. Lights/plugs/switches/Cast/camera/purifier => load `jarvis` and use `smart_plug`/`jarvis`, no shell/file fallback unless the tool fails; cron checks use `discord_cron` unless OS cron/launchd is explicit.",
       "- Be concise; show paths.",
       "",
     ].join("\n"),
@@ -54,7 +54,8 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   get_search_content: "Retrieve stored search/fetch content by responseId.",
   minecraft_jarvis: "Minecraft bot chat/control; use direct short plain messages; no SSH/shell/slash.",
   maps: "Ask Google Maps about places, addresses, coordinates, routes, travel time, or local searches.",
-  load_tools: "Load optional groups incl jarvis for lights/plugs/Cast/camera/purifier; browser=visible Chrome; plus memory, code_docs, image, video, phone, google, cron, discord, sessions, all.",
+  // Keep load_tools out of this override map: 99-lazy-tools.ts generates its
+  // provider-visible description from the canonical group registry.
   agent_phone: "Android phone control via safe CLI-token args.",
   jarvis: "Operation JARVIS dashboard/camera/Cast/Spotify/air-purifier helper.",
   smart_plug: "Local smart-plug control.",

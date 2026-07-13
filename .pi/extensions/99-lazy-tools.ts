@@ -14,7 +14,8 @@ type CanonicalToolGroup =
   | "discord"
   | "sessions"
   | "browser"
-  | "reaper";
+  | "reaper"
+  | "gx10";
 type ToolGroup = CanonicalToolGroup | "all";
 type ConcreteToolGroup = CanonicalToolGroup;
 type GuidanceGroup = ConcreteToolGroup;
@@ -50,6 +51,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   discord: ["discord_ping", "discord_send_file"],
   sessions: ["session_search"],
   reaper: ["reaper_ping", "reaper_lua"],
+  gx10: ["gx10_ping", "gx10_get", "gx10_find", "gx10_lua"],
   browser: [
     "browser_status",
     "browser_open",
@@ -79,11 +81,16 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
   sessions: "session_search over prior Pi/JARVIS sessions",
   reaper: "reaper_ping/reaper_lua for the live REAPER session on mac-mini-16 via inline Lua bridge",
+  gx10: "gx10_get/gx10_find semantic reads plus gx10_ping/gx10_lua for direct BOSS GX-10 CoreMIDI access",
   browser: "visible Chrome for rendered/interactive web: screenshots/clicks/typing/uploads/extract",
 };
 
 const GROUP_NAMES = Object.keys(TOOL_GROUPS) as ConcreteToolGroup[];
+const GROUP_NAMES_WITH_ALL_TEXT = [...GROUP_NAMES, "all"].join(", ");
 const LOADABLE_GROUPS_TEXT = `${GROUP_NAMES.map((name) => `${name}=${GROUP_SUMMARIES[name]}`).join("; ")}; all=all loadable groups`;
+const BASELINE_TOOLS_TEXT = "coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli";
+const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name. Always-on baseline: ${BASELINE_TOOLS_TEXT}. Available groups: ${LOADABLE_GROUPS_TEXT}. Optional schemas stay visible for this Pi session after loading; minecraft_jarvis is already always on.`;
+const LOAD_TOOLS_PROMPT_SNIPPET = `Load optional tool groups by exact name: ${GROUP_NAMES_WITH_ALL_TEXT}.`;
 
 const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly string[] }> = {
   memory: {
@@ -202,6 +209,18 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Do not guess REAPER/ReaScript API signatures. Before using any unfamiliar REAPER API call, inspect official docs, local bridge examples, or known project examples.",
       "If a REAPER API call returns an unexpected value/type, stop immediately and look up the API before retrying. Do not make a second guessed attempt.",
       "Capture all return values for REAPER API functions unless the signature has been verified.",
+    ],
+  },
+  gx10: {
+    skill: "direct GX-10 semantic/CoreMIDI bridge",
+    lines: [
+      "Use `gx10_get`, `gx10_find`, `gx10_ping`, and `gx10_lua` only after loading the `gx10` group; these tools connect directly to the standard BOSS GX-10 CoreMIDI endpoint on mac-mini-16, not REAPER or DAW CTRL.",
+      "For ordinary questions, use read-only `gx10_get` first (current live temp patch by default); use `gx10_find` to resolve unfamiliar semantic names. Both preserve decoded labels and raw IDs and report ambiguity rather than guessing.",
+      "Use `gx10_lua` only as the low-level/custom escape hatch. Semantic Lua reads include `gx.current_patch()`, `gx.chain()`, `gx.effects()`, `gx.assignments()`, `gx.controls()`, `gx.semantic()`, `gx.find()`, and `gx.get_many()`; low-level reads remain `gx.get()`, `gx.get_block()`, `gx.rq1()`, and `gx.listen()`.",
+      "For unfamiliar paths, use `gx10_find` or inspect with `gx.schema(query)` rather than guessing. API documentation is `/Users/dylanrapanan/gx10-bridge/README.md` on mac-mini-16.",
+      "Keep `allowWrite:false` unless sir explicitly requested a GX-10 edit in the current conversation. All writes must use `gx.transaction`; inspect first, use `save=true` only for explicitly requested persistence, and never blindly retry a failed write.",
+      "Use `tx:set` for schema fields, `tx:set_machine` for exact stored values, and `tx:get_block`/`tx:set_block` for byte-exact moves or copies. Avoid raw `tx:write` unless a documented address was verified and no schema path exists.",
+      "The bridge fails closed while Tone Studio is running, snapshots touched blocks, verifies readback, and rolls back on failure. IR transfer and firmware writes are intentionally unavailable.",
     ],
   },
   browser: {
@@ -339,6 +358,7 @@ function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
     discord: "discord: use `discord_ping` for immediate Discord pings/notifications, with attachments when requested; use `discord_send_file` only for current-channel uploads when available.",
     sessions: "sessions: use `session_search` search first; status for freshness; index only if requested/stale.",
     reaper: "reaper: use `reaper_ping`/`reaper_lua` for the live REAPER session on mac-mini-16; send inline Lua only, no saved task scripts; include undo blocks in Lua when editing.",
+    gx10: "gx10: use read-only `gx10_get` for ordinary live-patch questions and `gx10_find` for names; use `gx10_lua` only for custom low-level work or explicit verified transactions; save=true only when persistence was requested.",
     browser: "browser: load for rendered/interactive/logged-in/forms/screenshots/open-use-check; web=text; verify; ask before sensitive."
   };
   return ["Compact playbook:", ...groups.map((group) => `- ${lines[group]}`)].join("\n");
@@ -446,10 +466,10 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
-    description: 'Load optional schemas. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Groups: memory, code_docs, image, video, jarvis=lights/plugs/dashboard/Cast/air purifier, phone, google, cron, discord, sessions, reaper=live REAPER inline Lua, browser=visible Chrome, all. No aliases; minecraft_jarvis is already on.',
-    promptSnippet: "Load optional groups. Baseline: coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli. Common: memory, code_docs, image, video, jarvis for lights/plugs/switches/dashboard/Cast/air purifier, google, phone, cron, discord, reaper=live REAPER inline Lua, browser=visible Chrome.",
+    description: LOAD_TOOLS_DESCRIPTION,
+    promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET,
     promptGuidelines: [
-      "Call load_tools before optional groups: memory, code_docs, image, video, jarvis, phone, google, cron, discord, sessions, reaper, browser. For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, camera/view, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => always-on `github_cli`; never bash `gh`. Local `git` status/diff/add/commit/log/branch => bash. If `github_cli` unavailable, report tool failure. For Google intents, load `google`. Web/search/fetch, github_cli, minecraft_jarvis, maps, and ssh are always on; no removed-tool aliases.",
+      "Call load_tools before any optional group listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. For direct BOSS GX-10 work, load `gx10`, prefer `gx10_get`/`gx10_find` for reads, and retain `gx10_lua` for low-level/custom work. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, camera/view, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => always-on `github_cli`; never bash `gh`. Local `git` status/diff/add/commit/log/branch => bash. If `github_cli` unavailable, report tool failure. For Google intents, load `google`. Web/search/fetch, github_cli, minecraft_jarvis, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
       "Web: `web_search`=discover (`provider: \"youtube\"` for YouTube), `fetch_content`=static, `get_search_content`=stored. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
@@ -581,7 +601,7 @@ export default function lazyTools(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("load-tools", {
-    description: "Load lazy tool groups for this Pi session: /load-tools memory,code_docs,image,video,jarvis,minecraft_jarvis,phone,google,cron,discord,sessions,reaper,browser,all",
+    description: `Load lazy tool groups for this Pi session: /load-tools ${GROUP_NAMES.join(",")},all`,
     handler: async (args, ctx) => {
       const requested = args
         .split(/[\s,]+/)
@@ -590,7 +610,7 @@ export default function lazyTools(pi: ExtensionAPI) {
       const invalid = requested.filter((group) => !isToolGroupName(group));
       const valid = requested.filter(isToolGroupName);
       if (invalid.length > 0 || valid.length === 0) {
-        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nGroups: ${LOADABLE_GROUPS_TEXT}\nCommon choices: code_docs=code_search; image=generate_image; video=generate_video; memory=durable memory; phone=LG-H933 Android control; cron=scheduled Discord jobs; discord=immediate Discord pings/file delivery; reaper=live REAPER inline Lua; browser=visible Chrome control. Web tools (web_search/fetch_content/get_search_content) and github_cli are always on.\n${invalid.length > 0 ? `Invalid group(s): ${invalid.join(", ")}. No aliases are supported.` : ""}`, "warning");
+        ctx.ui.notify(`Usage: /load-tools <group>[,<group>...]\nCanonical groups: ${LOADABLE_GROUPS_TEXT}.\nAlways-on baseline: ${BASELINE_TOOLS_TEXT}.\n${invalid.length > 0 ? `Invalid group(s): ${invalid.join(", ")}. No aliases are supported.` : ""}`, "warning");
         return;
       }
       const expandedGroups = expandGroups(valid);

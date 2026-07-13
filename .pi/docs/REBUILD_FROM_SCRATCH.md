@@ -1,6 +1,6 @@
 # Rebuild JARVIS From Scratch
 
-Updated: 2026-07-12 EDT
+Updated: 2026-07-13 EDT
 
 This runbook rebuilds the JARVIS repo, Pi extensions, Discord bot, and local tool surface from a fresh machine or fresh clone. It assumes you have access to the private secrets that are intentionally not stored in git.
 
@@ -16,6 +16,7 @@ Back up or be prepared to recreate:
 | Project Pi settings | `.pi/settings.json` | Yes | Machine/model choices; recreate from [`.pi/settings.example.json`](../settings.example.json) or restore a private backup. |
 | Local system-prompt context | `.pi/APPEND_SYSTEM.md` | Recommended | Preferences and machine-specific operating rules; recreate from [`.pi/APPEND_SYSTEM.example.md`](../APPEND_SYSTEM.example.md). |
 | Trusted SSH host allowlist | `.pi/ssh-hosts.json` | If SSH tools are used | Hostnames/IPs, usernames, key paths, and allowed directories; recreate from [`.pi/ssh-hosts.example.json`](../ssh-hosts.example.json). Never put private keys in this file. |
+| GX-10 bridge source | `/Users/dylanrapanan/gx10-bridge` on mac-mini-16 | If GX-10 tools are used | Canonical standalone Git repository containing the native bridge, Lua API, schema generator, tests, and README. Back it up separately from JARVIS. |
 | Operation JARVIS secrets | `projects/operation-jarvis/.env`, `projects/operation-jarvis/smart-plug/.env`, `projects/operation-jarvis/air-purifier/.env` | If used | Can also be consolidated into root `.env` for many settings. |
 | Pi auth/session provider state | `~/.pi/agent/` | Usually | Contains Pi login/auth and session history unless API keys are used. |
 | Project Pi sessions | `~/.pi/agent/sessions/<project-session-dir>` | Optional | Needed for historical session continuity. |
@@ -173,6 +174,22 @@ Optional login service:
 ```bash
 npm run install-service
 ```
+
+### Direct GX-10 Lua bridge on mac-mini-16
+
+The canonical source is the standalone `/Users/dylanrapanan/gx10-bridge` Git repository on mac-mini-16, not part of the JARVIS checkout. Restore that repository from its separate backup, then generate the local schema from the installed BOSS Tone Studio app and compile it:
+
+```bash
+brew install lua
+cd /Users/dylanrapanan/gx10-bridge
+python3 scripts/generate_schema.py --summary
+make
+make test
+python3 scripts/install_reaper_pause.py
+bin/gx10-bridge doctor
+```
+
+`generated/schema.lua` and the native build are host-local artifacts. Schema generation requires the installed Tone Studio metadata, including `bg846-pc.elf`, and validates all active effect joins. Close BOSS Tone Studio before `doctor`; the wrapper fails closed while it is running. The installed REAPER GX-10 read-only reader should include the `/tmp/jarvis-gx10-tool-active` pause marker check so only one JARVIS component issues GX-10 MIDI requests at a time.
 
 ## 6. Reinstall Pi packages/extensions
 

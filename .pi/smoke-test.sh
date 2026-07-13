@@ -315,6 +315,7 @@ expected_extension_roots=(
   .pi/extensions/55-ssh-exec.ts
   .pi/extensions/56-github-cli.ts
   .pi/extensions/58-reaper-bridge.ts
+  .pi/extensions/59-gx10-bridge.ts
   .pi/extensions/60-pdf-read-result.ts
   .pi/extensions/70-image-generation.ts
   .pi/extensions/71-video-generation.ts
@@ -348,6 +349,59 @@ if [[ "$actual_extension_roots_sorted" == "$expected_extension_roots_sorted" ]];
 else
   fail "extension root inventory differs from smoke-test manifest"
   diff -u <(printf '%s\n' "$expected_extension_roots_sorted") <(printf '%s\n' "$actual_extension_roots_sorted") 2>&1 | indent
+fi
+
+if command -v node >/dev/null 2>&1; then
+  run_check "lazy-tool registry and provider description stay synchronized" node - <<'NODE'
+const fs = require('fs');
+const lazy = fs.readFileSync('.pi/extensions/99-lazy-tools.ts', 'utf8');
+const slim = fs.readFileSync('.pi/extensions/98-slim-provider-payload.ts', 'utf8');
+
+function recordKeys(name) {
+  const match = lazy.match(new RegExp(`const ${name}[^=]*= \\{([\\s\\S]*?)\\n\\};`));
+  if (!match) throw new Error(`Could not find ${name}`);
+  return [...match[1].matchAll(/^  ([a-z][a-z0-9_]*):/gm)].map((item) => item[1]);
+}
+
+function assertSameGroups(label, expected, actual) {
+  const missing = expected.filter((group) => !actual.includes(group));
+  const extra = actual.filter((group) => !expected.includes(group));
+  if (missing.length || extra.length) {
+    throw new Error(`${label} mismatch; missing=[${missing.join(', ')}] extra=[${extra.join(', ')}]`);
+  }
+}
+
+const typeMatch = lazy.match(/type CanonicalToolGroup =([\s\S]*?);/);
+if (!typeMatch) throw new Error('Could not find CanonicalToolGroup');
+const canonicalGroups = [...typeMatch[1].matchAll(/"([a-z][a-z0-9_]*)"/g)].map((item) => item[1]);
+const toolGroups = recordKeys('TOOL_GROUPS');
+assertSameGroups('CanonicalToolGroup', toolGroups, canonicalGroups);
+assertSameGroups('GROUP_SUMMARIES', toolGroups, recordKeys('GROUP_SUMMARIES'));
+assertSameGroups('GROUP_GUIDANCE', toolGroups, recordKeys('GROUP_GUIDANCE'));
+
+const compactMatch = lazy.match(/const lines: Record<GuidanceGroup, string> = \{([\s\S]*?)\n  \};/);
+if (!compactMatch) throw new Error('Could not find compact guidance map');
+const compactGroups = [...compactMatch[1].matchAll(/^    ([a-z][a-z0-9_]*):/gm)].map((item) => item[1]);
+assertSameGroups('compact guidance', toolGroups, compactGroups);
+
+for (const required of [
+  'GROUP_NAMES.map((name) => `${name}=${GROUP_SUMMARIES[name]}`)',
+  'description: LOAD_TOOLS_DESCRIPTION',
+  'promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET',
+  'const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name.',
+  'Available groups: ${LOADABLE_GROUPS_TEXT}',
+]) {
+  if (!lazy.includes(required)) throw new Error(`Missing canonical description wiring: ${required}`);
+}
+
+const overridesMatch = slim.match(/const TOOL_DESCRIPTION_OVERRIDES:[^=]*= \{([\s\S]*?)\n\};/);
+if (!overridesMatch) throw new Error('Could not find TOOL_DESCRIPTION_OVERRIDES');
+if (/^\s*load_tools\s*:/m.test(overridesMatch[1])) {
+  throw new Error('98-slim-provider-payload.ts must not override the registry-generated load_tools description');
+}
+
+console.log(`canonical lazy groups (${toolGroups.length}): ${toolGroups.join(', ')}, all`);
+NODE
 fi
 
 section "CLI import/help checks"

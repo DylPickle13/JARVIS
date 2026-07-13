@@ -35,6 +35,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `55-ssh-exec.ts` — unrestricted configured SSH execution plus directly attached and stateful interactive PTY sessions.
 - `56-github-cli.ts` — guarded GitHub CLI adapter.
 - `58-reaper-bridge.ts` — live REAPER inline-Lua bridge.
+- `59-gx10-bridge.ts` — direct BOSS GX-10 CoreMIDI bridge exposing typed semantic reads/search, ping, and low-level unsaved inline Lua with transactional verified writes.
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `70-image-generation.ts` — local Qwen image generation via mac-mini-64.
 - `71-video-generation.ts` — local LTX-2.3 Q8 MLX MP4 audio-video generation via mac-mini-64.
@@ -67,9 +68,14 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `discord` | `discord_ping`, `discord_send_file` |
 | `sessions` | `session_search` |
 | `reaper` | `reaper_ping`, `reaper_lua` |
+| `gx10` | `gx10_ping`, `gx10_get`, `gx10_find`, `gx10_lua` |
 | `browser` | `browser_status`, `browser_open`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_upload`, `browser_key`, `browser_scroll`, `browser_wait`, `browser_extract`, `browser_tabs`, `browser_close` |
 
+The provider-visible `load_tools` description, prompt snippet, parameter help, and `/load-tools` usage are generated from the canonical registry in `99-lazy-tools.ts`. `98-slim-provider-payload.ts` intentionally preserves that generated top-level description, and the smoke test checks the group maps and description wiring for drift.
+
 The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
+
+The `gx10` group uses the canonical `/Users/dylanrapanan/gx10-bridge` Git repository on mac-mini-16. Prefer read-only `gx10_get` for ordinary live-patch questions and `gx10_find` for semantic discovery; `gx10_lua` remains the low-level/custom escape hatch. The native host uses only the standard GX-10 CoreMIDI endpoint, generates versioned semantic metadata from installed Tone Studio resources, and permits explicit writes only through snapshot/readback/rollback transactions. Its API documentation is the remote repository's `README.md`.
 
 `minecraft_jarvis` remains accepted as a compatibility group but the tool is already always on.
 
