@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-07-10 EDT
+Updated: 2026-07-13 EDT
 
 The local Pi extension inventory lives in `.pi/extensions/`. `.pi/smoke-test.sh` keeps a read-only manifest check so added or removed extension roots are visible during smoke testing. The manifest intentionally ignores the shared `.pi/extensions/lib/` directory.
 
@@ -18,7 +18,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 
 - `00-private-permissions.ts` — enforces owner-only permissions on ignored local configuration and private runtime directories.
 - `00-web-access-env.ts` — project-scoped `pi-web-access` bootstrap plus JARVIS web/search policy; never mutates or consumes global `~/.pi/web-search.json`.
-- `01-omlx-provider-setup-and-recovery.ts` — local oMLX provider registration plus prompt-too-long/prefill-memory recovery.
+- `01-omlx-provider-setup-and-recovery.ts` — non-blocking local oMLX provider registration plus prompt-too-long/prefill-memory recovery. Startup uses static seeds or the private last-known context-window cache at `.pi/runtime/omlx-context-windows.json`; live oMLX discovery refreshes the provider registry and cache in the background after `session_start`.
 - `04-delete-current-session.ts` — current-session cleanup command.
 - `10-discord-cron.ts` — scheduled Discord-backed Pi jobs.
 - `15-discord-send-file.ts` — current-channel Discord file upload helper.

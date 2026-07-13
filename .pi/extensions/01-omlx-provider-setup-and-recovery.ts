@@ -1,7 +1,15 @@
+import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { ExtensionAPI, ProviderConfig, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
 import { findAncestorFile, parseDotEnv } from "./lib/env";
 
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const CONTEXT_WINDOW_CACHE_PATH = join(PROJECT_ROOT, ".pi", "runtime", "omlx-context-windows.json");
+const CONTEXT_WINDOW_CACHE_VERSION = 1;
+const BACKGROUND_DISCOVERY_DELAY_MS = 500;
 const DEFAULT_TIMEOUT_MS = 2500;
 const LOCAL_ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } as const;
 
@@ -15,6 +23,23 @@ type ProviderSeed = {
 	defaultBaseUrl: string;
 	models: ModelSeed[];
 	compat?: ProviderConfig["compat"];
+};
+
+type CachedProviderContextWindows = {
+	baseUrl: string;
+	updatedAt: string;
+	models: Record<string, number>;
+};
+
+type ContextWindowCache = {
+	version: number;
+	providers: Record<string, CachedProviderContextWindows>;
+};
+
+type ResolvedProvider = {
+	seed: ProviderSeed;
+	baseUrl: string;
+	cachedContextByModel: Map<string, number>;
 };
 
 const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
@@ -170,11 +195,18 @@ async function fetchAdminSettingsContextWindows(baseUrl: string, modelIds: strin
 	const rootUrl = baseUrl.replace(/\/v1$/, "");
 	const contextByModel = new Map<string, number>();
 
+	// These independent requests run together. Discovery happens after startup, but
+	// keeping it bounded also prevents a sleeping oMLX host from leaving unnecessary
+	// background work around for multiple timeout periods.
+	const [adminModels, globalSettings] = await Promise.all([
+		fetchJson(`${rootUrl}/admin/api/models`) as Promise<{ models?: unknown } | undefined>,
+		fetchJson(`${rootUrl}/admin/api/global-settings`) as Promise<{ sampling?: unknown } | undefined>,
+	]);
+
 	// This is the oMLX server's active per-model setting — the value shown in the
 	// admin UI and actually configured for the model. It can differ from both the
 	// model metadata exposed by /v1/models (`max_model_len`) and the raw model
 	// generation config default.
-	const adminModels = await fetchJson(`${rootUrl}/admin/api/models`) as { models?: unknown } | undefined;
 	if (Array.isArray(adminModels?.models)) {
 		for (const entry of adminModels.models) {
 			if (!entry || typeof entry !== "object") continue;
@@ -189,7 +221,6 @@ async function fetchAdminSettingsContextWindows(baseUrl: string, modelIds: strin
 	// If oMLX has no per-model setting for a model, fall back to the server's
 	// global sampling setting before finally falling back to /v1/models metadata.
 	if (contextByModel.size < modelIds.length) {
-		const globalSettings = await fetchJson(`${rootUrl}/admin/api/global-settings`) as { sampling?: unknown } | undefined;
 		const sampling = globalSettings?.sampling;
 		const globalContextWindow = sampling && typeof sampling === "object"
 			? toPositiveInt((sampling as Record<string, unknown>).max_context_window)
@@ -205,8 +236,10 @@ async function fetchAdminSettingsContextWindows(baseUrl: string, modelIds: strin
 }
 
 async function fetchContextWindows(baseUrl: string, modelIds: string[]): Promise<Map<string, number>> {
-	const contextByModel = await fetchListedContextWindows(baseUrl);
-	const adminContextByModel = await fetchAdminSettingsContextWindows(baseUrl, modelIds);
+	const [contextByModel, adminContextByModel] = await Promise.all([
+		fetchListedContextWindows(baseUrl),
+		fetchAdminSettingsContextWindows(baseUrl, modelIds),
+	]);
 	for (const [modelId, contextWindow] of adminContextByModel) {
 		contextByModel.set(modelId, contextWindow);
 	}
@@ -219,6 +252,140 @@ function mergedModels(seed: ProviderSeed, contextByModel: Map<string, number>): 
 		cost: model.cost ?? LOCAL_ZERO_COST,
 		contextWindow: contextByModel.get(model.id) ?? model.contextWindow,
 	}));
+}
+
+function emptyContextWindowCache(): ContextWindowCache {
+	return { version: CONTEXT_WINDOW_CACHE_VERSION, providers: {} };
+}
+
+function loadContextWindowCache(): ContextWindowCache {
+	try {
+		const parsed = JSON.parse(readFileSync(CONTEXT_WINDOW_CACHE_PATH, "utf8")) as Record<string, unknown>;
+		if (parsed.version !== CONTEXT_WINDOW_CACHE_VERSION || !parsed.providers || typeof parsed.providers !== "object") {
+			return emptyContextWindowCache();
+		}
+
+		const providers: Record<string, CachedProviderContextWindows> = {};
+		for (const [provider, rawEntry] of Object.entries(parsed.providers as Record<string, unknown>)) {
+			if (!rawEntry || typeof rawEntry !== "object") continue;
+			const entry = rawEntry as Record<string, unknown>;
+			const baseUrl = typeof entry.baseUrl === "string" ? entry.baseUrl.trim() : "";
+			if (!baseUrl || !entry.models || typeof entry.models !== "object") continue;
+
+			const models: Record<string, number> = {};
+			for (const [modelId, rawContextWindow] of Object.entries(entry.models as Record<string, unknown>)) {
+				const contextWindow = toPositiveInt(rawContextWindow);
+				if (modelId.trim() && contextWindow !== undefined) models[modelId] = contextWindow;
+			}
+			providers[provider] = {
+				baseUrl,
+				updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : "",
+				models,
+			};
+		}
+		return { version: CONTEXT_WINDOW_CACHE_VERSION, providers };
+	} catch {
+		return emptyContextWindowCache();
+	}
+}
+
+function cachedContextWindows(cache: ContextWindowCache, seed: ProviderSeed, baseUrl: string): Map<string, number> {
+	const cached = cache.providers[seed.provider];
+	if (!cached || cached.baseUrl !== baseUrl) return new Map();
+
+	const contextByModel = new Map<string, number>();
+	for (const model of seed.models) {
+		const contextWindow = toPositiveInt(cached.models[model.id]);
+		if (contextWindow !== undefined) contextByModel.set(model.id, contextWindow);
+	}
+	return contextByModel;
+}
+
+function persistContextWindowCache(cache: ContextWindowCache): void {
+	const cacheDirectory = dirname(CONTEXT_WINDOW_CACHE_PATH);
+	const temporaryPath = `${CONTEXT_WINDOW_CACHE_PATH}.${process.pid}.tmp`;
+	try {
+		mkdirSync(cacheDirectory, { recursive: true, mode: 0o700 });
+		writeFileSync(temporaryPath, `${JSON.stringify(cache, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+		chmodSync(temporaryPath, 0o600);
+		renameSync(temporaryPath, CONTEXT_WINDOW_CACHE_PATH);
+		chmodSync(CONTEXT_WINDOW_CACHE_PATH, 0o600);
+	} catch {
+		try {
+			rmSync(temporaryPath, { force: true });
+		} catch {
+			// Best-effort cache cleanup only.
+		}
+	}
+}
+
+function providerConfig(seed: ProviderSeed, baseUrl: string, apiKey: string, contextByModel: Map<string, number>): ProviderConfig {
+	return {
+		baseUrl,
+		api: "openai-completions",
+		apiKey,
+		compat: seed.compat,
+		models: mergedModels(seed, contextByModel),
+	};
+}
+
+function registerResolvedProvider(pi: ExtensionAPI, item: ResolvedProvider, apiKey: string, contextByModel: Map<string, number>): void {
+	pi.registerProvider(item.seed.provider, providerConfig(item.seed, item.baseUrl, apiKey, contextByModel));
+}
+
+function isPiOffline(): boolean {
+	return /^(?:1|true|yes)$/i.test(process.env.PI_OFFLINE?.trim() ?? "");
+}
+
+async function refreshResolvedProviderContexts(
+	pi: ExtensionAPI,
+	resolved: ResolvedProvider[],
+	apiKey: string,
+	cache: ContextWindowCache,
+): Promise<void> {
+	const modelIdsByBaseUrl = new Map<string, Set<string>>();
+	for (const item of resolved) {
+		const modelIds = modelIdsByBaseUrl.get(item.baseUrl) ?? new Set<string>();
+		for (const model of item.seed.models) modelIds.add(model.id);
+		modelIdsByBaseUrl.set(item.baseUrl, modelIds);
+	}
+
+	const fetchedByBaseUrl = new Map<string, Map<string, number>>(
+		await Promise.all(
+			[...modelIdsByBaseUrl].map(async ([baseUrl, modelIds]) => [
+				baseUrl,
+				await fetchContextWindows(baseUrl, [...modelIds]),
+			] as const),
+		),
+	);
+
+	let cacheChanged = false;
+	for (const item of resolved) {
+		const fetched = fetchedByBaseUrl.get(item.baseUrl) ?? new Map<string, number>();
+		const refreshed = new Map(item.cachedContextByModel);
+		let discoveredCount = 0;
+		for (const model of item.seed.models) {
+			const contextWindow = fetched.get(model.id);
+			if (contextWindow === undefined) continue;
+			refreshed.set(model.id, contextWindow);
+			discoveredCount += 1;
+		}
+		if (discoveredCount === 0) continue;
+
+		// Dynamic provider registration takes effect immediately and Pi refreshes the
+		// currently selected model from the registry, so this also updates the live
+		// session without delaying its initial prompt.
+		registerResolvedProvider(pi, item, apiKey, refreshed);
+		item.cachedContextByModel = refreshed;
+		cache.providers[item.seed.provider] = {
+			baseUrl: item.baseUrl,
+			updatedAt: new Date().toISOString(),
+			models: Object.fromEntries(refreshed),
+		};
+		cacheChanged = true;
+	}
+
+	if (cacheChanged) persistContextWindowCache(cache);
 }
 
 const OMLX_PREFILL_MEMORY_GUARD_PATTERNS = [
@@ -605,30 +772,45 @@ function registerOmlxPrefillMemoryRecovery(pi: ExtensionAPI) {
 	});
 }
 
-export default async function registerOmlxProviderSetupAndRecovery(pi: ExtensionAPI) {
+export default function registerOmlxProviderSetupAndRecovery(pi: ExtensionAPI) {
 	registerOmlxOverflowNormalizer(pi);
 	registerOmlxEmergencyOverflowCompaction(pi);
 	registerOmlxPrefillMemoryRecovery(pi);
 
 	const dotenvValues = loadDotEnvValues();
 	const apiKey = firstNonEmptyEnv(["OMLX_API_KEY", "DISCORD_VOICE_API_KEY"], dotenvValues) || "local";
-	const contextByBaseUrl = new Map<string, Promise<Map<string, number>>>();
-
-	const resolved = OMLX_PROVIDER_SEEDS.map((seed) => {
+	const cache = loadContextWindowCache();
+	const resolved: ResolvedProvider[] = OMLX_PROVIDER_SEEDS.map((seed) => {
 		const baseUrl = normalizeBaseUrl(firstNonEmptyEnv(seed.baseUrlEnvKeys, dotenvValues) || seed.defaultBaseUrl);
-		const modelIds = seed.models.map((model) => model.id);
-		if (!contextByBaseUrl.has(baseUrl)) contextByBaseUrl.set(baseUrl, fetchContextWindows(baseUrl, modelIds));
-		return { seed, baseUrl, contextPromise: contextByBaseUrl.get(baseUrl)! };
+		return { seed, baseUrl, cachedContextByModel: cachedContextWindows(cache, seed, baseUrl) };
 	});
 
+	// Register synchronously from the last-known cache (or static seeds on first
+	// run), making every provider available before Pi chooses its startup model.
 	for (const item of resolved) {
-		const contextByModel = await item.contextPromise;
-		pi.registerProvider(item.seed.provider, {
-			baseUrl: item.baseUrl,
-			api: "openai-completions",
-			apiKey,
-			compat: item.seed.compat,
-			models: mergedModels(item.seed, contextByModel),
-		});
+		registerResolvedProvider(pi, item, apiKey, item.cachedContextByModel);
 	}
+
+	let refreshStarted = false;
+	let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+	pi.on("session_start", () => {
+		if (isPiOffline() || refreshStarted || refreshTimer) return;
+
+		// Do not return the discovery Promise: session_start is on Pi's critical path.
+		// A short grace period lets the TUI/RPC become ready before fetch setup runs.
+		refreshTimer = setTimeout(() => {
+			refreshTimer = undefined;
+			refreshStarted = true;
+			void refreshResolvedProviderContexts(pi, resolved, apiKey, cache).catch(() => {
+				// Seed/cached registrations remain usable when discovery is unavailable.
+			});
+		}, BACKGROUND_DISCOVERY_DELAY_MS);
+		refreshTimer.unref?.();
+	});
+
+	pi.on("session_shutdown", () => {
+		if (!refreshTimer) return;
+		clearTimeout(refreshTimer);
+		refreshTimer = undefined;
+	});
 }
