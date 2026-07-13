@@ -368,15 +368,16 @@ export default function gx10BridgeExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "gx10_lua",
     label: "GX-10 Lua",
-    description: "Execute unsaved inline Lua against the live BOSS GX-10 through the direct CoreMIDI bridge on mac-mini-16. Use gx10_get/gx10_find for ordinary semantic reads; gx10_lua remains the low-level escape hatch for custom reads and verified transaction-only edits. Load with load_tools({ groups: [\"gx10\"] }) before use.",
+    description: "Execute unsaved inline Lua against the live BOSS GX-10 through the direct CoreMIDI bridge on mac-mini-16. Use gx10_get/gx10_find for ordinary reads; gx10_lua supports custom reads, RQ1-only gx.plan_edit dry runs, and explicitly approved verified transactions. Load with load_tools({ groups: [\"gx10\"] }) before use.",
     promptSnippet: "Run inline Lua against the live GX-10; code is not saved.",
     promptGuidelines: [
       "Use gx10_lua only after loading the gx10 group. Prefer gx10_get/gx10_find for ordinary read questions; return JSON-safe Lua values here.",
       "Semantic Lua reads include gx.current_patch(), gx.current_memory(), gx.chain(), gx.effects(), gx.effect(query), gx.assignments(), gx.controls(), gx.overview(), gx.semantic(what,options), gx.find(query), and gx.get_many(paths). Low-level reads remain gx.get(), gx.get_block(), gx.rq1(), and gx.listen().",
+      "For schema-expressible edits, first call gx.plan_edit(spec) with allowWrite=false, show the exact before/after bytes and plan ID, and stop for approval. For save=true, also inspect every whole-block user-memory mirror/diff. After approval, regenerate with expectedPlanId and call tx:apply_plan(plan) inside gx.transaction using the matching save option.",
       "Use schema paths such as system.common.currentPatchNum, temp.assign[1], temp.fxItem[1].trigger, user[1].common, or inspect paths with gx.schema(query).",
       "Do not save temporary task scripts; pass complete Lua inline.",
       "Keep allowWrite false unless sir explicitly requested a GX-10 change in the current conversation.",
-      "Every write must be composed inside gx.transaction(options, function(tx) ... end). Use tx:set for a field, tx:set_machine for an exact stored value, or tx:get_block/tx:set_block for byte-exact moves and copies.",
+      "Every write must be composed inside gx.transaction(options, function(tx) ... end). Prefer tx:apply_plan for approved semantic plans; tx:set, tx:set_machine, and tx:get_block/tx:set_block remain lower-level escape hatches.",
       "Inspect the affected fields/blocks first. Use save=true only when sir explicitly asks to persist the change; otherwise changes are temporary memory only.",
       "The transaction engine snapshots touched blocks, reads every write back, and rolls back on failure. Never bypass it or blindly retry a failed write.",
       "Avoid tx:write raw addresses unless the schema cannot express a verified operation and the exact documented writable address has been checked. IR and firmware ranges are unavailable.",

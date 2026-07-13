@@ -75,7 +75,7 @@ The provider-visible `load_tools` description, prompt snippet, parameter help, a
 
 The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
 
-The `gx10` group uses the canonical `/Users/dylanrapanan/gx10-bridge` Git repository on mac-mini-16. Prefer read-only `gx10_get` for ordinary live-patch questions and `gx10_find` for semantic discovery; `gx10_lua` remains the low-level/custom escape hatch. The native host uses only the standard GX-10 CoreMIDI endpoint, generates versioned semantic metadata from installed Tone Studio resources, and permits explicit writes only through snapshot/readback/rollback transactions. Its API documentation is the remote repository's `README.md`.
+The `gx10` group uses the canonical `/Users/dylanrapanan/gx10-bridge` Git repository on mac-mini-16. Prefer read-only `gx10_get` for ordinary live-patch questions and `gx10_find` for semantic discovery; `gx10_lua` remains the planning/custom/low-level escape hatch. Semantic edits first use RQ1-only `gx.plan_edit`, then require exact plan-ID approval before `tx:apply_plan` can queue a matching verified transaction. The native host uses only the standard GX-10 CoreMIDI endpoint, generates versioned semantic metadata from installed Tone Studio resources, and permits explicit writes only through snapshot/readback/rollback transactions. Its API documentation is the remote repository's `README.md`.
 
 `minecraft_jarvis` remains accepted as a compatibility group but the tool is already always on.
 

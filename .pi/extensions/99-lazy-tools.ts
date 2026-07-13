@@ -216,9 +216,9 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
     lines: [
       "Use `gx10_get`, `gx10_find`, `gx10_ping`, and `gx10_lua` only after loading the `gx10` group; these tools connect directly to the standard BOSS GX-10 CoreMIDI endpoint on mac-mini-16, not REAPER or DAW CTRL.",
       "For ordinary questions, use read-only `gx10_get` first (current live temp patch by default); use `gx10_find` to resolve unfamiliar semantic names. Both preserve decoded labels and raw IDs and report ambiguity rather than guessing.",
-      "Use `gx10_lua` only as the low-level/custom escape hatch. Semantic Lua reads include `gx.current_patch()`, `gx.chain()`, `gx.effects()`, `gx.assignments()`, `gx.controls()`, `gx.semantic()`, `gx.find()`, and `gx.get_many()`; low-level reads remain `gx.get()`, `gx.get_block()`, `gx.rq1()`, and `gx.listen()`.",
+      "Use `gx10_lua` only as the custom/planning/low-level escape hatch. Semantic Lua reads include `gx.current_patch()`, `gx.chain()`, `gx.effects()`, `gx.assignments()`, `gx.controls()`, `gx.semantic()`, `gx.find()`, and `gx.get_many()`; low-level reads remain `gx.get()`, `gx.get_block()`, `gx.rq1()`, and `gx.listen()`.",
       "For unfamiliar paths, use `gx10_find` or inspect with `gx.schema(query)` rather than guessing. API documentation is `/Users/dylanrapanan/gx10-bridge/README.md` on mac-mini-16.",
-      "Keep `allowWrite:false` unless sir explicitly requested a GX-10 edit in the current conversation. All writes must use `gx.transaction`; inspect first, use `save=true` only for explicitly requested persistence, and never blindly retry a failed write.",
+      "Keep `allowWrite:false` unless sir explicitly requested a GX-10 edit in the current conversation. For semantic edits, dry-run `gx.plan_edit(spec)`, show its exact plan ID (and every whole-block mirror for save=true), then stop for approval; regenerate with `expectedPlanId` and use `tx:apply_plan(plan)` inside a matching `gx.transaction`. Never blindly retry a failed write.",
       "Use `tx:set` for schema fields, `tx:set_machine` for exact stored values, and `tx:get_block`/`tx:set_block` for byte-exact moves or copies. Avoid raw `tx:write` unless a documented address was verified and no schema path exists.",
       "The bridge fails closed while Tone Studio is running, snapshots touched blocks, verifies readback, and rolls back on failure. IR transfer and firmware writes are intentionally unavailable.",
     ],
@@ -358,7 +358,7 @@ function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
     discord: "discord: use `discord_ping` for immediate Discord pings/notifications, with attachments when requested; use `discord_send_file` only for current-channel uploads when available.",
     sessions: "sessions: use `session_search` search first; status for freshness; index only if requested/stale.",
     reaper: "reaper: use `reaper_ping`/`reaper_lua` for the live REAPER session on mac-mini-16; send inline Lua only, no saved task scripts; include undo blocks in Lua when editing.",
-    gx10: "gx10: use read-only `gx10_get` for ordinary live-patch questions and `gx10_find` for names; use `gx10_lua` only for custom low-level work or explicit verified transactions; save=true only when persistence was requested.",
+    gx10: "gx10: use `gx10_get` for reads and `gx10_find` for names; semantic edits require a read-only `gx.plan_edit` dry run, exact plan-ID approval, then `tx:apply_plan` in a verified transaction; save=true only when persistence was requested.",
     browser: "browser: load for rendered/interactive/logged-in/forms/screenshots/open-use-check; web=text; verify; ask before sensitive."
   };
   return ["Compact playbook:", ...groups.map((group) => `- ${lines[group]}`)].join("\n");
