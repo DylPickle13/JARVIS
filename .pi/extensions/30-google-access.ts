@@ -740,14 +740,6 @@ async function executeGoogleWorkspace(pi: ExtensionAPI, cwd: string, params: any
 
 const GOOGLE_TOOL_DESCRIPTION =
   "Google Workspace via the gws CLI for Drive/Gmail/Docs/Sheets/Calendar.";
-const GOOGLE_TOOL_PROMPT_SNIPPET = "Google Workspace gws CLI";
-const GOOGLE_TOOL_PROMPT_GUIDELINES = [
-  "Use google_workspace for Workspace intents: Calendar/events/schedule, Gmail/email/mail, Drive/files/folders, Docs, and Sheets; do not guess shell commands like gdrive, gapi, or gsutil.",
-  "Actions: calendar_events for Calendar, drive_download_folder for recursive Drive folders, generic call with path for Workspace APIs, status/services/help/schema for discovery, and auth/raw only when needed.",
-  "Call examples: Calendar action:'calendar_events'; Drive list path:['drive','files','list']; Gmail list path:['gmail','users','messages','list'], params:{userId:'me',maxResults:10}; Docs/Sheets use call plus help/schema.",
-  "Drive folder download: use action:'drive_download_folder' with folderId preferred (or exact unique folderName/name) and destination/dest under cwd; add dryRun:true to count without writes, and only use overwrite:true with explicit intent. Supports subfolders, Google editor exports, JSON media, and manifests.",
-  "Never pass API keys. Workspace writes/destructive actions require explicit user intent; include IDs/body and verify with a read/list call when feasible.",
-] as const;
 const GOOGLE_TOOL_PARAMETERS = Type.Object({
   product: Type.Optional(Type.Literal("workspace", { description: "Workspace product selector." })),
   action: Type.Optional(StringEnum(ACTIONS, { description: "status/services/help/schema/call/calendar_events/drive_download_folder/raw/auth/api." })),
@@ -808,8 +800,6 @@ function registerGoogleTool(pi: ExtensionAPI, toolName: string, label: string) {
     name: toolName,
     label,
     description: GOOGLE_TOOL_DESCRIPTION,
-    promptSnippet: GOOGLE_TOOL_PROMPT_SNIPPET,
-    promptGuidelines: [...GOOGLE_TOOL_PROMPT_GUIDELINES],
     parameters: GOOGLE_TOOL_PARAMETERS,
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       return executeGoogleWorkspace(pi, ctx.cwd, params, signal, onUpdate);

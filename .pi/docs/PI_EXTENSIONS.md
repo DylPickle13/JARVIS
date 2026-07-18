@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-07-13 EDT
+Updated: 2026-07-18 EDT
 
 The local Pi extension inventory lives in `.pi/extensions/`. `.pi/smoke-test.sh` keeps a read-only manifest check so added or removed extension roots are visible during smoke testing. The manifest intentionally ignores the shared `.pi/extensions/lib/` directory.
 
@@ -26,7 +26,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `20-session-search.ts` — prior Pi/JARVIS session search.
 - `30-google-access.ts` — Google Workspace tool.
 - `34-maps.ts` — Google Maps places/geocode/routes natural-language tool.
-- `35-memory.ts` — durable project-local memory.
+- `35-memory.ts` — explicit durable project-local memory; no prompt-time auto-recall or system-prompt mutation.
 - `45-jarvis.ts` — Operation JARVIS dashboard/Cast, smart plugs, and VeSync/Levoit air purifier actions.
 - `46-local-pi-session-status.ts` — dashboard-visible local Pi session heartbeat.
 - `48-agent-phone.ts` — guarded LG-H933 Android phone adapter.
@@ -39,8 +39,8 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `70-image-generation.ts` — local Qwen image generation via mac-mini-64.
 - `71-video-generation.ts` — local LTX-2.3 Q8 MLX MP4 audio-video generation via mac-mini-64.
-- `98-slim-provider-payload.ts` — provider payload/schema slimming.
-- `99-lazy-tools.ts` — lazy optional tool-group visibility.
+- `98-slim-provider-payload.ts` — deterministic provider payload/schema slimming, including OpenAI deferred `tool_search_output` schemas.
+- `99-lazy-tools.ts` — additive lazy optional tool activation using Pi's native deferred-loading protocol where supported.
 
 ## Current tool surface
 
@@ -71,7 +71,11 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `gx10` | `gx10_ping`, `gx10_get`, `gx10_find`, `gx10_lua` |
 | `browser` | `browser_status`, `browser_open`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_upload`, `browser_key`, `browser_scroll`, `browser_wait`, `browser_extract`, `browser_tabs`, `browser_close` |
 
-The provider-visible `load_tools` description, prompt snippet, parameter help, and `/load-tools` usage are generated from the canonical registry in `99-lazy-tools.ts`. `98-slim-provider-payload.ts` intentionally preserves that generated top-level description, and the smoke test checks the group maps and description wiring for drift.
+The provider-visible `load_tools` description, prompt snippet, parameter help, and `/load-tools` usage are generated from the canonical registry in `99-lazy-tools.ts`. Model-called `load_tools` activation is purely additive: Pi records the added tool names on the tool result and, on capable providers such as GPT-5.6, anchors their definitions there with native deferred loading instead of changing the initial cached tool prefix. Other providers use Pi's normal full-tool fallback. Manual `/load-tools` remains available but has no tool-result anchor, so it may refresh the provider cache once.
+
+Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full group playbooks are returned by model-called `load_tools` and remain in conversation context. Manual `/load-tools` queues the same hidden playbook for the next user turn. `98-slim-provider-payload.ts` preserves the registry-generated top-level `load_tools` description and also slims deferred schemas nested in OpenAI `tool_search_output` items. The smoke test checks these invariants for drift.
+
+Durable memory is explicit-only. Loading the `memory` group preserves search/remember/update/forget/list/status functionality without performing prompt-time recall or changing the system prompt between user turns.
 
 The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
 

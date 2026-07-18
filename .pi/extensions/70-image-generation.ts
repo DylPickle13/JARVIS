@@ -619,14 +619,6 @@ export default function registerImageGeneration(pi: ExtensionAPI) {
     name: "generate_image",
     label: "Generate Image",
     description: `Generate exactly one image on mac-mini-64 using the single approved headless model: ${MODEL}. The tool sends the prompt, and optionally a local source image for guided image-to-image editing, over SSH; runs mflux/Qwen on the Mini; copies the PNG back locally; and returns the local path plus optional inline PNG. No alternate models or fallback models are available.`,
-    promptSnippet: "Generate a local PNG image, or guided edit from a local source image, on mac-mini-64 with Qwen-Image-2512-8bit and copy it back to this project.",
-    promptGuidelines: [
-      "Use generate_image when sir asks to create, generate, render, or make an image locally.",
-      `generate_image uses only ${MODEL}; do not offer or request alternate image models for this tool.`,
-      `Keep prompts visually descriptive. Default to the high-quality profile: aspectRatio ${DEFAULT_ASPECT_RATIO}, size ${DEFAULT_SIZE}, and ${DEFAULT_STEPS} steps unless sir asks for a specific aspect/size or speed/quality tradeoff.`,
-      "For guided edits, provide inputImagePath with a local PNG/JPEG/WebP/BMP and describe the desired transformation in prompt. Use imageStrength around 0.4 by default; higher values preserve more source-image influence.",
-      "Do not use ComfyUI, browser image tools, Draw Things, or shell commands for ordinary image generation/editing; call generate_image directly.",
-    ],
     parameters: Type.Object({
       prompt: Type.String({ description: "Detailed image prompt to render." }),
       negativePrompt: Type.Optional(Type.String({ description: `Optional negative prompt. Defaults to: ${DEFAULT_NEGATIVE_PROMPT}` })),

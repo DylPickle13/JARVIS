@@ -751,15 +751,6 @@ export default function registerDiscordPing(pi: ExtensionAPI) {
     label: "Discord Ping",
     description:
       "Send an immediate one-off Discord ping/notification to the configured user in #jarvis-helpers → pings, optionally with local file attachments. Use for explicit user-facing pings or file delivery; not for scheduled jobs.",
-    promptSnippet: "Use for immediate user-facing Discord pings/notifications, including attachments when requested",
-    promptGuidelines: [
-      "Use discord_ping when the user clearly asks to be pinged/notified on Discord, says 'ping me', or asks to send files/results to them by Discord.",
-      "Use attachmentPath or attachmentPaths when local files are part of the requested ping or file delivery; verify the files exist before sending.",
-      "Do not use discord_ping for scheduled or recurring jobs; use discord_cron for scheduled jobs whose output should post to Discord.",
-      "Call discord_ping only after you have verified the specifically requested goal is actually complete or the requested condition is satisfied.",
-      "Keep the ping message concise and outcome-focused; include what completed and any key result the user asked to wait for.",
-      "Do not use discord_ping for routine progress updates, speculative results, or messages not intended as an explicit Discord notification.",
-    ],
     parameters: Type.Object({
       message: Type.String({ description: "Concise completion/result message to send after the user-requested goal is achieved." }),
       guildId: Type.Optional(Type.String({ description: "Optional Discord guild/server id override. Normally omit." })),

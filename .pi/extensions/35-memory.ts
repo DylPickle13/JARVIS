@@ -125,10 +125,6 @@ export default function registerMemory(pi: ExtensionAPI) {
     label: "Memory",
     description:
       "Single action-dispatched project-local durable memory tool: search/remember/update/forget/list/status. Never store secrets or sensitive personal data.",
-    promptSnippet: "Use memory with action=search/remember/update/forget/list/status",
-    promptGuidelines: [
-      "Use the single memory tool with the appropriate action; search memory when durable preferences/facts may matter; remember only explicit/stable safe info; never store secrets/sensitive data; forget permanently purges the memory and its event history.",
-    ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS, { description: "Operation." }),
       query: Type.Optional(Type.String({ description: "Search query." })),
@@ -157,26 +153,6 @@ export default function registerMemory(pi: ExtensionAPI) {
       const text = result.details?.ok === false ? theme.fg("error", formatResult(result.details)) : theme.fg("success", formatResult(result.details));
       return new Text(truncate(text, 4000), 0, 0);
     },
-  });
-
-  pi.on("before_agent_start", async (event, ctx) => {
-    const runner = runnerPath(ctx.cwd);
-    if (!existsSync(runner)) return;
-    const env = parseDotEnv(findAncestorFile(ctx.cwd, ".env"));
-    const disabled = (env.JARVIS_MEMORY_AUTO_RECALL ?? process.env.JARVIS_MEMORY_AUTO_RECALL ?? "1").trim() === "0";
-    if (disabled) return;
-
-    try {
-      const limit = Number(env.JARVIS_MEMORY_RECALL_LIMIT ?? process.env.JARVIS_MEMORY_RECALL_LIMIT ?? 3) || 3;
-      const maxChars = Number(env.JARVIS_MEMORY_RECALL_MAX_CHARS ?? process.env.JARVIS_MEMORY_RECALL_MAX_CHARS ?? 1500) || 1500;
-      const args = [runner, "--json", "recall", event.prompt, "--limit", String(limit), "--max-chars", String(maxChars)];
-      const parsed = await runMemory(pi, ctx.cwd, args, ctx.signal, 5_000);
-      const block = typeof parsed.block === "string" ? parsed.block.trim() : "";
-      if (!block) return;
-      return { systemPrompt: `${event.systemPrompt}\n\n${block}\n` };
-    } catch {
-      return;
-    }
   });
 
   pi.registerCommand("memory", {

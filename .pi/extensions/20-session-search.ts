@@ -68,12 +68,6 @@ export default function registerSessionSearch(pi: ExtensionAPI) {
     label: "Session Search",
     description:
       "Search/manage the local semantic index of prior Pi/JARVIS sessions.",
-    promptSnippet: "Search prior Pi/JARVIS sessions",
-    promptGuidelines: [
-      "Use session_search before scanning raw old session files when the user asks about prior Pi/JARVIS sessions, decisions, logs, or previous work.",
-      "Start with session_search action:'search' plus a natural-language query and small limit; set includeText:true only when snippets are insufficient.",
-      "Use session_search action:'status' to check freshness; run action:'index' only when requested or when status/search results indicate the index is stale.",
-    ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS, { description: "Operation." }),
       query: Type.Optional(Type.String({ description: "Search query." })),

@@ -96,9 +96,9 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   memory: {
     skill: "durable memory",
     lines: [
-      "Use `memory` only for stable durable facts, preferences, lessons, project notes, or workflows that should survive future sessions.",
+      "Use `memory` only for stable durable facts, preferences, lessons, project notes, or workflows that should survive future sessions. Memory is explicit-only; there is no automatic prompt-time recall.",
       "Never store secrets, credentials, tokens, private personal data, or transient one-off details.",
-      "Prefer `action: \"search\"` before writing new memories; keep new entries concise and tagged when useful.",
+      "Prefer `action: \"search\"` before writing new memories; keep new entries concise and tagged when useful. `forget` permanently purges the memory and its event history.",
     ],
   },
   code_docs: {
@@ -111,17 +111,19 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   image: {
     skill: "image generation",
     lines: [
-      "Use `generate_image` for local PNG image generation or guided image edits on mac-mini-64.",
-      "Default high-quality image profile is large 16:9, 30 steps. Provide a detailed visual prompt; for guided edits, pass a local inputImagePath and use imageStrength around 0.4 by default.",
+      "Use `generate_image` for local PNG image generation or guided image edits on mac-mini-64. It uses only the approved Qwen image model; do not offer or request alternate models for this tool.",
+      "Default high-quality image profile is large 16:9, 30 steps. Keep prompts visually descriptive and change the aspect/size/steps only for an explicit speed, quality, or framing request.",
+      "For guided edits, pass a local PNG/JPEG/WebP/BMP `inputImagePath`, describe the transformation, and use `imageStrength` around 0.4 by default; higher values preserve more source-image influence.",
       "Do not use shell, browser, ComfyUI, Draw Things, or alternate image generators unless explicitly requested.",
     ],
   },
   video: {
     skill: "video generation",
     lines: [
-      "Use `generate_video` for local MP4 generation with synchronized audio or image-to-audio-video clips on mac-mini-64.",
-      "Default LTX-2.3 Q8 quality profile is standard 16:9, 4 seconds, 24 fps, two-stage pipeline, low-RAM streaming. Use `seconds`, not frames; the worker converts seconds to LTX frame counts.",
-      "For image-to-audio-video, pass a local inputImagePath and describe camera/subject motion plus ambience, sound effects, and dialogue/audio cues. Do not substitute SSH/manual worker calls unless debugging.",
+      "Use `generate_video` for local MP4 generation with synchronized audio or image-to-audio-video clips on mac-mini-64. It uses only the approved LTX-2.3 Q8 MLX model; do not offer or request alternate models for this tool.",
+      "Default quality profile is standard 16:9, 4 seconds, 24 fps, two-stage pipeline, low-RAM streaming. Use `seconds`, not frames; the worker converts to 33/65/97/129-frame counts and caps output around 5.4 seconds at 24 fps.",
+      "For image-to-audio-video, pass a local PNG/JPEG/WebP/BMP `inputImagePath` and describe camera/subject motion plus ambience, sound effects, and dialogue/audio cues.",
+      "Large audio-video clips can take a long time; use `pipeline: \"distilled\"` and `size: \"small\"` for faster previews. Do not substitute browser, ComfyUI, shell, or manual worker calls unless debugging.",
     ],
   },
   phone: {
@@ -151,8 +153,9 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "For any home-control request (lights/plugs/switches/power, Cast/TV/speakers, camera/view, air purifier), first call `load_tools({ groups: [\"jarvis\"] })`; then use the exact unlocked `jarvis` or `smart_plug` tool. Do not read files, run shell/CLI, SSH, or guess commands unless the JARVIS tool fails.",
       "Safe checks: `jarvis({ action: \"help\" })`, `jarvis({ action: \"status\", noCast: true })`, `jarvis({ action: \"cast-status\", device: \"speakers\" })`, `smart_plug({ action: \"list\" })`, or `jarvis({ action: \"purifier-status\" })`.",
       "Dashboard camera actions: `jarvis({ action: \"look\" })`, `jarvis({ action: \"video\", duration: 5 })`, `jarvis({ action: \"video-until\", condition: \"a person is visible\", maxDuration: 60 })`, or `jarvis({ action: \"analyze-view\", question: \"What is visible?\" })`.",
-      "Cast actions: `jarvis({ action: \"speak\", text: \"JARVIS online.\", device: \"speakers\" })`, `jarvis({ action: \"cast-status\", device: \"tv\" })`, `jarvis({ action: \"cast-volume\", level: 25 })`, `jarvis({ action: \"cast-youtube\", query: \"relaxing jazz\", device: \"tv\" })`, and related `cast-mute`, `cast-stop`, `cast-play-url` actions.",
-      "Smart-plug/light phrases such as 'turn on/off the light/lamp/kettle/tv plug' go directly to the dedicated local-only tool: `smart_plug({ action: \"status\"|\"on\"|\"off\"|\"toggle\", plug: \"<configured-plug-name>\" })`. Run `smart_plug({ action: \"list\" })` only if the alias is unclear.",
+      "Cast actions: `jarvis({ action: \"speak\", text: \"JARVIS online.\", device: \"speakers\" })`, `jarvis({ action: \"cast-status\", device: \"tv\" })`, `jarvis({ action: \"cast-volume\", level: 25 })`, `jarvis({ action: \"cast-youtube\", query: \"relaxing jazz\", device: \"tv\" })`, and related `cast-mute`, `cast-stop`, `cast-play-url` actions. `cast-stop` quits the Cast app by default.",
+      "Spotify actions include `cast-spotify-devices`, play/resume with `cast-spotify`, pause/next/previous/volume, queue read/add, seek, shuffle, and repeat. Use `device: \"tv\"`/`\"speakers\"` for configured aliases or an exact `spotifyDeviceName`; prefer names over changing IDs and never expose credentials.",
+      "Smart-plug/light phrases such as 'turn on/off the light/lamp/kettle/tv plug' go directly to the dedicated local-only tool: `smart_plug({ action: \"status\"|\"on\"|\"off\"|\"toggle\", plug: \"<configured-plug-name>\" })`. Run `smart_plug({ action: \"list\" })` only if the alias is unclear, and summarize the resulting state after writes.",
       "Air-purifier actions use exactly two `jarvis` actions: `jarvis({ action: \"purifier-status\" })` for read-only status/filter/air-quality info, and `jarvis({ action: \"purifier-set\", setting: \"mode\", value: \"auto\" })` for writes. Supported settings: power, mode, speed, display, child-lock, light-detection, auto-preference, timer. VeSync writes may take more than a minute; wait for the tool result before issuing another purifier command.",
       "Always keep camera recording bounded. For spoken output, keep text short and keep full details in Discord.",
     ],
@@ -186,7 +189,8 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Use `discord_send_file` only to upload a verified local file to the current Discord channel when running inside a Discord session and the tool is available.",
       "If the user asks 'ping me/send me these files', prefer `discord_ping` with attachments; do not require a current-channel context.",
       "Use `discord_cron` only for scheduled or recurring jobs whose output posts to Discord.",
-      "Verify requested files or conditions before sending; keep Discord messages concise and outcome-focused.",
+      "Call `discord_ping` only after the requested goal or condition is verified complete. Keep messages concise and outcome-focused; do not send routine progress updates or speculative results.",
+      "Verify every requested attachment before sending. After browser or file work, do not notify until the specifically requested result is actually ready.",
       "If `discord_send_file` is unavailable, do not substitute it for current-channel uploads; report the unavailable context unless a user-facing ping with attachments satisfies the request.",
     ],
   },
@@ -208,14 +212,15 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Return JSON-safe Lua tables from `reaper_lua` so results are easy to inspect.",
       "Do not guess REAPER/ReaScript API signatures. Before using any unfamiliar REAPER API call, inspect official docs, local bridge examples, or known project examples.",
       "If a REAPER API call returns an unexpected value/type, stop immediately and look up the API before retrying. Do not make a second guessed attempt.",
-      "Capture all return values for REAPER API functions unless the signature has been verified.",
+      "Capture all return values for REAPER API functions unless the signature has been verified; many return multiple values. Use `reaper.APIExists(\"FunctionName\")` for common availability checks.",
+      "Official ReaScript API reference: https://www.reaper.fm/sdk/reascript/reascripthelp.html",
     ],
   },
   gx10: {
     skill: "direct GX-10 semantic/CoreMIDI bridge",
     lines: [
       "Use `gx10_get`, `gx10_find`, `gx10_ping`, and `gx10_lua` only after loading the `gx10` group; these tools connect directly to the standard BOSS GX-10 CoreMIDI endpoint on mac-mini-16, not REAPER or DAW CTRL.",
-      "For ordinary questions, use read-only `gx10_get` first (current live temp patch by default); use `gx10_find` to resolve unfamiliar semantic names. Both preserve decoded labels and raw IDs and report ambiguity rather than guessing.",
+      "For ordinary questions, use read-only `gx10_get` first (current live temp patch by default); `what=overview` reads the current patch, `assignments` preserves source/target labels, and `what=get` is only for exact low-level paths. Use `gx10_find` to resolve unfamiliar semantic names. Both preserve decoded labels/raw IDs and report ambiguity rather than guessing.",
       "Use `gx10_lua` only as the custom/planning/low-level escape hatch. Semantic Lua reads include `gx.current_patch()`, `gx.chain()`, `gx.effects()`, `gx.assignments()`, `gx.controls()`, `gx.semantic()`, `gx.find()`, and `gx.get_many()`; low-level reads remain `gx.get()`, `gx.get_block()`, `gx.rq1()`, and `gx.listen()`.",
       "For unfamiliar paths, use `gx10_find` or inspect with `gx.schema(query)` rather than guessing. API documentation is `/Users/dylanrapanan/gx10-bridge/README.md` on mac-mini-16.",
       "Keep `allowWrite:false` unless sir explicitly requested a GX-10 edit in the current conversation. For semantic edits, dry-run `gx.plan_edit(spec)`, show its exact plan ID (and every whole-block mirror for save=true), then stop for approval; regenerate with `expectedPlanId` and use `tx:apply_plan(plan)` inside a matching `gx.transaction`. Never blindly retry a failed write.",
@@ -226,16 +231,20 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   browser: {
     skill: "visible browser control",
     lines: [
-      "`browser` = real visible persistent Chrome: open/screenshot/click/type/scroll/key/extract/tabs/upload.",
-      "Load for open/use/check sites, rendered/interactive/logged-in/JS/forms/upload/download/screenshot/web-app tasks; web_search/fetch_content=text-only; don't ask just to load.",
-      "Flow: open→screenshot→act→screenshot/extract. Prefer selector/text; coords from latest screenshot. Ask before private/account/purchase/destructive/submit; stop for CAPTCHA.",
+      "`browser` is real visible persistent Chrome: status/open/screenshot/click/type/upload/key/scroll/wait/extract/tabs/close.",
+      "Load it for open/use/check-site requests and rendered, interactive, logged-in, JavaScript, form, upload/download, screenshot, or web-app work; `web_search`/`fetch_content` remain text-only. Do not ask merely to load the group.",
+      "Typical flow: open → viewport screenshot → act → screenshot or extract to verify. Check `browser_status` before opening many tabs; use full-page screenshots only when necessary.",
+      "Prefer selectors or visible text when unambiguous. Coordinate clicks must use the latest viewport screenshot; re-screenshot after navigation or significant changes because coordinates can go stale.",
+      "Use `browser_type` with a selector and `clear:true` when replacing field contents; use `browser_open` for URL navigation. Do not enter passwords or private data unless explicitly provided for that action.",
+      "Upload only explicitly approved local files, prefer `input[type=file]`, and verify attachment with screenshot/extract before submitting.",
+      "Use `browser_extract` for long DOM text, links, and forms. Ask before private/account/purchase/destructive/submit actions and stop for CAPTCHA.",
     ],
   },
 };
 
 const GroupName = Type.String();
 
-let providerVisibleGroups = new Set<ConcreteToolGroup>();
+let loadedGroups = new Set<ConcreteToolGroup>();
 
 function unique(names: Iterable<string>): string[] {
   return [...new Set(names)];
@@ -253,13 +262,6 @@ function isToolGroupName(value: string): value is ToolGroup {
 function expandGroups(groups: readonly ToolGroup[]): ConcreteToolGroup[] {
   if (groups.includes("all")) return [...GROUP_NAMES];
   return unique(groups.map(canonicalGroup).filter((group): group is ConcreteToolGroup => Boolean(group))) as ConcreteToolGroup[];
-}
-
-function allLazyToolNames(): string[] {
-  return unique([
-    ...ALWAYS_ON_TOOLS,
-    ...GROUP_NAMES.flatMap((group) => TOOL_GROUPS[group]),
-  ]);
 }
 
 function desiredToolsFor(groups: readonly ConcreteToolGroup[] = []): string[] {
@@ -284,35 +286,44 @@ function applyBaselineToolSet(pi: ExtensionAPI): string[] {
   return selected;
 }
 
-function primeExecutionToolSet(pi: ExtensionAPI): string[] {
-  // Pi snapshots executable tools at the start of an agent run. Keep every lazy
-  // integration in that execution snapshot, then filter provider-visible schemas
-  // in before_provider_request until load_tools reveals a group.
-  const selected = selectAvailableTools(pi, allLazyToolNames());
-  pi.setActiveTools(selected);
-  return selected;
+function loadedGroupsArray(): ConcreteToolGroup[] {
+  return GROUP_NAMES.filter((group) => loadedGroups.has(group));
 }
 
-function providerVisibleGroupsArray(): ConcreteToolGroup[] {
-  return GROUP_NAMES.filter((group) => providerVisibleGroups.has(group));
+function mergeLoadedGroups(groups: readonly ConcreteToolGroup[]): ConcreteToolGroup[] {
+  for (const group of groups) loadedGroups.add(group);
+  return loadedGroupsArray();
 }
 
-function mergeProviderVisibleGroups(groups: readonly ConcreteToolGroup[]): ConcreteToolGroup[] {
-  for (const group of groups) providerVisibleGroups.add(group);
-  return providerVisibleGroupsArray();
+function resetLoadedGroups(): void {
+  loadedGroups.clear();
 }
 
-function replaceProviderVisibleGroups(groups: readonly ConcreteToolGroup[]): ConcreteToolGroup[] {
-  providerVisibleGroups = new Set(groups);
-  return providerVisibleGroupsArray();
+function loadedTools(pi: ExtensionAPI): string[] {
+  return selectAvailableTools(pi, desiredToolsFor(loadedGroupsArray()));
 }
 
-function resetProviderVisibleGroups(): void {
-  providerVisibleGroups.clear();
-}
+function activateToolGroups(pi: ExtensionAPI, groups: readonly ConcreteToolGroup[]) {
+  const allLoadedGroups = mergeLoadedGroups(groups);
+  const requestedToolNames = unique(groups.flatMap((group) => TOOL_GROUPS[group]));
+  const unlockedToolNames = selectAvailableTools(pi, requestedToolNames);
+  const missingToolNames = requestedToolNames.filter((name) => !unlockedToolNames.includes(name));
+  const activeBefore = pi.getActiveTools();
+  const addedToolNames = unlockedToolNames.filter((name) => !activeBefore.includes(name));
+  const activeTools = selectAvailableTools(pi, unique([...activeBefore, ...addedToolNames]));
 
-function providerVisibleTools(pi: ExtensionAPI): string[] {
-  return selectAvailableTools(pi, desiredToolsFor(providerVisibleGroupsArray()));
+  // Keep activation purely additive. Pi records addedToolNames on the load_tools
+  // result and uses native deferred definitions on capable providers.
+  pi.setActiveTools(activeTools);
+
+  return {
+    allLoadedGroups,
+    requestedToolNames,
+    unlockedToolNames,
+    missingToolNames,
+    addedToolNames,
+    activeTools,
+  };
 }
 
 function summarizeGroups(groups: readonly ConcreteToolGroup[]): string {
@@ -341,125 +352,6 @@ function buildGuidanceSection(groups: readonly GuidanceGroup[], heading = "JARVI
     "If an unlocked tool is missing from callable schema, report schema refresh failure.",
     ...sections,
   ].join("\n");
-}
-
-function buildCompactLoadGuidance(groups: readonly GuidanceGroup[]): string {
-  if (groups.length === 0) return "";
-  const lines: Record<GuidanceGroup, string> = {
-    memory: "memory: use `memory` only for stable durable facts/preferences/lessons/workflows; never store secrets or sensitive personal data.",
-    code_docs: "code_docs: use `code_search` for external programming docs/API examples; use local grep/find/read for repo files first.",
-    image: "image: use `generate_image` for local Qwen image generation/editing; default large 16:9, 30 steps; provide local inputImagePath for guided edits.",
-    video: "video: use `generate_video` for local LTX-2.3 Q8 MLX MP4 generation with synchronized audio; use seconds, not frames; pass inputImagePath for image-to-audio-video.",
-    phone: "phone: use `agent_phone` directly; args are CLI tokens excluding the binary; start with `snapshot -i`, interact via `@refs`, and confirm sensitive actions.",
-    google: "google: use `google_workspace` for Calendar/events, Gmail/mail, Drive files/folders, Docs, and Sheets; use `calendar_events`, `drive_download_folder`, or generic `call` with help/schema; writes need explicit intent.",
-    jarvis: "jarvis: home control/camera/Cast/purifier; lights/plugs/switches => `smart_plug`, no shell/CLI unless tool fails; use `purifier-status` before purifier writes; keep recordings bounded and speech short.",
-    minecraft_jarvis: "minecraft_jarvis: use `minecraft_jarvis({ message })` for the Minecraft bot; do not substitute SSH, shell, or slash-command shortcuts.",
-    cron: "cron: use `discord_cron` only for Discord-posted scheduled jobs; OS cron/launchd only if explicitly requested.",
-    discord: "discord: use `discord_ping` for immediate Discord pings/notifications, with attachments when requested; use `discord_send_file` only for current-channel uploads when available.",
-    sessions: "sessions: use `session_search` search first; status for freshness; index only if requested/stale.",
-    reaper: "reaper: use `reaper_ping`/`reaper_lua` for the live REAPER session on mac-mini-16; send inline Lua only, no saved task scripts; include undo blocks in Lua when editing.",
-    gx10: "gx10: use `gx10_get` for reads and `gx10_find` for names; semantic edits require a read-only `gx.plan_edit` dry run, exact plan-ID approval, then `tx:apply_plan` in a verified transaction; save=true only when persistence was requested.",
-    browser: "browser: load for rendered/interactive/logged-in/forms/screenshots/open-use-check; web=text; verify; ask before sensitive."
-  };
-  return ["Compact playbook:", ...groups.map((group) => `- ${lines[group]}`)].join("\n");
-}
-
-function providerToolName(tool: any): string | undefined {
-  if (typeof tool?.name === "string") return tool.name;
-  if (typeof tool?.function?.name === "string") return tool.function.name;
-  if (typeof tool?.toolSpec?.name === "string") return tool.toolSpec.name;
-  return undefined;
-}
-
-function providerToolNames(tools: any[] | undefined): string[] {
-  if (!Array.isArray(tools)) return [];
-  const names: string[] = [];
-  for (const tool of tools) {
-    if (Array.isArray(tool?.functionDeclarations)) {
-      for (const declaration of tool.functionDeclarations) {
-        if (typeof declaration?.name === "string") names.push(declaration.name);
-      }
-      continue;
-    }
-    const name = providerToolName(tool);
-    if (name) names.push(name);
-  }
-  return unique(names);
-}
-
-function filterProviderTools(tools: any[] | undefined, visible: Set<string>): any[] | undefined {
-  if (!Array.isArray(tools)) return tools;
-  const filtered = tools
-    .map((tool) => {
-      if (Array.isArray(tool?.functionDeclarations)) {
-        const declarations = tool.functionDeclarations.filter((declaration: any) => typeof declaration?.name !== "string" || visible.has(declaration.name));
-        return declarations.length > 0 ? { ...tool, functionDeclarations: declarations } : undefined;
-      }
-      const name = providerToolName(tool);
-      return !name || visible.has(name) ? tool : undefined;
-    })
-    .filter((tool) => tool !== undefined);
-  return filtered;
-}
-
-function rewriteAvailableToolsText(text: string, _visibleToolNames: readonly string[]): string {
-  let rewritten = text.replace(
-    /Available tools:\n(?:- [^\n]*\n)+(?:\nIn addition to the tools above, you may have access to other custom tools depending on the project\.\n)?\n?/,
-    "",
-  );
-  rewritten = rewritten.replace(/Available tools(?: are provided in the tool schema list|: [^\n]*)\.\n\n?/, "");
-  return rewritten;
-}
-
-function rewritePayloadTextFields(payload: any, visibleToolNames: readonly string[]): any {
-  let next = payload;
-  const update = (text: string) => rewriteAvailableToolsText(text, visibleToolNames);
-
-  if (typeof next?.instructions === "string") {
-    const instructions = update(next.instructions);
-    if (instructions !== next.instructions) next = { ...next, instructions };
-  }
-
-  if (typeof next?.system === "string") {
-    const system = update(next.system);
-    if (system !== next.system) next = { ...next, system };
-  } else if (Array.isArray(next?.system)) {
-    const system = next.system.map((block: any) =>
-      typeof block?.text === "string" ? { ...block, text: update(block.text) } : block,
-    );
-    next = { ...next, system };
-  }
-
-  if (next?.systemInstruction && Array.isArray(next.systemInstruction.parts)) {
-    const parts = next.systemInstruction.parts.map((part: any) =>
-      typeof part?.text === "string" ? { ...part, text: update(part.text) } : part,
-    );
-    next = { ...next, systemInstruction: { ...next.systemInstruction, parts } };
-  }
-
-  return next;
-}
-
-function filterProviderPayload(payload: any, visibleToolNames: readonly string[]): any {
-  if (!payload || typeof payload !== "object") return payload;
-  const visible = new Set(visibleToolNames);
-  let next = payload;
-
-  if (Array.isArray(next.tools)) {
-    const tools = filterProviderTools(next.tools, visible);
-    next = { ...next, tools };
-  }
-
-  if (Array.isArray(next.toolConfig?.tools)) {
-    const tools = filterProviderTools(next.toolConfig.tools, visible);
-    next = { ...next, toolConfig: { ...next.toolConfig, tools } };
-  }
-
-  const namesFromPayload = unique([
-    ...providerToolNames(next.tools),
-    ...providerToolNames(next.toolConfig?.tools),
-  ]);
-  return rewritePayloadTextFields(next, namesFromPayload.length > 0 ? namesFromPayload : visibleToolNames);
 }
 
 export default function lazyTools(pi: ExtensionAPI) {
@@ -504,22 +396,18 @@ export default function lazyTools(pi: ExtensionAPI) {
       }
       const groups = requestedGroups as ToolGroup[];
       const expandedGroups = expandGroups(groups);
-      const visibleGroups = mergeProviderVisibleGroups(expandedGroups);
-      const executionTools = primeExecutionToolSet(pi);
-      const visibleTools = providerVisibleTools(pi);
-      const requestedToolNames = unique(expandedGroups.flatMap((group) => TOOL_GROUPS[group]));
-      const unlockedToolNames = selectAvailableTools(pi, requestedToolNames);
-      const missingUnlockedTools = requestedToolNames.filter((name) => !unlockedToolNames.includes(name));
-      const guidance = buildCompactLoadGuidance(expandedGroups);
+      const activation = activateToolGroups(pi, expandedGroups);
+      const guidance = buildGuidanceSection(expandedGroups, "JARVIS loaded-tool guidance");
       return {
         content: [
           {
             type: "text",
             text: [
               `Loaded: ${summarizeGroups(expandedGroups)}.`,
-              `Unlocked tools: ${unlockedToolNames.length > 0 ? unlockedToolNames.join(", ") : "(none)"}.`,
-              missingUnlockedTools.length > 0 ? `Unavailable requested/context-specific tools: ${missingUnlockedTools.join(", ")}. Use only the unlocked tools above unless a later session registers the missing tool.` : undefined,
-              "Use unlocked tools directly on the next step and later turns; their schemas are now provider-visible for this Pi session. If an unlocked tool is not callable, report schema refresh failure. Optional schemas reset when the Pi session restarts or when /reset-tools is used.",
+              `Unlocked tools: ${activation.unlockedToolNames.length > 0 ? activation.unlockedToolNames.join(", ") : "(none)"}.`,
+              activation.addedToolNames.length > 0 ? `Newly activated schemas: ${activation.addedToolNames.join(", ")}.` : "All available tools in the requested groups were already active.",
+              activation.missingToolNames.length > 0 ? `Unavailable requested/context-specific tools: ${activation.missingToolNames.join(", ")}. Use only the unlocked tools above unless a later session registers the missing tool.` : undefined,
+              "Use unlocked tools directly on the next step and later turns. Pi anchors newly activated schemas at this tool result on providers with native deferred loading. Optional schemas reset when the Pi session restarts or when /reset-tools is used.",
               guidance || undefined,
             ]
               .filter(Boolean)
@@ -528,12 +416,12 @@ export default function lazyTools(pi: ExtensionAPI) {
         ],
         details: {
           groups: expandedGroups,
-          providerVisibleGroups: visibleGroups,
-          providerVisibleTools: visibleTools,
-          executionTools,
-          requestedToolNames,
-          unlockedToolNames,
-          missingTools: missingUnlockedTools,
+          loadedGroups: activation.allLoadedGroups,
+          requestedToolNames: activation.requestedToolNames,
+          unlockedToolNames: activation.unlockedToolNames,
+          addedToolNames: activation.addedToolNames,
+          activeTools: activation.activeTools,
+          missingTools: activation.missingToolNames,
           guidance,
         },
       };
@@ -541,25 +429,8 @@ export default function lazyTools(pi: ExtensionAPI) {
   });
 
   pi.on("session_start", () => {
-    resetProviderVisibleGroups();
+    resetLoadedGroups();
     applyBaselineToolSet(pi);
-  });
-
-  pi.on("before_agent_start", async (event) => {
-    // Prime every lazy tool for execution before Pi snapshots tools for this run.
-    // Provider payloads remain baseline-only until load_tools updates providerVisibleGroups.
-    // Always return the pre-prime prompt so enabling the execution registry does
-    // not leak every optional tool's prompt snippets/guidelines into the model.
-    primeExecutionToolSet(pi);
-    const guidanceGroups = providerVisibleGroupsArray() as GuidanceGroup[];
-    const guidance = buildGuidanceSection(guidanceGroups, "JARVIS active tool guidance");
-    return {
-      systemPrompt: guidance ? `${event.systemPrompt}\n\n${guidance}` : event.systemPrompt,
-    };
-  });
-
-  pi.on("before_provider_request", (event) => {
-    return filterProviderPayload((event as any).payload, providerVisibleTools(pi));
   });
 
   pi.on("tool_call", (event) => {
@@ -573,28 +444,19 @@ export default function lazyTools(pi: ExtensionAPI) {
 
     if (isAlwaysOnToolName(event.toolName)) return;
     const groups = groupsForToolName(event.toolName);
-    if (groups.length === 0 || groups.some((group) => providerVisibleGroups.has(group))) return;
+    if (groups.length === 0 || groups.some((group) => loadedGroups.has(group))) return;
     return {
       block: true,
       reason: `${event.toolName} is hidden until one of its optional groups is loaded. Call load_tools({ groups: ["${groups[0]}"] }) first, then retry with the exact unlocked tool. Valid group(s): ${groups.map((group) => `"${group}"`).join(", ")}.`,
     };
   });
 
-  pi.on("agent_end", () => {
-    // Keep provider-visible groups across turns in the same Pi session.
-    // The execution registry is slimmed back to baseline between turns and
-    // re-primed at before_agent_start, while provider visibility resets only
-    // on session_start or via /reset-tools.
-    applyBaselineToolSet(pi);
-  });
-
   pi.registerCommand("lazy-tools", {
-    description: "Show lazy tool groups, provider-visible tools, and the execution tool set.",
+    description: "Show lazy tool groups, loaded groups, and the active tool set.",
     handler: async (_args, ctx) => {
-      const visibleTools = providerVisibleTools(pi);
-      const executionTools = pi.getActiveTools();
+      const activeTools = pi.getActiveTools();
       ctx.ui.notify(
-        `Lazy tool groups: ${LOADABLE_GROUPS_TEXT}\nProvider-visible groups: ${summarizeGroups(providerVisibleGroupsArray())}\nProvider-visible tools: ${visibleTools.join(", ")}\nExecution tools: ${executionTools.join(", ")}`,
+        `Lazy tool groups: ${LOADABLE_GROUPS_TEXT}\nLoaded groups: ${summarizeGroups(loadedGroupsArray())}\nLoaded tools: ${loadedTools(pi).join(", ")}\nActive tools: ${activeTools.join(", ")}`,
         "info",
       );
     },
@@ -614,23 +476,29 @@ export default function lazyTools(pi: ExtensionAPI) {
         return;
       }
       const expandedGroups = expandGroups(valid);
-      const visibleGroups = replaceProviderVisibleGroups(expandedGroups);
-      const executionTools = selectAvailableTools(pi, allLazyToolNames());
-      const visibleTools = providerVisibleTools(pi);
-      applyBaselineToolSet(pi);
+      const activation = activateToolGroups(pi, expandedGroups);
+      const guidance = buildGuidanceSection(expandedGroups, "JARVIS loaded-tool guidance");
+      if (guidance) {
+        pi.sendMessage({
+          customType: "jarvis-loaded-tool-guidance",
+          content: guidance,
+          display: false,
+          details: { groups: expandedGroups },
+        }, { deliverAs: "nextTurn" });
+      }
       ctx.ui.notify(
-        `Loaded groups for this Pi session: ${summarizeGroups(visibleGroups)}\nProvider-visible tools for future turns: ${visibleTools.join(", ")}\nExecution tools will be primed at run start: ${executionTools.join(", ")}`,
+        `Loaded groups for this Pi session: ${summarizeGroups(activation.allLoadedGroups)}\nNewly active tools: ${activation.addedToolNames.join(", ") || "(none)"}\nActive tools: ${activation.activeTools.join(", ")}\nThe group playbook is queued for the next user turn. Note: slash-command activation has no tool-result anchor and may refresh the provider cache once; model-called load_tools uses native deferred loading where supported.`,
         "info",
       );
     },
   });
 
   pi.registerCommand("reset-tools", {
-    description: "Reset provider-visible tools to the JARVIS lazy-tools baseline.",
+    description: "Reset active tools to the JARVIS lazy-tools baseline.",
     handler: async (_args, ctx) => {
-      resetProviderVisibleGroups();
+      resetLoadedGroups();
       const selected = applyBaselineToolSet(pi);
-      ctx.ui.notify(`Reset provider-visible/active tools: ${selected.join(", ")}`, "info");
+      ctx.ui.notify(`Reset active tools: ${selected.join(", ")}`, "info");
     },
   });
 }

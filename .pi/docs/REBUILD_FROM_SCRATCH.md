@@ -391,7 +391,7 @@ Do not run another bot process with the same token at the same time. The root bo
 | PDF reads fail | Check local oMLX `OMLX_PDF_*` settings first; ensure `pdftotext` from `poppler` is installed for fallback. |
 | Discord cron cannot post | Check `DISCORD_BOT_TOKEN`, guild/channel IDs, bot permissions, and `runner.py --json setup`. |
 | Session search fails | `status` first; then verify embedding endpoint/model and `SESSION_SEARCH_*` env vars. |
-| Memory recall absent | Check `JARVIS_MEMORY_AUTO_RECALL`, memory DB status, and whether relevant memories exist. |
+| Memory unavailable | Load the `memory` group, run `memory` with `action: "status"`, and verify `.pi/memory/memory.sqlite`; automatic prompt-time recall is intentionally disabled. |
 | `jarvis` tool fails | Run `projects/operation-jarvis/jarvis-cli --json help`; check Operation venv, dashboard, Cast, Spotify, Kasa env as appropriate. |
 | Phone unavailable | Do not use raw ADB by default. Check `projects/phone/README.md`, the configured ADB host, and permission/authentication status. |
 

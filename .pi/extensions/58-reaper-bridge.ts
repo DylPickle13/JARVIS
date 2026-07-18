@@ -133,10 +133,6 @@ export default function reaperBridgeExtension(pi: ExtensionAPI) {
     name: "reaper_ping",
     label: "REAPER Ping",
     description: "Ping the JARVIS REAPER bridge running on mac-mini-16 and return the live project status. Load with load_tools({ groups: [\"reaper\"] }) before use.",
-    promptSnippet: "Ping the live REAPER bridge on mac-mini-16.",
-    promptGuidelines: [
-      "Use reaper_ping after loading the reaper tool group to verify the live REAPER bridge is running before larger Lua edits when useful.",
-    ],
     parameters: Type.Object({
       timeoutSeconds: Type.Optional(Type.Number({ description: "Overall timeout in seconds. Default 10, max 120." })),
       host: Type.Optional(Type.String({ description: `SSH host alias. Default ${DEFAULT_HOST}.` })),
@@ -162,17 +158,6 @@ export default function reaperBridgeExtension(pi: ExtensionAPI) {
     name: "reaper_lua",
     label: "REAPER Lua",
     description: "Run inline Lua inside the live REAPER session via the JARVIS bridge on mac-mini-16. The Lua is sent over stdin and is not saved as a script. Load with load_tools({ groups: [\"reaper\"] }) before use.",
-    promptSnippet: "Run inline Lua in live REAPER via the bridge; code is not saved.",
-    promptGuidelines: [
-      "Use reaper_lua only after loading the reaper tool group. Send complete inline Lua that returns JSON-safe tables for inspection results.",
-      "For edits via reaper_lua, include any desired reaper.Undo_BeginBlock()/Undo_EndBlock() directly in the Lua code; the bridge intentionally does not hardcode actions or safety wrappers.",
-      "Do not save temporary task scripts for REAPER work; pass Lua inline through reaper_lua.",
-      "Do not guess REAPER/ReaScript API signatures. Before using any unfamiliar REAPER API call, inspect the official ReaScript docs, local bridge examples, or known project examples.",
-      "Official ReaScript API docs: https://www.reaper.fm/sdk/reascript/reascripthelp.html",
-      "If a REAPER API call returns an unexpected value/type, stop immediately and look up the API before retrying. Do not make a second guessed attempt.",
-      "Capture all return values for REAPER API functions unless the signature has been verified. Many REAPER functions return multiple values, e.g. local ok, name = reaper.GetTrackName(track, \"\") not C-style mutable buffers.",
-      "For common checks, you may also use: reaper.APIExists(\"FunctionName\")",
-    ],
     parameters: Type.Object({
       code: Type.String({ description: "Lua code to execute inside REAPER. Return a table/string/number/boolean/nil for JSON output." }),
       timeoutSeconds: Type.Optional(Type.Number({ description: "Overall timeout in seconds. Default 10, max 120." })),

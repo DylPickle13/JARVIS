@@ -131,19 +131,25 @@ def tool_name(tool):
 instructions = payload.get('instructions') or payload.get('system') or ''
 tools = payload.get('tools') or []
 input_part = payload.get('input') or payload.get('messages') or []
+deferred_tools = [
+    tool
+    for item in input_part if isinstance(item, dict) and item.get('type') == 'tool_search_output'
+    for tool in item.get('tools', [])
+]
 
 print('## Meta')
 print(json.dumps(meta, indent=2))
 
 print('\n## Top-level sizes')
 print('instructions chars:', len(instructions), 'rough tokens:', round(len(instructions) / 4))
-print('tools chars:', compact_json_chars(tools), 'rough tokens:', round(compact_json_chars(tools) / 4), 'tool count:', len(tools))
+print('top-level tools chars:', compact_json_chars(tools), 'rough tokens:', round(compact_json_chars(tools) / 4), 'tool count:', len(tools))
 print('input/messages chars:', compact_json_chars(input_part), 'rough tokens:', round(compact_json_chars(input_part) / 4))
+print('deferred tool count:', len(deferred_tools))
 print('full payload chars:', compact_json_chars(payload), 'rough tokens:', round(compact_json_chars(payload) / 4))
 
 print('\n## Tool schema sizes')
 rows = sorted(
-    ((tool_name(t), compact_json_chars(t)) for t in tools),
+    ((tool_name(t), compact_json_chars(t)) for t in [*tools, *deferred_tools]),
     key=lambda row: row[1],
     reverse=True,
 )
@@ -160,8 +166,6 @@ markers = [
     'Current date:',
     'Current working directory:',
     'Web research workflow:',
-    '## Relevant long-term memory',
-    'active tool guidance',
 ]
 positions = []
 for marker in markers:
@@ -186,7 +190,7 @@ PY
 After editing prompt-slimming files, rerun Method B and compare:
 
 - `instructions chars`
-- `tools chars`
+- top-level and deferred tool-schema sizes
 - `full payload chars`
 - individual tool schema rows
 
@@ -195,7 +199,6 @@ For this project, the relevant slimming files have been:
 - `.pi/extensions/98-slim-provider-payload.ts`
 - `.pi/extensions/99-lazy-tools.ts`
 - `.pi/APPEND_SYSTEM.md`
-- `.pi/extensions/35-memory.ts` for memory auto-recall size
 - `.pi/extensions/01-omlx-provider-setup-and-recovery.ts` for local model/provider registration and recovery behavior
 
 ## Last recorded reference point from 2026-06-19
@@ -222,4 +225,5 @@ Previous pre-slimming captures were roughly:
 - Baseline currently includes project always-on tools such as `ssh`, web/fetch tools, `minecraft_jarvis`, `maps`, and `load_tools`; use `/load-tools` in an interactive session if you need to measure optional groups separately.
 - To measure exact provider tokens, use Method A after a real request. To see what contributes to size, use Method B.
 - If prompt caching is active, use `effectiveInput = input + cacheRead + cacheWrite` for full effective input.
-- If memory auto-recall is enabled, the memory block can change depending on the probe prompt. Use a representative prompt for realistic measurements.
+- Durable memory is explicit-only and does not mutate the system prompt. Load/search the `memory` tool when a task needs stored context.
+- On OpenAI models with native deferred loading, newly loaded schemas appear inside `input` as `tool_search_output` items rather than changing the initial top-level tool prefix.

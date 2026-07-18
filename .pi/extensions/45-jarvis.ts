@@ -773,18 +773,6 @@ export default function registerJarvis(pi: ExtensionAPI) {
     name: "jarvis",
     label: "Operation JARVIS",
     description: "Operation JARVIS tool loaded on demand with load_tools({ groups: [\"jarvis\"] }) for dashboard phone camera vision, Google Cast speech/media, Spotify Connect control, local Kasa smart-plug control, and VeSync/Levoit air-purifier control. Safe guide: action=help. Safe local status: action=status with noCast=true. Required fields: speak text; cast-youtube query; cast-play-url url; cast-volume/cast-spotify-volume level; cast-spotify query/spotifyUri/resume; cast-spotify-queue-add query/spotifyUri; cast-spotify-seek position/positionMs; video duration; video-until condition; plug actions need plug; purifier-set needs setting.",
-    promptSnippet: "Operation JARVIS (load group `jarvis` first): `jarvis({action:\"help\"})` for guide; dashboard-camera look/video/analyze; Cast speak/status/volume/youtube; Spotify controls; smart plugs plug-list/status/on/off/toggle; air purifier purifier-status and purifier-set (mode sleep/auto/manual/pet, speed 1-4).",
-    promptGuidelines: [
-      "Only use `jarvis` after the `jarvis` tool group has been loaded with load_tools({ groups: [\"jarvis\"] }); then call `jarvis` directly.",
-      "Use `jarvis({ action: \"help\" })` if you are unsure of parameters. Safe checks: `status` with `noCast: true`, or `cast-status` for a specific device.",
-      "Common dashboard-camera calls: `look`; `analyze-view` with `question`; `video` with `duration`; `video-until` with `condition` and bounded `maxDuration`.",
-      "Common Cast calls: `speak` with short `text` on `speakers`; `cast-status`/`cast-stop` on `tv` (`cast-stop` quits the Cast app by default); `cast-volume` with `level` 0..100; `cast-youtube` with `query`; `cast-play-url` with `url`.",
-      "Spotify calls: `cast-spotify-devices` lists currently visible Spotify Connect devices; `cast-spotify` plays a `query`/`spotifyUri` or resumes with `resume:true`; `cast-spotify-pause`, `cast-spotify-next`, `cast-spotify-previous`, and `cast-spotify-volume` control playback. `cast-spotify-queue-add` adds a track/episode using `query` or `spotifyUri` plus optional `spotifyQueueType`; `cast-spotify-queue` reads the current queue; `cast-spotify-seek` seeks with `position`/`timestamp` like 1:30 or `positionMs`; `cast-spotify-shuffle` uses `state` on/off/toggle; `cast-spotify-repeat` uses `repeatState` off/context/track/toggle. Spotify credentials are already loaded from local .env when present; do not ask for or expose secrets.",
-      "Spotify target guide: use `device:\"tv\"` and `device:\"speakers\"` for configured Cast aliases. Use `spotifyDeviceName` for an explicit Spotify Connect target from local private config or from `cast-spotify-devices`. Prefer names over device IDs because Spotify IDs can change.",
-      "Common smart-plug calls: `plug-list`; `plug-status` with `plug`; `plug-on`/`plug-off`/`plug-toggle` with a configured plug name from local private config or from `plug-list`.",
-      "Air purifier calls use exactly two actions: `purifier-status` for all read-only status/filter/air-quality info, and `purifier-set` with `setting` for writes. Supported purifier settings: power, mode, speed, display, child-lock, light-detection, auto-preference, timer. Modes are auto/manual/sleep/pet; fan speeds are 1-4. Use `value` for string values, `level` for speed, `minutes` for timer, and `state` for on/off/toggle where appropriate. VeSync writes may take more than a minute; wait for the tool result and, if it says verification_pending, report accepted/pending and check status later instead of sending fallback commands.",
-      "Always keep camera recording bounded. Keep spoken output brief; put detailed audit text in Discord.",
-    ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS, { description: "Choose one exact action. Use help for a safe machine-readable guide. Common: status, look, video, analyze-view, speak, cast-status, cast-spotify, plug-status, plug-on, plug-off, purifier-status, purifier-set." }),
       device: Type.Optional(StringEnum(DEVICES, { description: "Cast target alias: tv or speakers. Defaults to tv for media/status and speakers for speech/volume/mute/Spotify. Configure the underlying local device names privately." })),
@@ -891,13 +879,6 @@ export default function registerJarvis(pi: ExtensionAPI) {
     name: "smart_plug",
     label: "Smart Plug",
     description: "Simple local-only TP-Link Kasa smart-plug control for Operation JARVIS. Normal calls need only action plus a configured plug alias. Use action=list without plug to see configured plugs. Uses the local network, not TP-Link cloud.",
-    promptSnippet: "Local smart plugs: smart_plug({ action: 'status'|'on'|'off'|'toggle', plug: '<configured-plug-name>' }); smart_plug({ action: 'list' }).",
-    promptGuidelines: [
-      "Use smart_plug for local smart-plug power control instead of shell commands when the user asks to check, switch on, switch off, or toggle configured smart plugs.",
-      "smart_plug normally needs only `{ action: \"status\"|\"on\"|\"off\"|\"toggle\", plug: \"<configured-plug-name>\" }`; use `{ action: \"list\" }` to see configured plugs.",
-      "Map natural phrases to configured plug aliases from local private config before switching power.",
-      "After smart_plug on/off/toggle, summarize the resulting plug state briefly.",
-    ],
     parameters: Type.Object({
       action: StringEnum(SMART_PLUG_ACTIONS, { description: "Operation. Use list to show plugs; status/on/off/toggle with plug for normal control. discover/save-discovery are maintenance actions." }),
       plug: Type.Optional(Type.String({ description: "Plug name or direct IP. Required for status/on/off/toggle. Use action=list to see configured aliases. Natural phrases with spaces are normalized." })),

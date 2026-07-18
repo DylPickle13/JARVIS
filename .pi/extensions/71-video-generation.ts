@@ -664,16 +664,6 @@ export default function registerVideoGeneration(pi: ExtensionAPI) {
     name: "generate_video",
     label: "Generate Video",
     description: `Generate exactly one short local MP4 with synchronized audio on mac-mini-64 using the approved headless LTX-2.3 Q8 MLX model: ${VIDEO_MODEL}. The tool sends the prompt, and optionally a local source image for image-to-audio-video, over SSH; runs ltx-2-mlx on the Mini; copies the MP4 back locally; and returns the local path. No hosted video models or fallback models are used.`,
-    promptSnippet: "Generate a local MP4 with synchronized audio, or image-to-audio-video clip from a local source image, on mac-mini-64 with LTX-2.3 Q8 MLX and copy it back to this project.",
-    promptGuidelines: [
-      "Use generate_video when sir asks to create, generate, render, or make a video locally.",
-      `generate_video uses only ${VIDEO_MODEL}; do not offer or request alternate video models for this tool.`,
-      `Default to the LTX quality profile: aspectRatio ${DEFAULT_ASPECT_RATIO}, size ${DEFAULT_SIZE}, ${DEFAULT_DURATION_SECONDS}s, ${DEFAULT_FPS} fps, pipeline ${DEFAULT_PIPELINE}, and ${DEFAULT_STEPS} stage-1 steps unless sir asks for a specific speed/quality tradeoff.`,
-      "For image-to-audio-video, provide inputImagePath with a local PNG/JPEG/WebP/BMP and describe the desired camera motion, subject motion, ambience, sound effects, and dialogue/audio cues in prompt.",
-      "Use seconds, not frames. The worker converts seconds to LTX-friendly frame counts (33/65/97/129) and caps at 129 frames, about 5.4s at 24 fps.",
-      "Large/default audio-video clips can take a long time on the Mac mini; use pipeline distilled and size small for faster previews.",
-      "Do not use browser video tools, ComfyUI, or shell commands for ordinary local video/audio generation; call generate_video directly.",
-    ],
     parameters: Type.Object({
       prompt: Type.String({ description: "Detailed video prompt to render." }),
       negativePrompt: Type.Optional(Type.String({ description: "Legacy optional negative prompt; LTX worker currently ignores this field." })),

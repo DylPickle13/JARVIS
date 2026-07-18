@@ -176,6 +176,14 @@ function compactTool(tool: any): any {
   return copy;
 }
 
+function compactDeferredToolOutputs(input: any): any {
+  if (!Array.isArray(input)) return input;
+  return input.map((item) => {
+    if (!item || item.type !== "tool_search_output" || !Array.isArray(item.tools)) return item;
+    return { ...item, tools: item.tools.map(compactTool) };
+  });
+}
+
 export default function slimProviderPayload(pi: ExtensionAPI) {
   pi.on("before_agent_start", (event) => {
     const selectedTools = (event as any).systemPromptOptions?.selectedTools ?? pi.getActiveTools();
@@ -189,6 +197,7 @@ export default function slimProviderPayload(pi: ExtensionAPI) {
     return {
       ...payload,
       instructions: typeof payload.instructions === "string" ? compactInstructions(payload.instructions, payload) : payload.instructions,
+      input: compactDeferredToolOutputs(payload.input),
       tools: Array.isArray(payload.tools) ? payload.tools.map(compactTool) : payload.tools,
     };
   });

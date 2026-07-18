@@ -229,11 +229,6 @@ export default function gx10BridgeExtension(pi: ExtensionAPI) {
     name: "gx10_ping",
     label: "GX-10 Ping",
     description: "Connect directly to the BOSS GX-10 over CoreMIDI on mac-mini-16 and report bridge, identity, firmware, endpoint, and generated-schema status. Load with load_tools({ groups: [\"gx10\"] }) before use.",
-    promptSnippet: "Ping the direct GX-10 Lua bridge and return hardware/schema status.",
-    promptGuidelines: [
-      "Use gx10_ping after loading the gx10 group when connection, firmware, endpoint, or schema health should be checked.",
-      "The bridge uses only the standard GX-10 endpoint and fails closed while BOSS Tone Studio is running.",
-    ],
     parameters: Type.Object({
       timeoutSeconds: Type.Optional(Type.Number({ description: "Overall timeout in seconds. Default 15, max 120." })),
       host: Type.Optional(Type.String({ description: `SSH host alias. Default ${DEFAULT_HOST}.` })),
@@ -259,13 +254,6 @@ export default function gx10BridgeExtension(pi: ExtensionAPI) {
     name: "gx10_get",
     label: "GX-10 Semantic Read",
     description: "Read the live GX-10 through the generated semantic layer. One read-only call returns the current memory/patch overview, chain, effects, assignments, controls, system/MIDI/I/O/tuner/EQ settings, IR or memory names, program maps, looper, or schema paths with decoded labels and raw IDs. Defaults to the live temp patch and never enables DT1. Load with load_tools({ groups: [\"gx10\"] }) before use.",
-    promptSnippet: "Read ordinary GX-10 questions semantically; defaults to the current live patch.",
-    promptGuidelines: [
-      "Use gx10_get after loading gx10 for ordinary read questions; prefer it over manually decoding gx10_lua IDs.",
-      "gx10_get is always read-only, defaults to the live temp patch, batches bounded RQ1 reads conservatively, and reports ambiguity instead of guessing.",
-      "Use what=overview for the current patch; assignments returns source/target labels including MIDI CC details; effect requires query when selecting one active effect.",
-      "Use what=get with path or paths only for low-level schema paths. Raw values and paths remain present for auditing.",
-    ],
     parameters: Type.Object({
       what: Type.Optional(Type.Union([
         Type.Literal("overview"), Type.Literal("memory"), Type.Literal("chain"),
@@ -331,11 +319,6 @@ export default function gx10BridgeExtension(pi: ExtensionAPI) {
     name: "gx10_find",
     label: "GX-10 Semantic Find",
     description: "Search generated GX-10 blocks, fields, effect types/parameters, assignment targets, and assignment-source labels without guessing numeric IDs. Results are ranked, paginated, and contain authoritative paths/metadata. Load with load_tools({ groups: [\"gx10\"] }) before use.",
-    promptSnippet: "Find GX-10 semantic paths, effects, parameters, targets, and source labels.",
-    promptGuidelines: [
-      "Use gx10_find after loading gx10 when a semantic name or schema path is unfamiliar; then use gx10_get for the live value.",
-      "gx10_find is metadata-only and reports ranked candidates; do not choose an ambiguous candidate without relevant context.",
-    ],
     parameters: Type.Object({
       query: Type.String({ minLength: 1, description: "Natural semantic search text, such as s-bend trigger or noise suppressor threshold." }),
       limit: Type.Optional(Type.Number({ description: "Results per page. Default 50, max 200." })),
@@ -369,20 +352,6 @@ export default function gx10BridgeExtension(pi: ExtensionAPI) {
     name: "gx10_lua",
     label: "GX-10 Lua",
     description: "Execute unsaved inline Lua against the live BOSS GX-10 through the direct CoreMIDI bridge on mac-mini-16. Use gx10_get/gx10_find for ordinary reads; gx10_lua supports custom reads, RQ1-only gx.plan_edit dry runs, and explicitly approved verified transactions. Load with load_tools({ groups: [\"gx10\"] }) before use.",
-    promptSnippet: "Run inline Lua against the live GX-10; code is not saved.",
-    promptGuidelines: [
-      "Use gx10_lua only after loading the gx10 group. Prefer gx10_get/gx10_find for ordinary read questions; return JSON-safe Lua values here.",
-      "Semantic Lua reads include gx.current_patch(), gx.current_memory(), gx.chain(), gx.effects(), gx.effect(query), gx.assignments(), gx.controls(), gx.overview(), gx.semantic(what,options), gx.find(query), and gx.get_many(paths). Low-level reads remain gx.get(), gx.get_block(), gx.rq1(), and gx.listen().",
-      "For schema-expressible edits, first call gx.plan_edit(spec) with allowWrite=false, show the exact before/after bytes and plan ID, and stop for approval. For save=true, also inspect every whole-block user-memory mirror/diff. After approval, regenerate with expectedPlanId and call tx:apply_plan(plan) inside gx.transaction using the matching save option.",
-      "Use schema paths such as system.common.currentPatchNum, temp.assign[1], temp.fxItem[1].trigger, user[1].common, or inspect paths with gx.schema(query).",
-      "Do not save temporary task scripts; pass complete Lua inline.",
-      "Keep allowWrite false unless sir explicitly requested a GX-10 change in the current conversation.",
-      "Every write must be composed inside gx.transaction(options, function(tx) ... end). Prefer tx:apply_plan for approved semantic plans; tx:set, tx:set_machine, and tx:get_block/tx:set_block remain lower-level escape hatches.",
-      "Inspect the affected fields/blocks first. Use save=true only when sir explicitly asks to persist the change; otherwise changes are temporary memory only.",
-      "The transaction engine snapshots touched blocks, reads every write back, and rolls back on failure. Never bypass it or blindly retry a failed write.",
-      "Avoid tx:write raw addresses unless the schema cannot express a verified operation and the exact documented writable address has been checked. IR and firmware ranges are unavailable.",
-      "API documentation is `/Users/dylanrapanan/gx10-bridge/README.md` on mac-mini-16.",
-    ],
     parameters: Type.Object({
       code: Type.String({ description: "Complete inline Lua. Return a JSON-safe table/string/number/boolean/nil." }),
       allowWrite: Type.Optional(Type.Boolean({ description: "Enable native DT1 for gx.transaction. Defaults false and may be true only for an explicitly requested hardware edit." })),

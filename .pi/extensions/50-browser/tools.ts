@@ -31,8 +31,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_status",
     label: "Browser Status",
     description: "Return status for the lazy visible Chrome browser: launch/attach mode, running state, profile/CDP path, active tab, and open tabs.",
-    promptSnippet: "Inspect the visible browser state and open tabs.",
-    promptGuidelines: ["Use browser_status to check whether the visible browser is already open before opening many tabs."],
     parameters: Type.Object({}),
     async execute() {
       const status = await getBrowser().status();
@@ -44,11 +42,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_open",
     label: "Browser Open",
     description: "Open a URL in the visible Chrome browser through the persistent local Chrome bridge daemon.",
-    promptSnippet: "Open/navigate the visible Chrome browser to a URL.",
-    promptGuidelines: [
-      "Use browser_open only after the browser group has been loaded. Prefer browser_screenshot after navigation to verify the page visually.",
-      "Do not automate logins, purchases, account/security changes, or private content interactions without explicit user confirmation.",
-    ],
     parameters: Type.Object({
       url: Type.String({ description: "URL or domain to open. Domains without a scheme are treated as https://." }),
       newTab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of reusing the active tab." })),
@@ -69,11 +62,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_screenshot",
     label: "Browser Screenshot",
     description: "Capture the current visible browser page as a PNG image for visual reasoning. Supports viewport, full-page, or element screenshots.",
-    promptSnippet: "Take a screenshot of the current browser page; returns an image payload.",
-    promptGuidelines: [
-      "Use browser_screenshot before clicking when you need visual context, and again after significant actions to verify state.",
-      "Prefer viewport screenshots first. Full-page screenshots are heavier; use fullPage only when needed.",
-    ],
     parameters: Type.Object({
       fullPage: Type.Optional(Type.Boolean({ description: "Capture the full scrollable page instead of just the viewport." })),
       selector: Type.Optional(Type.String({ description: "Optional CSS selector for an element-only screenshot." })),
@@ -94,11 +82,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_click",
     label: "Browser Click",
     description: "Click the visible browser page by viewport coordinates, CSS selector, or visible text. Coordinates should come from the latest screenshot.",
-    promptSnippet: "Click in the visible browser by x/y coordinates, selector, or visible text.",
-    promptGuidelines: [
-      "Use browser_click after browser_screenshot when clicking by coordinates; coordinates are viewport pixels from the top-left of the screenshot.",
-      "Prefer selector or visible text when the target is unambiguous; use coordinates for visual-only elements.",
-    ],
     parameters: Type.Object({
       x: Type.Optional(Type.Number({ description: "Viewport x coordinate in pixels from the latest screenshot." })),
       y: Type.Optional(Type.Number({ description: "Viewport y coordinate in pixels from the latest screenshot." })),
@@ -122,8 +105,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_type",
     label: "Browser Type",
     description: "Type text into the focused editable web-page element, or first focus a CSS selector. Fails if no editable element is focused. Supports clearing the field first. For URL navigation, use browser_open instead of typing into the browser address bar.",
-    promptSnippet: "Type text into the focused editable page element or a selected input.",
-    promptGuidelines: ["Prefer browser_type with a selector plus clear:true for replacing input field contents. Without a selector, it only works if an editable field is already focused. Use browser_open for URL/address-bar navigation. Do not enter passwords or private data unless sir explicitly provides them for this action."],
     parameters: Type.Object({
       text: Type.String({ description: "Text to type." }),
       selector: Type.Optional(Type.String({ description: "Optional CSS selector to focus before typing." })),
@@ -143,12 +124,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_upload",
     label: "Browser Upload",
     description: "Upload one or more explicitly approved local files through the visible browser, using an input[type=file] selector or a visible upload control that opens a file chooser.",
-    promptSnippet: "Attach local file(s) to the current page using a file input or upload button.",
-    promptGuidelines: [
-      "Use browser_upload only for files sir has explicitly asked to upload or confirmed are safe to send to the current website.",
-      "Prefer selector: 'input[type=file]' when available. If the page uses a visible upload button, use text or selector for that control.",
-      "After uploading, use browser_screenshot or browser_extract to verify that the file attached successfully before submitting anything.",
-    ],
     parameters: Type.Object({
       path: Type.Optional(Type.String({ description: "Single local file path to upload. Use an absolute path when possible." })),
       paths: Type.Optional(Type.Array(Type.String({ description: "Local file path to upload." }), { description: "Multiple local file paths to upload." })),
@@ -174,7 +149,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_key",
     label: "Browser Key",
     description: "Press a keyboard key or shortcut in the active web page, e.g. Enter, Escape, Tab, ArrowDown, Control+A. Meta+T/Control+T and Meta+W/Control+W are emulated as tab open/close actions. For URL navigation, use browser_open instead of address-bar shortcuts.",
-    promptSnippet: "Press a key or shortcut in the active web page; common tab shortcuts are emulated.",
     parameters: Type.Object({ key: Type.String({ description: "Playwright key name or shortcut, e.g. Enter, Escape, Tab, ArrowDown, Control+A." }) }),
     async execute(_id, params, signal) {
       if (signal?.aborted) throw new Error("browser_key cancelled");
@@ -188,7 +162,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_scroll",
     label: "Browser Scroll",
     description: "Scroll the current browser page with mouse-wheel-like movement.",
-    promptSnippet: "Scroll the current browser page up/down/left/right.",
     parameters: Type.Object({
       direction: Type.Optional(stringEnum(ScrollDirection, { description: "Scroll direction. Defaults to down." })),
       amount: Type.Optional(Type.Number({ description: "Scroll amount in pixels. Defaults to 700; max 3000." })),
@@ -207,7 +180,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_wait",
     label: "Browser Wait",
     description: "Wait for time, visible selector/text, or page load state in the browser.",
-    promptSnippet: "Wait for browser time/selector/text/load state.",
     parameters: Type.Object({
       ms: Type.Optional(Type.Number({ description: "Milliseconds to wait, max 60000." })),
       selector: Type.Optional(Type.String({ description: "CSS selector that must become visible." })),
@@ -226,8 +198,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_extract",
     label: "Browser Extract",
     description: "Extract readable text and optional links from the current browser page or a CSS selector. Safer than arbitrary page evaluation.",
-    promptSnippet: "Extract text/links from the current browser page.",
-    promptGuidelines: ["Use browser_extract when DOM text is more useful than screenshots, especially for long pages, links, and forms."],
     parameters: Type.Object({
       selector: Type.Optional(Type.String({ description: "Optional CSS selector whose text should be extracted." })),
       maxText: Type.Optional(Type.Number({ description: "Maximum text characters, 500-50000. Defaults to 12000." })),
@@ -244,7 +214,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_tabs",
     label: "Browser Tabs",
     description: "List, switch, or close tabs in the visible browser.",
-    promptSnippet: "List/switch/close visible browser tabs.",
     parameters: Type.Object({
       action: stringEnum(TabsAction, { description: "Tab action: list, switch, or close." }),
       index: Type.Optional(Type.Number({ description: "Tab index for switch/close." })),
@@ -260,7 +229,6 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     name: "browser_close",
     label: "Browser Close",
     description: "Close the active tab, or release this tool handle while keeping the persistent Chrome bridge alive.",
-    promptSnippet: "Close browser tab or whole visible browser.",
     parameters: Type.Object({ all: Type.Optional(Type.Boolean({ description: "Close entire browser. Defaults to true. false closes active tab only." })) }),
     async execute(_id, params, signal) {
       if (signal?.aborted) throw new Error("browser_close cancelled");

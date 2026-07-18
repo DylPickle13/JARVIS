@@ -171,16 +171,6 @@ export default function registerAgentPhone(pi: ExtensionAPI) {
     name: "agent_phone",
     label: "Agent Phone",
     description: "Control a configured Android phone through a safe agent-phone CLI wrapper. Pass CLI tokens in args, excluding the binary. Main flow: status, snapshot -i, tap @ref, type text, press BACK/HOME, wait for text, launch apps, screenshot. The target serial and ADB host should be configured locally via environment or global flags.",
-    promptSnippet: "Control the configured Android phone. Example: agent_phone({ args: [\"snapshot\", \"-i\"] }); then tap refs with agent_phone({ args: [\"tap\", \"@3\"] }).",
-    promptGuidelines: [
-      "Use `agent_phone` only after loading the `phone` tool group with `load_tools({ groups: [\"phone\"] })`; then call `agent_phone` directly.",
-      "Call shape: `agent_phone({ args: [\"snapshot\", \"-i\"] })`; `args` are CLI tokens after the `agent-phone` binary, never including `agent-phone` itself.",
-      "Typical control loop: `status` → `snapshot -i` → interact with `@refs` using `tap @ref`, `type`, `press BACK/HOME/ENTER`, or `swipe` → run `snapshot -i` again after every screen change.",
-      "Prefer `tap @ref` from the latest snapshot over raw coordinates; use `tap-text TEXT` for quick text/description/resource-id matches when refs are obvious.",
-      "Use `wait --text ...` after launching apps, opening URLs, or tapping buttons that navigate; use `snapshot -i --image` or `attachImage: true` only when visual pixels are needed, because screenshots add image payload.",
-      "Do not use bash/raw ADB for phone control unless explicitly debugging the adapter. The adapter intentionally does not expose raw shell, APK install, SMS/calls, purchases, or account/security changes.",
-      "Before sending messages/calls, buying anything, deleting data, changing accounts/security settings, or interacting with private content, stop and ask for explicit confirmation.",
-    ],
     parameters: Type.Object({
       args: Type.Array(Type.String(), {
         minItems: 1,

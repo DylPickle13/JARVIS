@@ -352,10 +352,11 @@ else
 fi
 
 if command -v node >/dev/null 2>&1; then
-  run_check "lazy-tool registry and provider description stay synchronized" node - <<'NODE'
+  run_check "lazy-tool registry, deferred loading, and provider slimming stay synchronized" node - <<'NODE'
 const fs = require('fs');
 const lazy = fs.readFileSync('.pi/extensions/99-lazy-tools.ts', 'utf8');
 const slim = fs.readFileSync('.pi/extensions/98-slim-provider-payload.ts', 'utf8');
+const memory = fs.readFileSync('.pi/extensions/35-memory.ts', 'utf8');
 
 function recordKeys(name) {
   const match = lazy.match(new RegExp(`const ${name}[^=]*= \\{([\\s\\S]*?)\\n\\};`));
@@ -379,17 +380,15 @@ assertSameGroups('CanonicalToolGroup', toolGroups, canonicalGroups);
 assertSameGroups('GROUP_SUMMARIES', toolGroups, recordKeys('GROUP_SUMMARIES'));
 assertSameGroups('GROUP_GUIDANCE', toolGroups, recordKeys('GROUP_GUIDANCE'));
 
-const compactMatch = lazy.match(/const lines: Record<GuidanceGroup, string> = \{([\s\S]*?)\n  \};/);
-if (!compactMatch) throw new Error('Could not find compact guidance map');
-const compactGroups = [...compactMatch[1].matchAll(/^    ([a-z][a-z0-9_]*):/gm)].map((item) => item[1]);
-assertSameGroups('compact guidance', toolGroups, compactGroups);
-
 for (const required of [
   'GROUP_NAMES.map((name) => `${name}=${GROUP_SUMMARIES[name]}`)',
   'description: LOAD_TOOLS_DESCRIPTION',
   'promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET',
   'const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name.',
   'Available groups: ${LOADABLE_GROUPS_TEXT}',
+  'const addedToolNames = unlockedToolNames.filter((name) => !activeBefore.includes(name));',
+  'pi.setActiveTools(activeTools);',
+  'buildGuidanceSection(expandedGroups, "JARVIS loaded-tool guidance")',
 ]) {
   if (!lazy.includes(required)) throw new Error(`Missing canonical description wiring: ${required}`);
 }
@@ -399,8 +398,46 @@ if (!overridesMatch) throw new Error('Could not find TOOL_DESCRIPTION_OVERRIDES'
 if (/^\s*load_tools\s*:/m.test(overridesMatch[1])) {
   throw new Error('98-slim-provider-payload.ts must not override the registry-generated load_tools description');
 }
+if (!slim.includes('item.type !== "tool_search_output"') || !slim.includes('input: compactDeferredToolOutputs(payload.input)')) {
+  throw new Error('98-slim-provider-payload.ts must compact deferred OpenAI tool_search_output schemas');
+}
 
-console.log(`canonical lazy groups (${toolGroups.length}): ${toolGroups.join(', ')}, all`);
+for (const forbidden of [
+  'primeExecutionToolSet',
+  'filterProviderPayload',
+  'pi.on("before_provider_request"',
+  'pi.on("before_agent_start"',
+  'pi.on("agent_end"',
+]) {
+  if (lazy.includes(forbidden)) throw new Error(`Legacy lazy-tool cache invalidator remains: ${forbidden}`);
+}
+if (memory.includes('pi.on("before_agent_start"')) {
+  throw new Error('35-memory.ts must not inject prompt-time memory into the system prompt');
+}
+
+const optionalToolFiles = [
+  '.pi/extensions/10-discord-cron.ts',
+  '.pi/extensions/15-discord-send-file.ts',
+  '.pi/extensions/16-discord-ping.ts',
+  '.pi/extensions/20-session-search.ts',
+  '.pi/extensions/30-google-access.ts',
+  '.pi/extensions/35-memory.ts',
+  '.pi/extensions/45-jarvis.ts',
+  '.pi/extensions/48-agent-phone.ts',
+  '.pi/extensions/50-browser/tools.ts',
+  '.pi/extensions/58-reaper-bridge.ts',
+  '.pi/extensions/59-gx10-bridge.ts',
+  '.pi/extensions/70-image-generation.ts',
+  '.pi/extensions/71-video-generation.ts',
+];
+for (const path of optionalToolFiles) {
+  const source = fs.readFileSync(path, 'utf8');
+  if (source.includes('promptSnippet:') || source.includes('promptGuidelines:')) {
+    throw new Error(`${path} contains active-only prompt metadata; move guidance into GROUP_GUIDANCE`);
+  }
+}
+
+console.log(`canonical lazy groups (${toolGroups.length}): ${toolGroups.join(', ')}, all; additive deferred loading enabled`);
 NODE
 fi
 
