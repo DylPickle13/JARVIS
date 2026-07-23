@@ -392,6 +392,7 @@ const OMLX_PREFILL_MEMORY_GUARD_PATTERNS = [
 	/oMLX prefill memory guard rejected/i,
 	/Prefill would require ~?[\d.]+\s*(?:[KMGT]i?B|[KMGT]?B)? peak.*\bKV\+SDPA\b.*\bceiling\b/i,
 	/Prefill would require .* but .* ceiling is .*reduce context length/i,
+	/Prefill context too large for available memory.*\bpreflight safety guard\b.*\bprefill safety cap\b.*\breduce context length\b/i,
 ];
 
 const OMLX_PROMPT_TOO_LONG_PATTERNS = [
