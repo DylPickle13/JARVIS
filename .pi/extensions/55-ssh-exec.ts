@@ -855,7 +855,7 @@ export default function registerSsh(pi: ExtensionAPI) {
       "Command content is unrestricted. action:'exec' captures a command to completion. In local Pi TUI, pty:true attaches the real terminal for editors, pagers, tmux, sudo prompts, and live UIs.",
       "In Discord/RPC, use action:'start' with command to create a stateful PTY, then action:'read', action:'input' with input and/or key, action:'resize', action:'signal', and action:'close' using the returned sessionId.",
       "For line input, send input plus key:'ENTER'. Supported named keys include ENTER, TAB, ESC, arrows, BACKSPACE, CTRL_C, CTRL_D, CTRL_Z, and CTRL_L.",
-      "Use minecraft_jarvis, not ssh, when the user wants to talk to or command an in-game Minecraft jarvis bot in plain language.",
+      "For in-game Minecraft jarvis bot chat/control, load the `minecraft_jarvis` tool group and use `minecraft_jarvis`; do not substitute SSH.",
       "Never use ssh to start, stop, or restart long-running services unless sir explicitly asks in that moment.",
     ],
     parameters: Type.Object({

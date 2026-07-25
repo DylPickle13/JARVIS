@@ -304,11 +304,7 @@ export default function registerGithubCli(pi: ExtensionAPI) {
   pi.registerTool({
     name: "github_cli",
     label: "GitHub CLI",
-    description: "Run the official GitHub CLI (`gh`) with args passed as tokens after the binary. The tool loads GITHUB_TOKEN/GH_TOKEN from the local .env, exports it as GH_TOKEN, redacts token-like output, disables prompts, and blocks token-printing/auth commands plus dangerous mutations unless allowDangerous is true.",
-    promptSnippet: "GitHub/`gh` => github_cli; args are tokens after `gh`.",
-    promptGuidelines: [
-      "GitHub/`gh` => always-on `github_cli`; never bash `gh`. Local `git` status/diff/add/commit/log/branch => bash. If `github_cli` unavailable, report tool failure.",
-    ],
+    description: "Run the official GitHub CLI (`gh`) with args passed as tokens after the binary. The tool loads GITHUB_TOKEN/GH_TOKEN from the local .env, exports it as GH_TOKEN, redacts token-like output, disables prompts, and blocks token-printing/auth commands plus dangerous mutations unless allowDangerous is true. Load this tool with load_tools({ groups: [\"github\"] }) before use.",
     parameters: Type.Object({
       args: Type.Array(Type.String(), {
         minItems: 1,

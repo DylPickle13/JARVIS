@@ -8,6 +8,7 @@ type CanonicalToolGroup =
   | "video"
   | "jarvis"
   | "minecraft_jarvis"
+  | "github"
   | "phone"
   | "google"
   | "cron"
@@ -32,9 +33,7 @@ const ALWAYS_ON_TOOLS = [
   "web_search",
   "fetch_content",
   "get_search_content",
-  "minecraft_jarvis",
   "maps",
-  "github_cli",
   "load_tools",
 ] as const;
 
@@ -45,6 +44,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   video: ["generate_video"],
   jarvis: ["jarvis", "smart_plug"],
   minecraft_jarvis: ["minecraft_jarvis"],
+  github: ["github_cli"],
   phone: ["agent_phone"],
   google: ["google_workspace"],
   cron: ["discord_cron"],
@@ -75,6 +75,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   video: "generate_video for local LTX-2.3 Q8 MLX audio-video generation or image-to-audio-video clips",
   jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, local smart plugs, and VeSync/Levoit air purifier control",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
+  github: "github_cli for guarded official GitHub CLI access using the configured local token",
   phone: "agent_phone for safe LG-H933 Android phone control via ADB refs/screenshots",
   google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
   cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
@@ -88,8 +89,8 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
 const GROUP_NAMES = Object.keys(TOOL_GROUPS) as ConcreteToolGroup[];
 const GROUP_NAMES_WITH_ALL_TEXT = [...GROUP_NAMES, "all"].join(", ");
 const LOADABLE_GROUPS_TEXT = `${GROUP_NAMES.map((name) => `${name}=${GROUP_SUMMARIES[name]}`).join("; ")}; all=all loadable groups`;
-const BASELINE_TOOLS_TEXT = "coding, ssh, web_search/fetch_content/get_search_content, minecraft_jarvis, maps, github_cli";
-const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name. Always-on baseline: ${BASELINE_TOOLS_TEXT}. Available groups: ${LOADABLE_GROUPS_TEXT}. Optional schemas stay visible for this Pi session after loading; minecraft_jarvis is already always on.`;
+const BASELINE_TOOLS_TEXT = "coding, ssh, web_search/fetch_content/get_search_content, maps";
+const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name. Always-on baseline: ${BASELINE_TOOLS_TEXT}. Available groups: ${LOADABLE_GROUPS_TEXT}. Optional schemas stay visible for this Pi session after loading.`;
 const LOAD_TOOLS_PROMPT_SNIPPET = `Load optional tool groups by exact name: ${GROUP_NAMES_WITH_ALL_TEXT}.`;
 
 const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly string[] }> = {
@@ -163,8 +164,19 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   minecraft_jarvis: {
     skill: "minecraft-jarvis",
     lines: [
-      "Use `minecraft_jarvis({ message })` directly for Minecraft bot chat/control; always on, no `load_tools` needed.",
-      "Do not substitute SSH/shell/slash commands; keep messages short, plain-language, and non-destructive.",
+      "Use `minecraft_jarvis` only after loading the `minecraft_jarvis` group when the user wants to command or talk to the Minecraft jarvis bot from this Pi session instead of typing in Minecraft.",
+      "Pass the user's plain-language instruction in `message`; do not pre-interpret it into Minecraft bot tools. The configured local Pi RPC agent decides whether to respond or act within its safe Mineflayer toolset.",
+      "Keep messages short and non-destructive. The local Minecraft Pi agent currently starts with safe tools only: chat, observe/status, players, inventory, movement/follow/stop, block search, simple mining, and simple crafting.",
+      "Do not substitute SSH, shell, or slash commands for `minecraft_jarvis`.",
+    ],
+  },
+  github: {
+    skill: "guarded GitHub CLI",
+    lines: [
+      "For GitHub or `gh` work, load the `github` group and use `github_cli`; never run `gh` through `bash`. If the unlocked tool is unavailable, report the tool failure.",
+      "Pass `args` as CLI tokens after the `gh` binary. Never include GitHub tokens, Authorization headers, or secrets; the tool loads and redacts its configured token.",
+      "Use local `bash` for ordinary repository-local `git` status, diff, add, commit, log, and branch operations.",
+      "Set `allowDangerous: true` only after explicit confirmation for dangerous GitHub mutations; token-printing and unsafe auth commands remain blocked.",
     ],
   },
   cron: {
@@ -361,7 +373,7 @@ export default function lazyTools(pi: ExtensionAPI) {
     description: LOAD_TOOLS_DESCRIPTION,
     promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET,
     promptGuidelines: [
-      "Call load_tools before any optional group listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. For direct BOSS GX-10 work, load `gx10`, prefer `gx10_get`/`gx10_find` for reads, and retain `gx10_lua` for low-level/custom work. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, camera/view, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => always-on `github_cli`; never bash `gh`. Local `git` status/diff/add/commit/log/branch => bash. If `github_cli` unavailable, report tool failure. For Google intents, load `google`. Web/search/fetch, github_cli, minecraft_jarvis, maps, and ssh are always on; no removed-tool aliases.",
+      "Call load_tools before any optional group listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. For direct BOSS GX-10 work, load `gx10`, prefer `gx10_get`/`gx10_find` for reads, and retain `gx10_lua` for low-level/custom work. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, camera/view, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
       "Web: `web_search`=discover (`provider: \"youtube\"` for YouTube), `fetch_content`=static, `get_search_content`=stored. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",

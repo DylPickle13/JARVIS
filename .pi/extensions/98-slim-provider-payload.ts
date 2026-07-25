@@ -52,10 +52,12 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   code_search: "Search external code/docs/API examples.",
   fetch_content: "Fetch/extract URL(s)/GitHub/YouTube/local video; batch selected research URLs in one urls array.",
   get_search_content: "Retrieve stored search/fetch content by responseId.",
-  minecraft_jarvis: "Minecraft bot chat/control; use direct short plain messages; no SSH/shell/slash.",
   maps: "Ask Google Maps about places, addresses, coordinates, routes, travel time, or local searches.",
   // Keep load_tools out of this override map: 99-lazy-tools.ts generates its
   // provider-visible description from the canonical group registry.
+  // Optional lazy-loaded tools: preserve terse top-level descriptions.
+  minecraft_jarvis: "Minecraft bot chat/control; use direct short plain messages; no SSH/shell/slash.",
+  github_cli: "Run official gh CLI with args; loads GitHub token from .env and redacts it.",
   agent_phone: "Android phone control via safe CLI-token args.",
   jarvis: "Operation JARVIS dashboard/camera/Cast/Spotify/air-purifier helper.",
   smart_plug: "Local smart-plug control.",
@@ -76,7 +78,6 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   browser_extract: "Extract readable text and optional links from current Chrome page.",
   browser_tabs: "List, switch, or close visible Chrome tabs.",
   browser_close: "Close active Chrome tab or entire browser.",
-  github_cli: "Run official gh CLI with args; loads GitHub token from .env and redacts it.",
 };
 
 function stripNestedSchemaMetadata(value: any): any {
@@ -122,9 +123,10 @@ const SCHEMA_STRIP_TOOLS = new Set([
   "fetch_content",
   "get_search_content",
   "load_tools",
-  "minecraft_jarvis",
   "maps",
   // Optional lazy-loaded tools: preserve top-level descriptions, strip nested prose.
+  "minecraft_jarvis",
+  "github_cli",
   "agent_phone",
   "jarvis",
   "smart_plug",
@@ -145,7 +147,6 @@ const SCHEMA_STRIP_TOOLS = new Set([
   "browser_extract",
   "browser_tabs",
   "browser_close",
-  "github_cli",
 ]);
 
 function compactTool(tool: any): any {

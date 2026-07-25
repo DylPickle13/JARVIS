@@ -210,7 +210,7 @@ After the SSH schema trim and safe-bundle trim, a fresh baseline capture showed 
 - Full provider payload: `8,545` chars
 - Rough static prompt/tool baseline: about `~2.1k` token-ish by chars/4
 
-The current 2026-06-24 tool surface also includes always-on `maps`, `minecraft_jarvis`, `ssh`, web/fetch tools, and lazy browser/Discord/Google/phone/session groups. Rerun Method B after prompt-slimming changes to capture a fresh exact component breakdown.
+The tool surface now keeps `maps`, `ssh`, and web/fetch tools always on while Minecraft bot control, GitHub CLI access, browser, Discord, Google, phone, and session tools are lazy groups. Rerun Method B after prompt-slimming changes to capture a fresh exact component breakdown.
 
 Previous pre-slimming captures were roughly:
 
@@ -222,7 +222,7 @@ Previous pre-slimming captures were roughly:
 
 - Do not commit or publish captured provider payloads. They can contain local context, memories, and prompt text.
 - The capture command starts a fresh non-session Pi run. It measures the baseline visible tool set, not optional groups loaded in an existing interactive session.
-- Baseline currently includes project always-on tools such as `ssh`, web/fetch tools, `minecraft_jarvis`, `maps`, and `load_tools`; use `/load-tools` in an interactive session if you need to measure optional groups separately.
+- Baseline currently includes project always-on tools such as `ssh`, web/fetch tools, `maps`, and `load_tools`; use `/load-tools` in an interactive session if you need to measure optional groups such as `minecraft_jarvis` or `github` separately.
 - To measure exact provider tokens, use Method A after a real request. To see what contributes to size, use Method B.
 - If prompt caching is active, use `effectiveInput = input + cacheRead + cacheWrite` for full effective input.
 - Durable memory is explicit-only and does not mutate the system prompt. Load/search the `memory` tool when a task needs stored context.

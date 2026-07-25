@@ -48,9 +48,7 @@ Always-on/baseline tools exposed by this project include local coding tools plus
 
 - `ssh`
 - `web_search`, `fetch_content`, `get_search_content`
-- `minecraft_jarvis`
 - `maps`
-- `github_cli`
 - `load_tools`
 
 Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-tools`:
@@ -62,6 +60,8 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `image` | `generate_image` |
 | `video` | `generate_video` |
 | `jarvis` | `jarvis`, `smart_plug` |
+| `minecraft_jarvis` | `minecraft_jarvis` |
+| `github` | `github_cli` |
 | `phone` | `agent_phone` |
 | `google` | `google_workspace` |
 | `cron` | `discord_cron` |
@@ -81,7 +81,7 @@ The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify 
 
 The `gx10` group uses the canonical `/Users/dylanrapanan/gx10-bridge` Git repository on mac-mini-16. Prefer read-only `gx10_get` for ordinary live-patch questions and `gx10_find` for semantic discovery; `gx10_lua` remains the planning/custom/low-level escape hatch. Semantic edits first use RQ1-only `gx.plan_edit`, then require exact plan-ID approval before `tx:apply_plan` can queue a matching verified transaction. The native host uses only the standard GX-10 CoreMIDI endpoint, generates versioned semantic metadata from installed Tone Studio resources, and permits explicit writes only through snapshot/readback/rollback transactions. Its API documentation is the remote repository's `README.md`.
 
-`minecraft_jarvis` remains accepted as a compatibility group but the tool is already always on.
+Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: load `minecraft_jarvis` before calling `minecraft_jarvis`, or load `github` before calling `github_cli`. Ordinary local `git` operations continue to use the baseline coding shell.
 
 ## SSH execution and interactive terminals
 

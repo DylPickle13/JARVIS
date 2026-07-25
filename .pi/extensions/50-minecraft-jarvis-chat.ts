@@ -118,13 +118,7 @@ export default function registerMinecraftJarvisChat(pi: ExtensionAPI) {
   pi.registerTool({
     name: "minecraft_jarvis",
     label: "Minecraft jarvis",
-    description: "Send a plain-language prompt to a configured Minecraft jarvis bot on a private Paper server. The bot forwards chat to a local Pi RPC agent, which uses safe Mineflayer tools to converse or act.",
-    promptSnippet: "Prompt the local Minecraft Pi agent through jarvis: minecraft_jarvis({ message: 'come here' }) or minecraft_jarvis({ message: 'tell me a joke' }).",
-    promptGuidelines: [
-      "Use minecraft_jarvis when the user wants to command or talk to the Minecraft jarvis bot from this Pi session instead of typing in Minecraft.",
-      "Pass the user's plain-language instruction in message; do not pre-interpret it into Minecraft bot tools. The configured local Pi RPC agent decides whether to respond or act within its safe Mineflayer toolset.",
-      "Keep messages short and non-destructive. The local Minecraft Pi agent currently starts with safe tools only: chat, observe/status, players, inventory, movement/follow/stop, block search, simple mining, and simple crafting.",
-    ],
+    description: "Send a plain-language prompt to a configured Minecraft jarvis bot on a private Paper server. The bot forwards chat to a local Pi RPC agent, which uses safe Mineflayer tools to converse or act. Load this tool with load_tools({ groups: [\"minecraft_jarvis\"] }) before use.",
     parameters: Type.Object({
       message: Type.String({ description: "Plain-language chat message/instruction for the in-game jarvis bot, e.g. 'tell me a joke', 'come here', or 'describe what is around you'." }),
       from: Type.Optional(Type.String({ description: "Displayed sender in the fake chat line. Defaults to JARVIS_MINECRAFT_FROM or a generic player name." })),
