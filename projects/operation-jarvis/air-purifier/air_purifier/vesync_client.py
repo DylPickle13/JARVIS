@@ -343,12 +343,10 @@ class AirPurifierController:
         raise AirPurifierError(f"Could not find air purifier {selector!r}. Found: {names or 'none'}")
 
     async def _purifiers(self, manager: Any) -> list[Any]:
+        # get_devices() is sufficient for discovery. manager.update() would fetch the
+        # same device list again and update every account device before the selected
+        # purifier is updated, multiplying VeSync traffic for every CLI invocation.
         await manager.get_devices()
-        try:
-            await manager.update()
-        except Exception:
-            # Keep discovery failures visible through individual update/status calls.
-            pass
         devices = getattr(manager, "devices", None)
         purifiers = list(getattr(devices, "air_purifiers", []) or [])
         return purifiers
@@ -357,7 +355,24 @@ class AirPurifierController:
     async def _session(self):
         manager = self._manager()
         async with manager as active_manager:
-            await active_manager.login()
+            # CLI calls are short-lived, so persist VeSync's token between processes.
+            # Repeating the two-request password login for every dashboard poll can
+            # trigger VeSync's REQUEST_HIGH throttle even with few control writes.
+            if self.settings.auth_path.exists():
+                try:
+                    self.settings.auth_path.chmod(0o600)
+                except OSError:
+                    pass
+            authenticated = await active_manager.load_credentials_from_file(self.settings.auth_path)
+            if not authenticated:
+                await active_manager.login()
+                if getattr(active_manager, "enabled", False):
+                    self.settings.auth_path.parent.mkdir(parents=True, exist_ok=True)
+                    await active_manager.save_credentials(self.settings.auth_path)
+                    try:
+                        self.settings.auth_path.chmod(0o600)
+                    except OSError:
+                        pass
             if not getattr(active_manager, "enabled", False):
                 raise AirPurifierError("VeSync login failed. Check VESYNC_EMAIL/VESYNC_PASSWORD and region settings.")
             yield active_manager

@@ -18,6 +18,7 @@ def find_repo_root(start: Path = AIR_PURIFIER_ROOT) -> Path:
 
 REPO_ROOT = find_repo_root()
 DEFAULT_ENV_PATH = AIR_PURIFIER_ROOT / ".env"
+DEFAULT_AUTH_PATH = AIR_PURIFIER_ROOT / ".vesync_auth"
 OPERATION_ENV_PATH = OPERATION_ROOT / ".env"
 REPO_ENV_PATH = REPO_ROOT / ".env"
 
@@ -30,6 +31,7 @@ class Settings:
     time_zone: str
     default_device: str | None
     write_wait_seconds: float
+    auth_path: Path
 
     @property
     def has_credentials(self) -> bool:
@@ -102,4 +104,5 @@ def load_settings() -> Settings:
         time_zone=os.environ.get("VESYNC_TIME_ZONE") or "America/Toronto",
         default_device=default_device,
         write_wait_seconds=float(os.environ.get("JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS", "150") or "150"),
+        auth_path=Path(os.environ.get("JARVIS_AIR_PURIFIER_AUTH_PATH") or DEFAULT_AUTH_PATH).expanduser(),
     )

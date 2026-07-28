@@ -87,6 +87,8 @@ def _doctor_payload() -> dict[str, Any]:
     return {
         "ok": bool(deps.python_ok and deps.pyvesync_installed),
         "env_path": str(DEFAULT_ENV_PATH),
+        "auth_path": str(settings.auth_path),
+        "auth_token_cached": settings.auth_path.is_file(),
         "credentials_configured": settings.has_credentials,
         "default_device": settings.default_device,
         "country_code": settings.country_code,
@@ -115,6 +117,7 @@ def _print_doctor(as_json: bool = False) -> None:
     print(f"write wait: {payload['write_wait_seconds']}s")
     print(f"default device: {payload['default_device'] or '<first discovered purifier>'}")
     print(f"env file: {payload['env_path']}")
+    print(f"cached auth token: {'present' if payload['auth_token_cached'] else 'missing'} ({payload['auth_path']})")
 
 
 def build_parser() -> argparse.ArgumentParser:

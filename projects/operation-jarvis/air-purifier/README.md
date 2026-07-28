@@ -37,6 +37,8 @@ JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS=150
 
 `JARVIS_AIR_PURIFIER_NAME` is optional if there is only one purifier on the account.
 
+The CLI caches VeSync's access token in the ignored `air-purifier/.vesync_auth` file and reuses it across dashboard/tool processes. Set `JARVIS_AIR_PURIFIER_AUTH_PATH` to override that private path. This avoids repeated password logins and VeSync's `REQUEST_HIGH` throttle; never commit the token file.
+
 VeSync writes may take several seconds, and occasionally more than a minute, to appear in status polling. The CLI waits up to `JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS` after write commands so returned status is less likely to be stale. If VeSync accepts a write but status is still stale at the deadline, the command exits successfully with `verification_pending: true` instead of treating the accepted write as a hard failure.
 
 ## Safe local check
