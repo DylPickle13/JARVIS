@@ -102,6 +102,7 @@ DISCORD_VOICE_CHANNEL_NAME = (
 ).strip().lower()
 QWEN35_9B_PROVIDER = "omlx"
 QWEN35_9B_MODEL_ID = "Qwen3.5-9B-4bit"
+QWEN36_FABLEVIBES_Q4_MODEL = "omlx/Qwen3.6-14B-A3B-FableVibes-mlx-q4"
 QWEN35_9B_COMPAT_MODEL_RE = re.compile(r"(?:^|/)Qwen3\.5-9B(-oQ[56]-mtp|-4bit)$", re.IGNORECASE)
 DISCORD_TEXT_QWEN35_9B_MODEL = config.get_str_env(
     "DISCORD_TEXT_QWEN35_9B_MODEL",
@@ -116,6 +117,7 @@ DISCORD_EXTRA_PI_MODEL_OPTIONS = tuple(
         model
         for model in (
             f"{QWEN35_9B_PROVIDER}/{QWEN35_9B_MODEL_ID}",
+            QWEN36_FABLEVIBES_Q4_MODEL,
             DISCORD_TEXT_QWEN35_9B_MODEL,
             DISCORD_VOICE_QWEN35_9B_MODEL,
         )
@@ -994,6 +996,16 @@ class JarvisDiscordBot:
             model = _coerce_model_for_channel(model, channel_key, channel)
             if model and model not in DISCORD_HIDDEN_PI_MODEL_OPTIONS and model not in models:
                 models.append(model)
+
+        if QWEN36_FABLEVIBES_Q4_MODEL in models:
+            models.remove(QWEN36_FABLEVIBES_Q4_MODEL)
+            qwen35_9b_index = next(
+                (index for index, model in enumerate(models) if _is_qwen35_9b_model(model)),
+                None,
+            )
+            insert_at = qwen35_9b_index + 1 if qwen35_9b_index is not None else len(models)
+            models.insert(insert_at, QWEN36_FABLEVIBES_Q4_MODEL)
+
         return models, current_model
 
     def _model_options_for_channel(
