@@ -521,7 +521,9 @@ section "Runtime data presence only"
 warn_file "memory DB present" ".pi/memory/memory.sqlite"
 warn_file "session-search index present" ".pi/session-search/index.sqlite"
 warn_file "discord-cron DB present" ".pi/discord-cron/discord-cron.sqlite"
-warn_file "Pi sessions directory present" "$HOME/.pi/agent/sessions/--Users-gemma-JARVIS--"
+pi_session_dir_name="--${PWD#/}--"
+pi_session_dir_name="${pi_session_dir_name//\//-}"
+warn_file "Pi sessions directory present" "$HOME/.pi/agent/sessions/$pi_session_dir_name"
 
 section "Env key audit (names only, values never printed)"
 if [[ -n "$PYTHON_BIN" ]]; then
