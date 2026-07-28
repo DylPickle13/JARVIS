@@ -51,7 +51,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   discord: ["discord_ping", "discord_send_file"],
   sessions: ["session_search"],
   reaper: ["reaper_ping", "reaper_lua"],
-  gx10: ["gx10_ping", "gx10_get", "gx10_find", "gx10_lua"],
+  gx10: ["gx10_ping", "gx10_get", "gx10_find", "gx10_ir_plan", "gx10_ir_apply", "gx10_lua"],
   browser: [
     "browser_status",
     "browser_open",
@@ -82,7 +82,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
   sessions: "session_search over prior Pi/JARVIS sessions",
   reaper: "reaper_ping/reaper_lua for the live REAPER session on mac-mini-16 via inline Lua bridge",
-  gx10: "gx10_get/gx10_find semantic reads plus gx10_ping/gx10_lua for direct BOSS GX-10 CoreMIDI access",
+  gx10: "GX-10 semantic reads plus guarded existing-WAV IR upload/removal and direct CoreMIDI access",
   browser: "visible Chrome for rendered/interactive web: screenshots/clicks/typing/uploads/extract",
 };
 
@@ -231,13 +231,14 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   gx10: {
     skill: "direct GX-10 semantic/CoreMIDI bridge",
     lines: [
-      "Use `gx10_get`, `gx10_find`, `gx10_ping`, and `gx10_lua` only after loading the `gx10` group; these tools connect directly to the standard BOSS GX-10 CoreMIDI endpoint on mac-mini-16, not REAPER or DAW CTRL.",
+      "Use `gx10_get`, `gx10_find`, `gx10_ping`, `gx10_ir_plan`, `gx10_ir_apply`, and `gx10_lua` only after loading the `gx10` group; these tools connect directly to the standard BOSS GX-10 CoreMIDI endpoint on mac-mini-16, not REAPER or DAW CTRL.",
       "For ordinary questions, use read-only `gx10_get` first (current live temp patch by default); `what=overview` reads the current patch, `assignments` preserves source/target labels, and `what=get` is only for exact low-level paths. Use `gx10_find` to resolve unfamiliar semantic names. Both preserve decoded labels/raw IDs and report ambiguity rather than guessing.",
       "Use `gx10_lua` only as the custom/planning/low-level escape hatch. Semantic Lua reads include `gx.current_patch()`, `gx.chain()`, `gx.effects()`, `gx.assignments()`, `gx.controls()`, `gx.semantic()`, `gx.find()`, and `gx.get_many()`; low-level reads remain `gx.get()`, `gx.get_block()`, `gx.rq1()`, and `gx.listen()`.",
       "For unfamiliar paths, use `gx10_find` or inspect with `gx.schema(query)` rather than guessing. API documentation is `/Users/dylanrapanan/gx10-bridge/README.md` on mac-mini-16.",
       "Keep `allowWrite:false` unless sir explicitly requested a GX-10 edit in the current conversation. For semantic edits, dry-run `gx.plan_edit(spec)`, show its exact plan ID (and every whole-block mirror for save=true), then stop for approval; regenerate with `expectedPlanId` and use `tx:apply_plan(plan)` inside a matching `gx.transaction`. Never blindly retry a failed write.",
+      "IR support is deliberately limited to `gx10_ir_plan` and `gx10_ir_apply`: upload one existing WAV to one slot, or remove one slot by restoring BOSS's exact factory placeholder. Always show the dry-run plan ID and stop for explicit approval before `gx10_ir_apply`; never use raw writes for IR storage.",
       "Use `tx:set` for schema fields, `tx:set_machine` for exact stored values, and `tx:get_block`/`tx:set_block` for byte-exact moves or copies. Avoid raw `tx:write` unless a documented address was verified and no schema path exists.",
-      "The bridge fails closed while Tone Studio is running, snapshots touched blocks, verifies readback, and rolls back on failure. IR transfer and firmware writes are intentionally unavailable.",
+      "The bridge fails closed while Tone Studio is running, snapshots touched blocks, verifies readback, and rolls back on failure. IR creation/editing/export and firmware writes remain unavailable.",
     ],
   },
   browser: {

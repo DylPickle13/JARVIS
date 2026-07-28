@@ -6,6 +6,8 @@ const DEFAULT_HOST = "mac-mini-llm-16gb";
 const DEFAULT_REMOTE_DIR = "/Users/dylanrapanan/gx10-bridge";
 const DEFAULT_TIMEOUT_SECONDS = 15;
 const DEFAULT_SEMANTIC_TIMEOUT_SECONDS = 30;
+const DEFAULT_IR_REMOVE_TIMEOUT_SECONDS = 60;
+const DEFAULT_IR_UPLOAD_TIMEOUT_SECONDS = 120;
 const MAX_TIMEOUT_SECONDS = 120;
 
 const SEMANTIC_READS = [
@@ -349,12 +351,94 @@ export default function gx10BridgeExtension(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "gx10_ir_plan",
+    label: "GX-10 IR Plan",
+    description: "Create a read-only, approval-required plan to upload one existing WAV IR to a GX-10 user slot or remove one IR by restoring the exact BOSS factory placeholder. This never writes hardware and does not create or edit IR audio.",
+    parameters: Type.Object({
+      operation: Type.Union([Type.Literal("upload"), Type.Literal("remove")], { description: "The only supported IR operations." }),
+      slot: Type.Number({ minimum: 1, maximum: 16, description: "GX-10 user IR slot, 1 through 16." }),
+      path: Type.Optional(Type.String({ description: "Absolute WAV path on mac-mini-16; required only for upload." })),
+      timeoutSeconds: Type.Optional(Type.Number({ description: "Overall timeout. Default 120 seconds for upload and 60 for remove; max 120." })),
+      host: Type.Optional(Type.String({ description: `SSH host alias. Default ${DEFAULT_HOST}.` })),
+      remoteDir: Type.Optional(Type.String({ description: `Remote gx10-bridge directory. Default ${DEFAULT_REMOTE_DIR}.` })),
+    }),
+    async execute(_id, params, signal) {
+      const path = params.path?.trim();
+      if (params.operation === "upload" && !path) throw new Error("GX-10 IR upload planning requires an absolute WAV path");
+      if (params.operation === "remove" && path) throw new Error("GX-10 IR removal does not accept a WAV path");
+      const spec = { slot: params.slot, path: params.operation === "upload" ? path : undefined };
+      const helper = params.operation === "upload" ? "plan_ir_upload" : "plan_ir_remove";
+      const timeoutSeconds = params.timeoutSeconds ?? (params.operation === "upload" ? DEFAULT_IR_UPLOAD_TIMEOUT_SECONDS : DEFAULT_IR_REMOVE_TIMEOUT_SECONDS);
+      const result = await runBridge({
+        host: params.host,
+        remoteDir: params.remoteDir,
+        timeoutSeconds,
+        command: "run",
+        code: `return gx.${helper}(${luaLiteral(spec)})`,
+        allowWrite: false,
+        signal,
+      });
+      const parsed = parseJsonMaybe(result.stdout);
+      return {
+        content: [{ type: "text", text: boundedJsonText(result.stdout) }],
+        details: { parsed, stderr: result.stderr, host: params.host || DEFAULT_HOST, readOnly: true, operation: params.operation },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "gx10_ir_apply",
+    label: "GX-10 IR Apply",
+    description: "Apply one previously inspected GX-10 IR upload/remove plan by its exact approved plan ID. This is the only IR write tool: it uses five fixed packets, full readback verification, and rollback on failure. Use only after explicit approval.",
+    parameters: Type.Object({
+      operation: Type.Union([Type.Literal("upload"), Type.Literal("remove")], { description: "Must match the approved plan." }),
+      slot: Type.Number({ minimum: 1, maximum: 16, description: "Must match the approved plan's slot." }),
+      path: Type.Optional(Type.String({ description: "Absolute WAV path from the approved upload plan; omitted for removal." })),
+      expectedPlanId: Type.String({ pattern: "^GX10IR1-[0-9A-F]{8}$", description: "Exact plan ID returned by gx10_ir_plan and explicitly approved by the user." }),
+      timeoutSeconds: Type.Optional(Type.Number({ description: "Overall timeout. Default 120 seconds for upload and 60 for remove; max 120." })),
+      host: Type.Optional(Type.String({ description: `SSH host alias. Default ${DEFAULT_HOST}.` })),
+      remoteDir: Type.Optional(Type.String({ description: `Remote gx10-bridge directory. Default ${DEFAULT_REMOTE_DIR}.` })),
+    }),
+    async execute(_id, params, signal) {
+      const path = params.path?.trim();
+      if (params.operation === "upload" && !path) throw new Error("Approved GX-10 IR upload requires the same absolute WAV path");
+      if (params.operation === "remove" && path) throw new Error("GX-10 IR removal does not accept a WAV path");
+      const spec = {
+        slot: params.slot,
+        path: params.operation === "upload" ? path : undefined,
+        expectedPlanId: params.expectedPlanId,
+      };
+      const helper = params.operation === "upload" ? "plan_ir_upload" : "plan_ir_remove";
+      const timeoutSeconds = params.timeoutSeconds ?? (params.operation === "upload" ? DEFAULT_IR_UPLOAD_TIMEOUT_SECONDS : DEFAULT_IR_REMOVE_TIMEOUT_SECONDS);
+      const code = [
+        `local plan = gx.${helper}(${luaLiteral(spec)})`,
+        "if not plan.ready then return plan end",
+        "return gx.transaction(function(tx) return tx:apply_ir_plan(plan) end)",
+      ].join("\n");
+      const result = await runBridge({
+        host: params.host,
+        remoteDir: params.remoteDir,
+        timeoutSeconds,
+        command: "run",
+        code,
+        allowWrite: true,
+        signal,
+      });
+      const parsed = parseJsonMaybe(result.stdout);
+      return {
+        content: [{ type: "text", text: boundedJsonText(result.stdout) }],
+        details: { parsed, stderr: result.stderr, host: params.host || DEFAULT_HOST, allowWrite: true, operation: params.operation },
+      };
+    },
+  });
+
+  pi.registerTool({
     name: "gx10_lua",
     label: "GX-10 Lua",
-    description: "Execute unsaved inline Lua against the live BOSS GX-10 through the direct CoreMIDI bridge on mac-mini-16. Use gx10_get/gx10_find for ordinary reads; gx10_lua supports custom reads, RQ1-only gx.plan_edit dry runs, and explicitly approved verified transactions. Load with load_tools({ groups: [\"gx10\"] }) before use.",
+    description: "Execute unsaved inline Lua against the live BOSS GX-10 through the direct CoreMIDI bridge on mac-mini-16. Use gx10_get/gx10_find for ordinary reads and gx10_ir_plan/gx10_ir_apply for IR storage; gx10_lua supports custom reads, RQ1-only dry runs, and explicitly approved verified transactions. Load with load_tools({ groups: [\"gx10\"] }) before use.",
     parameters: Type.Object({
       code: Type.String({ description: "Complete inline Lua. Return a JSON-safe table/string/number/boolean/nil." }),
-      allowWrite: Type.Optional(Type.Boolean({ description: "Enable native DT1 for gx.transaction. Defaults false and may be true only for an explicitly requested hardware edit." })),
+      allowWrite: Type.Optional(Type.Boolean({ description: "Enable native DT1 for gx.transaction. Defaults false and may be true only for an explicitly requested hardware edit; prefer gx10_ir_apply for IR storage." })),
       timeoutSeconds: Type.Optional(Type.Number({ description: "Overall timeout in seconds. Default 15, max 120." })),
       host: Type.Optional(Type.String({ description: `SSH host alias. Default ${DEFAULT_HOST}.` })),
       remoteDir: Type.Optional(Type.String({ description: `Remote gx10-bridge directory. Default ${DEFAULT_REMOTE_DIR}.` })),
