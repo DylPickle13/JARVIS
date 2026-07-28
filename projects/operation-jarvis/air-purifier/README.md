@@ -17,7 +17,7 @@ Target device: **Levoit Vital 200S-P / Vital 200S**, VeSync model family `LAP-V2
 `pyvesync 3.4.2` requires Python 3.11+. The main Operation JARVIS venv may be older, so this subsystem should have its own venv, like `smart-plug/`.
 
 ```bash
-cd /Users/gemma/JARVIS/projects/operation-jarvis/air-purifier
+cd /path/to/JARVIS/projects/operation-jarvis/air-purifier
 /opt/homebrew/bin/python3.13 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt -e .
