@@ -28,7 +28,8 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions" / "--Users-gemma-JARVIS--"
+_project_session_key = str(PROJECT_ROOT).lstrip("/\\").replace("/", "-").replace("\\", "-").replace(":", "-")
+DEFAULT_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions" / f"--{_project_session_key}--"
 DEFAULT_DB_PATH = PROJECT_ROOT / ".pi" / "session-search" / "index.sqlite"
 DEFAULT_LOG_PATH = PROJECT_ROOT / ".pi" / "session-search" / "cron.log"
 DEFAULT_MODEL = "mlx-community/Qwen3-Embedding-8B-4bit-DWQ"
