@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawn } from "node:child_process";
 
-const DEFAULT_HOST = "mac-mini-llm-16gb";
+const DEFAULT_HOST = "mac-mini-16";
 const DEFAULT_REMOTE_DIR = "/Users/dylanrapanan/gx10-bridge";
 const DEFAULT_TIMEOUT_SECONDS = 15;
 const DEFAULT_SEMANTIC_TIMEOUT_SECONDS = 30;
