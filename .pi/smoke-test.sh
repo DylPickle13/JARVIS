@@ -358,6 +358,25 @@ const lazy = fs.readFileSync('.pi/extensions/99-lazy-tools.ts', 'utf8');
 const slim = fs.readFileSync('.pi/extensions/98-slim-provider-payload.ts', 'utf8');
 const memory = fs.readFileSync('.pi/extensions/35-memory.ts', 'utf8');
 
+function extensionSources(root) {
+  const rows = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const path = `${root}/${entry.name}`;
+    if (entry.isDirectory()) rows.push(...extensionSources(path));
+    else if (entry.isFile() && entry.name.endsWith('.ts')) rows.push([path, fs.readFileSync(path, 'utf8')]);
+  }
+  return rows;
+}
+
+function assertExactHookOwners(sources, hook, expectedOwners) {
+  const marker = new RegExp(`pi\\.on\\(\\s*["']${hook}["']`);
+  const actualOwners = sources.filter(([, source]) => marker.test(source)).map(([path]) => path).sort();
+  const expected = [...expectedOwners].sort();
+  if (JSON.stringify(actualOwners) !== JSON.stringify(expected)) {
+    throw new Error(`${hook} hook owners changed; expected=[${expected.join(', ')}] actual=[${actualOwners.join(', ')}]`);
+  }
+}
+
 function recordKeys(name) {
   const match = lazy.match(new RegExp(`const ${name}[^=]*= \\{([\\s\\S]*?)\\n\\};`));
   if (!match) throw new Error(`Could not find ${name}`);
@@ -424,6 +443,29 @@ if (memory.includes('pi.on("before_agent_start"')) {
   throw new Error('35-memory.ts must not inject prompt-time memory into the system prompt');
 }
 
+// Cache-critical prefixes must have a tiny, explicit mutation surface. Any new
+// system/context/provider hook requires a deliberate review instead of silently
+// making every existing prompt token uncached.
+const allExtensionSources = extensionSources('.pi/extensions');
+assertExactHookOwners(allExtensionSources, 'before_agent_start', [
+  '.pi/extensions/00-web-access-env.ts',
+  '.pi/extensions/98-slim-provider-payload.ts',
+]);
+assertExactHookOwners(allExtensionSources, 'before_provider_request', [
+  '.pi/extensions/98-slim-provider-payload.ts',
+]);
+assertExactHookOwners(allExtensionSources, 'before_provider_headers', []);
+assertExactHookOwners(allExtensionSources, 'context', []);
+for (const path of [
+  '.pi/extensions/00-web-access-env.ts',
+  '.pi/extensions/98-slim-provider-payload.ts',
+]) {
+  const source = fs.readFileSync(path, 'utf8');
+  for (const entropy of ['Date.now(', 'new Date(', 'Math.random(', 'randomUUID(']) {
+    if (source.includes(entropy)) throw new Error(`${path} contains runtime entropy (${entropy}) in a cache-prefix mutator`);
+  }
+}
+
 const optionalToolFiles = [
   '.pi/extensions/10-discord-cron.ts',
   '.pi/extensions/15-discord-send-file.ts',
@@ -448,7 +490,7 @@ for (const path of optionalToolFiles) {
   }
 }
 
-console.log(`canonical lazy groups (${toolGroups.length}): ${toolGroups.join(', ')}, all; additive deferred loading enabled`);
+console.log(`canonical lazy groups (${toolGroups.length}): ${toolGroups.join(', ')}, all; additive deferred loading enabled; cache-prefix hooks audited`);
 NODE
 fi
 

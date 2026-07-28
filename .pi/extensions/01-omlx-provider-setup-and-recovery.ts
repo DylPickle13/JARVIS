@@ -61,6 +61,15 @@ const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 				maxTokens: 32768,
 				compat: { thinkingFormat: "qwen-chat-template" },
 			},
+			{
+				id: "Qwen3.6-14B-A3B-FableVibes-mlx-q4",
+				name: "Qwen3.6-14B-A3B FableVibes MLX Q4",
+				reasoning: true,
+				input: ["text"],
+				contextWindow: 65536,
+				maxTokens: 32768,
+				compat: { thinkingFormat: "qwen-chat-template" },
+			},
 		],
 	},
 	{
