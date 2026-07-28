@@ -293,6 +293,27 @@ for (const path of [
 NODE
 fi
 
+if command -v node >/dev/null 2>&1; then
+  run_check "native-host SSH/media topology" node - <<'NODE'
+const fs = require('fs');
+const hosts = JSON.parse(fs.readFileSync('.pi/ssh-hosts.json', 'utf8'));
+const aliases = hosts.flatMap((host) => host.aliases || []).sort();
+for (const localAlias of ['mac-mini-64', 'jarvis-pi']) {
+  if (aliases.includes(localAlias)) throw new Error(`SSH allowlist contains local self-host alias: ${localAlias}`);
+}
+const ssh = fs.readFileSync('.pi/extensions/55-ssh-exec.ts', 'utf8');
+if (!ssh.includes('const EFFECTIVE_DEFAULT_HOST_ALIAS = DEFAULT_HOST_ALIAS;')) throw new Error('SSH tool regained an implicit host default');
+const media = ['.pi/extensions/70-image-generation.ts', '.pi/extensions/71-video-generation.ts'].map((path) => fs.readFileSync(path, 'utf8')).join('\n');
+for (const forbidden of ['pi.exec("ssh"', 'pi.exec("scp"', 'HOST_CONFIG_PATH', 'remoteSpec(']) {
+  if (media.includes(forbidden)) throw new Error(`media extensions regained self-SSH transport: ${forbidden}`);
+}
+for (const required of ['runLocalWorker(', 'JARVIS_GENERATION_SYNC=0', 'execution: "local"']) {
+  if (!media.includes(required)) throw new Error(`native media wiring missing: ${required}`);
+}
+console.log(`remote SSH aliases: ${aliases.join(', ')}; media transport: local`);
+NODE
+fi
+
 section "Extension inventory"
 expected_extension_roots=(
   .pi/extensions/00-private-permissions.ts

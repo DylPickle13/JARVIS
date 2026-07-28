@@ -29,7 +29,7 @@ Verified SSH endpoints for this room-audio stack on 2026-06-11 EDT:
 | Role | Hostname | LAN IP | SSH user | Access notes |
 |---|---|---|---|---|
 | Pi listener / PowerConf endpoint | `raspberrypi` | `<private-lan-ip>` | `pi` | SSH key: `~/.ssh/jarvis_dashboard_host`; runs `jarvis-room-audio.service`. |
-| Confirmed configured host SSH/tool host | `<host-name> | `<private-lan-ip>` | `<ssh-user>` | Pi harness SSH alias: `minecraft-mac-mini`; can SSH onward to the Pi with its local `~/.ssh/jarvis_dashboard_host`. |
+| Native JARVIS room-audio host | `mac-mini-64` | `<private-lan-ip>` | `dylanrapanan` | Local service host; JARVIS reaches the Pi through explicit `raspberrypi` SSH. |
 
 The room-audio server URL in the commands below remains `http://<private-lan-ip>:8791` unless `JARVIS_ROOM_AUDIO_SERVER_URL` is changed.
 

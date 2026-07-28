@@ -26,9 +26,9 @@ Project folder: `projects/operation-jarvis/raspberry-pi/`
 | Hardware | configured Raspberry Pi endpoint Rev 1.2 |
 | OS | Raspberry Pi OS Lite / Raspbian 12 `bookworm`, CLI-only |
 | Kernel | `6.12.87+rpt-rpi-v7` after the 2026-05-17 refresh |
-| SSH key from JARVIS VM | `~/.ssh/jarvis_dashboard_host` |
-| Confirmed configured host jump/tool host | `<host-name> / `<private-lan-ip>` / user `<ssh-user>` / Pi SSH tool alias `minecraft-mac-mini` |
-| SSH key on that configured host | `/path/to/local/user` authorized on this Pi on 2026-06-11 EDT |
+| SSH key from native JARVIS | `~/.ssh/jarvis_dashboard_host` |
+| Native JARVIS host | `mac-mini-64` / `<private-lan-ip>` / user `dylanrapanan`; no jump host |
+| Native JARVIS key | `~/.ssh/jarvis_dashboard_host.pub` authorized on this Pi |
 | HDMI display state | Safe console mode, `1024x768@60`, `multi-user.target` |
 | Room audio | Anker PowerConf over Bluetooth: SCO mic + A2DP speaker |
 
@@ -78,14 +78,7 @@ scp -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes ./local-file.txt pi@<p
 scp -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes pi@<private-lan-ip>:/home/pi/remote-file.txt ./
 ```
 
-If direct LAN access fails, use the confirmed configured host SSH/tool host as a jump point:
-
-```bash
-ssh -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes <ssh-user>@<private-lan-ip>
-ssh -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes pi@<private-lan-ip>
-```
-
-The Pi harness SSH tool can also reach that configured host through alias `minecraft-mac-mini`; from there, `~/.ssh/jarvis_dashboard_host` can SSH onward to this Pi.
+From JARVIS, use the SSH tool with explicit host `raspberrypi`; no VM or jump host is involved. If direct LAN access fails, diagnose the Pi or LAN rather than routing through another Mac.
 
 ## Room audio
 

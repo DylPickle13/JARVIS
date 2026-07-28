@@ -232,9 +232,9 @@ for (const config of HOST_CONFIGS) {
 }
 
 const HOST_ALIASES = [...HOST_BY_ALIAS.keys()].sort();
-const EFFECTIVE_DEFAULT_HOST_ALIAS = DEFAULT_HOST_ALIAS || HOST_ALIASES[0] || "";
+const EFFECTIVE_DEFAULT_HOST_ALIAS = DEFAULT_HOST_ALIAS;
 const HOST_ALIASES_DESCRIPTION = HOST_ALIASES.length ? HOST_ALIASES.join(", ") : "none configured";
-const DEFAULT_HOST_DESCRIPTION = EFFECTIVE_DEFAULT_HOST_ALIAS || "none";
+const DEFAULT_HOST_DESCRIPTION = EFFECTIVE_DEFAULT_HOST_ALIAS || "host required";
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -295,10 +295,11 @@ function isPathWithin(path: string, prefix: string): boolean {
 }
 
 function resolveHost(aliasValue: unknown): { alias: string; config: HostConfig } {
-  const alias = (cleanSingleLine(aliasValue) || EFFECTIVE_DEFAULT_HOST_ALIAS).toLowerCase();
-  if (!alias || !HOST_BY_ALIAS.size) {
+  if (!HOST_BY_ALIAS.size) {
     throw new Error(`No SSH hosts are configured. Set JARVIS_SSH_HOSTS_CONFIG to a local JSON host config file or provide JARVIS_SSH_HOST/JARVIS_SSH_USER locally.`);
   }
+  const alias = (cleanSingleLine(aliasValue) || EFFECTIVE_DEFAULT_HOST_ALIAS).toLowerCase();
+  if (!alias) throw new Error(`SSH host is required. Allowed aliases: ${HOST_ALIASES_DESCRIPTION}`);
   const config = HOST_BY_ALIAS.get(alias);
   if (!config) {
     throw new Error(`Unsupported SSH host alias: ${alias}. Allowed aliases: ${HOST_ALIASES_DESCRIPTION}`);
@@ -848,22 +849,20 @@ export default function registerSsh(pi: ExtensionAPI) {
   pi.registerTool({
     name: "ssh",
     label: "SSH",
-    description: `Run unrestricted commands over SSH on a trusted named host, including interactive terminal programs. Current aliases: ${HOST_ALIASES_DESCRIPTION}. Defaults to ${DEFAULT_HOST_DESCRIPTION}. Use action exec for captured commands, pty:true for a directly attached local TUI terminal, or stateful start/input/read/resize/signal/close actions for Discord/RPC interactive sessions.`,
-    promptSnippet: "Run unrestricted SSH commands, or manage a stateful interactive SSH PTY session.",
+    description: `Run commands or PTY sessions on an explicit trusted remote host. Host required; aliases: ${HOST_ALIASES_DESCRIPTION}.`,
+    promptSnippet: "Run commands on an explicit trusted remote SSH host.",
     promptGuidelines: [
-      "Use ssh instead of raw `bash` SSH when administering configured trusted hosts; it pins the host, user, key, and allowed cwd.",
-      "Command content is unrestricted. action:'exec' captures a command to completion. In local Pi TUI, pty:true attaches the real terminal for editors, pagers, tmux, sudo prompts, and live UIs.",
-      "In Discord/RPC, use action:'start' with command to create a stateful PTY, then action:'read', action:'input' with input and/or key, action:'resize', action:'signal', and action:'close' using the returned sessionId.",
-      "For line input, send input plus key:'ENTER'. Supported named keys include ENTER, TAB, ESC, arrows, BACKSPACE, CTRL_C, CTRL_D, CTRL_Z, and CTRL_L.",
-      "For in-game Minecraft jarvis bot chat/control, load the `minecraft_jarvis` tool group and use `minecraft_jarvis`; do not substitute SSH.",
-      "Never use ssh to start, stop, or restart long-running services unless sir explicitly asks in that moment.",
+      "Use local coding tools on mac-mini-64; use ssh only for configured remote hosts and always pass host.",
+      "Use exec for captured commands, pty:true for a local TUI, or start/input/read/close for stateful RPC sessions.",
+      "Use minecraft_jarvis, not SSH, for in-game control.",
+      "Do not change long-running remote services without sir's explicit request.",
     ],
     parameters: Type.Object({
       action: Type.Optional(Type.Union([
         Type.Literal("exec"), Type.Literal("start"), Type.Literal("input"), Type.Literal("read"),
         Type.Literal("resize"), Type.Literal("signal"), Type.Literal("close"), Type.Literal("list"),
       ], { description: "SSH action. Defaults to exec." })),
-      host: Type.Optional(Type.String({ description: `Trusted host alias. Defaults to ${DEFAULT_HOST_DESCRIPTION}. Allowed: ${HOST_ALIASES_DESCRIPTION}.` })),
+      host: Type.Optional(Type.String({ description: `Trusted remote alias; required unless JARVIS_SSH_DEFAULT_HOST is explicitly set. Allowed: ${HOST_ALIASES_DESCRIPTION}.` })),
       command: Type.Optional(Type.String({ description: "Unrestricted remote command. Required for exec/start." })),
       cwd: Type.Optional(Type.String({ description: "Remote working directory. Defaults to the host's configured defaultCwd and must stay inside configured allowedCwdPrefixes." })),
       timeoutSeconds: Type.Optional(Type.Number({ description: "Optional command/session lifetime in seconds. If omitted, no execution timeout is applied." })),

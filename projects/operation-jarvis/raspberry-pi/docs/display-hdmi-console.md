@@ -18,7 +18,7 @@ The known-good state is **console-only safe mode**:
 |---|---|
 | Host | `raspberrypi` / `<private-lan-ip>` |
 | SSH user | `pi` |
-| SSH key from JARVIS VM | `~/.ssh/jarvis_dashboard_host` |
+| SSH key from native JARVIS | `~/.ssh/jarvis_dashboard_host` |
 | Display connector | `HDMI-A-1` / X name `HDMI-1` |
 | Monitor detected | Dell P1913 |
 | Safe resolution | `1024x768@60` |

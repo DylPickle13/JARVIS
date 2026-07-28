@@ -1,23 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-
-type HostConfig = {
-  aliases: string[];
-  description?: string;
-  hostName: string;
-  user: string;
-  identityFile: string;
-  homeDir: string;
-  connectTimeoutSeconds?: number;
-  shell?: string;
-  shellType?: "posix" | "windows-cmd" | "windows-powershell";
-};
 
 type VideoAspectRatio = "16:9" | "9:16" | "1:1" | "4:3" | "3:4";
 type VideoSizePreset = "small" | "standard" | "large";
@@ -43,7 +31,7 @@ type GenerateVideoParams = {
   timeoutSeconds?: number;
 };
 
-type RemoteVideoResult = {
+type WorkerVideoResult = {
   ok?: boolean;
   error?: string;
   model?: string;
@@ -68,7 +56,7 @@ type RemoteVideoResult = {
   seed?: number;
   mode?: "text-to-video" | "image-to-video" | "text-to-audio-video" | "image-to-audio-video";
   elapsedSeconds?: number;
-  remotePath?: string;
+  workerPath?: string;
   metadataPath?: string | null;
   sizeBytes?: number;
   stdoutTail?: string;
@@ -84,9 +72,7 @@ type RenderState = {
 };
 
 const VIDEO_MODEL = "dgrauet/ltx-2.3-mlx-q8";
-const HOST_ALIAS = (process.env.VIDEO_GENERATION_HOST_ALIAS || process.env.IMAGE_GENERATION_HOST_ALIAS || "mac-mini-64").trim();
-const DEFAULT_HOST_CONFIG_PATH = join(process.cwd(), ".pi", "ssh-hosts.json");
-const HOST_CONFIG_PATH = (process.env.VIDEO_GENERATION_SSH_HOSTS_CONFIG || process.env.IMAGE_GENERATION_SSH_HOSTS_CONFIG || DEFAULT_HOST_CONFIG_PATH).trim();
+const MACHINE_NAME = "mac-mini-64";
 const DEFAULT_ASPECT_RATIO: VideoAspectRatio = "16:9";
 const DEFAULT_SIZE: VideoSizePreset = "standard";
 const DEFAULT_DURATION_SECONDS = 4;
@@ -228,17 +214,6 @@ function resolveInputImagePath(value: unknown, cwd: string): { path: string; siz
   return { path: localPath, sizeBytes: stat.size, extension };
 }
 
-function expandRemotePath(value: string, homeDir: string): string {
-  if (value === "~" || value === "$HOME") return homeDir;
-  if (value.startsWith("~/")) return `${homeDir}/${value.slice(2)}`;
-  if (value.startsWith("$HOME/")) return `${homeDir}/${value.slice(6)}`;
-  return value;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
 function safeSlug(value: unknown, fallback: string): string {
   const slug = cleanString(value || fallback)
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
@@ -253,91 +228,42 @@ function timestampSlug(): string {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
-function loadHostConfigs(): HostConfig[] {
-  if (!existsSync(HOST_CONFIG_PATH)) throw new Error(`SSH host config not found: ${HOST_CONFIG_PATH}`);
-  const parsed = JSON.parse(readFileSync(HOST_CONFIG_PATH, "utf8"));
-  if (!Array.isArray(parsed)) throw new Error(`SSH host config must be an array: ${HOST_CONFIG_PATH}`);
-  return parsed.map((entry: any) => ({
-    aliases: Array.isArray(entry.aliases) ? entry.aliases.map(String) : entry.alias ? [String(entry.alias)] : [],
-    description: cleanString(entry.description),
-    hostName: cleanString(entry.hostName || entry.host),
-    user: cleanString(entry.user),
-    identityFile: expandLocalPath(cleanString(entry.identityFile || "~/.ssh/id_ed25519")),
-    homeDir: cleanString(entry.homeDir) || `/Users/${cleanString(entry.user)}`,
-    connectTimeoutSeconds: positiveInteger(entry.connectTimeoutSeconds, 8),
-    shell: cleanString(entry.shell) || "bash -lc",
-    shellType: cleanString(entry.shellType) === "posix" ? "posix" : "posix",
-  }));
+function localBaseDir(): string {
+  const configured = cleanPath(process.env.MEDIA_GENERATION_DIR || process.env.VIDEO_GENERATION_DIR || process.env.IMAGE_GENERATION_DIR);
+  return resolve(expandLocalPath(configured || join(homedir(), "media-generation")));
 }
 
-function resolveHost(): HostConfig {
-  const hosts = loadHostConfigs();
-  const host = hosts.find((candidate) => candidate.aliases.map((alias) => alias.toLowerCase()).includes(HOST_ALIAS.toLowerCase()));
-  if (!host) throw new Error(`Video host alias ${HOST_ALIAS} not found in ${HOST_CONFIG_PATH}`);
-  if (!host.hostName || !host.user) throw new Error(`Video host ${HOST_ALIAS} is missing hostName or user`);
-  return host;
+function videoWorkerPath(baseDir: string): string {
+  return join(baseDir, "bin", "video-generate");
 }
 
-function remoteBaseDir(host: HostConfig): string {
-  const configured = cleanString(process.env.MEDIA_GENERATION_REMOTE_DIR || process.env.VIDEO_GENERATION_REMOTE_DIR || process.env.IMAGE_GENERATION_REMOTE_DIR);
-  return expandRemotePath(configured || `${host.homeDir}/media-generation`, host.homeDir);
-}
-
-function remoteSpec(host: HostConfig, remotePath: string): string {
-  return `${host.user}@${host.hostName}:${remotePath}`;
-}
-
-function sshArgs(host: HostConfig, remoteScript: string): string[] {
-  return [
-    "-i", host.identityFile,
-    "-o", "IdentitiesOnly=yes",
-    "-o", "BatchMode=yes",
-    "-o", "NumberOfPasswordPrompts=0",
-    "-o", `ConnectTimeout=${host.connectTimeoutSeconds ?? 8}`,
-    "-o", "StrictHostKeyChecking=accept-new",
-    "-o", "ServerAliveInterval=15",
-    "-o", "ServerAliveCountMax=2",
-    "-o", "LogLevel=ERROR",
-    `${host.user}@${host.hostName}`,
-    `${host.shell || "bash -lc"} ${shellQuote(remoteScript)}`,
+async function runLocalWorker(
+  pi: ExtensionAPI,
+  baseDir: string,
+  args: string[],
+  timeoutMs: number,
+  signal?: AbortSignal,
+  disableSync = false,
+) {
+  const executable = videoWorkerPath(baseDir);
+  if (!existsSync(executable)) throw new Error(`Local video worker not found: ${executable}`);
+  const envArgs = [
+    `MEDIA_GENERATION_DIR=${baseDir}`,
+    `IMAGE_GENERATION_DIR=${baseDir}`,
+    ...(disableSync ? ["JARVIS_GENERATION_SYNC=0"] : []),
+    executable,
+    ...args,
   ];
+  return pi.exec("/usr/bin/env", envArgs, { cwd: baseDir, timeout: timeoutMs, signal });
 }
 
-function scpBaseArgs(host: HostConfig): string[] {
-  return [
-    "-i", host.identityFile,
-    "-o", "IdentitiesOnly=yes",
-    "-o", "BatchMode=yes",
-    "-o", "NumberOfPasswordPrompts=0",
-    "-o", `ConnectTimeout=${host.connectTimeoutSeconds ?? 8}`,
-    "-o", "StrictHostKeyChecking=accept-new",
-    "-o", "LogLevel=ERROR",
-  ];
-}
-
-async function runSsh(pi: ExtensionAPI, host: HostConfig, script: string, timeoutMs: number, signal?: AbortSignal) {
-  const result = await pi.exec("ssh", sshArgs(host, script), { timeout: timeoutMs, signal });
-  if (result.code !== 0 || result.killed) {
-    throw new Error(`SSH command failed on ${HOST_ALIAS} (code ${result.code}${result.killed ? ", killed" : ""}): ${(result.stderr || result.stdout || "").trim().slice(0, 4000)}`);
-  }
-  return result;
-}
-
-async function runScp(pi: ExtensionAPI, host: HostConfig, args: string[], timeoutMs: number, signal?: AbortSignal) {
-  const result = await pi.exec("scp", [...scpBaseArgs(host), ...args], { timeout: timeoutMs, signal });
-  if (result.code !== 0 || result.killed) {
-    throw new Error(`scp failed (code ${result.code}${result.killed ? ", killed" : ""}): ${(result.stderr || result.stdout || "").trim().slice(0, 4000)}`);
-  }
-  return result;
-}
-
-function parseRemoteResult(stdout: string, stderr: string, code: number): RemoteVideoResult {
+function parseWorkerResult(stdout: string, stderr: string, code: number): WorkerVideoResult {
   const lines = stdout.trim().split(/\n+/).filter(Boolean);
   const candidate = lines[lines.length - 1] || "";
   try {
-    return JSON.parse(candidate) as RemoteVideoResult;
+    return JSON.parse(candidate) as WorkerVideoResult;
   } catch (error: any) {
-    throw new Error(`Remote video worker did not return JSON (exit ${code}). stdout=${stdout.slice(-2000)} stderr=${stderr.slice(-2000)} parse=${error.message}`);
+    throw new Error(`Local video worker did not return JSON (exit ${code}). stdout=${stdout.slice(-2000)} stderr=${stderr.slice(-2000)} parse=${error.message}`);
   }
 }
 
@@ -353,15 +279,15 @@ function formatBytes(bytes: number | undefined): string {
   return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-function resultText(result: RemoteVideoResult, localPath: string, metadataLocalPath?: string, cleanedRemotePaths: string[] = []): string {
+function resultText(result: WorkerVideoResult, localPath: string, metadataLocalPath?: string, cleanedWorkerPaths: string[] = []): string {
   const modeLine = result.mode === "image-to-audio-video" ? "Mode: image-to-audio-video" : "Mode: text-to-audio-video";
   return [
     "Generated audio-video with local LTX-2.3 Q8 via MLX.",
     modeLine,
     `Local: ${localPath}`,
-    result.remotePath ? `Remote source deleted after copy: ${HOST_ALIAS}:${result.remotePath}` : undefined,
+    result.workerPath ? `Worker staging source deleted after local copy: ${result.workerPath}` : undefined,
     metadataLocalPath ? `Metadata: ${metadataLocalPath}` : undefined,
-    cleanedRemotePaths.length > 0 ? `Remote cleanup: deleted ${cleanedRemotePaths.length} file(s).` : undefined,
+    cleanedWorkerPaths.length > 0 ? `Local staging cleanup: deleted ${cleanedWorkerPaths.length} file(s).` : undefined,
     `Model: ${VIDEO_MODEL}`,
     result.pipeline ? `Pipeline: ${result.pipeline}` : undefined,
     result.aspectRatio ? `Aspect ratio: ${result.aspectRatio}${result.size ? ` (${result.size})` : ""}` : undefined,
@@ -376,101 +302,35 @@ function resultText(result: RemoteVideoResult, localPath: string, metadataLocalP
   ].filter(Boolean).join("\n");
 }
 
-function safeRemoteCleanupPaths(baseDir: string, paths: Array<string | undefined | null>): string[] {
-  const normalizedBase = baseDir.replace(/\/+$/, "");
-  const allowedPrefixes = [`${normalizedBase}/outputs/`, `${normalizedBase}/inputs/`, `${normalizedBase}/runtime/pids/`];
+function safeLocalCleanupPaths(baseDir: string, paths: Array<string | undefined | null>): string[] {
+  const normalizedBase = resolve(baseDir);
+  const allowedPrefixes = ["outputs", "inputs", join("runtime", "pids")].map((part) => `${resolve(normalizedBase, part)}${sep}`);
   return [...new Set(paths
-    .map((path) => cleanString(path))
-    .filter((path) => path && allowedPrefixes.some((prefix) => path.startsWith(prefix))))];
+    .map((path) => cleanPath(path))
+    .filter(Boolean)
+    .map((path) => resolve(path))
+    .filter((path) => allowedPrefixes.some((prefix) => path.startsWith(prefix))))];
 }
 
-async function cleanupRemoteFiles(pi: ExtensionAPI, host: HostConfig, baseDir: string, paths: Array<string | undefined | null>, signal?: AbortSignal): Promise<string[]> {
-  const safePaths = safeRemoteCleanupPaths(baseDir, paths);
-  if (safePaths.length === 0) return [];
-  await runSsh(pi, host, `rm -f ${safePaths.map(shellQuote).join(" ")}`, 60_000, signal);
+function copyLocalOutput(source: string, destination: string): void {
+  if (resolve(source) === resolve(destination)) throw new Error("Worker staging and final video paths must differ.");
+  const temporary = `${destination}.${randomUUID().slice(0, 8)}.tmp`;
+  try {
+    copyFileSync(source, temporary);
+    renameSync(temporary, destination);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+
+function cleanupLocalFiles(baseDir: string, paths: Array<string | undefined | null>): string[] {
+  const safePaths = safeLocalCleanupPaths(baseDir, paths);
+  for (const path of safePaths) rmSync(path, { force: true });
   return safePaths;
 }
 
-function remotePidFile(baseDir: string, jobId: string): string {
-  return `${baseDir.replace(/\/+$/, "")}/runtime/pids/${jobId}.json`;
-}
-
-function remoteCancelScript(baseDir: string, jobId: string, paths: Array<string | undefined | null>): string {
-  const pidFile = remotePidFile(baseDir, jobId);
-  const safePaths = safeRemoteCleanupPaths(baseDir, [pidFile, ...paths]);
-  const searchPatterns = [...new Set([pidFile, jobId, ...paths.map((path) => cleanString(path)).filter(Boolean)])];
-  const searchPatternArgs = searchPatterns.map(shellQuote).join(" ");
-  const cleanupLine = safePaths.length > 0 ? `rm -f ${safePaths.map(shellQuote).join(" ")} 2>/dev/null || true` : ":";
-  return `set +e
-PID_FILE=${shellQuote(pidFile)}
-JOB_ID=${shellQuote(jobId)}
-THIS_PGID="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')"
-
-kill_one() {
-  pid="$1"
-  [ -n "$pid" ] || return 0
-  [ "$pid" = "$$" ] && return 0
-  [ "$pid" = "$PPID" ] && return 0
-  case "$pid" in *[!0-9]* ) return 0;; esac
-  pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')"
-  if [ -n "$pgid" ] && [ "$pgid" != "$THIS_PGID" ]; then
-    kill -TERM "-$pgid" 2>/dev/null || true
-  fi
-  kill -TERM "$pid" 2>/dev/null || true
-}
-
-kill_one_force() {
-  pid="$1"
-  [ -n "$pid" ] || return 0
-  [ "$pid" = "$$" ] && return 0
-  [ "$pid" = "$PPID" ] && return 0
-  case "$pid" in *[!0-9]* ) return 0;; esac
-  pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')"
-  if [ -n "$pgid" ] && [ "$pgid" != "$THIS_PGID" ]; then
-    kill -KILL "-$pgid" 2>/dev/null || true
-  fi
-  kill -KILL "$pid" 2>/dev/null || true
-}
-
-pid_file_pids() {
-  [ -f "$PID_FILE" ] || return 0
-  python3 - "$PID_FILE" <<'PY'
-import json
-import sys
-try:
-    with open(sys.argv[1], "r", encoding="utf-8") as handle:
-        data = json.load(handle)
-except Exception:
-    data = {}
-for key in ("childPgid", "childPid", "workerPid"):
-    value = data.get(key)
-    if isinstance(value, int):
-        print(value)
-    elif isinstance(value, str) and value.isdigit():
-        print(value)
-PY
-}
-
-for pid in $(pid_file_pids); do kill_one "$pid"; done
-for pattern in ${searchPatternArgs}; do
-  [ -n "$pattern" ] || continue
-  pgrep -f "$pattern" 2>/dev/null | while IFS= read -r pid; do kill_one "$pid"; done
-done
-sleep 2
-for pid in $(pid_file_pids); do kill_one_force "$pid"; done
-for pattern in ${searchPatternArgs}; do
-  [ -n "$pattern" ] || continue
-  pgrep -f "$pattern" 2>/dev/null | while IFS= read -r pid; do kill_one_force "$pid"; done
-done
-${cleanupLine}`;
-}
-
-async function cancelRemoteVideoJob(pi: ExtensionAPI, host: HostConfig, baseDir: string, jobId: string, paths: Array<string | undefined | null>): Promise<void> {
-  try {
-    await runSsh(pi, host, remoteCancelScript(baseDir, jobId, paths), 30_000);
-  } catch {
-    // Cancellation is best-effort and must not mask the original abort/error.
-  }
+function localPidFile(baseDir: string, jobId: string): string {
+  return join(baseDir, "runtime", "pids", `${jobId}.json`);
 }
 
 async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, signal?: AbortSignal, onUpdate?: (partial: any) => void, cwd = process.cwd()) {
@@ -497,23 +357,20 @@ async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, sign
   const timeoutSeconds = optionalInteger(params.timeoutSeconds, "timeoutSeconds", 60, 21600) ?? DEFAULT_TIMEOUT_SECONDS;
   const inputImage = resolveInputImagePath(params.inputImagePath, cwd);
 
-  const host = resolveHost();
-  const baseDir = remoteBaseDir(host);
+  const baseDir = localBaseDir();
   const jobId = safeSlug(`vid-${timestampSlug()}-${randomUUID().slice(0, 8)}`, `vid-${Date.now()}`);
   const filename = safeSlug(params.filename, jobId).replace(/\.mp4$/i, "") + ".mp4";
-  const localRuntimeDir = resolve(cwd, ".pi", "runtime", "video-generation");
-  const localJobsDir = join(localRuntimeDir, "jobs");
   const localOutputDir = resolve(cwd, LOCAL_OUTPUT_DIR);
-  mkdirSync(localJobsDir, { recursive: true });
+  const workerInputsDir = join(baseDir, "inputs");
+  const workerJobFile = join(workerInputsDir, `${jobId}.json`);
+  const workerInputImagePath = inputImage ? join(workerInputsDir, `${jobId}-input${inputImage.extension}`) : undefined;
+  const expectedWorkerOutputPath = join(baseDir, "outputs", "videos", filename);
+  const expectedWorkerMetadataPath = expectedWorkerOutputPath.replace(/\.mp4$/i, ".metadata.json");
+  const cleanupPaths = [workerJobFile, workerInputImagePath, expectedWorkerOutputPath, expectedWorkerMetadataPath, localPidFile(baseDir, jobId)];
+  mkdirSync(workerInputsDir, { recursive: true });
+  mkdirSync(join(baseDir, "outputs", "videos"), { recursive: true });
   mkdirSync(localOutputDir, { recursive: true });
 
-  const localJobFile = join(localJobsDir, `${jobId}.json`);
-  const remoteInputsDir = `${baseDir}/inputs`;
-  const remoteJobFile = `${remoteInputsDir}/${jobId}.json`;
-  const remoteInputImagePath = inputImage ? `${remoteInputsDir}/${jobId}-input${inputImage.extension}` : undefined;
-  const expectedRemoteOutputPath = `${baseDir}/outputs/videos/${filename}`;
-  const expectedRemoteMetadataPath = expectedRemoteOutputPath.replace(/\.mp4$/i, ".metadata.json");
-  const remoteCancelPaths = [remoteJobFile, remoteInputImagePath, expectedRemoteOutputPath, expectedRemoteMetadataPath];
   const job = {
     jobId,
     filename,
@@ -531,97 +388,74 @@ async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, sign
     enhancePrompt,
     seed,
     timeoutSeconds,
-    ...(remoteInputImagePath ? { inputImagePath: remoteInputImagePath } : {}),
+    ...(workerInputImagePath ? { inputImagePath: workerInputImagePath } : {}),
   };
-  writeFileSync(localJobFile, JSON.stringify(job, null, 2), "utf8");
 
-  onUpdate?.({ content: [{ type: "text" as const, text: `Preparing ${HOST_ALIAS} video job ${jobId}...` }] });
-  await runSsh(pi, host, `mkdir -p ${shellQuote(remoteInputsDir)} ${shellQuote(`${baseDir}/outputs/videos`)}`, 30_000, signal);
+  onUpdate?.({ content: [{ type: "text" as const, text: `Preparing local video job ${jobId} on ${MACHINE_NAME}...` }] });
   try {
-    try {
-      if (inputImage && remoteInputImagePath) {
-        onUpdate?.({ content: [{ type: "text" as const, text: `Uploading source image (${formatBytes(inputImage.sizeBytes)}) to ${HOST_ALIAS}...` }] });
-        await runScp(pi, host, [inputImage.path, remoteSpec(host, remoteInputImagePath)], 120_000, signal);
-      }
-      await runScp(pi, host, [localJobFile, remoteSpec(host, remoteJobFile)], 60_000, signal);
-    } finally {
-      try {
-        rmSync(localJobFile, { force: true });
-      } catch {
-        // Best-effort local prompt/job cleanup.
-      }
+    if (inputImage && workerInputImagePath) {
+      onUpdate?.({ content: [{ type: "text" as const, text: `Staging source image locally (${formatBytes(inputImage.sizeBytes)})...` }] });
+      copyFileSync(inputImage.path, workerInputImagePath);
     }
+    writeFileSync(workerJobFile, JSON.stringify(job, null, 2), "utf8");
   } catch (error) {
-    try {
-      await cleanupRemoteFiles(pi, host, baseDir, [remoteJobFile, remoteInputImagePath], signal?.aborted ? undefined : signal);
-    } catch {
-      // Best-effort upload-stage cleanup only; preserve the original error.
-    }
+    cleanupLocalFiles(baseDir, [workerJobFile, workerInputImagePath]);
     throw error;
   }
 
   const modeText = inputImage ? "image-to-audio-video" : "text-to-audio-video";
-  onUpdate?.({ content: [{ type: "text" as const, text: `Generating audio-video on ${HOST_ALIAS} with ${VIDEO_MODEL} (${width}x${height}, ${frames} frames @ ${fps} fps, ${steps} steps, ${pipeline}, ${modeText})...` }] });
-  const remoteCommand = [
-    `export MEDIA_GENERATION_DIR=${shellQuote(baseDir)}`,
-    `export IMAGE_GENERATION_DIR=${shellQuote(baseDir)}`,
-    "export JARVIS_GENERATION_SYNC=0",
-    `${shellQuote(`${baseDir}/bin/video-generate`)} --job-file ${shellQuote(remoteJobFile)}`,
-  ].join("\n");
-  let remoteResult: RemoteVideoResult | undefined;
-  let cancelPromise: Promise<void> | undefined;
-  const startRemoteCancel = () => {
-    cancelPromise ??= cancelRemoteVideoJob(pi, host, baseDir, jobId, remoteCancelPaths);
-    return cancelPromise;
-  };
-  const abortHandler = () => { void startRemoteCancel(); };
-  if (signal?.aborted) abortHandler();
-  else signal?.addEventListener("abort", abortHandler, { once: true });
+  onUpdate?.({ content: [{ type: "text" as const, text: `Generating locally with ${VIDEO_MODEL} (${width}x${height}, ${frames} frames @ ${fps} fps, ${steps} steps, ${pipeline}, ${modeText})...` }] });
+  let workerResult: WorkerVideoResult | undefined;
   try {
-    const generation = await pi.exec("ssh", sshArgs(host, remoteCommand), { timeout: (timeoutSeconds + 60) * 1000, signal });
-    remoteResult = parseRemoteResult(generation.stdout, generation.stderr, generation.code);
-    if (generation.code !== 0 || generation.killed || remoteResult.ok !== true) {
+    const generation = await runLocalWorker(pi, baseDir, ["--job-file", workerJobFile], (timeoutSeconds + 60) * 1000, signal, true);
+    workerResult = parseWorkerResult(generation.stdout, generation.stderr, generation.code);
+    if (generation.code !== 0 || generation.killed || workerResult.ok !== true) {
       throw new Error([
-        `Video generation failed on ${HOST_ALIAS}.`,
-        remoteResult.error ? `error: ${remoteResult.error}` : undefined,
-        remoteResult.stage ? `stage: ${(remoteResult as any).stage}` : undefined,
-        remoteResult.downloadCommand ? `download: ${remoteResult.downloadCommand}` : undefined,
-        remoteResult.stderrTail ? `stderr: ${remoteResult.stderrTail}` : undefined,
-        remoteResult.stdoutTail ? `stdout: ${remoteResult.stdoutTail}` : undefined,
-        !remoteResult.error && generation.stderr ? `ssh stderr: ${generation.stderr}` : undefined,
+        `Local video generation failed on ${MACHINE_NAME}.`,
+        workerResult.error ? `error: ${workerResult.error}` : undefined,
+        workerResult.stage ? `stage: ${workerResult.stage}` : undefined,
+        workerResult.downloadCommand ? `download: ${workerResult.downloadCommand}` : undefined,
+        workerResult.stderrTail ? `stderr: ${workerResult.stderrTail}` : undefined,
+        workerResult.stdoutTail ? `stdout: ${workerResult.stdoutTail}` : undefined,
+        !workerResult.error && generation.stderr ? `worker stderr: ${generation.stderr}` : undefined,
       ].filter(Boolean).join("\n"));
     }
-    const remoteOutputPath = remoteResult.remotePath;
-    if (!remoteOutputPath) throw new Error("Remote worker succeeded but did not return remotePath.");
 
-    const localPath = join(localOutputDir, basename(remoteOutputPath));
-    onUpdate?.({ content: [{ type: "text" as const, text: `Copying video back to ${localPath}...` }] });
-    await runScp(pi, host, [remoteSpec(host, remoteOutputPath), localPath], 600_000, signal);
+    const workerOutputPath = cleanPath(workerResult.workerPath);
+    if (!workerOutputPath) throw new Error("Local video worker succeeded but did not return workerPath.");
+    if (!safeLocalCleanupPaths(baseDir, [workerOutputPath]).includes(resolve(workerOutputPath))) {
+      throw new Error(`Local video worker returned an unsafe output path: ${workerOutputPath}`);
+    }
+    if (!existsSync(workerOutputPath)) throw new Error(`Local video worker output is missing: ${workerOutputPath}`);
+
+    const localPath = join(localOutputDir, basename(workerOutputPath));
+    onUpdate?.({ content: [{ type: "text" as const, text: `Copying video locally to ${localPath}...` }] });
+    copyLocalOutput(workerOutputPath, localPath);
 
     let metadataLocalPath: string | undefined;
-    if (remoteResult.metadataPath) {
+    const workerMetadataPath = cleanPath(workerResult.metadataPath);
+    if (workerMetadataPath && safeLocalCleanupPaths(baseDir, [workerMetadataPath]).includes(resolve(workerMetadataPath)) && existsSync(workerMetadataPath)) {
       metadataLocalPath = localPath.replace(/\.mp4$/i, ".metadata.json");
       try {
-        await runScp(pi, host, [remoteSpec(host, remoteResult.metadataPath), metadataLocalPath], 60_000, signal);
+        copyLocalOutput(workerMetadataPath, metadataLocalPath);
       } catch {
         metadataLocalPath = undefined;
       }
     }
 
-    onUpdate?.({ content: [{ type: "text" as const, text: "Deleting remote video inputs and outputs from mac-mini-64..." }] });
-    const cleanedRemotePaths = await cleanupRemoteFiles(pi, host, baseDir, [remoteOutputPath, remoteResult.metadataPath, remoteJobFile, remoteInputImagePath, remotePidFile(baseDir, jobId)], signal?.aborted ? undefined : signal);
-
+    const cleanedWorkerPaths = cleanupLocalFiles(baseDir, [workerOutputPath, workerMetadataPath, ...cleanupPaths]);
     const stat = statSync(localPath);
     return {
-      content: [{ type: "text" as const, text: resultText(remoteResult, localPath, metadataLocalPath, cleanedRemotePaths) }],
+      content: [{ type: "text" as const, text: resultText(workerResult, localPath, metadataLocalPath, cleanedWorkerPaths) }],
       details: {
         ok: true,
         model: VIDEO_MODEL,
-        host: HOST_ALIAS,
+        machine: MACHINE_NAME,
+        execution: "local",
         jobId,
         localPath,
         metadataLocalPath,
-        remote: remoteResult,
+        worker: workerResult,
         inputImagePath: inputImage?.path,
         aspectRatio,
         size: sizePreset,
@@ -630,21 +464,14 @@ async function generateVideo(pi: ExtensionAPI, params: GenerateVideoParams, sign
         durationSeconds: resolvedDurationSeconds,
         pipeline,
         cfgScale,
-        hasAudio: remoteResult.hasAudio,
-        cleanedRemotePaths,
+        hasAudio: workerResult.hasAudio,
+        cleanedWorkerPaths,
         sizeBytes: stat.size,
       },
     };
   } catch (error) {
-    if (signal?.aborted) await startRemoteCancel();
-    try {
-      await cleanupRemoteFiles(pi, host, baseDir, [remoteResult?.remotePath, remoteResult?.metadataPath, ...remoteCancelPaths, remotePidFile(baseDir, jobId)], signal?.aborted ? undefined : signal);
-    } catch {
-      // Best-effort cleanup only; preserve the original generation/copy error.
-    }
+    cleanupLocalFiles(baseDir, [workerResult?.workerPath, workerResult?.metadataPath, ...cleanupPaths]);
     throw error;
-  } finally {
-    signal?.removeEventListener("abort", abortHandler);
   }
 }
 
@@ -663,7 +490,7 @@ export default function registerVideoGeneration(pi: ExtensionAPI) {
   pi.registerTool({
     name: "generate_video",
     label: "Generate Video",
-    description: `Generate exactly one short local MP4 with synchronized audio on mac-mini-64 using the approved headless LTX-2.3 Q8 MLX model: ${VIDEO_MODEL}. The tool sends the prompt, and optionally a local source image for image-to-audio-video, over SSH; runs ltx-2-mlx on the Mini; copies the MP4 back locally; and returns the local path. No hosted video models or fallback models are used.`,
+    description: `Generate exactly one short audio-video MP4 locally on mac-mini-64 using the approved headless LTX-2.3 Q8 MLX model ${VIDEO_MODEL}. No SSH, hosted models, alternate models, or fallbacks are used.`,
     parameters: Type.Object({
       prompt: Type.String({ description: "Detailed video prompt to render." }),
       negativePrompt: Type.Optional(Type.String({ description: "Legacy optional negative prompt; LTX worker currently ignores this field." })),
@@ -676,8 +503,8 @@ export default function registerVideoGeneration(pi: ExtensionAPI) {
       cfgScale: Type.Optional(Type.Number({ description: `CFG scale, 0-20. Default ${DEFAULT_CFG_SCALE}.` })),
       lowRam: Type.Optional(Type.Boolean({ description: `Use ltx-2-mlx low-RAM block streaming. Default ${DEFAULT_LOW_RAM}.` })),
       enhancePrompt: Type.Optional(Type.Boolean({ description: "Use Gemma prompt enhancement before generation. Default false." })),
-      seed: Type.Optional(Type.Number({ description: "Optional seed, 0-2147483647. If omitted, the remote worker chooses a random seed." })),
-      inputImagePath: Type.Optional(Type.String({ description: "Optional local source image path for image-to-video. Supported: PNG, JPG/JPEG, WebP, BMP. The source is copied to mac-mini-64 temporarily and deleted after generation." })),
+      seed: Type.Optional(Type.Number({ description: "Optional seed, 0-2147483647. If omitted, the local worker chooses a random seed." })),
+      inputImagePath: Type.Optional(Type.String({ description: "Optional local source image for image-to-video. Supported: PNG, JPG/JPEG, WebP, BMP. A temporary local staging copy is deleted after generation." })),
       filename: Type.Optional(Type.String({ description: "Optional output filename stem or .mp4 filename. Sanitized." })),
       timeoutSeconds: Type.Optional(Type.Number({ description: `Optional generation timeout, 60-21600 seconds. Default ${DEFAULT_TIMEOUT_SECONDS}.` })),
     }),
@@ -722,9 +549,8 @@ export default function registerVideoGeneration(pi: ExtensionAPI) {
   pi.registerCommand("video-health", {
     description: "Check the mac-mini-64 headless video generator health.",
     handler: async (_args, ctx) => {
-      const host = resolveHost();
-      const baseDir = remoteBaseDir(host);
-      const result = await runSsh(pi, host, `${shellQuote(`${baseDir}/bin/video-generate`)} --health`, 30_000, ctx.signal);
+      const result = await runLocalWorker(pi, localBaseDir(), ["--health"], 30_000, ctx.signal);
+      if (result.code !== 0 || result.killed) throw new Error((result.stderr || result.stdout || "Local video health check failed").trim());
       ctx.ui.notify(result.stdout.trim() || "No health output", "info");
     },
   });
@@ -732,9 +558,8 @@ export default function registerVideoGeneration(pi: ExtensionAPI) {
   pi.registerCommand("video-download-model", {
     description: "Download/cache the approved mac-mini-64 local video model.",
     handler: async (_args, ctx) => {
-      const host = resolveHost();
-      const baseDir = remoteBaseDir(host);
-      const result = await runSsh(pi, host, `${shellQuote(`${baseDir}/bin/video-generate`)} --download-model`, 7_500_000, ctx.signal);
+      const result = await runLocalWorker(pi, localBaseDir(), ["--download-model"], 7_500_000, ctx.signal);
+      if (result.code !== 0 || result.killed) throw new Error((result.stderr || result.stdout || "Local video model download failed").trim());
       ctx.ui.notify(result.stdout.trim() || "No download output", "info");
     },
   });

@@ -90,7 +90,7 @@ Common deployment configuration lives in `.env`; [`.env.example`](.env.example) 
 - **Pi/model** — Pi command, workdir, RPC timeout, default text model, voice model override, thinking level, and `/jarvis model` options.
 - **Voice/oMLX/TTS** — ASR endpoint/model, wake-word gates, Piper voice settings, TTS streaming, and idle session refresh.
 - **Dashboard/room hardware** — dashboard URL, camera vision model, Raspberry Pi room-audio status, Android phone ADB status, and room-audio tuning.
-- **Local SSH machines (private)** — configure trusted SSH aliases locally with ignored `.pi/ssh-hosts.json` or `JARVIS_SSH_*` environment variables. The `ssh` tool supports unrestricted captured commands, directly attached local-TUI terminals, and stateful Discord/RPC PTY sessions. See [`.pi/docs/PI_EXTENSIONS.md`](.pi/docs/PI_EXTENSIONS.md).
+- **Remote SSH machines (private)** — configure explicit remote aliases in ignored `.pi/ssh-hosts.json` or `JARVIS_SSH_*` variables. Use normal coding tools for the local host; `ssh` supports captured commands and interactive PTY sessions on remotes. See [`.pi/docs/PI_EXTENSIONS.md`](.pi/docs/PI_EXTENSIONS.md).
 - **Tools** — Exa-backed web access, Google/YouTube APIs, memory, session search embeddings, Discord cron/ping/file upload, and Kasa smart-plug credentials.
 
 ## Discord Usage
@@ -117,7 +117,7 @@ Baseline tools include local coding/file helpers plus `ssh`, `web_search`, `fetc
 
 YouTube metadata/search uses the always-on `web_search` tool with `provider: "youtube"`; it is not a `load_tools` group.
 
-Use `image`/`video` for local media generation through `mac-mini-64:/Users/dylanrapanan/media-generation`; video uses local LTX-2.3 Q8 MLX and produces MP4s with synchronized audio. Generated files copy back to ignored `generated-images/` and `generated-videos/`. In the `gx10` group, use `gx10_get` for ordinary read-only live-patch questions, `gx10_find` for semantic discovery, and `gx10_lua` for custom reads or edits. Semantic edits require an RQ1-only `gx.plan_edit` dry run, exact plan-ID approval, and `tx:apply_plan` in a verified transaction on mac-mini-16, without depending on REAPER. Use the Discord-specific tools for their narrow jobs: `discord_cron` for scheduled jobs, `discord_ping` for immediate user-facing pings/notifications and attachments, and `discord_send_file` only for verified local uploads to the current Discord channel.
+Use `image`/`video` for native media generation from `/Users/dylanrapanan/media-generation`; no SSH is involved. Video uses local LTX-2.3 Q8 MLX with synchronized audio, and outputs land in ignored `generated-images/` and `generated-videos/`. In the `gx10` group, use `gx10_get` for ordinary read-only live-patch questions, `gx10_find` for semantic discovery, and `gx10_lua` for custom reads or edits. Semantic edits require an RQ1-only `gx.plan_edit` dry run, exact plan-ID approval, and `tx:apply_plan` in a verified transaction on mac-mini-16, without depending on REAPER. Use the Discord-specific tools for their narrow jobs: `discord_cron` for scheduled jobs, `discord_ping` for immediate user-facing pings/notifications and attachments, and `discord_send_file` only for verified local uploads to the current Discord channel.
 
 ## Safety Notes
 

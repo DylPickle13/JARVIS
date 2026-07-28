@@ -39,7 +39,7 @@ Verified 2026-06-11 EDT. These are private LAN endpoints; keep this table out of
 | Role | Hostname | LAN IP | SSH user | Access notes |
 |---|---|---|---|---|
 | Raspberry Pi room endpoint | `raspberrypi` | `<private-lan-ip>` | `pi` | Key: `~/.ssh/jarvis_dashboard_host`; owns room-audio client/systemd service. |
-| OMLX-64 / configured host SSH-tool host | `<host-name>` | `<private-lan-ip>` | `<ssh-user>` | Pi harness SSH alias: `<ssh-host-alias>`; also has `~/.ssh/jarvis_dashboard_host` authorized for Pi access. |
+| Native JARVIS / oMLX-64 | `mac-mini-64` | `<private-lan-ip>` | `dylanrapanan` | Local host; use coding tools rather than SSH. |
 
 Quick checks:
 

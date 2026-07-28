@@ -185,7 +185,7 @@ The Node server watches the Discord status file and also polls once per second, 
 The right-side HUD cards auto-refresh every 30 seconds and can be tapped to run live health checks and controls:
 
 - **RasPi** pings the Raspberry Pi over SSH shortly after page load, every 30 seconds, and after service toggles. It marks online only when the `jarvis-room-audio.service` health stack is good: systemd service running/enabled, client process present, `bluetooth.service` and `bluealsa.service` active, PowerConf connected, and the Mac room-audio `/health` endpoint reachable from the Pi. Reachable-but-unhealthy results show as degraded. Tapping the RasPi tile toggles the configured room-audio systemd unit with `sudo -n systemctl start|stop ...`, then polls real status briefly so `start` has time to become fully healthy before the tile settles.
-- **Phone** pings the Android ADB bridge on the configured host host shortly after page load, every 30 seconds, and when tapped. It marks online only when the configured phone serial is connected as an ADB `device`.
+- **Phone** pings the Android ADB bridge on `mac-mini-16` shortly after page load, every 30 seconds, and when tapped. It marks online only when the configured phone serial is connected as an ADB `device`.
 
 SSH endpoints are private local configuration. Keep concrete hostnames, LAN IPs, SSH users, and aliases in ignored config such as `.env` or `.pi/ssh-hosts.json`.
 

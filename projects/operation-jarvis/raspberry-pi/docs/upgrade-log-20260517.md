@@ -1,5 +1,7 @@
 # Raspberry Pi Fresh Bookworm Install Log — 2026-05-17
 
+> Historical install log: VM references below describe the original procedure. Current access is direct from native `mac-mini-64` using explicit SSH host `raspberrypi`.
+
 ## Summary
 
 We replaced the old Raspbian 10 `buster` install on the existing 16GB microSD card with a fresh Raspberry Pi OS / Raspbian 12 `bookworm` Lite 32-bit install.
@@ -13,7 +15,7 @@ Current verified state:
 - OS: Raspbian GNU/Linux 12 `bookworm`
 - Kernel after update/reboot: `6.12.87+rpt-rpi-v7`
 - Root filesystem: about 15GB total, about 11GB free
-- SSH: active and reachable from the JARVIS VM with `~/.ssh/jarvis_dashboard_host`
+- SSH: active and reachable from native JARVIS with `~/.ssh/jarvis_dashboard_host`
 - GUI: none; this is Raspberry Pi OS Lite / CLI-only
 
 ## Why we chose a fresh install

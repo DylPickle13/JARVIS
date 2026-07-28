@@ -142,7 +142,7 @@ This project installs a `python-kasa` PR build because the normal PyPI build fai
 
 ## Discovery
 
-Discovery may not work from the VM because broadcast traffic can be blocked by NAT. Direct IP control works once a plug is in `plugs.json`.
+Discovery runs natively on the LAN. If a device still does not answer discovery, direct IP control works once it is listed in `plugs.json`.
 
 From Operation JARVIS:
 

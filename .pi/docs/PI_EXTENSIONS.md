@@ -85,11 +85,11 @@ Minecraft bot chat/control and authenticated GitHub CLI access are intentionally
 
 ## SSH execution and interactive terminals
 
-The always-on `ssh` tool restricts connection selection to private configured host aliases, identities, users, and allowed remote working directories. It does not restrict command content.
+The always-on `ssh` tool requires an explicit configured remote host and pins its identity, user, and allowed working directories. Use coding tools—not SSH—for mac-mini-64.
 
-- Captured command: `ssh({ command: "hostname" })` or `action: "exec"`.
-- Local Pi TUI terminal: `ssh({ command: "vim file.txt", pty: true })`. Pi suspends its TUI, runs `ssh -tt` with inherited terminal I/O, and restores Pi when SSH exits.
-- Discord/RPC terminal: start a stateful PTY with `ssh({ action: "start", command: "vim file.txt" })`; use the returned `sessionId` with `input`, `read`, `resize`, `signal`, and `close` actions.
+- Captured command: `ssh({ host: "mac-mini-16", command: "hostname" })`.
+- Local Pi TUI terminal: `ssh({ host: "mac-mini-16", command: "vim file.txt", pty: true })`.
+- Discord/RPC terminal: start with `ssh({ action: "start", host: "mac-mini-16", command: "vim file.txt" })`, then use its `sessionId`.
 - Send a line with `action: "input"`, `input: "text"`, and `key: "ENTER"`. Named keys include arrows, Escape, Backspace, Ctrl-C, Ctrl-D, Ctrl-Z, and Ctrl-L.
 - `action: "read"` returns the current rendered terminal screen (so full-screen editors and TUIs remain intelligible) and consumes pending transcript output by default; pass `consume: false` to retain pending output.
 - `action: "list"` lists active/exited sessions in the current Pi process.
@@ -107,14 +107,14 @@ npm install
 
 The `image` and `video` groups use the private worker repo [`DylPickle13/local-media-generation`](https://github.com/DylPickle13/local-media-generation) on `mac-mini-64`.
 
-- Canonical remote directory: `/Users/dylanrapanan/media-generation`
+- Canonical local directory: `/Users/dylanrapanan/media-generation`
 - Compatibility symlink: `/Users/dylanrapanan/image-generation -> media-generation`
 - Local copied outputs: `generated-images/` and `generated-videos/` in this JARVIS repo, both ignored by git
 - Video generation uses `dgrauet/ltx-2.3-mlx-q8` through `ltx-2-mlx`, producing MP4s with synchronized stereo audio by default.
-- Pi extensions default to `~/media-generation`, export both `MEDIA_GENERATION_DIR` and legacy `IMAGE_GENERATION_DIR`, and set `JARVIS_GENERATION_SYNC=0` because the extensions handle their own copy-back and remote cleanup.
-- Manual/README worker runs leave sync enabled: successful outputs copy back through the local `mac-mini-64` SSH alias, then generated staging media is deleted only after copy-back succeeds.
+- Pi extensions execute the workers directly with `JARVIS_GENERATION_SYNC=0`, copy outputs locally into JARVIS, and delete staging files after a successful copy.
+- Manual worker runs use the same local-only copy path; no SSH alias, `ssh`, or `scp` is involved.
 
-Remote verification on `mac-mini-64`:
+Local verification on `mac-mini-64`:
 
 ```bash
 cd ~/media-generation
@@ -123,7 +123,7 @@ bin/video-generate --health
 bin/smoke-test
 ```
 
-The worker `--health` JSON includes `sync.image` and `sync.video` checks confirming `mac-mini-64` can write to `~/JARVIS/generated-images/` and `~/JARVIS/generated-videos/`; video health also reports the LTX model/text-encoder cache state and `supportsAudio:true`. `bin/smoke-test` is a fast compile/health/fake-sync test; it does not run model inference.
+The worker `--health` JSON confirms local write access to `~/JARVIS/generated-images/` and `~/JARVIS/generated-videos/`; video health also reports model/cache state and `supportsAudio:true`. `bin/smoke-test` is a fast compile/health/local-copy test without model inference.
 
 ## Verification
 

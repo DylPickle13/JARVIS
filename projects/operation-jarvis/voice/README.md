@@ -39,7 +39,7 @@ Smoke checks before blaming Discord receive:
 
 ## Machine dependencies
 
-When live voice is configured to use the OMLX-64 response model, the confirmed configured host endpoint is `<host-name> at `<private-lan-ip>` with SSH user `<ssh-user>`, key `~/.ssh/jarvis_dashboard_host`, and Pi harness SSH alias `minecraft-mac-mini`. OMLX-64 API defaults elsewhere in the repo use `http://<voice-model-host>:8000/v1`.
+When live voice uses oMLX-64, it runs locally on `mac-mini-64`; use coding tools rather than SSH. Other devices reach its configured LAN API at `http://<voice-model-host>:8000/v1`.
 
 The room-audio Raspberry Pi endpoint used by the companion room mic/speaker stack is `raspberrypi` at `<private-lan-ip>`, SSH user `pi`, key `~/.ssh/jarvis_dashboard_host`.
 
