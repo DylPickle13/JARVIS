@@ -3,6 +3,7 @@
 # Python 3.13 is the tested runtime and is required by audioop-lts 0.2.2.
 
 audioop-lts==0.2.2
+beautifulsoup4==4.14.3
 davey==0.1.5
 discord-ext-voice-recv==0.5.2a179
 discord.py==2.7.1
