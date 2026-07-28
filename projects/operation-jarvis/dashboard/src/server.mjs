@@ -125,10 +125,7 @@ const DASHBOARD_VOICE_ROOM_AUDIO_URL = String(
 ).replace(/\/+$/, '');
 const DASHBOARD_VOICE_ROOM_AUDIO_TOKEN = process.env.JARVIS_DASHBOARD_VOICE_ROOM_AUDIO_TOKEN || process.env.JARVIS_ROOM_AUDIO_TOKEN || '';
 const PHONE_ADB_SERIAL = process.env.JARVIS_DASHBOARD_PHONE_ADB_SERIAL || '';
-const PHONE_ADB_PATH = process.env.JARVIS_DASHBOARD_PHONE_ADB_PATH || '$HOME/.local/share/android-platform-tools/platform-tools/adb';
-const PHONE_ADB_SSH_HOST = process.env.JARVIS_DASHBOARD_PHONE_ADB_SSH_HOST || '';
-const PHONE_ADB_SSH_USER = process.env.JARVIS_DASHBOARD_PHONE_ADB_SSH_USER || '';
-const PHONE_ADB_SSH_KEY = process.env.JARVIS_DASHBOARD_PHONE_ADB_SSH_KEY || '~/.ssh/jarvis_dashboard_host';
+const PHONE_ADB_PATH = process.env.JARVIS_DASHBOARD_PHONE_ADB_PATH || '/opt/homebrew/bin/adb';
 const PHONE_ADB_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_PHONE_ADB_TIMEOUT_MS || '6000', 10);
 const RASPBERRY_PI_SSH_HOST = process.env.JARVIS_DASHBOARD_RASPBERRY_PI_SSH_HOST || process.env.JARVIS_RASPBERRY_PI_HOST || '';
 const RASPBERRY_PI_SSH_USER = process.env.JARVIS_DASHBOARD_RASPBERRY_PI_SSH_USER || process.env.JARVIS_RASPBERRY_PI_USER || 'pi';
@@ -2847,9 +2844,7 @@ function buildPhoneAdbScript() {
 async function readPhoneAdbStatus() {
   const checkedAt = new Date().toISOString();
   const startedMs = Date.now();
-  const missingConfig = !PHONE_ADB_SSH_HOST
-    ? 'Phone ADB SSH host is not configured'
-    : (!PHONE_ADB_SERIAL ? 'Phone ADB serial is not configured' : '');
+  const missingConfig = !PHONE_ADB_SERIAL ? 'Phone ADB serial is not configured' : '';
   if (missingConfig) {
     return {
       ok: false,
@@ -2860,27 +2855,16 @@ async function readPhoneAdbStatus() {
       android: '',
       product: '',
       state: 'unknown',
-      host: '',
+      host: 'local',
       checkedAt,
       durationMs: Date.now() - startedMs,
       error: missingConfig
     };
   }
   const script = buildPhoneAdbScript();
-  const sshTarget = PHONE_ADB_SSH_USER
-    ? `${PHONE_ADB_SSH_USER}@${PHONE_ADB_SSH_HOST}`
-    : PHONE_ADB_SSH_HOST;
-  const sshArgs = [
-    '-i', expandHome(PHONE_ADB_SSH_KEY),
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'BatchMode=yes',
-    '-o', 'ConnectTimeout=3',
-    sshTarget,
-    script
-  ];
 
   try {
-    const { stdout, stderr } = await execFileAsync('ssh', sshArgs, {
+    const { stdout, stderr } = await execFileAsync('/bin/bash', ['-lc', script], {
       timeout: PHONE_ADB_TIMEOUT_MS,
       maxBuffer: 256 * 1024
     });
@@ -2895,7 +2879,7 @@ async function readPhoneAdbStatus() {
       android: values.android || '',
       product: values.product || '',
       state: values.state || 'unknown',
-      host: sshTarget,
+      host: 'local',
       checkedAt,
       durationMs: Date.now() - startedMs,
       error: ok ? '' : (values.error || stderr.trim() || 'ADB target not connected')
@@ -2916,7 +2900,7 @@ async function readPhoneAdbStatus() {
       android: values.android || '',
       product: values.product || '',
       state: values.state || 'unknown',
-      host: sshTarget,
+      host: 'local',
       checkedAt,
       durationMs: Date.now() - startedMs,
       error: message.split(/\r?\n/).slice(0, 3).join(' · ')

@@ -218,6 +218,9 @@ require_command "pi"
 require_command "node"
 require_command "npm"
 require_command "ffmpeg"
+require_command "adb"
+require_command "fastboot"
+require_command "scrcpy"
 warn_command "pdftotext"
 warn_command "trash"
 warn_command "gws"
@@ -294,7 +297,7 @@ NODE
 fi
 
 if command -v node >/dev/null 2>&1; then
-  run_check "native-host SSH/media topology" node - <<'NODE'
+  run_check "native-host SSH/media/phone topology" node - <<'NODE'
 const fs = require('fs');
 const hosts = JSON.parse(fs.readFileSync('.pi/ssh-hosts.json', 'utf8'));
 const aliases = hosts.flatMap((host) => host.aliases || []).sort();
@@ -310,7 +313,15 @@ for (const forbidden of ['pi.exec("ssh"', 'pi.exec("scp"', 'HOST_CONFIG_PATH', '
 for (const required of ['runLocalWorker(', 'JARVIS_GENERATION_SYNC=0', 'execution: "local"']) {
   if (!media.includes(required)) throw new Error(`native media wiring missing: ${required}`);
 }
-console.log(`remote SSH aliases: ${aliases.join(', ')}; media transport: local`);
+const dashboard = fs.readFileSync('projects/operation-jarvis/dashboard/src/server.mjs', 'utf8');
+const phoneStatus = dashboard.split('async function readPhoneAdbStatus()', 2)[1]?.split('async function handlePhoneAdbPing', 1)[0] || '';
+for (const forbidden of ['PHONE_ADB_SSH', "execFileAsync('ssh'"]) {
+  if (phoneStatus.includes(forbidden)) throw new Error(`dashboard phone check regained SSH transport: ${forbidden}`);
+}
+for (const required of ["'/opt/homebrew/bin/adb'", "execFileAsync('/bin/bash'", "host: 'local'"]) {
+  if (!dashboard.includes(required)) throw new Error(`native phone wiring missing: ${required}`);
+}
+console.log(`remote SSH aliases: ${aliases.join(', ')}; media/phone transport: local`);
 NODE
 fi
 
