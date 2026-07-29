@@ -30,7 +30,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
   pi.registerTool({
     name: "browser_status",
     label: "Browser Status",
-    description: "Return status for the lazy visible Chrome browser: launch/attach mode, running state, profile/CDP path, active tab, and open tabs.",
+    description: "Return status for the dedicated JARVIS Chrome window: launch/attach mode, shared signed-in profile/CDP path, logical active tab, and automation tabs only.",
     parameters: Type.Object({}),
     async execute() {
       const status = await getBrowser().status();
@@ -41,7 +41,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
   pi.registerTool({
     name: "browser_open",
     label: "Browser Open",
-    description: "Open a URL in the visible Chrome browser through the persistent local Chrome bridge daemon.",
+    description: "Open a URL in the dedicated visible JARVIS Chrome window through the persistent local bridge. The window shares the user's signed-in Chrome profile but never reuses personal-window tabs.",
     parameters: Type.Object({
       url: Type.String({ description: "URL or domain to open. Domains without a scheme are treated as https://." }),
       newTab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of reusing the active tab." })),
@@ -213,7 +213,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
   pi.registerTool({
     name: "browser_tabs",
     label: "Browser Tabs",
-    description: "List, switch, or close tabs in the visible browser.",
+    description: "List, logically switch, or close tabs only in the dedicated JARVIS browser window. Switching does not foreground Chrome or steal focus from the user's personal window.",
     parameters: Type.Object({
       action: stringEnum(TabsAction, { description: "Tab action: list, switch, or close." }),
       index: Type.Optional(Type.Number({ description: "Tab index for switch/close." })),

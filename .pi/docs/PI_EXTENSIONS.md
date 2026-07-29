@@ -30,7 +30,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `45-jarvis.ts` — Operation JARVIS dashboard/Cast, smart plugs, and VeSync/Levoit air purifier actions.
 - `46-local-pi-session-status.ts` — dashboard-visible local Pi session heartbeat.
 - `48-agent-phone.ts` — guarded LG-H933 Android phone adapter.
-- `50-browser/` — visible Chrome browser control via Playwright CDP.
+- `50-browser/` — visible Chrome control through a persistent CDP bridge, hard-scoped to a dedicated JARVIS window in the user's signed-in profile.
 - `50-minecraft-jarvis-chat.ts` — Minecraft jarvis bot chat/control.
 - `55-ssh-exec.ts` — unrestricted configured SSH execution plus directly attached and stateful interactive PTY sessions.
 - `56-github-cli.ts` — guarded GitHub CLI adapter.

@@ -12,6 +12,14 @@ export type BrowserStatus = {
   profileDir: string;
   profileDirectory?: string;
   cdpUrl?: string;
+  automationWindow?: {
+    dedicated: boolean;
+    windowId?: string;
+    title: string;
+    anchorOpen: boolean;
+    avoidsForegroundActivation: boolean;
+    sessionOwnedTabsOnly: boolean;
+  };
   daemon?: {
     host: string;
     port: number;
