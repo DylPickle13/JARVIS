@@ -30,23 +30,6 @@ const weatherDetailEl = document.querySelector('#display-weather-detail');
 const headerWeatherEl = document.querySelector('#display-header-weather');
 const headerAirEl = document.querySelector('#display-header-air');
 const headerPiSessionsEl = document.querySelector('#display-header-pi-sessions');
-const activeModelsCard = document.querySelector('#active-models-card');
-const activeModelsSummaryEl = document.querySelector('#active-models-summary');
-const activeModelsStatusEl = document.querySelector('#active-models-status');
-const activeModelsMemoryFillEl = document.querySelector('#active-models-memory-fill');
-const activeModelsMemoryTextEl = document.querySelector('#active-models-memory-text');
-const activeModelsListEl = document.querySelector('#active-models-list');
-const activeModelsFooterEl = document.querySelector('#active-models-footer');
-const omlxButtons = Array.from(document.querySelectorAll('[data-omlx-server]'));
-const omlxControlById = new Map(omlxButtons.map((button) => {
-  const serverId = normalizeOmlxClientServerId(button.dataset.omlxServer);
-  return [serverId, {
-    button,
-    labelEl: button.querySelector('.omlx-label, .eyebrow'),
-    iconEl: button.querySelector('.omlx-status-icon'),
-    detailEl: button.querySelector('.omlx-detail, .hud-mini-detail')
-  }];
-}));
 const hudMiniBoxes = document.querySelector('.hud-mini-boxes');
 const smartPlugGrid = document.querySelector('#smart-plug-grid');
 let smartPlugButtons = Array.from(document.querySelectorAll('[data-smart-plug]'));
@@ -57,7 +40,6 @@ const refreshEl = document.querySelector('#display-refresh');
 
 const toneClasses = ['tone-cyan', 'tone-green', 'tone-violet', 'tone-pink', 'tone-amber', 'tone-orange', 'tone-blue', 'tone-indigo', 'tone-silver'];
 const INDICATOR_REFRESH_INTERVAL_MS = 30_000;
-const ACTIVE_MODELS_REFRESH_INTERVAL_MS = 1_000;
 let latestDisplayPayload = null;
 let dashboardUptimeBaseSeconds = 0;
 let dashboardUptimeSyncedAt = Date.now();
@@ -65,10 +47,6 @@ let cameraStream = null;
 let cameraStartPromise = null;
 let cameraAspectRatio = 4 / 3;
 let cameraPositionFrame = 0;
-const omlxPingInFlight = new Map();
-const omlxToggleInFlight = new Map();
-const latestOmlxStatuses = new Map();
-let activeModelsUsageInFlight = null;
 let raspberryPiPingInFlight = null;
 let raspberryPiToggleInFlight = null;
 let latestRaspberryPiStatus = null;
@@ -142,104 +120,6 @@ function formatRelative(iso) {
   return `${hours}h ago`;
 }
 
-function finiteDashboardNumber(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function formatDashboardBytes(value) {
-  const bytes = finiteDashboardNumber(value);
-  if (bytes === null) return '—';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let scaled = Math.abs(bytes);
-  let unitIndex = 0;
-  while (scaled >= 1024 && unitIndex < units.length - 1) {
-    scaled /= 1024;
-    unitIndex += 1;
-  }
-  const signed = bytes < 0 ? -scaled : scaled;
-  const digits = unitIndex >= 3 ? 2 : (unitIndex === 0 ? 0 : 1);
-  return `${signed.toFixed(digits)} ${units[unitIndex]}`;
-}
-
-function formatDashboardBytesCompact(value) {
-  return formatDashboardBytes(value).replace(/\s+/g, '');
-}
-
-function formatCompactDashboardNumber(value) {
-  const parsed = finiteDashboardNumber(value);
-  if (parsed === null) return '—';
-  try {
-    return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(parsed);
-  } catch {
-    return parsed.toLocaleString();
-  }
-}
-
-function shortDashboardModelName(raw = '') {
-  const value = String(raw || '').split('/').filter(Boolean).pop() || String(raw || 'Model');
-  return value.length > 34 ? `${value.slice(0, 31)}…` : value;
-}
-
-function compactDashboardModelName(raw = '') {
-  const value = shortDashboardModelName(raw)
-    .replace(/[-_](instruct|chat|mlx|gguf|awq|gptq|q\d+(_k_m)?|\d+bit|fp16|bf16)$/i, '')
-    .replace(/[-_](instruct|chat|mlx|gguf|awq|gptq|q\d+(_k_m)?|\d+bit|fp16|bf16)$/i, '');
-  const size = value.match(/(?:^|[-_])(\d+(?:\.\d+)?B)(?:[-_]|$)/i)?.[1]?.toUpperCase();
-  if (/embed(?:ding)?/i.test(value)) return 'EMBED';
-  if (/qwen/i.test(value) && size) return `Q${size}`;
-  if (/llama/i.test(value) && size) return `L${size}`;
-  if (/mistral/i.test(value) && size) return `M${size}`;
-  if (/mixtral/i.test(value) && size) return `Mix${size}`;
-  if (/gemma/i.test(value) && size) return `G${size}`;
-  if (/deepseek/i.test(value) && size) return `DS${size}`;
-  if (/phi/i.test(value) && size) return `Phi${size}`;
-  return value.length > 10 ? `${value.slice(0, 9)}…` : value;
-}
-
-function compactOmlxServerLabel(server = {}) {
-  const serverId = String(server.serverId || '').trim();
-  if (serverId) return serverId.replace(/^omlx[-_]?/i, '');
-  return String(server.name || 'OMLX').replace(/^OMLX[-_]?/i, '') || 'OMLX';
-}
-
-function clearActiveModelsList() {
-  if (!activeModelsListEl) return;
-  while (activeModelsListEl.firstChild) activeModelsListEl.removeChild(activeModelsListEl.firstChild);
-}
-
-function syncHeaderWeatherPosition() {
-  if (!headerWeatherEl || !activeModelsCard || activeModelsCard.hidden) return;
-  headerWeatherEl.style.transform = 'translateX(0px)';
-  const cardRect = activeModelsCard.getBoundingClientRect();
-  const weatherRect = headerWeatherEl.getBoundingClientRect();
-  const targetCenter = cardRect.left + (cardRect.width / 2);
-  const weatherCenter = weatherRect.left + (weatherRect.width / 2);
-  const offset = targetCenter - weatherCenter;
-  if (!Number.isFinite(offset)) return;
-  headerWeatherEl.style.transform = `translateX(${Math.round(offset)}px)`;
-}
-
-function scheduleHeaderWeatherPositionSync() {
-  if (!headerWeatherEl || !activeModelsCard) return;
-  requestAnimationFrame(syncHeaderWeatherPosition);
-}
-
-function syncActiveModelsCardWidth() {
-  if (!activeModelsCard || !smartPlugGrid || activeModelsCard.hidden) return;
-  const cardRect = activeModelsCard.getBoundingClientRect();
-  const plugRect = smartPlugGrid.getBoundingClientRect();
-  const targetWidth = plugRect.left - cardRect.left;
-  if (!Number.isFinite(targetWidth) || targetWidth <= 0) return;
-  activeModelsCard.style.setProperty('--active-models-card-width', `${Math.round(targetWidth)}px`);
-  scheduleHeaderWeatherPositionSync();
-}
-
-function scheduleActiveModelsCardWidthSync() {
-  if (!activeModelsCard || !smartPlugGrid) return;
-  requestAnimationFrame(syncActiveModelsCardWidth);
-}
-
 function syncRightHudCardWidth() {
   if (!hudMiniBoxes || !rightHudButtons.length) return;
   const anchor = smartPlugButtonByName.get('tv') || smartPlugButtons[smartPlugButtons.length - 1] || smartPlugGrid;
@@ -255,412 +135,6 @@ function syncRightHudCardWidth() {
 function scheduleRightHudCardWidthSync() {
   if (!hudMiniBoxes || !rightHudButtons.length) return;
   requestAnimationFrame(syncRightHudCardWidth);
-}
-
-function makeActiveModelsNode(tag, className = '', text = '') {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== '') node.textContent = text;
-  return node;
-}
-
-function appendActiveModelsEmpty(server, container) {
-  const empty = makeActiveModelsNode('div', 'active-models-empty');
-  empty.textContent = server.ok ? 'idle' : (server.error ? 'offline' : 'offline');
-  container.appendChild(empty);
-}
-
-function formatDashboardSeconds(value, compact = false) {
-  const seconds = finiteDashboardNumber(value);
-  if (seconds === null) return '';
-  if (seconds < 1) return compact ? '<1s' : 'under 1s';
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remaining = Math.round(seconds % 60);
-  if (minutes < 60) return compact ? `${minutes}m` : `${minutes}m ${remaining}s`;
-  const hours = Math.floor(minutes / 60);
-  return compact ? `${hours}h` : `${hours}h ${minutes % 60}m`;
-}
-
-function formatDashboardTps(value) {
-  const tps = finiteDashboardNumber(value);
-  if (tps === null || tps <= 0) return '';
-  return `${tps >= 100 ? Math.round(tps) : tps.toFixed(1)}t/s`;
-}
-
-function shortDashboardRequestId(value = '') {
-  const raw = String(value || '').trim();
-  if (!raw) return 'request';
-  return (raw.split('-')[0] || raw).slice(0, 8);
-}
-
-function activeModelRequestCounts(model = {}) {
-  const prefilling = Array.isArray(model.prefilling) ? model.prefilling.length : 0;
-  const generating = Array.isArray(model.generating) ? model.generating.length : 0;
-  const activities = Array.isArray(model.activities) ? model.activities.length : 0;
-  const waiting = Array.isArray(model.waiting) ? model.waiting.length : 0;
-  return {
-    active: Math.max(Number(model.activeRequests || 0), prefilling + generating + activities),
-    waiting: Math.max(Number(model.waitingRequests || 0), waiting),
-    prefilling,
-    generating,
-    activities
-  };
-}
-
-function activeModelRailPriority(model = {}) {
-  const counts = activeModelRequestCounts(model);
-  return (counts.active * 1000) + (counts.waiting * 100) + (model.isLoading ? 20 : 0) + (model.loaded ? 10 : 0) + (model.pinned ? 1 : 0);
-}
-
-function appendActiveModelLiveLine(container, phase, title, detail = '', options = {}) {
-  const line = makeActiveModelsNode('div', 'active-model-live-line');
-  line.dataset.phase = phase;
-  const titleEl = makeActiveModelsNode('strong', '', title);
-  line.appendChild(titleEl);
-  const progress = finiteDashboardNumber(options.progressPercent);
-  if (progress !== null) {
-    const track = makeActiveModelsNode('span', 'active-model-progress-track');
-    const fill = makeActiveModelsNode('i');
-    fill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
-    track.appendChild(fill);
-    line.appendChild(track);
-    line.appendChild(makeActiveModelsNode('span', 'active-model-live-pct', `${Math.round(progress)}%`));
-  }
-  if (detail) line.appendChild(makeActiveModelsNode('span', 'active-model-live-detail', detail));
-  if (options.subdetail) line.appendChild(makeActiveModelsNode('span', 'active-model-live-subdetail', options.subdetail));
-  container.appendChild(line);
-}
-
-function appendActiveModelLiveRows(row, model = {}) {
-  const live = makeActiveModelsNode('div', 'active-model-live');
-  const prefilling = Array.isArray(model.prefilling) ? model.prefilling : [];
-  const generating = Array.isArray(model.generating) ? model.generating : [];
-  const waiting = Array.isArray(model.waiting) ? model.waiting : [];
-  const activities = Array.isArray(model.activities) ? model.activities : [];
-  let shown = 0;
-
-  for (const item of prefilling) {
-    if (shown >= 2) break;
-    const processed = finiteDashboardNumber(item.processed);
-    const total = finiteDashboardNumber(item.total);
-    const pct = processed !== null && total && total > 0 ? Math.max(0, Math.min(99, (processed / total) * 100)) : null;
-    const title = 'PF';
-    const details = [];
-    if (processed !== null && total) details.push(`${formatCompactDashboardNumber(processed)}/${formatCompactDashboardNumber(total)}`);
-    const elapsed = formatDashboardSeconds(item.elapsed, true);
-    if (elapsed) details.push(elapsed);
-    const tps = formatDashboardTps(item.speed);
-    const eta = formatDashboardSeconds(item.eta, true);
-    const perf = [tps, eta ? `${eta}` : ''].filter(Boolean).join(' · ');
-    appendActiveModelLiveLine(live, 'prefill', title, details.join(' · '), {
-      progressPercent: pct,
-      subdetail: perf
-    });
-    shown += 1;
-  }
-
-  for (const item of generating) {
-    if (shown >= 2) break;
-    const title = 'GEN';
-    const details = [];
-    if (finiteDashboardNumber(item.generatedTokens) !== null) details.push(`${formatCompactDashboardNumber(item.generatedTokens)}`);
-    const tps = formatDashboardTps(item.tokensPerSecond);
-    if (tps) details.push(tps);
-    const elapsed = formatDashboardSeconds(item.elapsedSeconds, true);
-    if (elapsed) details.push(elapsed);
-    appendActiveModelLiveLine(live, 'generate', title, details.join(' · '));
-    shown += 1;
-  }
-
-  for (const item of waiting) {
-    if (shown >= 2) break;
-    const position = finiteDashboardNumber(item.queuePosition);
-    const title = `queue${position ? ` #${position}` : ''}`;
-    const details = [];
-    if (finiteDashboardNumber(item.promptTokens) !== null) details.push(`${formatCompactDashboardNumber(item.promptTokens)} tok`);
-    const elapsed = formatDashboardSeconds(item.elapsedSeconds, true);
-    if (elapsed) details.push(`${elapsed} wait`);
-    appendActiveModelLiveLine(live, 'queued', title, details.join(' · '));
-    shown += 1;
-  }
-
-  for (const item of activities) {
-    if (shown >= 2) break;
-    appendActiveModelLiveLine(live, 'activity', item.kind || 'activity');
-    shown += 1;
-  }
-
-  const remaining = prefilling.length + generating.length + waiting.length + activities.length - shown;
-  if (remaining > 0) appendActiveModelLiveLine(live, 'more', `+${remaining} more`);
-  if (shown > 0 || remaining > 0) row.appendChild(live);
-}
-
-function activeModelsServerRequestTotal(server = {}) {
-  return Number(server.activeRequests || 0) + Number(server.waitingRequests || 0);
-}
-
-function activeModelsServerHasRequest(server = {}) {
-  if (activeModelsServerRequestTotal(server) > 0) return true;
-  return (Array.isArray(server.models) ? server.models : []).some((model) => activeModelsModelRequestTotal(model) > 0);
-}
-
-function shouldRenderActiveModelsServer(server = {}) {
-  const serverId = String(server.serverId || '').trim().replace(/^omlx[-_]?/i, '');
-  return serverId !== '16' || activeModelsServerHasRequest(server);
-}
-
-function activeModelsServerUiState(server = {}) {
-  if (!server.ok) return 'offline';
-  if (activeModelsServerHasRequest(server)) return 'active';
-  if ((Array.isArray(server.models) ? server.models : []).some((model) => model.isLoading)) return 'loading';
-  return 'online';
-}
-
-function activeModelsModelRequestTotal(model = {}) {
-  const counts = activeModelRequestCounts(model);
-  return counts.active + counts.waiting;
-}
-
-function primaryActiveModelsModel(server = {}) {
-  const models = Array.isArray(server.models) ? server.models : [];
-  return [...models].sort((a, b) => activeModelRailPriority(b) - activeModelRailPriority(a))[0] || null;
-}
-
-function selectActiveModelsFocus(servers = []) {
-  const candidates = [];
-  const serverBias = (server = {}) => String(server.serverId || '') === '64' ? 2 : (String(server.serverId || '') === '16' ? 1 : 0);
-  const addCandidate = (rank, server, model = null, kind = 'idle', item = null) => {
-    candidates.push({ rank: rank + serverBias(server), server, model, kind, item });
-  };
-
-  for (const server of servers) {
-    const models = Array.isArray(server.models) ? [...server.models].sort((a, b) => activeModelRailPriority(b) - activeModelRailPriority(a)) : [];
-    for (const model of models) {
-      const counts = activeModelRequestCounts(model);
-      const prefilling = Array.isArray(model.prefilling) ? model.prefilling : [];
-      const generating = Array.isArray(model.generating) ? model.generating : [];
-      const waiting = Array.isArray(model.waiting) ? model.waiting : [];
-      if (prefilling.length) addCandidate(6000, server, model, 'prefill', prefilling[0]);
-      if (generating.length) addCandidate(5000, server, model, 'generate', generating[0]);
-      if (waiting.length) addCandidate(4000, server, model, 'queued', waiting[0]);
-      else if (counts.waiting > 0) addCandidate(3900, server, model, 'queued', null);
-      if (counts.active > 0) addCandidate(3000, server, model, 'active', null);
-      if (model.isLoading) addCandidate(2000, server, model, 'loading', null);
-      if (model.loaded) addCandidate(1000, server, model, 'ready', null);
-    }
-    if (!models.length) {
-      if (activeModelsServerHasRequest(server)) addCandidate(3000, server, null, 'active', null);
-      else addCandidate(server.ok ? 20 : 10, server, null, server.ok ? 'idle' : 'offline', null);
-    }
-  }
-
-  return candidates.sort((a, b) => b.rank - a.rank)[0] || null;
-}
-
-function appendActiveModelsFocusProgress(container, percent) {
-  const progress = finiteDashboardNumber(percent);
-  if (progress === null) return;
-  const clamped = Math.max(0, Math.min(100, progress));
-  const track = makeActiveModelsNode('div', 'active-models-focus-progress');
-  const fill = makeActiveModelsNode('i');
-  fill.style.width = `${clamped}%`;
-  track.appendChild(fill);
-  container.appendChild(track);
-}
-
-function appendActiveModelsFocusDetail(container, text, className = '') {
-  if (!text) return;
-  container.appendChild(makeActiveModelsNode('div', `active-models-focus-detail${className ? ` ${className}` : ''}`, text));
-}
-
-function appendActiveModelsFocusPeers(container, focus, servers = []) {
-  const peers = servers.filter((server) => server !== focus?.server);
-  if (!peers.length) return;
-  const peerBox = makeActiveModelsNode('div', 'active-models-focus-peers');
-  for (const server of peers) {
-    const peer = makeActiveModelsNode('div', 'active-models-focus-peer');
-    peer.dataset.state = activeModelsServerUiState(server);
-    const dot = makeActiveModelsNode('span', 'active-models-focus-dot');
-    dot.setAttribute('aria-hidden', 'true');
-    const label = makeActiveModelsNode('strong', '', compactOmlxServerLabel(server));
-    peer.append(dot, label);
-    const requests = activeModelsServerRequestTotal(server);
-    if (requests > 0) peer.appendChild(makeActiveModelsNode('span', '', `${requests}R`));
-    else if (!server.ok) peer.appendChild(makeActiveModelsNode('span', '', 'OFF'));
-    peerBox.appendChild(peer);
-  }
-  container.appendChild(peerBox);
-}
-
-function appendActiveModelsFocus(container, focus, servers = []) {
-  const focusNode = makeActiveModelsNode('section', 'active-models-focus');
-  focusNode.dataset.kind = focus?.kind || 'idle';
-  focusNode.dataset.state = activeModelsServerUiState(focus?.server || {});
-
-  const server = focus?.server || servers[0] || { ok: false, serverId: '—', name: 'OMLX', models: [] };
-  const model = focus?.model || primaryActiveModelsModel(server);
-  const modelRequests = model ? activeModelsModelRequestTotal(model) : 0;
-  const serverRequests = activeModelsServerRequestTotal(server);
-
-  const serverLine = makeActiveModelsNode('div', 'active-models-focus-server');
-  const dot = makeActiveModelsNode('span', 'active-models-focus-dot');
-  dot.setAttribute('aria-hidden', 'true');
-  const serverLabel = makeActiveModelsNode('strong', '', compactOmlxServerLabel(server));
-  serverLabel.title = server.name || `OMLX-${server.serverId || ''}`;
-  serverLine.append(dot, serverLabel);
-  if (!server.ok) serverLine.appendChild(makeActiveModelsNode('span', 'active-models-focus-pill', 'OFF'));
-  focusNode.appendChild(serverLine);
-
-  if (model) {
-    const modelBlock = makeActiveModelsNode('div', 'active-models-focus-model-block');
-    const modelTitle = makeActiveModelsNode('strong', 'active-models-focus-model', compactDashboardModelName(model.id));
-    modelTitle.title = model.id || '';
-    modelBlock.appendChild(modelTitle);
-    const chipText = modelRequests > 0
-      ? `${modelRequests} REQ`
-      : (model.isLoading ? 'LOAD' : (model.loaded ? 'READY' : (model.pinned ? 'PIN' : '')));
-    if (chipText) modelBlock.appendChild(makeActiveModelsNode('span', 'active-models-focus-chip', chipText));
-    focusNode.appendChild(modelBlock);
-  }
-
-  const phase = makeActiveModelsNode('div', 'active-models-focus-phase');
-  const kind = focus?.kind || (model ? 'ready' : (server.ok ? 'idle' : 'offline'));
-  const item = focus?.item || {};
-
-  if (kind === 'prefill') {
-    const processed = finiteDashboardNumber(item.processed);
-    const total = finiteDashboardNumber(item.total);
-    const pct = processed !== null && total && total > 0 ? Math.max(0, Math.min(100, (processed / total) * 100)) : null;
-    phase.textContent = 'PREFILL';
-    focusNode.appendChild(phase);
-    focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-percent', pct !== null ? `${Math.round(pct)}%` : 'PF'));
-    appendActiveModelsFocusProgress(focusNode, pct);
-    appendActiveModelsFocusDetail(focusNode, formatDashboardTps(item.speed), 'accent');
-  } else if (kind === 'generate') {
-    phase.textContent = 'GEN';
-    focusNode.appendChild(phase);
-    appendActiveModelsFocusDetail(focusNode, formatDashboardTps(item.tokensPerSecond), 'accent');
-  } else if (kind === 'queued') {
-    const position = finiteDashboardNumber(item.queuePosition);
-    phase.textContent = 'QUEUE';
-    focusNode.appendChild(phase);
-    if (position) focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-metric', `#${position}`));
-  } else if (kind === 'active') {
-    phase.textContent = 'ACTIVE';
-    focusNode.appendChild(phase);
-  } else if (kind === 'loading') {
-    phase.textContent = 'LOADING';
-    focusNode.appendChild(phase);
-  } else if (kind === 'ready') {
-    // Per-model READY chip already communicates readiness; keep the focus rail uncluttered.
-  } else {
-    focusNode.appendChild(makeActiveModelsNode('div', 'active-models-focus-metric', server.ok ? 'IDLE' : 'OFF'));
-  }
-
-  const spacer = makeActiveModelsNode('div', 'active-models-focus-spacer');
-  focusNode.appendChild(spacer);
-  appendActiveModelsFocusPeers(focusNode, focus, servers);
-  container.appendChild(focusNode);
-}
-
-function updateActiveModelsChrome(payload = {}, servers = []) {
-  const activeRequests = servers.reduce((sum, server) => sum + Number(server.activeRequests || 0), 0);
-  const waitingRequests = servers.reduce((sum, server) => sum + Number(server.waitingRequests || 0), 0);
-  const loadedModels = servers.reduce((sum, server) => sum + server.models.filter((model) => model.loaded).length, 0);
-  const totals = payload.totals || {};
-  const memoryUsed = finiteDashboardNumber(totals.memoryUsed) ?? servers.reduce((sum, server) => sum + (finiteDashboardNumber(server.memoryUsed) ?? 0), 0);
-  const memoryMax = finiteDashboardNumber(totals.memoryMax) ?? servers.reduce((sum, server) => sum + (finiteDashboardNumber(server.memoryMax) ?? 0), 0);
-  const memoryPct = memoryMax > 0 ? Math.max(0, Math.min(100, (memoryUsed / memoryMax) * 100)) : 0;
-
-  const totalRequests = activeRequests + waitingRequests;
-  const onlineServers = servers.filter((server) => server.ok).length;
-  if (activeModelsSummaryEl) activeModelsSummaryEl.textContent = 'OMLX';
-  if (activeModelsStatusEl) {
-    activeModelsStatusEl.textContent = totalRequests > 0
-      ? `${totalRequests} REQ`
-      : (loadedModels > 0 ? `${loadedModels} READY` : (onlineServers > 0 ? 'IDLE' : 'OFF'));
-  }
-  if (activeModelsMemoryFillEl) activeModelsMemoryFillEl.style.width = `${memoryPct}%`;
-  if (activeModelsMemoryTextEl) {
-    activeModelsMemoryTextEl.textContent = memoryMax > 0
-      ? `${formatDashboardBytesCompact(memoryUsed)} / ${formatDashboardBytesCompact(memoryMax)} cap`
-      : 'Memory pending';
-  }
-  if (activeModelsFooterEl) {
-    activeModelsFooterEl.textContent = totalRequests > 0
-      ? `A ${activeRequests}${waitingRequests ? ` · Q ${waitingRequests}` : ''}`
-      : `${onlineServers}/${servers.length || 2} ONLINE`;
-  }
-}
-
-function renderActiveModelsUsage(payload = {}) {
-  if (!activeModelsCard || !activeModelsListEl) return;
-  const rawServers = Array.isArray(payload.servers) ? payload.servers : [];
-  const fallbackServers = [
-    { ok: false, serverId: '64', name: 'OMLX-64', error: 'Checking…', models: [] },
-    { ok: false, serverId: '16', name: 'OMLX-16', error: 'Checking…', models: [] }
-  ];
-  const servers = (rawServers.length ? rawServers : fallbackServers)
-    .map((server) => ({
-      ...server,
-      models: Array.isArray(server.models) ? server.models.filter((model) => {
-        const counts = activeModelRequestCounts(model);
-        return model.loaded || model.isLoading || counts.active > 0 || counts.waiting > 0;
-      }) : []
-    }))
-    .filter(shouldRenderActiveModelsServer)
-    .sort((a, b) => {
-      const rank = (server) => String(server.serverId || '') === '64' ? 0 : (String(server.serverId || '') === '16' ? 1 : 2);
-      return rank(a) - rank(b);
-    });
-  const activeRequests = servers.reduce((sum, server) => sum + Number(server.activeRequests || 0), 0);
-  const loadedModels = servers.reduce((sum, server) => sum + server.models.filter((model) => model.loaded).length, 0);
-  const onlineServers = servers.filter((server) => server.ok).length;
-  const pressureLevels = servers.map((server) => String(server.memoryPressure?.pressureLevel || '').toLowerCase());
-  const memoryPressure = pressureLevels.some((level) => /critical|hard/.test(level))
-    ? 'critical'
-    : (pressureLevels.some((level) => /warn|soft|pressure|high/.test(level)) ? 'warm' : '');
-
-  updateActiveModelsChrome(payload, servers);
-  activeModelsCard.dataset.pressure = memoryPressure || (activeRequests > 0 ? 'active' : (onlineServers > 0 || loadedModels > 0 ? 'idle' : 'offline'));
-  activeModelsCard.hidden = false;
-  clearActiveModelsList();
-
-  const stack = makeActiveModelsNode('div', 'active-models-fixed-stack');
-  for (const server of servers) {
-    appendActiveModelsFocus(stack, selectActiveModelsFocus([server]), [server]);
-  }
-  activeModelsListEl.appendChild(stack);
-  scheduleActiveModelsCardWidthSync();
-}
-
-async function refreshActiveModelsUsage() {
-  if (!activeModelsCard) return null;
-  if (activeModelsUsageInFlight) return activeModelsUsageInFlight;
-  activeModelsUsageInFlight = (async () => {
-    try {
-      const response = await fetch('/api/jarvis/omlx/usage', { method: 'GET', cache: 'no-store' });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-      renderActiveModelsUsage(payload);
-      return payload;
-    } catch (error) {
-      renderActiveModelsUsage({
-        ok: false,
-        generatedAt: new Date().toISOString(),
-        totals: { activeRequests: 0, waitingRequests: 0, loadedModels: 0, memoryUsed: 0, memoryMax: 0 },
-        servers: [
-          { ok: false, serverId: '64', name: 'OMLX-64', error: error?.message || 'Usage unavailable', models: [] },
-          { ok: false, serverId: '16', name: 'OMLX-16', error: error?.message || 'Usage unavailable', models: [] }
-        ]
-      });
-      return null;
-    } finally {
-      activeModelsUsageInFlight = null;
-    }
-  })();
-  return activeModelsUsageInFlight;
 }
 
 function summarizeRaspberryPiIssue(status = {}) {
@@ -1118,7 +592,6 @@ function renderWeather(weather = {}) {
     headerWeatherEl.dataset.state = weather.ok ? 'online' : 'offline';
     headerWeatherEl.title = weatherTitle;
     headerWeatherEl.setAttribute('aria-label', `Weather ${temperatureText} · ${detail}`);
-    scheduleHeaderWeatherPositionSync();
   }
 
   if (!weatherCard) return;
@@ -1131,142 +604,6 @@ function renderWeather(weather = {}) {
   weatherCard.title = weatherTitle;
   if (weatherTempEl) weatherTempEl.textContent = Number.isFinite(temp) ? `${Math.round(temp)}°` : '--°';
   if (weatherDetailEl) weatherDetailEl.textContent = detail;
-}
-
-function normalizeOmlxClientServerId(raw = '16') {
-  return String(raw || '').trim().replace(/^omlx[-_]?/i, '') === '64' ? '64' : '16';
-}
-
-function defaultOmlxName(serverId = '16') {
-  return normalizeOmlxClientServerId(serverId) === '64' ? 'OMLX-64' : 'OMLX-16';
-}
-
-function getOmlxControl(serverId = '16') {
-  const normalized = normalizeOmlxClientServerId(serverId);
-  return omlxControlById.get(normalized) || omlxControlById.get('16') || null;
-}
-
-function renderOmlxStatus(serverOrStatus = '16', maybeStatus = {}) {
-  const statusOnly = serverOrStatus && typeof serverOrStatus === 'object' && !Array.isArray(serverOrStatus);
-  const serverId = normalizeOmlxClientServerId(statusOnly ? (serverOrStatus.serverId || serverOrStatus.server || '16') : serverOrStatus);
-  const omlx = statusOnly ? serverOrStatus : (maybeStatus || {});
-  const control = getOmlxControl(serverId);
-  if (!control) return;
-
-  if (!omlx.checking && !omlx.toggling && omlx.state !== 'idle') latestOmlxStatuses.set(serverId, omlx);
-  const name = omlx.displayName || omlx.name || defaultOmlxName(serverId);
-  const state = omlx.state || (omlx.checking || omlx.toggling ? 'checking' : (omlx.ok ? 'online' : 'offline'));
-  const checking = state === 'checking';
-  const toggling = Boolean(omlx.toggling);
-  const idle = state === 'idle';
-  const online = Boolean(omlx.ok) && !checking && !idle;
-  const actionLabel = omlx.action === 'stop' ? 'Stopping…' : (omlx.action === 'start' ? 'Starting…' : 'Switching…');
-  const modelText = Number.isFinite(omlx.modelCount)
-    ? `${omlx.modelCount} model${omlx.modelCount === 1 ? '' : 's'}`
-    : 'Online';
-  const loadedText = Number.isFinite(omlx.loadedCount)
-    ? ` · ${omlx.loadedCount} loaded`
-    : '';
-  const detail = toggling
-    ? actionLabel
-    : (checking
-      ? 'Checking…'
-      : (idle ? 'Tap to toggle' : (online ? modelText : 'Offline')));
-  const checkedText = omlx.checkedAt ? ` · checked ${formatRelative(omlx.checkedAt)}` : '';
-  const title = toggling
-    ? `${actionLabel.replace('…', '')} ${name} server`
-    : (idle
-      ? `Tap to toggle ${name} server`
-      : (online
-        ? `${name} server online${Number.isFinite(omlx.modelCount) ? ` · ${modelText}${loadedText}` : ''}${omlx.defaultModel ? ` · default ${omlx.defaultModel}` : ''}${checkedText}`
-        : `${name} server offline${omlx.error ? `: ${omlx.error}` : ''}${checkedText}`));
-
-  control.button.classList.remove(...toneClasses);
-  control.button.classList.add(online ? 'tone-blue' : (checking ? 'tone-amber' : 'tone-orange'));
-  control.button.dataset.state = idle ? 'idle' : (checking ? 'checking' : (online ? 'online' : 'offline'));
-  control.button.title = title;
-  control.button.setAttribute('aria-label', title);
-  control.button.setAttribute('aria-checked', online ? 'true' : 'false');
-  control.button.setAttribute('aria-busy', checking ? 'true' : 'false');
-
-  if (control.labelEl) control.labelEl.textContent = name;
-  if (control.iconEl) {
-    control.iconEl.textContent = '';
-    control.iconEl.setAttribute('aria-label', title);
-  }
-  if (control.detailEl) control.detailEl.textContent = detail;
-}
-
-async function pingOmlxStatus(serverId = '16') {
-  const normalized = normalizeOmlxClientServerId(serverId);
-  if (omlxPingInFlight.has(normalized)) return omlxPingInFlight.get(normalized);
-  if (omlxToggleInFlight.has(normalized)) return omlxToggleInFlight.get(normalized);
-  renderOmlxStatus(normalized, { checking: true, state: 'checking' });
-  const pending = (async () => {
-    try {
-      const response = await fetch(`/api/jarvis/omlx/${encodeURIComponent(normalized)}/status`, {
-        method: 'POST',
-        cache: 'no-store'
-      });
-      const status = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(status.error || `HTTP ${response.status}`);
-      renderOmlxStatus(normalized, status);
-      return status;
-    } catch (error) {
-      const status = {
-        ok: false,
-        status: 'offline',
-        state: 'offline',
-        serverId: normalized,
-        name: defaultOmlxName(normalized),
-        error: error?.message || `${defaultOmlxName(normalized)} status check failed`,
-        checkedAt: new Date().toISOString()
-      };
-      renderOmlxStatus(normalized, status);
-      return status;
-    } finally {
-      omlxPingInFlight.delete(normalized);
-    }
-  })();
-  omlxPingInFlight.set(normalized, pending);
-  return pending;
-}
-
-async function toggleOmlxServer(serverId = '16') {
-  const normalized = normalizeOmlxClientServerId(serverId);
-  if (omlxToggleInFlight.has(normalized)) return omlxToggleInFlight.get(normalized);
-  if (omlxPingInFlight.has(normalized)) return omlxPingInFlight.get(normalized);
-  const action = latestOmlxStatuses.get(normalized)?.ok ? 'stop' : 'start';
-  renderOmlxStatus(normalized, { toggling: true, state: 'checking', action });
-  const pending = (async () => {
-    try {
-      const response = await fetch(`/api/jarvis/omlx/${encodeURIComponent(normalized)}/server/toggle?action=${encodeURIComponent(action)}`, {
-        method: 'POST',
-        cache: 'no-store'
-      });
-      const status = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(status.error || `HTTP ${response.status}`);
-      renderOmlxStatus(normalized, status);
-      return status;
-    } catch (error) {
-      const status = {
-        ok: false,
-        status: 'offline',
-        state: 'offline',
-        serverId: normalized,
-        name: defaultOmlxName(normalized),
-        error: error?.message || `${defaultOmlxName(normalized)} server switch failed`,
-        checkedAt: new Date().toISOString()
-      };
-      renderOmlxStatus(normalized, status);
-      return status;
-    } finally {
-      omlxToggleInFlight.delete(normalized);
-      window.setTimeout(() => pingOmlxStatus(normalized), 900);
-    }
-  })();
-  omlxToggleInFlight.set(normalized, pending);
-  return pending;
 }
 
 function renderAgentsCard({ activeCount = 0, localActive = 0, discordGenerating = 0, localOpen = 0, discordOpen = 0, ok = true, detail = '' } = {}) {
@@ -1327,9 +664,6 @@ function renderDisplay(payload) {
   renderWeather(payload.weather || {});
   renderAirPurifier(payload.airPurifier || {});
   renderDiscordBotStatus(payload.discordBot || {});
-  const omlxServers = payload.omlxServers || {};
-  renderOmlxStatus('16', omlxServers['16'] || payload.omlx || {});
-  renderOmlxStatus('64', omlxServers['64'] || payload.omlx64 || {});
 
   if (payload.errorBanner) {
     errorEl.hidden = false;
@@ -1364,17 +698,6 @@ async function refreshDisplay() {
     }
     renderAirPurifier({ ok: false, summary: 'AIR --', error: error.message });
     renderDiscordBotStatus({ ok: false, running: false, error: error.message });
-    for (const serverId of omlxControlById.keys()) {
-      renderOmlxStatus(serverId, {
-        ok: false,
-        status: 'offline',
-        state: 'offline',
-        serverId,
-        name: defaultOmlxName(serverId),
-        error: `Dashboard status unavailable: ${error.message}`,
-        checkedAt: new Date().toISOString()
-      });
-    }
     errorEl.hidden = false;
     errorEl.textContent = `Dashboard link failed: ${error.message}`;
   }
@@ -1759,12 +1082,6 @@ cameraPanel?.addEventListener('keydown', (event) => {
   }
 });
 
-for (const button of omlxButtons) {
-  button.addEventListener('click', () => {
-    toggleOmlxServer(button.dataset.omlxServer);
-  });
-}
-
 raspberryPiButton?.addEventListener('click', () => {
   toggleRaspberryPiService();
 });
@@ -1793,45 +1110,29 @@ reloadButton?.addEventListener('click', () => {
 
 window.addEventListener('resize', () => {
   queueCameraPanelPosition();
-  scheduleActiveModelsCardWidthSync();
-  scheduleHeaderWeatherPositionSync();
   scheduleRightHudCardWidthSync();
 }, { passive: true });
 window.addEventListener('orientationchange', () => {
   queueCameraPanelPosition();
-  scheduleActiveModelsCardWidthSync();
-  scheduleHeaderWeatherPositionSync();
   scheduleRightHudCardWidthSync();
 }, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   if (cameraStream) queueCameraPanelPosition();
-  refreshActiveModelsUsage();
   refreshSmartPlugStatuses({ silent: true, force: true });
 });
 if (document.fonts?.ready) {
   document.fonts.ready.then(queueCameraPanelPosition).catch(() => {});
 }
 
-for (const serverId of omlxControlById.keys()) renderOmlxStatus(serverId, { state: 'idle' });
 renderAgentsCard({ activeCount: 0, detail: 'Idle' });
 renderRaspberryPiStatus({ state: 'idle' });
 renderPhoneAdbStatus({ state: 'idle' });
-renderActiveModelsUsage({
-  ok: false,
-  generatedAt: new Date().toISOString(),
-  totals: { activeRequests: 0, waitingRequests: 0, loadedModels: 0, memoryUsed: 0, memoryMax: 0 },
-  servers: []
-});
 renderAllSmartPlugsChecking();
 setCameraStatus(window.isSecureContext ? 'idle' : 'error', window.isSecureContext ? 'Camera standby' : 'Secure origin off');
 window.addEventListener('pagehide', stopCameraTest);
-for (const [index, serverId] of Array.from(omlxControlById.keys()).entries()) {
-  window.setTimeout(() => pingOmlxStatus(serverId), 500 + (index * 200));
-}
 window.setTimeout(pingRaspberryPi, 900);
 if (phoneAdbButton) window.setTimeout(pingPhoneAdb, 1100);
-window.setTimeout(refreshActiveModelsUsage, 1200);
 window.setTimeout(() => refreshSmartPlugStatuses({ force: true }), 1300);
 
 if (autoStartCamera) {
@@ -1841,11 +1142,7 @@ if (autoStartCamera) {
 connectWebSocket();
 refreshDisplay();
 setInterval(refreshDisplay, 10_000);
-setInterval(refreshActiveModelsUsage, ACTIVE_MODELS_REFRESH_INTERVAL_MS);
 setInterval(() => {
-  for (const [index, serverId] of Array.from(omlxControlById.keys()).entries()) {
-    window.setTimeout(() => pingOmlxStatus(serverId), index * 200);
-  }
   window.setTimeout(pingRaspberryPi, 700);
   if (phoneAdbButton) window.setTimeout(pingPhoneAdb, 1100);
 }, INDICATOR_REFRESH_INTERVAL_MS);

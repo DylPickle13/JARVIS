@@ -15,6 +15,7 @@ It is a Node.js server serving the phone-distance room display from `public/` wi
 - `/api/status`, `/api/projects`, `/api/events`, `/api/refresh`, `/api/live`, `/api/pulse`, `/ws`
 - `/api/jarvis/status` — read-only Operation JARVIS local status
 - `/api/jarvis/display` — phone-distance room display telemetry (weather, active Pi sessions, Pi session cost, uptime, OMLX-16/OMLX-64, and dashboard status)
+- `/api/jarvis/omlx/*` — backend oMLX status, usage, and trusted-LAN control endpoints; not rendered by the room display
 - `/api/jarvis/dashboard-voice/*` — phone dashboard wake-word voice endpoint: browser wake word + Mac-side STT/LLM/TTS + phone speaker playback
 - `/api/jarvis/events` — event bridge from `jarvis.py`
 - `/api/jarvis/artifacts` — latest media/data artifacts
@@ -63,7 +64,7 @@ Open this URL on a phone that will sit across the room:
 http://<dashboard-host>:8787
 ```
 
-The root dashboard is intentionally glanceable as an alarm-clock-style display: huge configured local time, date, current configured-location weather, compact active Pi generation count, live dashboard uptime, and oMLX server online/offline status. It no longer renders the old device-health strip or Cast-ready tile. It does not implement alarm scheduling/snooze/dismiss behavior and it does not show the latest camera image.
+The root dashboard is intentionally glanceable as an alarm-clock-style display: huge configured local time, date, current configured-location weather, compact active Pi generation count, live dashboard uptime, right-side device and voice controls, and smart plug controls. It no longer renders the old device-health strip, Cast-ready tile, or oMLX server panel. It does not implement alarm scheduling/snooze/dismiss behavior and it does not show the latest camera image.
 
 The display also ships with a fullscreen landscape web app manifest (`public/manifest.webmanifest`) and a minimal pass-through service worker (`public/sw.js`). On Android Chrome, open the dashboard, use **Add to Home screen**, then launch it from the new JARVIS icon to minimize or remove browser chrome.
 
@@ -209,21 +210,15 @@ Phone ADB configuration:
 
 The dashboard does not SSH for phone checks.
 
-## Dual oMLX HUD tiles
-
-The top-right HUD card is now **OMLX-64** for a configured primary model host, while the existing oMLX card is labeled **OMLX-16**. Both tiles auto-refresh every 30 seconds, show online/offline/checking state, and can be tapped to SSH start/stop their configured oMLX server.
-
-Pi session cost telemetry may still be present in `/api/jarvis/display`, but it is no longer rendered on the room display.
-
 ## Weather tile
 
 The room display fetches current weather server-side from Open-Meteo, caches it for 10 minutes, and shows a compact temperature/condition tile above the active Pi session count. Defaults are <configured-weather-location> (`<latitude>,<longitude>`). Override with `JARVIS_DASHBOARD_WEATHER_LATITUDE`, `JARVIS_DASHBOARD_WEATHER_LONGITUDE`, `JARVIS_DASHBOARD_WEATHER_LOCATION`, `JARVIS_DASHBOARD_WEATHER_STATUS_TIMEOUT_MS`, and `JARVIS_DASHBOARD_WEATHER_STATUS_CACHE_MS`.
 
-## oMLX status tiles
+## oMLX backend telemetry
 
-The room display checks each OpenAI-compatible oMLX `/models` endpoint server-side and shows blue/red compact HUD indicators. **OMLX-16** keeps the old defaults (`http://<private-lan-ip>:8000/v1`, SSH `<private-lan-ip>`) and can still be overridden with the unsuffixed legacy variables. **OMLX-64** defaults to `http://<private-lan-ip>:8000/v1` with SSH host `<private-lan-ip>`, SSH user `<ssh-user>`, and key `~/.ssh/jarvis_dashboard_host`.
+The room display no longer renders or directly polls an oMLX server panel. Server-side oMLX telemetry and trusted-LAN status/control endpoints remain available for other JARVIS integrations. Pi session cost and oMLX telemetry may still be present in `/api/jarvis/display`, but neither is rendered on the room display.
 
-Use suffixed overrides such as `JARVIS_DASHBOARD_OMLX_16_BASE_URL`, `JARVIS_DASHBOARD_OMLX_16_SSH_HOST`, `JARVIS_DASHBOARD_OMLX_64_BASE_URL`, and `JARVIS_DASHBOARD_OMLX_64_SSH_HOST`. Optional bearer auth can be supplied per server (`JARVIS_DASHBOARD_OMLX_64_API_KEY`) or through the shared `JARVIS_DASHBOARD_OMLX_API_KEY`, `DISCORD_VOICE_API_KEY`, or `OMLX_API_KEY`.
+**OMLX-16** keeps the existing defaults and unsuffixed legacy variable compatibility. **OMLX-64** uses its suffixed configuration. Override them with variables such as `JARVIS_DASHBOARD_OMLX_16_BASE_URL`, `JARVIS_DASHBOARD_OMLX_16_SSH_HOST`, `JARVIS_DASHBOARD_OMLX_64_BASE_URL`, and `JARVIS_DASHBOARD_OMLX_64_SSH_HOST`. Optional bearer auth can be supplied per server (`JARVIS_DASHBOARD_OMLX_64_API_KEY`) or through the shared `JARVIS_DASHBOARD_OMLX_API_KEY`, `DISCORD_VOICE_API_KEY`, or `OMLX_API_KEY`.
 
 ## Operation JARVIS event bridge
 
