@@ -338,7 +338,6 @@ expected_extension_roots=(
   .pi/extensions/30-google-access.ts
   .pi/extensions/34-maps.ts
   .pi/extensions/35-memory.ts
-  .pi/extensions/42-scheduled-prompts.ts
   .pi/extensions/45-jarvis.ts
   .pi/extensions/46-local-pi-session-status.ts
   .pi/extensions/48-agent-phone.ts
