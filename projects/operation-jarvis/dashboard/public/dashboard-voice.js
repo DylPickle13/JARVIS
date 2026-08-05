@@ -1,4 +1,4 @@
-import { WakeWordEngine } from '/vendor/openwakeword/WakeWordEngine.js';
+import { WakeWordEngine } from '/wake-word-engine.js';
 
 const voiceCard = document.querySelector('#dashboard-voice-card');
 const voiceLabelEl = voiceCard?.querySelector('.eyebrow');
@@ -9,7 +9,6 @@ const voiceAudioEl = document.querySelector('#dashboard-voice-audio');
 const toneClasses = ['tone-cyan', 'tone-green', 'tone-violet', 'tone-pink', 'tone-amber', 'tone-orange', 'tone-blue', 'tone-indigo', 'tone-silver'];
 const urlParams = new URLSearchParams(window.location.search);
 const VOICE_SAMPLE_RATE = 16_000;
-const WAKE_FRAME_SIZE = 1_280;
 const DEFAULT_SILENCE_RMS = 0.007;
 const AUDIO_UNLOCK_TIMEOUT_MS = 800;
 const SILENT_WAV_DATA_URL = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
@@ -22,6 +21,8 @@ const voiceConfig = {
   minMs: clampNumber(urlParams.get('voiceMinMs'), 500, 5000, 1300),
   maxMs: clampNumber(urlParams.get('voiceMaxMs'), 2500, 30000, 10000),
   preRollMs: clampNumber(urlParams.get('voicePreRollMs'), 0, 3000, 1400),
+  wasmThreads: Math.round(clampNumber(urlParams.get('voiceThreads'), 1, 4, 1)),
+  maxPendingFrames: Math.round(clampNumber(urlParams.get('voiceMaxPendingFrames'), 1, 12, 4)),
   debug: ['1', 'true', 'yes'].includes(String(urlParams.get('voiceDebug') || '').toLowerCase()),
   autoArm: !['0', 'false', 'no', 'off'].includes(String(urlParams.get('voiceAutoArm') || '1').toLowerCase())
 };
@@ -30,7 +31,8 @@ let modeEnabled = false;
 let wakeEngine = null;
 let wakeStartPromise = null;
 let wakeUnsubscribers = [];
-let ringChunks = [];
+const ringBuffer = new Float32Array(Math.max(1, Math.round(VOICE_SAMPLE_RATE * voiceConfig.preRollMs / 1000)));
+let ringWriteIndex = 0;
 let ringSampleCount = 0;
 let recording = null;
 let turnInFlight = false;
@@ -43,6 +45,10 @@ let lastWakeScoreReportAt = 0;
 let bestWakeScore = 0;
 let reportedMicAudio = false;
 let reportedWakeRuntime = false;
+let reportedWakeStats = false;
+let reportedWakeOverrun = false;
+let voiceSuspendedForVisibility = document.hidden;
+let lastVoiceStateKey = '';
 
 function clampNumber(value, min, max, fallback) {
   if (value === null || value === undefined || value === '') return fallback;
@@ -104,6 +110,7 @@ function setVoiceState(state, detail = '') {
   if (!voiceCard) return;
   const labels = {
     off: 'Dashboard voice off',
+    paused: 'Dashboard voice paused while hidden',
     arming: 'Arming dashboard voice',
     listening: 'Dashboard voice listening',
     wake: 'Wake word detected',
@@ -114,6 +121,7 @@ function setVoiceState(state, detail = '') {
   };
   const tones = {
     off: 'tone-silver',
+    paused: 'tone-silver',
     arming: 'tone-amber',
     listening: 'tone-blue',
     wake: 'tone-amber',
@@ -124,6 +132,7 @@ function setVoiceState(state, detail = '') {
   };
   const defaults = {
     off: 'Tap to arm',
+    paused: 'Screen hidden',
     arming: 'Starting',
     listening: 'Listening',
     wake: 'Wake detected',
@@ -134,6 +143,7 @@ function setVoiceState(state, detail = '') {
   };
   const topLabels = {
     off: 'Voice',
+    paused: 'Paused',
     arming: 'Starting',
     listening: 'Listening',
     wake: 'Wake',
@@ -146,6 +156,9 @@ function setVoiceState(state, detail = '') {
   const displayDetail = detail || defaults[state] || defaults.off;
   const displayLabel = topLabels[state] || topLabels.off;
   const secondaryDetail = state === 'error' && detail ? shortText(displayDetail, 36) : '';
+  const stateKey = `${state}\n${displayDetail}\n${secondaryDetail}\n${modeEnabled ? '1' : '0'}`;
+  if (stateKey === lastVoiceStateKey) return;
+  lastVoiceStateKey = stateKey;
 
   voiceCard.dataset.state = state;
   voiceCard.classList.remove(...toneClasses);
@@ -170,16 +183,31 @@ function rms(samples) {
   return Math.sqrt(sum / samples.length);
 }
 
+function resetRingBuffer() {
+  ringWriteIndex = 0;
+  ringSampleCount = 0;
+}
+
 function rememberRingChunk(samples) {
-  const copy = samples instanceof Float32Array ? new Float32Array(samples) : Float32Array.from(samples || []);
-  if (!copy.length) return;
-  ringChunks.push(copy);
-  ringSampleCount += copy.length;
-  const maxSamples = Math.round(VOICE_SAMPLE_RATE * voiceConfig.preRollMs / 1000);
-  while (ringSampleCount > maxSamples && ringChunks.length > 0) {
-    const removed = ringChunks.shift();
-    ringSampleCount -= removed?.length || 0;
-  }
+  if (!samples?.length || voiceConfig.preRollMs <= 0) return;
+  const source = samples.length > ringBuffer.length
+    ? samples.subarray(samples.length - ringBuffer.length)
+    : samples;
+  const firstLength = Math.min(source.length, ringBuffer.length - ringWriteIndex);
+  ringBuffer.set(source.subarray(0, firstLength), ringWriteIndex);
+  if (firstLength < source.length) ringBuffer.set(source.subarray(firstLength), 0);
+  ringWriteIndex = (ringWriteIndex + source.length) % ringBuffer.length;
+  ringSampleCount = Math.min(ringBuffer.length, ringSampleCount + source.length);
+}
+
+function snapshotRingBuffer() {
+  const output = new Float32Array(ringSampleCount);
+  if (!ringSampleCount) return output;
+  const start = (ringWriteIndex - ringSampleCount + ringBuffer.length) % ringBuffer.length;
+  const firstLength = Math.min(ringSampleCount, ringBuffer.length - start);
+  output.set(ringBuffer.subarray(start, start + firstLength), 0);
+  if (firstLength < ringSampleCount) output.set(ringBuffer.subarray(0, ringSampleCount - firstLength), firstLength);
+  return output;
 }
 
 function flattenChunks(chunks) {
@@ -326,7 +354,7 @@ function handleAudioChunk(event) {
   if (turnInFlight && !recording) return;
   const level = rms(samples);
   const now = Date.now();
-  rememberRingChunk(samples);
+  if (!recording) rememberRingChunk(samples);
 
   if (!recording && modeEnabled && !turnInFlight && level >= voiceConfig.silenceRms && now - lastMicActivityUiAt > 700) {
     lastMicActivityUiAt = now;
@@ -339,9 +367,9 @@ function handleAudioChunk(event) {
 
   if (!recording) return;
 
-  const copy = samples instanceof Float32Array ? new Float32Array(samples) : Float32Array.from(samples);
-  recording.chunks.push(copy);
-  recording.sampleCount += copy.length;
+  const chunk = samples instanceof Float32Array ? samples : Float32Array.from(samples);
+  recording.chunks.push(chunk);
+  recording.sampleCount += chunk.length;
   if (level >= voiceConfig.silenceRms) recording.lastVoiceAt = now;
 
   const elapsedMs = Math.round(recording.sampleCount / recording.sampleRate * 1000);
@@ -378,10 +406,11 @@ function handleWakeScore(event = {}) {
 function handleWakeDetected(event = {}) {
   if (!modeEnabled || turnInFlight || recording) return;
   const score = Number(event.score || 0);
+  const preRoll = snapshotRingBuffer();
   recording = {
-    chunks: ringChunks.map((chunk) => new Float32Array(chunk)),
+    chunks: preRoll.length ? [preRoll] : [],
     sampleRate: VOICE_SAMPLE_RATE,
-    sampleCount: ringSampleCount,
+    sampleCount: preRoll.length,
     startedAt: Date.now(),
     lastVoiceAt: Date.now(),
     finalizing: false,
@@ -402,6 +431,7 @@ async function finalizeRecording(reason) {
 
   try {
     wakeEngine?.setDetectionPaused?.(true);
+    await wakeEngine?.suspend?.();
     const samples = flattenChunks(current.chunks);
     const durationMs = samples.length / current.sampleRate * 1000;
     if (durationMs < 500) throw new Error('No usable speech was captured.');
@@ -416,10 +446,12 @@ async function finalizeRecording(reason) {
     await waitMs(1800);
   } finally {
     turnInFlight = false;
-    ringChunks = [];
-    ringSampleCount = 0;
-    if (modeEnabled) {
+    resetRingBuffer();
+    if (modeEnabled && voiceSuspendedForVisibility) {
+      setVoiceState('paused');
+    } else if (modeEnabled) {
       if (wakeEngine) {
+        await wakeEngine.resume?.();
         wakeEngine.setDetectionPaused?.(false, { reset: true });
         setVoiceState('listening', 'Listening');
       } else {
@@ -497,13 +529,35 @@ async function pollTurnResult(turnId, firstDelaySeconds = 0.35) {
   throw new Error('Timed out waiting for JARVIS response.');
 }
 
-async function startWakeListening() {
-  if (!voiceCard || !modeEnabled) return null;
-  if (wakeEngine) {
-    setVoiceState('listening');
-    return wakeEngine;
+function resetWakeClientState() {
+  resetRingBuffer();
+  bestWakeScore = 0;
+  lastMicActivityUiAt = 0;
+  lastWakeScoreUiAt = 0;
+  lastWakeScoreReportAt = 0;
+}
+
+async function startLoadedWakeEngine(engine) {
+  if (!engine || !modeEnabled || voiceSuspendedForVisibility) return engine;
+  if (!engine.started) {
+    const mediaStream = pendingMicStream || await requestPhoneMicStream();
+    pendingMicStream = null;
+    const wakeStartStartedAt = performance.now();
+    await engine.start({ gain: voiceConfig.gain, mediaStream });
+    reportVoiceClientEvent('warn', `wake audio started ${Math.round(performance.now() - wakeStartStartedAt)}ms`, 'startup timing');
+  } else {
+    await engine.resume?.();
   }
+  engine.setDetectionPaused?.(false, { reset: true });
+  resetWakeClientState();
+  setVoiceState('listening', 'Listening');
+  return engine;
+}
+
+async function startWakeListening() {
+  if (!voiceCard || !modeEnabled || voiceSuspendedForVisibility) return null;
   if (wakeStartPromise) return wakeStartPromise;
+  if (wakeEngine?.loaded) return startLoadedWakeEngine(wakeEngine);
 
   wakeStartPromise = (async () => {
     if (!window.isSecureContext) {
@@ -527,16 +581,38 @@ async function startWakeListening() {
       detectionThreshold: voiceConfig.threshold,
       cooldownMs: 3500,
       useVad: false,
+      wasmThreads: voiceConfig.wasmThreads,
+      maxPendingFrames: voiceConfig.maxPendingFrames,
       debug: voiceConfig.debug
     });
 
     wakeUnsubscribers = [
-      engine.on('ready', () => setVoiceState('arming', 'Starting')),
+      engine.on('ready', () => {
+        if (modeEnabled && !voiceSuspendedForVisibility) setVoiceState('arming', 'Starting');
+      }),
       engine.on('started', (runtime = {}) => {
         if (!reportedWakeRuntime) {
           reportedWakeRuntime = true;
-          reportVoiceClientEvent('warn', `wake runtime ready context=${runtime.audioContextSampleRate || 0} source=${runtime.sourceSampleRate || 0} target=${runtime.targetSampleRate || 0}`, runtime.state || 'started');
+          reportVoiceClientEvent(
+            'warn',
+            `wake runtime ready context=${runtime.audioContextSampleRate || 0} source=${runtime.sourceSampleRate || 0} target=${runtime.targetSampleRate || 0}`,
+            `threads=${runtime.wasmThreads || voiceConfig.wasmThreads} frame=${runtime.frameSize || 1280} state=${runtime.state || 'started'}`
+          );
         }
+      }),
+      engine.on('stats', (stats = {}) => {
+        if (reportedWakeStats) return;
+        reportedWakeStats = true;
+        reportVoiceClientEvent(
+          stats.droppedFrames > 0 || stats.realtimeLoad >= 0.9 ? 'error' : 'warn',
+          `wake perf avg=${Number(stats.averageFrameMs || 0).toFixed(1)}ms load=${Number(stats.realtimeLoad || 0).toFixed(2)} dropped=${Number(stats.droppedFrames || 0)}`,
+          `threads=${stats.wasmThreads || voiceConfig.wasmThreads} max=${Number(stats.maxFrameMs || 0).toFixed(1)}ms`
+        );
+      }),
+      engine.on('overrun', (stats = {}) => {
+        if (reportedWakeOverrun) return;
+        reportedWakeOverrun = true;
+        reportVoiceClientEvent('error', `wake inference overrun dropped=${Number(stats.droppedFrames || 0)}`, `queue limit=${stats.maxPendingFrames || voiceConfig.maxPendingFrames}`);
       }),
       engine.on('speech-start', () => {
         if (modeEnabled && !recording && !turnInFlight) setVoiceState('listening', 'Listening');
@@ -557,50 +633,42 @@ async function startWakeListening() {
 
     const wakeLoadStartedAt = performance.now();
     await engine.load();
-    reportVoiceClientEvent('warn', `wake model loaded ${Math.round(performance.now() - wakeLoadStartedAt)}ms`, 'startup timing');
-    if (!modeEnabled) {
-      for (const unsubscribe of wakeUnsubscribers) unsubscribe?.();
-      wakeUnsubscribers = [];
-      stopPendingMicStream();
-      return null;
-    }
-    const mediaStream = pendingMicStream;
-    pendingMicStream = null;
-    const wakeStartStartedAt = performance.now();
-    await engine.start({ gain: voiceConfig.gain, mediaStream });
-    reportVoiceClientEvent('warn', `wake audio started ${Math.round(performance.now() - wakeStartStartedAt)}ms`, 'startup timing');
     wakeEngine = engine;
-    ringChunks = [];
-    ringSampleCount = 0;
-    bestWakeScore = 0;
-    lastMicActivityUiAt = 0;
-    lastWakeScoreUiAt = 0;
-    lastWakeScoreReportAt = 0;
-    setVoiceState('listening', 'Listening');
-    return engine;
-  })().finally(() => {
+    reportVoiceClientEvent('warn', `wake model loaded ${Math.round(performance.now() - wakeLoadStartedAt)}ms`, `threads=${voiceConfig.wasmThreads}`);
+    if (!modeEnabled || voiceSuspendedForVisibility) {
+      stopPendingMicStream();
+      setVoiceState(modeEnabled ? 'paused' : 'off');
+      return engine;
+    }
+    return startLoadedWakeEngine(engine);
+  })().catch((error) => {
+    for (const unsubscribe of wakeUnsubscribers) unsubscribe?.();
+    wakeUnsubscribers = [];
+    wakeEngine = null;
+    throw error;
+  }).finally(() => {
     wakeStartPromise = null;
   });
 
   return wakeStartPromise;
 }
 
-async function stopWakeListening({ keepEnabled = false } = {}) {
+async function stopWakeListening({ keepEnabled = false, release = false } = {}) {
   const engine = wakeEngine;
-  wakeEngine = null;
-  for (const unsubscribe of wakeUnsubscribers) unsubscribe?.();
-  wakeUnsubscribers = [];
-  if (engine) await engine.stop().catch(() => {});
-  if (!keepEnabled) {
-    ringChunks = [];
-    ringSampleCount = 0;
+  if (release) {
+    wakeEngine = null;
+    for (const unsubscribe of wakeUnsubscribers) unsubscribe?.();
+    wakeUnsubscribers = [];
   }
+  if (engine?.started) await engine.stop().catch(() => {});
+  if (!keepEnabled) resetRingBuffer();
   stopPendingMicStream();
   bestWakeScore = 0;
 }
 
 async function armVoiceMode({ auto = false } = {}) {
-  if (!voiceCard || modeEnabled) return;
+  if (!voiceCard || modeEnabled || document.hidden) return;
+  voiceSuspendedForVisibility = false;
   modeEnabled = true;
   setVoiceState('arming', 'Starting');
   try {
@@ -645,12 +713,25 @@ voiceCard?.addEventListener('click', () => {
 window.addEventListener('pagehide', () => {
   modeEnabled = false;
   stopPendingMicStream();
-  void stopWakeListening();
+  void stopWakeListening({ release: true });
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden || !modeEnabled || turnInFlight || recording) return;
-  if (!wakeEngine && !wakeStartPromise) void startWakeListening();
+  voiceSuspendedForVisibility = document.hidden;
+  if (document.hidden) {
+    recording = null;
+    stopPendingMicStream();
+    void stopWakeListening({ keepEnabled: true }).then(() => {
+      if (modeEnabled && document.hidden) setVoiceState('paused');
+    });
+    return;
+  }
+  if (!modeEnabled || turnInFlight || recording) return;
+  void startWakeListening().catch((error) => {
+    const message = normalizeVoiceError(error, 'Wake resume failed');
+    reportVoiceClientEvent('error', message, 'visibility resume failed');
+    setVoiceState('error', shortText(message, 86));
+  });
 });
 
 setVoiceState(window.isSecureContext ? 'off' : 'error', window.isSecureContext ? 'Starting' : 'Secure origin required');

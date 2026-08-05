@@ -39,7 +39,28 @@ const serverEl = document.querySelector('#display-server');
 const refreshEl = document.querySelector('#display-refresh');
 
 const toneClasses = ['tone-cyan', 'tone-green', 'tone-violet', 'tone-pink', 'tone-amber', 'tone-orange', 'tone-blue', 'tone-indigo', 'tone-silver'];
-const INDICATOR_REFRESH_INTERVAL_MS = 30_000;
+const INDICATOR_REFRESH_INTERVAL_MS = 60_000;
+const DISPLAY_REFRESH_INTERVAL_MS = 30_000;
+const SMART_PLUG_REFRESH_INTERVAL_MS = 30_000;
+const clockFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Toronto',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true
+});
+const headerDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Toronto',
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  timeZoneName: 'short'
+});
+const alarmDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Toronto',
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric'
+});
 let latestDisplayPayload = null;
 let dashboardUptimeBaseSeconds = 0;
 let dashboardUptimeSyncedAt = Date.now();
@@ -47,6 +68,7 @@ let cameraStream = null;
 let cameraStartPromise = null;
 let cameraAspectRatio = 4 / 3;
 let cameraPositionFrame = 0;
+let rightHudWidthFrame = 0;
 let raspberryPiPingInFlight = null;
 let raspberryPiToggleInFlight = null;
 let latestRaspberryPiStatus = null;
@@ -58,15 +80,11 @@ let lastClockDisplay = '';
 let lastPeriodDisplay = '';
 let lastHeaderDateDisplay = '';
 let lastAlarmDateDisplay = '';
+let lastUptimeDisplay = '';
 
 function updateClock() {
   const now = new Date();
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Toronto',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  }).formatToParts(now);
+  const parts = clockFormatter.formatToParts(now);
   const hour = parts.find((part) => part.type === 'hour')?.value || '--';
   const minute = parts.find((part) => part.type === 'minute')?.value || '--';
   const period = parts.find((part) => part.type === 'dayPeriod')?.value || '';
@@ -82,24 +100,13 @@ function updateClock() {
     lastPeriodDisplay = periodDisplay;
   }
 
-  const headerDateDisplay = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Toronto',
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    timeZoneName: 'short'
-  }).format(now);
+  const headerDateDisplay = headerDateFormatter.format(now);
   if (headerDateDisplay !== lastHeaderDateDisplay) {
     dateEl.textContent = headerDateDisplay;
     lastHeaderDateDisplay = headerDateDisplay;
   }
 
-  const alarmDateDisplay = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Toronto',
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric'
-  }).format(now);
+  const alarmDateDisplay = alarmDateFormatter.format(now);
   if (alarmDateDisplay !== lastAlarmDateDisplay) {
     alarmDateLine.textContent = alarmDateDisplay;
     lastAlarmDateDisplay = alarmDateDisplay;
@@ -121,6 +128,7 @@ function formatRelative(iso) {
 }
 
 function syncRightHudCardWidth() {
+  rightHudWidthFrame = 0;
   if (!hudMiniBoxes || !rightHudButtons.length) return;
   const anchor = smartPlugButtonByName.get('tv') || smartPlugButtons[smartPlugButtons.length - 1] || smartPlugGrid;
   const edgeButton = reloadButton || rightHudButtons[0];
@@ -133,8 +141,8 @@ function syncRightHudCardWidth() {
 }
 
 function scheduleRightHudCardWidthSync() {
-  if (!hudMiniBoxes || !rightHudButtons.length) return;
-  requestAnimationFrame(syncRightHudCardWidth);
+  if (!hudMiniBoxes || !rightHudButtons.length || rightHudWidthFrame) return;
+  rightHudWidthFrame = requestAnimationFrame(syncRightHudCardWidth);
 }
 
 function summarizeRaspberryPiIssue(status = {}) {
@@ -419,6 +427,7 @@ function renderAllSmartPlugsChecking() {
 }
 
 async function refreshSmartPlugStatuses({ silent = false, force = false } = {}) {
+  if (document.hidden && !force) return { ok: true, skipped: 'hidden' };
   if (smartPlugStatusInFlight) return smartPlugStatusInFlight;
   if (!silent) renderAllSmartPlugsChecking();
   const query = force ? '?force=1' : '';
@@ -510,7 +519,10 @@ function syncDashboardUptime(server = {}) {
 function updateDashboardUptime() {
   if (!uptimeEl) return;
   const elapsed = Math.floor((Date.now() - dashboardUptimeSyncedAt) / 1000);
-  uptimeEl.textContent = formatCompactDuration(dashboardUptimeBaseSeconds + elapsed);
+  const display = formatCompactDuration(dashboardUptimeBaseSeconds + elapsed);
+  if (display === lastUptimeDisplay) return;
+  uptimeEl.textContent = display;
+  lastUptimeDisplay = display;
 }
 
 function getWeatherEmoji(weather = {}) {
@@ -678,6 +690,7 @@ function renderDisplay(payload) {
 }
 
 async function refreshDisplay() {
+  if (document.hidden) return;
   try {
     const response = await fetch('/api/jarvis/display', { cache: 'no-store' });
     const payload = await response.json();
@@ -752,12 +765,20 @@ function connectWebSocket() {
   });
 }
 
+function scheduleClockRefresh() {
+  const delayMs = 60_000 - (Date.now() % 60_000) + 50;
+  window.setTimeout(() => {
+    if (!document.hidden) {
+      updateClock();
+      updateDashboardUptime();
+    }
+    scheduleClockRefresh();
+  }, delayMs);
+}
+
 updateClock();
 updateDashboardUptime();
-setInterval(() => {
-  updateClock();
-  updateDashboardUptime();
-}, 1000);
+scheduleClockRefresh();
 
 const urlParams = new URLSearchParams(window.location.search);
 const autoStartCamera = false;
@@ -1118,6 +1139,9 @@ window.addEventListener('orientationchange', () => {
 }, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
+  updateClock();
+  updateDashboardUptime();
+  refreshDisplay();
   if (cameraStream) queueCameraPanelPosition();
   refreshSmartPlugStatuses({ silent: true, force: true });
 });
@@ -1141,9 +1165,14 @@ if (autoStartCamera) {
 
 connectWebSocket();
 refreshDisplay();
-setInterval(refreshDisplay, 10_000);
 setInterval(() => {
+  if (!document.hidden) refreshDisplay();
+}, DISPLAY_REFRESH_INTERVAL_MS);
+setInterval(() => {
+  if (document.hidden) return;
   window.setTimeout(pingRaspberryPi, 700);
   if (phoneAdbButton) window.setTimeout(pingPhoneAdb, 1100);
 }, INDICATOR_REFRESH_INTERVAL_MS);
-setInterval(() => refreshSmartPlugStatuses({ silent: true }), 5_000);
+setInterval(() => {
+  if (!document.hidden) refreshSmartPlugStatuses({ silent: true });
+}, SMART_PLUG_REFRESH_INTERVAL_MS);

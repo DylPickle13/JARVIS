@@ -108,7 +108,11 @@ Browser URL tuning:
 ```text
 ?voiceThreshold=0.62&voiceGain=1.15
 ?voiceSilenceMs=1000&voiceMaxMs=10000&voicePreRollMs=1400
+?voiceThreads=1&voiceMaxPendingFrames=4
+?voiceAutoArm=0
 ```
+
+For lower sustained phone temperature, ONNX Runtime defaults to one WASM inference thread (`voiceThreads=1`) instead of its cross-origin-isolated default of up to four. Raise it only if `logs/launchd.err.log` reports a wake inference overrun. The queue is bounded so a slow phone cannot accumulate an unlimited inference backlog. Voice capture and inference stop while the dashboard is hidden and resume when it becomes visible; loaded model sessions are reused instead of reloaded on every pause.
 
 Microphone access requires a secure browser context. On Android Chrome over LAN HTTP, whitelist the dashboard origin in **Insecure origins treated as secure** or serve the dashboard over HTTPS. iOS Safari generally requires HTTPS for non-local microphone access.
 
@@ -247,7 +251,7 @@ Existing support docs:
 
 ## Low-power display mode
 
-The dashboard defaults to a low-power static alarm-clock HUD: no starfield canvas, no ambient pulse loop, no decorative CSS animations, no touch effects, no backdrop blur, and no automatic camera startup. The old `?fx=1` animated demo path is disabled so the room display stays calm. See [`docs/performance-reliability-audit-2026-05-18.md`](docs/performance-reliability-audit-2026-05-18.md) for the latest cleanup notes and follow-up backlog.
+The dashboard defaults to a low-power static alarm-clock HUD: no starfield canvas, no ambient pulse loop, no decorative CSS animations, no touch effects, no backdrop blur, and no automatic camera startup. Browser telemetry refreshes are visibility-aware and use 30–60 second intervals; the always-on voice path uses a single WASM inference thread by default. The old `?fx=1` animated demo path is disabled so the room display stays calm. See [`docs/phone-thermal-audit-2026-08-04.md`](docs/phone-thermal-audit-2026-08-04.md) for the phone thermal review and [`docs/performance-reliability-audit-2026-05-18.md`](docs/performance-reliability-audit-2026-05-18.md) for the earlier display cleanup.
 
 ## Stable URL recommendation
 
