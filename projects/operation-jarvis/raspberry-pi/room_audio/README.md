@@ -2,7 +2,7 @@
 
 Raspberry Pi / Anker PowerConf room-audio endpoint for Operation JARVIS.
 
-**Privacy/safety note:** this is an always-listening-adjacent room endpoint. The current design performs Pi-side wake-word/VAD filtering before sending utterances to the Mac server, but logs, transcripts, and audio artifacts should still be treated as private local data.
+**Privacy/safety note:** this is an always-listening-adjacent room endpoint. Idle speech is filtered by the Pi-side wake word before reaching the Mac. While JARVIS is actively generating or speaking, short VAD clips bypass the wake gate so local Whisper can recognize an exact `stop`; logs, transcripts, and audio artifacts should be treated as private local data.
 
 Canonical path: `projects/operation-jarvis/raspberry-pi/room_audio/`.
 
@@ -16,10 +16,11 @@ PowerConf mic/speaker on Raspberry Pi
   -> Mac room-audio server only receives locally wake-accepted utterances
   -> oMLX Whisper ASR
   -> Mac server trusts the Pi-side wake gate and responds to the transcription
-  -> immediate processing acknowledgement
+  -> immediate processing acknowledgement while USB capture remains active
   -> Pi RPC JARVIS session
   -> Piper JARVIS TTS
   -> Pi client polls and plays final WAV through PowerConf
+  -> while busy, a short bare "stop" utterance is transcribed and cancels playback/generation
 ```
 
 ## Machine endpoints
@@ -35,7 +36,7 @@ The room-audio server URL in the commands below remains `http://<private-lan-ip>
 
 ## Current hardware note
 
-USB audio works when stable, but this Pi/PowerConf combination has shown repeated `over-current change` disconnects. Until a powered USB hub is available, the current room endpoint uses the PowerConf over Bluetooth with BlueALSA SCO for the mic and A2DP for higher-quality playback. Because this speakerphone will not reliably hold SCO capture and A2DP playback at the same time, the Pi listener releases the capture stream for an accepted turn and keeps it released through the processing acknowledgement, async wait, final spoken answer, and post-playback drain. BlueALSA is configured with `--keep-alive=1` to reduce profile-switch delay.
+The active room endpoint uses the PowerConf as a 48 kHz USB full-duplex capture/playback device (`plughw:CARD=PowerConf,DEV=0`). USB allows the listener to keep microphone capture active during the processing acknowledgement, generation, and final playback. The client therefore supports busy-only voice barge-in: normal idle turns still require the local `hey_jarvis` wake gate, but while JARVIS is busy a short utterance is sent to the Mac-side Whisper ASR and an exact `stop` transcript cancels Pi generation, terminates local playback, and suppresses stale audio. Bluetooth SCO/A2DP remains an installer fallback but does not support barge-in because capture must be released for A2DP playback.
 
 ## Start the Mac-side server
 
@@ -62,9 +63,11 @@ Optional environment variables:
 - `JARVIS_ROOM_AUDIO_PROCESSING_ACK_ENABLED` — defaults to `DISCORD_VOICE_PROCESSING_ACK_ENABLED`; when enabled, accepted turns can immediately play the acknowledgement.
 - `JARVIS_ROOM_AUDIO_PROCESSING_ACK_TEXT` — defaults to `DISCORD_VOICE_PROCESSING_ACK_TEXT` / `Generating your response, sir.`
 - `JARVIS_ROOM_AUDIO_ASYNC_JOB_TTL_SECONDS` — default `900`; retention window for async final-answer jobs.
-- `JARVIS_ROOM_AUDIO_BT_PROFILE_SETTLE_SECONDS` — Pi-client delay before A2DP playback; current listener uses `0.45` seconds.
-- `JARVIS_ROOM_AUDIO_BT_PLAYBACK_DRAIN_SECONDS` — Pi-client delay after A2DP playback before reopening SCO mic capture; current listener uses `1.2` seconds to avoid clipping buffered Bluetooth audio.
-- `JARVIS_ROOM_AUDIO_VAD_RESTORE_CAPTURE_WHILE_WAITING` — defaults to `0`; leave off so SCO capture remains released between the processing ack and final answer, avoiding an unstable SCO→A2DP switch before final playback.
+- `JARVIS_ROOM_AUDIO_INTERRUPT_WHILE_BUSY` — enables USB full-duplex bare-`stop` interruption while JARVIS is generating or speaking; the installed USB service enables it.
+- `JARVIS_ROOM_AUDIO_INTERRUPT_VAD_SILENCE_SECONDS` — default `0.45`; busy-mode silence before a possible stop command is finalized.
+- `JARVIS_ROOM_AUDIO_INTERRUPT_VAD_MAX_UTTERANCE_SECONDS` — default `2.0`; maximum busy-mode clip sent to Whisper.
+- `JARVIS_ROOM_AUDIO_BT_PROFILE_SETTLE_SECONDS` / `JARVIS_ROOM_AUDIO_BT_PLAYBACK_DRAIN_SECONDS` — Bluetooth fallback timings; both are zero in the current USB service.
+- `JARVIS_ROOM_AUDIO_VAD_RESTORE_CAPTURE_WHILE_WAITING` — legacy Bluetooth fallback behavior; disabled in the USB full-duplex service.
 - `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ENABLED` — Pi-client local wake-word gate; when enabled, ordinary speech is dropped on the Pi before the Mac/oMLX server sees it.
 - `JARVIS_ROOM_AUDIO_OPENWAKEWORD_MODEL` — defaults to `hey_jarvis`; can also be a local `.tflite`/`.onnx` model path, or comma-separated models.
 - `JARVIS_ROOM_AUDIO_OPENWAKEWORD_NCPU` — defaults to `2`; CPU threads for openWakeWord preprocessing. On the Pi 3 this gives better real-time headroom than the upstream default of `1`.
@@ -80,13 +83,13 @@ Optional environment variables:
 
 ## Run the Pi listener
 
-Current Bluetooth/VAD listener command on the Raspberry Pi:
+Current USB/VAD listener command on the Raspberry Pi:
 
 ```bash
 python3 /home/pi/jarvis-room-audio-client.py \
-  --device 'bluealsa:DEV=<bluetooth-device-mac>,PROFILE=sco' \
-  --playback-device 'bluealsa:DEV=<bluetooth-device-mac>,PROFILE=a2dp' \
-  --rate 8000 \
+  --device 'plughw:CARD=PowerConf,DEV=0' \
+  --playback-device 'plughw:CARD=PowerConf,DEV=0' \
+  --rate 48000 \
   --vad-loop \
   --vad-rms-threshold 300 \
   --vad-silence-seconds 1.0 \
@@ -94,26 +97,36 @@ python3 /home/pi/jarvis-room-audio-client.py \
   --vad-max-utterance-seconds 30 \
   --vad-preroll-ms 500 \
   --vad-min-voiced-ms 200 \
-  --vad-release-capture-during-turn \
+  --capture-read-timeout-seconds 5 \
+  --no-vad-release-capture-during-turn \
   --no-vad-restore-capture-while-waiting \
+  --interrupt-while-busy \
+  --interrupt-vad-silence-seconds 0.45 \
+  --interrupt-vad-max-utterance-seconds 2.0 \
   --local-wake-word \
   --openwakeword-model hey_jarvis \
   --openwakeword-ncpu 2 \
   --local-wake-word-threshold 0.75 \
-  --bt-profile-settle-seconds 0.45 \
-  --bt-playback-drain-seconds 1.2 \
-  --bluetooth-mac '<bluetooth-device-mac>' \
-  --sco-mixer-volume 100 \
+  --bt-profile-settle-seconds 0 \
+  --bt-playback-drain-seconds 0 \
   --startup-greeting \
   --no-greeting-on-reconnect \
   --async-ack
 ```
 
-Say a wake-word phrase, for example:
+Say a wake-word phrase for a normal idle turn:
 
 ```text
 Jarvis, say the room speaker is online.
 ```
+
+While the acknowledgement, generation, or final answer is active, say only:
+
+```text
+stop
+```
+
+Bare `stop` is ignored while JARVIS is idle. The first release intentionally accepts only the exact normalized word `stop`; longer phrases such as `don't stop` are rejected.
 
 The local wake-word dependency is required for the current listener. The service installer creates `/home/pi/jarvis-room-audio/.venv` and installs `openwakeword` there by default. If rebuilding manually, rerun:
 
@@ -137,7 +150,7 @@ Install or refresh the boot-time listener from this repo:
 projects/operation-jarvis/raspberry-pi/scripts/install-room-audio-service.sh
 ```
 
-The service is named `jarvis-room-audio.service`. It runs the client with `/home/pi/jarvis-room-audio/.venv/bin/python`, starts after `bluetooth.service`, `bluealsa.service`, and `network-online.target`, reconnects the trusted PowerConf by MAC before opening BlueALSA capture, restores the SCO mixer volume, plays a JARVIS greeting after service startup only, and restarts automatically if the client exits.
+The service is named `jarvis-room-audio.service`. In the default `AUDIO_TRANSPORT=usb` mode it starts after `network-online.target`, opens the PowerConf for full-duplex 48 kHz capture/playback, enables busy-only interruption, plays a JARVIS greeting after service startup, and restarts automatically if the client exits. Set `AUDIO_TRANSPORT=bluetooth` plus `POWERCONF_MAC` only for the legacy non-interruptible SCO/A2DP fallback.
 
 Useful Pi checks:
 
@@ -151,11 +164,11 @@ ssh -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes pi@<private-lan-ip> \
 1. **No response at all:** check `jarvis-room-audio.service` status and tail the client log.
 2. **Service running but no wake:** confirm the log says `local wake word online`; temporarily run fixed-window diagnostics with `--no-wake-word`.
 3. **Wake detected but no answer:** check Mac server `/health`, oMLX ASR availability, and Pi RPC/model configuration.
-4. **First syllable clipped:** increase `JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS` or A2DP settle/drain timings.
-5. **Bluetooth profile instability:** confirm BlueALSA is running with `--keep-alive=1`, then consider a powered USB hub as the long-term wired path.
+4. **`stop` is not heard while busy:** confirm the service uses USB, `--interrupt-while-busy`, and `--no-vad-release-capture-during-turn`; then inspect interrupt-candidate/ASR logs.
+5. **False stop:** confirm Whisper returned exactly `stop`; check PowerConf echo cancellation and raise the VAD threshold if speaker leakage is opening clips.
 6. **False wakes:** raise `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_THRESHOLD` and enable score logging temporarily.
-7. **Missed wakes:** lower threshold slightly, improve mic placement, and confirm PowerConf SCO capture volume is restored to `100%`.
+7. **Missed wakes:** lower the local wake threshold slightly and improve microphone placement.
 
 ## Notes
 
-The VAD mode mirrors the Discord voice-call approach: continuous PCM input, RMS voice gate, preroll, minimum voiced duration, silence-based utterance finalization, and max-duration cutoff. With `--local-wake-word`, the same PCM stream is also resampled to 16 kHz and fed to openWakeWord in 80 ms chunks; VAD utterances that never trigger the local `hey_jarvis` model are discarded without a network request. Once a locally wake-accepted utterance reaches the Mac, the server responds to whatever Whisper transcribes rather than checking for wake-word aliases again. Raspberry Pi hardware notes live in [`../README.md`](../README.md), with detailed hardware notes in [`../docs/audio-hardware.md`](../docs/audio-hardware.md).
+The VAD mode mirrors the Discord voice-call approach: continuous PCM input, RMS voice gate, preroll, minimum voiced duration, silence-based utterance finalization, and max-duration cutoff. With `--local-wake-word`, the same PCM stream is resampled to 16 kHz and fed to openWakeWord in 80 ms chunks; idle utterances that never trigger the local `hey_jarvis` model are discarded without a network request. While a USB turn is busy, short VAD clips bypass only that wake gate and go to the local Mac Whisper endpoint for exact `stop` matching. Once a normal locally wake-accepted utterance reaches the Mac, the server responds to whatever Whisper transcribes rather than checking for wake-word aliases again. Raspberry Pi hardware notes live in [`../README.md`](../README.md), with detailed hardware notes in [`../docs/audio-hardware.md`](../docs/audio-hardware.md).

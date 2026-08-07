@@ -5,8 +5,10 @@ Supports both fixed-window diagnostics and the production Discord-style VAD
 listener. The Pi captures room audio from the Anker PowerConf, reconnects the
 trusted Bluetooth speakerphone when needed, sends accepted utterances to the
 Mac-side room_audio_server.py, plays the immediate processing acknowledgement,
-then polls and plays the final JARVIS WAV response. The VAD listener can also
-play a contextual JARVIS greeting after startup or Bluetooth/capture recovery.
+then polls and plays the final JARVIS WAV response. In USB full-duplex mode it
+keeps capture active and sends short busy-only interruption clips so an exact
+spoken "stop" can cancel generation and playback. The VAD listener can also play
+a contextual JARVIS greeting after startup or Bluetooth/capture recovery.
 """
 
 from __future__ import annotations
@@ -25,7 +27,9 @@ import select
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import uuid
 from collections import deque
 import urllib.error
 import urllib.parse
@@ -76,6 +80,9 @@ DEFAULT_STARTUP_GREETING = os.environ.get("JARVIS_ROOM_AUDIO_STARTUP_GREETING", 
 DEFAULT_GREETING_ON_RECONNECT = os.environ.get("JARVIS_ROOM_AUDIO_GREETING_ON_RECONNECT", "0").lower() not in {"0", "false", "no", "off", ""}
 DEFAULT_GREETING_TIMEOUT_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_GREETING_TIMEOUT_SECONDS", "30"))
 DEFAULT_SCO_MIXER_VOLUME = int(os.environ.get("JARVIS_ROOM_AUDIO_SCO_MIXER_VOLUME", "100"))
+DEFAULT_INTERRUPT_WHILE_BUSY = os.environ.get("JARVIS_ROOM_AUDIO_INTERRUPT_WHILE_BUSY", "0").lower() not in {"0", "false", "no", "off", ""}
+DEFAULT_INTERRUPT_VAD_SILENCE_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_INTERRUPT_VAD_SILENCE_SECONDS", "0.45"))
+DEFAULT_INTERRUPT_VAD_MAX_UTTERANCE_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_INTERRUPT_VAD_MAX_UTTERANCE_SECONDS", "2.0"))
 
 
 def run(cmd: list[str], *, timeout: float | None = None) -> None:
@@ -372,13 +379,23 @@ def create_local_wake_word_detector(args: argparse.Namespace) -> LocalWakeWordDe
     return LocalWakeWordDetector(args)
 
 
-def post_turn(server_url: str, wav_path: Path, *, require_wake_word: bool, async_ack: bool, token: str = "") -> dict:
+def post_turn(
+    server_url: str,
+    wav_path: Path,
+    *,
+    require_wake_word: bool,
+    async_ack: bool,
+    token: str = "",
+    turn_id: str = "",
+) -> dict:
     payload = {
         "client": "raspberry-pi-powerconf",
         "requireWakeWord": require_wake_word,
         "asyncAck": async_ack,
         "audioWavBase64": base64.b64encode(wav_path.read_bytes()).decode("ascii"),
     }
+    if turn_id:
+        payload["turnId"] = turn_id
     body = json.dumps(payload).encode("utf-8")
     headers = {"content-type": "application/json", "accept": "application/json"}
     if token:
@@ -390,6 +407,25 @@ def post_turn(server_url: str, wav_path: Path, *, require_wake_word: bool, async
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Room audio server returned HTTP {exc.code}: {detail}") from exc
+
+
+def post_interrupt(server_url: str, wav_path: Path, *, turn_id: str, token: str = "") -> dict:
+    payload = {
+        "client": "raspberry-pi-powerconf",
+        "turnId": turn_id,
+        "audioWavBase64": base64.b64encode(wav_path.read_bytes()).decode("ascii"),
+    }
+    body = json.dumps(payload).encode("utf-8")
+    headers = {"content-type": "application/json", "accept": "application/json"}
+    if token:
+        headers["x-jarvis-room-token"] = token
+    request = urllib.request.Request(f"{server_url.rstrip('/')}/interrupt", data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            return json.loads(response.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Room audio interrupt server returned HTTP {exc.code}: {detail}") from exc
 
 
 def get_turn_result(server_url: str, turn_id: str, *, token: str = "") -> dict:
@@ -410,10 +446,70 @@ def response_without_audio(response: dict) -> dict:
     return {k: v for k, v in response.items() if k != "audioWavBase64"}
 
 
-def play_response_audio(response: dict, *, device: str, drain_seconds: float = 0.0) -> None:
+class PlaybackController:
+    """Thread-safe handle for interruptible room-audio playback."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._proc: subprocess.Popen | None = None
+
+    def play(self, path: Path, *, device: str, cancel_event: threading.Event | None = None) -> bool:
+        if cancel_event is not None and cancel_event.is_set():
+            return False
+        proc = subprocess.Popen(
+            ["aplay", "-q", "-D", device, str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        with self._lock:
+            self._proc = proc
+        if cancel_event is not None and cancel_event.is_set():
+            self.stop()
+
+        try:
+            while proc.poll() is None:
+                if cancel_event is not None and cancel_event.wait(0.05):
+                    self.stop()
+                else:
+                    time.sleep(0.01)
+        finally:
+            with self._lock:
+                if self._proc is proc:
+                    self._proc = None
+
+        interrupted = cancel_event is not None and cancel_event.is_set()
+        if proc.returncode not in {0, -15, -9} and not interrupted:
+            raise subprocess.CalledProcessError(proc.returncode or 1, proc.args)
+        return proc.returncode == 0 and not interrupted
+
+    def stop(self) -> bool:
+        with self._lock:
+            proc = self._proc
+        if proc is None or proc.poll() is not None:
+            return False
+        try:
+            proc.terminate()
+            proc.wait(timeout=0.75)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        return True
+
+
+def play_response_audio(
+    response: dict,
+    *,
+    device: str,
+    drain_seconds: float = 0.0,
+    playback_controller: PlaybackController | None = None,
+    cancel_event: threading.Event | None = None,
+) -> bool:
     audio_b64 = response.get("audioWavBase64")
     if not isinstance(audio_b64, str) or not audio_b64:
-        return
+        return False
+    if cancel_event is not None and cancel_event.is_set():
+        return False
     with tempfile.TemporaryDirectory(prefix="jarvis-room-audio-play-") as tmp_dir:
         output_path = Path(tmp_dir) / "jarvis-response.wav"
         output_path.write_bytes(base64.b64decode(audio_b64))
@@ -423,15 +519,21 @@ def play_response_audio(response: dict, *, device: str, drain_seconds: float = 0
             f"playing response audio: duration={duration:.2f}s bytes={output_path.stat().st_size} drain={drain_seconds:.2f}s",
             flush=True,
         )
-        play_wav(output_path, device=device)
+        if playback_controller is None:
+            play_wav(output_path, device=device)
+            completed = True
+        else:
+            completed = playback_controller.play(output_path, device=device, cancel_event=cancel_event)
         elapsed = time.monotonic() - started
-        print(f"response audio aplay finished: elapsed={elapsed:.2f}s", flush=True)
-    if drain_seconds > 0:
+        outcome = "finished" if completed else "interrupted"
+        print(f"response audio aplay {outcome}: elapsed={elapsed:.2f}s", flush=True)
+    if completed and drain_seconds > 0:
         # BlueALSA/aplay can return as soon as the WAV is queued, while the
         # Bluetooth speaker is still physically draining its A2DP buffer. If we
         # reopen SCO capture immediately, the PowerConf switches back to headset
         # mode and clips the tail of the acknowledgement/final answer.
         time.sleep(drain_seconds)
+    return completed
 
 
 def bluetooth_device_connected(mac: str) -> bool:
@@ -654,6 +756,263 @@ def submit_wav_turn_capture_released(args: argparse.Namespace, input_path: Path,
     return response
 
 
+class RoomAudioTurnController:
+    """Own one asynchronous room turn while the main thread keeps capturing."""
+
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.args = args
+        self.playback = PlaybackController()
+        self._lock = threading.Lock()
+        self._turn_thread: threading.Thread | None = None
+        self._interrupt_thread: threading.Thread | None = None
+        self._turn_id = ""
+        self._state = "IDLE"
+        self._cancel_event: threading.Event | None = None
+
+    def snapshot(self) -> tuple[bool, str, str]:
+        with self._lock:
+            return bool(self._turn_id), self._turn_id, self._state
+
+    def is_busy(self) -> bool:
+        return self.snapshot()[0]
+
+    def set_state(self, turn_id: str, state: str) -> None:
+        with self._lock:
+            if self._turn_id == turn_id:
+                self._state = state
+
+    def start_turn(
+        self,
+        pcm: bytes,
+        *,
+        duration_seconds: float,
+        voiced_ms: float,
+        max_rms: int,
+        require_wake_word: bool,
+    ) -> bool:
+        with self._lock:
+            if self._turn_id:
+                return False
+            turn_id = uuid.uuid4().hex
+            cancel_event = threading.Event()
+            self._turn_id = turn_id
+            self._state = "GENERATING"
+            self._cancel_event = cancel_event
+            thread = threading.Thread(
+                target=self._run_turn,
+                args=(turn_id, cancel_event, pcm, duration_seconds, voiced_ms, max_rms, require_wake_word),
+                name=f"room-audio-client-turn-{turn_id[:8]}",
+                daemon=True,
+            )
+            self._turn_thread = thread
+        thread.start()
+        return True
+
+    def _run_turn(
+        self,
+        turn_id: str,
+        cancel_event: threading.Event,
+        pcm: bytes,
+        duration_seconds: float,
+        voiced_ms: float,
+        max_rms: int,
+        require_wake_word: bool,
+    ) -> None:
+        try:
+            process_vad_utterance_controlled(
+                self.args,
+                pcm,
+                duration_seconds=duration_seconds,
+                voiced_ms=voiced_ms,
+                max_rms=max_rms,
+                require_wake_word=require_wake_word,
+                turn_id=turn_id,
+                cancel_event=cancel_event,
+                controller=self,
+            )
+        except Exception as exc:
+            if not cancel_event.is_set():
+                print(f"room turn error: {exc}", flush=True)
+        finally:
+            self.playback.stop()
+            with self._lock:
+                if self._turn_id == turn_id:
+                    self._turn_id = ""
+                    self._state = "IDLE"
+                    self._cancel_event = None
+                if self._turn_thread is threading.current_thread():
+                    self._turn_thread = None
+
+    def start_interrupt(
+        self,
+        pcm: bytes,
+        *,
+        duration_seconds: float,
+        voiced_ms: float,
+        max_rms: int,
+    ) -> bool:
+        with self._lock:
+            if not self._turn_id:
+                return False
+            if self._interrupt_thread is not None and self._interrupt_thread.is_alive():
+                return False
+            turn_id = self._turn_id
+            thread = threading.Thread(
+                target=self._run_interrupt,
+                args=(turn_id, pcm, duration_seconds, voiced_ms, max_rms),
+                name=f"room-audio-client-interrupt-{turn_id[:8]}",
+                daemon=True,
+            )
+            self._interrupt_thread = thread
+        thread.start()
+        return True
+
+    def _run_interrupt(
+        self,
+        turn_id: str,
+        pcm: bytes,
+        duration_seconds: float,
+        voiced_ms: float,
+        max_rms: int,
+    ) -> None:
+        try:
+            with tempfile.TemporaryDirectory(prefix="jarvis-room-audio-interrupt-") as tmp_dir:
+                input_path = Path(tmp_dir) / "interrupt.wav"
+                write_wav_from_pcm(input_path, pcm, rate=self.args.rate, channels=1)
+                print(
+                    f"vad interrupt candidate: duration={duration_seconds:.2f}s voiced={voiced_ms:.0f}ms "
+                    f"max_rms={max_rms}; turn={turn_id}",
+                    flush=True,
+                )
+                response = post_interrupt(
+                    self.args.server_url,
+                    input_path,
+                    turn_id=turn_id,
+                    token=self.args.token,
+                )
+            print(json.dumps(response_without_audio(response), indent=2, sort_keys=True), flush=True)
+            if response.get("recognized") and response.get("command") == "stop":
+                self.cancel_local(turn_id)
+        except Exception as exc:
+            print(f"room interrupt error: {exc}", flush=True)
+        finally:
+            with self._lock:
+                if self._interrupt_thread is threading.current_thread():
+                    self._interrupt_thread = None
+
+    def cancel_local(self, turn_id: str) -> bool:
+        with self._lock:
+            if self._turn_id != turn_id or self._cancel_event is None:
+                return False
+            self._state = "CANCELLING"
+            cancel_event = self._cancel_event
+        cancel_event.set()
+        self.playback.stop()
+        print(f"room turn cancelled: turn={turn_id}", flush=True)
+        return True
+
+    def shutdown(self) -> None:
+        with self._lock:
+            turn_id = self._turn_id
+            cancel_event = self._cancel_event
+        if cancel_event is not None:
+            cancel_event.set()
+        self.playback.stop()
+        if turn_id:
+            print(f"room turn stopped during client shutdown: turn={turn_id}", flush=True)
+
+
+def wait_for_final_response_controlled(
+    args: argparse.Namespace,
+    turn_id: str,
+    *,
+    cancel_event: threading.Event,
+    controller: RoomAudioTurnController,
+) -> dict:
+    deadline = time.monotonic() + max(1.0, args.result_timeout)
+    poll_interval = max(0.05, args.poll_interval)
+    while not cancel_event.is_set():
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Timed out waiting for room audio turn {turn_id}")
+        if cancel_event.wait(poll_interval):
+            break
+        response = get_turn_result(args.server_url, turn_id, token=args.token)
+        if response.get("pending"):
+            poll_interval = max(0.05, float(response.get("pollAfterSeconds") or args.poll_interval))
+            continue
+        print(json.dumps(response_without_audio(response), indent=2, sort_keys=True), flush=True)
+        if response.get("status") == "cancelled":
+            cancel_event.set()
+            return response
+        if cancel_event.is_set():
+            break
+        controller.set_state(turn_id, "PLAYING")
+        play_response_audio(
+            response,
+            device=args.playback_device,
+            drain_seconds=args.bt_playback_drain_seconds,
+            playback_controller=controller.playback,
+            cancel_event=cancel_event,
+        )
+        return response
+    return {"ok": True, "turnId": turn_id, "status": "cancelled", "pending": False}
+
+
+def process_vad_utterance_controlled(
+    args: argparse.Namespace,
+    pcm: bytes,
+    *,
+    duration_seconds: float,
+    voiced_ms: float,
+    max_rms: int,
+    require_wake_word: bool,
+    turn_id: str,
+    cancel_event: threading.Event,
+    controller: RoomAudioTurnController,
+) -> dict:
+    with tempfile.TemporaryDirectory(prefix="jarvis-room-audio-vad-") as tmp_dir:
+        input_path = Path(tmp_dir) / "input.wav"
+        write_wav_from_pcm(input_path, pcm, rate=args.rate, channels=1)
+        print(
+            f"vad utterance: duration={duration_seconds:.2f}s voiced={voiced_ms:.0f}ms max_rms={max_rms}; "
+            f"wav={input_path.stat().st_size} bytes turn={turn_id}",
+            flush=True,
+        )
+        response = post_turn(
+            args.server_url,
+            input_path,
+            require_wake_word=require_wake_word,
+            async_ack=True,
+            token=args.token,
+            turn_id=turn_id,
+        )
+    print(json.dumps(response_without_audio(response), indent=2, sort_keys=True), flush=True)
+    if response.get("status") == "cancelled" or cancel_event.is_set():
+        cancel_event.set()
+        return response
+
+    # This first WAV is the short processing acknowledgement. Capture remains
+    # live in the main thread while the worker plays it and polls for the answer.
+    controller.set_state(turn_id, "PLAYING")
+    play_response_audio(
+        response,
+        device=args.playback_device,
+        drain_seconds=args.bt_playback_drain_seconds,
+        playback_controller=controller.playback,
+        cancel_event=cancel_event,
+    )
+    if response.get("pending") and not cancel_event.is_set():
+        controller.set_state(turn_id, "GENERATING")
+        server_turn_id = str(response.get("turnId") or turn_id)
+        return wait_for_final_response_controlled(
+            args,
+            server_turn_id,
+            cancel_event=cancel_event,
+            controller=controller,
+        )
+    return response
+
+
 def process_vad_utterance(
     args: argparse.Namespace,
     pcm: bytes,
@@ -693,6 +1052,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
     require_server_wake_word_after_local_gate = (not args.no_wake_word) and not (
         local_wake_gate_active and args.trust_local_wake_word
     )
+    turn_controller = RoomAudioTurnController(args) if args.interrupt_while_busy else None
 
     print(
         "starting Discord-style VAD listener: "
@@ -704,7 +1064,10 @@ def run_vad_loop(args: argparse.Namespace) -> None:
         f"restore_capture_while_waiting={args.vad_restore_capture_while_waiting} "
         f"bt_settle={args.bt_profile_settle_seconds:.2f}s bt_drain={args.bt_playback_drain_seconds:.2f}s "
         f"local_wake_gate={local_wake_gate_active} trust_local_wake={args.trust_local_wake_word} "
-        f"server_wake_check={require_server_wake_word_after_local_gate}",
+        f"server_wake_check={require_server_wake_word_after_local_gate} "
+        f"interrupt_while_busy={bool(turn_controller)} "
+        f"interrupt_silence={args.interrupt_vad_silence_seconds:.2f}s "
+        f"interrupt_max={args.interrupt_vad_max_utterance_seconds:.2f}s",
         flush=True,
     )
 
@@ -730,6 +1093,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
         utterance_wake_accepted = not local_wake_gate_active
         utterance_wake_max_score = 0.0
         utterance_wake_max_model = ""
+        utterance_interrupt_candidate = False
         voiced_ms = 0.0
         max_rms = 0
         last_voice_at = 0.0
@@ -780,6 +1144,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                         continue
                     utterance = []
                     utterance_bytes = 0
+                    utterance_interrupt_candidate = bool(turn_controller is not None and turn_controller.is_busy())
                     utterance_wake_accepted = (not local_wake_gate_active) or now <= wake_armed_until
                     utterance_wake_max_score = local_wake.last_score if local_wake is not None else 0.0
                     utterance_wake_max_model = local_wake.last_model if local_wake is not None else ""
@@ -809,7 +1174,17 @@ def run_vad_loop(args: argparse.Namespace) -> None:
 
                 duration = utterance_bytes / bytes_per_second
                 silence_seconds = now - last_voice_at
-                if duration < args.vad_max_utterance_seconds and silence_seconds < args.vad_silence_seconds:
+                max_utterance_seconds = (
+                    args.interrupt_vad_max_utterance_seconds
+                    if utterance_interrupt_candidate
+                    else args.vad_max_utterance_seconds
+                )
+                silence_target_seconds = (
+                    args.interrupt_vad_silence_seconds
+                    if utterance_interrupt_candidate
+                    else args.vad_silence_seconds
+                )
+                if duration < max_utterance_seconds and silence_seconds < silence_target_seconds:
                     continue
 
                 pcm = b"".join(utterance)
@@ -826,7 +1201,23 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                     )
                     continue
 
-                reason = "max-duration" if duration >= args.vad_max_utterance_seconds else "silence"
+                reason = "max-duration" if duration >= max_utterance_seconds else "silence"
+                if utterance_interrupt_candidate:
+                    if turn_controller is not None and turn_controller.start_interrupt(
+                        pcm,
+                        duration_seconds=duration,
+                        voiced_ms=voiced_ms,
+                        max_rms=max_rms,
+                    ):
+                        print(
+                            f"vad speech end: reason={reason} elapsed={now - speech_started_at:.2f}s "
+                            "interrupt_candidate=true",
+                            flush=True,
+                        )
+                    else:
+                        print("vad interrupt candidate dropped: no active turn or ASR already in flight", flush=True)
+                    continue
+
                 if local_wake_gate_active and not utterance_wake_accepted:
                     print(
                         f"local wake dropped utterance: duration={duration:.2f}s voiced={voiced_ms:.0f}ms "
@@ -842,6 +1233,19 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                     f"local_wake_accepted={utterance_wake_accepted}",
                     flush=True,
                 )
+                if turn_controller is not None:
+                    if turn_controller.start_turn(
+                        pcm,
+                        duration_seconds=duration,
+                        voiced_ms=voiced_ms,
+                        max_rms=max_rms,
+                        require_wake_word=require_server_wake_word_after_local_gate,
+                    ):
+                        print("vad accepted turn in background; capture remains active", flush=True)
+                    else:
+                        print("vad accepted turn dropped because another turn is already active", flush=True)
+                    continue
+
                 if args.vad_release_capture_during_turn:
                     print("vad releasing capture for A2DP playback", flush=True)
                     stop_process(proc)
@@ -870,6 +1274,8 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                         print(f"vad drained {drained} bytes captured while processing/playback", flush=True)
         except KeyboardInterrupt:
             stop_process(proc)
+            if turn_controller is not None:
+                turn_controller.shutdown()
             raise
         except Exception as exc:
             print(f"vad error: {exc}; restarting capture in {args.interval:.1f}s", flush=True)
@@ -927,6 +1333,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reopen and drain SCO capture while waiting for the async final response; off by default for more reliable A2DP playback",
     )
     parser.add_argument("--no-vad-restore-capture-while-waiting", dest="vad_restore_capture_while_waiting", action="store_false")
+    parser.add_argument(
+        "--interrupt-while-busy",
+        dest="interrupt_while_busy",
+        action="store_true",
+        default=DEFAULT_INTERRUPT_WHILE_BUSY,
+        help="While generating or speaking, transcribe short VAD utterances and treat an exact 'stop' as cancellation",
+    )
+    parser.add_argument("--no-interrupt-while-busy", dest="interrupt_while_busy", action="store_false")
+    parser.add_argument(
+        "--interrupt-vad-silence-seconds",
+        type=float,
+        default=DEFAULT_INTERRUPT_VAD_SILENCE_SECONDS,
+        help="Busy-mode silence needed to finalize a possible stop command",
+    )
+    parser.add_argument(
+        "--interrupt-vad-max-utterance-seconds",
+        type=float,
+        default=DEFAULT_INTERRUPT_VAD_MAX_UTTERANCE_SECONDS,
+        help="Maximum busy-mode interruption clip sent to ASR",
+    )
     parser.add_argument("--local-wake-word", dest="local_wake_word", action="store_true", default=DEFAULT_LOCAL_WAKE_WORD_ENABLED, help="Enable Pi-side wake-word detection before sending VAD utterances to the Mac")
     parser.add_argument("--no-local-wake-word", dest="local_wake_word", action="store_false")
     parser.add_argument("--local-wake-word-engine", default=DEFAULT_LOCAL_WAKE_WORD_ENGINE, choices=["openwakeword"])
@@ -969,6 +1395,16 @@ def main() -> int:
     args = build_parser().parse_args()
     if not args.playback_device:
         args.playback_device = args.device
+    if args.interrupt_while_busy:
+        if "bluealsa" in args.device.lower() or "bluealsa" in args.playback_device.lower():
+            raise SystemExit("--interrupt-while-busy requires a full-duplex audio device; Bluetooth SCO/A2DP is unsupported")
+        if args.vad_release_capture_during_turn:
+            print("interrupt mode: overriding --vad-release-capture-during-turn so USB capture stays active", flush=True)
+            args.vad_release_capture_during_turn = False
+        args.vad_restore_capture_while_waiting = False
+        args.async_ack = True
+        args.interrupt_vad_silence_seconds = max(0.1, args.interrupt_vad_silence_seconds)
+        args.interrupt_vad_max_utterance_seconds = max(0.5, args.interrupt_vad_max_utterance_seconds)
     if args.vad_loop:
         run_vad_loop(args)
         return 0

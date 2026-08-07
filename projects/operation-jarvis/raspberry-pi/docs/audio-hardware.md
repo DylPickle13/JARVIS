@@ -4,28 +4,21 @@ This note tracks the Anker PowerConf room-audio hardware used by the Raspberry P
 
 ## Current deployed configuration
 
-The active room endpoint uses the Anker PowerConf over Bluetooth because direct USB has been electrically unstable on this Pi without a powered hub.
+The active room endpoint uses the Anker PowerConf over USB at 48 kHz. The recovered/replacement hardware path supports simultaneous microphone capture and speaker playback, which is required for voice barge-in.
 
 | Role | Current device/profile |
 |---|---|
-| Microphone | BlueALSA SCO/HFP, `bluealsa:DEV=<bluetooth-device-mac>,PROFILE=sco`, 8 kHz mono |
-| Speaker | BlueALSA A2DP, `bluealsa:DEV=<bluetooth-device-mac>,PROFILE=a2dp` |
-| PowerConf MAC | `<bluetooth-device-mac>` |
-| Listener | `jarvis-room-audio.service` running `/home/pi/jarvis-room-audio-client.py --vad-loop` |
+| Microphone | USB ALSA, `plughw:CARD=PowerConf,DEV=0`, 48 kHz mono capture |
+| Speaker | USB ALSA, `plughw:CARD=PowerConf,DEV=0` |
+| Listener | `jarvis-room-audio.service` running `/home/pi/jarvis-room-audio-client.py --vad-loop --interrupt-while-busy` |
 
-The boot-time service reconnects the trusted PowerConf by MAC before opening BlueALSA capture, restores the SCO mixer to `100%`, and plays a contextual JARVIS greeting after startup or Bluetooth/capture recovery. The PowerConf does not reliably hold SCO capture and A2DP playback at the same time. The room-audio client therefore releases SCO capture only around A2DP playback, restores/drains the mic while waiting for the final async response, then releases it briefly again for final playback.
-
-Important tuning:
-
-- BlueALSA service uses `--keep-alive=1` for faster profile switching.
-- `JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS=1000` reduces clipped first syllables when A2DP wakes; if the short acknowledgement clips again, raise it to about `1300`–`1500`.
-- Pi client uses `--bt-profile-settle-seconds 0.45` before A2DP playback.
+The boot-time listener keeps USB capture running while the processing acknowledgement and final response play. Idle commands still require local `hey_jarvis`; while a turn is busy, short speech clips are sent to the Mac-side Whisper ASR and only an exact `stop` transcript cancels generation/playback. Bluetooth BlueALSA SCO/A2DP remains a fallback transport, but it cannot support barge-in because the PowerConf does not reliably hold SCO capture and A2DP playback simultaneously.
 
 See [`../room_audio/README.md`](../room_audio/README.md) for the current server and listener commands.
 
 ## Long-term recommendation
 
-For the most reliable always-listening room endpoint, use the PowerConf as a **USB audio device through a good powered USB hub**.
+Continue using the PowerConf as a **USB audio device**, preferably through a good powered USB hub if electrical instability returns.
 
 Recommended hub characteristics:
 

@@ -97,6 +97,17 @@ WAKE_WORDS = tuple(
         if word.strip()
     )
 )
+TURN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$")
+
+
+class RoomAudioTurnCancelled(RuntimeError):
+    """Raised when a room-audio job is intentionally cancelled."""
+
+
+def parse_interrupt_command(transcript: str) -> str:
+    """Return the exact busy-only control command represented by a transcript."""
+    normalized = re.sub(r"[^a-z]+", " ", transcript.lower()).strip()
+    return "stop" if normalized == "stop" else ""
 
 
 def _load_text(path: Path) -> str:
@@ -228,6 +239,8 @@ class RoomAudioBridge:
         pipeline_config = discord_voice.VoicePipelineConfig(stream_tts=False)
         self._pipeline = discord_voice.OmlxVoicePipeline(pipeline_config, response_callback=self._run_pi_response)
         self._lock = threading.Lock()
+        self._active_pi_turn_lock = threading.Lock()
+        self._active_pi_turn_id = ""
         self._jobs_lock = threading.Lock()
         self._jobs: dict[str, dict[str, Any]] = {}
         self._ack_lock = threading.Lock()
@@ -267,9 +280,16 @@ class RoomAudioBridge:
         if started:
             LOGGER.info("Started fresh room-audio Pi session after %s idle", idle_detail)
 
-    def _run_pi_response(self, transcript: str, on_delta: Any, _turn_context: object | None) -> str:
+    def _run_pi_response(self, transcript: str, on_delta: Any, turn_context: object | None) -> str:
         prompt = normalize_wake_words(transcript).strip()
         text_parts: list[str] = []
+        context = turn_context if isinstance(turn_context, dict) else {}
+        turn_id = str(context.get("turnId") or "")
+        cancel_event = context.get("cancelEvent")
+
+        def raise_if_cancelled() -> None:
+            if isinstance(cancel_event, threading.Event) and cancel_event.is_set():
+                raise RoomAudioTurnCancelled(f"Room audio turn {turn_id or '<unknown>'} was cancelled.")
 
         def handle_event(event: dict[str, Any]) -> None:
             if event.get("type") != "message_update":
@@ -289,8 +309,18 @@ class RoomAudioBridge:
         # Keep one persistent Pi session for room audio, but serialize turns so a
         # second HTTP request cannot steer or corrupt the current spoken reply.
         with self._lock:
+            raise_if_cancelled()
             self._start_new_session_if_idle()
-            self._session.run_prompt(prompt, on_event=handle_event, timeout_seconds=llm.PI_CODING_AGENT_RPC_TIMEOUT_SECONDS)
+            with self._active_pi_turn_lock:
+                self._active_pi_turn_id = turn_id
+            try:
+                raise_if_cancelled()
+                self._session.run_prompt(prompt, on_event=handle_event, timeout_seconds=llm.PI_CODING_AGENT_RPC_TIMEOUT_SECONDS)
+                raise_if_cancelled()
+            finally:
+                with self._active_pi_turn_lock:
+                    if self._active_pi_turn_id == turn_id:
+                        self._active_pi_turn_id = ""
         return "".join(text_parts).strip()
 
     def _synthesize_processing_ack(self) -> str:
@@ -349,10 +379,18 @@ class RoomAudioBridge:
         asr_seconds: float,
         started_at: float,
         include_ack: bool,
+        turn_id: str = "",
+        cancel_event: threading.Event | None = None,
     ) -> dict[str, Any]:
         ack_path: Path | None = None
         audio_paths: list[Path] = []
+
+        def raise_if_cancelled() -> None:
+            if cancel_event is not None and cancel_event.is_set():
+                raise RoomAudioTurnCancelled(f"Room audio turn {turn_id or '<unknown>'} was cancelled.")
+
         try:
+            raise_if_cancelled()
             if include_ack and PROCESSING_ACK_ENABLED and PROCESSING_ACK_TEXT:
                 try:
                     ack_path = self._pipeline.synthesize_notice(PROCESSING_ACK_TEXT)
@@ -362,14 +400,16 @@ class RoomAudioBridge:
             result = self._pipeline.synthesize_turn(
                 wav_path,
                 None,
-                None,
+                {"turnId": turn_id, "cancelEvent": cancel_event},
                 transcript=transcript,
                 input_seconds=input_seconds,
                 asr_seconds=asr_seconds,
                 started_at=started_at,
             )
+            raise_if_cancelled()
             audio_paths = ([ack_path] if ack_path is not None else []) + list(result.audio_paths)
             audio_bytes = combine_wavs(audio_paths)
+            raise_if_cancelled()
             return {
                 "ok": True,
                 "accepted": True,
@@ -403,6 +443,31 @@ class RoomAudioBridge:
             if float(job.get("createdMonotonic", 0.0)) < cutoff:
                 self._jobs.pop(turn_id, None)
 
+    @staticmethod
+    def _cancelled_turn_response(
+        turn_id: str,
+        transcript: str,
+        *,
+        input_seconds: float = 0.0,
+        asr_seconds: float = 0.0,
+        started_at: float | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "accepted": True,
+            "pending": False,
+            "status": "cancelled",
+            "turnId": turn_id,
+            "transcript": transcript,
+            "normalizedTranscript": normalize_wake_words(transcript),
+            "replyText": "",
+            "audioWavBase64": "",
+            "audioContentType": "",
+            "inputSeconds": input_seconds,
+            "asrSeconds": asr_seconds,
+            "totalSeconds": time.monotonic() - started_at if started_at is not None else 0.0,
+        }
+
     def _finish_async_turn(
         self,
         turn_id: str,
@@ -411,6 +476,7 @@ class RoomAudioBridge:
         input_seconds: float,
         asr_seconds: float,
         started_at: float,
+        cancel_event: threading.Event,
     ) -> None:
         try:
             response = self._synthesize_accepted_turn(
@@ -420,39 +486,68 @@ class RoomAudioBridge:
                 asr_seconds=asr_seconds,
                 started_at=started_at,
                 include_ack=False,
+                turn_id=turn_id,
+                cancel_event=cancel_event,
             )
             response.update({"turnId": turn_id, "status": "done"})
+        except (RoomAudioTurnCancelled, llm.PiRpcCancelledError):
+            LOGGER.info("Room audio turn cancelled: %s", turn_id)
+            response = self._cancelled_turn_response(
+                turn_id,
+                transcript,
+                input_seconds=input_seconds,
+                asr_seconds=asr_seconds,
+                started_at=started_at,
+            )
         except Exception as exc:
-            LOGGER.exception("Room audio async turn failed: %s", turn_id)
-            error_audio_b64 = ""
-            try:
-                notice_path = self._pipeline.synthesize_notice(
-                    "I generated a response, sir, but the voice renderer failed before I could speak it."
+            if cancel_event.is_set():
+                LOGGER.info("Room audio turn ended after cancellation: %s", turn_id)
+                response = self._cancelled_turn_response(
+                    turn_id,
+                    transcript,
+                    input_seconds=input_seconds,
+                    asr_seconds=asr_seconds,
+                    started_at=started_at,
                 )
+            else:
+                LOGGER.exception("Room audio async turn failed: %s", turn_id)
+                error_audio_b64 = ""
                 try:
-                    error_audio_b64 = base64.b64encode(combine_wavs([notice_path])).decode("ascii")
-                finally:
-                    notice_path.unlink(missing_ok=True)
-            except Exception:
-                LOGGER.warning("Failed to synthesize room-audio error notice", exc_info=True)
-            response = {
-                "ok": False,
-                "accepted": True,
-                "pending": False,
-                "status": "error",
-                "turnId": turn_id,
-                "transcript": transcript,
-                "normalizedTranscript": normalize_wake_words(transcript),
-                "error": str(exc),
-                "audioWavBase64": error_audio_b64,
-                "audioContentType": "audio/wav" if error_audio_b64 else "",
-                "inputSeconds": input_seconds,
-                "asrSeconds": asr_seconds,
-                "totalSeconds": time.monotonic() - started_at,
-            }
-
+                    notice_path = self._pipeline.synthesize_notice(
+                        "I generated a response, sir, but the voice renderer failed before I could speak it."
+                    )
+                    try:
+                        error_audio_b64 = base64.b64encode(combine_wavs([notice_path])).decode("ascii")
+                    finally:
+                        notice_path.unlink(missing_ok=True)
+                except Exception:
+                    LOGGER.warning("Failed to synthesize room-audio error notice", exc_info=True)
+                response = {
+                    "ok": False,
+                    "accepted": True,
+                    "pending": False,
+                    "status": "error",
+                    "turnId": turn_id,
+                    "transcript": transcript,
+                    "normalizedTranscript": normalize_wake_words(transcript),
+                    "error": str(exc),
+                    "audioWavBase64": error_audio_b64,
+                    "audioContentType": "audio/wav" if error_audio_b64 else "",
+                    "inputSeconds": input_seconds,
+                    "asrSeconds": asr_seconds,
+                    "totalSeconds": time.monotonic() - started_at,
+                }
         finally:
             wav_path.unlink(missing_ok=True)
+
+        if cancel_event.is_set() and response.get("status") != "cancelled":
+            response = self._cancelled_turn_response(
+                turn_id,
+                transcript,
+                input_seconds=input_seconds,
+                asr_seconds=asr_seconds,
+                started_at=started_at,
+            )
 
         with self._jobs_lock:
             self._prune_jobs_locked()
@@ -488,7 +583,89 @@ class RoomAudioBridge:
             response = job.get("response")
             return dict(response) if isinstance(response, dict) else None
 
-    def handle_wav_async_ack(self, wav_path: Path, *, require_wake_word: bool = True) -> dict[str, Any]:
+    def cancel_turn(self, turn_id: str) -> dict[str, Any] | None:
+        with self._jobs_lock:
+            self._prune_jobs_locked()
+            job = self._jobs.get(turn_id)
+            if job is None:
+                return None
+            cancel_event = job.get("cancelEvent")
+            if not isinstance(cancel_event, threading.Event):
+                return None
+            cancel_event.set()
+            transcript = str(job.get("transcript") or "")
+            response = self._cancelled_turn_response(turn_id, transcript)
+            job.update(
+                {
+                    "status": "cancelled",
+                    "pending": False,
+                    "response": response,
+                    "cancelledMonotonic": time.monotonic(),
+                }
+            )
+
+        with self._active_pi_turn_lock:
+            active_pi_turn = self._active_pi_turn_id == turn_id
+        abort_sent = False
+        if active_pi_turn:
+            abort_sent = bool(self._session.abort_active())
+
+            # Cover the narrow race where cancellation lands after the callback
+            # claims the turn but immediately before run_prompt marks it active.
+            def retry_abort() -> None:
+                time.sleep(0.1)
+                with self._active_pi_turn_lock:
+                    still_active = self._active_pi_turn_id == turn_id
+                if still_active and cancel_event.is_set():
+                    self._session.abort_active()
+
+            threading.Thread(target=retry_abort, name=f"room-audio-abort-{turn_id[:8]}", daemon=True).start()
+
+        return {
+            "turnFound": True,
+            "status": "cancelled",
+            "generationWasActive": active_pi_turn,
+            "abortSent": abort_sent,
+        }
+
+    def handle_interrupt_wav(self, turn_id: str, wav_path: Path) -> dict[str, Any]:
+        with self._jobs_lock:
+            self._prune_jobs_locked()
+            turn_found = turn_id in self._jobs
+        if not turn_found:
+            return {
+                "ok": False,
+                "recognized": False,
+                "command": "",
+                "turnId": turn_id,
+                "turnFound": False,
+                "error": "turn not found",
+            }
+
+        transcript, input_seconds, asr_seconds = self._pipeline.transcribe_audio(wav_path)
+        command = parse_interrupt_command(transcript)
+        cancellation = self.cancel_turn(turn_id) if command == "stop" else None
+        return {
+            "ok": True,
+            "recognized": command == "stop",
+            "command": command,
+            "turnId": turn_id,
+            "turnFound": True,
+            "transcript": transcript,
+            "inputSeconds": input_seconds,
+            "asrSeconds": asr_seconds,
+            "generationWasActive": bool(cancellation and cancellation.get("generationWasActive")),
+            "abortSent": bool(cancellation and cancellation.get("abortSent")),
+            "status": "cancelled" if command == "stop" else "ignored",
+        }
+
+    def handle_wav_async_ack(
+        self,
+        wav_path: Path,
+        *,
+        require_wake_word: bool = True,
+        requested_turn_id: str = "",
+    ) -> dict[str, Any]:
         started = time.monotonic()
         transcript, input_seconds, asr_seconds = self._pipeline.transcribe_audio(wav_path)
         # Pi-side openWakeWord is the authoritative wake gate. Once a turn reaches
@@ -506,9 +683,13 @@ class RoomAudioBridge:
             job_tmp.write(wav_path.read_bytes())
             job_wav_path = Path(job_tmp.name)
 
-        turn_id = uuid.uuid4().hex
+        turn_id = requested_turn_id or uuid.uuid4().hex
+        cancel_event = threading.Event()
         with self._jobs_lock:
             self._prune_jobs_locked()
+            if turn_id in self._jobs:
+                job_wav_path.unlink(missing_ok=True)
+                raise ValueError(f"turn already exists: {turn_id}")
             self._jobs[turn_id] = {
                 "status": "running",
                 "pending": True,
@@ -516,11 +697,12 @@ class RoomAudioBridge:
                 "normalizedTranscript": normalize_wake_words(transcript),
                 "createdMonotonic": time.monotonic(),
                 "startedMonotonic": started,
+                "cancelEvent": cancel_event,
             }
 
         threading.Thread(
             target=self._finish_async_turn,
-            args=(turn_id, job_wav_path, transcript, input_seconds, asr_seconds, started),
+            args=(turn_id, job_wav_path, transcript, input_seconds, asr_seconds, started, cancel_event),
             name=f"room-audio-turn-{turn_id[:8]}",
             daemon=True,
         ).start()
@@ -633,11 +815,14 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 "greetingTextOverride": bool(ROOM_GREETING_TEXT),
                 "asyncAckSupported": True,
                 "asyncPollAfterSeconds": ASYNC_POLL_AFTER_SECONDS,
+                "interruptSupported": True,
+                "interruptCommand": "stop",
             }
         )
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib method name
-        if self.path.rstrip("/") != "/turn":
+        path = urlparse(self.path).path.rstrip("/") or "/"
+        if path not in {"/turn", "/interrupt"}:
             self._send_json({"ok": False, "error": "not found"}, HTTPStatus.NOT_FOUND)
             return
         if not self._authorized():
@@ -663,6 +848,11 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
             audio_bytes = base64.b64decode(audio_b64, validate=True)
             require_wake_word = bool(payload.get("requireWakeWord", payload.get("require_wake_word", True)))
             async_ack = bool(payload.get("asyncAck", payload.get("async_ack", False)))
+            requested_turn_id = str(payload.get("turnId") or payload.get("turn_id") or "").strip()
+            if requested_turn_id and TURN_ID_PATTERN.fullmatch(requested_turn_id) is None:
+                raise ValueError("turnId must be 8-128 letters, digits, underscores, or hyphens")
+            if path == "/interrupt" and not requested_turn_id:
+                raise ValueError("turnId is required for interruption")
         except Exception as exc:
             self._send_json({"ok": False, "error": f"bad request: {exc}"}, HTTPStatus.BAD_REQUEST)
             return
@@ -672,15 +862,35 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
             wav_path = Path(tmp.name)
 
         try:
-            if async_ack:
-                response = self.server.bridge.handle_wav_async_ack(wav_path, require_wake_word=require_wake_word)
+            if path == "/interrupt":
+                response = self.server.bridge.handle_interrupt_wav(requested_turn_id, wav_path)
+            elif async_ack:
+                response = self.server.bridge.handle_wav_async_ack(
+                    wav_path,
+                    require_wake_word=require_wake_word,
+                    requested_turn_id=requested_turn_id,
+                )
             else:
                 response = self.server.bridge.handle_wav(wav_path, require_wake_word=require_wake_word)
             self._send_json(response)
         except discord_voice.VoicePipelineNoOutputError as exc:
-            self._send_json({"ok": True, "accepted": False, "reason": str(exc)})
+            if path == "/interrupt":
+                self._send_json(
+                    {
+                        "ok": True,
+                        "recognized": False,
+                        "command": "",
+                        "turnId": requested_turn_id,
+                        "status": "ignored",
+                        "reason": str(exc),
+                    }
+                )
+            else:
+                self._send_json({"ok": True, "accepted": False, "reason": str(exc)})
+        except ValueError as exc:
+            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
         except Exception as exc:
-            LOGGER.exception("Room audio turn failed")
+            LOGGER.exception("Room audio %s failed", "interrupt" if path == "/interrupt" else "turn")
             self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
         finally:
             wav_path.unlink(missing_ok=True)

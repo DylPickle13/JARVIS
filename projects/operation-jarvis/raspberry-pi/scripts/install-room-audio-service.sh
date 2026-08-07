@@ -6,6 +6,12 @@ PI_USER="${PI_USER:-pi}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/jarvis_dashboard_host}"
 SERVER_URL="${SERVER_URL:-}"
 POWERCONF_MAC="${POWERCONF_MAC:-}"
+AUDIO_TRANSPORT="${AUDIO_TRANSPORT:-usb}"
+USB_AUDIO_DEVICE="${USB_AUDIO_DEVICE:-plughw:CARD=PowerConf,DEV=0}"
+USB_AUDIO_RATE="${USB_AUDIO_RATE:-48000}"
+INTERRUPT_WHILE_BUSY="${INTERRUPT_WHILE_BUSY:-1}"
+INTERRUPT_VAD_SILENCE_SECONDS="${INTERRUPT_VAD_SILENCE_SECONDS:-0.45}"
+INTERRUPT_VAD_MAX_UTTERANCE_SECONDS="${INTERRUPT_VAD_MAX_UTTERANCE_SECONDS:-2.0}"
 CLIENT_REMOTE_PATH="${CLIENT_REMOTE_PATH:-/home/pi/jarvis-room-audio-client.py}"
 SERVICE_NAME="${SERVICE_NAME:-jarvis-room-audio.service}"
 LOCAL_WAKE_WORD="${LOCAL_WAKE_WORD:-1}"
@@ -26,8 +32,12 @@ if [[ -z "$SERVER_URL" ]]; then
   echo "Set SERVER_URL to the room-audio server URL." >&2
   exit 2
 fi
-if [[ -z "$POWERCONF_MAC" ]]; then
+if [[ "$AUDIO_TRANSPORT" == "bluetooth" && -z "$POWERCONF_MAC" ]]; then
   echo "Set POWERCONF_MAC to the Bluetooth speaker/microphone MAC address." >&2
+  exit 2
+fi
+if [[ "$AUDIO_TRANSPORT" != "usb" && "$AUDIO_TRANSPORT" != "bluetooth" ]]; then
+  echo "AUDIO_TRANSPORT must be usb or bluetooth." >&2
   exit 2
 fi
 
@@ -69,14 +79,28 @@ fi
 # Room audio now treats Pi-side openWakeWord as authoritative. The trust flag is
 # still passed for compatibility with older Mac-side servers that supported a
 # transcript wake-word re-check.
+if [[ "$AUDIO_TRANSPORT" == "usb" ]]; then
+  SERVICE_WANTS="network-online.target"
+  SERVICE_AFTER="network-online.target"
+  INTERRUPT_ARGS="--no-interrupt-while-busy"
+  if [[ "$INTERRUPT_WHILE_BUSY" != "0" ]]; then
+    INTERRUPT_ARGS="--interrupt-while-busy --interrupt-vad-silence-seconds $INTERRUPT_VAD_SILENCE_SECONDS --interrupt-vad-max-utterance-seconds $INTERRUPT_VAD_MAX_UTTERANCE_SECONDS"
+  fi
+  AUDIO_ARGS="--device $USB_AUDIO_DEVICE --playback-device $USB_AUDIO_DEVICE --rate $USB_AUDIO_RATE --no-vad-release-capture-during-turn --no-vad-restore-capture-while-waiting $INTERRUPT_ARGS --bt-profile-settle-seconds 0 --bt-playback-drain-seconds 0"
+else
+  SERVICE_WANTS="network-online.target bluetooth.service bluealsa.service"
+  SERVICE_AFTER="network-online.target bluetooth.service bluealsa.service"
+  AUDIO_ARGS="--device bluealsa:DEV=$POWERCONF_MAC,PROFILE=sco --playback-device bluealsa:DEV=$POWERCONF_MAC,PROFILE=a2dp --rate 8000 --vad-release-capture-during-turn --no-vad-restore-capture-while-waiting --no-interrupt-while-busy --bt-profile-settle-seconds 0.45 --bt-playback-drain-seconds $BT_PLAYBACK_DRAIN_SECONDS --bluetooth-mac $POWERCONF_MAC --sco-mixer-volume 100"
+fi
+
 echo "Copying room-audio client to $REMOTE:$CLIENT_REMOTE_PATH"
 scp "${SSH_OPTS[@]}" "$CLIENT_LOCAL_PATH" "$REMOTE:$CLIENT_REMOTE_PATH"
 
 SERVICE_CONTENT=$(cat <<UNIT
 [Unit]
 Description=Operation JARVIS Raspberry Pi room audio listener
-Wants=network-online.target bluetooth.service bluealsa.service
-After=network-online.target bluetooth.service bluealsa.service
+Wants=$SERVICE_WANTS
+After=$SERVICE_AFTER
 StartLimitIntervalSec=0
 
 [Service]
@@ -84,7 +108,7 @@ Type=simple
 User=$PI_USER
 WorkingDirectory=/home/$PI_USER
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$PYTHON_BIN $CLIENT_REMOTE_PATH --server-url $SERVER_URL --device bluealsa:DEV=$POWERCONF_MAC,PROFILE=sco --playback-device bluealsa:DEV=$POWERCONF_MAC,PROFILE=a2dp --rate 8000 --vad-loop --vad-rms-threshold 300 --vad-silence-seconds 1.0 --vad-min-utterance-seconds 0.5 --vad-max-utterance-seconds 30 --vad-preroll-ms 500 --vad-min-voiced-ms 200 --vad-release-capture-during-turn --no-vad-restore-capture-while-waiting $WAKE_ARGS --bt-profile-settle-seconds 0.45 --bt-playback-drain-seconds $BT_PLAYBACK_DRAIN_SECONDS --bluetooth-mac $POWERCONF_MAC --sco-mixer-volume 100 --startup-greeting --no-greeting-on-reconnect --async-ack --poll-interval 0.25 --result-timeout 300 --interval 1.0
+ExecStart=$PYTHON_BIN $CLIENT_REMOTE_PATH --server-url $SERVER_URL $AUDIO_ARGS --vad-loop --vad-rms-threshold 300 --vad-silence-seconds 1.0 --vad-min-utterance-seconds 0.5 --vad-max-utterance-seconds 30 --vad-preroll-ms 500 --vad-min-voiced-ms 200 --capture-read-timeout-seconds 5 $WAKE_ARGS --startup-greeting --no-greeting-on-reconnect --async-ack --poll-interval 0.25 --result-timeout 300 --interval 1.0
 Restart=always
 RestartSec=5
 StandardOutput=append:/home/$PI_USER/jarvis-room-audio/logs/client.log
