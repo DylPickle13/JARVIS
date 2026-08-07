@@ -21,6 +21,11 @@ const voiceConfig = {
   minMs: clampNumber(urlParams.get('voiceMinMs'), 500, 5000, 1300),
   maxMs: clampNumber(urlParams.get('voiceMaxMs'), 2500, 30000, 10000),
   preRollMs: clampNumber(urlParams.get('voicePreRollMs'), 0, 3000, 1400),
+  interruptSilenceRms: clampNumber(urlParams.get('voiceInterruptSilenceRms'), 0.002, 0.08, 0.01),
+  interruptSilenceMs: clampNumber(urlParams.get('voiceInterruptSilenceMs'), 250, 1500, 450),
+  interruptMinMs: clampNumber(urlParams.get('voiceInterruptMinMs'), 250, 1500, 400),
+  interruptMaxMs: clampNumber(urlParams.get('voiceInterruptMaxMs'), 800, 4000, 2000),
+  interruptPreRollMs: clampNumber(urlParams.get('voiceInterruptPreRollMs'), 0, 800, 240),
   wasmThreads: Math.round(clampNumber(urlParams.get('voiceThreads'), 1, 4, 1)),
   maxPendingFrames: Math.round(clampNumber(urlParams.get('voiceMaxPendingFrames'), 1, 12, 4)),
   debug: ['1', 'true', 'yes'].includes(String(urlParams.get('voiceDebug') || '').toLowerCase()),
@@ -36,8 +41,14 @@ let ringWriteIndex = 0;
 let ringSampleCount = 0;
 let recording = null;
 let turnInFlight = false;
+let activeTurnId = '';
+let activeTurnReady = false;
+let activeTurnCancelled = false;
+let interruptRecording = null;
+let interruptRequestInFlight = false;
 let lastRecordingUiAt = 0;
 let activeAudioObjectUrl = '';
+let activePlaybackStop = null;
 let pendingMicStream = null;
 let lastMicActivityUiAt = 0;
 let lastWakeScoreUiAt = 0;
@@ -210,6 +221,18 @@ function snapshotRingBuffer() {
   return output;
 }
 
+function snapshotRecentRingBuffer(maxMs) {
+  const samples = snapshotRingBuffer();
+  const maxSamples = Math.max(0, Math.round(VOICE_SAMPLE_RATE * maxMs / 1000));
+  return samples.length > maxSamples ? samples.slice(samples.length - maxSamples) : samples;
+}
+
+function createDashboardVoiceTurnId() {
+  const randomPart = window.crypto?.randomUUID?.().replace(/-/g, '')
+    || Math.random().toString(36).slice(2, 14);
+  return `dashboard_${Date.now().toString(36)}_${randomPart}`;
+}
+
 function flattenChunks(chunks) {
   const total = chunks.reduce((sum, chunk) => sum + (chunk?.length || 0), 0);
   const output = new Float32Array(total);
@@ -283,7 +306,9 @@ async function requestPhoneMicStream() {
   pendingMicStream = await navigator.mediaDevices.getUserMedia({
     audio: {
       channelCount: 1,
-      echoCancellation: false,
+      // Browser acoustic echo cancellation is important while the microphone
+      // stays live for bare-stop barge-in during phone-speaker playback.
+      echoCancellation: true,
       noiseSuppression: false,
       autoGainControl: true
     }
@@ -311,49 +336,158 @@ async function unlockPhoneAudio() {
   }
 }
 
-async function playBase64Audio(base64, contentType = 'audio/wav', detail = 'Speaking') {
-  if (!base64 || !voiceAudioEl || !modeEnabled) return;
-  if (activeAudioObjectUrl) {
-    URL.revokeObjectURL(activeAudioObjectUrl);
-    activeAudioObjectUrl = '';
+function stopActiveVoicePlayback() {
+  if (activePlaybackStop) {
+    activePlaybackStop();
+    return;
   }
-  const blob = base64ToBlob(base64, contentType || 'audio/wav');
-  activeAudioObjectUrl = URL.createObjectURL(blob);
-  setVoiceState('speaking', detail);
-  voiceAudioEl.src = activeAudioObjectUrl;
-  voiceAudioEl.currentTime = 0;
-  await new Promise((resolve, reject) => {
-    const cleanup = () => {
-      voiceAudioEl.removeEventListener('ended', onEnded);
-      voiceAudioEl.removeEventListener('error', onError);
-    };
-    const onEnded = () => {
-      cleanup();
-      resolve();
-    };
-    const onError = () => {
-      cleanup();
-      reject(new Error('Phone audio playback failed.'));
-    };
-    voiceAudioEl.addEventListener('ended', onEnded, { once: true });
-    voiceAudioEl.addEventListener('error', onError, { once: true });
-    voiceAudioEl.play().catch((error) => {
-      cleanup();
-      reject(error);
-    });
-  });
+  if (voiceAudioEl) {
+    voiceAudioEl.pause();
+    voiceAudioEl.currentTime = 0;
+    voiceAudioEl.removeAttribute('src');
+    voiceAudioEl.load?.();
+  }
   if (activeAudioObjectUrl) {
     URL.revokeObjectURL(activeAudioObjectUrl);
     activeAudioObjectUrl = '';
   }
 }
 
+async function playBase64Audio(base64, contentType = 'audio/wav', detail = 'Speaking') {
+  if (!base64 || !voiceAudioEl || !modeEnabled || activeTurnCancelled) return;
+  stopActiveVoicePlayback();
+  const blob = base64ToBlob(base64, contentType || 'audio/wav');
+  const objectUrl = URL.createObjectURL(blob);
+  activeAudioObjectUrl = objectUrl;
+  setVoiceState('speaking', detail);
+  voiceAudioEl.src = objectUrl;
+  voiceAudioEl.currentTime = 0;
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error = null) => {
+      if (settled) return;
+      settled = true;
+      voiceAudioEl.removeEventListener('ended', onEnded);
+      voiceAudioEl.removeEventListener('error', onError);
+      if (activePlaybackStop === stopPlayback) activePlaybackStop = null;
+      if (error) reject(error);
+      else resolve();
+    };
+    const onEnded = () => finish();
+    const onError = () => finish(new Error('Phone audio playback failed.'));
+    const stopPlayback = () => {
+      voiceAudioEl.pause();
+      voiceAudioEl.currentTime = 0;
+      voiceAudioEl.removeAttribute('src');
+      voiceAudioEl.load?.();
+      finish();
+    };
+    activePlaybackStop = stopPlayback;
+    voiceAudioEl.addEventListener('ended', onEnded, { once: true });
+    voiceAudioEl.addEventListener('error', onError, { once: true });
+    voiceAudioEl.play().catch((error) => finish(error));
+  });
+  if (activeAudioObjectUrl === objectUrl) {
+    URL.revokeObjectURL(objectUrl);
+    activeAudioObjectUrl = '';
+  }
+}
+
+function handleBusyInterruptAudioChunk(samples, level, now) {
+  if (!modeEnabled || !turnInFlight || !activeTurnId || !activeTurnReady || activeTurnCancelled) return;
+  const chunk = samples instanceof Float32Array ? samples : Float32Array.from(samples);
+  if (!interruptRecording) {
+    rememberRingChunk(chunk);
+    if (interruptRequestInFlight || level < voiceConfig.interruptSilenceRms) return;
+    const preRoll = snapshotRecentRingBuffer(voiceConfig.interruptPreRollMs);
+    interruptRecording = {
+      chunks: preRoll.length ? [preRoll] : [chunk],
+      sampleRate: VOICE_SAMPLE_RATE,
+      sampleCount: preRoll.length || chunk.length,
+      lastVoiceAt: now,
+      finalizing: false,
+      turnId: activeTurnId
+    };
+    return;
+  }
+
+  interruptRecording.chunks.push(chunk);
+  interruptRecording.sampleCount += chunk.length;
+  if (level >= voiceConfig.interruptSilenceRms) interruptRecording.lastVoiceAt = now;
+  const elapsedMs = interruptRecording.sampleCount / interruptRecording.sampleRate * 1000;
+  const quietForMs = now - interruptRecording.lastVoiceAt;
+  const stoppedForSilence = elapsedMs >= voiceConfig.interruptMinMs && quietForMs >= voiceConfig.interruptSilenceMs;
+  const hitMax = elapsedMs >= voiceConfig.interruptMaxMs;
+  if ((stoppedForSilence || hitMax) && !interruptRecording.finalizing) {
+    interruptRecording.finalizing = true;
+    void finalizeInterruptRecording();
+  }
+}
+
+async function finalizeInterruptRecording() {
+  const current = interruptRecording;
+  interruptRecording = null;
+  if (!current || interruptRequestInFlight || !turnInFlight || current.turnId !== activeTurnId) return;
+  const samples = flattenChunks(current.chunks);
+  const durationMs = samples.length / current.sampleRate * 1000;
+  if (durationMs < voiceConfig.interruptMinMs) return;
+
+  interruptRequestInFlight = true;
+  const turnId = current.turnId;
+  try {
+    const payload = await submitDashboardVoiceInterrupt(
+      wavBlobFromFloat32(samples, current.sampleRate),
+      turnId,
+      durationMs
+    );
+    if (
+      payload.recognized === true
+      && payload.command === 'stop'
+      && turnInFlight
+      && activeTurnId === turnId
+    ) {
+      activeTurnCancelled = true;
+      interruptRecording = null;
+      stopActiveVoicePlayback();
+      reportVoiceClientEvent('warn', 'bare stop recognized', `turn=${turnId}`);
+    }
+  } catch (error) {
+    console.warn('[dashboard-voice] interrupt candidate failed', error);
+    reportVoiceClientEvent('warn', normalizeVoiceError(error, 'Voice interruption failed'), 'interrupt candidate');
+  } finally {
+    interruptRequestInFlight = false;
+  }
+}
+
+async function submitDashboardVoiceInterrupt(wavBlob, turnId, durationMs) {
+  const response = await fetch('/api/jarvis/dashboard-voice/interrupt', {
+    method: 'POST',
+    headers: {
+      'content-type': 'audio/wav',
+      'x-jarvis-dashboard-voice-source': 'dashboard-phone',
+      'x-jarvis-dashboard-voice-turn-id': turnId,
+      'x-jarvis-dashboard-voice-busy': 'true',
+      'x-jarvis-dashboard-voice-duration-ms': String(Math.round(durationMs || 0))
+    },
+    body: wavBlob,
+    cache: 'no-store'
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `Dashboard voice interrupt HTTP ${response.status}`);
+  }
+  return payload;
+}
+
 function handleAudioChunk(event) {
   const samples = event?.samples;
   if (!samples?.length) return;
-  if (turnInFlight && !recording) return;
   const level = rms(samples);
   const now = Date.now();
+  if (turnInFlight && !recording) {
+    handleBusyInterruptAudioChunk(samples, level, now);
+    return;
+  }
   if (!recording) rememberRingChunk(samples);
 
   if (!recording && modeEnabled && !turnInFlight && level >= voiceConfig.silenceRms && now - lastMicActivityUiAt > 700) {
@@ -427,17 +561,30 @@ async function finalizeRecording(reason) {
   recording = null;
   if (!current || turnInFlight) return;
   turnInFlight = true;
+  activeTurnId = createDashboardVoiceTurnId();
+  activeTurnReady = false;
+  activeTurnCancelled = false;
+  interruptRecording = null;
+  resetRingBuffer();
   setVoiceState('processing', 'Thinking');
 
   try {
-    wakeEngine?.setDetectionPaused?.(true);
-    await wakeEngine?.suspend?.();
+    // Keep the audio worklet and microphone running while wake inference is
+    // paused so a busy-only bare "stop" can still be segmented and transcribed.
+    wakeEngine?.setDetectionPaused?.(true, { reset: true });
+    await wakeEngine?.resume?.();
     const samples = flattenChunks(current.chunks);
     const durationMs = samples.length / current.sampleRate * 1000;
     if (durationMs < 500) throw new Error('No usable speech was captured.');
     const wavBlob = wavBlobFromFloat32(samples, current.sampleRate);
-    const turn = await submitDashboardVoiceTurn(wavBlob, { durationMs, reason, wakeScore: current.wakeScore });
-    await handleTurnResponse(turn);
+    const turn = await submitDashboardVoiceTurn(wavBlob, {
+      durationMs,
+      reason,
+      wakeScore: current.wakeScore,
+      turnId: activeTurnId
+    });
+    activeTurnReady = turn?.turnId === activeTurnId && turn?.status !== 'cancelled';
+    await handleTurnResponse(turn, activeTurnId);
   } catch (error) {
     console.error('[dashboard-voice] turn failed', error);
     const message = normalizeVoiceError(error, 'Voice turn failed');
@@ -446,6 +593,10 @@ async function finalizeRecording(reason) {
     await waitMs(1800);
   } finally {
     turnInFlight = false;
+    activeTurnId = '';
+    activeTurnReady = false;
+    activeTurnCancelled = false;
+    interruptRecording = null;
     resetRingBuffer();
     if (modeEnabled && voiceSuspendedForVisibility) {
       setVoiceState('paused');
@@ -474,7 +625,8 @@ async function submitDashboardVoiceTurn(wavBlob, meta = {}) {
       'content-type': 'audio/wav',
       'x-jarvis-dashboard-voice-source': 'dashboard-phone',
       'x-jarvis-dashboard-voice-duration-ms': String(Math.round(meta.durationMs || 0)),
-      'x-jarvis-dashboard-voice-wake-score': String(meta.wakeScore || 0)
+      'x-jarvis-dashboard-voice-wake-score': String(meta.wakeScore || 0),
+      'x-jarvis-dashboard-voice-turn-id': String(meta.turnId || '')
     },
     body: wavBlob,
     cache: 'no-store'
@@ -486,21 +638,21 @@ async function submitDashboardVoiceTurn(wavBlob, meta = {}) {
   return payload;
 }
 
-async function handleTurnResponse(turn) {
-  if (turn.transcript) {
-    setVoiceState('processing', 'Thinking');
-  }
+async function handleTurnResponse(turn, turnId) {
+  if (turnId !== activeTurnId || activeTurnCancelled || turn?.status === 'cancelled') return;
+  if (turn.transcript) setVoiceState('processing', 'Thinking');
 
   let finalPromise = Promise.resolve(turn);
   if (turn.pending && turn.turnId) {
     finalPromise = pollTurnResult(turn.turnId, turn.pollAfterSeconds);
   }
 
-  if (turn.audioWavBase64) {
+  if (turn.audioWavBase64 && !activeTurnCancelled) {
     await playBase64Audio(turn.audioWavBase64, turn.audioContentType, 'Speaking');
   }
 
   const final = await finalPromise;
+  if (turnId !== activeTurnId || activeTurnCancelled || final?.status === 'cancelled') return;
   if (!final || final.pending) throw new Error('Dashboard voice turn did not finish.');
   if (final.ok === false) throw new Error(final.error || 'Dashboard voice turn failed.');
   if (final.audioWavBase64) {
@@ -518,12 +670,15 @@ async function pollTurnResult(turnId, firstDelaySeconds = 0.35) {
   const deadline = Date.now() + 120_000;
   let delaySeconds = clampNumber(firstDelaySeconds, 0.05, 3, 0.35);
   while (Date.now() < deadline && modeEnabled) {
+    if (activeTurnCancelled && activeTurnId === turnId) {
+      return { ok: true, pending: false, status: 'cancelled', turnId };
+    }
     await waitMs(delaySeconds * 1000);
     const response = await fetch(`/api/jarvis/dashboard-voice/turn-result?id=${encodeURIComponent(turnId)}`, { cache: 'no-store' });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload.ok === false) throw new Error(payload.error || `Turn poll HTTP ${response.status}`);
     if (!payload.pending) return payload;
-    setVoiceState('processing', 'Thinking');
+    if (!activeTurnCancelled) setVoiceState('processing', 'Thinking');
     delaySeconds = clampNumber(payload.pollAfterSeconds, 0.1, 3, 0.5);
   }
   throw new Error('Timed out waiting for JARVIS response.');
@@ -693,12 +848,9 @@ async function toggleVoiceMode() {
   if (modeEnabled) {
     modeEnabled = false;
     recording = null;
+    interruptRecording = null;
+    stopActiveVoicePlayback();
     await stopWakeListening();
-    if (voiceAudioEl) {
-      voiceAudioEl.pause();
-      voiceAudioEl.removeAttribute('src');
-      voiceAudioEl.load?.();
-    }
     setVoiceState('off');
     return;
   }
@@ -712,6 +864,8 @@ voiceCard?.addEventListener('click', () => {
 
 window.addEventListener('pagehide', () => {
   modeEnabled = false;
+  interruptRecording = null;
+  stopActiveVoicePlayback();
   stopPendingMicStream();
   void stopWakeListening({ release: true });
 });

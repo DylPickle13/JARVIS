@@ -413,6 +413,7 @@ def post_interrupt(server_url: str, wav_path: Path, *, turn_id: str, token: str 
     payload = {
         "client": "raspberry-pi-powerconf",
         "turnId": turn_id,
+        "clientBusy": True,
         "audioWavBase64": base64.b64encode(wav_path.read_bytes()).decode("ascii"),
     }
     body = json.dumps(payload).encode("utf-8")

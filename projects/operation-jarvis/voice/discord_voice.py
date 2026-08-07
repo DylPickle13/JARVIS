@@ -44,6 +44,12 @@ except Exception:  # pragma: no cover - optional dependency for Discord voice re
 
 import config
 
+VOICE_MODULE_DIR = Path(__file__).resolve().parent
+if str(VOICE_MODULE_DIR) not in sys.path:
+    sys.path.insert(0, str(VOICE_MODULE_DIR))
+
+from voice_commands import STOP_COMMAND, parse_voice_interrupt_command
+
 LOGGER = config.get_logger("operation_jarvis.voice.discord_voice")
 
 MAX_DISCORD_MESSAGE_LENGTH = 2000
@@ -59,6 +65,8 @@ DISCORD_VOICE_SILENCE_SECONDS = config.get_float_env("DISCORD_VOICE_SILENCE_SECO
 DISCORD_VOICE_MONITOR_INTERVAL_SECONDS = config.get_float_env("DISCORD_VOICE_MONITOR_INTERVAL_SECONDS", 0.1, minimum=0.05)
 DISCORD_VOICE_MIN_UTTERANCE_SECONDS = config.get_float_env("DISCORD_VOICE_MIN_UTTERANCE_SECONDS", 0.5, minimum=0.1)
 DISCORD_VOICE_MAX_UTTERANCE_SECONDS = config.get_float_env("DISCORD_VOICE_MAX_UTTERANCE_SECONDS", 30.0, minimum=1.0)
+DISCORD_VOICE_INTERRUPT_SILENCE_SECONDS = config.get_float_env("DISCORD_VOICE_INTERRUPT_SILENCE_SECONDS", 0.45, minimum=0.1)
+DISCORD_VOICE_INTERRUPT_MAX_UTTERANCE_SECONDS = config.get_float_env("DISCORD_VOICE_INTERRUPT_MAX_UTTERANCE_SECONDS", 2.0, minimum=0.5)
 DISCORD_VOICE_QUEUE_MAX_SIZE = config.get_int_env("DISCORD_VOICE_QUEUE_MAX_SIZE", 8, minimum=1)
 DISCORD_VOICE_INGEST_QUEUE_MAX_FRAMES = config.get_int_env("DISCORD_VOICE_INGEST_QUEUE_MAX_FRAMES", 400, minimum=20)
 DISCORD_VOICE_STATUS_TEXT_CHANNEL_NAME = config.get_str_env("DISCORD_VOICE_STATUS_TEXT_CHANNEL_NAME", "").lower()
@@ -540,6 +548,8 @@ class OmlxVoicePipeline:
         self._session_lock = threading.Lock()
         self._history: list[dict[str, str]] = []
         self._history_lock = threading.Lock()
+        self._active_llm_response: requests.Response | None = None
+        self._active_llm_response_lock = threading.Lock()
         self._piper_voice: PiperVoice | None = None
         self._piper_voice_key: tuple[str, str] | None = None
         self._piper_lock = threading.RLock()
@@ -554,6 +564,18 @@ class OmlxVoicePipeline:
     @property
     def streams_tts_while_llm_generates(self) -> bool:
         return self.config.stream_tts and self.config.tts_backend == "piper"
+
+    def cancel_active_response(self) -> bool:
+        """Close an active direct-oMLX streaming response used by the standalone runner."""
+        with self._active_llm_response_lock:
+            response = self._active_llm_response
+        if response is None:
+            return False
+        try:
+            response.close()
+        except Exception:
+            LOGGER.debug("Failed to close active direct-oMLX voice response", exc_info=True)
+        return True
 
     def warm_up(self) -> None:
         """Validate the configured ASR/LLM stack and selected TTS backend before the first call."""
@@ -975,6 +997,9 @@ class OmlxVoicePipeline:
         except requests.HTTPError as exc:
             raise VoicePipelineError(f"oMLX streaming voice LLM failed: {_json_or_text(response)}") from exc
 
+        with self._active_llm_response_lock:
+            self._active_llm_response = response
+
         full_text_parts: list[str] = []
         pending_tts_text = ""
         spoken_segments = 0
@@ -1021,6 +1046,9 @@ class OmlxVoicePipeline:
                     spoken_segments += 1
                     started_speaking = True
         finally:
+            with self._active_llm_response_lock:
+                if self._active_llm_response is response:
+                    self._active_llm_response = None
             response.close()
 
         reply_text = self._clean_reply_text("".join(full_text_parts))
@@ -1643,6 +1671,7 @@ class _VoiceUserBuffer:
     local_wake_score: float = 0.0
     local_wake_max_model: str = ""
     local_wake_max_score: float = 0.0
+    busy_interrupt_candidate: bool = False
 
     @property
     def duration_seconds(self) -> float:
@@ -1691,6 +1720,7 @@ class _VoiceUtterance:
     local_wake_score: float = 0.0
     local_wake_max_model: str = ""
     local_wake_max_score: float = 0.0
+    busy_interrupt_candidate: bool = False
 
 
 @dataclass(frozen=True)
@@ -2555,7 +2585,8 @@ class _JarvisVoiceConversation:
     ) -> None:
         if self._stopped or member.bot:
             return
-        if DISCORD_VOICE_DROP_WHILE_BUSY and self._is_busy_with_voice_turn() and not self._wake_word_gate_enabled():
+        busy_interrupt_candidate = self._is_busy_with_voice_turn()
+        if DISCORD_VOICE_DROP_WHILE_BUSY and busy_interrupt_candidate and not self._wake_word_gate_enabled():
             return
         now = received_at if received_at is not None else time.monotonic()
         local_wake_detector = self._get_local_wake_detector(member)
@@ -2571,7 +2602,7 @@ class _JarvisVoiceConversation:
                 self._update_member_local_wake_state(member, local_wake_detector, local_wake_hit, time.monotonic())
 
         is_voiced, rms = _pcm_frame_has_voice_energy(pcm)
-        if self._local_wake_gate_required() and local_wake_detector is None:
+        if self._local_wake_gate_required() and local_wake_detector is None and not busy_interrupt_candidate:
             self._store_voice_preroll(member.id, pcm, metadata, now, is_voiced=is_voiced, rms=rms)
             self._track_local_wake_waiting_candidate(member, time.monotonic(), is_voiced=is_voiced, rms=rms)
             return
@@ -2590,14 +2621,22 @@ class _JarvisVoiceConversation:
                 last_packet_at=started_at,
                 last_voice_at=now,
                 local_wake_gate_active=local_wake_detector is not None,
+                busy_interrupt_candidate=busy_interrupt_candidate,
             )
             for frame in pre_roll:
                 buffer.append(frame.pcm, frame.received_at, frame.metadata, is_voiced=frame.is_voiced, rms=frame.rms)
             self._buffers[member.id] = buffer
+        if busy_interrupt_candidate:
+            buffer.busy_interrupt_candidate = True
         buffer.append(pcm, now, metadata, is_voiced=is_voiced, rms=rms)
         if local_wake_detector is not None and buffer.local_wake_gate_active:
             self._apply_local_wake_to_buffer(buffer, local_wake_detector, local_wake_hit, time.monotonic())
-        if buffer.duration_seconds >= DISCORD_VOICE_MAX_UTTERANCE_SECONDS:
+        max_utterance_seconds = (
+            DISCORD_VOICE_INTERRUPT_MAX_UTTERANCE_SECONDS
+            if buffer.busy_interrupt_candidate
+            else DISCORD_VOICE_MAX_UTTERANCE_SECONDS
+        )
+        if buffer.duration_seconds >= max_utterance_seconds:
             self._finalize_user_buffer(member.id, reason="max-duration")
 
     def _update_member_local_wake_state(
@@ -2758,7 +2797,12 @@ class _JarvisVoiceConversation:
                     continue
                 now = time.monotonic()
                 for user_id, buffer in list(self._buffers.items()):
-                    if now - buffer.last_voice_at >= DISCORD_VOICE_SILENCE_SECONDS:
+                    silence_seconds = (
+                        DISCORD_VOICE_INTERRUPT_SILENCE_SECONDS
+                        if buffer.busy_interrupt_candidate
+                        else DISCORD_VOICE_SILENCE_SECONDS
+                    )
+                    if now - buffer.last_voice_at >= silence_seconds:
                         self._finalize_user_buffer(user_id, reason="acoustic-silence")
         except asyncio.CancelledError:
             return
@@ -2797,7 +2841,11 @@ class _JarvisVoiceConversation:
                 )
             )
             return
-        if buffer.local_wake_gate_active and not buffer.local_wake_accepted:
+        if (
+            buffer.local_wake_gate_active
+            and not buffer.local_wake_accepted
+            and not buffer.busy_interrupt_candidate
+        ):
             LOGGER.debug(
                 "Dropped voice utterance from %s before ASR because local wake word was not detected: duration=%.2fs wake_max=%.3f model=%s",
                 buffer.member,
@@ -2833,10 +2881,27 @@ class _JarvisVoiceConversation:
             local_wake_score=buffer.local_wake_score,
             local_wake_max_model=buffer.local_wake_max_model,
             local_wake_max_score=buffer.local_wake_max_score,
+            busy_interrupt_candidate=buffer.busy_interrupt_candidate,
         )
-        if self._processing_utterance and self._wake_word_gate_enabled():
+        if buffer.busy_interrupt_candidate and self._is_busy_with_voice_turn():
             self._schedule_interrupt_candidate(utterance)
-            LOGGER.debug("Queued interrupt-candidate voice utterance from %s (%.2fs, %s)", buffer.member, duration, reason)
+            LOGGER.debug("Queued busy interrupt-candidate voice utterance from %s (%.2fs, %s)", buffer.member, duration, reason)
+        elif buffer.busy_interrupt_candidate and not buffer.local_wake_accepted:
+            LOGGER.debug("Dropping expired busy interrupt candidate from %s after JARVIS became idle", buffer.member)
+            self._schedule_voice_diagnostic(
+                _format_voice_diagnostic_message(
+                    member=buffer.member,
+                    duration_seconds=duration,
+                    voiced_ms=buffer.voiced_ms,
+                    max_rms=buffer.max_rms,
+                    outcome="busy interrupt candidate ignored: JARVIS is idle",
+                    **self._buffer_local_wake_diag_kwargs(buffer),
+                )
+            )
+            return
+        elif self._processing_utterance and self._wake_word_gate_enabled():
+            self._schedule_interrupt_candidate(utterance)
+            LOGGER.debug("Queued wake-word interrupt-candidate voice utterance from %s (%.2fs, %s)", buffer.member, duration, reason)
         else:
             try:
                 self._queue.put_nowait(utterance)
@@ -2915,6 +2980,15 @@ class _JarvisVoiceConversation:
                         preprocess=voice_input.diagnostics,
                         **self._utterance_local_wake_diag_kwargs(utterance),
                     )
+                )
+                return
+            if parse_voice_interrupt_command(transcript, busy=self._is_busy_with_voice_turn()) == STOP_COMMAND:
+                interrupted = await self._interrupt_active_voice_turn()
+                LOGGER.info(
+                    "Discord bare-stop interrupt from %s: cancelled=%s transcript=%r",
+                    utterance.member,
+                    interrupted,
+                    transcript[:160],
                 )
                 return
             if not self._utterance_has_wake_word(utterance, transcript):
@@ -3040,20 +3114,21 @@ class _JarvisVoiceConversation:
             self._queued_turn_cutover_generation,
             self._steering_tts_generation,
         )
-        cancel_sent = False
-        cancel_callback = self.manager.cancel_callback
-        if cancel_callback is not None and self._active_turn_context is not None:
-            try:
-                cancel_sent = bool(cancel_callback(self._active_turn_context))
-            except Exception:
-                LOGGER.warning("Failed to cancel active voice Pi task", exc_info=True)
         if has_playback:
             try:
                 self.voice_client.stop()
             except Exception:
-                LOGGER.debug("Failed to stop Discord voice playback during slash cancel", exc_info=True)
+                LOGGER.debug("Failed to stop Discord voice playback during cancellation", exc_info=True)
+        direct_cancel = getattr(self.manager.pipeline, "cancel_active_response", None)
+        cancel_sent = bool(direct_cancel()) if callable(direct_cancel) else False
+        cancel_callback = self.manager.cancel_callback
+        if cancel_callback is not None and self._active_turn_context is not None:
+            try:
+                cancel_sent = bool(cancel_callback(self._active_turn_context)) or cancel_sent
+            except Exception:
+                LOGGER.warning("Failed to cancel active voice Pi task", exc_info=True)
         LOGGER.debug(
-            "Discord voice turn cancel requested: active_turn=%s playback=%s rpc_cancel_sent=%s generation=%s",
+            "Discord voice turn cancel requested: active_turn=%s playback=%s generation_cancel_sent=%s generation=%s",
             has_active_turn,
             has_playback,
             cancel_sent,
@@ -3061,25 +3136,13 @@ class _JarvisVoiceConversation:
         )
         return has_active_turn or has_playback or cancel_sent
 
-    async def _interrupt_active_voice_turn(self, stop_notice_paths: list[Path]) -> None:
+    async def _interrupt_active_voice_turn(self) -> bool:
+        """Cancel generation and playback without emitting a spoken or text acknowledgement."""
         if self._interrupt_in_progress:
-            return
+            return False
         self._interrupt_in_progress = True
-        self._interrupt_requested = True
         try:
-            cancel_callback = self.manager.cancel_callback
-            if cancel_callback is not None:
-                try:
-                    cancel_callback(self._active_turn_context)
-                except Exception:
-                    LOGGER.warning("Failed to cancel active voice Pi task", exc_info=True)
-            if self.voice_client.is_playing() or self.voice_client.is_paused():
-                try:
-                    self.voice_client.stop()
-                except Exception:
-                    LOGGER.debug("Failed to stop Discord voice playback during interrupt", exc_info=True)
-            await self._send_status_message(_format_voice_response_message("Stopping my task, sir."))
-            await self._play_stop_notice(stop_notice_paths)
+            return await self.cancel_active_turn()
         finally:
             self._interrupt_in_progress = False
 
@@ -3148,6 +3211,9 @@ class _JarvisVoiceConversation:
                     )
                     return
 
+            if self._interrupt_requested:
+                LOGGER.debug("Voice turn from %s was cancelled during ASR", utterance.member)
+                return
             if not self._utterance_has_wake_word(utterance, transcript):
                 LOGGER.debug("Ignoring voice utterance without wake word from %s: %r", utterance.member, transcript[:160])
                 await self._send_voice_diagnostic(
@@ -3337,17 +3403,6 @@ class _JarvisVoiceConversation:
             and utterance.local_wake_gate_active
             and utterance.local_wake_accepted
         )
-
-    async def _play_stop_notice(self, audio_paths: list[Path]) -> None:
-        try:
-            stop_path = await asyncio.to_thread(
-                self.manager.pipeline.synthesize_notice,
-                "Stopping my task, sir.",
-            )
-            audio_paths.append(stop_path)
-            await self._play_audio_file(stop_path)
-        except Exception:
-            LOGGER.warning("Failed to play Discord voice stop acknowledgement", exc_info=True)
 
     async def _play_processing_ack(self, audio_paths: list[Path], *, steering_generation: int | None = None) -> None:
         if not DISCORD_VOICE_PROCESSING_ACK_ENABLED or not DISCORD_VOICE_PROCESSING_ACK_TEXT:

@@ -126,7 +126,7 @@ While the acknowledgement, generation, or final answer is active, say only:
 stop
 ```
 
-Bare `stop` is ignored while JARVIS is idle. The first release intentionally accepts only the exact normalized word `stop`; longer phrases such as `don't stop` are rejected.
+Bare `stop` is ignored while JARVIS is idle. The first release intentionally accepts only the exact normalized word `stop`; longer phrases such as `don't stop` are rejected. The backend imports the transport-neutral policy from `projects/operation-jarvis/voice/voice_commands.py`, which is also used by Discord voice; dashboard voice reaches the same policy through `/interrupt`. Interrupt adapters must send `clientBusy: true`; this preserves interruption during client-side playback after server generation finishes while preventing idle requests from invoking ASR or cancellation.
 
 The local wake-word dependency is required for the current listener. The service installer creates `/home/pi/jarvis-room-audio/.venv` and installs `openwakeword` there by default. If rebuilding manually, rerun:
 

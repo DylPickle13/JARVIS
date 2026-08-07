@@ -59,6 +59,7 @@ config.load_project_env(PROJECT_ROOT / ".env")
 
 import llm  # noqa: E402
 import discord_voice  # noqa: E402
+from voice_commands import STOP_COMMAND, parse_voice_interrupt_command  # noqa: E402
 
 LOGGER = config.get_logger("operation_jarvis.room_audio")
 
@@ -104,10 +105,9 @@ class RoomAudioTurnCancelled(RuntimeError):
     """Raised when a room-audio job is intentionally cancelled."""
 
 
-def parse_interrupt_command(transcript: str) -> str:
-    """Return the exact busy-only control command represented by a transcript."""
-    normalized = re.sub(r"[^a-z]+", " ", transcript.lower()).strip()
-    return "stop" if normalized == "stop" else ""
+def parse_interrupt_command(transcript: str, *, busy: bool) -> str:
+    """Return the shared exact busy-only voice control command."""
+    return parse_voice_interrupt_command(transcript, busy=busy)
 
 
 def _load_text(path: Path) -> str:
@@ -628,7 +628,7 @@ class RoomAudioBridge:
             "abortSent": abort_sent,
         }
 
-    def handle_interrupt_wav(self, turn_id: str, wav_path: Path) -> dict[str, Any]:
+    def handle_interrupt_wav(self, turn_id: str, wav_path: Path, *, client_busy: bool) -> dict[str, Any]:
         with self._jobs_lock:
             self._prune_jobs_locked()
             turn_found = turn_id in self._jobs
@@ -641,13 +641,23 @@ class RoomAudioBridge:
                 "turnFound": False,
                 "error": "turn not found",
             }
+        if not client_busy:
+            return {
+                "ok": True,
+                "recognized": False,
+                "command": "",
+                "turnId": turn_id,
+                "turnFound": True,
+                "status": "ignored",
+                "reason": "voice adapter is not busy",
+            }
 
         transcript, input_seconds, asr_seconds = self._pipeline.transcribe_audio(wav_path)
-        command = parse_interrupt_command(transcript)
-        cancellation = self.cancel_turn(turn_id) if command == "stop" else None
+        command = parse_interrupt_command(transcript, busy=client_busy)
+        cancellation = self.cancel_turn(turn_id) if command == STOP_COMMAND else None
         return {
             "ok": True,
-            "recognized": command == "stop",
+            "recognized": command == STOP_COMMAND,
             "command": command,
             "turnId": turn_id,
             "turnFound": True,
@@ -656,7 +666,7 @@ class RoomAudioBridge:
             "asrSeconds": asr_seconds,
             "generationWasActive": bool(cancellation and cancellation.get("generationWasActive")),
             "abortSent": bool(cancellation and cancellation.get("abortSent")),
-            "status": "cancelled" if command == "stop" else "ignored",
+            "status": "cancelled" if command == STOP_COMMAND else "ignored",
         }
 
     def handle_wav_async_ack(
@@ -816,7 +826,8 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 "asyncAckSupported": True,
                 "asyncPollAfterSeconds": ASYNC_POLL_AFTER_SECONDS,
                 "interruptSupported": True,
-                "interruptCommand": "stop",
+                "interruptRequiresClientBusy": True,
+                "interruptCommand": STOP_COMMAND,
             }
         )
 
@@ -849,6 +860,7 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
             require_wake_word = bool(payload.get("requireWakeWord", payload.get("require_wake_word", True)))
             async_ack = bool(payload.get("asyncAck", payload.get("async_ack", False)))
             requested_turn_id = str(payload.get("turnId") or payload.get("turn_id") or "").strip()
+            client_busy = payload.get("clientBusy", payload.get("client_busy", False)) is True
             if requested_turn_id and TURN_ID_PATTERN.fullmatch(requested_turn_id) is None:
                 raise ValueError("turnId must be 8-128 letters, digits, underscores, or hyphens")
             if path == "/interrupt" and not requested_turn_id:
@@ -863,7 +875,11 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
 
         try:
             if path == "/interrupt":
-                response = self.server.bridge.handle_interrupt_wav(requested_turn_id, wav_path)
+                response = self.server.bridge.handle_interrupt_wav(
+                    requested_turn_id,
+                    wav_path,
+                    client_busy=client_busy,
+                )
             elif async_ack:
                 response = self.server.bridge.handle_wav_async_ack(
                     wav_path,

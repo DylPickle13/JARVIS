@@ -1,0 +1,27 @@
+"""Shared deterministic control policy for every Operation JARVIS voice adapter.
+
+Audio capture, VAD, and playback remain transport-specific (Discord, dashboard
+browser, and Raspberry Pi). Those adapters send busy-only candidates through
+Whisper, then use this module for the final control decision. Browser clients do
+not duplicate the transcript policy; they trust the central room-audio interrupt
+endpoint's decision.
+"""
+
+from __future__ import annotations
+
+import re
+
+STOP_COMMAND = "stop"
+
+
+def normalize_voice_control_transcript(transcript: str) -> str:
+    """Normalize an ASR transcript for exact control-command matching."""
+    return re.sub(r"[^a-z]+", " ", (transcript or "").casefold()).strip()
+
+
+def parse_voice_interrupt_command(transcript: str, *, busy: bool) -> str:
+    """Return an exact voice control command, only while its adapter is busy."""
+    if not busy:
+        return ""
+    normalized = normalize_voice_control_transcript(transcript)
+    return STOP_COMMAND if normalized == STOP_COMMAND else ""

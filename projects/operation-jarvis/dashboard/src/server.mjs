@@ -117,6 +117,7 @@ const CAMERA_RECORD_MAX_DURATION_MS = Number.parseInt(process.env.JARVIS_DASHBOA
 const CAMERA_UPLOAD_MAX_BYTES = Number.parseInt(process.env.JARVIS_DASHBOARD_CAMERA_UPLOAD_MAX_BYTES || String(64 * 1024 * 1024), 10);
 const DASHBOARD_VOICE_MAX_BYTES = Number.parseInt(process.env.JARVIS_DASHBOARD_VOICE_MAX_BYTES || String(12 * 1024 * 1024), 10);
 const DASHBOARD_VOICE_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_DASHBOARD_VOICE_TIMEOUT_MS || '45000', 10);
+const DASHBOARD_VOICE_TURN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/;
 const DASHBOARD_VOICE_ROOM_AUDIO_URL = String(
   process.env.JARVIS_DASHBOARD_VOICE_ROOM_AUDIO_URL
   || process.env.JARVIS_DASHBOARD_RASPBERRY_PI_ROOM_AUDIO_SERVER_URL
@@ -2977,6 +2978,9 @@ async function readDashboardVoiceStatus() {
       roomAudioUrl: DASHBOARD_VOICE_ROOM_AUDIO_URL,
       service: health.service || 'operation-jarvis-room-audio',
       asyncAckSupported: Boolean(health.asyncAckSupported),
+      interruptSupported: Boolean(health.interruptSupported),
+      interruptRequiresClientBusy: Boolean(health.interruptRequiresClientBusy),
+      interruptCommand: health.interruptCommand || '',
       processingAckEnabled: Boolean(health.processingAckEnabled),
       processingAckText: health.processingAckText || '',
       model: health.model || '',
@@ -3037,8 +3041,8 @@ async function handleDashboardVoiceRequest(req, res) {
       return;
     }
     const turnId = String(requestUrl.searchParams.get('id') || '').trim();
-    if (!turnId) {
-      json(res, 400, { ok: false, error: 'id is required' });
+    if (!DASHBOARD_VOICE_TURN_ID_PATTERN.test(turnId)) {
+      json(res, 400, { ok: false, error: 'A valid id is required.' });
       return;
     }
     try {
@@ -3057,9 +3061,68 @@ async function handleDashboardVoiceRequest(req, res) {
     return;
   }
 
+  if (pathname === '/api/jarvis/dashboard-voice/interrupt') {
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, error: 'Method not allowed. Use POST.' });
+      return;
+    }
+    const turnId = String(req.headers['x-jarvis-dashboard-voice-turn-id'] || '').trim();
+    const clientBusy = String(req.headers['x-jarvis-dashboard-voice-busy'] || '').trim().toLowerCase() === 'true';
+    if (!DASHBOARD_VOICE_TURN_ID_PATTERN.test(turnId)) {
+      json(res, 400, { ok: false, error: 'A valid turn id is required.' });
+      return;
+    }
+    let body;
+    try {
+      body = await readBufferBody(req, DASHBOARD_VOICE_MAX_BYTES);
+    } catch (error) {
+      json(res, error.statusCode || 400, { ok: false, error: error.message });
+      return;
+    }
+    if (!body || body.length < 44) {
+      json(res, 400, { ok: false, error: 'Dashboard voice interrupt upload was empty or too small.' });
+      return;
+    }
+    const mime = String(req.headers['content-type'] || 'audio/wav').split(';')[0].trim().toLowerCase();
+    if (mime && mime !== 'audio/wav' && mime !== 'audio/x-wav' && mime !== 'application/octet-stream') {
+      json(res, 415, { ok: false, error: `Unsupported dashboard voice content-type: ${mime}. Send audio/wav.` });
+      return;
+    }
+    try {
+      const payload = await postJsonWithTimeout(`${DASHBOARD_VOICE_ROOM_AUDIO_URL}/interrupt`, {
+        audioWavBase64: body.toString('base64'),
+        turnId,
+        clientBusy,
+        source: 'dashboard-phone'
+      }, {
+        timeoutMs: DASHBOARD_VOICE_TIMEOUT_MS,
+        headers: dashboardVoiceRoomHeaders()
+      });
+      json(res, payload.ok === false ? 502 : 200, {
+        ...payload,
+        source: 'dashboard-phone',
+        outputTarget: 'phone',
+        proxiedBy: 'operation-jarvis-dashboard'
+      });
+    } catch (error) {
+      json(res, error.statusCode || 502, {
+        ok: false,
+        turnId,
+        error: error?.message || 'Dashboard voice interruption failed.',
+        roomAudioUrl: DASHBOARD_VOICE_ROOM_AUDIO_URL
+      });
+    }
+    return;
+  }
+
   if (pathname === '/api/jarvis/dashboard-voice/turn') {
     if (req.method !== 'POST') {
       json(res, 405, { ok: false, error: 'Method not allowed. Use POST.' });
+      return;
+    }
+    const requestedTurnId = String(req.headers['x-jarvis-dashboard-voice-turn-id'] || '').trim();
+    if (requestedTurnId && !DASHBOARD_VOICE_TURN_ID_PATTERN.test(requestedTurnId)) {
+      json(res, 400, { ok: false, error: 'Dashboard voice turn id is invalid.' });
       return;
     }
     let body;
@@ -3085,6 +3148,7 @@ async function handleDashboardVoiceRequest(req, res) {
         audioWavBase64: body.toString('base64'),
         requireWakeWord: false,
         asyncAck: true,
+        turnId: requestedTurnId,
         source: 'dashboard-phone',
         outputTarget: 'phone',
         durationMs,

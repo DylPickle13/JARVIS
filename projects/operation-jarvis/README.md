@@ -245,7 +245,10 @@ Phone dashboard wake word + mic
   -> dashboard server /api/jarvis/dashboard-voice/turn
   -> existing Mac room-audio server for oMLX Whisper, Pi RPC, and Piper TTS
   -> phone dashboard audio playback
+  -> busy-only short mic clips recognize exact bare "stop" and cancel silently
 ```
+
+Idle dashboard requests still require `hey_jarvis`; browser echo cancellation remains active while processing/speaking so bare `stop` can interrupt without letting longer phrases become controls.
 
 The Raspberry Pi room-audio endpoint remains independent. The right-side **Phone** ADB tile remains on the HUD.
 
@@ -325,8 +328,11 @@ Canonical voice files live in [`voice/`](voice/). The root [`../../discord_bot.p
 Voice path:
 
 ```text
-Discord PCM → openWakeWord acoustic gate → oMLX Whisper ASR → transcript wake confirmation → Pi RPC voice session → Piper JARVIS TTS → Discord playback
+Idle: Discord PCM → openWakeWord acoustic gate → oMLX Whisper ASR → transcript wake confirmation → Pi RPC voice session → Piper JARVIS TTS → Discord playback
+Busy: short PCM candidate → Whisper → exact bare "stop" silently cancels Pi generation/playback; wake-word utterances retain steering behavior
 ```
+
+Across dashboard phone voice, live Discord voice, and USB room audio, bare `stop` is busy-only and exact after normalization. Idle speech keeps the normal wake gate, and phrases such as `don't stop` are rejected as controls. The transport-neutral policy is centralized in [`voice/voice_commands.py`](voice/voice_commands.py); each service retains only its capture, VAD, and playback adapter, while the browser delegates the transcript decision to the room-audio backend.
 
 ## Raspberry Pi room audio
 

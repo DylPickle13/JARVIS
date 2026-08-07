@@ -86,7 +86,12 @@ Mac mini:
 
 Phone dashboard:
   plays returned ack/final WAV through the phone speaker
+  → keeps echo-cancelled mic capture active while busy
+  → POST /api/jarvis/dashboard-voice/interrupt for short VAD clips
+  → exact bare “stop” cancels Pi generation and phone playback silently
 ```
+
+Idle requests still require local `hey_jarvis`. Bare `stop` is recognized only while a dashboard turn is processing or speaking; exact normalized matching rejects longer phrases such as `don't stop`. Browser acoustic echo cancellation plus exact matching reduces triggers from the phone's own JARVIS audio. The browser does not implement its own transcript classifier: it sends the clip and active turn ID to the central room-audio backend, whose shared `voice/voice_commands.py` policy makes the decision.
 
 The right-side **Phone** ADB tile remains unchanged. The Raspberry Pi room-audio microphone/speaker path also remains unchanged; dashboard voice is an extra phone endpoint, not a replacement.
 
@@ -108,11 +113,13 @@ Browser URL tuning:
 ```text
 ?voiceThreshold=0.62&voiceGain=1.15
 ?voiceSilenceMs=1000&voiceMaxMs=10000&voicePreRollMs=1400
+?voiceInterruptSilenceRms=0.01&voiceInterruptSilenceMs=450
+?voiceInterruptMinMs=400&voiceInterruptMaxMs=2000&voiceInterruptPreRollMs=240
 ?voiceThreads=1&voiceMaxPendingFrames=4
 ?voiceAutoArm=0
 ```
 
-For lower sustained phone temperature, ONNX Runtime defaults to one WASM inference thread (`voiceThreads=1`) instead of its cross-origin-isolated default of up to four. Raise it only if `logs/launchd.err.log` reports a wake inference overrun. The queue is bounded so a slow phone cannot accumulate an unlimited inference backlog. Voice capture and inference stop while the dashboard is hidden and resume when it becomes visible; loaded model sessions are reused instead of reloaded on every pause.
+For lower sustained phone temperature, ONNX Runtime defaults to one WASM inference thread (`voiceThreads=1`) instead of its cross-origin-isolated default of up to four. Raise it only if `logs/launchd.err.log` reports a wake inference overrun. The queue is bounded so a slow phone cannot accumulate an unlimited inference backlog. Wake inference pauses during a turn, but the audio worklet remains active for busy-only interruption capture. Voice capture and inference stop while the dashboard is hidden and resume when it becomes visible; loaded model sessions are reused instead of reloaded on every pause.
 
 Microphone access requires a secure browser context. On Android Chrome over LAN HTTP, whitelist the dashboard origin in **Insecure origins treated as secure** or serve the dashboard over HTTPS. iOS Safari generally requires HTTPS for non-local microphone access.
 
