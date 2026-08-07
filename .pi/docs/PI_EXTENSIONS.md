@@ -18,7 +18,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 
 - `00-private-permissions.ts` — enforces owner-only permissions on ignored local configuration and private runtime directories.
 - `00-web-access-env.ts` — project-scoped `pi-web-access` bootstrap plus JARVIS web/search policy; never mutates or consumes global `~/.pi/web-search.json`.
-- `01-omlx-provider-setup-and-recovery.ts` — non-blocking local oMLX provider registration plus prompt-too-long/prefill-memory recovery. Startup uses static seeds or the private last-known context-window cache at `.pi/runtime/omlx-context-windows.json`; live oMLX discovery refreshes the provider registry and cache in the background after `session_start`.
+- `01-omlx-provider-setup-and-recovery.ts` — non-blocking local oMLX provider registration plus prompt-too-long/prefill-memory recovery. Startup uses static seeds or the private last-known context-window cache at `.pi/runtime/omlx-context-windows.json`; live oMLX discovery refreshes the provider registry and cache after `session_start`, and the provider's native `refreshModels` callback reads the active server values whenever Pi refreshes `/model`. Unreachable providers silently retain their cached models and retry on the next refresh.
 - `04-delete-current-session.ts` — current-session cleanup command.
 - `10-discord-cron.ts` — scheduled Discord-backed Pi jobs.
 - `15-discord-send-file.ts` — current-channel Discord file upload helper.

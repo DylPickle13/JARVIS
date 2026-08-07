@@ -42,6 +42,8 @@ type ResolvedProvider = {
 	cachedContextByModel: Map<string, number>;
 };
 
+// Seed context windows are offline/unreachable fallbacks only. Online model
+// refreshes replace them with the values advertised by each oMLX server.
 const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 	{
 		provider: "omlx",
@@ -77,7 +79,7 @@ const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 				name: "Qwen3.6-35B-A3B-6bit",
 				reasoning: true,
 				input: ["text", "image"],
-				contextWindow: 131072,
+				contextWindow: 262144,
 				maxTokens: 32768,
 				compat: { thinkingFormat: "qwen-chat-template" },
 			},
@@ -86,7 +88,7 @@ const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 				name: "Qwen3.6-27B-6bit",
 				reasoning: true,
 				input: ["text", "image"],
-				contextWindow: 131072,
+				contextWindow: 176128,
 				maxTokens: 32768,
 				compat: { thinkingFormat: "qwen-chat-template" },
 			},
@@ -149,8 +151,12 @@ function parseModelContextWindow(model: unknown): number | undefined {
 	return undefined;
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchJson(url: string, parentSignal?: AbortSignal): Promise<unknown> {
 	const abortController = new AbortController();
+	const abortFromParent = () => abortController.abort();
+	if (parentSignal?.aborted) abortController.abort();
+	else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+
 	const timeout = setTimeout(() => abortController.abort(), DEFAULT_TIMEOUT_MS);
 	try {
 		const response = await fetch(url, {
@@ -164,11 +170,12 @@ async function fetchJson(url: string): Promise<unknown> {
 		return undefined;
 	} finally {
 		clearTimeout(timeout);
+		parentSignal?.removeEventListener("abort", abortFromParent);
 	}
 }
 
-async function fetchListedContextWindows(baseUrl: string): Promise<Map<string, number>> {
-	const payload = await fetchJson(`${baseUrl}/models`) as { data?: unknown } | undefined;
+async function fetchListedContextWindows(baseUrl: string, signal?: AbortSignal): Promise<Map<string, number>> {
+	const payload = await fetchJson(`${baseUrl}/models`, signal) as { data?: unknown } | undefined;
 	if (!Array.isArray(payload?.data)) return new Map();
 
 	const contextByModel = new Map<string, number>();
@@ -191,7 +198,11 @@ function parseAdminModelSettingsContextWindow(model: unknown): number | undefine
 	return toPositiveInt((settings as Record<string, unknown>).max_context_window);
 }
 
-async function fetchAdminSettingsContextWindows(baseUrl: string, modelIds: string[]): Promise<Map<string, number>> {
+async function fetchAdminSettingsContextWindows(
+	baseUrl: string,
+	modelIds: string[],
+	signal?: AbortSignal,
+): Promise<Map<string, number>> {
 	const rootUrl = baseUrl.replace(/\/v1$/, "");
 	const contextByModel = new Map<string, number>();
 
@@ -199,8 +210,8 @@ async function fetchAdminSettingsContextWindows(baseUrl: string, modelIds: strin
 	// keeping it bounded also prevents a sleeping oMLX host from leaving unnecessary
 	// background work around for multiple timeout periods.
 	const [adminModels, globalSettings] = await Promise.all([
-		fetchJson(`${rootUrl}/admin/api/models`) as Promise<{ models?: unknown } | undefined>,
-		fetchJson(`${rootUrl}/admin/api/global-settings`) as Promise<{ sampling?: unknown } | undefined>,
+		fetchJson(`${rootUrl}/admin/api/models`, signal) as Promise<{ models?: unknown } | undefined>,
+		fetchJson(`${rootUrl}/admin/api/global-settings`, signal) as Promise<{ sampling?: unknown } | undefined>,
 	]);
 
 	// This is the oMLX server's active per-model setting — the value shown in the
@@ -235,10 +246,14 @@ async function fetchAdminSettingsContextWindows(baseUrl: string, modelIds: strin
 	return contextByModel;
 }
 
-async function fetchContextWindows(baseUrl: string, modelIds: string[]): Promise<Map<string, number>> {
+async function fetchContextWindows(
+	baseUrl: string,
+	modelIds: string[],
+	signal?: AbortSignal,
+): Promise<Map<string, number>> {
 	const [contextByModel, adminContextByModel] = await Promise.all([
-		fetchListedContextWindows(baseUrl),
-		fetchAdminSettingsContextWindows(baseUrl, modelIds),
+		fetchListedContextWindows(baseUrl, signal),
+		fetchAdminSettingsContextWindows(baseUrl, modelIds, signal),
 	]);
 	for (const [modelId, contextWindow] of adminContextByModel) {
 		contextByModel.set(modelId, contextWindow);
@@ -319,18 +334,70 @@ function persistContextWindowCache(cache: ContextWindowCache): void {
 	}
 }
 
-function providerConfig(seed: ProviderSeed, baseUrl: string, apiKey: string, contextByModel: Map<string, number>): ProviderConfig {
-	return {
-		baseUrl,
-		api: "openai-completions",
-		apiKey,
-		compat: seed.compat,
-		models: mergedModels(seed, contextByModel),
+function applyDiscoveredContextWindows(item: ResolvedProvider, fetched: Map<string, number>): number {
+	let discoveredCount = 0;
+	for (const model of item.seed.models) {
+		const contextWindow = fetched.get(model.id);
+		if (contextWindow === undefined) continue;
+		item.cachedContextByModel.set(model.id, contextWindow);
+		discoveredCount += 1;
+	}
+	return discoveredCount;
+}
+
+function updateProviderContextWindowCache(cache: ContextWindowCache, item: ResolvedProvider): void {
+	cache.providers[item.seed.provider] = {
+		baseUrl: item.baseUrl,
+		updatedAt: new Date().toISOString(),
+		models: Object.fromEntries(item.cachedContextByModel),
 	};
 }
 
-function registerResolvedProvider(pi: ExtensionAPI, item: ResolvedProvider, apiKey: string, contextByModel: Map<string, number>): void {
-	pi.registerProvider(item.seed.provider, providerConfig(item.seed, item.baseUrl, apiKey, contextByModel));
+async function discoverProviderModels(
+	item: ResolvedProvider,
+	cache: ContextWindowCache,
+	signal?: AbortSignal,
+): Promise<ProviderModelConfig[]> {
+	const fetched = await fetchContextWindows(
+		item.baseUrl,
+		item.seed.models.map((model) => model.id),
+		signal,
+	);
+	if (applyDiscoveredContextWindows(item, fetched) > 0) {
+		updateProviderContextWindowCache(cache, item);
+		persistContextWindowCache(cache);
+	}
+
+	// An oMLX host may intentionally be asleep or offline. Keep its last-known
+	// models without turning another provider's successful /model refresh into a
+	// warning; Pi will retry live discovery the next time the registry refreshes.
+	return mergedModels(item.seed, item.cachedContextByModel);
+}
+
+function providerConfig(item: ResolvedProvider, apiKey: string, cache: ContextWindowCache): ProviderConfig {
+	return {
+		baseUrl: item.baseUrl,
+		api: "openai-completions",
+		apiKey,
+		compat: item.seed.compat,
+		models: mergedModels(item.seed, item.cachedContextByModel),
+		// Pi invokes this during model-registry refreshes, including whenever /model
+		// opens. Online refreshes therefore read the active oMLX values directly;
+		// static seeds and the local cache are only offline/unreachable fallbacks.
+		refreshModels: async ({ allowNetwork, signal }) => {
+			if (!allowNetwork) return mergedModels(item.seed, item.cachedContextByModel);
+			return discoverProviderModels(item, cache, signal);
+		},
+	};
+}
+
+function registerResolvedProvider(
+	pi: ExtensionAPI,
+	item: ResolvedProvider,
+	apiKey: string,
+	cache: ContextWindowCache,
+): void {
+	pi.registerProvider(item.seed.provider, providerConfig(item, apiKey, cache));
 }
 
 function isPiOffline(): boolean {
@@ -362,26 +429,13 @@ async function refreshResolvedProviderContexts(
 	let cacheChanged = false;
 	for (const item of resolved) {
 		const fetched = fetchedByBaseUrl.get(item.baseUrl) ?? new Map<string, number>();
-		const refreshed = new Map(item.cachedContextByModel);
-		let discoveredCount = 0;
-		for (const model of item.seed.models) {
-			const contextWindow = fetched.get(model.id);
-			if (contextWindow === undefined) continue;
-			refreshed.set(model.id, contextWindow);
-			discoveredCount += 1;
-		}
-		if (discoveredCount === 0) continue;
+		if (applyDiscoveredContextWindows(item, fetched) === 0) continue;
 
 		// Dynamic provider registration takes effect immediately and Pi refreshes the
 		// currently selected model from the registry, so this also updates the live
 		// session without delaying its initial prompt.
-		registerResolvedProvider(pi, item, apiKey, refreshed);
-		item.cachedContextByModel = refreshed;
-		cache.providers[item.seed.provider] = {
-			baseUrl: item.baseUrl,
-			updatedAt: new Date().toISOString(),
-			models: Object.fromEntries(refreshed),
-		};
+		updateProviderContextWindowCache(cache, item);
+		registerResolvedProvider(pi, item, apiKey, cache);
 		cacheChanged = true;
 	}
 
@@ -703,7 +757,7 @@ export default function registerOmlxProviderSetupAndRecovery(pi: ExtensionAPI) {
 	// Register synchronously from the last-known cache (or static seeds on first
 	// run), making every provider available before Pi chooses its startup model.
 	for (const item of resolved) {
-		registerResolvedProvider(pi, item, apiKey, item.cachedContextByModel);
+		registerResolvedProvider(pi, item, apiKey, cache);
 	}
 
 	let refreshStarted = false;
