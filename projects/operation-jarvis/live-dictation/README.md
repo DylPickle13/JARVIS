@@ -6,11 +6,11 @@ Live local-network dictation from the Mac mini's USB PowerConf microphone into P
 
 1. VS Code forwards `F1` to Pi as `ESC O P` (`\u001bOP`).
 2. `.pi/extensions/61-live-dictation.ts` starts FFmpeg capture from `PowerConf` as 16 kHz mono PCM.
-3. While recording, the extension sends rolling WAV snapshots to the existing `whisper-large-v3-turbo-asr-4bit` model on the `mac-mini-16` oMLX server.
+3. While recording, the extension sends rolling WAV snapshots to the local `whisper-large-v3-turbo-asr-4bit` model on the `mac-mini-64` oMLX server.
 4. Pi replaces the provisional editor transcript as Whisper refines it.
 5. A deliberate second `F1` stops capture, requests the final transcript, and leaves it in the editor without submitting.
 
-The implementation does not use Apple Dictation, Apple Shortcuts, the clipboard, Accessibility automation, or a model installed on `mac-mini-64`.
+The implementation does not use Apple Dictation, Apple Shortcuts, the clipboard, or Accessibility automation. ASR runs locally on `mac-mini-64`.
 
 ## Use
 
@@ -24,7 +24,7 @@ The extension reads the project `.env` and supports these optional overrides:
 
 - `PI_DICTATE_INPUT_DEVICE` (default `PowerConf`)
 - `PI_DICTATE_FFMPEG` (default `/opt/homebrew/bin/ffmpeg`)
-- `PI_DICTATE_OMLX_BASE_URL` (otherwise `OMLX_BASE_URL`)
+- `PI_DICTATE_OMLX_BASE_URL` (currently `http://127.0.0.1:8000`; otherwise `OMLX_BASE_URL`)
 - `PI_DICTATE_OMLX_API_KEY` (otherwise `OMLX_API_KEY`)
 - `PI_DICTATE_OMLX_MODEL` (default `whisper-large-v3-turbo-asr-4bit`)
 - `PI_DICTATE_LANGUAGE` (default `en`)

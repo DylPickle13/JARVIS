@@ -4,7 +4,7 @@ import { Buffer } from "node:buffer";
 import { envValue, findAncestorFile, parseDotEnv } from "./lib/env";
 
 const STATUS_ID = "live-dictation";
-const DEFAULT_OMLX_BASE_URL = "http://192.168.21.30:8000";
+const DEFAULT_OMLX_BASE_URL = "http://127.0.0.1:8000";
 const DEFAULT_OMLX_MODEL = "whisper-large-v3-turbo-asr-4bit";
 const DEFAULT_INPUT_DEVICE = "PowerConf";
 const DEFAULT_FFMPEG = "/opt/homebrew/bin/ffmpeg";
