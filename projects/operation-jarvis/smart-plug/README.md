@@ -4,13 +4,13 @@ Local control for TP-Link Kasa HS103 smart plugs used around the house by Operat
 
 **Local/private operations note:** this README intentionally contains local plug names, LAN IPs, and credential-loading paths. Keep it private; do not publish without review.
 
-**Appliance safety:** avoid unattended automation for heating or high-risk devices. In particular, treat `kettle` as a manual/supervised control target only unless a separate physical safety interlock/runbook exists.
+**Appliance safety:** avoid unattended automation for heating or high-risk devices.
 
 Current configured plugs:
 
 ```text
 <configured-plug-name> -> <private-lan-ip>    label: configured room light, verified locally controllable
-kettle -> <private-lan-ip>          label: Kettle, verified locally controllable
+pedalboard -> <private-lan-ip>      label: Pedalboard, verified locally controllable
 lamp -> <private-lan-ip>             label: Lamp, verified locally controllable
 tv -> <private-lan-ip>              label: TV, verified locally controllable
 ```
@@ -44,7 +44,7 @@ cd /path/to/JARVIS/projects/operation-jarvis
 Machine-readable output:
 
 ```bash
-./jarvis-cli --json plug-status kettle
+./jarvis-cli --json plug-status pedalboard
 ```
 
 ## Direct low-level control
@@ -125,7 +125,7 @@ This project installs a `python-kasa` PR build because the normal PyPI build fai
 {
   "plugs": {
     "<configured-plug-name>": {"host": "<private-lan-ip>"},
-    "kettle": {"host": "<private-lan-ip>"},
+    "pedalboard": {"host": "<private-lan-ip>"},
     "lamp": {"host": "<private-lan-ip>"},
     "tv": {"host": "<private-lan-ip>"}
   }
