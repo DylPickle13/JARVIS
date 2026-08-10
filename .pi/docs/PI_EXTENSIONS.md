@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-07-18 EDT
+Updated: 2026-08-10 EDT
 
 The local Pi extension inventory lives in `.pi/extensions/`. `.pi/smoke-test.sh` keeps a read-only manifest check so added or removed extension roots are visible during smoke testing. The manifest intentionally ignores the shared `.pi/extensions/lib/` directory.
 
@@ -35,8 +35,8 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `55-ssh-exec.ts` — unrestricted configured SSH execution plus directly attached and stateful interactive PTY sessions.
 - `56-github-cli.ts` — guarded GitHub CLI adapter.
 - `58-reaper-bridge.ts` — live REAPER inline-Lua bridge.
-- `59-gx10-bridge.ts` — direct BOSS GX-10 CoreMIDI bridge exposing typed semantic reads/search, ping, and low-level unsaved inline Lua with transactional verified writes.
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
+- `61-live-dictation.ts` — F1-controlled PowerConf live dictation through local oMLX Whisper transcription.
 - `70-image-generation.ts` — local Qwen image generation via mac-mini-64.
 - `71-video-generation.ts` — local LTX-2.3 Q8 MLX MP4 audio-video generation via mac-mini-64.
 - `98-slim-provider-payload.ts` — deterministic provider payload/schema slimming, including OpenAI deferred `tool_search_output` schemas.
@@ -68,7 +68,6 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `discord` | `discord_ping`, `discord_send_file` |
 | `sessions` | `session_search` |
 | `reaper` | `reaper_ping`, `reaper_lua` |
-| `gx10` | `gx10_ping`, `gx10_get`, `gx10_find`, `gx10_lua` |
 | `browser` | `browser_status`, `browser_open`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_upload`, `browser_key`, `browser_scroll`, `browser_wait`, `browser_extract`, `browser_tabs`, `browser_close` |
 
 The provider-visible `load_tools` description, prompt snippet, parameter help, and `/load-tools` usage are generated from the canonical registry in `99-lazy-tools.ts`. Model-called `load_tools` activation is purely additive: Pi records the added tool names on the tool result and, on capable providers such as GPT-5.6, anchors their definitions there with native deferred loading instead of changing the initial cached tool prefix. Other providers use Pi's normal full-tool fallback. Manual `/load-tools` remains available but has no tool-result anchor, so it may refresh the provider cache once.
@@ -78,8 +77,6 @@ Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full g
 Durable memory is explicit-only. Loading the `memory` group preserves search/remember/update/forget/list/status functionality without performing prompt-time recall or changing the system prompt between user turns.
 
 The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
-
-The `gx10` group uses the canonical `/Users/dylanrapanan/gx10-bridge` Git repository on mac-mini-16. Prefer read-only `gx10_get` for ordinary live-patch questions and `gx10_find` for semantic discovery; `gx10_lua` remains the planning/custom/low-level escape hatch. Semantic edits first use RQ1-only `gx.plan_edit`, then require exact plan-ID approval before `tx:apply_plan` can queue a matching verified transaction. The native host uses only the standard GX-10 CoreMIDI endpoint, generates versioned semantic metadata from installed Tone Studio resources, and permits explicit writes only through snapshot/readback/rollback transactions. Its API documentation is the remote repository's `README.md`.
 
 Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: load `minecraft_jarvis` before calling `minecraft_jarvis`, or load `github` before calling `github_cli`. Ordinary local `git` operations continue to use the baseline coding shell.
 

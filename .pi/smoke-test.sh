@@ -346,8 +346,8 @@ expected_extension_roots=(
   .pi/extensions/55-ssh-exec.ts
   .pi/extensions/56-github-cli.ts
   .pi/extensions/58-reaper-bridge.ts
-  .pi/extensions/59-gx10-bridge.ts
   .pi/extensions/60-pdf-read-result.ts
+  .pi/extensions/61-live-dictation.ts
   .pi/extensions/70-image-generation.ts
   .pi/extensions/71-video-generation.ts
   .pi/extensions/98-slim-provider-payload.ts
@@ -510,7 +510,6 @@ const optionalToolFiles = [
   '.pi/extensions/50-minecraft-jarvis-chat.ts',
   '.pi/extensions/56-github-cli.ts',
   '.pi/extensions/58-reaper-bridge.ts',
-  '.pi/extensions/59-gx10-bridge.ts',
   '.pi/extensions/70-image-generation.ts',
   '.pi/extensions/71-video-generation.ts',
 ];
