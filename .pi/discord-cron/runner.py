@@ -1178,16 +1178,16 @@ def install_launchd() -> dict[str, Any]:
   <key>Label</key><string>{LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>{scheduler_python()}</string>
-    <string>{Path(__file__).resolve()}</string>
-    <string>run-due</string>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>while true; do {scheduler_python()} {Path(__file__).resolve()} run-due; sleep 60; done</string>
   </array>
   <key>WorkingDirectory</key><string>{ROOT}</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>{DEFAULT_PATH}</string>
   </dict>
-  <key>StartInterval</key><integer>60</integer>
+  <key>KeepAlive</key><true/>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>{DEVNULL_PATH}</string>
   <key>StandardErrorPath</key><string>{DEVNULL_PATH}</string>
