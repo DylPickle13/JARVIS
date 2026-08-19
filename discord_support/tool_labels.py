@@ -25,7 +25,6 @@ def _is_discord_send_file_tool(tool_name: str) -> bool:
 DISCORD_BOT_TOOL_KEYS = {
     # Current Pi/JARVIS tool surface: always-on tools, lazy-loaded tools, and
     # the multi-tool wrapper label used by provider events.
-    "agent_phone",
     "bash",
     "browser_click",
     "browser_close",
@@ -66,7 +65,6 @@ DISCORD_BOT_TOOL_KEYS = {
 }
 
 TOOL_EMOJIS = {
-    "agent_phone": "📱",
     "bash": "🖥️",
     "browser_click": "👆",
     "browser_close": "❎",
@@ -194,7 +192,6 @@ _validate_tool_emojis()
 
 
 TOOL_VOICE_START_NARRATIONS = {
-    "agent_phone": "I’ll operate the phone, sir.",
     "bash": "I’ll run that in the terminal, sir.",
     "browser_click": "I’ll click in the browser, sir.",
     "browser_close": "I’ll close the browser item, sir.",
@@ -235,7 +232,6 @@ TOOL_VOICE_START_NARRATIONS = {
 }
 
 TOOL_VOICE_FAILURE_NARRATIONS = {
-    "agent_phone": "The phone action failed, sir.",
     "bash": "The terminal command failed, sir.",
     "browser_click": "The browser click failed, sir.",
     "browser_close": "The browser close action failed, sir.",
@@ -502,11 +498,6 @@ def _tool_action_label(tool_name: str, args: object) -> str:
         emoji = _tool_emoji("github_cli")
         return f"{emoji} Ran GitHub CLI: gh {args_label}" if args_label else f"{emoji} Ran GitHub CLI"
 
-    if tool_key == "agent_phone":
-        args_label = _list_arg_label(tool_args.get("args"), max_length=140)
-        emoji = _tool_emoji("agent_phone")
-        return f"{emoji} Controlled phone: {args_label}" if args_label else f"{emoji} Controlled phone"
-
     if tool_key.startswith("browser_"):
         emoji = _tool_emoji(tool_key)
         if tool_key == "browser_status":
@@ -616,9 +607,6 @@ def _tool_failure_label(tool_name: str, args: object) -> str:
     if tool_key == "github_cli":
         args_label = _list_arg_label(tool_args.get("args"), max_length=140)
         return f"❌ {emoji} GitHub CLI failed: gh {args_label}" if args_label else f"❌ {emoji} GitHub CLI failed"
-    if tool_key == "agent_phone":
-        args_label = _list_arg_label(tool_args.get("args"), max_length=140)
-        return f"❌ {emoji} Phone action failed: {args_label}" if args_label else f"❌ {emoji} Phone action failed"
     if tool_key.startswith("browser_"):
         readable = re.sub(r"[_-]+", " ", tool_key).strip()
         return f"❌ {emoji} {readable.capitalize()} failed"

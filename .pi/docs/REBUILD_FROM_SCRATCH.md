@@ -24,7 +24,6 @@ Back up or be prepared to recreate:
 | Session-search index | `.pi/session-search/index.sqlite*` | No | Can be rebuilt from session files. |
 | Browser profile | `~/.pi/agent/browser-profile` or `PI_BROWSER_PROFILE_DIR` | Optional | Preserves visible-browser cookies/session state. Do not commit. |
 | Google Workspace OAuth | external `gws` token/config store | If Workspace tools are used | Run `gws auth ...` if not restored. |
-| Phone/ADB host SSH keys | `~/.ssh/...` and configured ADB host config | If phone/dashboard status is used | See [`projects/phone/README.md`](../../projects/phone/README.md). |
 | Operation media/data artifacts | `projects/operation-jarvis/data/*`, `projects/operation-jarvis/media/*` | Optional | Captures, TTS files, runtime state; ignored by git. |
 
 ## 1. Install system prerequisites
@@ -40,7 +39,7 @@ Also install/configure as needed:
 
 - Pi CLI: [pi.dev](https://pi.dev) / `@earendil-works/pi-coding-agent`.
 - `gws` CLI for Google Workspace access.
-- Android platform-tools, SSH, and optional `scrcpy` for the phone stack.
+- Android platform-tools if the dashboard Phone ADB status tile is used, plus SSH for configured remote hosts.
 - Google Chrome or Chromium for the visible browser extension.
 - Access to the local oMLX/OpenAI-compatible endpoints used for Pi provider setup, PDF conversion, ASR, vision, and embeddings.
 
@@ -285,13 +284,6 @@ Maps check, if `GOOGLE_MAPS_API_KEY` is configured:
 maps({ query: "status" })
 ```
 
-Phone check, only after explicit permission/authentication:
-
-```bash
-cd /path/to/JARVIS
-projects/phone/agent-phone --json status
-```
-
 A simple Pi session should show baseline tools plus `load_tools`. Inside Pi, check:
 
 ```text
@@ -376,6 +368,6 @@ Do not run another bot process with the same token at the same time. The root bo
 | Session search fails | `status` first; then verify embedding endpoint/model and `SESSION_SEARCH_*` env vars. |
 | Memory unavailable | Load the `memory` group, run `memory` with `action: "status"`, and verify `.pi/memory/memory.sqlite`; automatic prompt-time recall is intentionally disabled. |
 | `jarvis` tool fails | Run `projects/operation-jarvis/jarvis-cli --json help`; check Operation venv, dashboard, Cast, Spotify, Kasa env as appropriate. |
-| Phone unavailable | Do not use raw ADB by default. Check `projects/phone/README.md`, the configured ADB host, and permission/authentication status. |
+| Dashboard Phone tile unavailable | Check `JARVIS_DASHBOARD_PHONE_ADB_SERIAL`, the local ADB path, USB connection, and Android debugging authorization. |
 
 Keep this file and [`PI_EXTENSIONS.md`](PI_EXTENSIONS.md) updated whenever a tool, env var, runtime DB, or package changes.

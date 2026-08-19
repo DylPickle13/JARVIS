@@ -7,7 +7,6 @@ type CanonicalToolGroup =
   | "jarvis"
   | "minecraft_jarvis"
   | "github"
-  | "phone"
   | "google"
   | "cron"
   | "discord"
@@ -40,7 +39,6 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   jarvis: ["jarvis", "smart_plug"],
   minecraft_jarvis: ["minecraft_jarvis"],
   github: ["github_cli"],
-  phone: ["agent_phone"],
   google: ["google_workspace"],
   cron: ["discord_cron"],
   discord: ["discord_ping", "discord_send_file"],
@@ -68,7 +66,6 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, local smart plugs, and VeSync/Levoit air purifier control",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   github: "github_cli for guarded official GitHub CLI access using the configured local token",
-  phone: "agent_phone for safe LG-H933 Android phone control via ADB refs/screenshots",
   google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
   cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
   discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
@@ -98,17 +95,6 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
     lines: [
       "Use `code_search` for external programming docs, API examples, library usage, and implementation patterns.",
       "For local repository search, use baseline `grep`, `find`, `ls`, and `read` first instead of external code search.",
-    ],
-  },
-  phone: {
-    skill: "agent-phone Android control",
-    lines: [
-      "Use `agent_phone` for the dedicated LG-H933 Android phone; do not run raw ADB or `agent-phone` through `bash` unless debugging the adapter or explicitly asked for a shell workflow.",
-      "Call shape: `agent_phone({ args: [\"snapshot\", \"-i\"] })`; `args` are CLI tokens after the `agent-phone` binary, never including `agent-phone` itself.",
-      "Typical flow: `status` → `snapshot -i` → interact with current `@refs` using `tap @ref`, `type`, `press BACK/HOME/ENTER`, or `swipe` → re-run `snapshot -i` after every screen change because refs can go stale.",
-      "Prefer `tap @ref` over raw coordinates; use `tap-text TEXT` only when text/description/resource-id matching is obvious. Use `wait --text TEXT` after navigation or app launch.",
-      "Use `snapshot -i --image`, `screenshot --image`, or `attachImage: true` only when pixel-level vision is needed; ordinary phone control should use the text refs from `snapshot -i`.",
-      "Phone-sensitive actions — SMS/calls, purchases, account/security changes, deleting data, private content, or APK installs — require explicit user confirmation and may need a new adapter command rather than raw shell.",
     ],
   },
   google: {

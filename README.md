@@ -12,7 +12,7 @@ This root README is a map and quick-start guide. Detailed subsystem notes live i
 - **Pi RPC sessions** — [`llm.py`](llm.py) keeps persistent per-channel `pi --mode rpc` sessions with model/thinking controls, steering, cancellation, session deletion, manual compaction, and dashboard status publishing.
 - **Inputs** — text prompts, saved file attachments, native image attachments, and Discord mobile voice messages transcribed through an OpenAI-compatible oMLX Whisper endpoint.
 - **Live voice** — [`projects/operation-jarvis/voice/`](projects/operation-jarvis/voice/) is loaded by the main bot: Discord PCM → openWakeWord → oMLX Whisper ASR → Pi RPC → Piper JARVIS TTS → Discord playback. Its central `voice_commands.py` policy also gives Discord, dashboard phone voice, and room audio the same busy-only exact bare-`stop` behavior.
-- **Pi extensions** — [`.pi/extensions/`](.pi/extensions/) provides web/search helpers, lazy tool loading, memory, session search, Discord cron/ping/file upload tools, browser/phone/Google/Maps/YouTube integrations, and Operation JARVIS tools.
+- **Pi extensions** — [`.pi/extensions/`](.pi/extensions/) provides web/search helpers, lazy tool loading, memory, session search, Discord cron/ping/file upload tools, browser/Google/Maps/YouTube integrations, and Operation JARVIS tools.
 - **Operation JARVIS** — [`projects/operation-jarvis/`](projects/operation-jarvis/) contains the room-facing stack: LAN dashboard, phone-camera vision, Cast/Spotify media, TP-Link Kasa smart plugs, Levoit/VeSync air-purifier control, and Raspberry Pi room audio.
 - **Runtime data** — `.env`, attachments, generated media/data, SQLite indexes, logs, cron runs, and Pi runtime status files are ignored by git.
 
@@ -111,7 +111,7 @@ Legacy `>` control commands are not registered.
 
 Baseline tools include local coding/file helpers plus `ssh`, `web_search`, `fetch_content`, `get_search_content`, `minecraft_jarvis`, `maps`, `github_cli`, and `load_tools`. Optional groups are loaded on demand with `load_tools({ groups: [...] })`:
 
-`memory`, `code_docs`, `jarvis`, `phone`, `google`, `cron`, `discord`, `sessions`, `browser`, `reaper`, or `all`.
+`memory`, `code_docs`, `jarvis`, `google`, `cron`, `discord`, `sessions`, `browser`, `reaper`, or `all`.
 
 `minecraft_jarvis` is already always on; its compatibility group remains accepted but does not need to be loaded.
 

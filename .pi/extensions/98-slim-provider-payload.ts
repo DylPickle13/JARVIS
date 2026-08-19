@@ -58,7 +58,6 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   // Optional lazy-loaded tools: preserve terse top-level descriptions.
   minecraft_jarvis: "Minecraft bot chat/control; use direct short plain messages; no SSH/shell/slash.",
   github_cli: "Run official gh CLI with args; loads GitHub token from .env and redacts it.",
-  agent_phone: "Android phone control via safe CLI-token args.",
   jarvis: "Operation JARVIS dashboard/camera/Cast/Spotify/air-purifier helper.",
   smart_plug: "Local smart-plug control.",
   google_workspace: "Google Workspace API for Drive/Gmail/Docs/Sheets/Calendar.",
@@ -127,7 +126,6 @@ const SCHEMA_STRIP_TOOLS = new Set([
   // Optional lazy-loaded tools: preserve top-level descriptions, strip nested prose.
   "minecraft_jarvis",
   "github_cli",
-  "agent_phone",
   "jarvis",
   "smart_plug",
   "google_workspace",

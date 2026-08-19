@@ -219,8 +219,6 @@ require_command "node"
 require_command "npm"
 require_command "ffmpeg"
 require_command "adb"
-require_command "fastboot"
-require_command "scrcpy"
 warn_command "pdftotext"
 warn_command "trash"
 warn_command "gws"
@@ -333,7 +331,6 @@ expected_extension_roots=(
   .pi/extensions/35-memory.ts
   .pi/extensions/45-jarvis.ts
   .pi/extensions/46-local-pi-session-status.ts
-  .pi/extensions/48-agent-phone.ts
   .pi/extensions/50-browser
   .pi/extensions/50-minecraft-jarvis-chat.ts
   .pi/extensions/55-ssh-exec.ts
@@ -496,7 +493,6 @@ const optionalToolFiles = [
   '.pi/extensions/30-google-access.ts',
   '.pi/extensions/35-memory.ts',
   '.pi/extensions/45-jarvis.ts',
-  '.pi/extensions/48-agent-phone.ts',
   '.pi/extensions/50-browser/tools.ts',
   '.pi/extensions/50-minecraft-jarvis-chat.ts',
   '.pi/extensions/56-github-cli.ts',
@@ -534,7 +530,6 @@ PY
   run_check "discord-cron CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/discord-cron/runner.py --help
 fi
 run_check "Operation JARVIS CLI help" env PYTHONDONTWRITEBYTECODE=1 JARVIS_DASHBOARD_EMIT_EVENTS=0 JARVIS_DASHBOARD_AUTO_EVENTS=0 projects/operation-jarvis/jarvis-cli --help
-run_check "agent-phone CLI help" env PYTHONDONTWRITEBYTECODE=1 projects/phone/agent-phone --help
 
 section "Runtime data presence only"
 warn_file "memory DB present" ".pi/memory/memory.sqlite"

@@ -29,7 +29,6 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `35-memory.ts` — explicit durable project-local memory; no prompt-time auto-recall or system-prompt mutation.
 - `45-jarvis.ts` — Operation JARVIS dashboard/Cast, smart plugs, and VeSync/Levoit air purifier actions.
 - `46-local-pi-session-status.ts` — dashboard-visible local Pi session heartbeat.
-- `48-agent-phone.ts` — guarded LG-H933 Android phone adapter.
 - `50-browser/` — visible Chrome control through a persistent CDP bridge, hard-scoped to a dedicated JARVIS window in the user's signed-in profile.
 - `50-minecraft-jarvis-chat.ts` — Minecraft jarvis bot chat/control.
 - `55-ssh-exec.ts` — unrestricted configured SSH execution plus directly attached and stateful interactive PTY sessions.
@@ -59,7 +58,6 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `jarvis` | `jarvis`, `smart_plug` |
 | `minecraft_jarvis` | `minecraft_jarvis` |
 | `github` | `github_cli` |
-| `phone` | `agent_phone` |
 | `google` | `google_workspace` |
 | `cron` | `discord_cron` |
 | `discord` | `discord_ping`, `discord_send_file` |
