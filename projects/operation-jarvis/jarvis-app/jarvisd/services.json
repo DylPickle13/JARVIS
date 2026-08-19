@@ -1,0 +1,12 @@
+{
+  "services": {
+    "room-audio-server": {
+      "label": "com.operation-jarvis.room-audio-server",
+      "description": "Room audio server (Raspberry Pi voice endpoint, :8791)"
+    },
+    "dashboard": {
+      "label": "com.operation-jarvis.dashboard",
+      "description": "Legacy dashboard (:8787) — retired in M5"
+    }
+  }
+}

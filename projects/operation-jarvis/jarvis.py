@@ -144,6 +144,24 @@ def dashboard_events_enabled() -> bool:
     return os.environ.get("JARVIS_DASHBOARD_EMIT_EVENTS", "1").lower() not in {"0", "false", "no", "off"}
 
 
+def _event_targets() -> list[tuple[str, Optional[str]]]:
+    """(base_url, token) pairs for the event bridge.
+
+    jarvisd (the app backend) is the primary target — its ingest endpoint is
+    lenient, so no token is required. The dashboard is included during the
+    transition if JARVIS_DASHBOARD_URL is set.
+    """
+    targets: list[tuple[str, Optional[str]]] = []
+    jarvisd = os.environ.get("JARVISD_URL", "http://127.0.0.1:8790").rstrip("/")
+    if jarvisd:
+        targets.append((jarvisd, None))
+    dashboard = os.environ.get("JARVIS_DASHBOARD_URL", "").rstrip("/")
+    if dashboard:
+        dtoken = os.environ.get("JARVIS_DASHBOARD_TOKEN") or os.environ.get("JARVIS_DASHBOARD_WRITE_TOKEN")
+        targets.append((dashboard, dtoken))
+    return targets
+
+
 def emit_dashboard_event(
     event_type: str,
     *,
@@ -154,9 +172,12 @@ def emit_dashboard_event(
     artifacts: Optional[list[dict[str, Any]]] = None,
     data: Optional[dict[str, Any]] = None,
 ) -> None:
-    """Best-effort dashboard event bridge; never fail the CLI action."""
-    base_url = os.environ.get("JARVIS_DASHBOARD_URL", "").rstrip("/")
-    if not base_url or not dashboard_events_enabled():
+    """Best-effort event bridge to jarvisd (and the dashboard during
+    transition); never fails the CLI action."""
+    if not dashboard_events_enabled():
+        return
+    targets = _event_targets()
+    if not targets:
         return
 
     payload = {
@@ -171,17 +192,17 @@ def emit_dashboard_event(
         "at": dt.datetime.now(dt.timezone.utc).isoformat(),
     }
     body = json.dumps(payload).encode("utf-8")
-    headers = {"content-type": "application/json"}
-    token = os.environ.get("JARVIS_DASHBOARD_TOKEN") or os.environ.get("JARVIS_DASHBOARD_WRITE_TOKEN")
-    if token:
-        headers["x-jarvis-token"] = token
 
-    try:
-        request = Request(f"{base_url}/api/jarvis/events", data=body, headers=headers, method="POST")
-        with urlopen(request, timeout=DEFAULT_DASHBOARD_EVENT_TIMEOUT):
-            pass
-    except Exception:
-        return
+    for base_url, token in targets:
+        headers = {"content-type": "application/json"}
+        if token:
+            headers["x-jarvis-token"] = token
+        try:
+            request = Request(f"{base_url}/api/jarvis/events", data=body, headers=headers, method="POST")
+            with urlopen(request, timeout=DEFAULT_DASHBOARD_EVENT_TIMEOUT):
+                pass
+        except Exception:
+            continue
 
 
 def choose_python() -> str:

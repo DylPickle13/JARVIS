@@ -1,0 +1,28 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+.build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# Local secrets / device config (UDIDs, APNs keys, tokens)
+*.p8
+*.p12
+local-config.json
+.env
+
+# jarvisd runtime artifacts
+jarvisd/logs/
+jarvisd/__pycache__/
