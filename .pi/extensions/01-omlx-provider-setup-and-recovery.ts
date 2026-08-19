@@ -462,6 +462,9 @@ const OMLX_PREFILL_MEMORY_GUARD_PATTERNS = [
 	/Prefill would require ~?[\d.]+\s*(?:[KMGT]i?B|[KMGT]?B)? peak.*\bKV\+SDPA\b.*\bceiling\b/i,
 	/Prefill would require .* but .* ceiling is .*reduce context length/i,
 	/Prefill context too large for available memory.*\bpreflight safety guard\b.*\bprefill safety cap\b.*\breduce context length\b/i,
+	// Newer oMLX releases can abort at the hard process/Metal watermark instead
+	// of the prefill guard. Reducing context is still the recoverable action.
+	/Request aborted:\s*process memory limit exceeded\b.*\b(?:reduce context (?:length|size)|lower memory_guard_tier)\b/i,
 ];
 
 const OMLX_PROMPT_TOO_LONG_PATTERNS = [
