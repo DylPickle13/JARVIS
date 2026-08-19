@@ -37,8 +37,6 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `58-reaper-bridge.ts` — live REAPER inline-Lua bridge.
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `61-live-dictation.ts` — F1-controlled PowerConf live dictation through local oMLX Whisper transcription.
-- `70-image-generation.ts` — local Qwen image generation via mac-mini-64.
-- `71-video-generation.ts` — local LTX-2.3 Q8 MLX MP4 audio-video generation via mac-mini-64.
 - `98-slim-provider-payload.ts` — deterministic provider payload/schema slimming, including OpenAI deferred `tool_search_output` schemas.
 - `99-lazy-tools.ts` — additive lazy optional tool activation using Pi's native deferred-loading protocol where supported.
 - `thinking-level-on-model-select.ts` — applies thinking levels pinned in `enabledModels`/`--models` on active model switches, falling back to `xhigh`; Qwen3.8 27B is pinned to `medium` in `.pi/settings.json`.
@@ -58,8 +56,6 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 |---|---|
 | `memory` | `memory` |
 | `code_docs` | `code_search` |
-| `image` | `generate_image` |
-| `video` | `generate_video` |
 | `jarvis` | `jarvis`, `smart_plug` |
 | `minecraft_jarvis` | `minecraft_jarvis` |
 | `github` | `github_cli` |
@@ -100,28 +96,6 @@ Install the PTY dependency after a fresh clone:
 cd /path/to/JARVIS/.pi/extensions/lib
 npm install
 ```
-
-## Local media generation worker
-
-The `image` and `video` groups use the private worker repo [`DylPickle13/local-media-generation`](https://github.com/DylPickle13/local-media-generation) on `mac-mini-64`.
-
-- Canonical local directory: `/Users/dylanrapanan/media-generation`
-- Compatibility symlink: `/Users/dylanrapanan/image-generation -> media-generation`
-- Local copied outputs: `generated-images/` and `generated-videos/` in this JARVIS repo, both ignored by git
-- Video generation uses `dgrauet/ltx-2.3-mlx-q8` through `ltx-2-mlx`, producing MP4s with synchronized stereo audio by default.
-- Pi extensions execute the workers directly with `JARVIS_GENERATION_SYNC=0`, copy outputs locally into JARVIS, and delete staging files after a successful copy.
-- Manual worker runs use the same local-only copy path; no SSH alias, `ssh`, or `scp` is involved.
-
-Local verification on `mac-mini-64`:
-
-```bash
-cd ~/media-generation
-bin/image-generate --health
-bin/video-generate --health
-bin/smoke-test
-```
-
-The worker `--health` JSON confirms local write access to `~/JARVIS/generated-images/` and `~/JARVIS/generated-videos/`; video health also reports model/cache state and `supportsAudio:true`. `bin/smoke-test` is a fast compile/health/local-copy test without model inference.
 
 ## Verification
 

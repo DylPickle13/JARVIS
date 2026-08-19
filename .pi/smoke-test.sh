@@ -297,7 +297,7 @@ NODE
 fi
 
 if command -v node >/dev/null 2>&1; then
-  run_check "native-host SSH/media/phone topology" node - <<'NODE'
+  run_check "native-host SSH/phone topology" node - <<'NODE'
 const fs = require('fs');
 const hosts = JSON.parse(fs.readFileSync('.pi/ssh-hosts.json', 'utf8'));
 const aliases = hosts.flatMap((host) => host.aliases || []).sort();
@@ -306,13 +306,6 @@ for (const localAlias of ['mac-mini-64', 'jarvis-pi']) {
 }
 const ssh = fs.readFileSync('.pi/extensions/55-ssh-exec.ts', 'utf8');
 if (!ssh.includes('const EFFECTIVE_DEFAULT_HOST_ALIAS = DEFAULT_HOST_ALIAS;')) throw new Error('SSH tool regained an implicit host default');
-const media = ['.pi/extensions/70-image-generation.ts', '.pi/extensions/71-video-generation.ts'].map((path) => fs.readFileSync(path, 'utf8')).join('\n');
-for (const forbidden of ['pi.exec("ssh"', 'pi.exec("scp"', 'HOST_CONFIG_PATH', 'remoteSpec(']) {
-  if (media.includes(forbidden)) throw new Error(`media extensions regained self-SSH transport: ${forbidden}`);
-}
-for (const required of ['runLocalWorker(', 'JARVIS_GENERATION_SYNC=0', 'execution: "local"']) {
-  if (!media.includes(required)) throw new Error(`native media wiring missing: ${required}`);
-}
 const dashboard = fs.readFileSync('projects/operation-jarvis/dashboard/src/server.mjs', 'utf8');
 const phoneStatus = dashboard.split('async function readPhoneAdbStatus()', 2)[1]?.split('async function handlePhoneAdbPing', 1)[0] || '';
 for (const forbidden of ['PHONE_ADB_SSH', "execFileAsync('ssh'"]) {
@@ -321,7 +314,7 @@ for (const forbidden of ['PHONE_ADB_SSH', "execFileAsync('ssh'"]) {
 for (const required of ["'/opt/homebrew/bin/adb'", "execFileAsync('/bin/bash'", "host: 'local'"]) {
   if (!dashboard.includes(required)) throw new Error(`native phone wiring missing: ${required}`);
 }
-console.log(`remote SSH aliases: ${aliases.join(', ')}; media/phone transport: local`);
+console.log(`remote SSH aliases: ${aliases.join(', ')}; phone transport: local`);
 NODE
 fi
 
@@ -348,8 +341,6 @@ expected_extension_roots=(
   .pi/extensions/58-reaper-bridge.ts
   .pi/extensions/60-pdf-read-result.ts
   .pi/extensions/61-live-dictation.ts
-  .pi/extensions/70-image-generation.ts
-  .pi/extensions/71-video-generation.ts
   .pi/extensions/98-slim-provider-payload.ts
   .pi/extensions/99-lazy-tools.ts
   .pi/extensions/thinking-level-on-model-select.ts
@@ -510,8 +501,6 @@ const optionalToolFiles = [
   '.pi/extensions/50-minecraft-jarvis-chat.ts',
   '.pi/extensions/56-github-cli.ts',
   '.pi/extensions/58-reaper-bridge.ts',
-  '.pi/extensions/70-image-generation.ts',
-  '.pi/extensions/71-video-generation.ts',
 ];
 for (const path of optionalToolFiles) {
   const source = fs.readFileSync(path, 'utf8');

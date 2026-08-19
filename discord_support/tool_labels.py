@@ -46,7 +46,6 @@ DISCORD_BOT_TOOL_KEYS = {
     "edit",
     "fetch_content",
     "find",
-    "generate_image",
     "get_search_content",
     "github_cli",
     "google_workspace",
@@ -88,7 +87,6 @@ TOOL_EMOJIS = {
     "edit": "✏️",
     "fetch_content": "📄",
     "find": "🗂️",
-    "generate_image": "🎨",
     "get_search_content": "📥",
     "github_cli": "🐙",
     "google_workspace": "🏢",
@@ -217,7 +215,6 @@ TOOL_VOICE_START_NARRATIONS = {
     "edit": "I’ll make the edit, sir.",
     "fetch_content": "I’ll fetch the source content, sir.",
     "find": "I’ll find matching files, sir.",
-    "generate_image": "I’ll generate the image, sir.",
     "get_search_content": "I’ll open the retrieved content, sir.",
     "github_cli": "I’ll use GitHub, sir.",
     "google_workspace": "I’ll work in Google Workspace, sir.",
@@ -259,7 +256,6 @@ TOOL_VOICE_FAILURE_NARRATIONS = {
     "edit": "The edit failed, sir.",
     "fetch_content": "I couldn’t fetch that content, sir.",
     "find": "The file lookup failed, sir.",
-    "generate_image": "The image generation failed, sir.",
     "get_search_content": "I couldn’t retrieve that content, sir.",
     "github_cli": "The GitHub action failed, sir.",
     "google_workspace": "The Google Workspace action failed, sir.",
@@ -511,11 +507,6 @@ def _tool_action_label(tool_name: str, args: object) -> str:
         emoji = _tool_emoji("agent_phone")
         return f"{emoji} Controlled phone: {args_label}" if args_label else f"{emoji} Controlled phone"
 
-    if tool_key == "generate_image":
-        prompt = _first_tool_arg(tool_args, "prompt", "description", max_length=140)
-        emoji = _tool_emoji("generate_image")
-        return f"{emoji} Generated image for \"{prompt}\"" if prompt else f"{emoji} Generated image"
-
     if tool_key.startswith("browser_"):
         emoji = _tool_emoji(tool_key)
         if tool_key == "browser_status":
@@ -628,9 +619,6 @@ def _tool_failure_label(tool_name: str, args: object) -> str:
     if tool_key == "agent_phone":
         args_label = _list_arg_label(tool_args.get("args"), max_length=140)
         return f"❌ {emoji} Phone action failed: {args_label}" if args_label else f"❌ {emoji} Phone action failed"
-    if tool_key == "generate_image":
-        prompt = _first_tool_arg(tool_args, "prompt", "description", max_length=140)
-        return f"❌ {emoji} Image generation failed for \"{prompt}\"" if prompt else f"❌ {emoji} Image generation failed"
     if tool_key.startswith("browser_"):
         readable = re.sub(r"[_-]+", " ", tool_key).strip()
         return f"❌ {emoji} {readable.capitalize()} failed"

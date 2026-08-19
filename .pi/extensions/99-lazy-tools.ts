@@ -4,8 +4,6 @@ import { Type } from "typebox";
 type CanonicalToolGroup =
   | "memory"
   | "code_docs"
-  | "image"
-  | "video"
   | "jarvis"
   | "minecraft_jarvis"
   | "github"
@@ -39,8 +37,6 @@ const ALWAYS_ON_TOOLS = [
 const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   memory: ["memory"],
   code_docs: ["code_search"],
-  image: ["generate_image"],
-  video: ["generate_video"],
   jarvis: ["jarvis", "smart_plug"],
   minecraft_jarvis: ["minecraft_jarvis"],
   github: ["github_cli"],
@@ -69,8 +65,6 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
 const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   memory: "memory for durable project/local facts/preferences/workflows; never store secrets",
   code_docs: "code_search for external code/docs/API examples",
-  image: "generate_image for local Qwen image generation or guided edits",
-  video: "generate_video for local LTX-2.3 Q8 MLX audio-video generation or image-to-audio-video clips",
   jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, local smart plugs, and VeSync/Levoit air purifier control",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   github: "github_cli for guarded official GitHub CLI access using the configured local token",
@@ -104,24 +98,6 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
     lines: [
       "Use `code_search` for external programming docs, API examples, library usage, and implementation patterns.",
       "For local repository search, use baseline `grep`, `find`, `ls`, and `read` first instead of external code search.",
-    ],
-  },
-  image: {
-    skill: "image generation",
-    lines: [
-      "Use `generate_image` for local PNG image generation or guided image edits on mac-mini-64. It uses only the approved Qwen image model; do not offer or request alternate models for this tool.",
-      "Default high-quality image profile is large 16:9, 30 steps. Keep prompts visually descriptive and change the aspect/size/steps only for an explicit speed, quality, or framing request.",
-      "For guided edits, pass a local PNG/JPEG/WebP/BMP `inputImagePath`, describe the transformation, and use `imageStrength` around 0.4 by default; higher values preserve more source-image influence.",
-      "Do not use shell, browser, ComfyUI, Draw Things, or alternate image generators unless explicitly requested.",
-    ],
-  },
-  video: {
-    skill: "video generation",
-    lines: [
-      "Use `generate_video` for local MP4 generation with synchronized audio or image-to-audio-video clips on mac-mini-64. It uses only the approved LTX-2.3 Q8 MLX model; do not offer or request alternate models for this tool.",
-      "Default quality profile is standard 16:9, 4 seconds, 24 fps, two-stage pipeline, low-RAM streaming. Use `seconds`, not frames; the worker converts to 33/65/97/129-frame counts and caps output around 5.4 seconds at 24 fps.",
-      "For image-to-audio-video, pass a local PNG/JPEG/WebP/BMP `inputImagePath` and describe camera/subject motion plus ambience, sound effects, and dialogue/audio cues.",
-      "Large audio-video clips can take a long time; use `pipeline: \"distilled\"` and `size: \"small\"` for faster previews. Do not substitute browser, ComfyUI, shell, or manual worker calls unless debugging.",
     ],
   },
   phone: {
