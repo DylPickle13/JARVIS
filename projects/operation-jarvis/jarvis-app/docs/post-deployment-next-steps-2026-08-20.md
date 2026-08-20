@@ -140,6 +140,16 @@ or Bridge-source experiments. The operational record is
   purifier validation is intentionally incomplete. The purifier remains off;
   do not retry writes unless explicitly requested.
 
+### Physical cellular/Tailscale finding — cold launch and relaunch pass
+
+With iPhone Wi-Fi disabled, cellular data active, and Tailscale connected, build
+8 reached `jarvisd` through the Mac's Tailscale userspace proxy. The daemon saw
+successful `/health` and `/api/v1/state` reads from the proxy rather than the
+home-LAN client address. A terminate/relaunch immediately repeated successful
+health and state polling, proving that the selected Tailscale endpoint persisted.
+No command endpoint was called. Live path-change/foreground recovery and Local
+Network permission behavior remain in the matrix.
+
 ### P0 — widget behavior — implementation complete; physical gate pending
 
 With Personal Team signing, App Groups and cross-target shared Keychain access are unavailable. Each widget therefore uses its own direct `jarvisd` discovery path; it does not actually consume the main app’s cache/config. Token-mode widgets cannot inherit the app token under this profile.
@@ -258,7 +268,7 @@ Each behavior has one owning test; other surfaces receive a representative smoke
 | Owner | Test | Pass condition |
 |---|---|---|
 | `jarvisd` + `jarvis-cli` | Observe idle collectors | No new status/list lifecycle events |
-| iPhone app | Launch before Wi-Fi, foreground recovery, Local Network permission, LAN/Tailscale failover | Automatic recovery and truthful error/path state |
+| iPhone app | Cellular/Tailscale cold launch and relaunch (pass); launch before Wi-Fi, live foreground recovery, and Local Network permission remain | Automatic recovery and truthful error/path state |
 | iPhone app | Every plug once (complete); do not retry purifier writes | Serialized desired-state writes, authoritative cache updates, and visible failures; purifier gate recorded incomplete |
 | iPhone app | Disposable service Stop → Start → Restart | Reversible action and one terminal service event per action |
 | Watch app direct | One representative plug Off → On on home LAN | Direct path, pending state, result, and refreshed state |
@@ -328,7 +338,9 @@ The deprecated dashboard and its room HUD, phone voice, camera/browser APIs, and
    pass on build 8.
 2. After warning the user, run idempotent `lamp off`, prove exactly one correlated result/event pair, then perform and restore one reversible relay change.
 3. Complete Watch offline/stale and iPhone/Watch widget/complication rows.
-4. Complete LAN/Tailscale recovery, disposable-service, event-audit, and accessibility rows.
+4. Complete the remaining live path-change/Local Network recovery,
+   disposable-service, event-audit, and accessibility rows; cellular/Tailscale
+   cold launch and relaunch already pass.
 5. Run the final comprehensive verification from fresh build state.
 6. Release 0.3.0 if every required row passes; the implementation is already
    split into reviewable local commits.

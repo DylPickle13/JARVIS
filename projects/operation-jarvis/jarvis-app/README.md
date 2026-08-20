@@ -13,8 +13,9 @@ coordinator with idempotent desired-state writes and honest stale/unavailable
 UI. JARVIS `0.2.0 (8)` is installed on both physical devices from the verified
 archive, with the final icon and both WatchConnectivity installed flags true.
 Physical consoles reached `reachable=true` and acknowledged repeated
-iPhone-to-Watch state delivery. The Watch-originated relay-command, widget,
-offline, failover, and accessibility rows remain outstanding.
+iPhone-to-Watch state delivery. Cellular/Tailscale cold launch and relaunch
+also pass. The Watch-originated relay-command, widget, offline, live path-change,
+and accessibility rows remain outstanding.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
