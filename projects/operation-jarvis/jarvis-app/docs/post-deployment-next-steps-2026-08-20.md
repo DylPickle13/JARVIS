@@ -1,9 +1,9 @@
 # Operation JARVIS app — integration-aware next steps
 
 **Revised:** 2026-08-20
-**Installed build:** 0.2.0 (7) on iPhone and Watch
+**Installed build:** 0.2.0 (8) on iPhone and Watch
 **Local candidate:** 0.2.0 (8)
-**Goal:** finish the remaining M3 physical matrix, run one final verification pass, split the working tree, and release 0.3.0.
+**Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
 ## 1. Current system boundary
 
@@ -106,7 +106,10 @@ The investigation separated build, registration, installation, and messaging:
   the developer service succeeds;
 - iPhone now reports `paired=true installed=true`, and Watch reports
   `companionAppInstalled=true`;
-- JARVIS `0.2.0 (7)` is installed on both devices with the requested icon;
+- JARVIS `0.2.0 (8)` is installed on both devices from the same verified
+  archive with the requested icon;
+- physical consoles confirmed `reachable=true`, acknowledged repeated
+  iPhone-to-Watch state delivery, and preserved both installed flags;
 - removing the unnecessary `ALLOW_TARGET_PLATFORM_SPECIALIZATION` setting
   fixed combined simulator/package builds without changing signed physical
   packaging;
@@ -114,8 +117,9 @@ The investigation separated build, registration, installation, and messaging:
   delivered state; duplicate request IDs are also covered by an AppState unit
   test.
 
-Installed flags are closed. Physical sustained reachability, a Watch-originated
-state round trip, correlated relay command result, timeout, and offline behavior
+Installed flags, bidirectional reachability observation, and acknowledged
+iPhone-to-Watch state delivery are closed. A forced Watch-originated state
+round trip, correlated relay command result, timeout, and offline behavior
 remain open. Do not repeat bundle-ID, icon, `Watch/` embedding, Available Apps,
 or Bridge-source experiments. The operational record is
 [`watch-companion-packaging-deployment-and-recovery-2026-08-20.md`](watch-companion-packaging-deployment-and-recovery-2026-08-20.md).
@@ -288,20 +292,17 @@ After all fixes and physical checks:
 
 This replaces the former baseline, per-fix full suite, per-commit full suite, and release full suite duplication.
 
-### Phase E — split the working tree
+### Phase E — split the working tree — complete
 
-Suggested review boundaries:
+The broad implementation was organized into reviewable local commits:
 
-1. `test: add jarvisd and JARVISKit regression harnesses`
-2. `fix(jarvisd): harden the native control plane and silence collector events`
-3. `refactor(operation-jarvis): retire the dashboard and use jarvisd events`
-4. `fix(ios): make lifecycle, polling, writes, and stale UI reliable`
-5. `build: make packaging and Dylan-only deployment deterministic`
-6. `feat(watch): complete companion relay results and deduplication`
-7. `feat(widgets): add truthful desired-state plug widgets`
-8. `docs: document the dashboard-free Operation JARVIS architecture`
+1. `590f937` — retire the dashboard runtime;
+2. `4e47501` — harden the native `jarvisd` control plane;
+3. `042fdd4` — complete reliable iPhone, Watch, widgets, packaging, and icons;
+4. `b36877f` — record companion deployment and release operations.
 
-Run only tests relevant to each staged commit; the comprehensive suite is owned by Phase D.
+The comprehensive suite remains owned by Phase D; do not repeat it solely for
+commit organization.
 
 ### Phase F — close M2.1/M3 and release 0.3.0
 
@@ -321,9 +322,13 @@ The deprecated dashboard and its room HUD, phone voice, camera/browser APIs, and
 
 ## 6. Immediate order
 
-1. With both physical apps foregrounded, capture `reachable=true` and complete a state-only Watch relay round trip.
+1. With both physical apps foregrounded, repeat the forced-direct-failure test
+   until the Watch-originated state request completes; baseline
+   `reachable=true` and acknowledged iPhone-to-Watch state delivery already
+   pass on build 8.
 2. After warning the user, run idempotent `lamp off`, prove exactly one correlated result/event pair, then perform and restore one reversible relay change.
 3. Complete Watch offline/stale and iPhone/Watch widget/complication rows.
 4. Complete LAN/Tailscale recovery, disposable-service, event-audit, and accessibility rows.
 5. Run the final comprehensive verification from fresh build state.
-6. Split the working tree into reviewable commits and release 0.3.0 if every required row passes.
+6. Release 0.3.0 if every required row passes; the implementation is already
+   split into reviewable local commits.

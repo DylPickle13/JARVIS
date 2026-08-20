@@ -564,10 +564,10 @@ clean reinstall is required.
 
 As of the latest pass:
 
-- JARVIS `0.2.0 (7)` is installed on the iPhone and Watch with the requested
-  iOS/watchOS icon;
-- the next local candidate is `0.2.0 (8)` after removing the erroneous platform
-  specialization setting;
+- JARVIS `0.2.0 (8)` is installed on the iPhone and Watch from the same
+  verified archive with the requested iOS/watchOS icon;
+- build 8 removes the erroneous platform-specialization setting and passes the
+  combined simulator, archive/export, and deep-signature checks;
 - the iPhone parent contains the Watch app under `JARVIS.app/Watch/`;
 - the `.watchkitapp` and nested widget identities are correct;
 - the Personal Team archive/export and deep signatures pass;
@@ -581,11 +581,17 @@ As of the latest pass:
 - the paired simulator reached both directions and delivered state using a
   write-blocking local mock;
 - automated duplicate-request coverage proves one execution;
-- the last attached physical consoles did not sustain `reachable=true`, so the
-  physical state-request and command-result relay gates remain open;
-- the lamp and purifier remain off; no hardware command was issued during the
-  packaging, icon, or local-only verification work.
+- attached physical build-8 consoles reached `reachable=true`; the iPhone sent
+  repeated state messages, received acknowledgements, and the Watch received
+  the corresponding state payloads;
+- the Watch developer tunnel can still transiently return RemotePairing error
+  1001, but retrying the existing non-destructive pairing/tunnel path recovers;
+- the forced Watch-originated state request and command-result relay gates
+  remain open;
+- no plug or purifier command was issued during the build-8 deployment and
+  state-only registration checks.
 
-The next physical pass begins with both apps foregrounded, a state-only relay
-round trip, and then the guarded idempotent lamp smoke. Do not repeat bundle-ID,
-icon, embedding, Available Apps, or profile-source experiments.
+The next physical pass begins with both apps foregrounded and a forced
+Watch-originated state request, followed by the guarded idempotent lamp smoke.
+Do not repeat bundle-ID, icon, embedding, Available Apps, or profile-source
+experiments.
