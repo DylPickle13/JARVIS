@@ -27,8 +27,8 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `30-google-access.ts` — Google Workspace tool.
 - `34-maps.ts` — Google Maps places/geocode/routes natural-language tool.
 - `35-memory.ts` — explicit durable project-local memory; no prompt-time auto-recall or system-prompt mutation.
-- `45-jarvis.ts` — Operation JARVIS dashboard/Cast, smart plugs, and VeSync/Levoit air purifier actions.
-- `46-local-pi-session-status.ts` — dashboard-visible local Pi session heartbeat.
+- `45-jarvis.ts` — Operation JARVIS Cast, smart plugs, and VeSync/Levoit air purifier actions.
+- `46-local-pi-session-status.ts` — local Pi session heartbeat consumed by `jarvisd`.
 - `50-browser/` — visible Chrome control through a persistent CDP bridge, hard-scoped to a dedicated JARVIS window in the user's signed-in profile.
 - `50-minecraft-jarvis-chat.ts` — Minecraft jarvis bot chat/control.
 - `55-ssh-exec.ts` — unrestricted configured SSH execution plus directly attached and stateful interactive PTY sessions.
@@ -71,7 +71,7 @@ Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full g
 
 Durable memory is explicit-only. Loading the `memory` group preserves search/remember/update/forget/list/status functionality without performing prompt-time recall or changing the system prompt between user turns.
 
-The `jarvis` group includes Operation JARVIS actions for dashboard/Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
+The `jarvis` group includes Operation JARVIS actions for Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
 
 Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: load `minecraft_jarvis` before calling `minecraft_jarvis`, or load `github` before calling `github_cli`. Ordinary local `git` operations continue to use the baseline coding shell.
 

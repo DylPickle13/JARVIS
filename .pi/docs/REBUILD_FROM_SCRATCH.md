@@ -39,9 +39,9 @@ Also install/configure as needed:
 
 - Pi CLI: [pi.dev](https://pi.dev) / `@earendil-works/pi-coding-agent`.
 - `gws` CLI for Google Workspace access.
-- Android platform-tools if the dashboard Phone ADB status tile is used, plus SSH for configured remote hosts.
+- SSH for explicitly configured remote hosts, if remote tools are used.
 - Google Chrome or Chromium for the visible browser extension.
-- Access to the local oMLX/OpenAI-compatible endpoints used for Pi provider setup, PDF conversion, ASR, vision, and embeddings.
+- Access to the local oMLX/OpenAI-compatible endpoints used for Pi provider setup, PDF conversion, ASR, and embeddings.
 
 Install or update Pi:
 
@@ -63,7 +63,7 @@ git clone <REPO_URL> JARVIS
 cd /path/to/JARVIS
 ```
 
-If you use a different path, update path-sensitive values in `.env`, `.pi/settings.json`, launchd plists, dashboard service files, and any SSH/watchdog scripts.
+If you use a different path, update path-sensitive values in `.env`, `.pi/settings.json`, the native `jarvisd` launchd plists, and any SSH/watchdog scripts.
 
 ## 3. Restore configuration
 
@@ -98,11 +98,11 @@ Then fill subsystem settings as needed:
 
 - Web/search: optional `EXA_API_KEY`; optional `YOUTUBE_API_KEY` or `GOOGLE_API_KEY` for `web_search` YouTube metadata/search
 - Maps: `GOOGLE_MAPS_API_KEY` plus optional `GOOGLE_MAPS_DEFAULT_*` and `GOOGLE_MAPS_HOME_ADDRESS`
-- oMLX/PDF/voice/vision/embeddings: `OMLX_API_KEY`, `OMLX_64_BASE_URL`, optional `OMLX_PDF_*`, `DISCORD_VOICE_*`, `SESSION_SEARCH_*`, `JARVIS_DASHBOARD_CAMERA_*`
+- oMLX/PDF/voice/embeddings: `OMLX_API_KEY`, `OMLX_64_BASE_URL`, optional `OMLX_PDF_*`, `DISCORD_VOICE_*`, `SESSION_SEARCH_*`
 - Discord helpers: `DISCORD_CRON_*`, `DISCORD_PING_*`, `JARVIS_DISCORD_SEND_FILE_MAX_BYTES`
 - Browser: optional `PI_BROWSER_CHROME_PATH`, `PI_BROWSER_PROFILE_DIR`, `PI_BROWSER_KEEP_OPEN_ON_SHUTDOWN`
-- Operation JARVIS: `JARVIS_DASHBOARD_*`, `SPOTIFY_*`, `KASA_*`, `VESYNC_*`, `JARVIS_AIR_PURIFIER_*`
-- Phone/dashboard status: `JARVIS_DASHBOARD_PHONE_*`
+- Operation JARVIS: `JARVISD_*`, `JARVIS_API_TOKEN`, `JARVIS_EMIT_EVENTS`, `SPOTIFY_*`, `KASA_*`, `VESYNC_*`, `JARVIS_AIR_PURIFIER_*`
+- Native Apple clients: `jarvis-app/` uses `jarvisd` discovery and endpoint settings; no client secrets are stored in the app bundle.
 
 Never commit `.env` or copied secret files.
 
@@ -138,14 +138,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt -e .
 ```
 
-## 5. Install Node/dashboard/browser dependencies
-
-Dashboard dependencies:
-
-```bash
-cd /path/to/JARVIS/projects/operation-jarvis/dashboard
-npm install
-```
+## 5. Install Node/browser dependencies
 
 Visible-browser extension dependencies:
 
@@ -159,18 +152,6 @@ Shared extension runtime dependencies (currently `node-pty` for interactive SSH 
 ```bash
 cd /path/to/JARVIS/.pi/extensions/lib
 npm install
-```
-
-Start the dashboard manually:
-
-```bash
-npm start
-```
-
-Optional login service:
-
-```bash
-npm run install-service
 ```
 
 ## 6. Reinstall Pi packages/extensions
@@ -222,7 +203,7 @@ cd /path/to/JARVIS
 .pi/smoke-test.sh
 ```
 
-That script is intentionally read-only: it checks files, local package installs, command availability, CLI `--help` paths, env key names, runtime-data presence, and doc links. It does **not** start services, call LLMs, post to Discord, launch Chrome, touch the phone, control Cast/Spotify/Kasa, call dashboard/oMLX/Google APIs, or open SQLite status commands that could initialize databases.
+That script is intentionally read-only: it checks files, local package installs, command availability, CLI `--help` paths, env key names, runtime-data presence, and doc links. It does **not** start services, call LLMs, post to Discord, launch Chrome, touch Apple devices, control Cast/Spotify/Kasa, call oMLX/Google APIs, or open SQLite status commands that could initialize databases.
 
 Deeper local status checks, if you intentionally want to open/read the local SQLite-backed runners:
 
@@ -243,10 +224,10 @@ cd /path/to/JARVIS/projects/operation-jarvis
 ./jarvis-cli --json purifier-status
 ```
 
-Dashboard check:
+Native daemon health check (only when `jarvisd` is intentionally running):
 
 ```bash
-curl -s http://127.0.0.1:8787/api/jarvis/status | python3 -m json.tool
+curl -fsS http://127.0.0.1:8790/health | python3 -m json.tool
 ```
 
 Browser automation checks:
@@ -348,7 +329,7 @@ Do not run another bot process with the same token at the same time. The root bo
 - [ ] `session_search.py --json status` works; `index` works if embedding endpoint is available.
 - [ ] `runner.py --json status` works for Discord cron.
 - [ ] `jarvis-cli --json status --no-cast` works.
-- [ ] Dashboard starts and answers `/api/jarvis/status`.
+- [ ] `jarvisd` starts and answers `/health`; native app verification passes.
 - [ ] `gws --help` and `google_workspace` work if Workspace access is needed.
 - [ ] `maps({ query: "status" })` works if Maps access is needed.
 - [ ] Browser tools load with `/load-tools browser`; `browser_open` is used only when launching Chrome is intended.
@@ -367,7 +348,6 @@ Do not run another bot process with the same token at the same time. The root bo
 | Discord cron cannot post | Check `DISCORD_BOT_TOKEN`, guild/channel IDs, bot permissions, and `runner.py --json setup`. |
 | Session search fails | `status` first; then verify embedding endpoint/model and `SESSION_SEARCH_*` env vars. |
 | Memory unavailable | Load the `memory` group, run `memory` with `action: "status"`, and verify `.pi/memory/memory.sqlite`; automatic prompt-time recall is intentionally disabled. |
-| `jarvis` tool fails | Run `projects/operation-jarvis/jarvis-cli --json help`; check Operation venv, dashboard, Cast, Spotify, Kasa env as appropriate. |
-| Dashboard Phone tile unavailable | Check `JARVIS_DASHBOARD_PHONE_ADB_SERIAL`, the local ADB path, USB connection, and Android debugging authorization. |
+| `jarvis` tool fails | Run `projects/operation-jarvis/jarvis-cli --json help`; check the Operation venv, Cast, Spotify, Kasa, purifier, and `jarvisd` configuration as appropriate. |
 
 Keep this file and [`PI_EXTENSIONS.md`](PI_EXTENSIONS.md) updated whenever a tool, env var, runtime DB, or package changes.

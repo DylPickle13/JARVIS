@@ -1,10 +1,8 @@
 """Shared deterministic control policy for every Operation JARVIS voice adapter.
 
-Audio capture, VAD, and playback remain transport-specific (Discord, dashboard
-browser, and Raspberry Pi). Those adapters send busy-only candidates through
-Whisper, then use this module for the final control decision. Browser clients do
-not duplicate the transcript policy; they trust the central room-audio interrupt
-endpoint's decision.
+Audio capture, VAD, and playback remain transport-specific (Discord and
+Raspberry Pi). Those adapters send busy-only candidates through Whisper, then
+use this module for the final control decision.
 """
 
 from __future__ import annotations

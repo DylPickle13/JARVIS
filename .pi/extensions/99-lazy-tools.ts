@@ -63,7 +63,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
 const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   memory: "memory for durable project/local facts/preferences/workflows; never store secrets",
   code_docs: "code_search for external code/docs/API examples",
-  jarvis: "Operation JARVIS for dashboard phone camera vision, Google Cast speech/media, local smart plugs, and VeSync/Levoit air purifier control",
+  jarvis: "Operation JARVIS for Google Cast speech/media, local smart plugs, and VeSync/Levoit air purifier control",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   github: "github_cli for guarded official GitHub CLI access using the configured local token",
   google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
@@ -110,14 +110,13 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   jarvis: {
     skill: "operation-jarvis",
     lines: [
-      "For any home-control request (lights/plugs/switches/power, Cast/TV/speakers, camera/view, air purifier), first call `load_tools({ groups: [\"jarvis\"] })`; then use the exact unlocked `jarvis` or `smart_plug` tool. Do not read files, run shell/CLI, SSH, or guess commands unless the JARVIS tool fails.",
+      "For any home-control request (lights/plugs/switches/power, Cast/TV/speakers, air purifier), first call `load_tools({ groups: [\"jarvis\"] })`; then use the exact unlocked `jarvis` or `smart_plug` tool. Do not read files, run shell/CLI, SSH, or guess commands unless the JARVIS tool fails.",
       "Safe checks: `jarvis({ action: \"help\" })`, `jarvis({ action: \"status\", noCast: true })`, `jarvis({ action: \"cast-status\", device: \"speakers\" })`, `smart_plug({ action: \"list\" })`, or `jarvis({ action: \"purifier-status\" })`.",
-      "Dashboard camera actions: `jarvis({ action: \"look\" })`, `jarvis({ action: \"video\", duration: 5 })`, `jarvis({ action: \"video-until\", condition: \"a person is visible\", maxDuration: 60 })`, or `jarvis({ action: \"analyze-view\", question: \"What is visible?\" })`.",
       "Cast actions: `jarvis({ action: \"speak\", text: \"JARVIS online.\", device: \"speakers\" })`, `jarvis({ action: \"cast-status\", device: \"tv\" })`, `jarvis({ action: \"cast-volume\", level: 25 })`, `jarvis({ action: \"cast-youtube\", query: \"relaxing jazz\", device: \"tv\" })`, and related `cast-mute`, `cast-stop`, `cast-play-url` actions. `cast-stop` quits the Cast app by default.",
       "Spotify actions include `cast-spotify-devices`, play/resume with `cast-spotify`, pause/next/previous/volume, queue read/add, seek, shuffle, and repeat. Use `device: \"tv\"`/`\"speakers\"` for configured aliases or an exact `spotifyDeviceName`; prefer names over changing IDs and never expose credentials.",
       "Smart-plug/light phrases such as 'turn on/off the light/lamp/pedalboard/tv plug' go directly to the dedicated local-only tool: `smart_plug({ action: \"status\"|\"on\"|\"off\"|\"toggle\", plug: \"<configured-plug-name>\" })`. Run `smart_plug({ action: \"list\" })` only if the alias is unclear, and summarize the resulting state after writes.",
       "Air-purifier actions use exactly two `jarvis` actions: `jarvis({ action: \"purifier-status\" })` for read-only status/filter/air-quality info, and `jarvis({ action: \"purifier-set\", setting: \"mode\", value: \"auto\" })` for writes. Supported settings: power, mode, speed, display, child-lock, light-detection, auto-preference, timer. VeSync writes may take more than a minute; wait for the tool result before issuing another purifier command.",
-      "Always keep camera recording bounded. For spoken output, keep text short and keep full details in Discord.",
+      "For spoken output, keep text short and keep full details in Discord.",
     ],
   },
   minecraft_jarvis: {
@@ -320,7 +319,7 @@ export default function lazyTools(pi: ExtensionAPI) {
     description: LOAD_TOOLS_DESCRIPTION,
     promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET,
     promptGuidelines: [
-      "Call load_tools before any optional group listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, camera/view, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
+      "Call load_tools before any optional group listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
       "Web: `web_search`=discover (`provider: \"youtube\"` for YouTube), `fetch_content`=static, `get_search_content`=stored. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",

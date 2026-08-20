@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Read-only local smoke test for JARVIS/Pi wiring.
 # This script deliberately avoids starting services, calling LLMs, posting to Discord,
-# launching browsers, touching hardware, contacting dashboard/oMLX/Google/Spotify/Cast,
+# launching browsers, touching hardware, contacting oMLX/Google/Spotify/Cast,
 # or opening SQLite databases in ways that could create/migrate them.
 
 set -u
@@ -10,8 +10,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 
 export PYTHONDONTWRITEBYTECODE=1
-export JARVIS_DASHBOARD_EMIT_EVENTS=0
-export JARVIS_DASHBOARD_AUTO_EVENTS=0
+export JARVIS_EMIT_EVENTS=0
 
 PASS_COUNT=0
 WARN_COUNT=0
@@ -176,7 +175,7 @@ elif command -v python3 >/dev/null 2>&1; then
 fi
 
 section "Safety policy"
-info "Read-only local checks only. This script will not start JARVIS, call an LLM, post to Discord, launch Chrome, touch the phone, control Cast/Spotify/Kasa, or contact dashboard/oMLX/Google APIs."
+info "Read-only local checks only. This script will not start JARVIS, call an LLM, post to Discord, launch Chrome, touch Apple devices, control Cast/Spotify/Kasa, or contact oMLX/Google APIs."
 info "SQLite status commands are intentionally not run here because some runners create/init databases on first connect."
 
 section "Repository files"
@@ -218,7 +217,6 @@ require_command "pi"
 require_command "node"
 require_command "npm"
 require_command "ffmpeg"
-require_command "adb"
 warn_command "pdftotext"
 warn_command "trash"
 warn_command "gws"
@@ -258,8 +256,6 @@ require_file "shared extension runtime package lock" ".pi/extensions/lib/package
 require_file "SSH PTY dependency" ".pi/extensions/lib/node_modules/node-pty/package.json"
 require_file "headless terminal dependency" ".pi/extensions/lib/node_modules/@xterm/headless/package.json"
 require_file "SSH PTY helper" ".pi/extensions/lib/ssh-pty.ts"
-warn_file "dashboard package.json" "projects/operation-jarvis/dashboard/package.json"
-warn_file "dashboard node_modules" "projects/operation-jarvis/dashboard/node_modules"
 warn_executable "Operation JARVIS venv Python" "projects/operation-jarvis/.venv/bin/python"
 warn_executable "smart-plug venv Python" "projects/operation-jarvis/smart-plug/.venv/bin/python"
 warn_file "Google Chrome app" "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -295,7 +291,7 @@ NODE
 fi
 
 if command -v node >/dev/null 2>&1; then
-  run_check "native-host SSH/phone topology" node - <<'NODE'
+  run_check "native-host SSH topology" node - <<'NODE'
 const fs = require('fs');
 const hosts = JSON.parse(fs.readFileSync('.pi/ssh-hosts.json', 'utf8'));
 const aliases = hosts.flatMap((host) => host.aliases || []).sort();
@@ -304,15 +300,7 @@ for (const localAlias of ['mac-mini-64', 'jarvis-pi']) {
 }
 const ssh = fs.readFileSync('.pi/extensions/55-ssh-exec.ts', 'utf8');
 if (!ssh.includes('const EFFECTIVE_DEFAULT_HOST_ALIAS = DEFAULT_HOST_ALIAS;')) throw new Error('SSH tool regained an implicit host default');
-const dashboard = fs.readFileSync('projects/operation-jarvis/dashboard/src/server.mjs', 'utf8');
-const phoneStatus = dashboard.split('async function readPhoneAdbStatus()', 2)[1]?.split('async function handlePhoneAdbPing', 1)[0] || '';
-for (const forbidden of ['PHONE_ADB_SSH', "execFileAsync('ssh'"]) {
-  if (phoneStatus.includes(forbidden)) throw new Error(`dashboard phone check regained SSH transport: ${forbidden}`);
-}
-for (const required of ["'/opt/homebrew/bin/adb'", "execFileAsync('/bin/bash'", "host: 'local'"]) {
-  if (!dashboard.includes(required)) throw new Error(`native phone wiring missing: ${required}`);
-}
-console.log(`remote SSH aliases: ${aliases.join(', ')}; phone transport: local`);
+console.log(`remote SSH aliases: ${aliases.join(', ')}`);
 NODE
 fi
 
@@ -529,7 +517,7 @@ PY
   run_check "session-search CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/session-search/session_search.py --help
   run_check "discord-cron CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/discord-cron/runner.py --help
 fi
-run_check "Operation JARVIS CLI help" env PYTHONDONTWRITEBYTECODE=1 JARVIS_DASHBOARD_EMIT_EVENTS=0 JARVIS_DASHBOARD_AUTO_EVENTS=0 projects/operation-jarvis/jarvis-cli --help
+run_check "Operation JARVIS CLI help" env PYTHONDONTWRITEBYTECODE=1 JARVIS_EMIT_EVENTS=0 projects/operation-jarvis/jarvis-cli --help
 
 section "Runtime data presence only"
 warn_file "memory DB present" ".pi/memory/memory.sqlite"
@@ -615,8 +603,30 @@ print('relative Markdown links ok')
 PY
 fi
 
+section "Complete removal and runtime checks"
+if [[ -e "projects/operation-jarvis/dashboard" ]]; then
+  fail "retired dashboard source tree still exists"
+else
+  pass "retired dashboard source tree absent"
+fi
+if launchctl print "gui/$(id -u)/com.operation-jarvis.dashboard" >/dev/null 2>&1; then
+  fail "retired dashboard LaunchAgent is still loaded"
+else
+  pass "retired dashboard LaunchAgent is unloaded"
+fi
+if lsof -nP -iTCP:8787 -sTCP:LISTEN >/dev/null 2>&1; then
+  fail "retired dashboard port 8787 is listening"
+else
+  pass "retired dashboard port 8787 is unused"
+fi
+if [[ -e "$HOME/Library/LaunchAgents/com.operation-jarvis.dashboard.plist" ]]; then
+  fail "retired dashboard LaunchAgent plist still exists"
+else
+  pass "retired dashboard LaunchAgent plist absent"
+fi
+
 section "Skipped by design"
-info "No Discord API calls, no discord_bot.py startup, no dashboard HTTP requests, no oMLX requests, no web/Google/YouTube calls, no Chrome launch, no phone/ADB commands, no Cast/Spotify/Kasa commands."
+info "No Discord API calls, no discord_bot.py startup, no oMLX requests, no web/Google/YouTube calls, no Chrome launch, no phone/ADB commands, no Cast/Spotify/Kasa commands."
 info "For deeper subsystem testing, follow .pi/docs/REBUILD_FROM_SCRATCH.md and run only the specific checks you intend."
 
 section "Summary"

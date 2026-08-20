@@ -24,7 +24,7 @@ function compactInstructions(instructions: string, payload: any): string {
       "- Ask one clarification only if required.",
       "- Memory: load `memory` first; stable facts only; no secrets/sensitive data.",
       "- Web: `web_search` discover, `fetch_content` text/pages, `get_search_content` stored; load `browser` for rendered/interactive/logged-in/forms/screenshots/open-use-check sites.",
-      "- Optional tool schemas require `load_tools`; its schema description is the canonical group inventory. Lights/plugs/switches/Cast/camera/purifier => load `jarvis` and use `smart_plug`/`jarvis`, no shell/file fallback unless the tool fails; cron checks use `discord_cron` unless OS cron/launchd is explicit.",
+      "- Optional tool schemas require `load_tools`; its schema description is the canonical group inventory. Lights/plugs/switches/Cast/purifier => load `jarvis` and use `smart_plug`/`jarvis`, no shell/file fallback unless the tool fails; cron checks use `discord_cron` unless OS cron/launchd is explicit.",
       "- Be concise; show paths.",
       "",
     ].join("\n"),
@@ -58,7 +58,7 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   // Optional lazy-loaded tools: preserve terse top-level descriptions.
   minecraft_jarvis: "Minecraft bot chat/control; use direct short plain messages; no SSH/shell/slash.",
   github_cli: "Run official gh CLI with args; loads GitHub token from .env and redacts it.",
-  jarvis: "Operation JARVIS dashboard/camera/Cast/Spotify/air-purifier helper.",
+  jarvis: "Operation JARVIS Cast/Spotify/air-purifier helper.",
   smart_plug: "Local smart-plug control.",
   google_workspace: "Google Workspace API for Drive/Gmail/Docs/Sheets/Calendar.",
   discord_cron: "Manage scheduled Pi/JARVIS jobs posted to Discord.",

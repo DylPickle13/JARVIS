@@ -2,7 +2,7 @@
 
 Standalone VeSync/Levoit air purifier control utilities for Operation JARVIS.
 
-This subsystem provides a clean CLI and Python package. It is wired into Operation JARVIS through `projects/operation-jarvis/jarvis.py` and the optional Pi `jarvis` tool group as `purifier-status` and `purifier-set`; the dashboard also reads status for the compact header air-quality line.
+This subsystem provides a clean CLI and Python package. It is wired into Operation JARVIS through `projects/operation-jarvis/jarvis.py`, `jarvisd`, and the optional Pi `jarvis` tool group as `purifier-status` and `purifier-set`.
 
 Target device: **Levoit Vital 200S-P / Vital 200S**, VeSync model family `LAP-V201S`.
 
@@ -37,7 +37,7 @@ JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS=150
 
 `JARVIS_AIR_PURIFIER_NAME` is optional if there is only one purifier on the account.
 
-The CLI caches VeSync's access token in the ignored `air-purifier/.vesync_auth` file and reuses it across dashboard/tool processes. Set `JARVIS_AIR_PURIFIER_AUTH_PATH` to override that private path. This avoids repeated password logins and VeSync's `REQUEST_HIGH` throttle; never commit the token file.
+The CLI caches VeSync's access token in the ignored `air-purifier/.vesync_auth` file and reuses it across JARVIS tool and `jarvisd` processes. Set `JARVIS_AIR_PURIFIER_AUTH_PATH` to override that private path. This avoids repeated password logins and VeSync's `REQUEST_HIGH` throttle; never commit the token file.
 
 VeSync writes may take several seconds, and occasionally more than a minute, to appear in status polling. The CLI waits up to `JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS` after write commands so returned status is less likely to be stale. If VeSync accepts a write but status is still stale at the deadline, the command exits successfully with `verification_pending: true` instead of treating the accepted write as a hard failure.
 
@@ -107,22 +107,6 @@ If multiple purifiers are on the account, pass a device name/CID/model:
 - Child lock on/off
 - Light detection on/off
 - Timer set/clear
-
-## Dashboard integration
-
-The dashboard reads this CLI in read-only mode and shows a compact header line such as:
-
-```text
-AIR PM2.5: 4 · AUTO · 96%
-```
-
-The dashboard endpoint is:
-
-```text
-GET /api/jarvis/air-purifier/status
-```
-
-It only reads status, caches results, and does not send purifier control commands.
 
 ## JARVIS tool integration
 

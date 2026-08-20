@@ -99,7 +99,7 @@ def _pid_is_alive(pid: object) -> bool:
 
 
 def _update_pi_session_status(session_id: str, patch: dict[str, Any] | None = None, *, remove: bool = False) -> None:
-	"""Publish active Pi prompt generation state for the room dashboard."""
+	"""Publish active Pi prompt generation state for local JARVIS telemetry."""
 	if not session_id:
 		return
 

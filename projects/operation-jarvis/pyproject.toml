@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "operation-jarvis"
 version = "0.1.0"
-description = "Unified Discord voice + dashboard phone camera + Google Cast + smart-plug real-world JARVIS project"
+description = "Unified Discord voice + Google Cast + smart-plug real-world JARVIS project"
 requires-python = ">=3.9"
 dependencies = [
   "PyChromecast==13.1.0",

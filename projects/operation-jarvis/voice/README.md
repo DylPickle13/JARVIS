@@ -6,7 +6,7 @@ Live Discord voice-call subsystem for Operation JARVIS.
 
 The main root `discord_bot.py` loads `projects/operation-jarvis/voice/discord_voice.py` directly so one Discord bot process handles text channels, voice-channel text chat, and the `jarvis` voice channel. `discord_voice_bot.py` remains available as a standalone runner for isolated testing.
 
-Shared deterministic control policy lives in `voice_commands.py`. Discord and the room-audio backend import that neutral module; dashboard browser clients send busy clips to the room-audio interrupt endpoint and trust its decision. Capture, VAD, and playback remain adapter-specific so one transport failure cannot break every voice surface.
+Shared deterministic control policy lives in `voice_commands.py`. Discord and the room-audio backend import that neutral module. Capture, VAD, and playback remain adapter-specific so one transport failure cannot break every voice surface.
 
 ## Quick runbook
 

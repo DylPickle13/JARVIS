@@ -356,7 +356,7 @@ class AirPurifierController:
         manager = self._manager()
         async with manager as active_manager:
             # CLI calls are short-lived, so persist VeSync's token between processes.
-            # Repeating the two-request password login for every dashboard poll can
+            # Repeating the two-request password login for every state poll can
             # trigger VeSync's REQUEST_HIGH throttle even with few control writes.
             if self.settings.auth_path.exists():
                 try:

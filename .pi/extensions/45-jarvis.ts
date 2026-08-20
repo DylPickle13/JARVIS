@@ -13,11 +13,6 @@ const DEFAULT_JARVIS_ROOT = resolve(process.env.JARVIS_ROOT || process.cwd());
 const ACTIONS = [
   "help",
   "status",
-  "look",
-  "photo",
-  "video",
-  "video-until",
-  "analyze-view",
   "speak",
   "cast-status",
   "cast-volume",
@@ -72,9 +67,6 @@ type JarvisParams = {
   action: JarvisAction;
   device?: Device;
   text?: string;
-  question?: string;
-  prompt?: string;
-  condition?: string;
   query?: string;
   url?: string;
   contentType?: string;
@@ -96,26 +88,7 @@ type JarvisParams = {
   enqueue?: boolean;
   noSearch?: boolean;
   noCast?: boolean;
-  duration?: number;
-  maxDuration?: number;
-  interval?: number;
-  output?: string;
-  timeout?: number;
-  dashboardUrl?: string;
-  quality?: number;
   castTimeout?: number;
-  omlxBaseUrl?: string;
-  omlxTimeout?: number;
-  model?: string;
-  fallbackModel?: string;
-  systemPrompt?: string;
-  maxTokens?: number;
-  temperature?: number;
-  imageMaxSide?: number;
-  jpegQuality?: number;
-  skipModelCheck?: boolean;
-  saveFrames?: boolean;
-  frameOutputDir?: string;
   voice?: string;
   rate?: number;
   maxChars?: number;
@@ -231,25 +204,6 @@ function add(args: string[], flag: string, value: string | number | boolean | un
   else args.push(flag, String(value));
 }
 
-function appendDashboardCameraArgs(args: string[], params: JarvisParams) {
-  add(args, "--dashboard-url", params.dashboardUrl);
-  add(args, "--timeout", params.timeout);
-}
-
-
-function appendVisionArgs(args: string[], params: JarvisParams) {
-  add(args, "--omlx-base-url", params.omlxBaseUrl);
-  add(args, "--omlx-timeout", params.omlxTimeout);
-  add(args, "--model", params.model);
-  if (params.fallbackModel !== undefined) add(args, "--fallback-model", params.fallbackModel);
-  add(args, "--system-prompt", params.systemPrompt);
-  add(args, "--max-tokens", params.maxTokens);
-  add(args, "--temperature", params.temperature);
-  add(args, "--image-max-side", params.imageMaxSide);
-  add(args, "--jpeg-quality", params.jpegQuality);
-  add(args, "--skip-model-check", params.skipModelCheck);
-}
-
 function appendSpeakArgs(args: string[], params: JarvisParams) {
   add(args, "--device", params.device ?? "speakers");
   add(args, "--cast-timeout", params.castTimeout);
@@ -272,28 +226,6 @@ function appendSpotifyArgs(args: string[], params: JarvisParams) {
   appendSpotifyControlArgs(args, params);
   add(args, "--spotify-type", params.spotifyType);
   add(args, "--market", params.market);
-}
-
-function appendAnalyzeArgs(args: string[], params: JarvisParams) {
-  appendDashboardCameraArgs(args, params);
-  appendVisionArgs(args, params);
-  add(args, "--duration", params.duration);
-  add(args, "--interval", params.interval);
-  add(args, "--prompt", params.prompt ?? params.question);
-  add(args, "--output", params.output);
-  add(args, "--quality", params.quality);
-  if (params.saveFrames === false) args.push("--no-save-frames");
-  else if (params.saveFrames === true) args.push("--save-frames");
-  add(args, "--frame-output-dir", params.frameOutputDir);
-}
-
-function appendVideoUntilArgs(args: string[], params: JarvisParams) {
-  appendDashboardCameraArgs(args, params);
-  appendVisionArgs(args, params);
-  add(args, "--max-duration", params.maxDuration);
-  add(args, "--interval", params.interval);
-  add(args, "--output", params.output);
-  add(args, "--quality", params.quality);
 }
 
 function appendSmartPlugArgs(args: string[], params: Pick<JarvisParams, "plugConfig" | "discoveryTarget" | "plugTimeout">) {
@@ -396,43 +328,11 @@ function buildJarvisArgs(params: JarvisParams): string[] {
 
   if (action === "status") {
     const args = ["status"];
-    appendDashboardCameraArgs(args, params);
     add(args, "--device", params.device ?? "tv");
     add(args, "--cast-timeout", params.castTimeout);
     add(args, "--no-cast", params.noCast);
     return args;
   }
-
-  if (action === "look" || action === "photo") {
-    const args = ["look"];
-    appendDashboardCameraArgs(args, params);
-    add(args, "--output", params.output);
-    add(args, "--quality", params.quality);
-    return args;
-  }
-
-  if (action === "video") {
-    const args = ["video"];
-    appendDashboardCameraArgs(args, params);
-    add(args, "--duration", params.duration);
-    add(args, "--output", params.output);
-    return args;
-  }
-
-  if (action === "video-until") {
-    const condition = requireText(params.condition, "condition");
-    const args = ["video-until"];
-    appendVideoUntilArgs(args, params);
-    args.push(condition);
-    return args;
-  }
-
-  if (action === "analyze-view") {
-    const args = ["analyze-view"];
-    appendAnalyzeArgs(args, params);
-    return args;
-  }
-
 
   if (action === "speak") {
     const text = requireText(params.text, "text");
@@ -662,11 +562,8 @@ function smartPlugTimeoutMs(params: SmartPlugParams): number {
 }
 
 function timeoutMs(params: JarvisParams): number {
-  const cameraTimeout = params.timeout ?? 40;
   const castTimeout = params.castTimeout ?? (params.action.includes("youtube") ? 90 : 45);
   const postCast = params.postCastServeSeconds ?? 60;
-  const duration = params.duration ?? 5;
-  const maxDuration = params.maxDuration ?? 60;
   switch (params.action) {
     case "help":
       return 30_000;
@@ -694,15 +591,6 @@ function timeoutMs(params: JarvisParams): number {
       return Math.ceil((castTimeout + 90) * 1000);
     case "speak":
       return Math.ceil((castTimeout + postCast + 90) * 1000);
-    case "look":
-    case "photo":
-      return Math.ceil((cameraTimeout + 60) * 1000);
-    case "video":
-      return Math.ceil((cameraTimeout + duration + 120) * 1000);
-    case "video-until":
-      return Math.ceil((cameraTimeout + maxDuration + 240) * 1000);
-    case "analyze-view":
-      return Math.ceil((cameraTimeout + (params.duration ?? 3) + 240) * 1000);
     case "plug-list":
     case "plug-status":
     case "plug-on":
@@ -772,14 +660,11 @@ export default function registerJarvis(pi: ExtensionAPI) {
   pi.registerTool({
     name: "jarvis",
     label: "Operation JARVIS",
-    description: "Operation JARVIS tool loaded on demand with load_tools({ groups: [\"jarvis\"] }) for dashboard phone camera vision, Google Cast speech/media, Spotify Connect control, local Kasa smart-plug control, and VeSync/Levoit air-purifier control. Safe guide: action=help. Safe local status: action=status with noCast=true. Required fields: speak text; cast-youtube query; cast-play-url url; cast-volume/cast-spotify-volume level; cast-spotify query/spotifyUri/resume; cast-spotify-queue-add query/spotifyUri; cast-spotify-seek position/positionMs; video duration; video-until condition; plug actions need plug; purifier-set needs setting.",
+    description: "Operation JARVIS tool loaded on demand with load_tools({ groups: [\"jarvis\"] }) for Google Cast speech/media, Spotify Connect control, local Kasa smart-plug control, and VeSync/Levoit air-purifier control. Safe guide: action=help. Safe local status: action=status with noCast=true. Required fields: speak text; cast-youtube query; cast-play-url url; cast-volume/cast-spotify-volume level; cast-spotify query/spotifyUri/resume; cast-spotify-queue-add query/spotifyUri; cast-spotify-seek position/positionMs; plug actions need plug; purifier-set needs setting.",
     parameters: Type.Object({
-      action: StringEnum(ACTIONS, { description: "Choose one exact action. Use help for a safe machine-readable guide. Common: status, look, video, analyze-view, speak, cast-status, cast-spotify, plug-status, plug-on, plug-off, purifier-status, purifier-set." }),
+      action: StringEnum(ACTIONS, { description: "Choose one exact action. Use help for a safe machine-readable guide. Common: status, speak, cast-status, cast-spotify, plug-status, plug-on, plug-off, purifier-status, purifier-set." }),
       device: Type.Optional(StringEnum(DEVICES, { description: "Cast target alias: tv or speakers. Defaults to tv for media/status and speakers for speech/volume/mute/Spotify. Configure the underlying local device names privately." })),
       text: Type.Optional(Type.String({ description: "Required for action=speak. Short text to speak aloud; keep detailed answers in Discord." })),
-      question: Type.Optional(Type.String({ description: "Preferred visual question for analyze-view. Use this instead of prompt for normal requests." })),
-      prompt: Type.Optional(Type.String({ description: "Advanced explicit VLM prompt. Overrides question when supplied." })),
-      condition: Type.Optional(Type.String({ description: "Required for video-until. Visual condition, e.g. 'a person is visible'." })),
       query: Type.Optional(Type.String({ description: "Required for cast-youtube. For cast-spotify, this is a Spotify search query (or URI/URL text). For cast-spotify-queue-add, this is the track/episode search query." })),
       url: Type.Optional(Type.String({ description: "Required for cast-play-url. Direct media URL." })),
       contentType: Type.Optional(Type.String({ description: "cast-play-url MIME type; default video/mp4." })),
@@ -812,26 +697,7 @@ export default function registerJarvis(pi: ExtensionAPI) {
       roomSize: Type.Optional(Type.Number({ description: "purifier-set setting=auto-preference: optional room size in square feet." })),
       purifierTimeout: Type.Optional(Type.Number({ description: "Air purifier command timeout seconds; default 150. Writes can take more than a minute to reflect; accepted-but-stale writes may return verification_pending." })),
 
-      duration: Type.Optional(Type.Number({ description: "Required and >0 for video. Optional analysis duration seconds for analyze-view; default about 3." })),
-      maxDuration: Type.Optional(Type.Number({ description: "video-until positive safety cap seconds; default 60. Always bound monitoring." })),
-      interval: Type.Optional(Type.Number({ description: "Seconds between VLM checks/analyses." })),
-      output: Type.Optional(Type.String({ description: "Output path for copied camera media or analysis logs. strftime tokens are accepted." })),
-      timeout: Type.Optional(Type.Number({ description: "Dashboard camera command timeout seconds." })),
-      dashboardUrl: Type.Optional(Type.String({ description: "Dashboard base URL; defaults to JARVIS_DASHBOARD_URL or localhost." })),
-      quality: Type.Optional(Type.Number({ description: "JPEG snapshot quality from 0.1 to 1.0." })),
       castTimeout: Type.Optional(Type.Number({ description: "Cast command timeout seconds." })),
-      omlxBaseUrl: Type.Optional(Type.String({ description: "oMLX/OpenAI-compatible VLM base URL." })),
-      omlxTimeout: Type.Optional(Type.Number({ description: "Timeout seconds for each VLM request." })),
-      model: Type.Optional(Type.String({ description: "Primary VLM model." })),
-      fallbackModel: Type.Optional(Type.String({ description: "Fallback VLM model; empty disables." })),
-      systemPrompt: Type.Optional(Type.String({ description: "System prompt for VLM calls." })),
-      maxTokens: Type.Optional(Type.Number({ description: "Maximum VLM output tokens." })),
-      temperature: Type.Optional(Type.Number({ description: "VLM sampling temperature." })),
-      imageMaxSide: Type.Optional(Type.Number({ description: "Resize longest image side before VLM; 0 disables." })),
-      jpegQuality: Type.Optional(Type.Number({ description: "JPEG quality for resized/recompressed VLM frames." })),
-      skipModelCheck: Type.Optional(Type.Boolean({ description: "Skip initial oMLX /v1/models check." })),
-      saveFrames: Type.Optional(Type.Boolean({ description: "analyze actions: save VLM frames; default true." })),
-      frameOutputDir: Type.Optional(Type.String({ description: "Directory for saved analysis frames." })),
       voice: Type.Optional(Type.String({ description: "macOS say voice for speech." })),
       rate: Type.Optional(Type.Number({ description: "macOS say speech rate." })),
       maxChars: Type.Optional(Type.Number({ description: "Max spoken characters; 0 disables truncation." })),
@@ -841,9 +707,6 @@ export default function registerJarvis(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, rawParams, signal, onUpdate, ctx) {
       const params = rawParams as JarvisParams;
-      if (params.duration !== undefined && params.duration <= 0) throw new Error("duration must be greater than 0");
-      if (params.maxDuration !== undefined && params.maxDuration <= 0) throw new Error("maxDuration must be greater than 0");
-      if (params.interval !== undefined && params.interval <= 0) throw new Error("interval must be greater than 0");
       if (params.level !== undefined && (params.level < 0 || params.level > 100)) throw new Error("level must be between 0 and 100");
       if (params.action === "purifier-set" && params.setting === "speed" && params.level !== undefined && (params.level < 1 || params.level > 4)) throw new Error("purifier speed level must be between 1 and 4");
       if (params.positionMs !== undefined && params.positionMs < 0) throw new Error("positionMs must be 0 or greater");
@@ -855,17 +718,13 @@ export default function registerJarvis(pi: ExtensionAPI) {
     },
     renderCall(args, theme) {
       const action = typeof args.action === "string" ? args.action : "action";
-      const detail = typeof args.condition === "string"
-        ? args.condition
-        : typeof args.question === "string"
-          ? args.question
-          : typeof args.text === "string"
-            ? args.text.slice(0, 40)
-            : typeof args.query === "string"
-              ? args.query.slice(0, 40)
-              : typeof args.plug === "string"
-                ? args.plug
-                : args.device ?? "";
+      const detail = typeof args.text === "string"
+        ? args.text.slice(0, 40)
+        : typeof args.query === "string"
+          ? args.query.slice(0, 40)
+          : typeof args.plug === "string"
+            ? args.plug
+            : args.device ?? "";
       return new Text(`${theme.fg("toolTitle", "jarvis")} ${theme.fg("accent", action)} ${theme.fg("dim", detail)}`, 0, 0);
     },
     renderResult(result, _options, theme) {

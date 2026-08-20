@@ -2,18 +2,16 @@
 """Unified Operation JARVIS adapter.
 
 This is the single local adapter for the focused Operation JARVIS scope:
-Discord + dashboard phone camera + Google Cast + smart plugs + air purifier.
+Discord + Google Cast + smart plugs + air purifier.
 
-The dashboard phone is the camera surface. This adapter requests photos/videos
-from the LAN dashboard, analyzes snapshots with an OpenAI-compatible VLM,
-combines perception with Cast speech/media output, and controls local Kasa
-smart plugs plus the VeSync/Levoit air purifier.
+It controls Cast speech/media output, local Kasa smart plugs, and the
+VeSync/Levoit air purifier. Native Apple-client state and commands use
+``jarvisd`` as their sole control plane.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import datetime as dt
 import functools
 import http.server
@@ -75,38 +73,15 @@ AIR_PURIFIER_CLI = AIR_PURIFIER_DIR / "purifier-cli"
 
 DEFAULT_SPEAK_DEVICE = "speakers"
 DEFAULT_MEDIA_DEVICE = "tv"
-DEFAULT_DASHBOARD_URL = os.environ.get("JARVIS_DASHBOARD_URL", "http://127.0.0.1:8787").rstrip("/")
-DEFAULT_CAMERA_TIMEOUT = float(os.environ.get("JARVIS_DASHBOARD_CAMERA_TIMEOUT", "40"))
-DEFAULT_CAMERA_SNAPSHOT_QUALITY = float(os.environ.get("JARVIS_DASHBOARD_CAMERA_QUALITY", "0.86"))
 DEFAULT_CAST_TIMEOUT = 45.0
 DEFAULT_SMART_PLUG_TIMEOUT = 30.0
 DEFAULT_AIR_PURIFIER_TIMEOUT = 150.0
-DEFAULT_LOOK_DURATION = 3.0
-DEFAULT_LOOK_INTERVAL = 999.0
-DEFAULT_MONITOR_DURATION = 60.0
-DEFAULT_MONITOR_INTERVAL = 2.0
-DEFAULT_OMLX_BASE_URL = os.environ.get(
-    "JARVIS_DASHBOARD_CAMERA_VISION_BASE_URL",
-    os.environ.get("OMLX_BASE_URL", "http://127.0.0.1:8000/v1"),
-)
-DEFAULT_VISION_MODEL = os.environ.get(
-    "JARVIS_DASHBOARD_CAMERA_VISION_MODEL",
-    os.environ.get("OMLX_VISION_MODEL", "Qwen3.5-2B-oQ8-mtp"),
-)
-DEFAULT_VISION_FALLBACK_MODEL = os.environ.get("JARVIS_DASHBOARD_CAMERA_VISION_FALLBACK_MODEL", "")
-DEFAULT_VISION_SYSTEM_PROMPT = os.environ.get(
-    "JARVIS_DASHBOARD_CAMERA_VISION_SYSTEM_PROMPT",
-    "You are a low-latency camera observer. Be concise, factual, and avoid guessing.",
-)
-DEFAULT_VISION_MAX_TOKENS = int(os.environ.get("JARVIS_DASHBOARD_CAMERA_VISION_MAX_TOKENS", "80"))
-DEFAULT_VISION_TEMPERATURE = float(os.environ.get("JARVIS_DASHBOARD_CAMERA_VISION_TEMPERATURE", "0"))
-DEFAULT_OMLX_TIMEOUT = float(os.environ.get("JARVIS_DASHBOARD_CAMERA_VISION_TIMEOUT", "30"))
 DEFAULT_MAX_SPOKEN_CHARS = 500
 DEFAULT_SPEAK_RATE = 185
 DEFAULT_SERVE_BIND = "0.0.0.0"
 DEFAULT_SERVE_PORT = 8766
 DEFAULT_POST_CAST_SERVE_SECONDS = 60.0
-DEFAULT_DASHBOARD_EVENT_TIMEOUT = 2.0
+DEFAULT_EVENT_TIMEOUT = 2.0
 DEVICE_CHOICES = ("tv", "speakers")
 TORCH_CHOICES = ("on", "off", "toggle")
 MUTE_STATES = ("on", "off", "toggle")
@@ -140,29 +115,22 @@ def json_print(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
-def dashboard_events_enabled() -> bool:
-    return os.environ.get("JARVIS_DASHBOARD_EMIT_EVENTS", "1").lower() not in {"0", "false", "no", "off"}
+def events_enabled() -> bool:
+    return os.environ.get("JARVIS_EMIT_EVENTS", "1").lower() not in {"0", "false", "no", "off"}
 
 
 def _event_targets() -> list[tuple[str, Optional[str]]]:
-    """(base_url, token) pairs for the event bridge.
-
-    jarvisd (the app backend) is the primary target — its ingest endpoint is
-    lenient, so no token is required. The dashboard is included during the
-    transition if JARVIS_DASHBOARD_URL is set.
-    """
-    targets: list[tuple[str, Optional[str]]] = []
+    """Return the sole Operation JARVIS event-ingest target."""
     jarvisd = os.environ.get("JARVISD_URL", "http://127.0.0.1:8790").rstrip("/")
-    if jarvisd:
-        targets.append((jarvisd, None))
-    dashboard = os.environ.get("JARVIS_DASHBOARD_URL", "").rstrip("/")
-    if dashboard:
-        dtoken = os.environ.get("JARVIS_DASHBOARD_TOKEN") or os.environ.get("JARVIS_DASHBOARD_WRITE_TOKEN")
-        targets.append((dashboard, dtoken))
-    return targets
+    if not jarvisd:
+        return []
+    # In trusted-network mode this remains tokenless. In token mode the
+    # dedicated ingest token is preferred and is never used for app commands.
+    event_token = os.environ.get("JARVISD_EVENT_TOKEN") or os.environ.get("JARVIS_API_TOKEN")
+    return [(jarvisd, event_token)]
 
 
-def emit_dashboard_event(
+def emit_event(
     event_type: str,
     *,
     action: Optional[str],
@@ -172,9 +140,8 @@ def emit_dashboard_event(
     artifacts: Optional[list[dict[str, Any]]] = None,
     data: Optional[dict[str, Any]] = None,
 ) -> None:
-    """Best-effort event bridge to jarvisd (and the dashboard during
-    transition); never fails the CLI action."""
-    if not dashboard_events_enabled():
+    """Best-effort lifecycle event bridge to jarvisd; never fails the CLI action."""
+    if not events_enabled():
         return
     targets = _event_targets()
     if not targets:
@@ -199,7 +166,7 @@ def emit_dashboard_event(
             headers["x-jarvis-token"] = token
         try:
             request = Request(f"{base_url}/api/jarvis/events", data=body, headers=headers, method="POST")
-            with urlopen(request, timeout=DEFAULT_DASHBOARD_EVENT_TIMEOUT):
+            with urlopen(request, timeout=DEFAULT_EVENT_TIMEOUT):
                 pass
         except Exception:
             continue
@@ -488,279 +455,6 @@ def cast_audio(
     return result
 
 
-def last_nonempty_line(text: str) -> str:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    return lines[-1] if lines else ""
-
-
-def output_path_from_stdout(stdout: str) -> Optional[str]:
-    line = last_nonempty_line(stdout)
-    if not line:
-        return None
-    path = Path(line).expanduser()
-    return str(path.resolve()) if path.exists() else line
-
-
-def path_artifact(path: Optional[str], kind: str) -> Optional[dict[str, Any]]:
-    if not path:
-        return None
-    p = Path(path).expanduser()
-    artifact: dict[str, Any] = {"kind": kind, "path": str(p)}
-    if p.exists():
-        artifact["sizeBytes"] = p.stat().st_size
-    return artifact
-
-
-def normalize_openai_base_url(raw_base_url: str) -> str:
-    base_url = str(raw_base_url or "").strip().rstrip("/")
-    if not base_url:
-        return DEFAULT_OMLX_BASE_URL.rstrip("/")
-    return base_url if base_url.lower().endswith("/v1") else f"{base_url}/v1"
-
-
-def dashboard_headers() -> dict[str, str]:
-    headers = {"accept": "application/json", "content-type": "application/json"}
-    token = os.environ.get("JARVIS_DASHBOARD_TOKEN") or os.environ.get("JARVIS_DASHBOARD_WRITE_TOKEN")
-    if token:
-        headers["x-jarvis-token"] = token
-    return headers
-
-
-def dashboard_url(args: argparse.Namespace) -> str:
-    return str(getattr(args, "dashboard_url", None) or DEFAULT_DASHBOARD_URL).rstrip("/")
-
-
-def dashboard_json_request(
-    args: argparse.Namespace,
-    endpoint: str,
-    *,
-    payload: Optional[dict[str, Any]] = None,
-    method: str = "GET",
-    timeout: Optional[float] = None,
-) -> dict[str, Any]:
-    base_url = dashboard_url(args)
-    url = f"{base_url}{endpoint}"
-    body = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = dashboard_headers()
-    if body is None:
-        headers.pop("content-type", None)
-    request = Request(url, data=body, headers=headers, method=method)
-    try:
-        with urlopen(request, timeout=timeout or getattr(args, "timeout", DEFAULT_CAMERA_TIMEOUT)) as response:
-            text = response.read().decode("utf-8")
-    except Exception as exc:
-        raise JarvisError(f"Dashboard request failed for {endpoint}: {exc}") from exc
-    try:
-        data = json.loads(text or "{}")
-    except json.JSONDecodeError as exc:
-        raise JarvisError(f"Dashboard returned non-JSON response for {endpoint}: {text[:200]}") from exc
-    if data.get("ok") is False:
-        raise JarvisError(str(data.get("error") or f"Dashboard request failed for {endpoint}"))
-    return data
-
-
-def dashboard_camera_status(args: argparse.Namespace) -> dict[str, Any]:
-    return dashboard_json_request(args, "/api/jarvis/camera/status", method="GET")
-
-
-def apply_requested_output(capture: dict[str, Any], output: Optional[str]) -> dict[str, Any]:
-    if not output:
-        return capture
-    source = Path(str(capture.get("path") or "")).expanduser()
-    if not source.exists():
-        return capture
-    rendered = dt.datetime.now().strftime(output)
-    target = Path(rendered).expanduser()
-    if not target.is_absolute():
-        target = OPERATION_ROOT / target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
-    capture = dict(capture)
-    capture["originalPath"] = capture.get("path")
-    capture["path"] = str(target)
-    capture["relativePath"] = str(target.relative_to(OPERATION_ROOT)) if target.is_relative_to(OPERATION_ROOT) else str(target)
-    capture["url"] = None
-    capture["artifact"] = path_artifact(str(target), capture.get("mediaKind") or capture.get("command") or "capture")
-    return capture
-
-
-def dashboard_camera_snapshot(args: argparse.Namespace) -> dict[str, Any]:
-    quality = max(0.1, min(1.0, float(getattr(args, "quality", DEFAULT_CAMERA_SNAPSHOT_QUALITY))))
-    capture = dashboard_json_request(
-        args,
-        "/api/jarvis/camera/snapshot",
-        method="POST",
-        payload={"quality": quality, "mime": "image/jpeg"},
-        timeout=getattr(args, "timeout", DEFAULT_CAMERA_TIMEOUT),
-    )
-    return apply_requested_output(capture, getattr(args, "output", None))
-
-
-def dashboard_camera_record(args: argparse.Namespace) -> dict[str, Any]:
-    duration = float(getattr(args, "duration", 5.0))
-    if duration <= 0:
-        raise JarvisError("duration must be greater than 0")
-    capture = dashboard_json_request(
-        args,
-        "/api/jarvis/camera/record",
-        method="POST",
-        payload={"durationSeconds": duration},
-        timeout=getattr(args, "timeout", DEFAULT_CAMERA_TIMEOUT) + duration + 10.0,
-    )
-    return apply_requested_output(capture, getattr(args, "output", None))
-
-
-def content_to_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, dict):
-                value = item.get("text") or item.get("content")
-                if value is not None:
-                    parts.append(str(value))
-            elif item is not None:
-                parts.append(str(item))
-        return "".join(parts)
-    return str(content or "")
-
-
-def omlx_json_request(base_url: str, endpoint: str, *, payload: dict[str, Any], timeout: float, api_key: str = "") -> dict[str, Any]:
-    url = f"{normalize_openai_base_url(base_url)}/{endpoint.lstrip('/')}"
-    headers = {"accept": "application/json", "content-type": "application/json"}
-    if api_key:
-        headers["authorization"] = f"Bearer {api_key}"
-    request = Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8") or "{}")
-    except Exception as exc:
-        raise JarvisError(f"VLM request failed: {exc}") from exc
-
-
-def analyze_image_with_omlx(
-    image_path: str,
-    *,
-    mime: str,
-    prompt: str,
-    args: argparse.Namespace,
-) -> str:
-    path = Path(image_path).expanduser()
-    if not path.exists():
-        raise JarvisError(f"Camera snapshot not found for analysis: {path}")
-    image_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
-    base_url = args.omlx_base_url or DEFAULT_OMLX_BASE_URL
-    api_key = os.environ.get("JARVIS_DASHBOARD_CAMERA_VISION_API_KEY") or os.environ.get("OMLX_API_KEY", "")
-    primary_model = args.model or DEFAULT_VISION_MODEL
-    fallback_model = args.fallback_model if args.fallback_model is not None else DEFAULT_VISION_FALLBACK_MODEL
-    models = [primary_model] + ([fallback_model] if fallback_model else [])
-    last_error: Optional[Exception] = None
-
-    for model in models:
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": args.system_prompt or DEFAULT_VISION_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:{mime or 'image/jpeg'};base64,{image_b64}"}},
-                    ],
-                },
-            ],
-            "max_tokens": args.max_tokens or DEFAULT_VISION_MAX_TOKENS,
-            "temperature": DEFAULT_VISION_TEMPERATURE if args.temperature is None else args.temperature,
-            "stream": False,
-        }
-        try:
-            response = omlx_json_request(base_url, "chat/completions", payload=payload, timeout=args.omlx_timeout or DEFAULT_OMLX_TIMEOUT, api_key=api_key)
-            choices = response.get("choices")
-            if not isinstance(choices, list) or not choices:
-                raise JarvisError(f"VLM response did not include choices: {response!r}")
-            choice = choices[0]
-            message = choice.get("message") if isinstance(choice, dict) else None
-            text = content_to_text(message.get("content") if isinstance(message, dict) else choice.get("text") if isinstance(choice, dict) else "").strip()
-            if not text:
-                raise JarvisError("VLM returned an empty response")
-            return text
-        except Exception as exc:
-            last_error = exc
-            continue
-
-    raise JarvisError(str(last_error or "VLM analysis failed"))
-
-
-def write_analysis_record(args: argparse.Namespace, record: dict[str, Any]) -> str:
-    output = getattr(args, "output", None)
-    if output:
-        log_path = Path(dt.datetime.now().strftime(output)).expanduser()
-        if not log_path.is_absolute():
-            log_path = OPERATION_ROOT / log_path
-    else:
-        log_dir = OPERATION_ROOT / "media" / "analysis"
-        log_path = log_dir / f"dashboard-camera-analysis-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}.jsonl"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-    return str(log_path)
-
-
-def combine_artifacts(*items: Optional[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [item for item in items if item]
-
-
-def prompt_from_args(args: argparse.Namespace, *, default: str) -> str:
-    if getattr(args, "prompt", None):
-        return str(args.prompt).strip()
-    words = getattr(args, "words", None)
-    if words:
-        return " ".join(words).strip()
-    return default
-
-
-def add_dashboard_camera_common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--dashboard-url", default=None, help=f"Dashboard base URL; default: {DEFAULT_DASHBOARD_URL}")
-    parser.add_argument("--timeout", type=float, default=DEFAULT_CAMERA_TIMEOUT, help="Dashboard camera command timeout seconds")
-
-
-def add_vision_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--omlx-base-url", default=None, help="oMLX/OpenAI-compatible VLM base URL")
-    parser.add_argument("--omlx-timeout", type=float, default=None, help="Timeout per VLM request")
-    parser.add_argument("--model", default=None, help="Primary VLM model")
-    parser.add_argument("--fallback-model", default=None, help="Fallback VLM model; empty disables")
-    parser.add_argument("--system-prompt", default=None, help="System prompt for the VLM")
-    parser.add_argument("--max-tokens", type=int, default=None, help="Max VLM output tokens")
-    parser.add_argument("--temperature", type=float, default=None, help="VLM temperature")
-    parser.add_argument("--image-max-side", type=int, default=None, help="Resize longest image side before VLM; 0 disables")
-    parser.add_argument("--jpeg-quality", type=int, default=None, help="JPEG quality for resized VLM frames")
-    parser.add_argument("--skip-model-check", action="store_true", help="Skip initial VLM model check")
-
-
-def append_vision_options(out: list[str], args: argparse.Namespace) -> None:
-    if args.omlx_base_url:
-        out.extend(["--omlx-base-url", args.omlx_base_url])
-    if args.omlx_timeout is not None:
-        out.extend(["--omlx-timeout", str(args.omlx_timeout)])
-    if args.model:
-        out.extend(["--model", args.model])
-    if args.fallback_model is not None:
-        out.extend(["--fallback-model", args.fallback_model])
-    if args.system_prompt:
-        out.extend(["--system-prompt", args.system_prompt])
-    if args.max_tokens is not None:
-        out.extend(["--max-tokens", str(args.max_tokens)])
-    if args.temperature is not None:
-        out.extend(["--temperature", str(args.temperature)])
-    if args.image_max_side is not None:
-        out.extend(["--image-max-side", str(args.image_max_side)])
-    if args.jpeg_quality is not None:
-        out.extend(["--jpeg-quality", str(args.jpeg_quality)])
-    if args.skip_model_check:
-        out.append("--skip-model-check")
-
-
 def add_speak_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--device", default=DEFAULT_SPEAK_DEVICE, choices=DEVICE_CHOICES, help="Cast speaker target")
     parser.add_argument("--cast-timeout", type=float, default=DEFAULT_CAST_TIMEOUT, help="Cast timeout seconds")
@@ -884,17 +578,14 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
     return {
         "ok": True,
         "action": "help",
-        "summary": "Operation JARVIS help: load the optional jarvis tool group first, then call the jarvis tool directly for dashboard-camera, Cast/Spotify, smart-plug, or air-purifier workflows.",
+        "summary": "Operation JARVIS help: load the optional jarvis tool group first, then call the jarvis tool directly for Cast/Spotify, smart-plug, or air-purifier workflows.",
         "guide": {
             "tool": "jarvis",
             "availability": "optional provider-visible tool group; load with load_tools({groups:[\"jarvis\"]})",
-            "scope": "Discord interface/log + dashboard phone camera capture/analysis + Google Cast speech/media + Spotify Connect playback/control + local Kasa smart-plug control + VeSync/Levoit air purifier control",
+            "scope": "Discord interface/log + Google Cast speech/media + Spotify Connect playback/control + local Kasa smart-plug control + VeSync/Levoit air purifier control",
             "defaults": {
-                "dashboardUrl": DEFAULT_DASHBOARD_URL,
                 "speechDevice": DEFAULT_SPEAK_DEVICE,
                 "mediaDevice": DEFAULT_MEDIA_DEVICE,
-                "analyzeDurationSeconds": DEFAULT_LOOK_DURATION,
-                "monitorMaxDurationSeconds": DEFAULT_MONITOR_DURATION,
             },
             "devices": list(DEVICE_CHOICES),
             "castTargets": {
@@ -927,12 +618,6 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
                 {"action": "cast-status", "device": DEFAULT_SPEAK_DEVICE},
                 {"action": "purifier-status"},
             ],
-            "cameraActions": {
-                "look": {"required": [], "example": {"action": "look"}},
-                "video": {"required": ["duration"], "example": {"action": "video", "duration": 5}},
-                "analyze-view": {"required": [], "example": {"action": "analyze-view", "question": "What is visible?"}},
-                "video-until": {"required": ["condition"], "safety": "bounded by maxDuration", "example": {"action": "video-until", "condition": "a person is visible", "maxDuration": 60}},
-            },
             "castActions": {
                 "speak": {"required": ["text"], "defaultDevice": DEFAULT_SPEAK_DEVICE, "example": {"action": "speak", "text": "JARVIS online.", "device": DEFAULT_SPEAK_DEVICE}},
                 "cast-status": {"required": [], "defaultDevice": DEFAULT_MEDIA_DEVICE, "example": {"action": "cast-status", "device": DEFAULT_MEDIA_DEVICE}},
@@ -985,7 +670,6 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
                 "plug-save-discovery": {"required": [], "notes": "Overwrites smart-plug/plugs.json with discovered devices."},
             },
             "safetyRules": [
-                "Do not start indefinite camera recording; always use duration or maxDuration.",
                 "Keep spoken output short; keep full details in Discord.",
             ],
         },
@@ -993,29 +677,20 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
 
 
 def handle_status(args: argparse.Namespace) -> dict[str, Any]:
-    camera_status: dict[str, Any]
-    try:
-        camera_status = dashboard_camera_status(args)
-    except Exception as exc:
-        camera_status = {"ok": False, "status": "offline", "error": str(exc), "dashboardUrl": dashboard_url(args)}
-
     payload: dict[str, Any] = {
         "ok": True,
         "action": "status",
         "operationRoot": str(OPERATION_ROOT),
-        "dashboardUrl": dashboard_url(args),
         "castScript": str(TV_SCRIPT),
         "python": choose_python(),
         "checks": {
             "operationRootExists": OPERATION_ROOT.exists(),
-            "dashboardCameraReady": bool(camera_status.get("ok")),
             "castScriptExists": TV_SCRIPT.exists(),
             "smartPlugSubsystemExists": SMART_PLUG_DIR.exists(),
             "smartPlugConfigExists": SMART_PLUG_CONFIG.exists(),
             "airPurifierSubsystemExists": AIR_PURIFIER_DIR.exists(),
             "airPurifierCliExists": AIR_PURIFIER_CLI.exists(),
         },
-        "camera": camera_status,
         "smartPlug": {
             "root": str(SMART_PLUG_DIR),
             "config": str(SMART_PLUG_CONFIG),
@@ -1031,155 +706,10 @@ def handle_status(args: argparse.Namespace) -> dict[str, Any]:
     if not args.no_cast:
         cast = run_tv_command(["--device", args.device, "status"], timeout=args.cast_timeout)
         payload["cast"] = {"ok": True, "action": "cast-status", "device": args.device, **cast}
-        payload["summary"] = f"Operation JARVIS is installed. Dashboard camera status={camera_status.get('status')}; Cast status checked for {args.device}; smart plugs configured={SMART_PLUG_CONFIG.exists()}."
+        payload["summary"] = f"Operation JARVIS is installed. Cast status checked for {args.device}; smart plugs configured={SMART_PLUG_CONFIG.exists()}."
     else:
-        payload["summary"] = f"Operation JARVIS local files are installed. Dashboard camera status={camera_status.get('status')}; Cast status was skipped; smart plugs configured={SMART_PLUG_CONFIG.exists()}."
+        payload["summary"] = f"Operation JARVIS local files are installed. Cast status was skipped; smart plugs configured={SMART_PLUG_CONFIG.exists()}."
     return payload
-
-
-def handle_look(args: argparse.Namespace) -> dict[str, Any]:
-    capture = dashboard_camera_snapshot(args)
-    path = capture.get("path")
-    artifacts = combine_artifacts(capture.get("artifact") if isinstance(capture.get("artifact"), dict) else path_artifact(path, "image"))
-    return {
-        "ok": True,
-        "action": "look",
-        "photoPath": path,
-        "capture": capture,
-        "artifacts": artifacts,
-        "summary": f"Captured dashboard camera photo: {path}" if path else "Captured dashboard camera photo.",
-    }
-
-
-def handle_video(args: argparse.Namespace) -> dict[str, Any]:
-    capture = dashboard_camera_record(args)
-    path = capture.get("path")
-    artifacts = combine_artifacts(capture.get("artifact") if isinstance(capture.get("artifact"), dict) else path_artifact(path, "video"))
-    return {
-        "ok": True,
-        "action": "video",
-        "videoPath": path,
-        "durationSeconds": args.duration,
-        "capture": capture,
-        "artifacts": artifacts,
-        "summary": f"Recorded dashboard camera video: {path}" if path else "Recorded dashboard camera video.",
-    }
-
-
-def analyze_view(args: argparse.Namespace, *, prompt: str) -> dict[str, Any]:
-    if getattr(args, "duration", DEFAULT_LOOK_DURATION) <= 0:
-        raise JarvisError("duration must be greater than 0")
-    if getattr(args, "interval", DEFAULT_LOOK_INTERVAL) <= 0:
-        raise JarvisError("interval must be greater than 0")
-
-    snapshot_args = argparse.Namespace(**vars(args))
-    snapshot_args.output = None
-    capture = dashboard_camera_snapshot(snapshot_args)
-    frame_path = str(capture.get("path") or "")
-    answer = analyze_image_with_omlx(frame_path, mime=str(capture.get("mime") or "image/jpeg"), prompt=prompt, args=args)
-    record = {
-        "at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "prompt": prompt,
-        "text": answer,
-        "frame_path": frame_path,
-        "capture": capture,
-        "model": args.model or DEFAULT_VISION_MODEL,
-    }
-    log_path = write_analysis_record(args, record)
-    artifacts = combine_artifacts(path_artifact(log_path, "analysis-log"), capture.get("artifact") if isinstance(capture.get("artifact"), dict) else path_artifact(frame_path, "frame"))
-    return {
-        "ok": True,
-        "action": "analyze-view",
-        "prompt": prompt,
-        "answer": answer,
-        "analysisLogPath": log_path,
-        "framePath": frame_path,
-        "latestAnalysis": record,
-        "artifacts": artifacts,
-        "summary": answer or "Analyzed dashboard camera view.",
-    }
-
-
-def handle_analyze_view(args: argparse.Namespace) -> dict[str, Any]:
-    prompt = prompt_from_args(
-        args,
-        default="Describe what is visible in this camera frame using only visible evidence. Be concise.",
-    )
-    return analyze_view(args, prompt=prompt)
-
-
-def condition_met_from_answer(answer: str) -> bool:
-    text = answer.strip().lower()
-    if re.match(r"^(no|false|not visible|not yet)\b", text):
-        return False
-    return bool(re.search(r"\b(yes|true|visible|present|detected)\b", text))
-
-
-def monitor_condition(args: argparse.Namespace, condition: str) -> dict[str, Any]:
-    deadline = time.monotonic() + float(args.max_duration)
-    interval = float(args.interval or DEFAULT_MONITOR_INTERVAL)
-    latest: Optional[dict[str, Any]] = None
-    checks = 0
-    prompt = (
-        f"Answer YES or NO first: does this camera frame satisfy this condition: {condition}? "
-        "After YES or NO, add a very short visible-evidence reason."
-    )
-
-    while True:
-        checks += 1
-        latest = analyze_view(args, prompt=prompt)
-        answer = str(latest.get("answer") or "")
-        if condition_met_from_answer(answer):
-            return {
-                "ok": True,
-                "condition": condition,
-                "conditionMet": True,
-                "stopReason": "condition-met",
-                "detectionText": answer,
-                "checks": checks,
-                "latestAnalysis": latest,
-                "artifacts": latest.get("artifacts", []),
-            }
-        if time.monotonic() >= deadline:
-            return {
-                "ok": True,
-                "condition": condition,
-                "conditionMet": False,
-                "stopReason": "max-duration",
-                "detectionText": answer,
-                "checks": checks,
-                "latestAnalysis": latest,
-                "artifacts": latest.get("artifacts", []) if latest else [],
-            }
-        time.sleep(max(0.25, min(interval, deadline - time.monotonic())))
-
-
-def handle_video_until(args: argparse.Namespace) -> dict[str, Any]:
-    condition = " ".join(args.condition).strip()
-    if not condition:
-        raise JarvisError("condition is required")
-    if args.max_duration <= 0:
-        raise JarvisError("max-duration must be greater than 0 for safe monitoring")
-    monitor = monitor_condition(args, condition)
-    latest = monitor.get("latestAnalysis") or {}
-    return {
-        "ok": True,
-        "action": "video-until",
-        "condition": condition,
-        "conditionMet": bool(monitor.get("conditionMet")),
-        "stopReason": monitor.get("stopReason"),
-        "detectionText": monitor.get("detectionText"),
-        "framePath": latest.get("framePath"),
-        "maxDurationSeconds": args.max_duration,
-        "artifacts": monitor.get("artifacts", []),
-        "summary": (
-            f"Condition met from dashboard camera: {condition}"
-            if monitor.get("conditionMet")
-            else f"Stopped before condition was met ({monitor.get('stopReason')})."
-        ),
-        "monitor": monitor,
-    }
-
 
 
 def handle_speak(args: argparse.Namespace) -> dict[str, Any]:
@@ -1731,47 +1261,10 @@ def build_parser() -> argparse.ArgumentParser:
     help_cmd.set_defaults(func=handle_help)
 
     status = subparsers.add_parser("status", help="Check Operation JARVIS install and optionally a Cast target")
-    add_dashboard_camera_common(status)
     status.add_argument("--device", default=DEFAULT_MEDIA_DEVICE, choices=DEVICE_CHOICES)
     status.add_argument("--cast-timeout", type=float, default=DEFAULT_CAST_TIMEOUT)
     status.add_argument("--no-cast", action="store_true", help="Only check local files; do not contact Cast devices")
     status.set_defaults(func=handle_status)
-
-    look = subparsers.add_parser("look", aliases=["photo"], help="Capture a dashboard camera photo")
-    add_dashboard_camera_common(look)
-    look.add_argument("--output", default=None)
-    look.add_argument("--quality", type=float, default=DEFAULT_CAMERA_SNAPSHOT_QUALITY)
-    look.set_defaults(func=handle_look)
-
-    video = subparsers.add_parser("video", help="Record a bounded dashboard camera video")
-    add_dashboard_camera_common(video)
-    video.add_argument("--duration", type=float, default=5.0)
-    video.add_argument("--output", default=None)
-    video.set_defaults(func=handle_video)
-
-    video_until = subparsers.add_parser("video-until", help="Monitor dashboard camera snapshots until a visual condition is met")
-    add_dashboard_camera_common(video_until)
-    add_vision_options(video_until)
-    video_until.add_argument("--max-duration", type=float, default=DEFAULT_MONITOR_DURATION)
-    video_until.add_argument("--interval", type=float, default=DEFAULT_MONITOR_INTERVAL)
-    video_until.add_argument("--output", default=None)
-    video_until.add_argument("--quality", type=float, default=DEFAULT_CAMERA_SNAPSHOT_QUALITY)
-    video_until.add_argument("condition", nargs="+")
-    video_until.set_defaults(func=handle_video_until)
-
-    analyze = subparsers.add_parser("analyze-view", help="Analyze the dashboard camera view with the VLM")
-    add_dashboard_camera_common(analyze)
-    add_vision_options(analyze)
-    analyze.add_argument("--duration", type=float, default=DEFAULT_LOOK_DURATION)
-    analyze.add_argument("--interval", type=float, default=DEFAULT_LOOK_INTERVAL)
-    analyze.add_argument("--prompt", default=None)
-    analyze.add_argument("--output", default=None)
-    analyze.add_argument("--quality", type=float, default=DEFAULT_CAMERA_SNAPSHOT_QUALITY)
-    analyze.add_argument("--save-frames", action=argparse.BooleanOptionalAction, default=True)
-    analyze.add_argument("--frame-output-dir", default="media/analysis/frames")
-    analyze.add_argument("words", nargs="*")
-    analyze.set_defaults(func=handle_analyze_view)
-
 
     speak = subparsers.add_parser("speak", help="Speak text through a Cast speaker")
     add_speak_options(speak)
@@ -1949,12 +1442,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     action = getattr(args, "command", None)
-    emit_dashboard_event("action.start", action=action, summary=f"Starting {action}.")
+    emit_event("action.start", action=action, summary=f"Starting {action}.")
     try:
         payload = args.func(args)
         payload.setdefault("operationRoot", str(OPERATION_ROOT))
         payload.setdefault("summary", payload.get("stdout") or "Operation JARVIS action completed.")
-        emit_dashboard_event(
+        emit_event(
             "action.complete",
             action=action,
             ok=bool(payload.get("ok", True)),
@@ -1969,7 +1462,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0
     except KeyboardInterrupt:
         error = {"ok": False, "action": action, "error": "Cancelled."}
-        emit_dashboard_event("action.error", action=action, ok=False, summary="Cancelled.", error="Cancelled.")
+        emit_event("action.error", action=action, ok=False, summary="Cancelled.", error="Cancelled.")
         if getattr(args, "json", False):
             json_print(error)
         else:
@@ -1977,7 +1470,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 130
     except subprocess.TimeoutExpired as exc:
         error = {"ok": False, "action": action, "error": f"command timed out: {exc}"}
-        emit_dashboard_event("action.error", action=action, ok=False, summary=error["error"], error=error["error"])
+        emit_event("action.error", action=action, ok=False, summary=error["error"], error=error["error"])
         if getattr(args, "json", False):
             json_print(error)
         else:
@@ -1985,7 +1478,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 124
     except Exception as exc:
         error = {"ok": False, "action": action, "error": str(exc)}
-        emit_dashboard_event("action.error", action=action, ok=False, summary=str(exc), error=str(exc))
+        emit_event("action.error", action=action, ok=False, summary=str(exc), error=str(exc))
         if getattr(args, "json", False):
             json_print(error)
         else:

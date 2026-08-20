@@ -1,5 +1,5 @@
 # Operation JARVIS runtime dependencies.
-# Focused scope: Discord/Pi interface, live Discord voice, dashboard phone camera, and Google Cast output.
+# Focused scope: Discord/Pi interface, live Discord voice, and Google Cast output.
 
 # Google Cast control. PyChromecast 13.x is compatible with the system Python 3.9 on this Mac.
 # If this project moves to Python 3.11+, this can likely be relaxed to PyChromecast>=14.

@@ -67,7 +67,7 @@ const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 	},
 	{
 		provider: "omlx-64",
-		baseUrlEnvKeys: ["OMLX_64_BASE_URL", "JARVIS_DASHBOARD_OMLX_64_BASE_URL"],
+		baseUrlEnvKeys: ["OMLX_64_BASE_URL"],
 		defaultBaseUrl: "http://127.0.0.1:8000/v1",
 		compat: {
 			supportsDeveloperRole: false,

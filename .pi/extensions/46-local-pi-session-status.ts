@@ -74,7 +74,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
         if (shouldPruneStatusFile(filePath, now)) rmSync(filePath, { force: true });
       }
     } catch {
-      // Best-effort dashboard telemetry cleanup only.
+      // Best-effort local Pi session telemetry cleanup only.
     }
   }
 
@@ -96,7 +96,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
       };
       writeFileSync(statusPath, JSON.stringify(payload, null, 2), "utf8");
     } catch {
-      // Best-effort dashboard telemetry only.
+      // Best-effort local Pi session telemetry only.
     }
   }
 
@@ -104,7 +104,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     try {
       rmSync(statusPath, { force: true });
     } catch {
-      // Best-effort dashboard telemetry only.
+      // Best-effort local Pi session telemetry only.
     }
   }
 
