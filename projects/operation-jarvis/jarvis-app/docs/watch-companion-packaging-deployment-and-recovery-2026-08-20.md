@@ -564,9 +564,9 @@ clean reinstall is required.
 
 As of the latest pass:
 
-- JARVIS `0.2.0 (8)` is installed on the iPhone and Watch from the same
+- JARVIS `0.2.0 (9)` is installed on the iPhone and Watch from the same
   verified archive with the requested iOS/watchOS icon;
-- build 8 removes the erroneous platform-specialization setting and passes the
+- build 8 removed the erroneous platform-specialization setting and passed the
   combined simulator, archive/export, and deep-signature checks;
 - the iPhone parent contains the Watch app under `JARVIS.app/Watch/`;
 - the `.watchkitapp` and nested widget identities are correct;
@@ -588,8 +588,8 @@ As of the latest pass:
   1001, but retrying the existing non-destructive pairing/tunnel path recovers;
 - the forced Watch-originated state request and command-result relay gates
   remain open;
-- no plug or purifier command was issued during the build-8 deployment and
-  state-only registration checks.
+- no plug, purifier, or managed-service command was issued during the build-8
+  registration checks or build-9 UI deployment.
 
 The next physical pass begins with both apps foregrounded and a forced
 Watch-originated state request, followed by the guarded idempotent lamp smoke.

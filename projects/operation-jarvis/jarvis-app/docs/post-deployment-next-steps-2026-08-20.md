@@ -1,7 +1,7 @@
 # Operation JARVIS app — integration-aware next steps
 
 **Revised:** 2026-08-20
-**Installed build:** 0.2.0 (8) on iPhone and Watch
+**Installed build:** 0.2.0 (9) on iPhone and Watch
 **Local candidate:** 0.2.0 (9)
 **Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
@@ -106,7 +106,7 @@ The investigation separated build, registration, installation, and messaging:
   the developer service succeeds;
 - iPhone now reports `paired=true installed=true`, and Watch reports
   `companionAppInstalled=true`;
-- JARVIS `0.2.0 (8)` is installed on both devices from the same verified
+- JARVIS `0.2.0 (9)` is installed on both devices from the same verified
   archive with the requested icon;
 - physical consoles confirmed `reachable=true`, acknowledged repeated
   iPhone-to-Watch state delivery, and preserved both installed flags;
@@ -345,7 +345,7 @@ The deprecated dashboard and its room HUD, phone voice, camera/browser APIs, and
 1. With both physical apps foregrounded, repeat the forced-direct-failure test
    until the Watch-originated state request completes; baseline
    `reachable=true` and acknowledged iPhone-to-Watch state delivery already
-   pass on build 8.
+   pass on the current companion registration.
 2. After warning the user, run idempotent `lamp off`, prove exactly one correlated result/event pair, then perform and restore one reversible relay change.
 3. Complete Watch offline/stale and iPhone/Watch widget/complication rows.
 4. Complete the remaining live path-change/Local Network recovery,

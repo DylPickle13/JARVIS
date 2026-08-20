@@ -10,13 +10,14 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. JARVIS `0.2.0 (8)` is installed on both physical devices from the verified
+UI. JARVIS `0.2.0 (9)` is installed on both physical devices from the verified
 archive, with the final icon and both WatchConnectivity installed flags true.
 Physical consoles reached `reachable=true` and acknowledged repeated
 iPhone-to-Watch state delivery. Cellular/Tailscale cold launch and relaunch
-also pass. Local candidate build 9 removes weather and places plugs before the
-air purifier on Home. The Watch-originated relay-command, widget, offline, live
-path-change, and accessibility rows remain outstanding.
+also pass. Build 9 removes weather, places plugs before the air purifier, moves
+services to the bottom of Home, and removes the System tab. The Watch-originated
+relay-command, widget, offline, live path-change, and accessibility rows remain
+outstanding.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
