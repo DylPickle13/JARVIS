@@ -2,11 +2,8 @@
   "services": {
     "room-audio-server": {
       "label": "com.operation-jarvis.room-audio-server",
+      "plist": "~/Library/LaunchAgents/com.operation-jarvis.room-audio-server.plist",
       "description": "Room audio server (Raspberry Pi voice endpoint, :8791)"
-    },
-    "dashboard": {
-      "label": "com.operation-jarvis.dashboard",
-      "description": "Legacy dashboard (:8787) — retired in M5"
     }
   }
 }

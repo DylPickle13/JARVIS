@@ -13,6 +13,7 @@ set -u
 PORT="${JARVISD_PORT:-8790}"
 LABEL="com.operation-jarvis.jarvisd"
 UID_NUM="$(id -u)"
+PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 HEALTH_URL="http://127.0.0.1:${PORT}/health"
 INTERVAL=10
 MIN_RESTART_GAP=30
@@ -41,7 +42,7 @@ maybe_restart() {
   else
     # Fallback: bootstrap in case it was fully unloaded.
     log "kickstart failed; trying bootstrap"
-    launchctl bootstrap "gui/${UID_NUM}" "$HOME/Library/LaunchAgents/com.operation-jarvis.jarvisd.plist" 2>/dev/null \
+    launchctl bootstrap "gui/${UID_NUM}" "$PLIST" 2>/dev/null \
       && LAST_RESTART="$now"
   fi
 }
