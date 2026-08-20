@@ -1,4 +1,13 @@
-# iOS + watchOS App for Operation JARVIS — Research & Plan (v5, dashboard-independent, no Cast, no push, no oMLX)
+# iOS + watchOS App for Operation JARVIS — Historical Research & Plan (v5)
+
+> **Historical document — not an operational runbook.** This research records the
+> transitional architecture considered on 2026-07-09. The deprecated Node/PWA
+> dashboard and its `:8787` service were fully removed on 2026-08-20. Do not
+> follow transitional commands, environment names, LaunchAgent paths, or source
+> paths below that refer to it. The current architecture is documented in
+> [`../README.md`](../README.md) and the post-deployment plan. For physical
+> Watch packaging/deployment, use
+> [`watch-companion-packaging-deployment-and-recovery-2026-08-20.md`](watch-companion-packaging-deployment-and-recovery-2026-08-20.md); it records the Xcode 26 `.watchkitapp`, `PlugIns/`, installer skip-flag, trust, and tunnel findings that supersede this research.
 
 Date: 2026-07-09 (v5 revision: APNs push + Live Activities removed — a free
 Apple ID cannot do APNs, verified; oMLX removed from app scope entirely;
@@ -529,8 +538,8 @@ dashboard's), `JARVISD_PORT=8790`,
 | `GET /api/v1/state` | aggregated snapshot: plugs, purifier, Pi session count, weather (Open-Meteo, 10-min cache), uptime, service states, **macLanIp + tailscaleIp**. Subsystems run in parallel threads with a ~10 s cap; partial results carry per-subsystem `ok/error` so one slow subsystem never blocks the snapshot |
 | `POST /api/v1/command` | `{action, params}` → `jarvis-cli --json <action> …`; allowlist = in-scope actions only (status, plug-*, purifier-*). Same subprocess isolation as today (jarvis.py picks the right venv per subsystem) |
 | `GET /api/v1/events?since=&limit=` | ring buffer of recent events (in-memory + optional jsonl persistence) |
-| `POST /api/jarvis/events` | **ingest — identical contract to the dashboard's** (`jarvis.py::emit_dashboard_event` payload). Repointing `JARVIS_DASHBOARD_URL=http://127.0.0.1:8790` in the repo `.env` makes all existing CLI event emission flow to jarvisd with **zero code changes** |
-| `GET/POST /api/v1/services/<name>` | status / start / stop / restart for entries in `services.json` (name → launchctl label or command). Transition entries: `room-audio-server`, `dashboard` (legacy, until M5); post-retirement: whatever remains |
+| `POST /api/jarvis/events` | **ingest** (`jarvis.py::emit_event` payload); `JARVISD_EVENT_TOKEN` is ingest-only when token mode is enabled |
+| `GET/POST /api/v1/services/<name>` | status / start / stop / restart for entries in `services.json` (name → launchctl label or command), currently the room-audio server |
 
 **Resurrector**: separate LaunchAgent `com.operation-jarvis.jarvisd-resurrector`
 (~30-line loop): every 10 s `curl /health`; if down → `launchctl kickstart
@@ -545,37 +554,7 @@ with no UI baggage to maintain or secure.
 
 ---
 
-## 7. Dashboard transition & retirement plan (M5)
-
-**What depends on the dashboard today (verified):**
-
-| Consumer | Dependency | Impact of removal |
-|---|---|---|
-| `jarvis-cli` event emission | `POST $JARVIS_DASHBOARD_URL/api/jarvis/events` (best-effort) | None — repoint env at jarvisd; fails silently if neither is up |
-| Pi tool `jarvis` group | cast/plug/purifier actions call `jarvis-cli` directly; camera actions call the dashboard | Camera actions die (legacy); cast/plug/purifier unaffected (jarvis-cli direct) |
-| Discord bot / live voice | none (independent) | none |
-| Room-audio server (:8791) | none (dashboard voice was a proxy; voice is out of scope) | none |
-| Smart plugs / purifier / Cast | `jarvis-cli` direct | none |
-| oMLX servers | none | none |
-| **Room-display HUD** (alarm-clock display on a phone) | the dashboard PWA itself | **Goes away** — no replacement (decided 2026-07-09) |
-| **Phone-voice PWA** (dashboard voice mode) | the dashboard PWA itself | **Goes away** — voice is out of scope for v2 |
-
-**Steps:**
-
-1. **Parallel run** (M0–M4): dashboard stays up (legacy); the app uses
-   jarvisd exclusively.
-2. **Repoint events**: `JARVIS_DASHBOARD_URL=http://127.0.0.1:8790` in the
-   repo `.env` (jarvis-cli events → jarvisd).
-3. **Room display + phone voice**: retired, no replacement (decided
-   2026-07-09) — nothing to build.
-4. **Uninstall**: `cd dashboard && npm run uninstall-service`, stop the
-   process, move `dashboard/` to an archive location.
-5. **Docs**: update the Operation JARVIS README architecture section and the
-   Pi tool docs (drop dashboard-camera actions).
-
----
-
-## 8. Simulator-first development strategy
+## 7. Simulator-first development strategy
 
 Build M0–M4 primarily in the **iOS + watch simulators**; real devices at gates.
 
@@ -609,7 +588,7 @@ simulator build runs without a paired watch.
 
 ---
 
-## 9. Phased build plan (v5)
+## 8. Phased build plan (v5)
 
 | Phase | Scope | Est. |
 |---|---|---|
@@ -618,14 +597,14 @@ simulator build runs without a paired watch.
 | **M2 — events + system** | Events live feed; System page (service control from `services.json`) | 1 day |
 | **M3 — widgets + watch** | iOS plug-grid widget (home + lock); watch app (glance + controls); interactive plug complication; WatchConnectivity endpoint/token sync | 3–4 days |
 | **M4 — polish + reach** | App Intents/Siri/Shortcuts, watch relay-through-iPhone (away) | 1–2 days |
-| **M5 — dashboard retirement** | repoint `JARVIS_DASHBOARD_URL` at jarvisd; uninstall dashboard LaunchAgent + archive; update Operation JARVIS README + Pi tool docs | 1 day |
+
 
 Total: ~8–12 focused days. After M1 the app already covers plugs + purifier
 + status from the phone, fully independent of the dashboard.
 
 ---
 
-## 10. Risks & mitigations (v5)
+## 9. Risks & mitigations (v5)
 
 | Risk | Mitigation |
 |---|---|
@@ -634,14 +613,14 @@ Total: ~8–12 focused days. After M1 the app already covers plugs + purifier
 | Watch can't reach Mac away from home | WCSession relay through iPhone (M4); "via iPhone" indicator |
 | jarvisd `/state` latency (parallel subprocesses: plugs/purifier) | Parallel threads + ~10 s cap + per-subsystem partial results; app shows stale/failed tiles instead of blocking |
 | jarvisd dies → app stranded | Resurrector LaunchAgent + `/health`; resurrector is separate from everything it protects |
-| Dashboard still running during transition (legacy UI) | M5 only after the app covers everything; parallel run costs nothing (two small services) |
+
 | No background push (free account) | App notifies only while open; widgets on timelines; acceptable per 2026-07-09 decision — revisit if the $99 happens |
 | Token leak | New long random `JARVIS_API_TOKEN`; Tailscale E2E; Keychain only |
 | VeSync write lag | Show `verification_pending`; no auto-retry (matches CLI semantics) |
 
 ---
 
-## 11. Open questions (v5 — all resolved 2026-07-09)
+## 10. Open questions (v5 — all resolved 2026-07-09)
 
 1. ~~Room-display HUD~~ — **retired, no replacement** ✓
 2. ~~Phone-voice PWA~~ — **retired; no in-app voice in iOS/watch app** ✓
@@ -701,8 +680,8 @@ Remaining M0 gate:
 
 M0 gate — **CLEARED 2026-08-18**: first physical iPhone install done. The
 iPhone 11 auto-discovered the home LAN endpoint and connected with no token;
-`jarvisd` log confirms `192.168.21.158 GET /api/v1/state 200`. Real-device
-signing (free personal team `5GB5BU49Q8`), trust-the-developer, and the
+`jarvisd` logs confirmed the iPhone's `GET /api/v1/state 200`. Real-device
+signing with the configured free Personal Team, trust-the-developer, and the
 local-network path all verified.
 
 ### M0 follow-up (2026-08-18): no-token + auto-discovery
@@ -721,7 +700,7 @@ endpoint:
 - Verified in the iPhone 11 simulator: clean install, no seed, auto-detected the
   LAN endpoint and rendered live state with no token.
 - `scripts/redeploy-jarvis-app.sh` fixed to use `DEVELOPMENT_TEAM` and detect the
-  free personal team id (`5GB5BU49Q8`) from Xcode's provisioning defaults.
+  configured free Personal Team from Xcode's provisioning defaults.
 
 ### M1 — core control (complete 2026-08-19)
 
@@ -747,7 +726,7 @@ Built the iOS **Home** control screen (the main M1 deliverable) on a 4-tab shell
 - Verified: iOS simulator (iPhone 11) renders live Home with real data (weather,
   Pi count, purifier, 4 plugs); fan slider consistent with header; live polling
   confirmed (Pi count updated 2→1 between refreshes). watchOS build unaffected.
-  `JARVISKit` 6/6 tests pass. iOS device build (team `5GB5BU49Q8`) signs clean.
+  `JARVISKit` 6/6 tests pass. The configured iOS Personal Team build signs clean.
 - Remaining: install the M1 build on the physical iPhone (needs reconnect).
 
 ### M2 — events + system (complete 2026-08-19)
@@ -803,8 +782,8 @@ and made the event pipeline dashboard-independent.
   the ~5 s state endpoint is a follow-up perf item (not connection-blocking).
 
 **Physical iPhone deploy (2026-08-19):** M2 build installed + launched on
-Dylan's iPhone 11 (free Apple ID, team `5GB5BU49Q8`); confirmed live polling
-(`state` + `health` every ~15 s from `192.168.21.158`). Two `redeploy-jarvis-app.sh`
+Dylan's iPhone 11 using the configured free Personal Team; confirmed live
+polling (`state` + `health` every ~15 s). Two `redeploy-jarvis-app.sh`
 bugs fixed along the way: `ID_COUNT` was never set (always failed the identity
 gate) and the device parser broke on multi-word names + used the devicectl UUID
 where xcodebuild wanted a generic destination (now extracts the UUID by pattern
@@ -816,6 +795,58 @@ this launch — the user had to tap **Connect** once (which worked). Likely the
 or while the app was backgrounded (launched via `devicectl`). Fix: re-run
 `refresh()` on `scenePhase == .active` and add a short retry/backoff on
 auto-connect failure so the app is truly zero-tap.
+
+## M2.1 hardening implementation (2026-08-20)
+
+The M2.1 pass is now implemented in the working tree before M3 UI:
+
+- `jarvisd` uses explicit `trusted-network`/`token` auth, trusted CIDRs,
+  ingest-only dashboard token scope, origin-scoped CORS, bounded JSON input,
+  sanitized diagnostics, and bounded event persistence.
+- State collection runs in a background single-flight cache with subsystem
+  freshness/stale metadata; warm `/api/v1/state` responses are cache reads.
+- LaunchAgent start/stop/restart uses configured plist paths, `bootstrap`,
+  `bootout`, `kickstart`, bounded verification, and event records.
+- iOS connection/polling is scene- and network-path-aware, selected-tab-owned,
+  cancellable, retrying, and uses desired-state plug commands.
+- Home/Events/System show loading, stale, unavailable, busy, and operation-error
+  states instead of fabricating zero/off/stopped telemetry.
+- `WatchBridge` uses actual `WCSessionDelegate` callbacks, and the corrected
+  XcodeGen target relationship embeds the watch companion under `Watch/` for
+  Xcode 26.
+- Daemon and mocked JARVISKit tests were added; live tests are opt-in via
+  `JARVIS_LIVE_TESTS=1` and `JARVISD_TEST_URL`.
+
+The physical iPhone M2.1 gate is partially exercised. The final free-provisioned
+build was installed on the iPhone 11 (install sequence `1624`), including the
+widget and embedded watch bundles. A physical-device XCTest run passed all 3
+AppState tests. Cold launch/relaunch also succeeded: the running app issued
+HTTP 200 health/state requests from the iPhone and remained active. The
+remaining manual matrix—network permission/failover, background/foreground,
+read/write UI, service controls, accessibility, and stale/error presentation—must
+still be completed before marking M2.1 complete.
+
+The paired Apple Watch remains unavailable to CoreDevice (`ddiServicesAvailable:
+false`, `tunnelState: unavailable`), so physical WatchConnectivity and widget
+validation could not start in this pass.
+
+### M3 foundation implementation (code/build only)
+
+The M3 foundations are now present behind that gate:
+
+- iOS `JARVISWidget` and watchOS `JARVISWatchWidget` WidgetKit targets are
+  embedded in their host bundles.
+- Plug widgets use typed `SetPlugIntent` desired-state commands, cached state,
+  stale/unavailable rendering, and a bounded timeline refresh fallback for
+  free-provisioned development devices.
+- `SnapshotStore` and the App Group identifier are prepared for
+  app/widget/watch cache sharing; free provisioning currently rejects the App
+  Group entitlement, so it is intentionally not signed into this build. Widget
+  timelines have a bounded direct-daemon fallback; API credentials remain in
+  Keychain.
+- The watch app has direct-daemon, iPhone-relay, and cached-state paths with
+  plug controls. Physical WatchConnectivity/complication testing remains
+  blocked while the paired Watch is unavailable.
 
 ## Key links
 
