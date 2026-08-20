@@ -12,6 +12,11 @@ public final class EndpointStore: @unchecked Sendable {
     private let tokenAccount = "jarvis.api.token"
     private let lock = NSLock()
 
+    /// Non-secret diagnostic for Settings/tests. The token itself is never
+    /// exposed; a failed Keychain write is kept visible to the owner instead
+    /// of being silently discarded.
+    public private(set) var keychainError: String?
+
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
@@ -45,9 +50,14 @@ public final class EndpointStore: @unchecked Sendable {
         get { Keychain.read(service: service, account: tokenAccount) }
         set {
             if let newValue, !newValue.isEmpty {
-                Keychain.write(service: service, account: tokenAccount, value: newValue)
+                if Keychain.write(service: service, account: tokenAccount, value: newValue) {
+                    keychainError = nil
+                } else {
+                    keychainError = "Could not save the API token in Keychain."
+                }
             } else {
                 Keychain.delete(service: service, account: tokenAccount)
+                keychainError = nil
             }
         }
     }

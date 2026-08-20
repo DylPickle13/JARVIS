@@ -37,11 +37,32 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(result.plug?.is_on, false)
     }
 
-    func testCommandAllowlistRejectsCast() {
-        // Mirrors the server-side allowlist; cast actions must never be sent.
-        let bad = "cast-status"
-        let allowed: Set<String> = ["status", "plug-list", "plug-status", "plug-on",
-                                    "plug-off", "plug-toggle", "purifier-status", "purifier-set"]
-        XCTAssertFalse(allowed.contains(bad))
+    func testSnapshotStoreRoundTripsState() throws {
+        let suite = "jarvis.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let store = SnapshotStore(suiteName: suite)
+        let state = StateSnapshot(ok: true, summary: Summary(plugsOn: 1, plugsTotal: 2, purifierOn: nil, pm25: nil, piActive: nil))
+        store.save(state, at: Date(timeIntervalSince1970: 123))
+        XCTAssertEqual(store.load()?.state, state)
+        XCTAssertEqual(try XCTUnwrap(store.load()?.savedAt.timeIntervalSince1970), 123, accuracy: 0.01)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    func testWatchCommandErrorRoundTrips() throws {
+        let payload = WatchCommandError(message: "The relay timed out.")
+        let decoded = try JSONDecoder().decode(
+            WatchCommandError.self,
+            from: JSONEncoder().encode(payload)
+        )
+        XCTAssertEqual(decoded, payload)
+    }
+
+    func testCommandRequestEncodesDesiredPlugState() throws {
+        let request = CommandRequest(action: "plug-on", params: ["plug": .string("family-room-light")])
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["action"] as? String, "plug-on")
+        XCTAssertEqual((object["params"] as? [String: Any])?["plug"] as? String, "family-room-light")
+        XCTAssertFalse(String(data: data, encoding: .utf8)?.contains("cast") == true)
     }
 }

@@ -1,16 +1,8 @@
 import SwiftUI
 import JARVISKit
 
-// Events tab — live activity feed from jarvisd.
-//
-// Polls /api/v1/events every ~5 s while the tab is open (auto) and supports
-// pull-to-refresh. One inset-grouped row per event: a status glyph (✓/✗), the
-// action, a one-line summary, and a compact relative timestamp. Newest first.
-
 struct EventsView: View {
     @EnvironmentObject var app: AppState
-
-    private let pollInterval: Duration = .seconds(5)
 
     var body: some View {
         NavigationStack {
@@ -19,6 +11,10 @@ struct EventsView: View {
                     connecting
                 } else if app.connectionState != .connected {
                     notConnected
+                } else if app.eventsLoading && !app.eventsLoaded {
+                    loading
+                } else if !app.eventsLoaded {
+                    loading
                 } else if app.lastEvents.isEmpty {
                     empty
                 } else {
@@ -27,14 +23,25 @@ struct EventsView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Events")
-            .task { await pollLoop() }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await app.fetchEvents() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh events")
+                    .disabled(app.eventsLoading || app.connectionState != .connected)
+                }
+            }
         }
     }
 
-    // MARK: - List
-
     private var eventList: some View {
         List {
+            if let error = app.eventsErrorMessage {
+                Section { OperationErrorCard(message: error) }
+            }
             Section {
                 ForEach(app.lastEvents.sorted { $0.seq > $1.seq }) { event in
                     EventRow(event: event)
@@ -47,31 +54,37 @@ struct EventsView: View {
         .refreshable { await app.fetchEvents() }
     }
 
-    // MARK: - Empty / disconnected states
-
     private var connecting: some View {
         VStack {
-            Card {
-                HStack(spacing: 12) {
-                    ProgressView()
-                    Text("Connecting to jarvisd…")
-                        .foregroundStyle(.secondary)
-                }
-            }
+            loadingCard("Connecting to jarvisd…")
             Spacer()
         }
         .padding(.horizontal)
+    }
+
+    private var loading: some View {
+        VStack {
+            loadingCard("Loading events…")
+            Spacer()
+        }
+        .padding(.horizontal)
+    }
+
+    private func loadingCard(_ text: String) -> some View {
+        Card {
+            HStack(spacing: 12) {
+                ProgressView()
+                Text(text).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var notConnected: some View {
         VStack {
             Card {
                 VStack(spacing: 12) {
-                    Image(systemName: "wifi.slash")
-                        .font(.system(size: 34))
-                        .foregroundStyle(.secondary)
-                    Text("Not connected")
-                        .font(.headline)
+                    Image(systemName: "wifi.slash").font(.system(size: 34)).foregroundStyle(.secondary)
+                    Text("Not connected").font(.headline)
                     Text("Connect from the Settings tab to see live events.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -88,11 +101,8 @@ struct EventsView: View {
         VStack {
             Card {
                 VStack(spacing: 12) {
-                    Image(systemName: "list.bullet.rectangle")
-                        .font(.system(size: 34))
-                        .foregroundStyle(.secondary)
-                    Text("No events yet")
-                        .font(.headline)
+                    Image(systemName: "list.bullet.rectangle").font(.system(size: 34)).foregroundStyle(.secondary)
+                    Text("No events yet").font(.headline)
                     Text("Activity from plugs, the purifier, and system actions will appear here.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -104,18 +114,7 @@ struct EventsView: View {
         }
         .padding(.horizontal)
     }
-
-    // MARK: - Polling
-
-    private func pollLoop() async {
-        while !Task.isCancelled {
-            await app.fetchEvents()
-            try? await Task.sleep(for: pollInterval)
-        }
-    }
 }
-
-// MARK: - Row
 
 private struct EventRow: View {
     let event: EventItem
@@ -129,21 +128,15 @@ private struct EventRow: View {
                         .font(.body)
                         .lineLimit(1)
                     Spacer()
-                    Text(JarvisFormat.relativeTime(event.at ?? event.receivedAt))
+                    Text(JarvisFormat.relativeTime(event.at ?? event.receivedAt).isEmpty ? "unknown time" : JarvisFormat.relativeTime(event.at ?? event.receivedAt))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
                 if let summary = event.summary, !summary.isEmpty {
-                    Text(summary)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                    Text(summary).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 } else if let error = event.error, !error.isEmpty {
-                    Text(error)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
+                    Text(error).font(.subheadline).foregroundStyle(.red).lineLimit(2)
                 }
             }
         }
@@ -155,15 +148,9 @@ private struct EventRow: View {
     @ViewBuilder
     private var statusIcon: some View {
         switch event.ok {
-        case true:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        case false:
-            Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.red)
-        case nil:
-            Image(systemName: "circle.dotted")
-                .foregroundStyle(.secondary)
+        case true: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case false: Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+        case nil: Image(systemName: "circle.dotted").foregroundStyle(.secondary)
         }
     }
 
@@ -171,7 +158,8 @@ private struct EventRow: View {
         let status = event.ok == true ? "success" : (event.ok == false ? "failure" : "info")
         let title = event.action ?? event.eventType ?? "event"
         let detail = event.summary ?? event.error ?? ""
-        return "\(status): \(title). \(detail) \(JarvisFormat.relativeTime(event.at ?? event.receivedAt)) ago"
+        let time = JarvisFormat.relativeTime(event.at ?? event.receivedAt)
+        return "\(status): \(title). \(detail) \(time.isEmpty ? "time unknown" : time + " ago")"
     }
 }
 

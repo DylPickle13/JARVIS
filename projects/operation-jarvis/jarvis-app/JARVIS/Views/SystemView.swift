@@ -1,21 +1,9 @@
 import SwiftUI
 import JARVISKit
 
-// System tab — service control + daemon info.
-//
-// One inset-grouped card per registered service (from jarvisd's services.json):
-// a status dot, a friendly name, a one-line description, and Stop/Restart (or
-// Start/Restart when stopped) controls. Stopping a running service asks for
-// confirmation first. Commands go through AppState → jarvisd allowlist.
-// Refreshes on appear, on pull, and every 15 s while the tab is open.
-
 struct SystemView: View {
     @EnvironmentObject var app: AppState
-
     @State private var stopTarget: String?
-    @State private var busyService: String?
-
-    private let pollInterval: Duration = .seconds(15)
 
     var body: some View {
         NavigationStack {
@@ -24,6 +12,8 @@ struct SystemView: View {
                     connecting
                 } else if app.connectionState != .connected {
                     notConnected
+                } else if !app.servicesLoaded && app.servicesLoading {
+                    loading
                 } else {
                     content
                 }
@@ -38,9 +28,10 @@ struct SystemView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh services")
+                    .disabled(app.servicesLoading || app.connectionState != .connected)
                 }
             }
-            .task { await pollLoop() }            .confirmationDialog(
+            .confirmationDialog(
                 "Stop \(stopTarget.map(JarvisFormat.displayName) ?? "")?",
                 isPresented: Binding(
                     get: { stopTarget != nil },
@@ -61,37 +52,40 @@ struct SystemView: View {
         }
     }
 
-    // MARK: - Content
-
     private var connecting: some View {
-        VStack {
-            Card {
-                HStack(spacing: 12) {
-                    ProgressView()
-                    Text("Connecting to jarvisd…")
-                        .foregroundStyle(.secondary)
-                }
+        VStack { loadingCard("Connecting to jarvisd…"); Spacer() }
+            .padding(.horizontal)
+    }
+
+    private var loading: some View {
+        VStack { loadingCard("Loading services…"); Spacer() }
+            .padding(.horizontal)
+    }
+
+    private func loadingCard(_ text: String) -> some View {
+        Card {
+            HStack(spacing: 12) {
+                ProgressView()
+                Text(text).foregroundStyle(.secondary)
             }
-            Spacer()
         }
-        .padding(.horizontal)
     }
 
     private var content: some View {
         ScrollView {
             VStack(spacing: 16) {
-                if app.lastServices.isEmpty {
-                    Card {
-                        HStack(spacing: 12) {
-                            ProgressView()
-                            Text("Loading services…")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                if let error = app.servicesErrorMessage {
+                    OperationErrorCard(message: error)
+                }
+                if let error = app.operationErrorMessage {
+                    OperationErrorCard(message: error)
+                }
+                if app.servicesLoaded && app.lastServices.isEmpty {
+                    Card { Text("No registered services.").foregroundStyle(.secondary) }
                 } else {
                     ForEach(serviceNames, id: \.self) { name in
-                        if let svc = app.lastServices[name] {
-                            serviceCard(name: name, svc: svc)
+                        if let service = app.lastServices[name] {
+                            serviceCard(name: name, service: service)
                         }
                     }
                 }
@@ -103,89 +97,76 @@ struct SystemView: View {
         .refreshable { await refresh() }
     }
 
-    private var serviceNames: [String] {
-        app.lastServices.keys.sorted()
-    }
+    private var serviceNames: [String] { app.lastServices.keys.sorted() }
 
     @ViewBuilder
-    private func serviceCard(name: String, svc: ServiceActionResult) -> some View {
-        let isRunning = svc.running ?? false
-        let isBusy = busyService == name
+    private func serviceCard(name: String, service: ServiceActionResult) -> some View {
+        let isKnown = service.ok
+        let isLoaded = service.loaded ?? service.running != nil
+        let isRunning = service.running == true
+        let busy = app.isOperationBusy("service:\(name)")
         Card {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     Circle()
-                        .fill(isRunning ? Color.green : Color.secondary)
+                        .fill(!isKnown ? Color.orange : (isRunning ? Color.green : Color.secondary))
                         .frame(width: 10, height: 10)
-                    Text(JarvisFormat.displayName(name))
-                        .font(.headline)
+                    Text(JarvisFormat.displayName(name)).font(.headline)
                     Spacer()
-                    Text(isRunning ? "Running" : "Stopped")
+                    Text(!isKnown ? "Unknown" : (isRunning ? "Running" : (isLoaded ? "Stopped" : "Unloaded")))
                         .font(.subheadline)
-                        .foregroundStyle(isRunning ? .green : .secondary)
+                        .foregroundStyle(!isKnown ? .orange : (isRunning ? .green : .secondary))
                 }
-                if let desc = svc.description, !desc.isEmpty {
-                    Text(desc)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                if let description = service.description, !description.isEmpty {
+                    Text(description).font(.subheadline).foregroundStyle(.secondary)
                 }
-                if isRunning, let pid = svc.pid {
-                    Text("PID \(pid)")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                if isRunning, let pid = service.pid {
+                    Text("PID \(pid)").font(.caption).foregroundStyle(.tertiary)
+                } else if !isKnown, let error = service.error {
+                    Text(error).font(.caption).foregroundStyle(.orange)
                 }
                 HStack(spacing: 12) {
                     if isRunning {
-                        Button(role: .destructive) {
-                            stopTarget = name
-                        } label: {
-                            Label("Stop", systemImage: "stop.fill")
-                                .frame(maxWidth: .infinity)
+                        Button(role: .destructive) { stopTarget = name } label: {
+                            Label("Stop", systemImage: "stop.fill").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
-                        .disabled(isBusy)
+                        .disabled(busy)
                     } else {
-                        Button {
-                            Task { await perform(name, "start") }
-                        } label: {
-                            Label("Start", systemImage: "play.fill")
-                                .frame(maxWidth: .infinity)
+                        Button { Task { await perform(name, "start") } } label: {
+                            Label("Start", systemImage: "play.fill").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isBusy)
+                        .disabled(busy || !isKnown)
                     }
-                    Button {
-                        Task { await perform(name, "restart") }
-                    } label: {
-                        Label("Restart", systemImage: "arrow.clockwise")
-                            .frame(maxWidth: .infinity)
+                    Button { Task { await perform(name, "restart") } } label: {
+                        Label("Restart", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    .disabled(isBusy)
+                    .disabled(busy || !isKnown)
+                }
+                if busy {
+                    ProgressView("Applying action…")
+                        .font(.caption)
+                        .accessibilityLabel("Applying service action")
                 }
             }
         }
         .accessibilityElement(children: .contain)
     }
 
-    @ViewBuilder
     private var daemonCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 8) {
-                Label("jarvisd", systemImage: "gearshape.2")
-                    .font(.headline)
+                Label("jarvisd", systemImage: "gearshape.2").font(.headline)
                 if let version = app.lastHealth?.version {
-                    LabeledContent("Version", value: version)
-                        .font(.subheadline)
+                    LabeledContent("Version", value: version).font(.subheadline)
                 }
-                if let up = app.lastHealth?.uptimeSeconds {
-                    LabeledContent("Uptime", value: JarvisFormat.uptime(up))
-                        .font(.subheadline)
+                if let uptime = app.lastHealth?.uptimeSeconds {
+                    LabeledContent("Uptime", value: JarvisFormat.uptime(uptime)).font(.subheadline)
                 }
                 if app.lastHealth == nil {
-                    Text("Daemon info unavailable.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Text("Daemon info unavailable.").font(.subheadline).foregroundStyle(.secondary)
                 }
             }
         }
@@ -195,11 +176,8 @@ struct SystemView: View {
         VStack {
             Card {
                 VStack(spacing: 12) {
-                    Image(systemName: "wifi.slash")
-                        .font(.system(size: 34))
-                        .foregroundStyle(.secondary)
-                    Text("Not connected")
-                        .font(.headline)
+                    Image(systemName: "wifi.slash").font(.system(size: 34)).foregroundStyle(.secondary)
+                    Text("Not connected").font(.headline)
                     Text("Connect from the Settings tab to manage services.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -212,24 +190,13 @@ struct SystemView: View {
         .padding(.horizontal)
     }
 
-    // MARK: - Actions
-
     private func refresh() async {
         await app.fetchServices()
         await app.fetchHealth()
     }
 
     private func perform(_ name: String, _ action: String) async {
-        busyService = name
-        defer { busyService = nil }
-        await app.runServiceAction(name, action)
-    }
-
-    private func pollLoop() async {
-        while !Task.isCancelled {
-            await refresh()
-            try? await Task.sleep(for: pollInterval)
-        }
+        _ = await app.runServiceAction(name, action)
     }
 }
 

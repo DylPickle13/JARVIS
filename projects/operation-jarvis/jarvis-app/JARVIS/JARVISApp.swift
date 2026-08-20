@@ -1,35 +1,40 @@
 import SwiftUI
-import JARVISKit
-
 @main
 struct JARVISApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var app = AppState()
-
-    init() {
-        // Start the WatchConnectivity session (no-op on the simulator if no
-        // paired watch; the full relay lands in M3).
-        WatchBridge.shared.start()
-    }
 
     var body: some Scene {
         WindowGroup {
             RootTabView()
                 .environmentObject(app)
                 .tint(Color.accentColor)
+                .task {
+                    app.startWatchBridge()
+                    app.sceneDidBecomeActive()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .active:
+                        app.sceneDidBecomeActive()
+                    case .inactive, .background:
+                        app.sceneWillResignActive()
+                    @unknown default:
+                        break
+                    }
+                }
         }
     }
 }
 
-// Four-tab shell (M1): Home / Events / System / Settings.
 private struct RootTabView: View {
     @EnvironmentObject var app: AppState
-    @State private var selection: Tab = .home
+    @State private var selection: AppSection = .home
 
     init() {
-        // Dev convenience: -jarvisSeedTab home|events|system|settings
         let args = CommandLine.arguments
-        if let i = args.firstIndex(of: "-jarvisSeedTab"), i + 1 < args.count,
-           let tab = Tab(rawValue: args[i + 1].lowercased()) {
+        if let index = args.firstIndex(of: "-jarvisSeedTab"), index + 1 < args.count,
+           let tab = AppSection(rawValue: args[index + 1].lowercased()) {
             _selection = State(initialValue: tab)
         }
     }
@@ -38,23 +43,23 @@ private struct RootTabView: View {
         TabView(selection: $selection) {
             HomeView()
                 .tabItem { Label("Home", systemImage: "house.fill") }
-                .tag(Tab.home)
+                .tag(AppSection.home)
 
             EventsView()
                 .tabItem { Label("Events", systemImage: "list.bullet") }
-                .tag(Tab.events)
+                .tag(AppSection.events)
 
             SystemView()
                 .tabItem { Label("System", systemImage: "gearshape.2") }
-                .tag(Tab.system)
+                .tag(AppSection.system)
 
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
-                .tag(Tab.settings)
+                .tag(AppSection.settings)
+        }
+        .onAppear { app.setActiveSection(selection) }
+        .onChange(of: selection) { _, value in
+            app.setActiveSection(value)
         }
     }
-}
-
-private enum Tab: String {
-    case home, events, system, settings
 }

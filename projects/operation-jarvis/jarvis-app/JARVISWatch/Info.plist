@@ -17,23 +17,36 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>com.operation-jarvis.jarvis</string>
-	<key>WKWatchOnly</key>
+	<key>WKRunsIndependentlyOfCompanionApp</key>
 	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>192.168.21.215</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>100.96.55.86</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>JARVIS talks to the jarvisd daemon on your local network or through the paired iPhone to read status and control plugs and the air purifier.</string>
+	<string>JARVIS talks to jarvisd on your local network or through the paired iPhone.</string>
 </dict>
 </plist>

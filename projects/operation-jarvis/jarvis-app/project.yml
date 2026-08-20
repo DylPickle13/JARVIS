@@ -7,12 +7,13 @@ options:
   createIntermediateGroups: true
   developmentLanguage: en
   groupSortPosition: top
+  postGenCommand: ./scripts/patch-watch-embedding.sh
 
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "8"
     CODE_SIGN_STYLE: Automatic
 
 packages:
@@ -29,6 +30,12 @@ targets:
           - "Info.plist"
     dependencies:
       - package: JARVISKit
+      - target: JARVISWatch
+        platforms: [iOS]
+        platformFilter: iOS
+        embed: true
+      - target: JARVISWidget
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.operation-jarvis.jarvis
@@ -37,6 +44,51 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SUPPORTS_MACCATALYST: NO
+
+  JARVISWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: JARVISWidget
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - package: JARVISKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.operation-jarvis.jarvis.widget
+        INFOPLIST_FILE: JARVISWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        APPLICATION_EXTENSION_API_ONLY: YES
+        TARGETED_DEVICE_FAMILY: "1"
+
+  JARVISWatchWidget:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: JARVISWatchWidget
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - package: JARVISKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.operation-jarvis.jarvis.watchkitapp.widget
+        INFOPLIST_FILE: JARVISWatchWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+  JARVISTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: JARVISTests
+    dependencies:
+      - target: JARVIS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.operation-jarvis.jarvis.tests
+        GENERATE_INFOPLIST_FILE: YES
 
   JARVISWatch:
     type: application
@@ -47,11 +99,21 @@ targets:
           - "Info.plist"
     dependencies:
       - package: JARVISKit
+      - target: JARVISWatchWidget
+        embed: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.operation-jarvis.jarvis.watch
+        PRODUCT_BUNDLE_IDENTIFIER: com.operation-jarvis.jarvis.watchkitapp
+        PRODUCT_NAME: JARVISWatch
         INFOPLIST_FILE: JARVISWatch/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+        ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: WatchAppIcon
+        GENERATE_PKGINFO_FILE: YES
+        SDKROOT: watchos
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "4"
+        WRAPPER_EXTENSION: app
         WATCHOS_DEPLOYMENT_TARGET: "10.0"
 
 schemes:
@@ -59,6 +121,9 @@ schemes:
     build:
       targets:
         JARVIS: all
+    test:
+      targets:
+        - JARVISTests
     run:
       config: Debug
   JARVISWatch:

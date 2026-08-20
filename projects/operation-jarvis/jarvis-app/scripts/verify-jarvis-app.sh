@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Repeatable local verification for the daemon, shared package, and host apps.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+ROOT="$(pwd)"
+DERIVED_DATA_PATH="$(mktemp -d "${TMPDIR:-/tmp}/jarvis-verify-derived.XXXXXX")"
+trap 'rm -rf "$DERIVED_DATA_PATH"' EXIT
+
+printf '%s\n' '== XcodeGen =='
+xcodegen generate
+
+printf '%s\n' '== Python unit tests =='
+python3 -m unittest discover -s jarvisd/tests -v
+python3 -m py_compile jarvisd/jarvisd.py ../jarvis.py
+
+printf '%s\n' '== plist, icon, and shell syntax =='
+plutil -lint \
+  JARVIS/Info.plist \
+  JARVIS/PrivacyInfo.xcprivacy \
+  JARVISWidget/Info.plist \
+  JARVISWatch/Info.plist \
+  JARVISWatchWidget/Info.plist \
+  jarvisd/launchd/*.plist
+bash -n scripts/*.sh jarvisd/resurrector.sh
+
+icon_is_opaque_square() {
+  local path="$1"
+  local expected="$2"
+  local width height alpha
+  width="$(sips -g pixelWidth "$path" 2>/dev/null | awk '/pixelWidth/{print $2}')"
+  height="$(sips -g pixelHeight "$path" 2>/dev/null | awk '/pixelHeight/{print $2}')"
+  alpha="$(sips -g hasAlpha "$path" 2>/dev/null | awk '/hasAlpha/{print $2}')"
+  [[ "$width" == "$expected" && "$height" == "$expected" && "$alpha" == "no" ]] || {
+    echo "invalid app icon: $path (${width}x${height}, alpha=${alpha})" >&2
+    exit 1
+  }
+}
+
+icon_is_opaque_square JARVIS/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png 1024
+while IFS=: read -r filename size; do
+  icon_is_opaque_square "JARVISWatch/Assets.xcassets/WatchAppIcon.appiconset/$filename" "$size"
+done <<'ICONS'
+watch-notification-48.png:48
+watch-notification-55.png:55
+watch-settings-58.png:58
+watch-settings-87.png:87
+watch-launcher-80.png:80
+watch-launcher-88.png:88
+watch-launcher-100.png:100
+watch-quicklook-172.png:172
+watch-quicklook-196.png:196
+watch-quicklook-216.png:216
+watch-marketing-1024.png:1024
+ICONS
+
+printf '%s\n' '== JARVISKit tests (live tests opt-in) =='
+if [[ "${JARVIS_LIVE_TESTS:-0}" == "1" ]]; then
+  JARVIS_LIVE_TESTS=1 swift test --package-path JARVISKit
+else
+  swift test --package-path JARVISKit
+fi
+
+printf '%s\n' '== iOS simulator build =='
+xcodebuild \
+  -project JARVIS.xcodeproj \
+  -scheme JARVIS \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath "$DERIVED_DATA_PATH" \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+[[ -d "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/PlugIns/JARVISWidget.appex" ]] \
+  || { echo "iOS widget was not embedded" >&2; exit 1; }
+[[ -d "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/Watch/JARVISWatch.app" ]] \
+  || { echo "watch companion was not embedded under Watch/" >&2; exit 1; }
+[[ ! -e "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/PlugIns/JARVISWatch.app" ]] \
+  || { echo "watch companion was also embedded under PlugIns/" >&2; exit 1; }
+[[ -d "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/Watch/JARVISWatch.app/PlugIns/JARVISWatchWidget.appex" ]] \
+  || { echo "watch widget was not nested in the embedded watch app" >&2; exit 1; }
+
+if [[ "${JARVIS_RUN_IOS_TESTS:-0}" == "1" ]]; then
+  printf '%s\n' '== iOS unit tests =='
+  xcodebuild \
+    -project JARVIS.xcodeproj \
+    -scheme JARVIS \
+    -configuration Debug \
+    -destination 'platform=iOS Simulator,name=iPhone 11,OS=26.5' \
+    -derivedDataPath "$DERIVED_DATA_PATH" \
+    CODE_SIGNING_ALLOWED=NO \
+    test
+fi
+
+printf '%s\n' '== watchOS simulator build =='
+xcodebuild \
+  -project JARVIS.xcodeproj \
+  -scheme JARVISWatch \
+  -configuration Debug \
+  -destination 'generic/platform=watchOS Simulator' \
+  -derivedDataPath "$DERIVED_DATA_PATH" \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+[[ -d "$DERIVED_DATA_PATH/Build/Products/Debug-watchsimulator/JARVISWatch.app/PlugIns/JARVISWatchWidget.appex" ]] \
+  || { echo "watch widget was not embedded" >&2; exit 1; }
+
+printf '%s\n' '== complete =='

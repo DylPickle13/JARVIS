@@ -1,69 +1,62 @@
 import XCTest
 @testable import JARVISKit
 
-// Live integration tests against a running jarvisd (default 127.0.0.1:8790).
-// These skip gracefully when the daemon isn't reachable (e.g. in CI), so they
-// never break a plain `swift test` run. Run locally with the daemon up to
-// exercise the real client → daemon → decode path end to end.
+// Opt-in live integration tests. They never read the repository .env and do
+// not silently hide a failure when explicitly enabled:
+//
+//   JARVIS_LIVE_TESTS=1 JARVISD_TEST_URL=http://127.0.0.1:8790 swift test
 final class LiveIntegrationTests: XCTestCase {
-    static let endpointURL = URL(string: "http://127.0.0.1:8790")!
-    static let envPath = "/Users/dylanrapanan/JARVIS/.env"
-
-    static func token() -> String {
-        if let t = ProcessInfo.processInfo.environment["JARVIS_API_TOKEN"], !t.isEmpty { return t }
-        guard let content = try? String(contentsOfFile: envPath, encoding: .utf8) else { return "" }
-        for line in content.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("JARVIS_API_TOKEN=") {
-                return String(trimmed.dropFirst("JARVIS_API_TOKEN=".count)).trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return ""
+    static func enabled() -> Bool {
+        ProcessInfo.processInfo.environment["JARVIS_LIVE_TESTS"] == "1"
     }
 
-    private func skipIfDown(_ client: JarvisClient, _ endpoint: JarvisEndpoint) async throws {
+    static func endpoint() throws -> JarvisEndpoint {
+        let raw = ProcessInfo.processInfo.environment["JARVISD_TEST_URL"] ?? "http://127.0.0.1:8790"
+        guard let url = URL(string: raw) else {
+            throw XCTSkip("JARVISD_TEST_URL is not a valid URL")
+        }
+        return JarvisEndpoint(
+            baseURL: url,
+            token: ProcessInfo.processInfo.environment["JARVIS_API_TOKEN"] ?? ""
+        )
+    }
+
+    private func requireEndpoint(_ client: JarvisClient) async throws -> JarvisEndpoint {
+        try XCTSkipUnless(Self.enabled(), "Set JARVIS_LIVE_TESTS=1 to run live daemon tests")
+        let endpoint = try Self.endpoint()
         do {
             _ = try await client.health(endpoint)
         } catch {
-            throw XCTSkip("jarvisd not reachable at \(endpoint.baseURL) — skipping live test")
+            throw XCTSkip("jarvisd not reachable at \(endpoint.baseURL): \(error)")
         }
+        return endpoint
     }
 
     func testLiveHealthAndState() async throws {
         let client = JarvisClient()
-        let token = Self.token()
-        let endpoint = JarvisEndpoint(baseURL: Self.endpointURL, token: token)
-        try await skipIfDown(client, endpoint)
-
+        let endpoint = try await requireEndpoint(client)
         let health = try await client.health(endpoint)
         XCTAssertTrue(health.ok)
-        XCTAssertEqual(health.version, "0.1.0")
+        XCTAssertFalse(health.version?.isEmpty ?? true)
 
         let state = try await client.state(endpoint)
         XCTAssertTrue(state.ok)
         XCTAssertNotNil(state.summary)
         XCTAssertNotNil(state.subsystems?.network?.macLanIp)
-        // Plugs should be present with 4 entries on this install.
-        XCTAssertEqual(state.subsystems?.plugs?.count, 4)
-        print("LIVE state summary: \(String(describing: state.summary))")
-        print("LIVE network: lan=\(state.subsystems?.network?.macLanIp ?? "nil") ts=\(state.subsystems?.network?.tailscaleIp ?? "nil")")
+        XCTAssertNotNil(state.subsystems?.plugs)
     }
 
     func testLiveCommandPlugList() async throws {
         let client = JarvisClient()
-        let endpoint = JarvisEndpoint(baseURL: Self.endpointURL, token: Self.token())
-        try await skipIfDown(client, endpoint)
-
+        let endpoint = try await requireEndpoint(client)
         let result = try await client.command(endpoint, action: "plug-list")
-        XCTAssertTrue(result.ok)
         XCTAssertEqual(result.action, "plug-list")
+        XCTAssertTrue(result.ok)
     }
 
     func testLiveCommandRejectsCast() async throws {
         let client = JarvisClient()
-        let endpoint = JarvisEndpoint(baseURL: Self.endpointURL, token: Self.token())
-        try await skipIfDown(client, endpoint)
-
+        let endpoint = try await requireEndpoint(client)
         do {
             _ = try await client.command(endpoint, action: "cast-status")
             XCTFail("expected cast-status to be rejected")

@@ -22,15 +22,38 @@ struct ConnectionBadge: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .top, spacing: 6) {
             Circle()
                 .fill(color)
                 .frame(width: 9, height: 9)
+                .padding(.top, 6)
             Text(detail)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Connection \(detail)")
+    }
+}
+
+// MARK: - Operation errors
+
+struct OperationErrorCard: View {
+    let message: String
+
+    var body: some View {
+        Label {
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+        }
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Operation failed: \(message)")
     }
 }
 
@@ -59,6 +82,13 @@ struct Card<Content: View>: View {
 // MARK: - Formatting helpers
 
 enum JarvisFormat {
+    private static let isoWithFractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let isoPlain = ISO8601DateFormatter()
+
     static func uptime(_ seconds: Double) -> String {
         let s = Int(seconds)
         let h = s / 3600
@@ -116,7 +146,7 @@ enum JarvisFormat {
     /// Compact relative time for event rows: "now", "42s", "7m", "3h", "2d".
     static func relativeTime(_ iso: String?) -> String {
         guard let iso, let date = parseISO8601(iso) else { return "" }
-        let secs = Int(Date().timeIntervalSince(date))
+        let secs = max(0, Int(Date().timeIntervalSince(date)))
         if secs < 5 { return "now" }
         if secs < 60 { return "\(secs)s" }
         if secs < 3600 { return "\(secs / 60)m" }
@@ -126,10 +156,7 @@ enum JarvisFormat {
 
     /// Parse an ISO-8601 timestamp (with or without fractional seconds).
     static func parseISO8601(_ s: String) -> Date? {
-        let withFrac = ISO8601DateFormatter()
-        withFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = withFrac.date(from: s) { return d }
-        let plain = ISO8601DateFormatter()
-        return plain.date(from: s)
+        if let date = isoWithFractionalSeconds.date(from: s) { return date }
+        return isoPlain.date(from: s)
     }
 }

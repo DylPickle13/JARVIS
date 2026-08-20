@@ -17,9 +17,11 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>
@@ -32,18 +34,25 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>UIRequiredSystemCapabilities</key>
-	<array>
-		<string>location</string>
-	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>192.168.21.215</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>100.96.55.86</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>JARVIS talks to the jarvisd daemon on your local network or Tailscale to read status and control plugs and the air purifier.</string>
-	<key>NSBonjourServices</key>
-	<array/>
+	<string>JARVIS talks to jarvisd on your local network to read status and control approved devices.</string>
 </dict>
 </plist>

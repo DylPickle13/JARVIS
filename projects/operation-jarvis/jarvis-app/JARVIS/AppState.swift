@@ -1,240 +1,548 @@
 import Foundation
+import Network
 import SwiftUI
+import WidgetKit
 import JARVISKit
 
-// App-wide connection + state model. The app auto-discovers the jarvisd
-// endpoint (home LAN IP or Tailscale IP) and connects with no token. Later
-// milestones add Home/Events/System tabs on top of this same AppState.
+public enum AppSection: String, Sendable {
+    case home
+    case events
+    case system
+    case settings
+}
 
+struct WatchCommandCacheEntry: Sendable {
+    let result: CommandResult?
+    let error: String?
+}
+
+/// Main-actor application model. Networking is started by the scene lifecycle,
+/// not by init, so cold launch, backgrounding, and network-path changes have a
+/// single cancellable owner.
 @MainActor
 public final class AppState: ObservableObject {
     public let store: EndpointStore
-    public let client: JarvisClient
+    public let client: any JarvisAPI
 
     @Published public var connectionState: ConnectionState = .idle
     @Published public var errorMessage: String?
+    @Published public var operationErrorMessage: String?
     @Published public var lastState: StateSnapshot?
     @Published public var lastHealth: HealthResponse?
     @Published public var isRefreshing = false
-    // M2: events feed + service control.
+    @Published public var isStateLoading = false
+    @Published public var stateErrorMessage: String?
+
     @Published public var lastEvents: [EventItem] = []
+    @Published public var eventsLoaded = false
+    @Published public var eventsLoading = false
+    @Published public var eventsErrorMessage: String?
+
     @Published public var lastServices: [String: ServiceActionResult] = [:]
+    @Published public var servicesLoaded = false
+    @Published public var servicesLoading = false
+    @Published public var servicesErrorMessage: String?
 
-    // Optional manual endpoint override (advanced). Empty = auto-discover.
     @Published public var endpointDraft: String
+    @Published public private(set) var busyOperations: Set<String> = []
+    @Published public private(set) var activeSection: AppSection = .home
 
-    public init(store: EndpointStore = EndpointStore(), client: JarvisClient = JarvisClient()) {
-        self.store = store
+    private var appIsActive = false
+    private var networkAvailable = true
+    private var retryAllowed = true
+    private var lastEventSequence: Int?
+    private var refreshTask: Task<Void, Never>?
+    private var connectionLoopTask: Task<Void, Never>?
+    private var stateTask: Task<Void, Never>?
+    private var pollingTask: Task<Void, Never>?
+    private var pathMonitor: NWPathMonitor?
+    var watchCommandResponses: [String: WatchCommandCacheEntry] = [:]
+    var watchCommandInFlight: Set<String> = []
+    var watchCommandResponseOrder: [String] = []
+    let watchCommandCacheLimit = 50
+
+    public init(store: EndpointStore? = nil, client: any JarvisAPI = JarvisClient()) {
+        let resolvedStore = store ?? EndpointStore(defaults: JARVISSharedStore.defaults)
+        self.store = resolvedStore
         self.client = client
-        self.endpointDraft = store.endpointURLString ?? ""
+        self.endpointDraft = resolvedStore.endpointURLString ?? ""
         seedFromLaunchArgumentsIfPresent()
-        self.endpointDraft = store.endpointURLString ?? ""
-        // Always try to connect on launch (auto-discovery, no token needed).
-        Task { await refresh() }
+        self.endpointDraft = resolvedStore.endpointURLString ?? ""
     }
 
-    /// Dev/testing affordance: if launched with `-jarvisSeedEndpoint <url>`
-    /// (e.g. via `xcrun simctl launch`), persist it so the app prefers it.
-    /// Harmless in production (no one passes these).
+    deinit {
+        pathMonitor?.cancel()
+        refreshTask?.cancel()
+        connectionLoopTask?.cancel()
+        stateTask?.cancel()
+        pollingTask?.cancel()
+    }
+
+    /// Dev/testing affordance: `-jarvisSeedEndpoint <url>` persists an endpoint
+    /// before scene activation. It has no effect in normal production launches.
     private func seedFromLaunchArgumentsIfPresent() {
         let args = CommandLine.arguments
-        func value(for key: String) -> String? {
-            guard let i = args.firstIndex(of: key), i + 1 < args.count else { return nil }
-            return args[i + 1]
-        }
-        if let ep = value(for: "-jarvisSeedEndpoint") {
-            store.endpointURLString = ep
+        guard let index = args.firstIndex(of: "-jarvisSeedEndpoint"), index + 1 < args.count else { return }
+        store.endpointURLString = args[index + 1]
+    }
+
+    public var currentEndpoint: URL? { store.endpointURL }
+
+    // MARK: - Scene/network lifecycle
+
+    public func startWatchBridge() {
+        WatchBridge.shared.delegate = self
+        WatchBridge.shared.start()
+        if let snapshot = lastState, let data = try? JSONEncoder().encode(snapshot) {
+            WatchBridge.shared.sendState(json: data)
+            WatchBridge.shared.updateApplicationContext(stateJSON: data, endpoint: currentEndpoint?.absoluteString)
         }
     }
 
-    /// The endpoint currently in use (last discovered), if any.
-    public var currentEndpoint: URL? { store.endpointURL }
+    public func sceneDidBecomeActive() {
+        appIsActive = true
+        startPathMonitorIfNeeded()
+        if connectionState != .connected {
+            startConnectionLoop()
+        } else {
+            restartPolling()
+        }
+    }
 
-    /// Re-discover the endpoint and refresh state. This is what "Connect" and
-    /// the launch-time auto-connect both do.
+    public func sceneWillResignActive() {
+        appIsActive = false
+        pollingTask?.cancel()
+        pollingTask = nil
+        refreshTask?.cancel()
+        refreshTask = nil
+        stateTask?.cancel()
+        stateTask = nil
+        connectionLoopTask?.cancel()
+        connectionLoopTask = nil
+    }
+
+    public func setActiveSection(_ section: AppSection) {
+        activeSection = section
+        restartPolling()
+    }
+
+    private func startPathMonitorIfNeeded() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        pathMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.networkAvailable = path.status == .satisfied
+                if self.networkAvailable, self.appIsActive, self.connectionState != .connected {
+                    self.startConnectionLoop()
+                }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "com.operation-jarvis.network-path"))
+    }
+
+    private func startConnectionLoop() {
+        guard appIsActive, networkAvailable else { return }
+        if let existing = connectionLoopTask, !existing.isCancelled {
+            return
+        }
+        connectionLoopTask?.cancel()
+        connectionLoopTask = Task { @MainActor [weak self] in
+            var delay: Duration = .milliseconds(250)
+            while let self, self.appIsActive, !Task.isCancelled {
+                await self.refresh()
+                if self.connectionState == .connected { return }
+                guard self.retryAllowed else { return }
+                try? await Task.sleep(for: delay)
+                delay = min(delay * 2, .seconds(30))
+            }
+        }
+    }
+
+    // MARK: - Connection
+
     public func refresh() async {
+        refreshTask?.cancel()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performRefresh()
+        }
+        refreshTask = task
+        await task.value
+    }
+
+    private func performRefresh() async {
         connectionState = .connecting
         errorMessage = nil
+        retryAllowed = true
         isRefreshing = true
         defer { isRefreshing = false }
 
-        // Candidate list: manual override first (if any), then the defaults.
-        let override = endpointDraft.isEmpty ? nil : endpointURL(from: endpointDraft)
-        let candidates = JarvisEndpoints.candidates(override: override)
+        let override: URL?
+        if endpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            override = nil
+        } else if let parsed = endpointURL(from: endpointDraft) {
+            override = parsed
+        } else {
+            connectionState = .failed
+            retryAllowed = false
+            errorMessage = "The endpoint is not a valid URL."
+            return
+        }
 
-        guard let discovered = await client.discover(candidates) else {
-            lastState = nil
-            lastHealth = nil
+        let candidates = JarvisEndpoints.candidates(override: override)
+        guard let discovered = await client.discover(candidates, timeout: 3.0) else {
             connectionState = .failed
             errorMessage = "Could not reach jarvisd at any known endpoint (tried \(candidates.count))."
             return
         }
 
-        // Remember the working endpoint for next time.
         store.endpointURLString = discovered.absoluteString
         let endpoint = JarvisEndpoint(baseURL: discovered, token: store.token ?? "")
-
-        // Consider connected as soon as /health answers (fast). The state
-        // snapshot is fetched separately — it can be slow (plugs/purifier/
-        // weather) and shouldn't gate the connection.
         do {
             lastHealth = try await client.health(endpoint)
             connectionState = .connected
             errorMessage = nil
+            isStateLoading = true
+            await fetchState()
+            restartPolling()
         } catch let error as JarvisError {
             connectionState = .failed
-            errorMessage = error.errorDescription ?? "Unknown error"
+            retryAllowed = error.isRetryable
+            errorMessage = error.errorDescription ?? "Could not connect to jarvisd."
+        } catch is CancellationError {
             return
         } catch {
             connectionState = .failed
             errorMessage = error.localizedDescription
-            return
         }
-
-        // Fetch the initial state snapshot in the background (the Home tab
-        // also polls it every 10 s).
-        Task { await fetchState() }
     }
 
-    /// "Connect" button: re-discover + refresh.
     public func connect() async {
+        connectionLoopTask?.cancel()
         await refresh()
+        if connectionState != .connected { startConnectionLoop() }
     }
 
-    // MARK: - Commands (M1)
+    // MARK: - State
 
-    /// The endpoint currently in use, wrapped with the stored token.
     private var activeEndpoint: JarvisEndpoint? {
         guard let url = store.endpointURL else { return nil }
         return JarvisEndpoint(baseURL: url, token: store.token ?? "")
     }
 
-    /// Send an allowlisted command to jarvisd. Returns the result, or nil on
-    /// failure (errorMessage is set).
-    @discardableResult
-    public func send(_ action: String, _ params: [String: JSONValue]) async -> CommandResult? {
-        guard let endpoint = activeEndpoint else {
-            errorMessage = "Not connected."
-            return nil
-        }
-        do {
-            return try await client.command(endpoint, action: action, params: params)
-        } catch let error as JarvisError {
-            errorMessage = error.errorDescription
-            return nil
-        } catch {
-            errorMessage = error.localizedDescription
-            return nil
-        }
-    }
-
-    /// Re-fetch state from the current endpoint without re-discovering. Used
-    /// after commands and for periodic polling on the Home screen.
     public func fetchState() async {
+        guard activeEndpoint != nil else { return }
+        stateTask?.cancel()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performFetchState()
+        }
+        stateTask = task
+        await task.value
+    }
+
+    private func performFetchState() async {
         guard let endpoint = activeEndpoint else { return }
+        isStateLoading = true
+        defer { isStateLoading = false }
         do {
-            let state = try await client.state(endpoint)
-            lastState = state
-            lastHealth = try? await client.health(endpoint)
+            let snapshot = try await client.state(endpoint)
+            lastState = snapshot
+            SnapshotStore().save(snapshot)
+            WidgetCenter.shared.reloadAllTimelines()
+            if let data = try? JSONEncoder().encode(snapshot) {
+                WatchBridge.shared.sendState(json: data)
+                WatchBridge.shared.updateApplicationContext(stateJSON: data, endpoint: currentEndpoint?.absoluteString)
+            }
+            stateErrorMessage = nil
             connectionState = .connected
-            errorMessage = nil
+        } catch is CancellationError {
+            return
+        } catch let error as JarvisError {
+            stateErrorMessage = error.errorDescription
+            if lastState == nil { errorMessage = error.errorDescription }
+            if error.isRetryable {
+                connectionState = .failed
+                retryAllowed = true
+                if appIsActive { startConnectionLoop() }
+            } else {
+                retryAllowed = false
+            }
         } catch {
-            // Keep the last good snapshot; don't drop the UI on a blip.
+            stateErrorMessage = error.localizedDescription
+            if lastState == nil { errorMessage = error.localizedDescription }
+            connectionState = .failed
+            retryAllowed = true
+            if appIsActive { startConnectionLoop() }
         }
     }
 
-    /// Toggle a smart plug, then refresh the snapshot.
+    // MARK: - Commands
+
+    public func isOperationBusy(_ key: String) -> Bool {
+        busyOperations.contains(key)
+    }
+
+    private func beginOperation(_ key: String) -> Bool {
+        guard !busyOperations.contains(key) else { return false }
+        var updated = busyOperations
+        updated.insert(key)
+        busyOperations = updated
+        operationErrorMessage = nil
+        return true
+    }
+
+    private func endOperation(_ key: String) {
+        var updated = busyOperations
+        updated.remove(key)
+        busyOperations = updated
+    }
+
+    @discardableResult
+    public func send(_ action: String, _ params: [String: JSONValue] = [:]) async -> CommandResult? {
+        guard let endpoint = activeEndpoint else {
+            operationErrorMessage = "Not connected."
+            return nil
+        }
+        do {
+            let result = try await client.command(endpoint, action: action, params: params)
+            if !result.ok {
+                operationErrorMessage = result.error ?? "\(action) failed."
+            }
+            return result
+        } catch let error as JarvisError {
+            operationErrorMessage = error.errorDescription
+            return nil
+        } catch is CancellationError {
+            return nil
+        } catch {
+            operationErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    private func runCommand(
+        key: String,
+        action: String,
+        params: [String: JSONValue],
+        refreshState: Bool = true
+    ) async -> Bool {
+        guard beginOperation(key) else { return false }
+        defer { endOperation(key) }
+        guard let result = await send(action, params), result.ok else { return false }
+        if refreshState { await fetchState() }
+        return true
+    }
+
+    public func setPlug(_ name: String, isOn: Bool) async -> Bool {
+        await runCommand(
+            key: "plug:\(name)",
+            action: isOn ? "plug-on" : "plug-off",
+            params: ["plug": .string(name)]
+        )
+    }
+
+    func executeWatchPlugCommand(_ name: String, isOn: Bool) async -> CommandResult {
+        let action = isOn ? "plug-on" : "plug-off"
+        guard beginOperation("plug:\(name)") else {
+            return CommandResult(ok: false, action: action, error: "A plug operation is already in progress.")
+        }
+        defer { endOperation("plug:\(name)") }
+        guard let result = await send(action, ["plug": .string(name)]) else {
+            return CommandResult(ok: false, action: action, error: operationErrorMessage ?? "The plug command failed.")
+        }
+        return result
+    }
+
+    func rememberWatchCommand(_ requestID: String, entry: WatchCommandCacheEntry) {
+        guard !requestID.isEmpty else { return }
+        watchCommandResponses[requestID] = entry
+        watchCommandResponseOrder.removeAll { $0 == requestID }
+        watchCommandResponseOrder.append(requestID)
+        while watchCommandResponseOrder.count > watchCommandCacheLimit {
+            let oldest = watchCommandResponseOrder.removeFirst()
+            watchCommandResponses.removeValue(forKey: oldest)
+        }
+    }
+
+    /// Compatibility helper for older callers. The native UI uses setPlug so
+    /// desired-state writes are idempotent.
     public func togglePlug(_ name: String) async {
-        _ = await send("plug-toggle", ["plug": .string(name)])
-        await fetchState()
+        guard let state = lastState?.subsystems?.plugs?.plugs?[name]?.isOn else {
+            operationErrorMessage = "Plug state is unavailable."
+            return
+        }
+        _ = await setPlug(name, isOn: !state)
     }
 
-    /// Set air purifier power (on/off), then refresh.
     public func setPurifierPower(_ on: Bool) async {
-        _ = await send("purifier-set", ["setting": .string("power"), "value": .string(on ? "on" : "off")])
-        await fetchState()
+        _ = await runCommand(
+            key: "purifier",
+            action: "purifier-set",
+            params: ["setting": .string("power"), "value": .string(on ? "on" : "off")]
+        )
     }
 
-    /// Set air purifier mode (auto/manual/sleep/pet), then refresh.
     public func setPurifierMode(_ mode: String) async {
-        _ = await send("purifier-set", ["setting": .string("mode"), "value": .string(mode)])
-        await fetchState()
+        _ = await runCommand(
+            key: "purifier",
+            action: "purifier-set",
+            params: ["setting": .string("mode"), "value": .string(mode)]
+        )
     }
 
-    /// Set air purifier fan level (1–4), then refresh.
     public func setPurifierFan(_ level: Int) async {
-        _ = await send("purifier-set", ["setting": .string("speed"), "level": .number(Double(level))])
-        await fetchState()
+        _ = await runCommand(
+            key: "purifier",
+            action: "purifier-set",
+            params: ["setting": .string("speed"), "level": .number(Double(level))]
+        )
     }
 
-    // MARK: - Events + services (M2)
+    // MARK: - Events/services
 
-    /// Fetch the recent event feed (newest last). Used by the Events tab.
     public func fetchEvents(limit: Int = 100) async {
         guard let endpoint = activeEndpoint else { return }
+        eventsLoading = true
+        defer { eventsLoading = false }
         do {
-            let resp = try await client.events(endpoint, limit: limit)
-            lastEvents = resp.events
+            let response = try await client.events(endpoint, since: lastEventSequence, limit: limit)
+            if lastEventSequence == nil {
+                lastEvents = response.events
+            } else {
+                var merged = Dictionary(uniqueKeysWithValues: lastEvents.map { ($0.seq, $0) })
+                response.events.forEach { merged[$0.seq] = $0 }
+                lastEvents = Array(merged.values.sorted { $0.seq < $1.seq }.suffix(500))
+            }
+            lastEventSequence = lastEvents.map(\.seq).max() ?? lastEventSequence
+            eventsLoaded = true
+            eventsErrorMessage = nil
+        } catch let error as JarvisError {
+            eventsErrorMessage = error.errorDescription
+        } catch is CancellationError {
+            return
         } catch {
-            // Keep the last good feed on a blip.
+            eventsErrorMessage = error.localizedDescription
         }
     }
 
-    /// Fetch the registered services + their running state. Used by the System tab.
     public func fetchServices() async {
         guard let endpoint = activeEndpoint else { return }
+        servicesLoading = true
+        defer { servicesLoading = false }
         do {
-            let resp = try await client.services(endpoint)
-            lastServices = resp.services
+            let response = try await client.services(endpoint)
+            lastServices = response.services
+            servicesLoaded = true
+            servicesErrorMessage = nil
+        } catch let error as JarvisError {
+            servicesErrorMessage = error.errorDescription
+        } catch is CancellationError {
+            return
         } catch {
-            // Keep the last good snapshot.
+            servicesErrorMessage = error.localizedDescription
         }
     }
 
-    /// Lightweight daemon health fetch (version + uptime) for the System tab.
     public func fetchHealth() async {
         guard let endpoint = activeEndpoint else { return }
-        lastHealth = try? await client.health(endpoint)
+        do {
+            lastHealth = try await client.health(endpoint)
+        } catch let error as JarvisError {
+            errorMessage = error.errorDescription
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
-    /// Run a service action (start/stop/restart/status) and refresh the list.
-    /// Returns true if the action reported ok.
     @discardableResult
     public func runServiceAction(_ name: String, _ action: String) async -> Bool {
+        let key = "service:\(name)"
+        guard beginOperation(key) else { return false }
+        defer { endOperation(key) }
         guard let endpoint = activeEndpoint else {
-            errorMessage = "Not connected."
+            operationErrorMessage = "Not connected."
             return false
         }
         do {
             let result = try await client.serviceAction(endpoint, name: name, action: action)
             await fetchServices()
-            if !result.ok {
-                errorMessage = result.error ?? "\(action) failed for \(name)"
+            guard result.ok else {
+                operationErrorMessage = result.error ?? "\(action.capitalized) failed for \(name)."
+                return false
             }
-            return result.ok
+            operationErrorMessage = nil
+            return true
         } catch let error as JarvisError {
-            errorMessage = error.errorDescription
+            operationErrorMessage = error.errorDescription
+            return false
+        } catch is CancellationError {
             return false
         } catch {
-            errorMessage = error.localizedDescription
+            operationErrorMessage = error.localizedDescription
             return false
         }
     }
 
-    /// Reset: clear the remembered endpoint and re-discover from defaults.
+    // MARK: - Polling
+
+    private func restartPolling() {
+        pollingTask?.cancel()
+        pollingTask = nil
+        guard appIsActive, connectionState == .connected else { return }
+        let section = activeSection
+        guard section != .settings else { return }
+        pollingTask = Task { @MainActor [weak self] in
+            while let self, !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
+                  self.activeSection == section {
+                switch section {
+                case .home:
+                    try? await Task.sleep(for: .seconds(10))
+                    guard !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
+                          self.activeSection == section else { return }
+                    await self.fetchState()
+                case .events:
+                    await self.fetchEvents()
+                    try? await Task.sleep(for: .seconds(5))
+                case .system:
+                    await self.fetchServices()
+                    await self.fetchHealth()
+                    try? await Task.sleep(for: .seconds(15))
+                case .settings:
+                    return
+                }
+            }
+        }
+    }
+
+    // MARK: - Reset
+
     public func clearConnection() {
+        refreshTask?.cancel()
+        connectionLoopTask?.cancel()
+        stateTask?.cancel()
+        pollingTask?.cancel()
         store.clear()
         lastState = nil
         lastHealth = nil
+        lastEvents = []
+        lastServices = [:]
+        lastEventSequence = nil
+        eventsLoaded = false
+        servicesLoaded = false
         connectionState = .idle
         errorMessage = nil
+        stateErrorMessage = nil
+        operationErrorMessage = nil
         endpointDraft = ""
-        Task { await refresh() }
+        if appIsActive { startConnectionLoop() }
     }
 
     private func endpointURL(from string: String) -> URL? {
-        var s = string.trimmingCharacters(in: .whitespaces)
-        if !s.hasPrefix("http://") && !s.hasPrefix("https://") { s = "http://" + s }
-        return URL(string: s)
+        var value = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !value.hasPrefix("http://") && !value.hasPrefix("https://") { value = "http://" + value }
+        return URL(string: value)
     }
 }
