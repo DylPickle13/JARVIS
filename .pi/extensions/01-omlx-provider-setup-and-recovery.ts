@@ -75,8 +75,8 @@ const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 		},
 		models: [
 			{
-				id: "Qwen3.8-27B-8bit",
-				name: "Qwen3.8-27B-8bit",
+				id: "Qwen3.8-27B-4bit",
+				name: "Qwen3.8-27B-4bit",
 				reasoning: true,
 				thinkingLevelMap: {
 					minimal: "low",
