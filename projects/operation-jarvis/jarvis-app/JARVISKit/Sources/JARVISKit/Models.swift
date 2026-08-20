@@ -85,7 +85,6 @@ public struct Subsystems: Codable, Equatable, Sendable {
     public let plugs: PlugsSubsystem?
     public let purifier: PurifierSubsystem?
     public let pi: PiSubsystem?
-    public let weather: WeatherSubsystem?
     public let services: ServicesSubsystem?
     public let network: NetworkSubsystem?
 }
@@ -143,22 +142,6 @@ public struct PiSubsystem: Codable, Equatable, Sendable {
     public let localActive: Int?
     public let localTotal: Int?
     public let rpcActive: Int?
-    public let error: String?
-    public let lastError: String?
-}
-
-public struct WeatherSubsystem: Codable, Equatable, Sendable {
-    public let ok: Bool?
-    public let stale: Bool?
-    public let refreshing: Bool?
-    public let updatedAt: String?
-    public let location: String?
-    public let temperatureC: Double?
-    public let feelsLikeC: Double?
-    public let humidityPercent: Int?
-    public let windKph: Double?
-    public let weatherCode: Int?
-    public let at: String?
     public let error: String?
     public let lastError: String?
 }

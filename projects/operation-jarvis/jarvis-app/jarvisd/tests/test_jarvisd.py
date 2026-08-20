@@ -55,6 +55,11 @@ class DaemonUnitTests(unittest.TestCase):
         for _argv, _timeout, env in calls:
             self.assertEqual(env, {"JARVIS_EMIT_EVENTS": "0"})
 
+    def test_default_state_contract_excludes_weather(self):
+        coordinator = jarvisd.StateCoordinator()
+        self.assertNotIn("weather", coordinator.collectors)
+        self.assertNotIn("weather", coordinator.DEFAULT_INTERVALS)
+
     def test_public_command_result_filters_adapter_internals(self):
         result = jarvisd._public_command_result(
             "plug-on",

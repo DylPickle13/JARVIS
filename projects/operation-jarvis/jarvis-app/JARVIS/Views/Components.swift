@@ -3,7 +3,7 @@ import JARVISKit
 
 // Shared UI building blocks for the iOS app (M1+): the connection badge, an
 // inset-grouped card container, and small formatting helpers. Kept separate so
-// Home / Events / System / Settings can all reuse them.
+// Home / Events / Settings can all reuse them.
 
 // MARK: - Connection badge
 
@@ -107,38 +107,6 @@ enum JarvisFormat {
             .split(separator: " ")
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
             .joined(separator: " ")
-    }
-
-    /// Map an Open-Meteo WMO weather code to an SF Symbol name.
-    static func weatherSymbol(_ code: Int?) -> String {
-        switch code {
-        case nil: return "cloud"
-        case 0: return "sun.max.fill"
-        case 1, 2: return "cloud.sun.fill"
-        case 3: return "cloud.fill"
-        case 45, 48: return "cloud.fog.fill"
-        case 51, 53, 55, 56, 57: return "cloud.drizzle.fill"
-        case 61, 63, 65, 66, 67: return "cloud.rain.fill"
-        case 71, 73, 75, 77: return "cloud.snow.fill"
-        case 80, 81, 82: return "cloud.heavyrain.fill"
-        case 85, 86: return "cloud.snow.fill"
-        case 95: return "cloud.bolt.fill"
-        case 96, 99: return "cloud.bolt.rain.fill"
-        default: return "cloud"
-        }
-    }
-
-    /// Tint colour for a weather symbol.
-    static func weatherTint(_ code: Int?) -> Color {
-        guard let code else { return .gray }
-        switch code {
-        case 0, 1, 2: return .yellow
-        case 3, 45, 48: return .gray
-        case 51...67, 80...82: return .blue
-        case 71...77, 85, 86: return .cyan
-        case 95, 96, 99: return .orange
-        default: return .gray
-        }
     }
 
     // MARK: - Time

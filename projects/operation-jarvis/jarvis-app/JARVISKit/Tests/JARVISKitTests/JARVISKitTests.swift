@@ -15,7 +15,6 @@ final class JARVISKitTests: XCTestCase {
               "plugs": {"lamp": {"ok": true, "isOn": false, "host": "192.168.21.80", "rssi": -56, "alias": "Plug 3"}}},
             "purifier": {"ok": true, "isOn": true, "mode": "auto", "pm25": 1},
             "pi": {"ok": true, "active": 1, "localActive": 1, "localTotal": 2, "rpcActive": 0},
-            "weather": {"ok": true, "temperatureC": 25.1, "weatherCode": 0},
             "network": {"ok": true, "macLanIp": "192.168.21.215", "tailscaleIp": "100.96.55.86"}
           }
         }

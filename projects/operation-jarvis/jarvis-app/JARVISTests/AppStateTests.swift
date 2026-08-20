@@ -32,6 +32,10 @@ final class AppStateTests: XCTestCase {
         }
         let initialCalls = api.stateCalls
         XCTAssertEqual(initialCalls, 1)
+        for _ in 0..<20 where api.servicesCalls == 0 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertEqual(api.servicesCalls, 1)
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertEqual(api.stateCalls, initialCalls)
         app.sceneWillResignActive()
@@ -107,6 +111,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     let commandDelay: Duration?
     var commands: [String] = []
     var stateCalls = 0
+    var servicesCalls = 0
 
     init(commandSucceeds: Bool = true, commandDelay: Duration? = nil) {
         self.commandSucceeds = commandSucceeds
@@ -137,7 +142,8 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     }
 
     func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse {
-        try! JSONDecoder().decode(ServicesListResponse.self, from: Data(#"{"ok":true,"services":{}}"#.utf8))
+        servicesCalls += 1
+        return try! JSONDecoder().decode(ServicesListResponse.self, from: Data(#"{"ok":true,"services":{}}"#.utf8))
     }
 
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult {

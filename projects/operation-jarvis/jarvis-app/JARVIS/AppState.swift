@@ -7,7 +7,6 @@ import JARVISKit
 public enum AppSection: String, Sendable {
     case home
     case events
-    case system
     case settings
 }
 
@@ -495,25 +494,40 @@ public final class AppState: ObservableObject {
         let section = activeSection
         guard section != .settings else { return }
         pollingTask = Task { @MainActor [weak self] in
-            while let self, !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
-                  self.activeSection == section {
-                switch section {
-                case .home:
-                    try? await Task.sleep(for: .seconds(10))
-                    guard !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
-                          self.activeSection == section else { return }
-                    await self.fetchState()
-                case .events:
+            guard let self else { return }
+            switch section {
+            case .home:
+                async let statePolling: Void = self.pollHomeState()
+                async let servicesPolling: Void = self.pollHomeServices()
+                _ = await (statePolling, servicesPolling)
+            case .events:
+                while !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
+                      self.activeSection == section {
                     await self.fetchEvents()
                     try? await Task.sleep(for: .seconds(5))
-                case .system:
-                    await self.fetchServices()
-                    await self.fetchHealth()
-                    try? await Task.sleep(for: .seconds(15))
-                case .settings:
-                    return
                 }
+            case .settings:
+                return
             }
+        }
+    }
+
+    private func pollHomeState() async {
+        while !Task.isCancelled, appIsActive, connectionState == .connected,
+              activeSection == .home {
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled, appIsActive, connectionState == .connected,
+                  activeSection == .home else { return }
+            await fetchState()
+        }
+    }
+
+    private func pollHomeServices() async {
+        while !Task.isCancelled, appIsActive, connectionState == .connected,
+              activeSection == .home {
+            await fetchServices()
+            await fetchHealth()
+            try? await Task.sleep(for: .seconds(15))
         }
     }
 

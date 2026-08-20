@@ -2,7 +2,7 @@
 
 **Revised:** 2026-08-20
 **Installed build:** 0.2.0 (8) on iPhone and Watch
-**Local candidate:** 0.2.0 (8)
+**Local candidate:** 0.2.0 (9)
 **Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
 ## 1. Current system boundary
@@ -20,8 +20,8 @@ iPhone app / iPhone widget / Watch app / Watch widget
   cached state       commands       services/events
           │              │              │
   Pi runtime files   jarvis-cli      launchctl registry
-  Open-Meteo             │           jarvisd event store
-  network state      plugctl / purifierctl
+  network state          │           jarvisd event store
+                    plugctl / purifierctl
 ```
 
 `jarvisd` is the sole control plane **for native Apple clients**. It intentionally delegates hardware operations to the existing `projects/operation-jarvis/jarvis-cli`, smart-plug, and air-purifier subsystems instead of reimplementing them.
@@ -63,7 +63,7 @@ The following are already closed unless relevant code changes again:
   lower-priority-success race is fixed.
 - iPhone simulator Home smoke at maximum Dynamic Type, dark appearance,
   increased contrast, and Reduce Motion against a write-blocking mock; the
-  status, weather, purifier, and plug layouts now switch to accessibility-safe
+  status, purifier, and plug layouts now switch to accessibility-safe
   vertical/single-column presentation. Physical VoiceOver and Watch checks
   remain open.
 
@@ -140,6 +140,16 @@ or Bridge-source experiments. The operational record is
   purifier validation is intentionally incomplete. The purifier remains off;
   do not retry writes unless explicitly requested.
 
+### Home simplification — weather retired; services consolidated
+
+Weather was removed from the native state model, Home UI, daemon collectors,
+cache schedule, and external Open-Meteo request path. Home now presents Pi
+sessions, plugs, then the air purifier. The registered service cards and
+`jarvisd` information moved to the bottom of Home, Home owns their polling and
+refresh, and the dedicated System tab/view were removed. This is a contract
+removal rather than a hidden weather card; older snapshots with an extra weather
+field remain harmless because Swift decoding ignores unknown fields.
+
 ### Physical cellular/Tailscale finding — cold launch and relaunch pass
 
 With iPhone Wi-Fi disabled, cellular data active, and Tailscale connected, build
@@ -183,7 +193,7 @@ directory, or disabled dashboard LaunchAgent remains.
 2. Remove `~/Library/LaunchAgents/com.operation-jarvis.dashboard.plist`.
 3. Stop only any remaining process whose executable/cwd belongs to `projects/operation-jarvis/dashboard`; do not kill unrelated Node processes.
 4. Verify no listener remains on TCP port `8787` and a request to it fails.
-5. Remove the `dashboard` entry from `jarvis-app/jarvisd/services.json`, then verify the iPhone System page no longer offers it.
+5. Remove the `dashboard` entry from `jarvis-app/jarvisd/services.json`, then verify the iPhone Home services section no longer offers it.
 6. Remove dashboard-only logs, caches, generated camera artifacts, and Node dependencies after confirming none are shared.
 7. Remove the dashboard PWA/shortcut from its former client device and revoke its browser microphone/camera permissions and any insecure-origin exception.
 
@@ -216,7 +226,7 @@ The complete-removal gate passed:
 - [x] launchd has no `com.operation-jarvis.dashboard` service or plist;
 - [x] nothing listens on port `8787`;
 - [x] `projects/operation-jarvis/dashboard/` no longer exists;
-- [x] `jarvisd/services.json` and the app System page contain no dashboard service;
+- [x] `jarvisd/services.json` and the app Home services section contain no dashboard service;
 - [x] `jarvis-cli --help` and the Pi `jarvis` tool expose no dashboard/camera actions;
 - [x] no operational code references `JARVIS_DASHBOARD_*`, the dashboard LaunchAgent label, dashboard API routes, or port `8787`;
 - [x] no dashboard package, PWA, service worker, logs, cache, or generated dashboard-camera artifacts remain on this Mac;

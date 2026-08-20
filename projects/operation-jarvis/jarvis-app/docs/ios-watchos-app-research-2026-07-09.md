@@ -2,7 +2,9 @@
 
 > **Historical document — not an operational runbook.** This research records the
 > transitional architecture considered on 2026-07-09. The deprecated Node/PWA
-> dashboard and its `:8787` service were fully removed on 2026-08-20. Do not
+> dashboard and its `:8787` service were fully removed on 2026-08-20. Weather
+> telemetry and Open-Meteo collection were also later removed from the current
+> native/daemon contract; weather references below are historical. Do not
 > follow transitional commands, environment names, LaunchAgent paths, or source
 > paths below that refer to it. The current architecture is documented in
 > [`../README.md`](../README.md) and the post-deployment plan. For physical

@@ -20,7 +20,6 @@
 		96670E733F33AF654AC4972C /* WatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 862EE904DAFD1C1C2AA06CA4 /* WatchWidget.swift */; };
 		9E9F58260B97E592FE005E0A /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */; };
 		A6D11EDF6F1A5FA7EF55C9E4 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = CFF3B3FAF711B9F03333ABD8 /* JARVISKit */; };
-		B39D4418FC67AC398779D44F /* SystemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEE1384ED20F351D925F3A53 /* SystemView.swift */; };
 		BFF69B5C4311B005985B1812 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 65BFEC04E2CD0C7D691F114D /* Assets.xcassets */; };
 		C8411015C4C2C95FD234C9AE /* JARVISWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6DEE41C1A5E0238C3F10B643 /* JARVISWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CCDF0C295CFB30AAA3C0EC0B /* JARVISWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 96FAF133194F2E675B54A1CD /* JARVISWatch.app */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -118,7 +117,6 @@
 		B9214CFDAA410B86B33071C7 /* JARVISKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = JARVISKit; path = JARVISKit; sourceTree = SOURCE_ROOT; };
 		C2FE2FCABFFCEEADC0022C58 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		DBE6CDFF2E6B3AEAFD720F34 /* JARVIS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JARVIS.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		DEE1384ED20F351D925F3A53 /* SystemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemView.swift; sourceTree = "<group>"; };
 		F511B3C48F0433661629C5AB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F89A5FD5332EC5B9ED8DD165 /* JARVISTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = JARVISTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FD52E36404CFBA273498ACD2 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
@@ -183,7 +181,6 @@
 				6FDD62F683AE7DECCA7FDDFF /* EventsView.swift */,
 				6BD318AB3793295E0031F850 /* HomeView.swift */,
 				888D11D79E21EC5437B45339 /* SettingsView.swift */,
-				DEE1384ED20F351D925F3A53 /* SystemView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -465,7 +462,6 @@
 				DD7391FF9563157D2965AEEE /* HomeView.swift in Sources */,
 				9133343133C13A0DA96CDEF2 /* JARVISApp.swift in Sources */,
 				D250A7189D6C70AD54591AFE /* SettingsView.swift in Sources */,
-				B39D4418FC67AC398779D44F /* SystemView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -652,7 +648,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -754,7 +750,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

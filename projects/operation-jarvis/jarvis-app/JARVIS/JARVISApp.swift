@@ -49,10 +49,6 @@ private struct RootTabView: View {
                 .tabItem { Label("Events", systemImage: "list.bullet") }
                 .tag(AppSection.events)
 
-            SystemView()
-                .tabItem { Label("System", systemImage: "gearshape.2") }
-                .tag(AppSection.system)
-
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
                 .tag(AppSection.settings)

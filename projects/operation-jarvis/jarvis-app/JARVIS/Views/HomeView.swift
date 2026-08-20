@@ -6,6 +6,7 @@ struct HomeView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var fanLocal: Double = 2
     @State private var isDraggingFan = false
+    @State private var stopTarget: String?
 
     private var usesAccessibilityLayout: Bool { dynamicTypeSize.isAccessibilitySize }
     private var gridColumns: [GridItem] {
@@ -27,10 +28,10 @@ struct HomeView: View {
                         if state.loading == true && state.subsystems == nil {
                             loadingCard
                         }
-                        weatherCard(state)
                         piCard(state)
-                        purifierSection(state)
                         plugsSection(state)
+                        purifierSection(state)
+                        servicesSection
                     } else {
                         notConnectedCard
                     }
@@ -40,17 +41,35 @@ struct HomeView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("JARVIS")
-            .refreshable { await app.fetchState() }
+            .refreshable { await refreshHome() }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task { await app.fetchState() }
+                        Task { await refreshHome() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh home status")
-                    .disabled(app.isStateLoading || app.connectionState != .connected)
+                    .disabled(app.isStateLoading || app.servicesLoading || app.connectionState != .connected)
                 }
+            }
+            .confirmationDialog(
+                "Stop \(stopTarget.map(JarvisFormat.displayName) ?? "")?",
+                isPresented: Binding(
+                    get: { stopTarget != nil },
+                    set: { if !$0 { stopTarget = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Stop service", role: .destructive) {
+                    if let name = stopTarget {
+                        Task { await performServiceAction(name, "stop") }
+                    }
+                    stopTarget = nil
+                }
+                Button("Cancel", role: .cancel) { stopTarget = nil }
+            } message: {
+                Text("This stops the service now. You can start it again from Home.")
             }
         }
     }
@@ -112,71 +131,6 @@ struct HomeView: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-
-    // MARK: - Weather
-
-    @ViewBuilder
-    private func weatherCard(_ state: StateSnapshot) -> some View {
-        if let weather = state.subsystems?.weather, weather.ok == true {
-            let code = weather.weatherCode
-            Card {
-                if usesAccessibilityLayout {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: JarvisFormat.weatherSymbol(code))
-                                .font(.system(size: 34))
-                                .foregroundStyle(JarvisFormat.weatherTint(code))
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(weather.location ?? "Pickering, ON").font(.headline)
-                                Text(weatherSubline(weather))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        if let temp = weather.temperatureC {
-                            Text("\(temp, format: .number.precision(.fractionLength(0)))°")
-                                .font(.title.weight(.light))
-                                .monospacedDigit()
-                        }
-                    }
-                } else {
-                    HStack(spacing: 14) {
-                        Image(systemName: JarvisFormat.weatherSymbol(code))
-                            .font(.system(size: 34))
-                            .foregroundStyle(JarvisFormat.weatherTint(code))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(weather.location ?? "Pickering, ON").font(.headline)
-                            Text(weatherSubline(weather))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if let temp = weather.temperatureC {
-                            Text("\(temp, format: .number.precision(.fractionLength(0)))°")
-                                .font(.system(size: 42, weight: .light))
-                                .monospacedDigit()
-                        }
-                    }
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Weather: \(weather.location ?? "local"), \(weatherSubline(weather))")
-            if weather.stale == true {
-                staleCaption("Weather data is stale.")
-            }
-        } else {
-            unavailableCard(title: "Weather unavailable", detail: state.subsystems?.weather?.lastError ?? state.subsystems?.weather?.error)
-        }
-    }
-
-    private func weatherSubline(_ weather: WeatherSubsystem) -> String {
-        var parts: [String] = []
-        if let feels = weather.feelsLikeC { parts.append("Feels \(Int(feels))°") }
-        if let humidity = weather.humidityPercent { parts.append("\(humidity)% humidity") }
-        if let wind = weather.windKph { parts.append("\(Int(wind)) km/h") }
-        return parts.isEmpty ? "Current conditions" : parts.joined(separator: " · ")
     }
 
     // MARK: - Pi
@@ -379,6 +333,128 @@ struct HomeView: View {
             if state.stale == true || subsystem.stale == true { staleCaption("Plug data is stale.") }
         }
         .accessibilityElement(children: .contain))
+    }
+
+    // MARK: - Services
+
+    @ViewBuilder
+    private var servicesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Services", systemImage: "gearshape.2").font(.headline)
+                Spacer()
+                if app.servicesLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Refreshing services")
+                }
+            }
+            .padding(.horizontal, 4)
+
+            if let error = app.servicesErrorMessage {
+                OperationErrorCard(message: error)
+            }
+            if !app.servicesLoaded {
+                Card {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        Text("Loading services…").foregroundStyle(.secondary)
+                    }
+                }
+            } else if app.lastServices.isEmpty {
+                Card { Text("No registered services.").foregroundStyle(.secondary) }
+            } else {
+                ForEach(app.lastServices.keys.sorted(), id: \.self) { name in
+                    if let service = app.lastServices[name] {
+                        serviceCard(name: name, service: service)
+                    }
+                }
+            }
+            daemonCard
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func serviceCard(name: String, service: ServiceActionResult) -> some View {
+        let isKnown = service.ok
+        let isLoaded = service.loaded ?? service.running != nil
+        let isRunning = service.running == true
+        let busy = app.isOperationBusy("service:\(name)")
+        return Card {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(!isKnown ? Color.orange : (isRunning ? Color.green : Color.secondary))
+                        .frame(width: 10, height: 10)
+                    Text(JarvisFormat.displayName(name)).font(.headline)
+                    Spacer()
+                    Text(!isKnown ? "Unknown" : (isRunning ? "Running" : (isLoaded ? "Stopped" : "Unloaded")))
+                        .font(.subheadline)
+                        .foregroundStyle(!isKnown ? .orange : (isRunning ? .green : .secondary))
+                }
+                if let description = service.description, !description.isEmpty {
+                    Text(description).font(.subheadline).foregroundStyle(.secondary)
+                }
+                if isRunning, let pid = service.pid {
+                    Text("PID \(pid)").font(.caption).foregroundStyle(.tertiary)
+                } else if !isKnown, let error = service.error {
+                    Text(error).font(.caption).foregroundStyle(.orange)
+                }
+                HStack(spacing: 12) {
+                    if isRunning {
+                        Button(role: .destructive) { stopTarget = name } label: {
+                            Label("Stop", systemImage: "stop.fill").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(busy)
+                    } else {
+                        Button { Task { await performServiceAction(name, "start") } } label: {
+                            Label("Start", systemImage: "play.fill").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(busy || !isKnown)
+                    }
+                    Button { Task { await performServiceAction(name, "restart") } } label: {
+                        Label("Restart", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(busy || !isKnown)
+                }
+                if busy {
+                    ProgressView("Applying action…")
+                        .font(.caption)
+                        .accessibilityLabel("Applying service action")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var daemonCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("jarvisd", systemImage: "server.rack").font(.headline)
+                if let version = app.lastHealth?.version {
+                    LabeledContent("Version", value: version).font(.subheadline)
+                }
+                if let uptime = app.lastHealth?.uptimeSeconds {
+                    LabeledContent("Uptime", value: JarvisFormat.uptime(uptime)).font(.subheadline)
+                }
+                if app.lastHealth == nil {
+                    Text("Daemon info unavailable.").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func refreshHome() async {
+        await app.fetchState()
+        await app.fetchServices()
+        await app.fetchHealth()
+    }
+
+    private func performServiceAction(_ name: String, _ action: String) async {
+        _ = await app.runServiceAction(name, action)
     }
 
     // MARK: - Connection/error cards

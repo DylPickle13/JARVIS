@@ -40,7 +40,6 @@ import sys
 import threading
 import time
 import urllib.parse
-import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -124,10 +123,6 @@ LAUNCH_AGENTS_DIR = Path(
     os.environ.get("JARVISD_LAUNCH_AGENTS_DIR", str(Path.home() / "Library/LaunchAgents"))
 ).expanduser().resolve()
 
-WEATHER_LAT = float(os.environ.get("JARVISD_WEATHER_LAT", "43.8465"))
-WEATHER_LON = float(os.environ.get("JARVISD_WEATHER_LON", "-79.0762"))
-WEATHER_TZ = "America/Toronto"
-WEATHER_CACHE_SECONDS = 600
 STATE_TIMEOUT = float(os.environ.get("JARVISD_STATE_TIMEOUT", "10"))
 # Native HTTP requests are bounded to 30 seconds. Keep VeSync write
 # verification below that boundary; a lagging cloud state is returned as
@@ -495,43 +490,6 @@ class _UnixSocketHTTPConnection(http.client.HTTPConnection):
         self.sock = sock
 
 
-_weather_cache: dict[str, Any] = {"at": 0.0, "data": None}
-_weather_lock = threading.Lock()
-
-
-def _weather() -> dict:
-    with _weather_lock:
-        now = time.time()
-        if _weather_cache["data"] is not None and (now - _weather_cache["at"]) < WEATHER_CACHE_SECONDS:
-            return copy.deepcopy(_weather_cache["data"])
-    url = (
-        "https://api.open-meteo.com/v1/forecast"
-        f"?latitude={WEATHER_LAT}&longitude={WEATHER_LON}"
-        "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
-        f"&timezone={urllib.parse.quote(WEATHER_TZ)}"
-    )
-    try:
-        with urllib.request.urlopen(url, timeout=8) as resp:
-            payload = json.loads(resp.read().decode())
-        cur = payload.get("current", {})
-        data = {
-            "ok": True,
-            "location": "Pickering, ON",
-            "temperatureC": cur.get("temperature_2m"),
-            "feelsLikeC": cur.get("apparent_temperature"),
-            "humidityPercent": cur.get("relative_humidity_2m"),
-            "windKph": cur.get("wind_speed_10m"),
-            "weatherCode": cur.get("weather_code"),
-            "at": cur.get("time"),
-        }
-        with _weather_lock:
-            _weather_cache["at"] = time.time()
-            _weather_cache["data"] = data
-        return data
-    except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": _safe_error(exc)}
-
-
 def _pi_sessions() -> dict:
     active_local = 0
     local_total = 0
@@ -721,7 +679,6 @@ class StateCoordinator:
         "services": 15.0,
         "purifier": 45.0,
         "network": 60.0,
-        "weather": 600.0,
     }
 
     def __init__(
@@ -734,7 +691,6 @@ class StateCoordinator:
             "plugs": _plugs,
             "purifier": _purifier,
             "pi": _pi_sessions,
-            "weather": _weather,
             "services": lambda: {"ok": True, "services": _services_state(_load_services())},
             "network": _collect_network,
         }

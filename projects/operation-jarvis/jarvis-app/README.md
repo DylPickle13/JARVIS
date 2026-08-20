@@ -14,8 +14,9 @@ UI. JARVIS `0.2.0 (8)` is installed on both physical devices from the verified
 archive, with the final icon and both WatchConnectivity installed flags true.
 Physical consoles reached `reachable=true` and acknowledged repeated
 iPhone-to-Watch state delivery. Cellular/Tailscale cold launch and relaunch
-also pass. The Watch-originated relay-command, widget, offline, live path-change,
-and accessibility rows remain outstanding.
+also pass. Local candidate build 9 removes weather and places plugs before the
+air purifier on Home. The Watch-originated relay-command, widget, offline, live
+path-change, and accessibility rows remain outstanding.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
@@ -39,8 +40,8 @@ APNs); oMLX is out of app scope entirely; widgets = plug grid only for now.
 
 ## Scope (v5, approved)
 
-- **In:** smart plugs, air purifier, status & telemetry (weather, Pi session
-  count, uptime), events feed, service start/stop/restart (room-audio server),
+- **In:** smart plugs, air purifier, status and telemetry (Pi session count,
+  network, uptime), events feed, service start/stop/restart (room-audio server),
   plug-grid widgets (iOS home + lock-screen),
   watch interactive plug complication), Siri/Shortcuts via App Intents,
   Tailscale remote access.
@@ -69,23 +70,21 @@ APNs); oMLX is out of app scope entirely; widgets = plug grid only for now.
   with a resurrector watchdog. Explicit `JARVISD_AUTH_MODE=trusted-network`
   (default, configured LAN/Tailscale CIDRs) or `token` mode protects the API;
   `JARVISD_EVENT_TOKEN` is scoped to event ingestion. Verified: `/health`,
-  `/api/v1/state` (plugs, purifier, Pi count, weather, network, uptime),
+  `/api/v1/state` (plugs, purifier, Pi count, network, uptime),
   `/api/v1/command` (allowlisted, rejects cast), `/api/jarvis/events` ingest,
   `/api/v1/events`, `/api/v1/services` (status/start/stop/restart).
-- **iOS app — Home screen (M1)** — 4-tab shell (Home / Events / System /
-  Settings). Home shows: connection header (LAN vs Tailscale + IP), weather
-  card (Open-Meteo), Pi session count, **air purifier** (power switch +
-  Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider), and a **2-column
-  plug grid**. Plug controls send desired-state `plug-on`/`plug-off` commands,
-  serialize per resource, and show busy/error/unavailable states.
+- **iOS app — Home screen** — 3-tab shell (Home / Events / Settings). Home
+  shows: connection header (LAN vs Tailscale + IP), Pi session
+  count, a **2-column plug grid**, then the **air purifier** (power switch +
+  Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
+  external data collection are removed. At the bottom, Home lists registered
+  services and `jarvisd` information with **Stop** (confirmation), **Restart**,
+  and **Start** controls. Plug controls send desired-state `plug-on`/`plug-off`
+  commands, serialize per resource, and show busy/error/unavailable states.
 - **iOS app — Events (M2)** — live activity feed from `/api/v1/events`: one row
   per event (✓/✗/○ status glyph, action, summary, relative time), newest-first,
   auto-polls every 5 s + pull-to-refresh. The event bridge in `jarvis.py` posts
   to jarvisd directly through the single event-ingest sink.
-- **iOS app — System (M2)** — service control from `services.json`: a card per
-  registered service (status dot, name, description, PID) with **Stop**
-  (confirmation) / **Restart** (or **Start**) controls, plus a `jarvisd` daemon
-  card (version + uptime). Verified the write path end-to-end (restart → new PID).
 - **iOS app — M2.1 lifecycle** — health-first discovery is owned by the scene
   lifecycle, retries with backoff after transport failures, observes network
   path changes, cancels background polling, and polls only the selected tab.
@@ -138,16 +137,15 @@ jarvis-app/
 │   ├── Sources/JARVISKit/      #   Models, JarvisClient, EndpointStore, WatchBridge
 │   └── Tests/JARVISKitTests/   #   unit + live integration tests
 ├── JARVIS/                     # iOS app target (SwiftUI)
-│   ├── JARVISApp.swift         #   @main + 4-tab shell
+│   ├── JARVISApp.swift         #   @main + 3-tab shell
 │   ├── AppState.swift          #   connection + state + command model
 │   ├── AppStateWatchBridge.swift
 │   ├── Info.plist              #   scoped local/Tailscale ATS policy
 │   ├── PrivacyInfo.xcprivacy
 │   ├── Assets.xcassets/        #   icon + accent color
 │   └── Views/
-│       ├── HomeView.swift      #   M1 Home: weather, Pi, purifier, plug grid
+│       ├── HomeView.swift      #   Pi, plugs, purifier, services + daemon info
 │       ├── EventsView.swift    #   M2 live event feed (5 s poll + pull-to-refresh)
-│       ├── SystemView.swift    #   M2 service control (Stop/Restart) + daemon info
 │       ├── SettingsView.swift  #   connection management + about
 │       └── Components.swift    #   badge, card, formatting helpers
 ├── JARVISWatch/                # watchOS app target
