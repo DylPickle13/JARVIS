@@ -10,9 +10,9 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. The physical installation is temporarily split: the iPhone remains on
-`0.2.0 (13)` while the exact archived Watch product is on `0.2.0 (14)`; the
-phone upgrade is deferred until Dylan reconnects it. Physical consoles
+UI. The exact signed `0.2.0 (15)` aesthetic candidate is installed and running
+on Dylan's allowlisted iPhone and Apple Watch; physical visual review remains
+pending. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
 weather, reordered Home, and removed the System tab. Build 10 adds read-only
@@ -31,7 +31,7 @@ intentional alternating Watch widget writes each produced one POST/event pair
 and left the lamp restored off. Watch-originated app relay, offline, remaining
 accessory-family, live path-change, and accessibility rows remain open. Build 14
 is installed on the Watch and adds the branded full-colour launcher widget.
-Build 15 is the signed local aesthetic candidate: the Watch app now uses a
+Build 15 is the installed aesthetic candidate: the Watch app now uses a
 three-page holographic overview, 2×2 plug control deck, and system/air-quality
 page; the iPhone app adds the matching system-pulse header, device-specific plug
 cards, air-quality gauge, collapsed runtime sections, event cards, and branded

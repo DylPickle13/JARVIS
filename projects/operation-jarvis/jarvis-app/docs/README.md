@@ -8,7 +8,7 @@
 
 **Current candidate:** `0.2.0 (15)`
 
-**Physical installation:** iPhone `0.2.0 (13)`; Apple Watch `0.2.0 (14)` pending iPhone reconnect
+**Physical installation:** iPhone and Apple Watch `0.2.0 (15)`; aesthetic review pending
 
 This is the single architecture, security, packaging, deployment, validation,
 and recovery reference for the JARVIS iPhone app, Apple Watch app, widgets, and
@@ -65,14 +65,18 @@ SHA-256: 7247a43441d14f2ebbf7a1a133ef34b41b25217d27c723978b6f96b7d0be6f98
 
 All four products report `0.2.0 (15)`. The archive passes deep signature,
 bundle hierarchy, synchronized-version, embedded Watch, App Intent, host
-`JARVISMark`, and widget `JARVISWidgetIcon` audits. JARVISKit ran 20 tests with
+`JARVISMark`, and widget `JARVISWidgetIcon` audits. The exported parent IPA and
+exact archived Watch product installed successfully on the two allowlisted
+physical devices; both inventories report build 15 and both host/extension
+processes were observed active. JARVISKit ran 20 tests with
 3 physical live tests skipped; AppState ran 7 tests with no failures; iOS and
 watchOS simulator builds had no project warnings; repository smoke remains
 `PASS=105 WARN=0 FAIL=0`. Light/dark iPhone Home, Events, and Settings plus all
 three Watch pages were inspected in simulator. The iPhone accessibility-extra-
 large layout remains scrollable without clipped core content; the watchOS 26.5
 simulator does not support changing Dynamic Type, so physical Watch text sizing
-remains a gate. No hardware command was issued.
+remains a gate. Deployment and launch produced normal read-only health/state/
+service/job requests and no command, service, job, purifier, or event POST.
 
 ### Build-14 physical checkpoint
 
@@ -98,9 +102,8 @@ service mutation was emitted during build-14 or build-15 verification.
 
 ### Remaining release gates
 
-1. Install build 15 on both allowlisted devices without uninstalling or losing
-   app data; confirm both inventories report build 15 and inspect the redesigned
-   iPhone and Watch apps.
+1. Inspect the redesigned physical iPhone Home, Events, and Settings screens and
+   all three Watch pages in normal and large-text presentation.
 2. Inspect Open JARVIS in a circular Smart Stack slot for full-colour rendering,
    edge padding, clipping, and launch behavior.
 3. Inspect the remaining Watch accessory families.
@@ -887,7 +890,7 @@ All commits remain local unless Dylan separately requests a push.
 | Build 12 | Removed completed-result replay, applied confirmed widget state, added Updating feedback and ten-second duplicate suppression. |
 | Build 13 | Published one editable Watch plug recommendation and complete all-four 2×2 grid; physical widget tests passed. |
 | Build 14 | Added canonical full-colour Watch launcher art and compiled-asset verification; Watch installed, iPhone remained build 13. |
-| Build 15 | Unified both host apps under the holographic visual system; added the three-page Watch dashboard and refined iPhone Home, Events, and Settings; signed archive ready for physical review. |
+| Build 15 | Unified both host apps under the holographic visual system; added the three-page Watch dashboard and refined iPhone Home, Events, and Settings; installed on both physical devices, aesthetic review pending. |
 
 Notable local commits include dashboard retirement (`590f937`), daemon hardening
 (`4e47501`), Apple reliability/packaging (`042fdd4`), deployment operations
