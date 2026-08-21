@@ -10,8 +10,8 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. The exact signed `0.2.0 (15)` aesthetic candidate is installed and running
-on Dylan's allowlisted iPhone and Apple Watch; physical visual review remains
+UI. The exact signed `0.2.0 (16)` launcher correction is installed and running
+on Dylan's allowlisted iPhone and Apple Watch; physical widget review remains
 pending. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
@@ -35,7 +35,10 @@ Build 15 is the installed aesthetic candidate: the Watch app now uses a
 three-page holographic overview, 2×2 plug control deck, and system/air-quality
 page; the iPhone app adds the matching system-pulse header, device-specific plug
 cards, air-quality gauge, collapsed runtime sections, event cards, and branded
-Settings presentation.
+Settings presentation. Physical review found a blank Open JARVIS Watch launcher
+image. Build 16 gives the circular image an explicit proposed frame, forces the
+asset to original/full-colour rendering, resolves it from the extension bundle,
+and reloads its static timeline whenever the Watch host launches.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only

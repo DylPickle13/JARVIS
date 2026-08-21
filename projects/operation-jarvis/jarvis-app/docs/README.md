@@ -6,9 +6,9 @@
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current candidate:** `0.2.0 (15)`
+**Current candidate:** `0.2.0 (16)`
 
-**Physical installation:** iPhone and Apple Watch `0.2.0 (15)`; aesthetic review pending
+**Physical installation:** iPhone and Apple Watch `0.2.0 (16)`; Watch launcher artwork review pending
 
 This is the single architecture, security, packaging, deployment, validation,
 and recovery reference for the JARVIS iPhone app, Apple Watch app, widgets, and
@@ -78,6 +78,32 @@ simulator does not support changing Dynamic Type, so physical Watch text sizing
 remains a gate. Deployment and launch produced normal read-only health/state/
 service/job requests and no command, service, job, purifier, or event POST.
 
+Physical review then found that the circular Open JARVIS Watch widget reserved
+its slot but rendered a blank image. Build 16 makes the resizable image consume
+the full proposed accessory frame, resolves it explicitly from the extension
+bundle, marks the asset for original rendering, retains watchOS full-colour
+accented rendering, and asks WidgetKit to reload the static launcher timeline
+whenever the Watch host launches.
+
+### Build-16 Watch launcher correction
+
+```text
+Archive: /tmp/JARVIS-build16-watch-launcher-fix.xcarchive
+IPA:     /tmp/JARVIS-build16-watch-launcher-fix-export/JARVIS.ipa
+SHA-256: 16c05336347365327b64c8c88245e7090a7884e9e2ee8e13c579d9edf8b55f01
+```
+
+All four products report `0.2.0 (16)`. Full verification passes with the same
+20 JARVISKit tests/3 live skips, 7 AppState tests, warning-free simulator builds,
+and `PASS=105 WARN=0 FAIL=0` smoke result. The compiled Watch extension contains
+the `JARVISWidgetIcon` rendition without automatic template rendering. The exact
+Watch product and parent IPA are installed on the allowlisted devices and both
+inventories report build 16. The first parent update waited while the JARVIS
+host/widget processes were active; after those processes were terminated
+normally, the same explicit upgrade completed. No uninstall, pairing change,
+hardware command, or mutation POST occurred. Physical logo rendering remains
+the acceptance gate.
+
 ### Build-14 physical checkpoint
 
 ```text
@@ -93,12 +119,11 @@ its widget-extension process has been observed active. An automated Watch launch
 was once denied because watchOS temporarily prohibited navigation away from the
 clock; this was not a signing or installation rejection.
 
-Three completed build-14 parent-IPA transfers did not finish iPhone package
-activation, so the iPhone remains on build 13. Build 15 supersedes the unfinished
-build-14 phone activation; do not repeat blind build-14 installs. Diagnose the
-package activation path while installing the signed build-15 IPA after the phone
-is reconnected and unlocked. No plug, purifier, scheduled-job, or managed-
-service mutation was emitted during build-14 or build-15 verification.
+Three build-14 parent-IPA transfers initially did not finish iPhone package
+activation, leaving the iPhone on build 13 at that checkpoint; it later activated
+build 14 after reconnection. Build 15 and build 16 subsequently installed on both
+devices. Do not repeat blind build-14 installs. No plug, purifier, scheduled-job,
+or managed-service mutation was emitted during these deployments.
 
 ### Remaining release gates
 
@@ -890,7 +915,8 @@ All commits remain local unless Dylan separately requests a push.
 | Build 12 | Removed completed-result replay, applied confirmed widget state, added Updating feedback and ten-second duplicate suppression. |
 | Build 13 | Published one editable Watch plug recommendation and complete all-four 2×2 grid; physical widget tests passed. |
 | Build 14 | Added canonical full-colour Watch launcher art and compiled-asset verification; Watch installed, iPhone remained build 13. |
-| Build 15 | Unified both host apps under the holographic visual system; added the three-page Watch dashboard and refined iPhone Home, Events, and Settings; installed on both physical devices, aesthetic review pending. |
+| Build 15 | Unified both host apps under the holographic visual system; added the three-page Watch dashboard and refined iPhone Home, Events, and Settings; physical review exposed a blank circular launcher image. |
+| Build 16 | Forces the Watch launcher asset to consume its accessory frame and render full-colour, reloads its static timeline on host launch, and is installed on both devices pending logo confirmation. |
 
 Notable local commits include dashboard retirement (`590f937`), daemon hardening
 (`4e47501`), Apple reliability/packaging (`042fdd4`), deployment operations
