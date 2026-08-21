@@ -10,8 +10,9 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. JARVIS `0.2.0 (13)` is installed on both physical devices from the verified
-archive, with both WatchConnectivity installed flags true. Physical consoles
+UI. The physical installation is temporarily split: the iPhone remains on
+`0.2.0 (13)` while the exact archived Watch product is on `0.2.0 (14)`; the
+phone upgrade is deferred until Dylan reconnects it. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
 weather, reordered Home, and removed the System tab. Build 10 adds read-only

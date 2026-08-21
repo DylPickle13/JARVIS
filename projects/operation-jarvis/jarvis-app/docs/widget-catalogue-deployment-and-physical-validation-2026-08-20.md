@@ -2,7 +2,7 @@
 
 **Prepared:** 2026-08-20
 **Candidate:** JARVIS `0.2.0 (14)`
-**Physical status:** build 13 installed and functional; build-14 circular launcher artwork pending
+**Physical status:** Watch build 14 installed; iPhone remains build 13 pending reconnect; visual icon gate pending
 
 ## 1. Replacement boundary
 
@@ -100,6 +100,20 @@ Stack. Corner and rectangular launchers reuse the same artwork at bounded sizes;
 inline retains a system app glyph because full-colour custom art is not reliable
 in that text-only family. The verifier checks both the source asset and its
 compiled `Assets.car` rendition.
+
+The signed build-14 archive is
+`/tmp/JARVIS-build14-watch-launcher-icon.xcarchive`; its exported IPA is
+`/tmp/JARVIS-build14-watch-launcher-icon-export/JARVIS.ipa` with SHA-256
+`f9abf05c1b77868c61e841d4d0eca8e33697c4c0e67b372459d1d786d85fcf23`.
+All four archived products report `0.2.0 (14)`, the deep signature and compiled
+asset audit pass, and the allowlisted Watch inventory reports build 14 with the
+widget-extension process active. The system declined one automated Watch-app
+launch because navigation away from the clock was temporarily disallowed; this
+is not a signature or installation rejection. Two interrupted phone installation
+attempts and one interrupted explicit upgrade left the allowlisted iPhone on
+build 13. Dylan disconnected the phone and authorized deferring that upgrade.
+No plug, purifier, or service command was emitted during this deployment work.
+The physical circular-slot fit and matching iPhone build remain open gates.
 
 ## 6. Apple design-guideline alignment
 

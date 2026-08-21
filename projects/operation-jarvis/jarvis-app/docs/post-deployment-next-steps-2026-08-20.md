@@ -1,7 +1,7 @@
 # Operation JARVIS app — integration-aware next steps
 
 **Revised:** 2026-08-20
-**Installed build:** 0.2.0 (13) on iPhone and Watch
+**Installed build:** iPhone 0.2.0 (13); Watch 0.2.0 (14), pending phone reconnect
 **Local candidate:** 0.2.0 (14)
 **Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
