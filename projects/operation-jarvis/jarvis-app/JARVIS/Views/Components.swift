@@ -14,9 +14,9 @@ struct ConnectionBadge: View {
 
     private var color: Color {
         switch state {
-        case .connected: return .green
+        case .connected: return JarvisPalette.cyan
         case .failed: return .red
-        case .connecting: return .orange
+        case .connecting: return JarvisPalette.warning
         case .idle: return .secondary
         }
     }
@@ -70,12 +70,97 @@ struct Card<Content: View>: View {
 
     var body: some View {
         content
-            .padding()
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                Color(.secondarySystemGroupedBackground),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                JarvisPalette.surface,
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
             )
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.primary.opacity(0.065), lineWidth: 0.75)
+            }
+            .shadow(color: Color.black.opacity(0.055), radius: 12, y: 5)
+    }
+}
+
+// MARK: - JARVIS visual system
+
+enum JarvisPalette {
+    static let cyan = Color(red: 0.20, green: 0.72, blue: 0.96)
+    static let electricBlue = Color(red: 0.28, green: 0.49, blue: 1.0)
+    static let warning = Color(red: 0.96, green: 0.58, blue: 0.16)
+    static let surface = Color(.secondarySystemGroupedBackground).opacity(0.94)
+
+    static var backdrop: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(.systemGroupedBackground),
+                cyan.opacity(0.055),
+                Color(.systemGroupedBackground),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
+struct JarvisBackdrop: View {
+    var body: some View {
+        JarvisPalette.backdrop
+            .ignoresSafeArea()
+    }
+}
+
+struct JARVISMark: View {
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [JarvisPalette.cyan.opacity(0.34), JarvisPalette.cyan.opacity(0.04)],
+                        center: .center,
+                        startRadius: 2,
+                        endRadius: size / 2
+                    )
+                )
+                .blur(radius: 3)
+            Image("JARVISMark")
+                .resizable()
+                .scaledToFit()
+                .padding(4)
+                .clipShape(Circle())
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+struct StatusPill: View {
+    let text: String
+    let color: Color
+    var symbol: String? = nil
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let symbol {
+                Image(systemName: symbol)
+                    .font(.caption2.weight(.bold))
+            } else {
+                Circle().fill(color).frame(width: 7, height: 7)
+            }
+            Text(text)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.11), in: Capsule())
+        .overlay { Capsule().stroke(color.opacity(0.22), lineWidth: 0.75) }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -107,6 +192,25 @@ enum JarvisFormat {
             .split(separator: " ")
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
             .joined(separator: " ")
+    }
+
+    static func plugSymbol(_ name: String) -> String {
+        switch name {
+        case "family-room-light": return "lightbulb.fill"
+        case "lamp": return "lamp.table.fill"
+        case "pedalboard": return "music.note"
+        case "tv": return "tv.fill"
+        default: return "powerplug.fill"
+        }
+    }
+
+    static func freshness(ageSeconds: Double?) -> String {
+        guard let ageSeconds else { return "Waiting for status" }
+        let seconds = max(0, Int(ageSeconds))
+        if seconds < 5 { return "Updated now" }
+        if seconds < 60 { return "Updated \(seconds)s ago" }
+        if seconds < 3_600 { return "Updated \(seconds / 60)m ago" }
+        return "Updated \(seconds / 3_600)h ago"
     }
 
     // MARK: - Time

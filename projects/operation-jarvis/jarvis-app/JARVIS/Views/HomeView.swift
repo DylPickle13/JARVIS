@@ -7,7 +7,8 @@ struct HomeView: View {
     @State private var fanLocal: Double = 2
     @State private var isDraggingFan = false
     @State private var pendingServiceAction: PendingServiceAction?
-    @State private var scheduledJobsExpanded = true
+    @State private var runtimeServicesExpanded = false
+    @State private var scheduledJobsExpanded = false
 
     private struct PendingServiceAction {
         let name: String
@@ -47,7 +48,7 @@ struct HomeView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 8)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(JarvisBackdrop())
             .navigationTitle("JARVIS")
             .refreshable { await refreshHome() }
             .toolbar {
@@ -85,40 +86,131 @@ struct HomeView: View {
         }
     }
 
-    @ViewBuilder
     private var statusHeader: some View {
-        if usesAccessibilityLayout {
-            VStack(alignment: .leading, spacing: 6) {
-                ConnectionBadge(state: app.connectionState, detail: statusDetail)
-                if let ip = app.currentEndpoint?.host, ip != networkLabel {
-                    Text(ip)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        Card {
+            Group {
+                if usesAccessibilityLayout {
+                    VStack(alignment: .leading, spacing: 14) {
+                        pulseIdentity
+                        pulseMetadata
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 14) {
+                            pulseIdentity
+                            Spacer(minLength: 8)
+                            connectionStatusPill
+                        }
+                        pulseMetadata
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 4)
+        }
+        .overlay(alignment: .topTrailing) {
+            Circle()
+                .fill(JarvisPalette.cyan.opacity(0.13))
+                .frame(width: 116, height: 116)
+                .blur(radius: 32)
+                .offset(x: 26, y: -34)
+                .allowsHitTesting(false)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var pulseIdentity: some View {
+        HStack(spacing: 13) {
+            JARVISMark(size: 50)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("JARVIS")
+                    .font(.headline.weight(.bold))
+                    .tracking(1.6)
+                Text(pulseTitle)
+                    .font(.title3.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(statusDetail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var pulseMetadata: some View {
+        if usesAccessibilityLayout {
+            VStack(alignment: .leading, spacing: 8) {
+                connectionStatusPill
+                Label(freshnessLabel, systemImage: app.lastState?.stale == true ? "clock.badge.exclamationmark" : "clock")
+                    .font(.caption)
+                    .foregroundStyle(app.lastState?.stale == true ? JarvisPalette.warning : .secondary)
+            }
         } else {
             HStack {
-                ConnectionBadge(state: app.connectionState, detail: statusDetail)
+                Label(freshnessLabel, systemImage: app.lastState?.stale == true ? "clock.badge.exclamationmark" : "clock")
+                    .font(.caption)
+                    .foregroundStyle(app.lastState?.stale == true ? JarvisPalette.warning : .secondary)
                 Spacer()
-                if let ip = app.currentEndpoint?.host {
-                    Text(ip).font(.caption.monospaced()).foregroundStyle(.secondary)
+                if app.isStateLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Refreshing JARVIS status")
+                } else {
+                    Text("BUILD \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—")")
+                        .font(.caption2.weight(.semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(.tertiary)
                 }
             }
-            .padding(.top, 4)
+        }
+    }
+
+    private var connectionStatusPill: some View {
+        StatusPill(text: connectionPillText, color: connectionColor)
+    }
+
+    private var pulseTitle: String {
+        switch app.connectionState {
+        case .connected:
+            if app.lastState?.stale == true { return "Telemetry needs attention" }
+            if app.operationErrorMessage != nil { return "Action needs attention" }
+            return "Systems online"
+        case .connecting: return "Establishing link"
+        case .failed: return "JARVIS offline"
+        case .idle: return "Ready to connect"
         }
     }
 
     private var statusDetail: String {
         switch app.connectionState {
         case .connected:
-            return app.isStateLoading ? "Connected · refreshing" : "Connected · \(networkLabel)"
-        case .connecting: return "Connecting…"
-        case .failed: return "Offline"
-        case .idle: return "Not connected"
+            return app.isStateLoading ? "Connected · refreshing" : "Connected via \(networkLabel)"
+        case .connecting: return "Searching LAN and Tailscale"
+        case .failed: return "Open Settings to review the connection"
+        case .idle: return "Connection has not started"
         }
+    }
+
+    private var connectionPillText: String {
+        switch app.connectionState {
+        case .connected: return app.lastState?.stale == true ? "STALE" : networkLabel.uppercased()
+        case .connecting: return "LINKING"
+        case .failed: return "OFFLINE"
+        case .idle: return "IDLE"
+        }
+    }
+
+    private var connectionColor: Color {
+        switch app.connectionState {
+        case .connected: return app.lastState?.stale == true ? JarvisPalette.warning : JarvisPalette.cyan
+        case .connecting: return JarvisPalette.warning
+        case .failed: return .red
+        case .idle: return .secondary
+        }
+    }
+
+    private var freshnessLabel: String {
+        if app.lastState?.stale == true { return "Status is stale" }
+        return JarvisFormat.freshness(ageSeconds: app.lastState?.ageSeconds)
     }
 
     private var networkLabel: String {
@@ -152,12 +244,20 @@ struct HomeView: View {
         }
         let content = Card {
             HStack(spacing: 14) {
-                Image(systemName: "terminal").font(.title2).foregroundStyle(Color.accentColor)
+                Image(systemName: "terminal.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(JarvisPalette.cyan)
+                    .frame(width: 42, height: 42)
+                    .background(JarvisPalette.cyan.opacity(0.12), in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pi sessions").font(.headline)
                     Text("\(active) active").font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer()
+                Text("\(active)")
+                    .font(.title2.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(JarvisPalette.cyan)
             }
         }
         .accessibilityElement(children: .combine)
@@ -211,7 +311,7 @@ struct HomeView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } else {
-                        HStack(alignment: .firstTextBaseline) {
+                        HStack(alignment: .center) {
                             purifierReading(purifier)
                             Spacer()
                             Text("\(mode.capitalized) · fan \(fan.map(String.init) ?? "—")")
@@ -269,12 +369,58 @@ struct HomeView: View {
     }
 
     private func purifierReading(_ purifier: PurifierSubsystem) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(purifier.pm25.map { "\($0) µg/m³" } ?? "—")
-                .font(.title2.weight(.medium))
-                .monospacedDigit()
-            Text("PM2.5").font(.caption).foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .stroke(purifierQualityColor(purifier.pm25).opacity(0.18), lineWidth: 6)
+                Circle()
+                    .trim(from: 0, to: purifierQualityProgress(purifier.pm25))
+                    .stroke(
+                        purifierQualityColor(purifier.pm25),
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                Text(purifier.pm25.map(String.init) ?? "—")
+                    .font(.headline.weight(.bold))
+                    .monospacedDigit()
+            }
+            .frame(width: 58, height: 58)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(purifierQualityLabel(purifier.pm25))
+                    .font(.headline)
+                Text("PM2.5 · µg/m³")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Air quality \(purifierQualityLabel(purifier.pm25)), PM2.5 \(purifier.pm25.map(String.init) ?? "unavailable") micrograms per cubic meter")
+    }
+
+    private func purifierQualityLabel(_ value: Int?) -> String {
+        guard let value else { return "Unavailable" }
+        switch value {
+        case ...12: return "Excellent"
+        case ...35: return "Good"
+        case ...55: return "Moderate"
+        default: return "Poor"
+        }
+    }
+
+    private func purifierQualityColor(_ value: Int?) -> Color {
+        guard let value else { return .secondary }
+        switch value {
+        case ...12: return JarvisPalette.cyan
+        case ...35: return .green
+        case ...55: return JarvisPalette.warning
+        default: return .red
+        }
+    }
+
+    private func purifierQualityProgress(_ value: Int?) -> CGFloat {
+        guard let value else { return 0 }
+        return min(max(CGFloat(value) / 75, 0.04), 1)
     }
 
     private func purifierFanSlider(
@@ -359,6 +505,13 @@ struct HomeView: View {
         }
     }
 
+    private var runtimeServiceSummary: String {
+        guard app.servicesLoaded else { return "Loading" }
+        guard !sortedServices.isEmpty else { return "No runtimes" }
+        let running = sortedServices.filter { $0.service.running == true }.count
+        return "\(running) of \(sortedServices.count) running"
+    }
+
     @ViewBuilder
     private var servicesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -373,23 +526,39 @@ struct HomeView: View {
             }
             .padding(.horizontal, 4)
 
-            Text("Runtime services")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-
-            if let error = app.servicesErrorMessage {
-                statusErrorCard(title: "Runtime status unavailable", message: error)
-            }
-            if !app.servicesLoaded {
-                loadingStatusCard("Loading runtime services…")
-            } else if sortedServices.isEmpty {
-                Card { Text("No registered runtime services.").foregroundStyle(.secondary) }
-            } else {
-                ForEach(sortedServices, id: \.name) { item in
-                    serviceCard(name: item.name, service: item.service)
+            DisclosureGroup(isExpanded: $runtimeServicesExpanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let error = app.servicesErrorMessage {
+                        statusErrorCard(title: "Runtime status unavailable", message: error)
+                    }
+                    if !app.servicesLoaded {
+                        loadingStatusCard("Loading runtime services…")
+                    } else if sortedServices.isEmpty {
+                        Card { Text("No registered runtime services.").foregroundStyle(.secondary) }
+                    } else {
+                        ForEach(sortedServices, id: \.name) { item in
+                            serviceCard(name: item.name, service: item.service)
+                        }
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                HStack {
+                    Label("Runtime services", systemImage: "server.rack")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    if app.servicesErrorMessage != nil {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(JarvisPalette.warning)
+                    }
+                    Text(runtimeServiceSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
             }
+            .padding(.horizontal, 4)
+            .accessibilityHint(runtimeServicesExpanded ? "Double tap to collapse runtime services" : "Double tap to expand runtime services")
 
             scheduledJobsSection
             daemonCard
@@ -741,34 +910,87 @@ struct PlugCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                if isBusy {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: "power")
-                        .foregroundStyle(isOn == true ? Color.accentColor : .secondary)
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .top) {
+                ZStack {
+                    Circle()
+                        .fill(iconColor.opacity(0.13))
+                    if isBusy {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: JarvisFormat.plugSymbol(name))
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(iconColor)
+                    }
                 }
-                Spacer()
-                Circle()
-                    .fill(isOn == true ? Color.green : Color.secondary.opacity(0.4))
-                    .frame(width: 8, height: 8)
+                .frame(width: 42, height: 42)
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 7, height: 7)
+                        .shadow(color: isOn == true ? JarvisPalette.cyan.opacity(0.65) : .clear, radius: 4)
+                    Text(stateLabel)
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.5)
+                }
+                .foregroundStyle(statusColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(statusColor.opacity(0.10), in: Capsule())
             }
-            VStack(alignment: .leading, spacing: 2) {
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text(JarvisFormat.displayName(name))
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     .minimumScaleFactor(0.8)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(isOn.map { $0 ? "ON" : "OFF" } ?? "UNAVAILABLE")
+                Text(isBusy ? "Applying desired state" : (isOn.map { $0 ? "Power available" : "Power inactive" } ?? "State unavailable"))
                     .font(.caption)
-                    .foregroundStyle(isOn == true ? Color.accentColor : .secondary)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
-        .padding()
-        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .contentShape(Rectangle())
+        .padding(15)
+        .frame(maxWidth: .infinity, minHeight: 116, alignment: .leading)
+        .background(tileFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(isOn == true ? JarvisPalette.cyan.opacity(0.30) : Color.primary.opacity(0.065), lineWidth: 0.8)
+        }
+        .shadow(color: isOn == true ? JarvisPalette.cyan.opacity(0.10) : Color.black.opacity(0.045), radius: 12, y: 5)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var iconColor: Color {
+        isOn == true ? JarvisPalette.cyan : .secondary
+    }
+
+    private var statusColor: Color {
+        if isBusy { return JarvisPalette.warning }
+        if isOn == true { return JarvisPalette.cyan }
+        return .secondary
+    }
+
+    private var stateLabel: String {
+        if isBusy { return "UPDATING" }
+        return isOn.map { $0 ? "ON" : "OFF" } ?? "UNKNOWN"
+    }
+
+    private var tileFill: AnyShapeStyle {
+        if isOn == true {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [JarvisPalette.cyan.opacity(0.13), JarvisPalette.surface],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        }
+        return AnyShapeStyle(JarvisPalette.surface)
     }
 }
 

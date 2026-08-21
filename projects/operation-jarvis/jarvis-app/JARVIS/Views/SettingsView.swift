@@ -13,6 +13,11 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    settingsHero
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
+                }
                 connectionSection
                 statusSection
                 if app.connectionState == .failed, let error = app.errorMessage {
@@ -20,8 +25,34 @@ struct SettingsView: View {
                 }
                 aboutSection
             }
+            .scrollContentBackground(.hidden)
+            .background(JarvisBackdrop())
             .navigationTitle("Settings")
         }
+    }
+
+    private var settingsHero: some View {
+        HStack(spacing: 14) {
+            JARVISMark(size: 54)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("JARVIS")
+                    .font(.headline.weight(.bold))
+                    .tracking(1.4)
+                Text("Native control plane")
+                    .font(.subheadline.weight(.semibold))
+                Text(app.connectionState == .connected ? "Connected and ready" : "Connection and app preferences")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(JarvisPalette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(JarvisPalette.cyan.opacity(0.16), lineWidth: 0.8)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Connection

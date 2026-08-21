@@ -5,100 +5,11 @@ struct WatchConnectView: View {
     @StateObject private var model = WatchConnectModel()
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    Circle().fill(model.dotColor).frame(width: 9, height: 9)
-                    Text(model.statusText).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-                    Spacer()
-                    if model.isStale { Image(systemName: "clock.badge.exclamationmark").font(.caption) }
-                    if model.pendingRelay { Text("Waiting for iPhone…").font(.caption2).foregroundStyle(.orange) }
-                }
-
-                if let summary = model.lastState?.summary {
-                    statsGrid(summary)
-                } else if model.connectionState == .connecting {
-                    ProgressView("Loading…")
-                } else {
-                    Text(model.errorMessage ?? "No status available")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                plugs
-
-                Button {
-                    Task { await model.connect() }
-                } label: {
-                    Label(model.connectionState == .connecting ? "…" : "Refresh", systemImage: "arrow.clockwise")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
-                .background(Color.accentColor.opacity(0.15), in: Capsule())
-                .tint(Color.accentColor)
-                .disabled(model.connectionState == .connecting)
+        WatchDashboardContent(model: model)
+            .task {
+                await model.refreshIfConfigured()
+                await model.runDebugRelaySmokeIfRequested()
             }
-            .padding(12)
-        }
-        .task {
-            await model.refreshIfConfigured()
-            await model.runDebugRelaySmokeIfRequested()
-        }
-    }
-
-    private func statsGrid(_ summary: Summary) -> some View {
-        Grid(horizontalSpacing: 12, verticalSpacing: 8) {
-            GridRow {
-                stat("Plugs", summary.plugsOn.map { on in summary.plugsTotal.map { "\(on)/\($0)" } ?? "\(on)" } ?? "—", "powerplug.fill")
-                stat("Purifier", summary.purifierOn.map { $0 ? "on" : "off" } ?? "—", "fanblades")
-            }
-            GridRow {
-                stat("PM2.5", summary.pm25.map(String.init) ?? "—", "aqi.medium")
-                stat("Pi", summary.piActive.map(String.init) ?? "—", "cpu")
-            }
-        }
-    }
-
-    private func stat(_ label: String, _ value: String, _ symbol: String) -> some View {
-        VStack(spacing: 2) {
-            Image(systemName: symbol).font(.caption).foregroundStyle(Color.accentColor)
-            Text(value).font(.title3.weight(.bold)).monospacedDigit()
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    @ViewBuilder
-    private var plugs: some View {
-        if let subsystem = model.lastState?.subsystems?.plugs, subsystem.ok == true {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Plugs").font(.headline)
-                ForEach((subsystem.plugs ?? [:]).keys.sorted().prefix(4), id: \.self) { name in
-                    let state = subsystem.plugs?[name]?.isOn
-                    let stale = model.isPlugStateStale(name)
-                    Button {
-                        guard let state else { return }
-                        Task { await model.setPlug(name, isOn: !state) }
-                    } label: {
-                        HStack {
-                            Image(systemName: "power")
-                            Text(WatchFormat.displayName(name)).lineLimit(1)
-                            Spacer()
-                            if model.busyPlug == name {
-                                ProgressView().controlSize(.small)
-                            } else if stale {
-                                Text("STALE").foregroundStyle(.orange)
-                            } else {
-                                Text(state.map { $0 ? "ON" : "OFF" } ?? "—")
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(state == nil || stale || model.busyPlug != nil)
-                }
-            }
-        }
     }
 }
 

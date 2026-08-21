@@ -22,6 +22,8 @@ plutil -lint \
   JARVISWatch/Info.plist \
   JARVISWatchWidget/Info.plist \
   jarvisd/launchd/*.plist
+python3 -m json.tool JARVIS/Assets.xcassets/JARVISMark.imageset/Contents.json >/dev/null
+python3 -m json.tool JARVISWatch/Assets.xcassets/JARVISMark.imageset/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/Contents.json >/dev/null
 bash -n scripts/*.sh jarvisd/resurrector.sh ../scripts/install-discord-bot-launch-agent.sh
@@ -57,6 +59,10 @@ grep -q 'JARVISPlugChoice.allCases.compactMap' JARVISWatchWidget/PlugGridWidget.
 ! grep -q 'prefix(2)' JARVISWatchWidget/PlugGridWidget.swift
 grep -q 'Image("JARVISWidgetIcon")' JARVISWatchWidget/LauncherWidget.swift
 [[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/JARVISWidgetIcon.png ]]
+grep -Rqs 'Image("JARVISMark")' JARVIS/Views
+grep -Rqs 'Image("JARVISMark")' JARVISWatch/Views
+[[ -s JARVIS/Assets.xcassets/JARVISMark.imageset/JARVISMark.png ]]
+[[ -s JARVISWatch/Assets.xcassets/JARVISMark.imageset/JARVISMark.png ]]
 ! grep -q 'lastAttempt' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
 
 icon_is_opaque_square() {
@@ -114,10 +120,20 @@ xcodebuild \
 [[ -d "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/Watch/JARVISWatch.app/PlugIns/JARVISWatchWidget.appex" ]] \
   || { echo "watch widget was not nested in the embedded watch app" >&2; exit 1; }
 
-PHONE_WIDGET="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/PlugIns/JARVISWidget.appex"
-WATCH_WIDGET="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/Watch/JARVISWatch.app/PlugIns/JARVISWatchWidget.appex"
+PHONE_APP="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app"
+EMBEDDED_WATCH="$PHONE_APP/Watch/JARVISWatch.app"
+PHONE_WIDGET="$PHONE_APP/PlugIns/JARVISWidget.appex"
+WATCH_WIDGET="$EMBEDDED_WATCH/PlugIns/JARVISWatchWidget.appex"
+[[ -f "$PHONE_APP/Assets.car" ]] || { echo "iPhone host asset catalog missing" >&2; exit 1; }
+[[ -f "$EMBEDDED_WATCH/Assets.car" ]] || { echo "Watch host asset catalog missing" >&2; exit 1; }
 [[ -f "$WATCH_WIDGET/Assets.car" ]] || { echo "watch widget asset catalog missing" >&2; exit 1; }
+PHONE_ASSET_INFO="$(xcrun assetutil --info "$PHONE_APP/Assets.car")"
+EMBEDDED_WATCH_ASSET_INFO="$(xcrun assetutil --info "$EMBEDDED_WATCH/Assets.car")"
 WATCH_ASSET_INFO="$(xcrun assetutil --info "$WATCH_WIDGET/Assets.car")"
+grep -q 'JARVISMark' <<<"$PHONE_ASSET_INFO" \
+  || { echo "compiled iPhone JARVIS mark missing" >&2; exit 1; }
+grep -q 'JARVISMark' <<<"$EMBEDDED_WATCH_ASSET_INFO" \
+  || { echo "compiled Watch JARVIS mark missing" >&2; exit 1; }
 grep -q 'JARVISWidgetIcon' <<<"$WATCH_ASSET_INFO" \
   || { echo "compiled Watch launcher icon missing" >&2; exit 1; }
 python3 - "$PHONE_WIDGET/Metadata.appintents/extract.actionsdata" "$WATCH_WIDGET/Metadata.appintents/extract.actionsdata" <<'PY'

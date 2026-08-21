@@ -21,7 +21,7 @@ struct EventsView: View {
                     eventList
                 }
             }
-            .background(Color(.systemGroupedBackground))
+            .background(JarvisBackdrop())
             .navigationTitle("Events")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -45,12 +45,16 @@ struct EventsView: View {
             Section {
                 ForEach(app.lastEvents.sorted { $0.seq > $1.seq }) { event in
                     EventRow(event: event)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
             } header: {
                 Text("\(app.lastEvents.count) recent · auto-refreshes every 5 s")
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(JarvisBackdrop())
         .refreshable { await app.fetchEvents() }
     }
 
@@ -122,7 +126,7 @@ private struct EventRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             statusIcon
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(event.action ?? event.eventType ?? "event")
                         .font(.body)
@@ -140,17 +144,38 @@ private struct EventRow: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(12)
+        .background(JarvisPalette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 0.75)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
     }
 
-    @ViewBuilder
     private var statusIcon: some View {
+        Image(systemName: statusSymbol)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(statusColor)
+            .frame(width: 34, height: 34)
+            .background(statusColor.opacity(0.12), in: Circle())
+            .overlay { Circle().stroke(statusColor.opacity(0.20), lineWidth: 0.75) }
+    }
+
+    private var statusSymbol: String {
         switch event.ok {
-        case true: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        case false: Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
-        case nil: Image(systemName: "circle.dotted").foregroundStyle(.secondary)
+        case true: return "checkmark"
+        case false: return "xmark"
+        case nil: return "waveform.path.ecg"
+        }
+    }
+
+    private var statusColor: Color {
+        switch event.ok {
+        case true: return .green
+        case false: return .red
+        case nil: return JarvisPalette.cyan
         }
     }
 
