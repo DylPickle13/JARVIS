@@ -1,10 +1,14 @@
 import SwiftUI
+import WidgetKit
 import JARVISKit
 
 @main
 struct JARVISWatchApp: App {
     init() {
         WatchBridge.shared.start()
+        // The launcher has a static timeline. Reload it on host launch so an
+        // upgraded asset cannot remain stuck behind an older cached rendering.
+        WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchLauncherWidget.v1")
     }
 
     var body: some Scene {

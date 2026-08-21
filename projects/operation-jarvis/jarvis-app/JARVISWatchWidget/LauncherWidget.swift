@@ -26,14 +26,14 @@ private struct JARVISWatchLauncherView: View {
                 Label("Open JARVIS", systemImage: "app.fill")
             case .accessoryCorner:
                 brandedIcon
-                    .scaledToFit()
+                    .aspectRatio(contentMode: .fit)
                     .frame(width: 27, height: 27)
                     .clipShape(Circle())
                     .widgetLabel { Text("JARVIS") }
             case .accessoryRectangular:
                 HStack(spacing: 8) {
                     brandedIcon
-                        .scaledToFit()
+                        .aspectRatio(contentMode: .fit)
                         .frame(width: 32, height: 32)
                         .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 1) {
@@ -46,8 +46,11 @@ private struct JARVISWatchLauncherView: View {
             default:
                 ZStack {
                     AccessoryWidgetBackground()
+                    Circle()
+                        .fill(Color.cyan.opacity(0.10))
                     brandedIcon
-                        .scaledToFit()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(3)
                         .clipShape(Circle())
                 }
@@ -62,14 +65,14 @@ private struct JARVISWatchLauncherView: View {
     @ViewBuilder
     private var brandedIcon: some View {
         if #available(watchOS 11.0, *) {
-            Image("JARVISWidgetIcon")
-                .renderingMode(.original)
+            Image("JARVISWidgetIcon", bundle: .main)
                 .resizable()
+                .interpolation(.high)
                 .widgetAccentedRenderingMode(.fullColor)
         } else {
-            Image("JARVISWidgetIcon")
-                .renderingMode(.original)
+            Image("JARVISWidgetIcon", bundle: .main)
                 .resizable()
+                .interpolation(.high)
         }
     }
 }

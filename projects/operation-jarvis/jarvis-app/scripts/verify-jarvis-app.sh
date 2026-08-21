@@ -57,7 +57,9 @@ grep -q 'pendingCommand(for:' JARVISWatchWidget/SelectedPlugWidget.swift
 [[ "$(grep -c 'AppIntentRecommendation(intent:' JARVISWatchWidget/WidgetSupport.swift)" == "1" ]]
 grep -q 'JARVISPlugChoice.allCases.compactMap' JARVISWatchWidget/PlugGridWidget.swift
 ! grep -q 'prefix(2)' JARVISWatchWidget/PlugGridWidget.swift
-grep -q 'Image("JARVISWidgetIcon")' JARVISWatchWidget/LauncherWidget.swift
+grep -q 'Image("JARVISWidgetIcon", bundle: .main)' JARVISWatchWidget/LauncherWidget.swift
+grep -q 'frame(maxWidth: .infinity, maxHeight: .infinity)' JARVISWatchWidget/LauncherWidget.swift
+grep -q 'reloadTimelines(ofKind: "JARVISWatchLauncherWidget.v1")' JARVISWatch/JARVISWatchApp.swift
 [[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/JARVISWidgetIcon.png ]]
 grep -Rqs 'Image("JARVISMark")' JARVIS/Views
 grep -Rqs 'Image("JARVISMark")' JARVISWatch/Views
@@ -136,6 +138,8 @@ grep -q 'JARVISMark' <<<"$EMBEDDED_WATCH_ASSET_INFO" \
   || { echo "compiled Watch JARVIS mark missing" >&2; exit 1; }
 grep -q 'JARVISWidgetIcon' <<<"$WATCH_ASSET_INFO" \
   || { echo "compiled Watch launcher icon missing" >&2; exit 1; }
+! grep -q '"Template Mode" : "automatic"' <<<"$WATCH_ASSET_INFO" \
+  || { echo "compiled Watch launcher icon still permits automatic template rendering" >&2; exit 1; }
 python3 - "$PHONE_WIDGET/Metadata.appintents/extract.actionsdata" "$WATCH_WIDGET/Metadata.appintents/extract.actionsdata" <<'PY'
 import json
 import sys
