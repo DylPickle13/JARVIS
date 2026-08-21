@@ -2,7 +2,7 @@
 
 **Prepared:** 2026-08-20
 **Candidate:** JARVIS `0.2.0 (13)`
-**Physical status:** build 12 installed; iPhone passes; build-13 Watch catalogue correction pending
+**Physical status:** build 13 installed; iPhone Home widgets and Watch Smart Stack catalogue pass
 
 ## 1. Replacement boundary
 
@@ -82,6 +82,15 @@ separate preset and the grid intentionally truncated state with `prefix(2)`.
 Build 13 provides one gallery recommendation whose App Enum remains editable
 over all four plug choices, removes the truncation, and uses four compact 2×2
 controls with full accessibility labels.
+
+The signed build-13 physical rerun passed: the Watch gallery showed one editable
+JARVIS Plug entry, the grid rendered all four plugs, Open JARVIS launched the
+Watch app, and Air Purifier remained read-only. Four intentional alternating
+lamp controls produced `plug-on`, `plug-off`, `plug-on`, `plug-off`; each had one
+HTTP command and one successful start/complete event pair. The displayed state
+updated between commands and the lamp finished in its initial off state.
+Deployment itself produced no command request. Other Watch-face accessory
+families and the forced stale/offline matrix remain separate open rows.
 
 ## 6. Apple design-guideline alignment
 

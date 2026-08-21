@@ -1,7 +1,7 @@
 # Operation JARVIS app — integration-aware next steps
 
 **Revised:** 2026-08-20
-**Installed build:** 0.2.0 (12) on iPhone and Watch
+**Installed build:** 0.2.0 (13) on iPhone and Watch
 **Local candidate:** 0.2.0 (13)
 **Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
@@ -191,8 +191,13 @@ The physical Watch gallery then exposed each App Intent recommendation as a
 separate selected-plug preset, and the rectangular grid showed only the first
 two sorted plugs. **Build 13** publishes one default selected-plug recommendation
 that remains editable across all four enum choices, and replaces the two-item
-row with a compact all-four 2×2 grid. Signed build-13 Watch gallery, editing,
-layout, and read-only purifier validation remain in the consolidated matrix.
+row with a compact all-four 2×2 grid. The signed physical Watch gallery now shows
+one editable selected-plug entry, all four grid controls, a working launcher,
+and a read-only purifier. Four intentional alternating lamp writes each produced
+one command POST and one successful start/complete event pair; displayed state
+updated between writes and the final state matched the initial off state. The
+remaining accessory-family, offline, relay, and accessibility rows stay in the
+consolidated matrix.
 
 ### P0 — completely remove the deprecated dashboard — complete 2026-08-20
 

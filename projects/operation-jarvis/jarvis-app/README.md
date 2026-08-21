@@ -10,7 +10,7 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. JARVIS `0.2.0 (12)` is installed on both physical devices from the verified
+UI. JARVIS `0.2.0 (13)` is installed on both physical devices from the verified
 archive, with both WatchConnectivity installed flags true. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
@@ -24,9 +24,11 @@ feedback, and suppresses repeated same-state taps. Its signed iPhone round trip
 passed with exactly one event pair in each direction and the initial state
 restored. The Watch gallery then exposed four selected-plug presets and a
 two-item grid. Build 13 is the local correction: one editable selected-plug
-entry and an all-four 2×2 Watch grid. Its physical Watch gate remains pending,
-as do the Watch-originated relay-command, offline, live path-change, and
-accessibility rows.
+entry and an all-four 2×2 Watch grid. The physical Watch gallery, editing,
+launcher, grid, read-only purifier, and plug-control feedback now pass. Four
+intentional alternating Watch widget writes each produced one POST/event pair
+and left the lamp restored off. Watch-originated app relay, offline, remaining
+accessory-family, live path-change, and accessibility rows remain open.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
