@@ -12,6 +12,9 @@
 3. [`home-services-discord-cron-integration-plan-2026-08-20.md`](home-services-discord-cron-integration-plan-2026-08-20.md)
    — staged backend and native-Home plan for Discord bot, room audio, scheduler,
    and sanitized scheduled-job status and controls.
+4. [`widget-catalogue-deployment-and-physical-validation-2026-08-20.md`](widget-catalogue-deployment-and-physical-validation-2026-08-20.md)
+   — build-11 launcher, configurable plug, plug-grid, and purifier widget
+   catalogue, Apple design checks, and signed physical validation gate.
 
 ## Historical/reference only
 

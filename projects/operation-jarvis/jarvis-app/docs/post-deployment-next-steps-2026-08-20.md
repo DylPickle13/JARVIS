@@ -2,7 +2,7 @@
 
 **Revised:** 2026-08-20
 **Installed build:** 0.2.0 (10) on iPhone and Watch
-**Local candidate:** 0.2.0 (10)
+**Local candidate:** 0.2.0 (11)
 **Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
 ## 1. Current system boundary
@@ -164,13 +164,18 @@ Network permission behavior remain in the matrix.
 
 With Personal Team signing, App Groups and cross-target shared Keychain access are unavailable. Each widget therefore uses its own direct `jarvisd` discovery path; it does not actually consume the main app’s cache/config. Token-mode widgets cannot inherit the app token under this profile.
 
-The pre-fix Watch complication chose the first sorted plug without saying so, and widget buttons derived the opposite desired state from potentially stale data.
+The original Watch complication chose the first sorted plug without letting the
+user configure it, and the original bundles exposed only one plug widget each.
 
-**Implementation complete:** widget writes are disabled for stale/unknown displayed
-state; explicit desired-state intents remain non-inverting; the Watch complication
-is named and described as controlling the first configured plug; and the free-team
-lack of shared cache/token/relay support is documented. Physical widget and
-complication validation remains in the consolidated matrix below.
+**Build-11 replacement implementation complete:** both extensions now publish
+Open JARVIS, configurable JARVIS Plug, JARVIS Plug Grid, and read-only Air
+Purifier. Widget writes are disabled for stale/unknown displayed state; explicit
+desired-state intents remain non-inverting; timeline requests are coalesced; and
+the free-team lack of shared cache/token/relay support is documented. Static
+simulator rendering and launcher deep links pass. App-Intent configuration and
+button execution require the signed physical build because the unsigned Xcode 26
+simulator product is rejected by `linkd` for lacking a team identity. Physical
+widget and complication validation remains in the consolidated matrix below.
 
 ### P0 — completely remove the deprecated dashboard — complete 2026-08-20
 
@@ -284,8 +289,8 @@ Each behavior has one owning test; other surfaces receive a representative smoke
 | Watch app direct | One representative plug Off → On on home LAN | Direct path, pending state, result, and refreshed state |
 | Watch app relay | Make direct path unavailable and repeat one representative write | iPhone relay returns correlated result; duplicate request ID executes once |
 | Watch app offline | Remove both direct and relay temporarily | Cached state is marked stale and writes are blocked/fail honestly |
-| iPhone widget | One representative explicit desired-state write | Direct `jarvisd` call succeeds and timeline refreshes |
-| Watch complication | One representative direct write | First configured plug identity is explicit, stale writes are blocked, and timeline refreshes |
+| iPhone widgets | Add all four types and every Home/Lock Screen family; then one approved representative desired-state write | Launcher deep-links Home; layouts are legible; purifier stays read-only; direct plug call succeeds and timeline refreshes |
+| Watch widgets/complications | Add all four types and every supported family; then one approved representative direct write | Launcher opens Watch app; selected plug is configurable; stale writes are blocked; purifier stays read-only; timeline refreshes |
 | Events | Inspect events after the tests above | User actions are visible in `jarvisd`; collector noise is absent |
 | Accessibility | VoiceOver, largest Dynamic Type, dark mode, Reduce Motion | Core iPhone and Watch controls remain usable |
 

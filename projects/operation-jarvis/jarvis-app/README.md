@@ -16,13 +16,17 @@ Physical consoles reached `reachable=true` and acknowledged repeated
 iPhone-to-Watch state delivery. Cellular/Tailscale cold launch and relaunch
 also pass. Build 9 removed weather, reordered Home, and removed the System tab.
 Build 10 adds read-only Discord bot and scheduler status plus a sanitized dynamic
-scheduled-job inventory. The Watch-originated relay-command, widget, offline,
-live path-change, and accessibility rows remain outstanding.
+scheduled-job inventory. Build 11 is the local widget-replacement candidate with
+launchers, configurable selected plugs, larger plug grids, and read-only purifier
+status on iPhone and Watch. Its signed physical widget gate remains outstanding,
+as do the Watch-originated relay-command, offline, live path-change, and
+accessibility rows.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
 control plane. APNs push + Live Activities are out (free Apple ID can't do
-APNs); oMLX is out of app scope entirely; widgets = plug grid only for now.
+APNs); oMLX is out of app scope entirely. The widget catalogue is Open JARVIS,
+JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
 
 **Everything lives in this folder** — the Swift app targets, the shared
 `JARVISKit` package, *and* the `jarvisd` backend daemon are all under
@@ -38,14 +42,16 @@ APNs); oMLX is out of app scope entirely; widgets = plug grid only for now.
   — historical research and architecture record (not an operational runbook).
 - [`docs/post-deployment-next-steps-2026-08-20.md`](docs/post-deployment-next-steps-2026-08-20.md)
   — prioritized physical gates, verification, commit strategy, and path to M4.
+- [`docs/widget-catalogue-deployment-and-physical-validation-2026-08-20.md`](docs/widget-catalogue-deployment-and-physical-validation-2026-08-20.md)
+  — current widget families, safety contract, Apple design review, and physical gate.
 
 ## Scope (v5, approved)
 
 - **In:** smart plugs, air purifier, status and telemetry (Pi session count,
   network, uptime, Discord bot, room audio, scheduler, and scheduled jobs),
-  events feed, service start/stop/restart (room-audio server), plug-grid widgets
-  (iOS home + lock-screen),
-  watch interactive plug complication), Siri/Shortcuts via App Intents,
+  events feed, service start/stop/restart (room-audio server), launcher,
+  configurable plug, plug-grid, and purifier-status widgets on iPhone and Watch,
+  and Siri/Shortcuts via App Intents,
   Tailscale remote access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
   word, Raspberry Pi room endpoint, Discord bot/scheduler process mutation and
@@ -101,12 +107,14 @@ APNs); oMLX is out of app scope entirely; widgets = plug grid only for now.
   parent registration plus developer Watch install produces
   `isWatchAppInstalled=true` and `isCompanionAppInstalled=true` under free
   provisioning; the final physical reachability/relay matrix remains open.
-- **M3 widget foundations** — iOS plug-grid and watch selected-plug WidgetKit
-  extensions are embedded, use typed desired-state App Intents, stale rendering,
-  and `SnapshotStore` caching. The Personal Team profile cannot provide App
-  Groups or shared widget credentials, so widgets use a bounded direct-daemon
-  trusted-network fallback; they do not claim shared cache/token or phone relay
-  support. The consolidated physical widget/Watch matrix remains outstanding.
+- **M3 widget foundations** — each embedded WidgetKit extension publishes four
+  focused widgets: Open JARVIS, configurable JARVIS Plug, JARVIS Plug Grid, and
+  read-only Air Purifier. Plug controls use typed desired-state App Intents;
+  stale/unknown state blocks writes. Fifteen-minute timelines share a short
+  single-flight direct-daemon refresh. The Personal Team profile cannot provide
+  App Groups or shared widget credentials, so widgets do not claim shared
+  cache/token or phone-relay support. Signed physical widget validation remains
+  outstanding; see the widget catalogue runbook.
 - **`JARVISKit`** — shared package with `JarvisClient` (incl. `discover`),
   `StateSnapshot` models, `EndpointStore` (Keychain), `WatchBridge`; mocked
   networking tests pass, while live integration tests are explicit opt-in.
@@ -158,9 +166,9 @@ jarvis-app/
 │   ├── JARVISWatchApp.swift
 │   ├── Info.plist              #   ATS exception
 │   └── Views/WatchConnectView.swift
-├── JARVISWidget/               # iOS WidgetKit plug grid + App Intent
-│   └── JARVISWidget.entitlements
-└── JARVISWatchWidget/          # watchOS WidgetKit plug complication
+├── SharedAppIntents/           # compiled into all four host/extension targets
+├── JARVISWidget/               # four iOS WidgetKit widgets
+└── JARVISWatchWidget/          # four watchOS widgets/complications
 ```
 
 ## Backend dependency
