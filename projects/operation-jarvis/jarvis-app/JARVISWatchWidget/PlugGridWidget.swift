@@ -61,26 +61,33 @@ private struct JARVISWatchPlugGridView: View {
 
     private func plugButton(_ item: WatchPlugGridItem) -> some View {
         let isOn = item.isOn == true
-        let disabled = item.isOn == nil || item.stale
+        let pending = JARVISWidgetControlStore.shared.pendingCommand(for: item.id)
+        let disabled = item.isOn == nil || item.stale || pending != nil
+        let status = pending != nil ? "UPDATING" : (item.stale ? "STALE" : (isOn ? "ON" : "OFF"))
         return Button(intent: SetPlugIntent(plug: item.id, isOn: !isOn)) {
             VStack(spacing: 1) {
-                Image(systemName: isOn ? "power.circle.fill" : "power.circle")
+                Image(systemName: pending != nil ? "hourglass" : (isOn ? "power.circle.fill" : "power.circle"))
                     .font(.body)
                     .widgetAccentable()
                 Text(item.name)
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
-                Text(item.stale ? "STALE" : (isOn ? "ON" : "OFF"))
+                Text(status)
                     .font(.caption2.bold())
-                    .foregroundStyle(item.stale ? Color.orange : Color.secondary)
+                    .minimumScaleFactor(0.6)
+                    .foregroundStyle(pending != nil ? Color.blue : (item.stale ? Color.orange : Color.secondary))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(disabled)
-        .accessibilityLabel("\(item.name), \(item.stale ? "stale" : (isOn ? "on" : "off"))")
-        .accessibilityHint(disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
+        .accessibilityLabel("\(item.name), \(pending != nil ? "updating" : (item.stale ? "stale" : (isOn ? "on" : "off")))")
+        .accessibilityHint(
+            pending != nil
+                ? "A plug command is in progress"
+                : (disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
+        )
     }
 }
 

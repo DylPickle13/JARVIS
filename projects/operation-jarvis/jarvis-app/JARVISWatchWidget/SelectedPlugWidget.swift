@@ -51,67 +51,72 @@ private struct JARVISWatchSelectedPlugView: View {
     @ViewBuilder
     private func plugContent(_ plug: WatchPlugPresentation) -> some View {
         let isOn = plug.isOn == true
-        let disabled = plug.isOn == nil || plug.stale
+        let pending = JARVISWidgetControlStore.shared.pendingCommand(for: plug.id)
+        let disabled = plug.isOn == nil || plug.stale || pending != nil
         let intent = SetPlugIntent(plug: plug.id, isOn: !isOn)
+        let shortStatus = pending != nil ? "UPDATING" : (plug.stale ? "STALE" : (isOn ? "ON" : "OFF"))
+        let status = pending != nil ? "Updating…" : (plug.stale ? "Status stale" : (isOn ? "On" : "Off"))
+        let actionHint = pending != nil
+            ? "A plug command is in progress"
+            : (disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
 
         switch family {
         case .accessoryInline:
             Button(intent: intent) {
-                Label("\(plug.name) · \(plug.stale ? "STALE" : (isOn ? "ON" : "OFF"))", systemImage: "power")
+                Label("\(plug.name) · \(shortStatus)", systemImage: pending != nil ? "hourglass" : "power")
             }
             .buttonStyle(.plain)
             .disabled(disabled)
-            .accessibilityLabel("\(plug.name), \(plug.stale ? "stale" : (isOn ? "on" : "off"))")
-            .accessibilityHint(disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
+            .accessibilityLabel("\(plug.name), \(pending != nil ? "updating" : (plug.stale ? "stale" : (isOn ? "on" : "off")))")
+            .accessibilityHint(actionHint)
         case .accessoryCorner:
             Button(intent: intent) {
-                Image(systemName: isOn ? "power.circle.fill" : "power.circle")
+                Image(systemName: pending != nil ? "hourglass" : (isOn ? "power.circle.fill" : "power.circle"))
                     .font(.title3)
                     .widgetAccentable()
             }
             .buttonStyle(.plain)
             .disabled(disabled)
-            .widgetLabel {
-                Text(plug.stale ? "STALE" : (isOn ? "ON" : "OFF"))
-            }
-            .accessibilityLabel("\(plug.name), \(plug.stale ? "stale" : (isOn ? "on" : "off"))")
-            .accessibilityHint(disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
+            .widgetLabel { Text(shortStatus) }
+            .accessibilityLabel("\(plug.name), \(pending != nil ? "updating" : (plug.stale ? "stale" : (isOn ? "on" : "off")))")
+            .accessibilityHint(actionHint)
         case .accessoryRectangular:
             Button(intent: intent) {
                 HStack(spacing: 8) {
-                    Image(systemName: isOn ? "power.circle.fill" : "power.circle")
+                    Image(systemName: pending != nil ? "hourglass" : (isOn ? "power.circle.fill" : "power.circle"))
                         .font(.title2)
                         .widgetAccentable()
                     VStack(alignment: .leading, spacing: 1) {
                         Text(plug.name).font(.headline).lineLimit(1)
-                        Text(plug.stale ? "Status stale" : (isOn ? "On" : "Off"))
+                        Text(status)
                             .font(.caption2)
-                            .foregroundStyle(plug.stale ? Color.orange : Color.secondary)
+                            .foregroundStyle(pending != nil ? Color.blue : (plug.stale ? Color.orange : Color.secondary))
                     }
                     Spacer(minLength: 0)
                 }
             }
             .buttonStyle(.plain)
             .disabled(disabled)
-            .accessibilityLabel("\(plug.name), \(plug.stale ? "stale" : (isOn ? "on" : "off"))")
-            .accessibilityHint(disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
+            .accessibilityLabel("\(plug.name), \(pending != nil ? "updating" : (plug.stale ? "stale" : (isOn ? "on" : "off")))")
+            .accessibilityHint(actionHint)
         default:
             Button(intent: intent) {
                 ZStack {
                     AccessoryWidgetBackground()
                     VStack(spacing: 1) {
-                        Image(systemName: isOn ? "power.circle.fill" : "power.circle")
+                        Image(systemName: pending != nil ? "hourglass" : (isOn ? "power.circle.fill" : "power.circle"))
                             .font(.title3)
                             .widgetAccentable()
-                        Text(plug.stale ? "STALE" : (isOn ? "ON" : "OFF"))
+                        Text(shortStatus)
                             .font(.caption2.bold())
+                            .minimumScaleFactor(0.6)
                     }
                 }
             }
             .buttonStyle(.plain)
             .disabled(disabled)
-            .accessibilityLabel("\(plug.name), \(plug.stale ? "stale" : (isOn ? "on" : "off"))")
-            .accessibilityHint(disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
+            .accessibilityLabel("\(plug.name), \(pending != nil ? "updating" : (plug.stale ? "stale" : (isOn ? "on" : "off")))")
+            .accessibilityHint(actionHint)
         }
     }
 

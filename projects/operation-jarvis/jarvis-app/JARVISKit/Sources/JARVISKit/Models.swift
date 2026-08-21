@@ -111,6 +111,68 @@ public struct PlugState: Codable, Equatable, Sendable {
     public let error: String?
 }
 
+public extension StateSnapshot {
+    /// Returns a snapshot with one confirmed desired-state plug result applied.
+    /// This lets an interactive widget render the command response immediately
+    /// while its next direct daemon refresh is being scheduled.
+    func applyingConfirmedPlugState(name: String, isOn: Bool, at date: Date = Date()) -> StateSnapshot {
+        guard let subsystems, let currentPlugs = subsystems.plugs else { return self }
+        var plugMap = currentPlugs.plugs ?? [:]
+        let current = plugMap[name]
+        plugMap[name] = PlugState(
+            ok: true,
+            stale: false,
+            isOn: isOn,
+            host: current?.host,
+            rssi: current?.rssi,
+            alias: current?.alias,
+            error: nil
+        )
+        let onCount = plugMap.values.filter { $0.isOn == true }.count
+        let updatedAt = ISO8601DateFormatter().string(from: date)
+        let updatedPlugs = PlugsSubsystem(
+            ok: true,
+            stale: false,
+            refreshing: false,
+            updatedAt: updatedAt,
+            count: currentPlugs.count ?? plugMap.count,
+            onCount: onCount,
+            plugs: plugMap,
+            error: nil,
+            lastError: nil
+        )
+        let updatedSubsystems = Subsystems(
+            plugs: updatedPlugs,
+            purifier: subsystems.purifier,
+            pi: subsystems.pi,
+            services: subsystems.services,
+            network: subsystems.network
+        )
+        let updatedSummary = summary.map {
+            Summary(
+                plugsOn: onCount,
+                plugsTotal: $0.plugsTotal ?? plugMap.count,
+                purifierOn: $0.purifierOn,
+                pm25: $0.pm25,
+                piActive: $0.piActive
+            )
+        }
+        return StateSnapshot(
+            ok: ok,
+            loading: loading,
+            refreshing: refreshing,
+            stale: stale,
+            ageSeconds: ageSeconds,
+            generatedAt: generatedAt,
+            version: version,
+            uptimeSeconds: uptimeSeconds,
+            summary: updatedSummary,
+            subsystems: updatedSubsystems,
+            subsystemsMeta: subsystemsMeta
+        )
+    }
+}
+
 public struct PurifierSubsystem: Codable, Equatable, Sendable {
     public let ok: Bool?
     public let stale: Bool?

@@ -45,6 +45,12 @@ for kind in \
 done
 ! grep -q 'Button(intent:' JARVISWidget/PurifierWidget.swift
 ! grep -q 'Button(intent:' JARVISWatchWidget/PurifierWidget.swift
+grep -q 'applyConfirmedPlugState' SharedAppIntents/JARVISWidgetIntents.swift
+grep -q 'JARVISWidgetControlStore.shared' SharedAppIntents/JARVISWidgetIntents.swift
+grep -q 'reloadTimelines(ofKind:' SharedAppIntents/JARVISWidgetIntents.swift
+grep -q 'pendingCommand(for:' JARVISWidget/SelectedPlugWidget.swift
+grep -q 'pendingCommand(for:' JARVISWatchWidget/SelectedPlugWidget.swift
+! grep -q 'lastAttempt' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
 
 icon_is_opaque_square() {
   local path="$1"

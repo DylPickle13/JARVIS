@@ -45,6 +45,14 @@ public final class SnapshotStore: @unchecked Sendable {
         return try? JSONDecoder().decode(CachedState.self, from: data)
     }
 
+    @discardableResult
+    public func applyConfirmedPlugState(name: String, isOn: Bool, at date: Date = Date()) -> CachedState? {
+        guard let cached = load() else { return nil }
+        let updated = cached.state.applyingConfirmedPlugState(name: name, isOn: isOn, at: date)
+        save(updated, at: date)
+        return CachedState(state: updated, savedAt: date)
+    }
+
     public func clear() {
         lock.lock()
         defaults.removeObject(forKey: key)

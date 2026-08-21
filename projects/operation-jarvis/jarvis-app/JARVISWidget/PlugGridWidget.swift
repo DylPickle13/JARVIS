@@ -79,19 +79,22 @@ private struct JARVISPlugGridView: View {
 
     private func plugButton(_ item: PlugGridItem) -> some View {
         let isOn = item.isOn == true
-        let disabled = item.isOn == nil || item.stale
+        let pending = JARVISWidgetControlStore.shared.pendingCommand(for: item.id)
+        let disabled = item.isOn == nil || item.stale || pending != nil
+        let status = pending != nil ? "UPDATING" : (item.stale ? "STALE" : (isOn ? "ON" : "OFF"))
+        let color = pending != nil ? Color.blue : (item.stale ? Color.orange : (isOn ? Color.green : Color.secondary))
         return Button(intent: SetPlugIntent(plug: item.id, isOn: !isOn)) {
             HStack(spacing: 7) {
-                Image(systemName: isOn ? "power.circle.fill" : "power.circle")
+                Image(systemName: pending != nil ? "hourglass" : (isOn ? "power.circle.fill" : "power.circle"))
                     .font(.title3)
-                    .foregroundStyle(item.stale ? Color.orange : (isOn ? Color.green : Color.secondary))
+                    .foregroundStyle(color)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.name)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
-                    Text(item.stale ? "STALE" : (isOn ? "ON" : "OFF"))
+                    Text(status)
                         .font(.caption2.weight(.medium))
-                        .foregroundStyle(item.stale ? Color.orange : Color.secondary)
+                        .foregroundStyle(pending != nil || item.stale ? color : Color.secondary)
                 }
                 Spacer(minLength: 0)
             }
@@ -102,8 +105,12 @@ private struct JARVISPlugGridView: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled)
-        .accessibilityLabel("\(item.name), \(item.stale ? "stale" : (isOn ? "on" : "off"))")
-        .accessibilityHint(disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
+        .accessibilityLabel("\(item.name), \(pending != nil ? "updating" : (item.stale ? "stale" : (isOn ? "on" : "off")))")
+        .accessibilityHint(
+            pending != nil
+                ? "A plug command is in progress"
+                : (disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
+        )
     }
 }
 

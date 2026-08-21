@@ -27,26 +27,57 @@ struct SetPlugIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         guard !plug.isEmpty else { throw JARVISWidgetIntentError.invalidPlug }
-        let store = EndpointStore(defaults: JARVISSharedStore.defaults)
-        let client = JarvisClient()
-        let url: URL?
-        if let saved = store.endpointURL {
-            url = saved
-        } else {
-            url = await client.discover(JarvisEndpoints.candidates(override: nil), timeout: 3)
+        let controls = JARVISWidgetControlStore.shared
+        switch controls.begin(name: plug, isOn: isOn) {
+        case .alreadyPending, .recentlyCompleted:
+            reloadPlugTimelines()
+            return .result()
+        case .execute:
+            break
         }
-        guard let url else { throw JARVISWidgetIntentError.unreachable }
-        let result = try await client.command(
-            JarvisEndpoint(baseURL: url, token: store.token ?? ""),
-            action: isOn ? "plug-on" : "plug-off",
-            params: ["plug": .string(plug)]
-        )
-        guard result.ok else {
-            throw JARVISWidgetIntentError.commandFailed(result.error ?? "The plug command failed.")
+        // If WidgetKit renders during execution, both plug widgets now show an
+        // Updating state and reject another tap for this plug.
+        reloadPlugTimelines()
+
+        do {
+            let store = EndpointStore(defaults: JARVISSharedStore.defaults)
+            let client = JarvisClient()
+            let url: URL?
+            if let saved = store.endpointURL {
+                url = saved
+            } else {
+                url = await client.discover(JarvisEndpoints.candidates(override: nil), timeout: 3)
+            }
+            guard let url else { throw JARVISWidgetIntentError.unreachable }
+            let result = try await client.command(
+                JarvisEndpoint(baseURL: url, token: store.token ?? ""),
+                action: isOn ? "plug-on" : "plug-off",
+                params: ["plug": .string(plug)]
+            )
+            guard result.ok else {
+                throw JARVISWidgetIntentError.commandFailed(result.error ?? "The plug command failed.")
+            }
+            let confirmedState = result.plug?.is_on ?? isOn
+            await JARVISWidgetStateLoader.applyConfirmedPlugState(name: plug, isOn: confirmedState)
+            controls.complete(name: plug, isOn: confirmedState, succeeded: true)
+            reloadPlugTimelines()
+            return .result()
+        } catch {
+            controls.complete(name: plug, isOn: isOn, succeeded: false)
+            reloadPlugTimelines()
+            throw error
         }
-        WidgetCenter.shared.reloadAllTimelines()
-        return .result()
     }
+}
+
+private func reloadPlugTimelines() {
+    #if os(watchOS)
+    WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchSelectedPlugWidget.v1")
+    WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchPlugGridWidget.v1")
+    #else
+    WidgetCenter.shared.reloadTimelines(ofKind: "JARVISSelectedPlugWidget.v1")
+    WidgetCenter.shared.reloadTimelines(ofKind: "JARVISPlugGridWidget.v1")
+    #endif
 }
 
 @available(iOS 17.0, watchOS 10.0, *)
