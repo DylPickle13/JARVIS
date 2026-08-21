@@ -1,8 +1,8 @@
 # JARVIS widget catalogue, deployment, and physical validation
 
 **Prepared:** 2026-08-20
-**Candidate:** JARVIS `0.2.0 (11)`
-**Physical status:** pending signed iPhone and Apple Watch installation
+**Candidate:** JARVIS `0.2.0 (12)`
+**Physical status:** build 11 installed; build-12 interaction-feedback correction pending deployment
 
 ## 1. Replacement boundary
 
@@ -41,8 +41,13 @@ this build.
 - The launcher is static and uses a `.never` timeline policy.
 - State widgets request a timeline refresh every 15 minutes. WidgetKit retains
   final scheduling authority.
-- Concurrent timeline requests share one 30-second single-flight result inside
-  each extension process, avoiding duplicate `jarvisd` requests.
+- Concurrent timeline requests share only the currently in-flight request inside
+  each extension process, avoiding duplicate `jarvisd` reads without replaying
+  a completed pre-command snapshot.
+- A plug intent marks the selected plug Updating and disables it while running,
+  applies the confirmed result to target-local state, then selectively reloads
+  both plug timelines.
+- Repeated taps for the same desired state are suppressed for ten seconds.
 - State older than 15 minutes, or state marked stale by the daemon, is visibly
   marked stale.
 - Plug controls are disabled for stale or unknown state.
@@ -54,7 +59,23 @@ this build.
   access. Each extension has a target-local cache and direct trusted-network
   `jarvisd` discovery fallback. Token-mode credentials are not inherited.
 
-## 5. Apple design-guideline alignment
+## 5. Build-11 physical finding and build-12 correction
+
+The signed build-11 iPhone gallery listed all four replacement widgets, and Open
+JARVIS launched Home correctly. During the first plug interaction, however, the
+30-second completed-result cache replayed the pre-command snapshot after
+`WidgetCenter` reload. The lamp turned on, but the widget still appeared off;
+four taps therefore generated four idempotent `plug-on` requests. The initial
+off state was restored with one approved `plug-off` and verified.
+
+Build 12 removes completed-result retention while preserving true concurrent
+single-flight behavior. It also invalidates older in-flight reads, writes the
+confirmed command result to the extension-local snapshot, exposes an
+Updating/disabled presentation during execution, reloads only plug timelines,
+and suppresses rapid duplicate same-state intents. Automated coverage verifies
+confirmed-state cache updates plus pending and duplicate-control behavior.
+
+## 6. Apple design-guideline alignment
 
 The implementation follows the current Apple widget guidance:
 
@@ -78,7 +99,7 @@ References:
 - [Making a configurable widget](https://developer.apple.com/documentation/widgetkit/making-a-configurable-widget)
 - [Creating accessory widgets and watch complications](https://developer.apple.com/documentation/widgetkit/creating-accessory-widgets-and-watch-complications)
 
-## 6. Simulator validation
+## 7. Simulator validation
 
 Required before physical installation:
 
@@ -100,16 +121,16 @@ links remain testable there. App-Intent configuration and button execution must
 therefore be closed using the signed physical archive, not by treating the
 unsigned simulator rejection as an application failure.
 
-## 7. Signed physical gate
+## 8. Signed physical gate
 
 When the iPhone is connected:
 
-1. Build one signed archive with all four products on build 11.
+1. Build one signed archive with all four products on build 12.
 2. Deep-verify the iPhone app, iPhone widget, Watch app, and Watch widget.
 3. Install the exported parent IPA through `ideviceinstaller` on the allowlisted
    iPhone.
 4. Install the exact archived Watch app through CoreDevice developer services.
-5. Confirm both inventories report `0.2.0 (11)` and both widget extensions are
+5. Confirm both inventories report `0.2.0 (12)` and both widget extensions are
    present.
 6. Add and launch Open JARVIS on iPhone and Watch.
 7. Add JARVIS Plug, verify all four approved configuration choices, and confirm
@@ -118,9 +139,11 @@ When the iPhone is connected:
    target spacing before issuing any command.
 9. Add every purifier family and confirm they remain read-only.
 10. After a separate hardware-change warning and explicit approval, exercise one
-    representative desired-state plug command and restore its starting state.
-11. Confirm exactly one command result/event pair and no purifier or service
-    command.
+    representative desired-state plug command. Confirm immediate feedback, the
+    final displayed state, and duplicate suppression before restoring its
+    starting state.
+11. Confirm exactly one event pair per changed desired state and no purifier or
+    service command.
 
 Never test by unpairing or erasing the Watch. Never install on a non-allowlisted
 device.

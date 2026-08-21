@@ -1,8 +1,8 @@
 # Operation JARVIS app — integration-aware next steps
 
 **Revised:** 2026-08-20
-**Installed build:** 0.2.0 (10) on iPhone and Watch
-**Local candidate:** 0.2.0 (11)
+**Installed build:** 0.2.0 (11) on iPhone and Watch
+**Local candidate:** 0.2.0 (12)
 **Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
 ## 1. Current system boundary
@@ -170,12 +170,21 @@ user configure it, and the original bundles exposed only one plug widget each.
 **Build-11 replacement implementation complete:** both extensions now publish
 Open JARVIS, configurable JARVIS Plug, JARVIS Plug Grid, and read-only Air
 Purifier. Widget writes are disabled for stale/unknown displayed state; explicit
-desired-state intents remain non-inverting; timeline requests are coalesced; and
-the free-team lack of shared cache/token/relay support is documented. Static
-simulator rendering and launcher deep links pass. App-Intent configuration and
-button execution require the signed physical build because the unsigned Xcode 26
-simulator product is rejected by `linkd` for lacking a team identity. Physical
-widget and complication validation remains in the consolidated matrix below.
+desired-state intents remain non-inverting; concurrent timeline requests are
+coalesced; and the free-team lack of shared cache/token/relay support is
+documented. Static simulator rendering and launcher deep links pass. The signed
+physical iPhone gallery listed all four widgets and the launcher opened Home.
+
+The first physical plug interaction exposed a stale-feedback defect: the
+30-second coordinator retained a completed pre-command result, so the widget did
+not redraw and four taps sent four idempotent `plug-on` requests. The lamp was
+restored to its initial off state with one explicit `plug-off`; no purifier or
+service command was involved. **Build 12** no longer retains completed timeline
+results, invalidates older in-flight reads, applies the confirmed command result
+to the target-local snapshot immediately, shows an Updating/disabled state, and
+suppresses repeated same-state taps for ten seconds. Unit and unsigned simulator
+build gates pass; signed build-12 iPhone/Watch feedback and complication
+validation remain in the consolidated matrix below.
 
 ### P0 — completely remove the deprecated dashboard — complete 2026-08-20
 

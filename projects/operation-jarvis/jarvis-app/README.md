@@ -10,17 +10,19 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. JARVIS `0.2.0 (10)` is installed on both physical devices from the verified
-archive, with the final icon and both WatchConnectivity installed flags true.
-Physical consoles reached `reachable=true` and acknowledged repeated
-iPhone-to-Watch state delivery. Cellular/Tailscale cold launch and relaunch
-also pass. Build 9 removed weather, reordered Home, and removed the System tab.
-Build 10 adds read-only Discord bot and scheduler status plus a sanitized dynamic
-scheduled-job inventory. Build 11 is the local widget-replacement candidate with
-launchers, configurable selected plugs, larger plug grids, and read-only purifier
-status on iPhone and Watch. Its signed physical widget gate remains outstanding,
-as do the Watch-originated relay-command, offline, live path-change, and
-accessibility rows.
+UI. JARVIS `0.2.0 (11)` is installed on both physical devices from the verified
+archive, with both WatchConnectivity installed flags true. Physical consoles
+reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
+delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
+weather, reordered Home, and removed the System tab. Build 10 adds read-only
+Discord bot and scheduler status plus a sanitized dynamic scheduled-job
+inventory. Build 11 replaced the widget catalogue; all four widgets appeared in
+the signed physical iPhone gallery and the launcher deep link passed. That gate
+exposed a completed-result cache bug after a plug interaction. Build 12 removes
+that stale replay, applies confirmed command state immediately, renders pending
+feedback, and suppresses repeated same-state taps. Its signed physical feedback
+gate remains pending, as do the Watch-originated relay-command, offline, live
+path-change, and accessibility rows.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
