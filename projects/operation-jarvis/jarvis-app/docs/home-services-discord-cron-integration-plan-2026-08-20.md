@@ -3,6 +3,7 @@
 **Prepared:** 2026-08-20
 **Baseline:** JARVIS `0.2.0 (9)`
 **Target candidate:** JARVIS `0.2.0 (10)`
+**Implementation status:** read-only phase complete and physically deployed on iPhone and Watch; optional bot, scheduler, and job mutations remain disabled.
 **Scope:** expand the Home Services section without changing Watch, widget, plug, purifier, or room-audio behavior.
 
 ## 1. Goal
@@ -246,7 +247,21 @@ Use a disclosure group or navigation detail if five or more rows make Home too l
 9. **Physical read-only acceptance** — verify layout, local dates, error handling, and no service/job writes.
 10. **Optional control phase** — only with separate approval, validate the disposable service first, then selectively authorize real service/job actions.
 
-## 10. Acceptance criteria
+## 10. Physical build-10 checkpoint
+
+- The exact signed archive was installed on the allowlisted iPhone and Watch;
+  both inventories report `0.2.0 (10)`.
+- The physical iPhone repeatedly received HTTP 200 from `/api/v1/services` and
+  `/api/v1/scheduled-jobs` over LAN, while the Watch companion launched and
+  retained `companionAppInstalled=true`.
+- The native response lists all three runtimes and all five current jobs.
+- The Discord bot and scheduler advertise no allowed actions; room-audio keeps
+  its pre-existing lifecycle controls.
+- No service, job, plug, purifier, or command POST occurred during deployment or
+  physical validation. Discord bot, scheduler, and room-audio PIDs were
+  unchanged across the daemon-only deployment restart.
+
+## 11. Acceptance criteria
 
 The integration is complete when:
 

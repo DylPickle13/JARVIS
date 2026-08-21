@@ -564,7 +564,7 @@ clean reinstall is required.
 
 As of the latest pass:
 
-- JARVIS `0.2.0 (9)` is installed on the iPhone and Watch from the same
+- JARVIS `0.2.0 (10)` is installed on the iPhone and Watch from the same
   verified archive with the requested iOS/watchOS icon;
 - build 8 removed the erroneous platform-specialization setting and passed the
   combined simulator, archive/export, and deep-signature checks;

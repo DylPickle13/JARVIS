@@ -1,8 +1,8 @@
 # Operation JARVIS app — integration-aware next steps
 
 **Revised:** 2026-08-20
-**Installed build:** 0.2.0 (9) on iPhone and Watch
-**Local candidate:** 0.2.0 (9)
+**Installed build:** 0.2.0 (10) on iPhone and Watch
+**Local candidate:** 0.2.0 (10)
 **Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
 ## 1. Current system boundary
@@ -106,7 +106,7 @@ The investigation separated build, registration, installation, and messaging:
   the developer service succeeds;
 - iPhone now reports `paired=true installed=true`, and Watch reports
   `companionAppInstalled=true`;
-- JARVIS `0.2.0 (9)` is installed on both devices from the same verified
+- JARVIS `0.2.0 (10)` is installed on both devices from the same verified
   archive with the requested icon;
 - physical consoles confirmed `reachable=true`, acknowledged repeated
   iPhone-to-Watch state delivery, and preserved both installed flags;
