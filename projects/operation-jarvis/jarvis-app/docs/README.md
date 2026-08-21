@@ -9,6 +9,9 @@
 2. [`post-deployment-next-steps-2026-08-20.md`](post-deployment-next-steps-2026-08-20.md)
    — current physical matrix, completed hardware findings, waived observation,
    final verification, commit split, and release plan.
+3. [`home-services-discord-cron-integration-plan-2026-08-20.md`](home-services-discord-cron-integration-plan-2026-08-20.md)
+   — staged backend and native-Home plan for Discord bot, room audio, scheduler,
+   and sanitized scheduled-job status and controls.
 
 ## Historical/reference only
 
