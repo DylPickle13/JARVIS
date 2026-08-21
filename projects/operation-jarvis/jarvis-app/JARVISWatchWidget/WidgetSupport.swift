@@ -52,11 +52,12 @@ struct JARVISWatchSelectedPlugProvider: AppIntentTimelineProvider {
     typealias Entry = JARVISWatchSelectedPlugEntry
 
     func recommendations() -> [AppIntentRecommendation<SelectJARVISPlugIntent>] {
-        JARVISPlugChoice.allCases.map { choice in
-            let intent = SelectJARVISPlugIntent()
-            intent.plug = choice
-            return AppIntentRecommendation(intent: intent, description: choice.widgetDisplayName)
-        }
+        // watchOS renders every recommendation as a separate gallery preset.
+        // Publish one default instance; the AppEnum remains editable after the
+        // widget is added, so this is one configurable widget rather than four.
+        let intent = SelectJARVISPlugIntent()
+        intent.plug = .lamp
+        return [AppIntentRecommendation(intent: intent, description: "Choose one JARVIS plug")]
     }
 
     func placeholder(in context: Context) -> JARVISWatchSelectedPlugEntry {

@@ -13,10 +13,17 @@ private struct WatchPlugGridItem: Identifiable {
 private struct JARVISWatchPlugGridView: View {
     let entry: JARVISWatchStateEntry
 
+    private let columns = [
+        GridItem(.flexible(), spacing: 4),
+        GridItem(.flexible(), spacing: 4),
+    ]
+
     private var items: [WatchPlugGridItem] {
         if entry.placeholder {
             return [
+                .init(id: "family-room-light", name: "Family Light", isOn: false, stale: false),
                 .init(id: "lamp", name: "Lamp", isOn: true, stale: false),
+                .init(id: "pedalboard", name: "Pedalboard", isOn: false, stale: false),
                 .init(id: "tv", name: "TV", isOn: false, stale: false),
             ]
         }
@@ -24,13 +31,14 @@ private struct JARVISWatchPlugGridView: View {
               let subsystem = cached.state.subsystems?.plugs,
               subsystem.ok == true else { return [] }
         let subsystemStale = JARVISWidgetStateLoader.isStale(cached, subsystemStale: subsystem.stale == true)
-        return (subsystem.plugs ?? [:]).keys.sorted().prefix(2).map { id in
-            let state = subsystem.plugs?[id]
+        return JARVISPlugChoice.allCases.compactMap { choice in
+            let id = choice.rawValue
+            guard let state = subsystem.plugs?[id] else { return nil }
             return WatchPlugGridItem(
                 id: id,
-                name: JARVISWatchWidgetFormat.displayName(id),
-                isOn: state?.isOn,
-                stale: subsystemStale || state?.stale == true
+                name: gridName(id),
+                isOn: state.isOn,
+                stale: subsystemStale || state.stale == true
             )
         }
     }
@@ -47,7 +55,7 @@ private struct JARVISWatchPlugGridView: View {
                     Image(systemName: "powerplug")
                 }
             } else {
-                HStack(spacing: 6) {
+                LazyVGrid(columns: columns, spacing: 4) {
                     ForEach(items) { item in
                         plugButton(item)
                     }
@@ -64,20 +72,29 @@ private struct JARVISWatchPlugGridView: View {
         let pending = JARVISWidgetControlStore.shared.pendingCommand(for: item.id)
         let disabled = item.isOn == nil || item.stale || pending != nil
         let status = pending != nil ? "UPDATING" : (item.stale ? "STALE" : (isOn ? "ON" : "OFF"))
+        let color = pending != nil ? Color.blue : (item.stale ? Color.orange : (isOn ? Color.green : Color.secondary))
         return Button(intent: SetPlugIntent(plug: item.id, isOn: !isOn)) {
-            VStack(spacing: 1) {
+            HStack(spacing: 4) {
                 Image(systemName: pending != nil ? "hourglass" : (isOn ? "power.circle.fill" : "power.circle"))
-                    .font(.body)
+                    .font(.caption)
+                    .foregroundStyle(color)
                     .widgetAccentable()
-                Text(item.name)
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-                Text(status)
-                    .font(.caption2.bold())
-                    .minimumScaleFactor(0.6)
-                    .foregroundStyle(pending != nil ? Color.blue : (item.stale ? Color.orange : Color.secondary))
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(item.name)
+                        .font(.system(size: 9, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(status)
+                        .font(.system(size: 8, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .foregroundStyle(pending != nil || item.stale ? color : Color.secondary)
+                }
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, minHeight: 31, alignment: .leading)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -89,6 +106,10 @@ private struct JARVISWatchPlugGridView: View {
                 : (disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
         )
     }
+
+    private func gridName(_ id: String) -> String {
+        id == "family-room-light" ? "Family Light" : JARVISWatchWidgetFormat.displayName(id)
+    }
 }
 
 struct JARVISWatchPlugGridWidget: Widget {
@@ -99,7 +120,7 @@ struct JARVISWatchPlugGridWidget: Widget {
             JARVISWatchPlugGridView(entry: entry)
         }
         .configurationDisplayName("JARVIS Plug Grid")
-        .description("Control two plugs from a rectangular watch complication or Smart Stack widget.")
+        .description("Control all four approved plugs from a rectangular Watch widget.")
         .supportedFamilies([.accessoryRectangular])
     }
 }

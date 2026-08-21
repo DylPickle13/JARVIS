@@ -50,6 +50,9 @@ grep -q 'JARVISWidgetControlStore.shared' SharedAppIntents/JARVISWidgetIntents.s
 grep -q 'reloadTimelines(ofKind:' SharedAppIntents/JARVISWidgetIntents.swift
 grep -q 'pendingCommand(for:' JARVISWidget/SelectedPlugWidget.swift
 grep -q 'pendingCommand(for:' JARVISWatchWidget/SelectedPlugWidget.swift
+[[ "$(grep -c 'AppIntentRecommendation(intent:' JARVISWatchWidget/WidgetSupport.swift)" == "1" ]]
+grep -q 'JARVISPlugChoice.allCases.compactMap' JARVISWatchWidget/PlugGridWidget.swift
+! grep -q 'prefix(2)' JARVISWatchWidget/PlugGridWidget.swift
 ! grep -q 'lastAttempt' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
 
 icon_is_opaque_square() {
