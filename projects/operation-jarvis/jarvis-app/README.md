@@ -46,16 +46,9 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
 
 ## Read first
 
-- [`docs/watch-companion-packaging-deployment-and-recovery-2026-08-20.md`](docs/watch-companion-packaging-deployment-and-recovery-2026-08-20.md)
-  — operational Watch companion packaging, non-skipping installation,
-  diagnostics, and non-destructive recovery runbook. Read this before any
-  physical Watch deployment or WatchConnectivity investigation.
-- [`docs/ios-watchos-app-research-2026-07-09.md`](docs/ios-watchos-app-research-2026-07-09.md)
-  — historical research and architecture record (not an operational runbook).
-- [`docs/post-deployment-next-steps-2026-08-20.md`](docs/post-deployment-next-steps-2026-08-20.md)
-  — prioritized physical gates, verification, commit strategy, and path to M4.
-- [`docs/widget-catalogue-deployment-and-physical-validation-2026-08-20.md`](docs/widget-catalogue-deployment-and-physical-validation-2026-08-20.md)
-  — current widget families, safety contract, Apple design review, and physical gate.
+- [`docs/README.md`](docs/README.md) — the single architecture, security,
+  packaging, deployment, widget, physical-validation, recovery, and release
+  reference for the app.
 
 ## Scope (v5, approved)
 
@@ -125,8 +118,9 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   stale/unknown state blocks writes. Fifteen-minute timelines share a short
   single-flight direct-daemon refresh. The Personal Team profile cannot provide
   App Groups or shared widget credentials, so widgets do not claim shared
-  cache/token or phone-relay support. Signed physical widget validation remains
-  outstanding; see the widget catalogue runbook.
+  cache/token or phone-relay support. Signed physical gallery and representative
+  command validation pass; stale/offline and remaining accessory-family rows are
+  tracked in the unified documentation.
 - **`JARVISKit`** — shared package with `JarvisClient` (incl. `discover`),
   `StateSnapshot` models, `EndpointStore` (Keychain), `WatchBridge`; mocked
   networking tests pass, while live integration tests are explicit opt-in.
@@ -149,7 +143,7 @@ jarvis-app/
 ├── README.md                   # this file
 ├── project.yml                 # xcodegen spec (regenerates JARVIS.xcodeproj)
 ├── JARVIS.xcodeproj            # generated (do not hand-edit)
-├── docs/                       # research & plan (v5)
+├── docs/README.md              # unified architecture and operations guide
 ├── scripts/
 │   └── redeploy-jarvis-app.sh  # one-command device build + install
 ├── jarvisd/                    # Python backend daemon (port 8790)
@@ -188,8 +182,9 @@ jarvis-app/
 `jarvisd` — Python daemon in `jarvis-app/jarvisd/` (port 8790, LaunchAgent +
 resurrector): auth, cached `/api/v1/state`, `/api/v1/command` (allowlisted →
 `jarvis-cli`), `/api/v1/events`, `/api/jarvis/events` ingest (existing
-jarvis-cli contract), `/api/v1/services` (start/stop/restart). Full spec:
-research doc §6. Tailscale on the Mac is transport-only.
+jarvis-cli contract), `/api/v1/services` (start/stop/restart), and sanitized
+`/api/v1/scheduled-jobs`. Full contract and operating procedure:
+[`docs/README.md`](docs/README.md). Tailscale on the Mac is transport-only.
 
 ### Security configuration
 

@@ -33,4 +33,4 @@ For initial companion registration under free provisioning:
 Follow the complete procedure, trust step, identity rules, diagnostics, and
 non-destructive recovery order in:
 
-[`../docs/watch-companion-packaging-deployment-and-recovery-2026-08-20.md`](../docs/watch-companion-packaging-deployment-and-recovery-2026-08-20.md)
+[`../docs/README.md`](../docs/README.md)
