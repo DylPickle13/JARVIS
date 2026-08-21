@@ -47,6 +47,25 @@ final class JARVISKitTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
     }
 
+    func testWidgetStateHelpersSortPlugsAndFailClosedWhenStale() throws {
+        let state = try JSONDecoder().decode(
+            StateSnapshot.self,
+            from: Data(#"{"ok":true,"subsystems":{"plugs":{"ok":true,"plugs":{"tv":{"ok":true,"isOn":false},"lamp":{"ok":true,"isOn":true}}}}}"#.utf8)
+        )
+        let savedAt = Date(timeIntervalSince1970: 1_000)
+        let cached = CachedState(state: state, savedAt: savedAt)
+
+        XCTAssertEqual(JARVISWidgetStateLoader.plugNames(from: cached), ["lamp", "tv"])
+        XCTAssertFalse(JARVISWidgetStateLoader.isStale(cached, now: savedAt.addingTimeInterval(60)))
+        XCTAssertTrue(
+            JARVISWidgetStateLoader.isStale(
+                cached,
+                now: savedAt.addingTimeInterval(JARVISWidgetStateLoader.staleAfter + 1)
+            )
+        )
+        XCTAssertTrue(JARVISWidgetStateLoader.isStale(nil))
+    }
+
     func testWatchCommandErrorRoundTrips() throws {
         let payload = WatchCommandError(message: "The relay timed out.")
         let decoded = try JSONDecoder().decode(

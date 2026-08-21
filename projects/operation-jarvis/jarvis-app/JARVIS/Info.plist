@@ -24,6 +24,15 @@
 	<string>AppIcon</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.operation-jarvis.jarvis</string>
+			<key>CFBundleURLSchemes</key>
+			<array><string>jarvis</string></array>
+		</dict>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIRequiredDeviceCapabilities</key>

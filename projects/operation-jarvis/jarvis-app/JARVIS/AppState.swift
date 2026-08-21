@@ -15,6 +15,28 @@ struct WatchCommandCacheEntry: Sendable {
     let error: String?
 }
 
+private struct WidgetPlugValue: Equatable {
+    let isOn: Bool?
+    let stale: Bool?
+}
+
+private struct WidgetPurifierValue: Equatable {
+    let isOn: Bool?
+    let mode: String?
+    let fanLevel: Int?
+    let fanSetLevel: Int?
+    let pm25: Int?
+    let filterLife: Int?
+    let stale: Bool?
+}
+
+private struct WidgetReloadValue: Equatable {
+    let overallStale: Bool?
+    let plugsStale: Bool?
+    let plugs: [String: WidgetPlugValue]
+    let purifier: WidgetPurifierValue?
+}
+
 /// Main-actor application model. Networking is started by the scene lifecycle,
 /// not by init, so cold launch, backgrounding, and network-path changes have a
 /// single cancellable owner.
@@ -254,9 +276,10 @@ public final class AppState: ObservableObject {
         defer { isStateLoading = false }
         do {
             let snapshot = try await client.state(endpoint)
+            let widgetsChanged = widgetReloadValue(lastState) != widgetReloadValue(snapshot)
             lastState = snapshot
             SnapshotStore().save(snapshot)
-            WidgetCenter.shared.reloadAllTimelines()
+            if widgetsChanged { WidgetCenter.shared.reloadAllTimelines() }
             if let data = try? JSONEncoder().encode(snapshot) {
                 WatchBridge.shared.sendState(json: data)
                 WatchBridge.shared.updateApplicationContext(stateJSON: data, endpoint: currentEndpoint?.absoluteString)
@@ -282,6 +305,30 @@ public final class AppState: ObservableObject {
             retryAllowed = true
             if appIsActive { startConnectionLoop() }
         }
+    }
+
+    private func widgetReloadValue(_ state: StateSnapshot?) -> WidgetReloadValue? {
+        guard let state else { return nil }
+        let plugs = (state.subsystems?.plugs?.plugs ?? [:]).mapValues {
+            WidgetPlugValue(isOn: $0.isOn, stale: $0.stale)
+        }
+        let purifier = state.subsystems?.purifier.map {
+            WidgetPurifierValue(
+                isOn: $0.isOn,
+                mode: $0.mode,
+                fanLevel: $0.fanLevel,
+                fanSetLevel: $0.fanSetLevel,
+                pm25: $0.pm25,
+                filterLife: $0.filterLife,
+                stale: $0.stale
+            )
+        }
+        return WidgetReloadValue(
+            overallStale: state.stale,
+            plugsStale: state.subsystems?.plugs?.stale,
+            plugs: plugs,
+            purifier: purifier
+        )
     }
 
     // MARK: - Commands

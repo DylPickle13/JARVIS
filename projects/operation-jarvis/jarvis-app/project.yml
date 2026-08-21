@@ -13,7 +13,7 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "10"
+    CURRENT_PROJECT_VERSION: "11"
     CODE_SIGN_STYLE: Automatic
 
 packages:
@@ -28,6 +28,7 @@ targets:
       - path: JARVIS
         excludes:
           - "Info.plist"
+      - path: SharedAppIntents
     dependencies:
       - package: JARVISKit
       - target: JARVISWatch
@@ -52,6 +53,7 @@ targets:
       - path: JARVISWidget
         excludes:
           - "Info.plist"
+      - path: SharedAppIntents
     dependencies:
       - package: JARVISKit
     settings:
@@ -69,6 +71,7 @@ targets:
       - path: JARVISWatchWidget
         excludes:
           - "Info.plist"
+      - path: SharedAppIntents
     dependencies:
       - package: JARVISKit
     settings:
@@ -97,6 +100,7 @@ targets:
       - path: JARVISWatch
         excludes:
           - "Info.plist"
+      - path: SharedAppIntents
     dependencies:
       - package: JARVISKit
       - target: JARVISWatchWidget

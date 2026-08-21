@@ -23,6 +23,28 @@ plutil -lint \
   JARVISWatchWidget/Info.plist \
   jarvisd/launchd/*.plist
 bash -n scripts/*.sh jarvisd/resurrector.sh ../scripts/install-discord-bot-launch-agent.sh
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVIS/Info.plist)" == "jarvis" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVISWatch/Info.plist)" == "jarvis" ]]
+
+printf '%s\n' '== widget source contract =='
+! grep -Rqs 'let kind = "JARVISPlugWidget"' JARVISWidget
+! grep -Rqs 'let kind = "JARVISWatchWidget"' JARVISWatchWidget
+for kind in \
+  JARVISLauncherWidget.v1 \
+  JARVISSelectedPlugWidget.v1 \
+  JARVISPlugGridWidget.v1 \
+  JARVISPurifierWidget.v1; do
+  grep -Rqs "let kind = \"$kind\"" JARVISWidget || { echo "missing iOS widget kind: $kind" >&2; exit 1; }
+done
+for kind in \
+  JARVISWatchLauncherWidget.v1 \
+  JARVISWatchSelectedPlugWidget.v1 \
+  JARVISWatchPlugGridWidget.v1 \
+  JARVISWatchPurifierWidget.v1; do
+  grep -Rqs "let kind = \"$kind\"" JARVISWatchWidget || { echo "missing watch widget kind: $kind" >&2; exit 1; }
+done
+! grep -q 'Button(intent:' JARVISWidget/PurifierWidget.swift
+! grep -q 'Button(intent:' JARVISWatchWidget/PurifierWidget.swift
 
 icon_is_opaque_square() {
   local path="$1"
@@ -78,6 +100,37 @@ xcodebuild \
   || { echo "watch companion was also embedded under PlugIns/" >&2; exit 1; }
 [[ -d "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/Watch/JARVISWatch.app/PlugIns/JARVISWatchWidget.appex" ]] \
   || { echo "watch widget was not nested in the embedded watch app" >&2; exit 1; }
+
+PHONE_WIDGET="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/PlugIns/JARVISWidget.appex"
+WATCH_WIDGET="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/Watch/JARVISWatch.app/PlugIns/JARVISWatchWidget.appex"
+python3 - "$PHONE_WIDGET/Metadata.appintents/extract.actionsdata" "$WATCH_WIDGET/Metadata.appintents/extract.actionsdata" <<'PY'
+import json
+import sys
+for path in sys.argv[1:]:
+    with open(path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    actions = payload.get("actions", {})
+    assert "SelectJARVISPlugIntent" in actions, path
+    assert "SetPlugIntent" in actions, path
+PY
+PHONE_WIDGET_BINARY="$PHONE_WIDGET/JARVISWidget"
+WATCH_WIDGET_BINARY="$WATCH_WIDGET/JARVISWatchWidget"
+[[ -f "$PHONE_WIDGET/JARVISWidget.debug.dylib" ]] && PHONE_WIDGET_BINARY="$PHONE_WIDGET/JARVISWidget.debug.dylib"
+[[ -f "$WATCH_WIDGET/JARVISWatchWidget.debug.dylib" ]] && WATCH_WIDGET_BINARY="$WATCH_WIDGET/JARVISWatchWidget.debug.dylib"
+for kind in \
+  JARVISLauncherWidget.v1 \
+  JARVISSelectedPlugWidget.v1 \
+  JARVISPlugGridWidget.v1 \
+  JARVISPurifierWidget.v1; do
+  grep -aFq "$kind" "$PHONE_WIDGET_BINARY" || { echo "built iOS widget missing kind: $kind" >&2; exit 1; }
+done
+for kind in \
+  JARVISWatchLauncherWidget.v1 \
+  JARVISWatchSelectedPlugWidget.v1 \
+  JARVISWatchPlugGridWidget.v1 \
+  JARVISWatchPurifierWidget.v1; do
+  grep -aFq "$kind" "$WATCH_WIDGET_BINARY" || { echo "built watch widget missing kind: $kind" >&2; exit 1; }
+done
 
 if [[ "${JARVIS_RUN_IOS_TESTS:-0}" == "1" ]]; then
   printf '%s\n' '== iOS unit tests =='

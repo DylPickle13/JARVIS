@@ -57,5 +57,13 @@ private struct RootTabView: View {
         .onChange(of: selection) { _, value in
             app.setActiveSection(value)
         }
+        .onOpenURL { url in
+            guard url.scheme?.lowercased() == "jarvis" else { return }
+            switch url.host?.lowercased() {
+            case "events": selection = .events
+            case "settings": selection = .settings
+            default: selection = .home
+            }
+        }
     }
 }
