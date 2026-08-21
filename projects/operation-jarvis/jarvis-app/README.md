@@ -30,9 +30,12 @@ launcher, grid, read-only purifier, and plug-control feedback now pass. Four
 intentional alternating Watch widget writes each produced one POST/event pair
 and left the lamp restored off. Watch-originated app relay, offline, remaining
 accessory-family, live path-change, and accessibility rows remain open. Build 14
-is the local Watch-launcher visual candidate: it embeds the canonical JARVIS
-artwork and uses an edge-safe full-colour icon for circular Smart Stack slots,
-corner, and rectangular presentations; inline retains a legible system glyph.
+is installed on the Watch and adds the branded full-colour launcher widget.
+Build 15 is the signed local aesthetic candidate: the Watch app now uses a
+three-page holographic overview, 2×2 plug control deck, and system/air-quality
+page; the iPhone app adds the matching system-pulse header, device-specific plug
+cards, air-quality gauge, collapsed runtime sections, event cards, and branded
+Settings presentation.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
