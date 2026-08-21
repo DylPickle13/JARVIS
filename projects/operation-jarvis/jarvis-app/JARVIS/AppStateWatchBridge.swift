@@ -50,19 +50,15 @@ extension AppState: WatchBridgeDelegate {
             guard self.watchCommandInFlight.insert(requestID).inserted else { return }
 
             let result = await self.executeWatchPlugCommand(name, isOn: isOn)
-            let entry: WatchCommandCacheEntry
-            if result.ok {
-                entry = WatchCommandCacheEntry(result: result, error: nil)
-                self.rememberWatchCommand(requestID, entry: entry)
-                sendWatchCommandResponse(entry, bridge: bridge, requestID: requestID)
-                await self.fetchState()
-            } else {
-                let message = result.error ?? "The plug command failed."
-                entry = WatchCommandCacheEntry(result: nil, error: message)
-                self.rememberWatchCommand(requestID, entry: entry)
-                sendWatchCommandResponse(entry, bridge: bridge, requestID: requestID)
-            }
+            let entry = result.ok
+                ? WatchCommandCacheEntry(result: result, error: nil)
+                : WatchCommandCacheEntry(result: nil, error: result.error ?? "The plug command failed.")
+            self.rememberWatchCommand(requestID, entry: entry)
+            sendWatchCommandResponse(entry, bridge: bridge, requestID: requestID)
+            // A correlated result has been delivered, so release duplicate
+            // suppression before the best-effort state refresh can suspend.
             self.watchCommandInFlight.remove(requestID)
+            if result.ok { await self.fetchState() }
         }
     }
 

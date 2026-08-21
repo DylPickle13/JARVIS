@@ -65,6 +65,24 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertEqual(result.count, 0)
     }
 
+    func testScheduledJobsUsesDedicatedEndpointAndDecodesPublicFields() async throws {
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/scheduled-jobs")
+            return MockURLProtocol.response(
+                request,
+                status: 200,
+                body: #"{"ok":true,"generatedAt":"2026-08-21T00:00:00Z","summary":{"total":1,"enabled":1,"running":0,"errors":0},"jobs":[{"id":"job_demo","name":"demo","kind":"interval","schedule":"5m","enabled":true,"nextRunAt":null,"lastRunAt":null,"lastStatus":"success","runCount":4,"description":null}]}"#
+            )
+        }
+
+        let result = try await client.scheduledJobs(endpoint)
+
+        XCTAssertTrue(result.ok)
+        XCTAssertEqual(result.summary.enabled, 1)
+        XCTAssertEqual(result.jobs.first?.id, "job_demo")
+        XCTAssertEqual(result.jobs.first?.runCount, 4)
+    }
+
     func testServiceNameIsPathEncoded() async throws {
         MockURLProtocol.handler = { request in
             XCTAssertTrue(request.url?.absoluteString.hasSuffix("/api/v1/services/room%20audio") == true)

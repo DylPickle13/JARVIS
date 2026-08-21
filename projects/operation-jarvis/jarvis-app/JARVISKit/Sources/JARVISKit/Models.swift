@@ -286,10 +286,15 @@ public struct ServiceActionResult: Codable, Equatable, Sendable {
     public let service: String?
     public let action: String?
     public let label: String?
+    public let displayName: String?
     public let loaded: Bool?
     public let running: Bool?
     public let pid: Int?
     public let description: String?
+    public let sortOrder: Int?
+    public let critical: Bool?
+    public let configured: Bool?
+    public let allowedActions: [String]?
     public let returncode: Int?
     public let stderr: String?
     public let error: String?
@@ -299,6 +304,36 @@ public struct ServiceActionResult: Codable, Equatable, Sendable {
 public struct ServicesListResponse: Codable, Equatable, Sendable {
     public let ok: Bool
     public let services: [String: ServiceActionResult]
+}
+
+// MARK: - Scheduled jobs
+
+public struct ScheduledJobsSummary: Codable, Equatable, Sendable {
+    public let total: Int
+    public let enabled: Int
+    public let running: Int
+    public let errors: Int
+}
+
+public struct ScheduledJob: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let kind: String
+    public let schedule: String
+    public let enabled: Bool
+    public let nextRunAt: String?
+    public let lastRunAt: String?
+    public let lastStatus: String?
+    public let runCount: Int
+    public let description: String?
+}
+
+public struct ScheduledJobsResponse: Codable, Equatable, Sendable {
+    public let ok: Bool
+    public let generatedAt: String?
+    public let summary: ScheduledJobsSummary
+    public let jobs: [ScheduledJob]
+    public let error: String?
 }
 
 // MARK: - Flexible JSON value

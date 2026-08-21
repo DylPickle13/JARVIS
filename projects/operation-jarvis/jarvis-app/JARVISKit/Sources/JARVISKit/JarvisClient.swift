@@ -51,6 +51,7 @@ public protocol JarvisAPI: Sendable {
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult
     func events(_ endpoint: JarvisEndpoint, since: Int?, limit: Int) async throws -> EventsResponse
     func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse
+    func scheduledJobs(_ endpoint: JarvisEndpoint) async throws -> ScheduledJobsResponse
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult
     func discover(_ candidates: [URL], timeout: TimeInterval) async -> URL?
 }
@@ -180,6 +181,10 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
 
     public func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse {
         try await perform(endpoint, "/api/v1/services", as: ServicesListResponse.self)
+    }
+
+    public func scheduledJobs(_ endpoint: JarvisEndpoint) async throws -> ScheduledJobsResponse {
+        try await perform(endpoint, "/api/v1/scheduled-jobs", as: ScheduledJobsResponse.self)
     }
 
     public func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult {

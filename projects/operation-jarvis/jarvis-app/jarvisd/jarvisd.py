@@ -93,6 +93,7 @@ if os.environ.get("JARVISD_PROJECT_ROOT"):
     PROJECT_ROOT = Path(os.environ["JARVISD_PROJECT_ROOT"]).resolve()
 else:
     PROJECT_ROOT = _find_ancestor(JARVISD_DIR, ".env") or OPERATION_ROOT.parent
+JARVIS_ROOT = _find_ancestor(JARVISD_DIR, ".pi") or PROJECT_ROOT
 
 JARVIS_CLI = OPERATION_ROOT / "jarvis-cli"
 _load_env_file(PROJECT_ROOT / ".env")
@@ -117,6 +118,15 @@ ALLOWED_ORIGINS = {
 MAX_JSON_BODY_BYTES = int(os.environ.get("JARVISD_MAX_JSON_BODY_BYTES", str(64 * 1024)))
 SERVICES_FILE = Path(os.environ.get("JARVISD_SERVICES_FILE", str(JARVISD_DIR / "services.json")))
 EVENTS_FILE = Path(os.environ.get("JARVISD_EVENTS_FILE", str(JARVISD_DIR / "logs" / "events.jsonl")))
+DISCORD_CRON_RUNNER = Path(
+    os.environ.get("JARVISD_DISCORD_CRON_RUNNER", str(JARVIS_ROOT / ".pi" / "discord-cron" / "runner.py"))
+).expanduser().resolve()
+SCHEDULED_JOBS_TIMEOUT = min(15.0, max(1.0, float(os.environ.get("JARVISD_SCHEDULED_JOBS_TIMEOUT", "5"))))
+MAX_SCHEDULED_JOBS = min(500, max(1, int(os.environ.get("JARVISD_MAX_SCHEDULED_JOBS", "100"))))
+MAX_SCHEDULED_JOBS_OUTPUT_BYTES = min(
+    1024 * 1024,
+    max(4096, int(os.environ.get("JARVISD_MAX_SCHEDULED_JOBS_OUTPUT_BYTES", str(256 * 1024)))),
+)
 TAILSCALE_IP_FALLBACK = os.environ.get("JARVISD_TAILSCALE_IP", "")
 TAILSCALE_SOCKET = Path(os.environ.get("TAILSCALE_SOCKET", str(Path.home() / ".local/share/tailscale/tailscaled.socket")))
 LAUNCH_AGENTS_DIR = Path(
@@ -598,6 +608,41 @@ def _launchctl_target(label: str) -> str:
     return f"gui/{os.getuid()}/{label}"
 
 
+def _service_allowed_actions(spec: dict) -> list[str]:
+    raw = spec.get("allowedActions", [])
+    if not isinstance(raw, list):
+        return []
+    allowed = {"start", "stop", "restart"}
+    return [action for action in raw if isinstance(action, str) and action in allowed]
+
+
+def _service_metadata(spec: dict) -> dict:
+    display_name = spec.get("displayName")
+    if not isinstance(display_name, str) or not display_name.strip():
+        display_name = None
+    description = spec.get("description")
+    if not isinstance(description, str):
+        description = None
+    sort_order = spec.get("sortOrder")
+    if isinstance(sort_order, bool) or not isinstance(sort_order, int):
+        sort_order = None
+    configured: bool | None = None
+    if isinstance(spec.get("plist"), str) and spec.get("plist", "").strip():
+        try:
+            plist = _validated_plist(spec)
+            configured = bool(plist and plist.is_file())
+        except ValueError:
+            configured = False
+    return {
+        "displayName": display_name.strip()[:120] if display_name else None,
+        "description": description.strip()[:500] if description else None,
+        "sortOrder": max(-1000, min(1000, sort_order)) if sort_order is not None else None,
+        "critical": spec.get("critical") is True,
+        "configured": configured,
+        "allowedActions": _service_allowed_actions(spec),
+    }
+
+
 def _parse_launchctl_status(name: str, spec: dict, proc: subprocess.CompletedProcess[str]) -> dict:
     label = spec.get("label")
     text = proc.stdout or ""
@@ -613,14 +658,21 @@ def _parse_launchctl_status(name: str, spec: dict, proc: subprocess.CompletedPro
         "loaded": loaded,
         "running": bool(running) if loaded else False,
         "pid": pid,
-        "description": spec.get("description", ""),
+        **_service_metadata(spec),
     }
 
 
 def _service_status(name: str, spec: dict) -> dict:
     label = spec.get("label")
+    metadata = _service_metadata(spec)
     if not isinstance(label, str) or not label:
-        return {"ok": False, "service": name, "error": "service has no launchctl label", "running": None}
+        return {
+            "ok": False,
+            "service": name,
+            "error": "service has no launchctl label",
+            "running": None,
+            **metadata,
+        }
     try:
         proc = subprocess.run(
             ["launchctl", "print", _launchctl_target(label)],
@@ -629,7 +681,14 @@ def _service_status(name: str, spec: dict) -> dict:
             timeout=5,
         )
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "service": name, "label": label, "error": _safe_error(exc), "running": None}
+        return {
+            "ok": False,
+            "service": name,
+            "label": label,
+            "error": _safe_error(exc),
+            "running": None,
+            **metadata,
+        }
     if proc.returncode != 0:
         # A missing LaunchAgent is a normal stopped/unloaded state. Other
         # launchctl failures remain visible as unknown rather than stopped.
@@ -642,7 +701,7 @@ def _service_status(name: str, spec: dict) -> dict:
                 "loaded": False,
                 "running": False,
                 "pid": None,
-                "description": spec.get("description", ""),
+                **metadata,
             }
         return {
             "ok": False,
@@ -651,14 +710,14 @@ def _service_status(name: str, spec: dict) -> dict:
             "loaded": None,
             "running": None,
             "pid": None,
-            "description": spec.get("description", ""),
             "error": _safe_error(proc.stderr or "launchctl status failed"),
+            **metadata,
         }
     return _parse_launchctl_status(name, spec, proc)
 
 
 def _services_state(services: dict) -> dict:
-    return {name: _service_status(name, spec) for name, spec in services.items()}
+    return {name: _service_status(name, spec) for name, spec in services.items() if isinstance(spec, dict)}
 
 
 def _load_services() -> dict:
@@ -668,6 +727,107 @@ def _load_services() -> dict:
         return services if isinstance(services, dict) else {}
     except Exception:  # noqa: BLE001
         return {}
+
+
+def _scheduled_jobs_unavailable() -> dict:
+    return {
+        "ok": False,
+        "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "summary": {"total": 0, "enabled": 0, "running": 0, "errors": 0},
+        "jobs": [],
+        "error": "Scheduled-job status is unavailable.",
+    }
+
+
+def _scheduled_job_string(value: Any, *, limit: int, optional: bool = False) -> str | None:
+    if value is None and optional:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("scheduled-job field must be a string")
+    clean = " ".join(value.split())
+    if not clean and not optional:
+        raise ValueError("scheduled-job field cannot be empty")
+    return clean[:limit] or None
+
+
+def _public_scheduled_jobs(payload: Any) -> dict:
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        raise ValueError("scheduled-job runner returned an invalid result")
+    raw_jobs = payload.get("jobs")
+    if not isinstance(raw_jobs, list) or len(raw_jobs) > MAX_SCHEDULED_JOBS:
+        raise ValueError("scheduled-job list is invalid")
+    jobs: list[dict] = []
+    seen_ids: set[str] = set()
+    for raw in raw_jobs:
+        if not isinstance(raw, dict):
+            raise ValueError("scheduled-job entry is invalid")
+        job_id = _scheduled_job_string(raw.get("id"), limit=128)
+        name = _scheduled_job_string(raw.get("name"), limit=120)
+        kind = _scheduled_job_string(raw.get("kind"), limit=16)
+        schedule = _scheduled_job_string(raw.get("schedule"), limit=120)
+        if kind not in {"once", "interval", "cron"}:
+            raise ValueError("scheduled-job kind is invalid")
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", job_id or "") or job_id in seen_ids:
+            raise ValueError("scheduled-job id is invalid")
+        enabled = raw.get("enabled")
+        run_count = raw.get("runCount")
+        if not isinstance(enabled, bool):
+            raise ValueError("scheduled-job enabled state is invalid")
+        if isinstance(run_count, bool) or not isinstance(run_count, int) or run_count < 0:
+            raise ValueError("scheduled-job run count is invalid")
+        last_status = _scheduled_job_string(raw.get("lastStatus"), limit=32, optional=True)
+        next_run_at = _scheduled_job_string(raw.get("nextRunAt"), limit=64, optional=True)
+        last_run_at = _scheduled_job_string(raw.get("lastRunAt"), limit=64, optional=True)
+        description = _scheduled_job_string(raw.get("description"), limit=300, optional=True)
+        if description:
+            description = re.sub(
+                r"(/Users/[^\s,;]+|/private/[^\s,;]+|/tmp/[^\s,;]+)",
+                "<local-path>",
+                description,
+            )
+        jobs.append({
+            "id": job_id,
+            "name": name,
+            "kind": kind,
+            "schedule": schedule,
+            "enabled": enabled,
+            "nextRunAt": next_run_at,
+            "lastRunAt": last_run_at,
+            "lastStatus": last_status,
+            "runCount": min(run_count, 2_147_483_647),
+            "description": description,
+        })
+        seen_ids.add(job_id or "")
+    return {
+        "ok": True,
+        "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "summary": {
+            "total": len(jobs),
+            "enabled": sum(1 for job in jobs if job["enabled"]),
+            "running": sum(1 for job in jobs if job["lastStatus"] == "running"),
+            "errors": sum(1 for job in jobs if job["lastStatus"] == "error"),
+        },
+        "jobs": jobs,
+    }
+
+
+def _scheduled_jobs() -> dict:
+    if not DISCORD_CRON_RUNNER.is_file():
+        return _scheduled_jobs_unavailable()
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(DISCORD_CRON_RUNNER), "--json", "list-public"],
+            cwd=str(JARVIS_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=SCHEDULED_JOBS_TIMEOUT,
+        )
+        stdout = proc.stdout or ""
+        if proc.returncode != 0 or len(stdout.encode("utf-8")) > MAX_SCHEDULED_JOBS_OUTPUT_BYTES:
+            return _scheduled_jobs_unavailable()
+        return _public_scheduled_jobs(json.loads(stdout))
+    except Exception:  # noqa: BLE001
+        return _scheduled_jobs_unavailable()
 
 
 class StateCoordinator:
@@ -1128,7 +1288,9 @@ def _service_action(name: str, action: str) -> dict:
     if label in PROTECTED_LABELS:
         return {"ok": False, "service": name, "action": action, "error": "protected daemon service cannot be controlled"}
     if action not in {"status", "start", "stop", "restart"}:
-        return {"ok": False, "service": name, "action": action, "error": f"unknown service action {action!r}"}
+        return _finish_service_action(name, action, False, "service action is not supported", label)
+    if action != "status" and action not in _service_allowed_actions(spec):
+        return _finish_service_action(name, action, False, "service action is not allowed", label)
 
     status = _service_status(name, spec)
     if action == "status":
@@ -1157,7 +1319,7 @@ def _service_action(name: str, action: str) -> dict:
         expected_loaded, expected_running = False, False
     elif action == "start":
         if not status.get("loaded"):
-            if plist is None:
+            if plist is None or not plist.is_file():
                 return _finish_service_action(name, action, False, "service has no configured plist", label)
             commands.append(["bootstrap", f"gui/{os.getuid()}", str(plist)])
         commands.append(["kickstart", "-k", target])
@@ -1166,7 +1328,7 @@ def _service_action(name: str, action: str) -> dict:
         if status.get("loaded"):
             commands.append(["kickstart", "-k", target])
         else:
-            if plist is None:
+            if plist is None or not plist.is_file():
                 return _finish_service_action(name, action, False, "service has no configured plist", label)
             commands.extend([
                 ["bootstrap", f"gui/{os.getuid()}", str(plist)],
@@ -1406,6 +1568,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._auth_or_respond():
                 return
             self._send(200, {"ok": True, "services": _services_state(_load_services())})
+            return
+        if path == "/api/v1/scheduled-jobs":
+            if not self._auth_or_respond():
+                return
+            self._send(200, _scheduled_jobs())
             return
         if path.startswith("/api/v1/services/"):
             if not self._auth_or_respond():

@@ -42,6 +42,12 @@ public final class AppState: ObservableObject {
     @Published public var servicesLoading = false
     @Published public var servicesErrorMessage: String?
 
+    @Published public var lastScheduledJobs: [ScheduledJob] = []
+    @Published public var scheduledJobsSummary: ScheduledJobsSummary?
+    @Published public var scheduledJobsLoaded = false
+    @Published public var scheduledJobsLoading = false
+    @Published public var scheduledJobsErrorMessage: String?
+
     @Published public var endpointDraft: String
     @Published public private(set) var busyOperations: Set<String> = []
     @Published public private(set) var activeSection: AppSection = .home
@@ -445,6 +451,31 @@ public final class AppState: ObservableObject {
         }
     }
 
+    public func fetchScheduledJobs() async {
+        guard let endpoint = activeEndpoint else { return }
+        scheduledJobsLoading = true
+        defer { scheduledJobsLoading = false }
+        do {
+            let response = try await client.scheduledJobs(endpoint)
+            scheduledJobsLoaded = true
+            guard response.ok else {
+                scheduledJobsErrorMessage = response.error ?? "Scheduled-job status is unavailable."
+                return
+            }
+            lastScheduledJobs = response.jobs
+            scheduledJobsSummary = response.summary
+            scheduledJobsErrorMessage = nil
+        } catch let error as JarvisError {
+            scheduledJobsLoaded = true
+            scheduledJobsErrorMessage = error.errorDescription
+        } catch is CancellationError {
+            return
+        } catch {
+            scheduledJobsLoaded = true
+            scheduledJobsErrorMessage = error.localizedDescription
+        }
+    }
+
     public func fetchHealth() async {
         guard let endpoint = activeEndpoint else { return }
         do {
@@ -525,8 +556,10 @@ public final class AppState: ObservableObject {
     private func pollHomeServices() async {
         while !Task.isCancelled, appIsActive, connectionState == .connected,
               activeSection == .home {
-            await fetchServices()
-            await fetchHealth()
+            async let services: Void = fetchServices()
+            async let jobs: Void = fetchScheduledJobs()
+            async let health: Void = fetchHealth()
+            _ = await (services, jobs, health)
             try? await Task.sleep(for: .seconds(15))
         }
     }
@@ -543,9 +576,13 @@ public final class AppState: ObservableObject {
         lastHealth = nil
         lastEvents = []
         lastServices = [:]
+        lastScheduledJobs = []
+        scheduledJobsSummary = nil
         lastEventSequence = nil
         eventsLoaded = false
         servicesLoaded = false
+        scheduledJobsLoaded = false
+        scheduledJobsErrorMessage = nil
         connectionState = .idle
         errorMessage = nil
         stateErrorMessage = nil

@@ -12,7 +12,7 @@ xcodegen generate
 
 printf '%s\n' '== Python unit tests =='
 python3 -m unittest discover -s jarvisd/tests -v
-python3 -m py_compile jarvisd/jarvisd.py ../jarvis.py
+python3 -m py_compile jarvisd/jarvisd.py ../jarvis.py ../../../.pi/discord-cron/runner.py
 
 printf '%s\n' '== plist, icon, and shell syntax =='
 plutil -lint \
@@ -22,7 +22,7 @@ plutil -lint \
   JARVISWatch/Info.plist \
   JARVISWatchWidget/Info.plist \
   jarvisd/launchd/*.plist
-bash -n scripts/*.sh jarvisd/resurrector.sh
+bash -n scripts/*.sh jarvisd/resurrector.sh ../scripts/install-discord-bot-launch-agent.sh
 
 icon_is_opaque_square() {
   local path="$1"

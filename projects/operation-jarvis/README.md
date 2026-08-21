@@ -140,7 +140,7 @@ python discord_bot.py
 
 | Component | Start/check command | Notes |
 |---|---|---|
-| Main Discord bot | `cd /path/to/JARVIS && python discord_bot.py` | Owns text, Pi RPC, and live Discord voice. Do not run duplicate bot tokens. |
+| Main Discord bot | `scripts/install-discord-bot-launch-agent.sh` | Installs/starts the canonical root `discord_bot.py` LaunchAgent. Use `--write-only` to generate the plist without changing the running process. Do not run duplicate bot tokens. |
 | Operation CLI status | `./jarvis-cli --json status --no-cast` | Safe local smoke check from this folder. |
 | Native Apple backend | `curl -fsS http://127.0.0.1:8790/health` | `jarvisd` serves iPhone, Watch, widget, event, and service APIs. |
 | Native app verification | `jarvis-app/scripts/verify-jarvis-app.sh` | Local daemon/package/plist/build verification. |

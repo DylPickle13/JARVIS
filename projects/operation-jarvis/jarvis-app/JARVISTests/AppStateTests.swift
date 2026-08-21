@@ -32,10 +32,11 @@ final class AppStateTests: XCTestCase {
         }
         let initialCalls = api.stateCalls
         XCTAssertEqual(initialCalls, 1)
-        for _ in 0..<20 where api.servicesCalls == 0 {
+        for _ in 0..<20 where api.servicesCalls == 0 || api.scheduledJobsCalls == 0 {
             try await Task.sleep(for: .milliseconds(25))
         }
         XCTAssertEqual(api.servicesCalls, 1)
+        XCTAssertEqual(api.scheduledJobsCalls, 1)
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertEqual(api.stateCalls, initialCalls)
         app.sceneWillResignActive()
@@ -90,6 +91,24 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(app.watchCommandInFlight.isEmpty)
     }
 
+    func testScheduledJobsFailureDoesNotHideServiceStatus() async throws {
+        let api = FakeAPI(scheduledJobsSucceeds: false)
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        let app = AppState(store: store, client: api)
+        app.endpointDraft = "http://fake.jarvis:8790"
+        await app.refresh()
+
+        await app.fetchServices()
+        await app.fetchScheduledJobs()
+
+        XCTAssertTrue(app.servicesLoaded)
+        XCTAssertEqual(app.lastServices["room-audio-server"]?.running, true)
+        XCTAssertTrue(app.scheduledJobsLoaded)
+        XCTAssertNotNil(app.scheduledJobsErrorMessage)
+        XCTAssertTrue(app.lastScheduledJobs.isEmpty)
+    }
+
     func testCommandFailureRemainsVisibleAfterStateRefresh() async throws {
         let api = FakeAPI(commandSucceeds: false)
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
@@ -109,13 +128,20 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     let state: StateSnapshot
     let commandSucceeds: Bool
     let commandDelay: Duration?
+    let scheduledJobsSucceeds: Bool
     var commands: [String] = []
     var stateCalls = 0
     var servicesCalls = 0
+    var scheduledJobsCalls = 0
 
-    init(commandSucceeds: Bool = true, commandDelay: Duration? = nil) {
+    init(
+        commandSucceeds: Bool = true,
+        commandDelay: Duration? = nil,
+        scheduledJobsSucceeds: Bool = true
+    ) {
         self.commandSucceeds = commandSucceeds
         self.commandDelay = commandDelay
+        self.scheduledJobsSucceeds = scheduledJobsSucceeds
         self.state = try! JSONDecoder().decode(
             StateSnapshot.self,
             from: Data(#"{"ok":true,"summary":{"plugsOn":1,"plugsTotal":2}}"#.utf8)
@@ -143,7 +169,19 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
 
     func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse {
         servicesCalls += 1
-        return try! JSONDecoder().decode(ServicesListResponse.self, from: Data(#"{"ok":true,"services":{}}"#.utf8))
+        return try! JSONDecoder().decode(
+            ServicesListResponse.self,
+            from: Data(#"{"ok":true,"services":{"room-audio-server":{"ok":true,"running":true}}}"#.utf8)
+        )
+    }
+
+    func scheduledJobs(_ endpoint: JarvisEndpoint) async throws -> ScheduledJobsResponse {
+        scheduledJobsCalls += 1
+        guard scheduledJobsSucceeds else { throw JarvisError.transport("simulated scheduled-job failure") }
+        return try! JSONDecoder().decode(
+            ScheduledJobsResponse.self,
+            from: Data(#"{"ok":true,"summary":{"total":1,"enabled":1,"running":0,"errors":0},"jobs":[{"id":"job_demo","name":"demo","kind":"interval","schedule":"5m","enabled":true,"nextRunAt":null,"lastRunAt":null,"lastStatus":"success","runCount":1,"description":null}]}"#.utf8)
+        )
     }
 
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult {

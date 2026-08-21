@@ -122,6 +122,36 @@ enum JarvisFormat {
         return "\(secs / 86400)d"
     }
 
+    static func localDateTime(_ iso: String?) -> String? {
+        guard let iso, let date = parseISO8601(iso) else { return nil }
+        return date.formatted(
+            .dateTime
+                .weekday(.abbreviated)
+                .month(.abbreviated)
+                .day()
+                .hour()
+                .minute()
+        )
+    }
+
+    static func scheduleDescription(kind: String, schedule: String) -> String {
+        if kind == "interval", schedule.count >= 2,
+           let amount = Int(schedule.dropLast()), let unit = schedule.last {
+            let word: String
+            switch unit {
+            case "s": word = amount == 1 ? "second" : "seconds"
+            case "m": word = amount == 1 ? "minute" : "minutes"
+            case "h": word = amount == 1 ? "hour" : "hours"
+            case "d": word = amount == 1 ? "day" : "days"
+            default: return "Interval · \(schedule)"
+            }
+            return "Every \(amount) \(word) · \(schedule)"
+        }
+        if kind == "once" { return "Once · \(schedule)" }
+        if kind == "cron" { return "Cron · \(schedule)" }
+        return "\(displayName(kind)) · \(schedule)"
+    }
+
     /// Parse an ISO-8601 timestamp (with or without fractional seconds).
     static func parseISO8601(_ s: String) -> Date? {
         if let date = isoWithFractionalSeconds.date(from: s) { return date }

@@ -406,6 +406,49 @@ def list_jobs(_args: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "message": "\n".join(lines), "jobs": jobs}
 
 
+def list_public_jobs(_args: argparse.Namespace) -> dict[str, Any]:
+    """Return the bounded-field job inventory intended for trusted status clients.
+
+    Prompts, models, Discord identifiers, database paths, and output are omitted
+    at the SQL boundary so callers never need to receive private job content.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, name, kind, schedule, enabled, next_run_at, last_run_at,
+                   last_status, run_count, description
+              FROM jobs
+             ORDER BY enabled DESC, next_run_at ASC, created_at DESC
+            """
+        ).fetchall()
+    jobs = [
+        {
+            "id": str(row["id"]),
+            "name": str(row["name"]),
+            "kind": str(row["kind"]),
+            "schedule": str(row["schedule"]),
+            "enabled": bool(row["enabled"]),
+            "nextRunAt": row["next_run_at"],
+            "lastRunAt": row["last_run_at"],
+            "lastStatus": row["last_status"],
+            "runCount": int(row["run_count"] or 0),
+            "description": row["description"],
+        }
+        for row in rows
+    ]
+    return {
+        "ok": True,
+        "generatedAt": iso(),
+        "summary": {
+            "total": len(jobs),
+            "enabled": sum(1 for job in jobs if job["enabled"]),
+            "running": sum(1 for job in jobs if job["lastStatus"] == "running"),
+            "errors": sum(1 for job in jobs if job["lastStatus"] == "error"),
+        },
+        "jobs": jobs,
+    }
+
+
 def set_enabled(args: argparse.Namespace, enabled: bool) -> dict[str, Any]:
     with connect() as conn:
         job = conn.execute("SELECT * FROM jobs WHERE id=? OR name=?", (args.job_id, args.job_id)).fetchone()
@@ -1301,6 +1344,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_common_job(sub.add_parser("add"))
     sub.add_parser("list")
+    sub.add_parser("list-public", help="emit the sanitized read-only native-client inventory")
     for cmd in ["remove", "enable", "disable", "run"]:
         sp = sub.add_parser(cmd)
         sp.add_argument("job_id")
@@ -1334,6 +1378,8 @@ def main(argv: list[str] | None = None) -> int:
             result = add_job(args)
         elif command == "list":
             result = list_jobs(args)
+        elif command == "list-public":
+            result = list_public_jobs(args)
         elif command == "remove":
             result = remove_job(args)
         elif command == "enable":

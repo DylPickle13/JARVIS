@@ -279,11 +279,14 @@ class DaemonUnitTests(unittest.TestCase):
             jarvisd.EVENTS = jarvisd.EventStore()
             old_launch_dir = jarvisd.LAUNCH_AGENTS_DIR
             jarvisd.LAUNCH_AGENTS_DIR = Path(directory).resolve()
+            demo_plist = Path(directory) / "demo.plist"
+            demo_plist.touch()
             spec_data = {
                 "demo": {
                     "label": "com.example.demo",
-                    "plist": str(Path(directory) / "demo.plist"),
+                    "plist": str(demo_plist),
                     "description": "test service",
+                    "allowedActions": ["start", "stop", "restart"],
                 }
             }
             commands = []
@@ -303,6 +306,105 @@ class DaemonUnitTests(unittest.TestCase):
             result = jarvisd._service_action("daemon", "stop")
         self.assertFalse(result["ok"])
         self.assertIn("protected", result["error"])
+
+    def test_service_metadata_and_action_allowlist_are_server_enforced(self):
+        old_events = jarvisd.EVENTS
+        jarvisd.EVENTS = jarvisd.EventStore()
+        spec_data = {
+            "discord-bot": {
+                "label": "com.operation-jarvis.discord-bot",
+                "displayName": "JARVIS Discord Bot",
+                "description": "Discord runtime",
+                "sortOrder": 10,
+                "critical": True,
+                "allowedActions": [],
+            }
+        }
+        try:
+            with mock.patch.object(jarvisd, "_load_services", return_value=spec_data), \
+                 mock.patch.object(
+                     jarvisd,
+                     "_run_launchctl",
+                     side_effect=AssertionError("disallowed action reached launchctl"),
+                 ):
+                result = jarvisd._service_action("discord-bot", "restart")
+            self.assertFalse(result["ok"])
+            self.assertIn("not allowed", result["error"])
+            events = jarvisd.EVENTS.list()
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["eventType"], "service.action")
+
+            proc = mock.Mock(returncode=0, stdout="state = running\npid = 123\n", stderr="")
+            status = jarvisd._parse_launchctl_status("discord-bot", spec_data["discord-bot"], proc)
+            self.assertEqual(status["displayName"], "JARVIS Discord Bot")
+            self.assertEqual(status["sortOrder"], 10)
+            self.assertTrue(status["critical"])
+            self.assertEqual(status["allowedActions"], [])
+            self.assertTrue(status["running"])
+        finally:
+            jarvisd.EVENTS = old_events
+
+    def test_public_scheduled_jobs_recomputes_summary_and_filters_private_fields(self):
+        result = jarvisd._public_scheduled_jobs({
+            "ok": True,
+            "summary": {"total": 999, "enabled": 999},
+            "jobs": [{
+                "id": "job_abc123",
+                "name": "daily-job-search",
+                "kind": "cron",
+                "schedule": "0 9 * * *",
+                "enabled": True,
+                "nextRunAt": "2026-08-21T09:00:00Z",
+                "lastRunAt": "2026-08-20T09:00:00Z",
+                "lastStatus": "success",
+                "runCount": 7,
+                "description": "Daily search from /Users/example/private/source.md",
+                "prompt": "private prompt",
+                "model": "private model",
+                "discord_thread_id": "private-thread",
+                "path": "/Users/example/private",
+            }],
+        })
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["summary"], {"total": 1, "enabled": 1, "running": 0, "errors": 0})
+        encoded = json.dumps(result)
+        self.assertNotIn("private prompt", encoded)
+        self.assertNotIn("private model", encoded)
+        self.assertNotIn("private-thread", encoded)
+        self.assertNotIn("/Users/", encoded)
+
+    def test_scheduled_jobs_runner_is_fixed_bounded_and_fail_closed(self):
+        payload = {
+            "ok": True,
+            "jobs": [{
+                "id": "job_demo",
+                "name": "demo",
+                "kind": "interval",
+                "schedule": "5m",
+                "enabled": False,
+                "nextRunAt": None,
+                "lastRunAt": None,
+                "lastStatus": None,
+                "runCount": 0,
+                "description": None,
+            }],
+        }
+        completed = mock.Mock(returncode=0, stdout=json.dumps(payload), stderr="private stderr")
+        with mock.patch.object(jarvisd, "DISCORD_CRON_RUNNER", Path(__file__)), \
+             mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
+            result = jarvisd._scheduled_jobs()
+        self.assertTrue(result["ok"])
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[-2:], ["--json", "list-public"])
+        self.assertNotIn("private stderr", json.dumps(result))
+
+        completed.stdout = "not-json"
+        with mock.patch.object(jarvisd, "DISCORD_CRON_RUNNER", Path(__file__)), \
+             mock.patch.object(jarvisd.subprocess, "run", return_value=completed):
+            failed = jarvisd._scheduled_jobs()
+        self.assertFalse(failed["ok"])
+        self.assertEqual(failed["jobs"], [])
+        self.assertNotIn("not-json", json.dumps(failed))
 
 
 class HTTPTests(unittest.TestCase):
@@ -356,12 +458,37 @@ class HTTPTests(unittest.TestCase):
         self.assertNotEqual(headers.get("Access-Control-Allow-Origin"), "*")
         status, _, _ = self.request("GET", "/api/v1/services")
         self.assertEqual(status, 401)
+        status, _, _ = self.request("GET", "/api/v1/scheduled-jobs")
+        self.assertEqual(status, 401)
         status, _, _ = self.request("GET", "/api/v1/services", token="write-secret")
         self.assertEqual(status, 401)
         status, _, _ = self.request("POST", "/api/jarvis/events", {"source": "test"}, token="write-secret")
         self.assertEqual(status, 200)
         status, _, _ = self.request("POST", "/api/jarvis/events", {"source": "test"}, token="api-secret")
         self.assertEqual(status, 401)
+
+    def test_scheduled_jobs_endpoint_returns_sanitized_contract(self):
+        response = {
+            "ok": True,
+            "generatedAt": "2026-08-21T00:00:00Z",
+            "summary": {"total": 1, "enabled": 1, "running": 0, "errors": 0},
+            "jobs": [{
+                "id": "job_demo",
+                "name": "demo",
+                "kind": "interval",
+                "schedule": "5m",
+                "enabled": True,
+                "nextRunAt": None,
+                "lastRunAt": None,
+                "lastStatus": None,
+                "runCount": 0,
+                "description": None,
+            }],
+        }
+        with mock.patch.object(jarvisd, "_scheduled_jobs", return_value=response):
+            status, _, body = self.request("GET", "/api/v1/scheduled-jobs", token="api-secret")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["jobs"][0]["id"], "job_demo")
 
     def test_unsupported_methods_return_json_405(self):
         status, headers, body = self.request("PUT", "/api/v1/state")

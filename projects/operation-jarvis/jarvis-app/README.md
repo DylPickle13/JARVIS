@@ -10,14 +10,14 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. JARVIS `0.2.0 (9)` is installed on both physical devices from the verified
+UI. JARVIS `0.2.0 (10)` is installed on both physical devices from the verified
 archive, with the final icon and both WatchConnectivity installed flags true.
 Physical consoles reached `reachable=true` and acknowledged repeated
 iPhone-to-Watch state delivery. Cellular/Tailscale cold launch and relaunch
-also pass. Build 9 removes weather, places plugs before the air purifier, moves
-services to the bottom of Home, and removes the System tab. The Watch-originated
-relay-command, widget, offline, live path-change, and accessibility rows remain
-outstanding.
+also pass. Build 9 removed weather, reordered Home, and removed the System tab.
+Build 10 adds read-only Discord bot and scheduler status plus a sanitized dynamic
+scheduled-job inventory. The Watch-originated relay-command, widget, offline,
+live path-change, and accessibility rows remain outstanding.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
@@ -42,12 +42,14 @@ APNs); oMLX is out of app scope entirely; widgets = plug grid only for now.
 ## Scope (v5, approved)
 
 - **In:** smart plugs, air purifier, status and telemetry (Pi session count,
-  network, uptime), events feed, service start/stop/restart (room-audio server),
-  plug-grid widgets (iOS home + lock-screen),
+  network, uptime, Discord bot, room audio, scheduler, and scheduled jobs),
+  events feed, service start/stop/restart (room-audio server), plug-grid widgets
+  (iOS home + lock-screen),
   watch interactive plug complication), Siri/Shortcuts via App Intents,
   Tailscale remote access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
-  word, Raspberry Pi room endpoint, Discord bot process control, **APNs push
+  word, Raspberry Pi room endpoint, Discord bot/scheduler process mutation and
+  scheduled-job mutation in the read-only first release, **APNs push
   + Live Activities** (paid-account only), **oMLX** (nothing), room-display
   HUD, phone-voice PWA.
 
@@ -73,14 +75,17 @@ APNs); oMLX is out of app scope entirely; widgets = plug grid only for now.
   `JARVISD_EVENT_TOKEN` is scoped to event ingestion. Verified: `/health`,
   `/api/v1/state` (plugs, purifier, Pi count, network, uptime),
   `/api/v1/command` (allowlisted, rejects cast), `/api/jarvis/events` ingest,
-  `/api/v1/events`, `/api/v1/services` (status/start/stop/restart).
+  `/api/v1/events`, `/api/v1/services` (server-allowlisted lifecycle actions),
+  and `/api/v1/scheduled-jobs` (sanitized read-only inventory).
 - **iOS app — Home screen** — 3-tab shell (Home / Events / Settings). Home
   shows: connection header (LAN vs Tailscale + IP), Pi session
   count, a **2-column plug grid**, then the **air purifier** (power switch +
   Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
-  external data collection are removed. At the bottom, Home lists registered
-  services and `jarvisd` information with **Stop** (confirmation), **Restart**,
-  and **Start** controls. Plug controls send desired-state `plug-on`/`plug-off`
+  external data collection are removed. At the bottom, Home lists the Discord
+  bot, room-audio server, scheduler, dynamic scheduled jobs, and protected
+  `jarvisd` information. Only server-allowlisted service actions are rendered;
+  the new Discord and scheduler cards are read-only. Plug controls send
+  desired-state `plug-on`/`plug-off`
   commands, serialize per resource, and show busy/error/unavailable states.
 - **iOS app — Events (M2)** — live activity feed from `/api/v1/events`: one row
   per event (✓/✗/○ status glyph, action, summary, relative time), newest-first,
