@@ -6,9 +6,9 @@
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current candidate:** `0.2.0 (16)`
+**Current candidate:** `0.2.0 (17)`
 
-**Physical installation:** iPhone and Apple Watch `0.2.0 (16)`; Watch launcher artwork review pending
+**Physical installation:** iPhone `0.2.0 (16)`; Apple Watch `0.2.0 (17)`; three-slot Smart Stack artwork passed
 
 This is the single architecture, security, packaging, deployment, validation,
 and recovery reference for the JARVIS iPhone app, Apple Watch app, widgets, and
@@ -54,6 +54,9 @@ never deploy to a device outside Dylan's allowlist.
   header, device-specific plug cards, air-quality gauge, collapsed runtime/job
   sections, event cards, and branded Settings hero. Command and backend
   contracts are unchanged.
+- Build 17 makes the circular Open JARVIS complication rendering-mode aware and
+  the physical three-slot Smart Stack Combination widget now displays the
+  JARVIS logo.
 
 ### Build-15 aesthetic candidate
 
@@ -101,8 +104,32 @@ Watch product and parent IPA are installed on the allowlisted devices and both
 inventories report build 16. The first parent update waited while the JARVIS
 host/widget processes were active; after those processes were terminated
 normally, the same explicit upgrade completed. No uninstall, pairing change,
-hardware command, or mutation POST occurred. Physical logo rendering remains
-the acceptance gate.
+hardware command, or mutation POST occurred. Physical review confirmed that
+this remained blank specifically in the three-slot Smart Stack Combination
+widget, whose circular complications can use non-full-colour rendering.
+
+### Build-17 three-slot Smart Stack correction
+
+```text
+Archive: /tmp/JARVIS-build17-combo-fix.xcarchive
+IPA:     /tmp/JARVIS-build17-combo-fix-export/JARVIS.ipa
+SHA-256: 8d5c8697a34aff7ef2e91ec521a74d2487095a25c0874b66f8d84517d5f8a234
+```
+
+All four archived products report `0.2.0 (17)`, use the configured Personal
+Team, and pass deep signature validation. The Watch launcher now branches on
+`widgetRenderingMode`: full-colour presentation uses an original-rendering
+100×100 Watch `2x` asset, while accented/vibrant presentation uses a separate
+high-contrast 100×100 Watch `2x` JARVIS ring rendition marked accentable. The
+circular family receives explicit geometry and the launcher kind advances to
+`JARVISWatchLauncherWidget.v2` to invalidate the failed cached rendition.
+Verification passes with 20 JARVISKit tests/3 live skips, warning-free iOS
+and watchOS simulator builds, and repository smoke `PASS=105 WARN=0 FAIL=0`. The exact archived Watch product installed on the
+allowlisted Watch, its inventory reports build 17, and both host and widget
+extension processes were active. After the old slot was removed and Open JARVIS
+was re-added, Dylan physically confirmed the logo appears in the three-slot
+Smart Stack Combination widget. No hardware, service, purifier, job, or event
+mutation occurred.
 
 ### Build-14 physical checkpoint
 
@@ -129,17 +156,15 @@ or managed-service mutation was emitted during these deployments.
 
 1. Inspect the redesigned physical iPhone Home, Events, and Settings screens and
    all three Watch pages in normal and large-text presentation.
-2. Inspect Open JARVIS in a circular Smart Stack slot for full-colour rendering,
-   edge padding, clipping, and launch behavior.
-3. Inspect the remaining Watch accessory families.
-4. Force stale, unknown, and offline widget states and prove writes are blocked.
-5. Complete the Watch-originated state request, correlated relay command result,
+2. Inspect the remaining Watch accessory families.
+3. Force stale, unknown, and offline widget states and prove writes are blocked.
+4. Complete the Watch-originated state request, correlated relay command result,
    timeout, duplicate-request, direct/relay failover, and offline-cache matrix.
-6. Complete live Wi-Fi/cellular path switching and Local Network permission
+5. Complete live Wi-Fi/cellular path switching and Local Network permission
    recovery.
-7. Complete physical VoiceOver, Dynamic Type, contrast, and remaining
+6. Complete physical VoiceOver, Dynamic Type, contrast, and remaining
    accessibility checks.
-8. Run the remaining event audit and disposable-service UI smoke, then one final
+7. Run the remaining event audit and disposable-service UI smoke, then one final
    verification/deployment pass before `0.3.0`.
 
 The purifier physical write gate remains intentionally incomplete after VeSync
@@ -916,7 +941,8 @@ All commits remain local unless Dylan separately requests a push.
 | Build 13 | Published one editable Watch plug recommendation and complete all-four 2×2 grid; physical widget tests passed. |
 | Build 14 | Added canonical full-colour Watch launcher art and compiled-asset verification; Watch installed, iPhone remained build 13. |
 | Build 15 | Unified both host apps under the holographic visual system; added the three-page Watch dashboard and refined iPhone Home, Events, and Settings; physical review exposed a blank circular launcher image. |
-| Build 16 | Forces the Watch launcher asset to consume its accessory frame and render full-colour, reloads its static timeline on host launch, and is installed on both devices pending logo confirmation. |
+| Build 16 | Forces the Watch launcher asset to consume its accessory frame and render full-colour, reloads its static timeline on host launch, and is installed on both devices; the three-slot Combination widget remained blank. |
+| Build 17 | Adds exact Watch-scale full-colour and accented launcher assets, rendering-mode selection, explicit circular geometry, and a fresh widget kind; the physical three-slot Smart Stack logo passed. |
 
 Notable local commits include dashboard retirement (`590f937`), daemon hardening
 (`4e47501`), Apple reliability/packaging (`042fdd4`), deployment operations

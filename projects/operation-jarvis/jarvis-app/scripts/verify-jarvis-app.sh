@@ -26,6 +26,7 @@ python3 -m json.tool JARVIS/Assets.xcassets/JARVISMark.imageset/Contents.json >/
 python3 -m json.tool JARVISWatch/Assets.xcassets/JARVISMark.imageset/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/Contents.json >/dev/null
+python3 -m json.tool JARVISWatchWidget/Assets.xcassets/JARVISWidgetIconAccented.imageset/Contents.json >/dev/null
 bash -n scripts/*.sh jarvisd/resurrector.sh ../scripts/install-discord-bot-launch-agent.sh
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVIS/Info.plist)" == "jarvis" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVISWatch/Info.plist)" == "jarvis" ]]
@@ -41,7 +42,7 @@ for kind in \
   grep -Rqs "let kind = \"$kind\"" JARVISWidget || { echo "missing iOS widget kind: $kind" >&2; exit 1; }
 done
 for kind in \
-  JARVISWatchLauncherWidget.v1 \
+  JARVISWatchLauncherWidget.v2 \
   JARVISWatchSelectedPlugWidget.v1 \
   JARVISWatchPlugGridWidget.v1 \
   JARVISWatchPurifierWidget.v1; do
@@ -58,9 +59,13 @@ grep -q 'pendingCommand(for:' JARVISWatchWidget/SelectedPlugWidget.swift
 grep -q 'JARVISPlugChoice.allCases.compactMap' JARVISWatchWidget/PlugGridWidget.swift
 ! grep -q 'prefix(2)' JARVISWatchWidget/PlugGridWidget.swift
 grep -q 'Image("JARVISWidgetIcon", bundle: .main)' JARVISWatchWidget/LauncherWidget.swift
-grep -q 'frame(maxWidth: .infinity, maxHeight: .infinity)' JARVISWatchWidget/LauncherWidget.swift
-grep -q 'reloadTimelines(ofKind: "JARVISWatchLauncherWidget.v1")' JARVISWatch/JARVISWatchApp.swift
-[[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/JARVISWidgetIcon.png ]]
+grep -q 'Image("JARVISWidgetIconAccented", bundle: .main)' JARVISWatchWidget/LauncherWidget.swift
+grep -q '@Environment(\\.widgetRenderingMode)' JARVISWatchWidget/LauncherWidget.swift
+grep -q 'GeometryReader' JARVISWatchWidget/LauncherWidget.swift
+grep -q 'let kind = "JARVISWatchLauncherWidget.v2"' JARVISWatchWidget/LauncherWidget.swift
+grep -q 'reloadTimelines(ofKind: "JARVISWatchLauncherWidget.v2")' JARVISWatch/JARVISWatchApp.swift
+[[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/JARVISWidgetIcon@2x.png ]]
+[[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIconAccented.imageset/JARVISWidgetIconAccented@2x.png ]]
 grep -Rqs 'Image("JARVISMark")' JARVIS/Views
 grep -Rqs 'Image("JARVISMark")' JARVISWatch/Views
 [[ -s JARVIS/Assets.xcassets/JARVISMark.imageset/JARVISMark.png ]]
@@ -138,8 +143,10 @@ grep -q 'JARVISMark' <<<"$EMBEDDED_WATCH_ASSET_INFO" \
   || { echo "compiled Watch JARVIS mark missing" >&2; exit 1; }
 grep -q 'JARVISWidgetIcon' <<<"$WATCH_ASSET_INFO" \
   || { echo "compiled Watch launcher icon missing" >&2; exit 1; }
-! grep -q '"Template Mode" : "automatic"' <<<"$WATCH_ASSET_INFO" \
-  || { echo "compiled Watch launcher icon still permits automatic template rendering" >&2; exit 1; }
+grep -q 'JARVISWidgetIconAccented' <<<"$WATCH_ASSET_INFO" \
+  || { echo "compiled accented Watch launcher icon missing" >&2; exit 1; }
+python3 -c 'import json,sys; data=json.load(sys.stdin); item=next(x for x in data if x.get("Name") == "JARVISWidgetIcon"); assert item.get("Template Mode") != "automatic"' <<<"$WATCH_ASSET_INFO" \
+  || { echo "compiled full-color Watch launcher icon still permits automatic template rendering" >&2; exit 1; }
 python3 - "$PHONE_WIDGET/Metadata.appintents/extract.actionsdata" "$WATCH_WIDGET/Metadata.appintents/extract.actionsdata" <<'PY'
 import json
 import sys
@@ -162,7 +169,7 @@ for kind in \
   grep -aFq "$kind" "$PHONE_WIDGET_BINARY" || { echo "built iOS widget missing kind: $kind" >&2; exit 1; }
 done
 for kind in \
-  JARVISWatchLauncherWidget.v1 \
+  JARVISWatchLauncherWidget.v2 \
   JARVISWatchSelectedPlugWidget.v1 \
   JARVISWatchPlugGridWidget.v1 \
   JARVISWatchPurifierWidget.v1; do

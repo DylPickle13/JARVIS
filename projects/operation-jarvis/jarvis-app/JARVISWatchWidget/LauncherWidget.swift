@@ -17,6 +17,7 @@ private struct JARVISWatchLauncherProvider: TimelineProvider {
 
 private struct JARVISWatchLauncherView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
         Group {
@@ -25,15 +26,15 @@ private struct JARVISWatchLauncherView: View {
                 // Inline complications have no reliable full-color image area.
                 Label("Open JARVIS", systemImage: "app.fill")
             case .accessoryCorner:
-                brandedIcon
-                    .aspectRatio(contentMode: .fit)
+                renderedIcon
+                    .scaledToFit()
                     .frame(width: 27, height: 27)
                     .clipShape(Circle())
                     .widgetLabel { Text("JARVIS") }
             case .accessoryRectangular:
                 HStack(spacing: 8) {
-                    brandedIcon
-                        .aspectRatio(contentMode: .fit)
+                    renderedIcon
+                        .scaledToFit()
                         .frame(width: 32, height: 32)
                         .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 1) {
@@ -43,17 +44,10 @@ private struct JARVISWatchLauncherView: View {
                     Spacer(minLength: 0)
                     Image(systemName: "arrow.up.forward.app").font(.caption2)
                 }
+            case .accessoryCircular:
+                circularIcon
             default:
-                ZStack {
-                    AccessoryWidgetBackground()
-                    Circle()
-                        .fill(Color.cyan.opacity(0.10))
-                    brandedIcon
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(3)
-                        .clipShape(Circle())
-                }
+                Image(systemName: "app.fill")
             }
         }
         .widgetURL(jarvisWatchHomeURL)
@@ -62,23 +56,50 @@ private struct JARVISWatchLauncherView: View {
         .accessibilityLabel("Open JARVIS app")
     }
 
-    @ViewBuilder
-    private var brandedIcon: some View {
-        if #available(watchOS 11.0, *) {
-            Image("JARVISWidgetIcon", bundle: .main)
-                .resizable()
-                .interpolation(.high)
-                .widgetAccentedRenderingMode(.fullColor)
-        } else {
-            Image("JARVISWidgetIcon", bundle: .main)
-                .resizable()
-                .interpolation(.high)
+    private var circularIcon: some View {
+        GeometryReader { geometry in
+            let side = min(geometry.size.width, geometry.size.height)
+            ZStack {
+                if renderingMode == .fullColor {
+                    Circle().fill(Color.black)
+                    fullColorIcon
+                        .scaledToFill()
+                } else {
+                    accentedIcon
+                        .scaledToFit()
+                }
+            }
+            .frame(width: side, height: side)
+            .clipShape(Circle())
+            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
+    }
+
+    @ViewBuilder
+    private var renderedIcon: some View {
+        if renderingMode == .fullColor {
+            fullColorIcon
+        } else {
+            accentedIcon
+        }
+    }
+
+    private var fullColorIcon: some View {
+        Image("JARVISWidgetIcon", bundle: .main)
+            .resizable()
+            .interpolation(.high)
+    }
+
+    private var accentedIcon: some View {
+        Image("JARVISWidgetIconAccented", bundle: .main)
+            .resizable()
+            .interpolation(.high)
+            .widgetAccentable()
     }
 }
 
 struct JARVISWatchLauncherWidget: Widget {
-    let kind = "JARVISWatchLauncherWidget.v1"
+    let kind = "JARVISWatchLauncherWidget.v2"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: JARVISWatchLauncherProvider()) { _ in

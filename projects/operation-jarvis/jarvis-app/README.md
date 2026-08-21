@@ -10,9 +10,9 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. The exact signed `0.2.0 (16)` launcher correction is installed and running
-on Dylan's allowlisted iPhone and Apple Watch; physical widget review remains
-pending. Physical consoles
+UI. The iPhone remains on signed `0.2.0 (16)` and the exact archived Watch
+product `0.2.0 (17)` is installed on Dylan's allowlisted Apple Watch. The
+three-slot Smart Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
 weather, reordered Home, and removed the System tab. Build 10 adds read-only
@@ -38,7 +38,13 @@ cards, air-quality gauge, collapsed runtime sections, event cards, and branded
 Settings presentation. Physical review found a blank Open JARVIS Watch launcher
 image. Build 16 gives the circular image an explicit proposed frame, forces the
 asset to original/full-colour rendering, resolves it from the extension bundle,
-and reloads its static timeline whenever the Watch host launches.
+and reloads its static timeline whenever the Watch host launches. Physical
+review showed that the three-slot Combination widget can use a non-full-colour
+rendering mode. Build 17 now branches on `widgetRenderingMode`, uses exact
+100×100 Watch-scale full-colour and high-contrast accented assets, explicitly
+sizes the circular slot with `GeometryReader`, and advances the launcher kind to
+clear the old cached rendition. The re-added physical widget displays the
+JARVIS logo successfully.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
