@@ -1,8 +1,8 @@
 # JARVIS widget catalogue, deployment, and physical validation
 
 **Prepared:** 2026-08-20
-**Candidate:** JARVIS `0.2.0 (13)`
-**Physical status:** build 13 installed; iPhone Home widgets and Watch Smart Stack catalogue pass
+**Candidate:** JARVIS `0.2.0 (14)`
+**Physical status:** build 13 installed and functional; build-14 circular launcher artwork pending
 
 ## 1. Replacement boundary
 
@@ -31,7 +31,7 @@ this build.
 
 | Widget | Families | Behavior |
 |---|---|---|
-| Open JARVIS | accessory circular, corner, rectangular, inline | Opens the JARVIS Watch app. |
+| Open JARVIS | accessory circular, corner, rectangular, inline | Opens the JARVIS Watch app. Circular, corner, and rectangular families use the canonical full-colour JARVIS artwork; inline uses a legible system fallback. |
 | JARVIS Plug | accessory circular, corner, rectangular, inline | Configurable approved plug with explicit desired-state control. |
 | JARVIS Plug Grid | accessory rectangular | All four approved plugs in a compact 2×2 rectangular complication or Smart Stack layout. |
 | Air Purifier | accessory circular, corner, rectangular, inline | Read-only glanceable PM2.5, quality, power/mode summary, and stale status. |
@@ -92,6 +92,15 @@ updated between commands and the lamp finished in its initial off state.
 Deployment itself produced no command request. Other Watch-face accessory
 families and the forced stale/offline matrix remain separate open rows.
 
+Build 14 adds `jarvis-icon.png` to the Watch extension's own asset catalogue.
+The accessory-circular launcher removes its text stack, scales the artwork to
+fit with three points of edge padding, and clips to the system circle. This is
+the WidgetKit family used by the three compact circular slots in the Smart
+Stack. Corner and rectangular launchers reuse the same artwork at bounded sizes;
+inline retains a system app glyph because full-colour custom art is not reliable
+in that text-only family. The verifier checks both the source asset and its
+compiled `Assets.car` rendition.
+
 ## 6. Apple design-guideline alignment
 
 The implementation follows the current Apple widget guidance:
@@ -142,12 +151,12 @@ unsigned simulator rejection as an application failure.
 
 When the iPhone is connected:
 
-1. Build one signed archive with all four products on build 13.
+1. Build one signed archive with all four products on build 14.
 2. Deep-verify the iPhone app, iPhone widget, Watch app, and Watch widget.
 3. Install the exported parent IPA through `ideviceinstaller` on the allowlisted
    iPhone.
 4. Install the exact archived Watch app through CoreDevice developer services.
-5. Confirm both inventories report `0.2.0 (13)` and both widget extensions are
+5. Confirm both inventories report `0.2.0 (14)` and both widget extensions are
    present.
 6. Add and launch Open JARVIS on iPhone and Watch.
 7. Confirm the Watch gallery shows one JARVIS Plug entry, then add/edit it and

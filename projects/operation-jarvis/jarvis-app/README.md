@@ -28,7 +28,10 @@ entry and an all-four 2×2 Watch grid. The physical Watch gallery, editing,
 launcher, grid, read-only purifier, and plug-control feedback now pass. Four
 intentional alternating Watch widget writes each produced one POST/event pair
 and left the lamp restored off. Watch-originated app relay, offline, remaining
-accessory-family, live path-change, and accessibility rows remain open.
+accessory-family, live path-change, and accessibility rows remain open. Build 14
+is the local Watch-launcher visual candidate: it embeds the canonical JARVIS
+artwork and uses an edge-safe full-colour icon for circular Smart Stack slots,
+corner, and rectangular presentations; inline retains a legible system glyph.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only

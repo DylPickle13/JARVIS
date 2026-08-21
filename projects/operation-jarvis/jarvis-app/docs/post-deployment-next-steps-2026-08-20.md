@@ -2,7 +2,7 @@
 
 **Revised:** 2026-08-20
 **Installed build:** 0.2.0 (13) on iPhone and Watch
-**Local candidate:** 0.2.0 (13)
+**Local candidate:** 0.2.0 (14)
 **Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
 ## 1. Current system boundary
@@ -197,7 +197,11 @@ and a read-only purifier. Four intentional alternating lamp writes each produced
 one command POST and one successful start/complete event pair; displayed state
 updated between writes and the final state matched the initial off state. The
 remaining accessory-family, offline, relay, and accessibility rows stay in the
-consolidated matrix.
+consolidated matrix. Build 14 embeds the canonical JARVIS PNG in the Watch widget
+asset catalogue and replaces the launcher glyph with an edge-safe full-colour
+image in circular, corner, and rectangular families. The circular family is the
+one used by the Smart Stack's three compact complication slots; inline keeps a
+system glyph because that family has no reliable full-colour image area.
 
 ### P0 — completely remove the deprecated dashboard — complete 2026-08-20
 
