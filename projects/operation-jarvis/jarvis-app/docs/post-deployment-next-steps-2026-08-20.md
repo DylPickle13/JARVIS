@@ -1,8 +1,8 @@
 # Operation JARVIS app — integration-aware next steps
 
 **Revised:** 2026-08-20
-**Installed build:** 0.2.0 (11) on iPhone and Watch
-**Local candidate:** 0.2.0 (12)
+**Installed build:** 0.2.0 (12) on iPhone and Watch
+**Local candidate:** 0.2.0 (13)
 **Goal:** finish the remaining M3 physical matrix, run one final verification pass, and release 0.3.0.
 
 ## 1. Current system boundary
@@ -183,8 +183,16 @@ service command was involved. **Build 12** no longer retains completed timeline
 results, invalidates older in-flight reads, applies the confirmed command result
 to the target-local snapshot immediately, shows an Updating/disabled state, and
 suppresses repeated same-state taps for ten seconds. Unit and unsigned simulator
-build gates pass; signed build-12 iPhone/Watch feedback and complication
-validation remain in the consolidated matrix below.
+build gates pass. The signed build-12 iPhone round trip updated ON and OFF,
+produced exactly one command/event pair in each direction, and restored the
+initial off state.
+
+The physical Watch gallery then exposed each App Intent recommendation as a
+separate selected-plug preset, and the rectangular grid showed only the first
+two sorted plugs. **Build 13** publishes one default selected-plug recommendation
+that remains editable across all four enum choices, and replaces the two-item
+row with a compact all-four 2×2 grid. Signed build-13 Watch gallery, editing,
+layout, and read-only purifier validation remain in the consolidated matrix.
 
 ### P0 — completely remove the deprecated dashboard — complete 2026-08-20
 

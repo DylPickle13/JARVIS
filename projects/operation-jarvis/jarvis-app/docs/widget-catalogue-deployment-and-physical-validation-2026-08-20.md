@@ -1,8 +1,8 @@
 # JARVIS widget catalogue, deployment, and physical validation
 
 **Prepared:** 2026-08-20
-**Candidate:** JARVIS `0.2.0 (12)`
-**Physical status:** build 11 installed; build-12 interaction-feedback correction pending deployment
+**Candidate:** JARVIS `0.2.0 (13)`
+**Physical status:** build 12 installed; iPhone passes; build-13 Watch catalogue correction pending
 
 ## 1. Replacement boundary
 
@@ -33,7 +33,7 @@ this build.
 |---|---|---|
 | Open JARVIS | accessory circular, corner, rectangular, inline | Opens the JARVIS Watch app. |
 | JARVIS Plug | accessory circular, corner, rectangular, inline | Configurable approved plug with explicit desired-state control. |
-| JARVIS Plug Grid | accessory rectangular | Two large, separated plug targets suitable for a rectangular complication or Smart Stack widget. |
+| JARVIS Plug Grid | accessory rectangular | All four approved plugs in a compact 2×2 rectangular complication or Smart Stack layout. |
 | Air Purifier | accessory circular, corner, rectangular, inline | Read-only glanceable PM2.5, quality, power/mode summary, and stale status. |
 
 ## 4. Data, refresh, and safety contract
@@ -73,7 +73,15 @@ single-flight behavior. It also invalidates older in-flight reads, writes the
 confirmed command result to the extension-local snapshot, exposes an
 Updating/disabled presentation during execution, reloads only plug timelines,
 and suppresses rapid duplicate same-state intents. Automated coverage verifies
-confirmed-state cache updates plus pending and duplicate-control behavior.
+confirmed-state cache updates plus pending and duplicate-control behavior. The
+signed iPhone round trip then passed ON and OFF rendering with one event pair in
+each direction and restoration to the initial state.
+
+The build-12 Watch gallery exposed each selected-plug recommendation as a
+separate preset and the grid intentionally truncated state with `prefix(2)`.
+Build 13 provides one gallery recommendation whose App Enum remains editable
+over all four plug choices, removes the truncation, and uses four compact 2×2
+controls with full accessibility labels.
 
 ## 6. Apple design-guideline alignment
 
@@ -125,18 +133,19 @@ unsigned simulator rejection as an application failure.
 
 When the iPhone is connected:
 
-1. Build one signed archive with all four products on build 12.
+1. Build one signed archive with all four products on build 13.
 2. Deep-verify the iPhone app, iPhone widget, Watch app, and Watch widget.
 3. Install the exported parent IPA through `ideviceinstaller` on the allowlisted
    iPhone.
 4. Install the exact archived Watch app through CoreDevice developer services.
-5. Confirm both inventories report `0.2.0 (12)` and both widget extensions are
+5. Confirm both inventories report `0.2.0 (13)` and both widget extensions are
    present.
 6. Add and launch Open JARVIS on iPhone and Watch.
-7. Add JARVIS Plug, verify all four approved configuration choices, and confirm
-   stale/unknown state blocks interaction.
-8. Add both Plug Grid sizes on iPhone and the rectangular Watch grid; inspect
-   target spacing before issuing any command.
+7. Confirm the Watch gallery shows one JARVIS Plug entry, then add/edit it and
+   verify all four approved configuration choices; stale/unknown state blocks
+   interaction.
+8. Add both Plug Grid sizes on iPhone and the rectangular Watch grid; confirm
+   all four Watch plugs are legible and inspect target spacing before any command.
 9. Add every purifier family and confirm they remain read-only.
 10. After a separate hardware-change warning and explicit approval, exercise one
     representative desired-state plug command. Confirm immediate feedback, the
