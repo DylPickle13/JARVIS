@@ -11,6 +11,7 @@
 		12F9F00C45DC77569AC6FF99 /* JARVISWidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB663313210EC6BDA6EBB3 /* JARVISWidgetIntents.swift */; };
 		1D5E7CC1DB8E703A3D114F61 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8068A9EC5CBE6A47B603710 /* JARVISKit */; };
 		21E9789B6D7FDCFD43AD0B35 /* WidgetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */; };
+		2392D67F2D4A760498DF32EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ED67C789A071ACDEA4FD69FC /* Assets.xcassets */; };
 		26D143A1482F252A0D5C3892 /* JARVISWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1B144126B4647E06FE7EED06 /* JARVISWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2C39CF58603D08048BA65D1A /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFAD68F450FB6F9BE8C17A8 /* LauncherWidget.swift */; };
 		36A69B470B414FB117BBFF90 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3ABAE6AF34972138CF478F09 /* JARVISKit */; };
@@ -142,6 +143,7 @@
 		C8EE4AA968540A49D2DD562B /* SelectedPlugWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedPlugWidget.swift; sourceTree = "<group>"; };
 		DBE6CDFF2E6B3AEAFD720F34 /* JARVIS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JARVIS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E8809C45C2B5B50122DA0982 /* PlugGridWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlugGridWidget.swift; sourceTree = "<group>"; };
+		ED67C789A071ACDEA4FD69FC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F511B3C48F0433661629C5AB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F89A5FD5332EC5B9ED8DD165 /* JARVISTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = JARVISTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FD52E36404CFBA273498ACD2 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
@@ -270,6 +272,7 @@
 		CA9DDEB621DC22FBA1E8D265 /* JARVISWatchWidget */ = {
 			isa = PBXGroup;
 			children = (
+				ED67C789A071ACDEA4FD69FC /* Assets.xcassets */,
 				29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */,
 				6DF549C08E0899CD48EC8294 /* LauncherWidget.swift */,
 				6BF5A98DC51DC81EE26993D8 /* PlugGridWidget.swift */,
@@ -333,6 +336,7 @@
 			buildConfigurationList = 68B863497F7C0779DA044DF9 /* Build configuration list for PBXNativeTarget "JARVISWatchWidget" */;
 			buildPhases = (
 				8031C8DE628B6410651C6637 /* Sources */,
+				E5D860531D3983362778A7D6 /* Resources */,
 				7D783D805E36121B5FED8894 /* Frameworks */,
 			);
 			buildRules = (
@@ -473,6 +477,14 @@
 			files = (
 				BFF69B5C4311B005985B1812 /* Assets.xcassets in Resources */,
 				513C03156788F045E10B6DC3 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E5D860531D3983362778A7D6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2392D67F2D4A760498DF32EA /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -706,7 +718,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -808,7 +820,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

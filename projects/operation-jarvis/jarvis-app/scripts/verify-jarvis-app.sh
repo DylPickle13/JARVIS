@@ -22,6 +22,8 @@ plutil -lint \
   JARVISWatch/Info.plist \
   JARVISWatchWidget/Info.plist \
   jarvisd/launchd/*.plist
+python3 -m json.tool JARVISWatchWidget/Assets.xcassets/Contents.json >/dev/null
+python3 -m json.tool JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/Contents.json >/dev/null
 bash -n scripts/*.sh jarvisd/resurrector.sh ../scripts/install-discord-bot-launch-agent.sh
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVIS/Info.plist)" == "jarvis" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVISWatch/Info.plist)" == "jarvis" ]]
@@ -53,6 +55,8 @@ grep -q 'pendingCommand(for:' JARVISWatchWidget/SelectedPlugWidget.swift
 [[ "$(grep -c 'AppIntentRecommendation(intent:' JARVISWatchWidget/WidgetSupport.swift)" == "1" ]]
 grep -q 'JARVISPlugChoice.allCases.compactMap' JARVISWatchWidget/PlugGridWidget.swift
 ! grep -q 'prefix(2)' JARVISWatchWidget/PlugGridWidget.swift
+grep -q 'Image("JARVISWidgetIcon")' JARVISWatchWidget/LauncherWidget.swift
+[[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/JARVISWidgetIcon.png ]]
 ! grep -q 'lastAttempt' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
 
 icon_is_opaque_square() {
@@ -112,6 +116,10 @@ xcodebuild \
 
 PHONE_WIDGET="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/PlugIns/JARVISWidget.appex"
 WATCH_WIDGET="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/JARVIS.app/Watch/JARVISWatch.app/PlugIns/JARVISWatchWidget.appex"
+[[ -f "$WATCH_WIDGET/Assets.car" ]] || { echo "watch widget asset catalog missing" >&2; exit 1; }
+WATCH_ASSET_INFO="$(xcrun assetutil --info "$WATCH_WIDGET/Assets.car")"
+grep -q 'JARVISWidgetIcon' <<<"$WATCH_ASSET_INFO" \
+  || { echo "compiled Watch launcher icon missing" >&2; exit 1; }
 python3 - "$PHONE_WIDGET/Metadata.appintents/extract.actionsdata" "$WATCH_WIDGET/Metadata.appintents/extract.actionsdata" <<'PY'
 import json
 import sys

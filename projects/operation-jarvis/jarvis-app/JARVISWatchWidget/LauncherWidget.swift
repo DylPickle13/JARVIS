@@ -22,17 +22,20 @@ private struct JARVISWatchLauncherView: View {
         Group {
             switch family {
             case .accessoryInline:
-                Label("Open JARVIS", systemImage: "sparkles")
+                // Inline complications have no reliable full-color image area.
+                Label("Open JARVIS", systemImage: "app.fill")
             case .accessoryCorner:
-                Image(systemName: "sparkles")
-                    .font(.title3.weight(.semibold))
-                    .widgetAccentable()
+                brandedIcon
+                    .scaledToFit()
+                    .frame(width: 27, height: 27)
+                    .clipShape(Circle())
                     .widgetLabel { Text("JARVIS") }
             case .accessoryRectangular:
                 HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                        .font(.title2.weight(.semibold))
-                        .widgetAccentable()
+                    brandedIcon
+                        .scaledToFit()
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 1) {
                         Text("JARVIS").font(.headline)
                         Text("Open app").font(.caption2).foregroundStyle(.secondary)
@@ -43,12 +46,10 @@ private struct JARVISWatchLauncherView: View {
             default:
                 ZStack {
                     AccessoryWidgetBackground()
-                    VStack(spacing: 1) {
-                        Image(systemName: "sparkles")
-                            .font(.title3.weight(.semibold))
-                            .widgetAccentable()
-                        Text("JARVIS").font(.caption2.bold())
-                    }
+                    brandedIcon
+                        .scaledToFit()
+                        .padding(3)
+                        .clipShape(Circle())
                 }
             }
         }
@@ -56,6 +57,20 @@ private struct JARVISWatchLauncherView: View {
         .jarvisWatchWidgetBackground()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Open JARVIS app")
+    }
+
+    @ViewBuilder
+    private var brandedIcon: some View {
+        if #available(watchOS 11.0, *) {
+            Image("JARVISWidgetIcon")
+                .renderingMode(.original)
+                .resizable()
+                .widgetAccentedRenderingMode(.fullColor)
+        } else {
+            Image("JARVISWidgetIcon")
+                .renderingMode(.original)
+                .resizable()
+        }
     }
 }
 
