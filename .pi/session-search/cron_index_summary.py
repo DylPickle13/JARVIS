@@ -49,6 +49,7 @@ def main() -> int:
     indexed_files = int(indexed.get("indexed_files") or 0)
     indexed_chunks = int(indexed.get("indexed_chunks") or 0)
     skipped_files = int(indexed.get("skipped_files") or 0)
+    missing_files = int(indexed.get("missing_files") or 0)
     removed_files = int(indexed.get("removed_files") or 0)
     duration = float(indexed.get("duration_seconds") or 0.0)
 
@@ -67,7 +68,8 @@ def main() -> int:
         f"Index now: {total_indexed}/{total_sessions} sessions indexed; "
         f"{pending} pending, {changed} changed."
     )
-    print(f"Skipped {skipped_files}; removed {removed_files}; duration {duration:.1f}s.")
+    missing_note = f" Missing {missing_files} file(s) disappeared during the scan; continued." if missing_files else ""
+    print(f"Skipped {skipped_files}; removed {removed_files}; duration {duration:.1f}s.{missing_note}")
     return 0
 
 

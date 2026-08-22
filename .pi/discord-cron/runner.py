@@ -56,6 +56,10 @@ DISCORD_SUPPRESS_EMBEDS_FLAG = 1 << 2
 LOCK_STALE_SECONDS = 20 * 60
 DEFAULT_PATH = config.DEFAULT_SCHEDULER_PATH
 DIRECT_STDOUT_MODEL = "__direct_stdout__"
+PI_FIRST_ENABLED_MODEL = "__pi_first_enabled__"
+DAILY_JOB_NAME = "daily-job-search"
+DAILY_JOB_ID = "job_ca728bbf8731"
+LEGACY_DAILY_JOB_MODELS = ("omlx-64/Qwen3.6-35B-A3B-6bit", "Qwen3.6-35B-A3B-6bit")
 PRIVATE_FILE_MODE = 0o600
 PRIVATE_DIR_MODE = 0o700
 SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
@@ -214,6 +218,16 @@ def init_db(conn: sqlite3.Connection) -> None:
     columns = {str(r[1]) for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
     if "discord_thread_id" not in columns:
         conn.execute("ALTER TABLE jobs ADD COLUMN discord_thread_id TEXT")
+    # The cron database is intentionally ignored by Git. Migrate the previously
+    # hard-coded daily-job-search model when an older local DB is restored.
+    conn.execute(
+        """
+        UPDATE jobs
+           SET model=?, updated_at=?
+         WHERE (id=? OR name=?) AND model IN (?, ?)
+        """,
+        (PI_FIRST_ENABLED_MODEL, iso(), DAILY_JOB_ID, DAILY_JOB_NAME, *LEGACY_DAILY_JOB_MODELS),
+    )
     conn.commit()
 
 
@@ -915,12 +929,51 @@ def write_run_artifacts(
     return {"md_path": None, "jsonl_path": None, "stderr_path": None}
 
 
+def first_enabled_pi_model() -> str | None:
+    """Return Pi's first configured enabled-model pattern at run time.
+
+    Project settings override global settings in Pi, including the enabledModels
+    array. Keeping this lookup dynamic lets jobs follow future model changes
+    without rewriting the cron database.
+    """
+    merged: dict[str, Any] = {}
+    settings_paths = (
+        Path.home() / ".pi" / "agent" / "settings.json",
+        PI_DIR / "settings.json",
+    )
+    for settings_path in settings_paths:
+        try:
+            data = json.loads(settings_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        except (OSError, json.JSONDecodeError):
+            LOGGER.warning("Could not read Pi settings for scheduled model default: %s", settings_path, exc_info=True)
+            continue
+        if isinstance(data, dict):
+            merged.update(data)
+
+    enabled_models = merged.get("enabledModels")
+    if not isinstance(enabled_models, list):
+        return None
+    for value in enabled_models:
+        if not isinstance(value, str):
+            continue
+        model = value.strip()
+        if model and not model.startswith("!"):
+            return model
+    return None
+
+
 def build_pi_command(job: sqlite3.Row) -> list[str]:
     load_dotenv()
     pi_cmd = os.environ.get("PI_CODING_AGENT_COMMAND", "pi")
     cmd = shlex.split(pi_cmd)
     cmd.extend(["--mode", "json", "--no-session"])
-    model = job["model"] or os.environ.get("DISCORD_CRON_PI_MODEL") or os.environ.get("DISCORD_PI_MODEL")
+    configured_model = str(job["model"] or "").strip()
+    if configured_model == PI_FIRST_ENABLED_MODEL:
+        model = first_enabled_pi_model() or os.environ.get("DISCORD_CRON_PI_MODEL") or os.environ.get("DISCORD_PI_MODEL")
+    else:
+        model = configured_model or os.environ.get("DISCORD_CRON_PI_MODEL") or os.environ.get("DISCORD_PI_MODEL")
     if model:
         cmd.extend(["--model", model])
     system_note = (

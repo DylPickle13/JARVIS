@@ -864,6 +864,7 @@ def command_index(args: argparse.Namespace) -> dict[str, Any]:
     quality_pruned = 0
     pruned_index_files = 0
     pruned_index_chunks = 0
+    missing_files = 0
 
     with index_lock(db_path), connect(db_path) as conn:
         files = iter_session_files(sessions_dir)
@@ -878,8 +879,14 @@ def command_index(args: argparse.Namespace) -> dict[str, Any]:
             scanned += 1
             digest: str | None = None
             if quality_policy != "none":
-                stat = path.stat()
-                analysis = analyze_session_file(path)
+                try:
+                    stat = path.stat()
+                    analysis = analyze_session_file(path)
+                except FileNotFoundError:
+                    # Session files can be removed by Pi or the retention pass after
+                    # the directory snapshot. Treat that race as a skipped file.
+                    missing_files += 1
+                    continue
                 digest = str(analysis.get("sha256") or "")
                 is_helpful, quality_reason = evaluate_session_quality(analysis, quality_policy)
                 if is_helpful:
@@ -930,6 +937,11 @@ def command_index(args: argparse.Namespace) -> dict[str, Any]:
                         if age_seconds >= float(min_age_minutes) * 60:
                             try:
                                 path.unlink()
+                            except FileNotFoundError:
+                                # Another process already removed it; the index entry
+                                # was pruned above, so there is nothing left to do.
+                                missing_files += 1
+                                continue
                             except OSError as exc:
                                 raise SessionSearchError(f"Failed to delete pruned session {path}: {exc}") from exc
                             deleted_at = utc_now()
@@ -952,12 +964,22 @@ def command_index(args: argparse.Namespace) -> dict[str, Any]:
                             deferred_entries.append(entry)
                     continue
 
-            needed, stat, old_digest = needs_index(conn, path)
+            try:
+                needed, stat, old_digest = needs_index(conn, path)
+            except FileNotFoundError:
+                # The glob is only a snapshot; a session may disappear before its
+                # metadata is checked. Continue indexing the remaining sessions.
+                missing_files += 1
+                continue
             if not args.rebuild and not needed:
                 skipped += 1
                 continue
             if digest is None:
-                digest = file_sha256(path)
+                try:
+                    digest = file_sha256(path)
+                except FileNotFoundError:
+                    missing_files += 1
+                    continue
             if not args.rebuild and old_digest == digest:
                 # Metadata changed but content is identical; refresh mtime/size without re-embedding.
                 with conn:
@@ -967,7 +989,13 @@ def command_index(args: argparse.Namespace) -> dict[str, Any]:
                     )
                 skipped += 1
                 continue
-            chunk_count = index_session(conn, path, stat, digest, batch_size)
+            try:
+                chunk_count = index_session(conn, path, stat, digest, batch_size)
+            except FileNotFoundError:
+                # A session can be deleted while it is being parsed. Do not fail the
+                # entire daily run for one disappearing source file.
+                missing_files += 1
+                continue
             indexed.append({"path": str(path), "chunks": chunk_count})
             if max_files and len(indexed) >= max_files:
                 break
@@ -992,6 +1020,7 @@ def command_index(args: argparse.Namespace) -> dict[str, Any]:
         "indexed_files": len(indexed),
         "indexed_chunks": sum(item["chunks"] for item in indexed),
         "skipped_files": skipped,
+        "missing_files": missing_files,
         "removed_files": removed,
         "duration_seconds": round(time.time() - start_time, 2),
         "model": embedding_model(),
@@ -1031,7 +1060,12 @@ def command_status(args: argparse.Namespace) -> dict[str, Any]:
             row = conn.execute("SELECT mtime_ns, size FROM sessions WHERE path = ?", (str(path),)).fetchone()
             if row is None:
                 continue
-            stat = path.stat()
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                # The directory listing is a snapshot; ignore files removed during
+                # the status pass rather than turning a healthy index into an error.
+                continue
             if int(row["mtime_ns"]) != stat.st_mtime_ns or int(row["size"]) != stat.st_size:
                 changed.append(str(path))
     return {
