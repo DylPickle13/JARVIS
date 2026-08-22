@@ -26,10 +26,12 @@
 		838B2889933E6283DED2D163 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 266A9071FEC39AB8EC4067A2 /* Assets.xcassets */; };
 		8E6BE9F9B34D9B7BC922C127 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = 301E6348CB2E3FD4E2A1BD9D /* JARVISKit */; };
 		9133343133C13A0DA96CDEF2 /* JARVISApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A275952024515DF0771793A /* JARVISApp.swift */; };
+		966D9E3F979B134FF9914B2B /* JARVISSiriPlugIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F34D4FBF48F603C40A1C72A /* JARVISSiriPlugIntents.swift */; };
 		98E8AFEA1342697E3906487A /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF549C08E0899CD48EC8294 /* LauncherWidget.swift */; };
 		9E9F58260B97E592FE005E0A /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */; };
 		A3B29AD957474CD9FBB73D4F /* SelectedPlugWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A25639C5046D8136A8AEBE3F /* SelectedPlugWidget.swift */; };
 		A6D11EDF6F1A5FA7EF55C9E4 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = CFF3B3FAF711B9F03333ABD8 /* JARVISKit */; };
+		AF578B6E7C4E716DA9270205 /* JARVISSiriPlugIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F34D4FBF48F603C40A1C72A /* JARVISSiriPlugIntents.swift */; };
 		BB211C6FB4A23BD0C80D09DD /* WatchDashboardContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 771620AD2CA9D898AE768103 /* WatchDashboardContent.swift */; };
 		BFF69B5C4311B005985B1812 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 65BFEC04E2CD0C7D691F114D /* Assets.xcassets */; };
 		C8411015C4C2C95FD234C9AE /* JARVISWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6DEE41C1A5E0238C3F10B643 /* JARVISWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -117,6 +119,7 @@
 		07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		1548C41F74BB5F0E3EF25885 /* JARVISWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWidgetBundle.swift; sourceTree = "<group>"; };
 		1B144126B4647E06FE7EED06 /* JARVISWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = JARVISWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		1F34D4FBF48F603C40A1C72A /* JARVISSiriPlugIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISSiriPlugIntents.swift; sourceTree = "<group>"; };
 		266A9071FEC39AB8EC4067A2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWatchWidgetBundle.swift; sourceTree = "<group>"; };
 		366131BF98CEBD234A1B3EAC /* JARVISWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWatchApp.swift; sourceTree = "<group>"; };
@@ -193,6 +196,14 @@
 			path = JARVISTests;
 			sourceTree = "<group>";
 		};
+		5AA24923BB9E920C7E904C3D /* HostAppIntents */ = {
+			isa = PBXGroup;
+			children = (
+				1F34D4FBF48F603C40A1C72A /* JARVISSiriPlugIntents.swift */,
+			);
+			path = HostAppIntents;
+			sourceTree = "<group>";
+		};
 		71E74B962E76C620DFBBF007 /* JARVISWidget */ = {
 			isa = PBXGroup;
 			children = (
@@ -250,6 +261,7 @@
 		98F8CE23498C0CF6D7ABF3D4 = {
 			isa = PBXGroup;
 			children = (
+				5AA24923BB9E920C7E904C3D /* HostAppIntents */,
 				EC4A9F495747DDC34193FD4D /* JARVIS */,
 				3BE3573CD74F776EBB22DCAC /* JARVISTests */,
 				8498079229199EDB1A15E003 /* JARVISWatch */,
@@ -528,6 +540,7 @@
 				D8ABD891AB536358B3617BD4 /* Components.swift in Sources */,
 				DD7391FF9563157D2965AEEE /* HomeView.swift in Sources */,
 				9133343133C13A0DA96CDEF2 /* JARVISApp.swift in Sources */,
+				AF578B6E7C4E716DA9270205 /* JARVISSiriPlugIntents.swift in Sources */,
 				12F9F00C45DC77569AC6FF99 /* JARVISWidgetIntents.swift in Sources */,
 				D250A7189D6C70AD54591AFE /* SettingsView.swift in Sources */,
 			);
@@ -545,6 +558,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				966D9E3F979B134FF9914B2B /* JARVISSiriPlugIntents.swift in Sources */,
 				5031EA9725F243EAEA791808 /* JARVISWatchApp.swift in Sources */,
 				598C75FFF1AE8EC3B2B0920F /* JARVISWidgetIntents.swift in Sources */,
 				FFF7A45F6375FCF4A3B382ED /* WatchConnectView.swift in Sources */,
@@ -718,7 +732,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -820,7 +834,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

@@ -57,6 +57,23 @@ grep -q 'Retry now' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'always-visible Watch refresh control is still present' -qs 'Refresh status' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'iPhone toolbar refresh control is still present' -qs 'accessibilityLabel("Refresh home status")' JARVIS/Views/HomeView.swift
 
+printf '%s\n' '== Siri plug source contract =='
+grep -q 'struct TurnOnJARVISPlugIntent: AppIntent' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'struct TurnOffJARVISPlugIntent: AppIntent' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'struct JARVISPlugEntity: AppEntity' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'struct JARVISPlugEntityQuery: EntityStringQuery' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'Tell \\(\.applicationName) to turn on \\(\\.\$plug)' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'Tell \\(\.applicationName) to turn off \\(\\.\$plug)' HostAppIntents/JARVISSiriPlugIntents.swift
+[[ "$(grep -c 'AppShortcut(' HostAppIntents/JARVISSiriPlugIntents.swift)" == "2" ]]
+grep -q 'static var isDiscoverable: Bool { false }' SharedAppIntents/JARVISWidgetIntents.swift
+grep -q 'queueIfUnreachable: false' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+grep -q 'allowsWatchRelayFallback' JARVISKit/Sources/JARVISKit/PlugCommandExecutor.swift
+grep -q 'private actor JARVISSiriCatalogueCoordinator' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'private let retention: TimeInterval = 15' HostAppIntents/JARVISSiriPlugIntents.swift
+reject_match 'Siri source contains a compiled production plug identifier' -qsE 'family-room-light|pedalboard|"lamp"|"tv"' HostAppIntents/JARVISSiriPlugIntents.swift
+reject_match 'non-plug Siri surface is present' -qsiE 'purifier|scheduled.?job|serviceAction|discord|room.?audio' HostAppIntents/JARVISSiriPlugIntents.swift
+reject_match 'Siri plug path must never toggle' -RqsF 'plug-toggle' HostAppIntents JARVISKit/Sources/JARVISKit/PlugCatalog.swift JARVISKit/Sources/JARVISKit/PlugCommandExecutor.swift
+
 printf '%s\n' '== widget source contract =='
 reject_match 'legacy iPhone widget kind is still present' -RqsF 'let kind = "JARVISPlugWidget"' JARVISWidget
 reject_match 'legacy Watch widget kind is still present' -RqsF 'let kind = "JARVISWatchWidget"' JARVISWatchWidget
@@ -173,15 +190,34 @@ grep -q 'JARVISWidgetIconAccented' <<<"$WATCH_ASSET_INFO" \
   || { echo "compiled accented Watch launcher icon missing" >&2; exit 1; }
 python3 -c 'import json,sys; data=json.load(sys.stdin); item=next(x for x in data if x.get("Name") == "JARVISWidgetIcon"); assert item.get("Template Mode") != "automatic"' <<<"$WATCH_ASSET_INFO" \
   || { echo "compiled full-color Watch launcher icon still permits automatic template rendering" >&2; exit 1; }
-python3 - "$PHONE_WIDGET/Metadata.appintents/extract.actionsdata" "$WATCH_WIDGET/Metadata.appintents/extract.actionsdata" <<'PY'
+python3 - \
+  "$PHONE_WIDGET/Metadata.appintents/extract.actionsdata" \
+  "$WATCH_WIDGET/Metadata.appintents/extract.actionsdata" \
+  "$PHONE_APP/Metadata.appintents/extract.actionsdata" \
+  "$EMBEDDED_WATCH/Metadata.appintents/extract.actionsdata" <<'PY'
 import json
 import sys
-for path in sys.argv[1:]:
+for path in sys.argv[1:3]:
     with open(path, encoding="utf-8") as handle:
         payload = json.load(handle)
     actions = payload.get("actions", {})
     assert "SelectJARVISPlugIntent" in actions, path
     assert "SetPlugIntent" in actions, path
+
+for path in sys.argv[3:]:
+    with open(path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    actions = payload.get("actions", {})
+    assert actions["SetPlugIntent"]["isDiscoverable"] is False, path
+    assert actions["TurnOnJARVISPlugIntent"]["isDiscoverable"] is True, path
+    assert actions["TurnOffJARVISPlugIntent"]["isDiscoverable"] is True, path
+    shortcuts = payload.get("autoShortcuts", [])
+    assert [item["actionIdentifier"] for item in shortcuts] == [
+        "TurnOnJARVISPlugIntent",
+        "TurnOffJARVISPlugIntent",
+    ], path
+    assert "JARVISPlugEntity" in payload.get("entities", {}), path
+    assert "JARVISPlugEntityQuery" in payload.get("queries", {}), path
 PY
 PHONE_WIDGET_BINARY="$PHONE_WIDGET/JARVISWidget"
 WATCH_WIDGET_BINARY="$WATCH_WIDGET/JARVISWatchWidget"

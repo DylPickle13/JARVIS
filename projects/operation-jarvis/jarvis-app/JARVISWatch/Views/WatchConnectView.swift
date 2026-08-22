@@ -209,7 +209,9 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             _ = try await client.health(endpoint)
             let state = try await client.state(endpoint)
             guard !Task.isCancelled else { return }
+            let previousState = lastState
             lastState = state
+            updateJARVISSiriParametersIfNeeded(previous: previousState, current: state)
             snapshotStore.save(state)
             cachedAt = Date()
             isViaPhone = false
@@ -303,7 +305,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         return relayResponses.removeValue(forKey: requestID)
     }
 
-    nonisolated func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge) {}
+    nonisolated func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge, requestID: String) {}
 
     nonisolated func watchBridgeDidReceiveEndpoint(_ bridge: WatchBridge, endpoint: String) {
         Task { @MainActor [weak self] in
@@ -316,7 +318,9 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     nonisolated func watchBridgeDidReceiveState(_ bridge: WatchBridge, json: Data) {
         Task { @MainActor [weak self] in
             guard let self, let state = try? JSONDecoder().decode(StateSnapshot.self, from: json) else { return }
+            let previousState = self.lastState
             self.lastState = state
+            updateJARVISSiriParametersIfNeeded(previous: previousState, current: state)
             self.snapshotStore.save(state)
             self.cachedAt = Date()
             self.isViaPhone = true

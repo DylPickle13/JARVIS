@@ -276,8 +276,10 @@ public final class AppState: ObservableObject {
         defer { isStateLoading = false }
         do {
             let snapshot = try await client.state(endpoint)
-            let widgetsChanged = widgetReloadValue(lastState) != widgetReloadValue(snapshot)
+            let previousState = lastState
+            let widgetsChanged = widgetReloadValue(previousState) != widgetReloadValue(snapshot)
             lastState = snapshot
+            updateJARVISSiriParametersIfNeeded(previous: previousState, current: snapshot)
             SnapshotStore().save(snapshot)
             if widgetsChanged { WidgetCenter.shared.reloadAllTimelines() }
             if let data = try? JSONEncoder().encode(snapshot) {
@@ -402,10 +404,51 @@ public final class AppState: ObservableObject {
             return CommandResult(ok: false, action: action, error: "A plug operation is already in progress.")
         }
         defer { endOperation("plug:\(name)") }
-        guard let result = await send(action, ["plug": .string(name)]) else {
+
+        // Every relayed write is validated against a fresh phone-side snapshot.
+        // A Watch cache may resolve speech, but can never authorize a command.
+        await fetchState()
+        guard currentEndpoint != nil,
+              connectionState == .connected,
+              stateErrorMessage == nil else {
+            return CommandResult(ok: false, action: action, error: "Fresh plug status is unavailable.")
+        }
+        let plug: JARVISPlugDescriptor
+        do {
+            guard let snapshot = lastState else { throw JARVISPlugCatalogError.unavailable }
+            plug = try JARVISPlugCatalog.freshPlug(id: name, in: snapshot)
+        } catch let error as JARVISPlugCatalogError {
+            return CommandResult(ok: false, action: action, error: error.errorDescription)
+        } catch {
+            return CommandResult(ok: false, action: action, error: "Fresh plug status is unavailable.")
+        }
+        if plug.isOn == isOn {
+            return CommandResult(
+                ok: true,
+                action: action,
+                plug: PlugCommandData(name: name, is_on: isOn),
+                summary: "already-in-desired-state"
+            )
+        }
+
+        guard let result = await send(action, ["plug": .string(name)]), result.ok else {
             return CommandResult(ok: false, action: action, error: operationErrorMessage ?? "The plug command failed.")
         }
-        return result
+        if result.plug?.name == name, result.plug?.is_on == isOn { return result }
+
+        await fetchState()
+        guard connectionState == .connected,
+              stateErrorMessage == nil,
+              let snapshot = lastState,
+              let confirmed = try? JARVISPlugCatalog.freshPlug(id: name, in: snapshot),
+              confirmed.isOn == isOn else {
+            return CommandResult(ok: false, action: action, error: "The plug result could not be confirmed.")
+        }
+        return CommandResult(
+            ok: true,
+            action: action,
+            plug: PlugCommandData(name: name, is_on: isOn)
+        )
     }
 
     func rememberWatchCommand(_ requestID: String, entry: WatchCommandCacheEntry) {

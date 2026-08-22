@@ -68,7 +68,7 @@ final class AppStateTests: XCTestCase {
         await app.refresh()
         let initialCalls = api.stateCalls
 
-        app.watchBridgeDidReceiveStateRequest(.shared)
+        app.watchBridgeDidReceiveStateRequest(.shared, requestID: "test-state-request")
         for _ in 0..<20 where api.stateCalls == initialCalls {
             try await Task.sleep(for: .milliseconds(25))
         }
@@ -125,6 +125,42 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(app.watchCommandInFlight.isEmpty)
     }
 
+    func testWatchRelayAlreadyDesiredStateDoesNotPost() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        let requestID = "already-desired-request"
+
+        app.watchBridgeDidReceivePlugCommand(.shared, name: "tv", isOn: true, requestID: requestID)
+        for _ in 0..<20 where app.watchCommandResponses[requestID] == nil {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        XCTAssertTrue(api.commands.isEmpty)
+        XCTAssertEqual(app.watchCommandResponses[requestID]?.result?.plug?.is_on, true)
+        XCTAssertEqual(app.watchCommandResponses[requestID]?.result?.summary, "already-in-desired-state")
+    }
+
+    func testWatchRelayRejectsUnknownPlugWithoutPost() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        let requestID = "unknown-plug-request"
+
+        app.watchBridgeDidReceivePlugCommand(.shared, name: "removed-plug", isOn: true, requestID: requestID)
+        for _ in 0..<20 where app.watchCommandResponses[requestID] == nil {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        XCTAssertTrue(api.commands.isEmpty)
+        XCTAssertNil(app.watchCommandResponses[requestID]?.result)
+        XCTAssertNotNil(app.watchCommandResponses[requestID]?.error)
+    }
+
     func testScheduledJobsFailureDoesNotHideServiceStatus() async throws {
         let api = FakeAPI(scheduledJobsSucceeds: false)
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
@@ -179,7 +215,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         self.scheduledJobsSucceeds = scheduledJobsSucceeds
         self.state = try! JSONDecoder().decode(
             StateSnapshot.self,
-            from: Data(#"{"ok":true,"summary":{"plugsOn":1,"plugsTotal":2}}"#.utf8)
+            from: Data(#"{"ok":true,"stale":false,"summary":{"plugsOn":1,"plugsTotal":2},"subsystems":{"plugs":{"ok":true,"stale":false,"plugs":{"lamp":{"ok":true,"stale":false,"isOn":false},"tv":{"ok":true,"stale":false,"isOn":true}}}}}"#.utf8)
         )
     }
 
@@ -196,7 +232,14 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult {
         if let commandDelay { try await Task.sleep(for: commandDelay) }
         commands.append(action)
-        return CommandResult(ok: commandSucceeds, action: action, error: commandSucceeds ? nil : "simulated failure")
+        return CommandResult(
+            ok: commandSucceeds,
+            action: action,
+            error: commandSucceeds ? nil : "simulated failure",
+            plug: commandSucceeds
+                ? PlugCommandData(name: "lamp", is_on: action == "plug-on")
+                : nil
+        )
     }
 
     func events(_ endpoint: JarvisEndpoint, since: Int?, limit: Int) async throws -> EventsResponse {

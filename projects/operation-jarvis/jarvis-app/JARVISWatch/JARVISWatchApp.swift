@@ -6,6 +6,7 @@ import JARVISKit
 struct JARVISWatchApp: App {
     init() {
         WatchBridge.shared.start()
+        JARVISAppShortcuts.updateAppShortcutParameters()
         // The launcher has a static timeline. Reload it on host launch so an
         // upgraded asset cannot remain stuck behind an older cached rendering.
         WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchLauncherWidget.v2")

@@ -7,6 +7,9 @@ import JARVISKit
 struct SetPlugIntent: AppIntent {
     static let title: LocalizedStringResource = "Set JARVIS Plug"
     static let description = IntentDescription("Turn one approved JARVIS plug on or off.")
+    // This raw widget action is intentionally absent from Siri, Spotlight, and
+    // Shortcuts. The host apps expose only the dynamic desired-state intents.
+    static var isDiscoverable: Bool { false }
     static var openAppWhenRun: Bool { false }
 
     @Parameter(title: "Plug")

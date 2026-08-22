@@ -2,7 +2,7 @@ import Foundation
 import JARVISKit
 
 extension AppState: WatchBridgeDelegate {
-    public nonisolated func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge) {
+    public nonisolated func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge, requestID: String) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             if self.currentEndpoint == nil || self.connectionState != .connected {
@@ -11,8 +11,11 @@ extension AppState: WatchBridgeDelegate {
                 await self.fetchState()
                 if self.connectionState != .connected { await self.refresh() }
             }
-            guard let state = self.lastState, let data = try? JSONEncoder().encode(state) else { return }
-            bridge.sendState(json: data)
+            guard self.connectionState == .connected,
+                  self.stateErrorMessage == nil,
+                  let state = self.lastState,
+                  let data = try? JSONEncoder().encode(state) else { return }
+            bridge.sendState(json: data, requestID: requestID)
             bridge.updateApplicationContext(stateJSON: data, endpoint: self.currentEndpoint?.absoluteString)
         }
     }
@@ -20,7 +23,9 @@ extension AppState: WatchBridgeDelegate {
     public nonisolated func watchBridgeDidReceiveState(_ bridge: WatchBridge, json: Data) {
         Task { @MainActor [weak self] in
             guard let self, let state = try? JSONDecoder().decode(StateSnapshot.self, from: json) else { return }
+            let previousState = self.lastState
             self.lastState = state
+            updateJARVISSiriParametersIfNeeded(previous: previousState, current: state)
             SnapshotStore().save(state)
         }
     }

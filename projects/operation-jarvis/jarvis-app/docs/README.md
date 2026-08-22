@@ -1,14 +1,14 @@
 # JARVIS native Apple app — unified documentation
 
-**Last updated:** 2026-08-21 EDT
+**Last updated:** 2026-08-22 EDT
 
 **Applies to:** Xcode 26, iOS 26, watchOS 26, XcodeGen 2.46, Personal Team/free provisioning
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current candidate:** `0.2.0 (19)`
+**Current candidate:** `0.2.0 (20)`
 
-**Physical installation:** iPhone and Apple Watch `0.2.0 (19)`; three-slot Smart Stack artwork passed
+**Physical installation:** iPhone and Apple Watch `0.2.0 (20)`; Siri invocation testing is owner-pending
 
 This is the single architecture, security, packaging, deployment, validation,
 and recovery reference for the JARVIS iPhone app, Apple Watch app, widgets, and
@@ -62,6 +62,47 @@ never deploy to a device outside Dylan's allowlist.
   tab/deep-link route, UI state, and five-second event polling are removed.
 - Build 19 gives both host apps one shared immediate-then-15-second foreground
   refresh policy and removes normal refresh buttons from the visible UI.
+- Build 20 adds exactly two dynamic, plug-only Siri shortcuts to both hosts.
+
+### Build-20 dynamic Siri plug control
+
+```text
+Archive: /tmp/JARVIS-build20-siri.xcarchive
+IPA:     /tmp/JARVIS-build20-siri-export/JARVIS.ipa
+SHA-256: 26f2ccedb15ad0421eacd7623d01e7d97c54f3e82c20c9dfef3af6ec76e0b91e
+```
+
+The iPhone and Watch hosts expose only Turn On JARVIS Plug and Turn Off JARVIS
+Plug through `AppShortcutsProvider`. Registered phrases are “Tell JARVIS to turn
+on/off [plug]” and “Turn on/off [plug] with JARVIS.” `JARVISPlugEntityQuery`
+builds its catalogue from `state.subsystems.plugs.plugs`; no production plug
+identifier is compiled into the Siri source. Normalization handles case,
+spaces, hyphens, and underscores. Exact matches win, ambiguous results remain
+multiple for Siri disambiguation, and add/remove/rename calls
+`updateAppShortcutParameters()`. A 15-second single-flight catalogue coordinator
+coalesces the system's burst of parameter queries. Existing widget configuration
+choices remain separate and unchanged.
+
+Every intent obtains fresh state and validates the exact daemon identifier before
+writing. Already-satisfied requests return without a POST. Other writes use only
+`plug-on` or `plug-off`, and Siri reports success only after the command response
+or a follow-up authoritative read confirms the desired state. Stale, unknown,
+removed, rejected, and unconfirmed requests fail closed. The raw widget
+`SetPlugIntent` is explicitly non-discoverable. Watch execution tries direct
+`jarvisd` first and then a fresh, immediate-only, correlated iPhone relay. Siri
+writes are never queued for execution after a spoken timeout.
+
+All four archived products report `0.2.0 (20)`, pass deep signature, hierarchy,
+entitlement, and synchronized-version audits, and contain exactly the two
+dynamic shortcuts in host App Intent metadata. Automated verification passes
+with 28 JARVISKit tests/3 live skips, 10 AppState tests, warning-free iOS and
+watchOS simulator builds, and repository smoke `PASS=105 WARN=0 FAIL=0`. The
+exact parent IPA and archived Watch product are
+installed on the two allowlisted devices; both inventories report build 20 and
+all four host/widget processes were active after launch. Installation and
+read-only launch observation emitted zero mutation POSTs. Per Dylan's request,
+no Siri phrase or plug write was physically exercised; owner validation remains
+pending.
 
 ### Build-19 automatic host refresh
 
@@ -479,6 +520,21 @@ and Retry now appears only after an automatic failure. The Watch cannot join the
 iPhone's Tailscale client directly, so away-from-home operation relies on the
 iPhone relay. Inventory, installed flags, reachability, state delivery, and
 command correlation are separate assertions.
+
+### Siri and Shortcuts
+
+The discoverable host surface is deliberately plug-only:
+
+- Turn On JARVIS Plug.
+- Turn Off JARVIS Plug.
+
+The plug parameter is a dynamic `AppEntity` sourced from current daemon state,
+not the widget's fixed configuration enum. Cached state may help resolve a
+spoken name, but only fresh direct or relayed state may authorize a write. The
+system is notified when identifiers are added, removed, or renamed. Matching is
+normalized but not fuzzy; ambiguity is handed back to Siri instead of guessing.
+The widget-only raw intent remains non-discoverable. No purifier, service,
+scheduler, status, launcher, or general JARVIS shortcut is published.
 
 ### Accessibility and presentation
 
@@ -1010,6 +1066,7 @@ All commits remain local unless Dylan separately requests a push.
 | Build 17 | Adds exact Watch-scale full-colour and accented launcher assets, rendering-mode selection, explicit circular geometry, and a fresh widget kind; the physical three-slot Smart Stack logo passed. |
 | Build 18 | Removes the unused iPhone Events tab, view, deep-link route, UI state, and five-second polling while retaining bounded backend event audit APIs. |
 | Build 19 | Gives both host apps a shared immediate-then-15-second foreground cadence, lifecycle cancellation, coalesced Watch refresh/relay fallback, passive freshness, and failure-only retry. |
+| Build 20 | Adds exactly two dynamic plug-only Siri shortcuts, fresh-state validation, confirmed desired-state results, duplicate suppression, and immediate-only correlated Watch relay fallback. |
 
 Notable local commits include dashboard retirement (`590f937`), daemon hardening
 (`4e47501`), Apple reliability/packaging (`042fdd4`), deployment operations

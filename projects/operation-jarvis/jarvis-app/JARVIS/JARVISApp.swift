@@ -4,6 +4,10 @@ struct JARVISApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var app = AppState()
 
+    init() {
+        JARVISAppShortcuts.updateAppShortcutParameters()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootTabView()

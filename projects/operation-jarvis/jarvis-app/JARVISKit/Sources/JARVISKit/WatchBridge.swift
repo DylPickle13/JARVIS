@@ -22,7 +22,7 @@ public struct WatchMessage: Codable, Equatable, Sendable {
 }
 
 public protocol WatchBridgeDelegate: AnyObject {
-    func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge)
+    func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge, requestID: String)
     func watchBridgeDidReceiveState(_ bridge: WatchBridge, json: Data)
     func watchBridgeDidReceiveEndpoint(_ bridge: WatchBridge, endpoint: String)
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String)
@@ -31,10 +31,27 @@ public protocol WatchBridgeDelegate: AnyObject {
 }
 
 public extension WatchBridgeDelegate {
+    func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge, requestID: String) {}
     func watchBridgeDidReceiveEndpoint(_ bridge: WatchBridge, endpoint: String) {}
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String) {}
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult) {}
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError) {}
+}
+
+public enum WatchRelayFailure: LocalizedError, Equatable, Sendable {
+    case unavailable
+    case timedOut
+    case cancelled
+    case rejected(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unavailable: return "The iPhone relay is unavailable."
+        case .timedOut: return "The iPhone relay timed out."
+        case .cancelled: return "The iPhone relay was cancelled."
+        case .rejected(let message): return message
+        }
+    }
 }
 
 #if canImport(WatchConnectivity)
@@ -48,6 +65,8 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     private var _isWatchReachable = false
     private var _isPhoneReachable = false
     private var _isActivationNeeded = false
+    private var pendingStateRequests: [String: CheckedContinuation<Result<Data, WatchRelayFailure>, Never>] = [:]
+    private var pendingCommandRequests: [String: CheckedContinuation<Result<CommandResult, WatchRelayFailure>, Never>] = [:]
 
     public var isWatchReachable: Bool {
         lock.lock(); defer { lock.unlock() }
@@ -106,17 +125,86 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         send(WatchMessage(type: "stateRequest"))
     }
 
-    public func sendState(json: Data) {
-        send(WatchMessage(type: "state", payload: json))
+    public func sendState(json: Data, requestID: String = UUID().uuidString) {
+        send(WatchMessage(type: "state", requestID: requestID, payload: json))
     }
 
     @discardableResult
-    public func sendPlugCommand(name: String, isOn: Bool, requestID: String = UUID().uuidString) -> Bool {
+    public func sendPlugCommand(
+        name: String,
+        isOn: Bool,
+        requestID: String = UUID().uuidString,
+        queueIfUnreachable: Bool = true
+    ) -> Bool {
         let payload = try? JSONEncoder().encode(PlugIntent(name: name, isOn: isOn))
         return send(
             WatchMessage(type: "plugCommand", requestID: requestID, payload: payload),
-            queueIfUnreachable: true
+            queueIfUnreachable: queueIfUnreachable
         )
+    }
+
+    /// A correlated, immediate-only request used by Siri. It never queues a
+    /// command for later execution after the spoken interaction has failed.
+    public func requestPlugCommand(
+        name: String,
+        isOn: Bool,
+        timeout: Duration = .seconds(30)
+    ) async -> Result<CommandResult, WatchRelayFailure> {
+        let requestID = UUID().uuidString
+        return await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                pendingCommandRequests[requestID] = continuation
+                lock.unlock()
+                guard !Task.isCancelled else {
+                    completeCommandRequest(requestID, with: .failure(.cancelled))
+                    return
+                }
+                guard sendPlugCommand(
+                    name: name,
+                    isOn: isOn,
+                    requestID: requestID,
+                    queueIfUnreachable: false
+                ) else {
+                    completeCommandRequest(requestID, with: .failure(.unavailable))
+                    return
+                }
+                Task { [weak self] in
+                    try? await Task.sleep(for: timeout)
+                    self?.completeCommandRequest(requestID, with: .failure(.timedOut))
+                }
+            }
+        }, onCancel: { [weak self] in
+            self?.completeCommandRequest(requestID, with: .failure(.cancelled))
+        })
+    }
+
+    /// Fetches a fresh snapshot through the phone with request correlation.
+    /// Ordinary foreground refreshes may continue using fire-and-forget state
+    /// requests and application context.
+    public func requestStateData(timeout: Duration = .seconds(15)) async -> Result<Data, WatchRelayFailure> {
+        let requestID = UUID().uuidString
+        return await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                pendingStateRequests[requestID] = continuation
+                lock.unlock()
+                guard !Task.isCancelled else {
+                    completeStateRequest(requestID, with: .failure(.cancelled))
+                    return
+                }
+                guard send(WatchMessage(type: "stateRequest", requestID: requestID)) else {
+                    completeStateRequest(requestID, with: .failure(.unavailable))
+                    return
+                }
+                Task { [weak self] in
+                    try? await Task.sleep(for: timeout)
+                    self?.completeStateRequest(requestID, with: .failure(.timedOut))
+                }
+            }
+        }, onCancel: { [weak self] in
+            self?.completeStateRequest(requestID, with: .failure(.cancelled))
+        })
     }
 
     @discardableResult
@@ -184,6 +272,26 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
 
     // MARK: - Receive
 
+    private func completeStateRequest(
+        _ requestID: String,
+        with result: Result<Data, WatchRelayFailure>
+    ) {
+        lock.lock()
+        let continuation = pendingStateRequests.removeValue(forKey: requestID)
+        lock.unlock()
+        continuation?.resume(returning: result)
+    }
+
+    private func completeCommandRequest(
+        _ requestID: String,
+        with result: Result<CommandResult, WatchRelayFailure>
+    ) {
+        lock.lock()
+        let continuation = pendingCommandRequests.removeValue(forKey: requestID)
+        lock.unlock()
+        continuation?.resume(returning: result)
+    }
+
     private func updateReachability(_ session: WCSession) {
         lock.lock()
         #if os(iOS)
@@ -200,19 +308,40 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         let requestID = raw["requestID"] as? String ?? ""
         switch type {
         case "stateRequest":
-            delegate?.watchBridgeDidReceiveStateRequest(self)
+            delegate?.watchBridgeDidReceiveStateRequest(self, requestID: requestID)
         case "state":
             if let data = raw["payload"] as? Data {
-                delegate?.watchBridgeDidReceiveState(self, json: data)
+                lock.lock()
+                let hasPendingRequest = pendingStateRequests[requestID] != nil
+                lock.unlock()
+                if hasPendingRequest {
+                    completeStateRequest(requestID, with: .success(data))
+                } else {
+                    delegate?.watchBridgeDidReceiveState(self, json: data)
+                }
             }
         case "commandResult":
             guard let data = raw["payload"] as? Data,
                   let result = try? JSONDecoder().decode(CommandResult.self, from: data) else { return }
-            delegate?.watchBridgeDidReceiveCommandResult(self, requestID: requestID, result: result)
+            lock.lock()
+            let hasPendingRequest = pendingCommandRequests[requestID] != nil
+            lock.unlock()
+            if hasPendingRequest {
+                completeCommandRequest(requestID, with: .success(result))
+            } else {
+                delegate?.watchBridgeDidReceiveCommandResult(self, requestID: requestID, result: result)
+            }
         case "commandError":
             guard let data = raw["payload"] as? Data,
                   let error = try? JSONDecoder().decode(WatchCommandError.self, from: data) else { return }
-            delegate?.watchBridgeDidReceiveCommandError(self, requestID: requestID, error: error)
+            lock.lock()
+            let hasPendingRequest = pendingCommandRequests[requestID] != nil
+            lock.unlock()
+            if hasPendingRequest {
+                completeCommandRequest(requestID, with: .failure(.rejected(error.message)))
+            } else {
+                delegate?.watchBridgeDidReceiveCommandError(self, requestID: requestID, error: error)
+            }
         case "plugCommand":
             guard let data = raw["payload"] as? Data,
                   let intent = try? JSONDecoder().decode(PlugIntent.self, from: data) else { return }
@@ -299,9 +428,22 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     public private(set) var isActivationNeeded = true
     public func start() {}
     public func requestState() {}
-    public func sendState(json: Data) {}
+    public func sendState(json: Data, requestID: String = UUID().uuidString) {}
     @discardableResult
-    public func sendPlugCommand(name: String, isOn: Bool, requestID: String = UUID().uuidString) -> Bool { false }
+    public func sendPlugCommand(
+        name: String,
+        isOn: Bool,
+        requestID: String = UUID().uuidString,
+        queueIfUnreachable: Bool = true
+    ) -> Bool { false }
+    public func requestPlugCommand(
+        name: String,
+        isOn: Bool,
+        timeout: Duration = .seconds(30)
+    ) async -> Result<CommandResult, WatchRelayFailure> { .failure(.unavailable) }
+    public func requestStateData(timeout: Duration = .seconds(15)) async -> Result<Data, WatchRelayFailure> {
+        .failure(.unavailable)
+    }
     @discardableResult
     public func sendCommandResult(requestID: String, result: CommandResult) -> Bool { false }
     @discardableResult
