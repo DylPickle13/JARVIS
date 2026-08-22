@@ -6,7 +6,7 @@ struct WatchConnectView: View {
     @StateObject private var model = WatchConnectModel()
 
     var body: some View {
-        WatchDashboardContent(model: model)
+        rootContent
             .task {
                 if scenePhase == .active { model.sceneDidBecomeActive() }
                 await model.runDebugRelaySmokeIfRequested()
@@ -21,6 +21,19 @@ struct WatchConnectView: View {
                     break
                 }
             }
+    }
+
+    @ViewBuilder
+    private var rootContent: some View {
+        #if DEBUG && targetEnvironment(simulator)
+        if CommandLine.arguments.contains("-jarvisOpenWatchTerminal") {
+            NavigationStack { WatchTerminalView(controller: model.terminal) }
+        } else {
+            NavigationStack { WatchDashboardContent(model: model) }
+        }
+        #else
+        NavigationStack { WatchDashboardContent(model: model) }
+        #endif
     }
 }
 
@@ -52,6 +65,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     let store = EndpointStore(defaults: JARVISSharedStore.defaults)
     let client = JarvisClient()
     let snapshotStore = SnapshotStore()
+    let terminal = WatchTerminalController()
 
     init(activeRefreshInterval: Duration = JARVISRefreshPolicy.activeInterval) {
         self.activeRefreshInterval = activeRefreshInterval
@@ -110,6 +124,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     func sceneDidBecomeActive() {
         guard !appIsActive else { return }
         appIsActive = true
+        terminal.sceneDidBecomeActive()
         startRefreshLoop()
     }
 
@@ -121,6 +136,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         refreshTask?.cancel()
         refreshTask = nil
         isRefreshing = false
+        terminal.sceneWillResignActive()
     }
 
     func connect() async { await refresh() }
@@ -312,6 +328,15 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             guard let self, !self.forceEndpointForTesting,
                   let url = URL(string: endpoint), url.scheme != nil, url.host != nil else { return }
             self.store.endpointURLString = url.absoluteString
+        }
+    }
+
+    nonisolated func watchBridgeDidReceiveTerminalConfiguration(
+        _ bridge: WatchBridge,
+        configuration: WatchTerminalConfiguration
+    ) {
+        Task { @MainActor [weak self] in
+            self?.terminal.apply(configuration: configuration)
         }
     }
 

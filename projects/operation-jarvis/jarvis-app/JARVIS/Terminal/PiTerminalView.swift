@@ -209,12 +209,11 @@ private struct PiTerminalKeyBar: View {
     @ObservedObject var controller: PiTerminalController
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 0) {
             HStack(spacing: 6) {
                 key("Esc", label: "Escape", bytes: [0x1b])
                 Button {
                     controller.toggleControlLatch()
-                    controller.focusTerminal()
                 } label: {
                     Text("Ctrl")
                         .foregroundStyle(controller.isControlLatched ? .black : .primary)
@@ -224,39 +223,28 @@ private struct PiTerminalKeyBar: View {
                 }
                 .accessibilityLabel("Control modifier")
                 key("Tab", label: "Tab", bytes: [0x09])
-                key("⌃C", label: "Control C, abort", bytes: [0x03])
+                key("/", label: "Slash", bytes: PiTerminalKeyDeck.slashBytes)
                 key("↑", label: "Up arrow", bytes: [0x1b, 0x5b, 0x41])
                 key("↓", label: "Down arrow", bytes: [0x1b, 0x5b, 0x42])
-                key("←", label: "Left arrow", bytes: [0x1b, 0x5b, 0x44])
-                key("→", label: "Right arrow", bytes: [0x1b, 0x5b, 0x43])
-                key("⇧↵", label: "Shift Return, insert newline", bytes: [0x1b, 0x5b, 0x31, 0x33, 0x3b, 0x32, 0x75])
-                key("⌥↵", label: "Option Return, queue follow up", bytes: [0x1b, 0x5b, 0x31, 0x33, 0x3b, 0x33, 0x75])
-                Menu {
-                    shortcut("Model selector", control: 0x0c)
-                    shortcut("Cycle model", control: 0x10)
-                    shortcut("Tool output", control: 0x0f)
-                    shortcut("Thinking output", control: 0x14)
-                    shortcut("Copy response", control: 0x18)
-                } label: {
-                    keyLabel("Pi")
-                }
-                .accessibilityLabel("Pi keyboard shortcuts")
-                Button {
-                    controller.pasteIntoTerminal()
-                    controller.focusTerminal()
-                } label: {
-                    keyLabel("Paste")
-                }
-                .accessibilityLabel("Paste")
-                Button {
-                    controller.hideTerminalKeyboard()
-                } label: {
-                    keyLabel("⌨︎")
-                }
-                .accessibilityLabel("Hide keyboard")
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Divider()
+                .frame(height: 30)
+
+            Button {
+                controller.toggleTerminalKeyboard()
+            } label: {
+                Image(systemName: controller.isTerminalFocused ? "keyboard.chevron.compact.down" : "keyboard")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(controller.isTerminalFocused ? Color.cyan : Color.primary)
+                    .frame(width: 52, height: 46)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(controller.isTerminalFocused ? "Hide keyboard" : "Show keyboard")
+            .accessibilityValue(controller.isTerminalFocused ? "Shown" : "Hidden")
         }
         .frame(height: 46)
         .background(.ultraThinMaterial)
@@ -265,7 +253,6 @@ private struct PiTerminalKeyBar: View {
     private func key(_ title: String, label: String, bytes: [UInt8]) -> some View {
         Button {
             controller.sendTerminalBytes(bytes)
-            controller.focusTerminal()
         } label: {
             keyLabel(title)
         }
@@ -281,12 +268,6 @@ private struct PiTerminalKeyBar: View {
             .background(Color.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private func shortcut(_ title: String, control: UInt8) -> some View {
-        Button(title) {
-            controller.sendTerminalBytes([control])
-            controller.focusTerminal()
-        }
-    }
 }
 
 private struct PiTerminalContainer: UIViewRepresentable {
@@ -299,7 +280,6 @@ private struct PiTerminalContainer: UIViewRepresentable {
     func makeUIView(context: Context) -> PiTerminalHostView {
         let view = PiTerminalHostView(frame: .zero)
         context.coordinator.controller.attach(view)
-        DispatchQueue.main.async { _ = view.becomeFirstResponder() }
         return view
     }
 

@@ -1,6 +1,6 @@
 # scripts/
 
-Build and deployment helpers. Build 24's SwiftTerm renderer requires Xcode's
+Build and deployment helpers. The iPhone SwiftTerm renderer requires Xcode's
 optional Metal component; install it once with
 `xcodebuild -downloadComponent MetalToolchain` if needed.
 
@@ -16,6 +16,17 @@ optional Metal component; install it once with
 - `patch-watch-embedding.sh` — keeps XcodeGen's `Embed Watch Content` phase at
   `JARVIS.app/Watch/` (`dstSubfolderSpec = 16`), the Xcode 26 layout accepted by
   the corrected iPhone/Watch target relationship.
+- `jarvis-mobile-terminal.sh` — macOS SSH bootstrap for the phone terminal. It
+  supplies Homebrew's PATH, creates the exact `jarvis-ios` tmux session while
+  detached when absent, tolerates concurrent reconnect creation, launches plain
+  `pi` without a display-name override, and then attaches the phone PTY. Its
+  `--ensure-only` mode lets the Watch bridge recreate the same session without
+  attaching another tmux client or changing terminal dimensions.
+- `install-jarvis-terminald.sh` — installs and starts the separate authenticated
+  HTTPS Watch terminal bridge on TCP `8792`.
+- `jarvis-terminal-provisioning.sh` — prints the private, certificate-pinned
+  setup code that is pasted once into iPhone Settings and transferred to the
+  paired Watch through WatchConnectivity. Never commit or post its output.
 - `verify-jarvis-app.sh` — runs project-contained daemon and package tests,
   plist/shell checks, opaque icon validation, combined iOS/embedded-Watch
   simulator verification, and the standalone watchOS simulator build. iOS and

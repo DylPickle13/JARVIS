@@ -23,6 +23,7 @@ struct WatchDashboardContent: View {
                     overviewPage
                     plugsPage
                     systemPage
+                    jarvisPage
                 }
                 .tabViewStyle(.verticalPage)
             }
@@ -273,6 +274,44 @@ struct WatchDashboardContent: View {
         .disabled(model.isRefreshing)
     }
 
+    // MARK: - JARVIS terminal
+
+    private var jarvisPage: some View {
+        VStack(spacing: 9) {
+            pageHeader("JARVIS", symbol: "terminal.fill", trailing: model.terminal.status.label)
+            NavigationLink {
+                WatchTerminalView(controller: model.terminal)
+            } label: {
+                VStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(WatchJarvisStyle.cyan.opacity(0.15))
+                            .frame(width: 58, height: 58)
+                        Image(systemName: "terminal.fill")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(WatchJarvisStyle.cyan)
+                    }
+                    Text("Open JARVIS")
+                        .font(.headline.weight(.bold))
+                    Text("Same persistent Pi session")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 142)
+                .background(WatchJarvisStyle.heroFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(WatchJarvisStyle.cyan.opacity(0.26), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open the JARVIS terminal")
+            .accessibilityValue(model.terminal.status.label)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+    }
+
     // MARK: - Accessibility layout
 
     private var accessibilityLayout: some View {
@@ -287,6 +326,12 @@ struct WatchDashboardContent: View {
                 pageHeader("System", symbol: "waveform.path.ecg", trailing: sourceLabel)
                 purifierPanel
                 sourcePanel
+                NavigationLink {
+                    WatchTerminalView(controller: model.terminal)
+                } label: {
+                    Label("Open JARVIS terminal", systemImage: "terminal.fill")
+                        .frame(maxWidth: .infinity, minHeight: 38)
+                }
                 if model.shouldShowRetry {
                     retryButton
                 }

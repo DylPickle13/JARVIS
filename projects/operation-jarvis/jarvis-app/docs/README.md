@@ -6,9 +6,9 @@
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current candidate:** `0.3.0 (24)`
+**Current candidate:** `0.3.0 (32)`
 
-**Physical installation:** iPhone and Apple Watch remain `0.2.0 (23)`; build 24 is archived and awaiting Dylan's iPhone connection
+**Physical installation:** iPhone `0.3.0 (32)` and Apple Watch `0.3.0 (32)` on Dylan's allowlisted devices
 
 This is the single architecture, security, packaging, deployment, validation,
 and recovery reference for the JARVIS iPhone app, Apple Watch app, widgets, and
@@ -32,7 +32,7 @@ never deploy to a device outside Dylan's allowlist.
 - The deprecated Node/PWA dashboard, LaunchAgent, APIs, PWA, and TCP `8787`
   listener are fully removed.
 - Weather and Open-Meteo are removed from the daemon and native contract.
-- iPhone navigation is Home, Pi, and Settings. Build 18's Events removal and
+- iPhone navigation is Home, JARVIS, and Settings. Build 18's Events removal and
   backend audit retention remain unchanged.
 - Home order is Pi sessions, plugs, air purifier, then services/scheduled jobs
   and protected `jarvisd` information.
@@ -71,16 +71,100 @@ never deploy to a device outside Dylan's allowlist.
   “with JARVIS”, “Use JARVIS”, and “Tell JARVIS” advertised alternatives.
 - Build 24 adds the iPhone-only SSH-backed Pi terminal with persistent tmux
   reattachment while leaving Watch, widgets, and hardware APIs unchanged.
+- Build 25 replaces the first-run inline tmux command with a checked-in detached
+  create-then-attach bootstrap. It handles `/quit`, simultaneous reconnects,
+  and macOS SSH's minimal PATH so Homebrew Node can launch Pi reliably.
+- Build 26 starts Pi without covering the tabs, pins an always-visible keyboard
+  toggle, adds tap-to-open and down-swipe dismissal, and keeps key-deck
+  shortcuts from reopening the keyboard.
+- Build 27 removes Pi's explicit `JARVIS iPhone` display-name override. The
+  hidden tmux session remains persistent, but every new process launches as
+  plain `pi`.
+- Build 28 fixes upgraded installations whose persisted legacy zoom masked the
+  larger fresh default. It migrates that value once to 18 points, records the
+  zoom schema, and preserves every later pinch change.
+- Build 29 disables touch text-selection gestures and maps vertical drags to SGR
+  wheel events so Pi's fullscreen, application-owned transcript scrolls under
+  the finger. The dedicated Control-C key becomes `/`; latched Ctrl and hardware
+  keyboards still provide Ctrl-C.
+- Build 30 removes every key-deck action after Down while retaining the fixed
+  keyboard toggle. It raises the default-zoom wheel threshold from 18 to 45
+  points, reducing touch-scroll speed by 60% for finer movement.
+- Build 31 retains that speed while pacing queued wheel steps one per 60 Hz
+  display frame, eliminating multi-step redraw bursts and cancelling pending
+  input on disconnect or mouse-mode exit. It relabels the terminal tab JARVIS.
+- After build-31's final simulator-backed validation, all local iPhone/Watch
+  simulator devices, both iOS/watchOS runtimes, derived simulator products, and
+  CoreSimulator caches were removed. Approximately 30.4 GB was returned to the
+  filesystem. Build-32 validation temporarily restored the two runtimes and now
+  keeps only an iPhone 11 and paired Apple Watch Series 11 (46mm) simulator.
+- Build 32 adds the Watch JARVIS terminal without putting SSH, SwiftTerm, or NIO
+  in the Watch product. A separate `jarvis-terminald` HTTPS listener on `8792`
+  captures the existing `jarvis-ios` tmux pane and accepts bounded, deduplicated
+  byte input. The Watch pins its certificate, requires a private bearer token,
+  stores that token in target-local Keychain, and receives provisioning from the
+  iPhone through WatchConnectivity. Wrist-down/background cancellation leaves
+  tmux and Pi running.
 
-### Build-24 native Pi terminal
+### Build-32 Watch JARVIS terminal
 
 ```text
-Archive: /tmp/JARVIS-build24-pi-terminal.xcarchive
-IPA:     /tmp/JARVIS-build24-pi-terminal-export/JARVIS.ipa
-SHA-256: a91d698ca710d985f2c82ea3469b14489e33ab251bc21083b12a1c95c58e47cf
+Archive: /tmp/JARVIS-build32-watch-terminal.xcarchive
+IPA:     /tmp/JARVIS-build32-watch-terminal-export/JARVIS.ipa
+SHA-256: 26037a06fdb67f751cbbcb7c10e0d3389dbe5e32e901cffc86d53ae4c521f477
 ```
 
-The iPhone shell now contains Home, Pi, and Settings. Pi embeds SwiftTerm
+The Watch dashboard now has a fourth JARVIS page that opens a full-screen,
+monospaced view of the same `jarvis-mobile` / `jarvis-ios` pane used by the
+iPhone. It does not open SSH: watchOS blocks ordinary low-level TCP networking.
+Instead, foreground `URLSession` long polling retrieves plain tmux frames over
+pinned HTTPS. The Digital Crown and vertical touch drags emit the same SGR wheel
+input used by the phone; Watch keyboard, Scribble, dictation, or Continuity
+Keyboard sends bounded text with an explicit Return. The compact deck contains
+Esc, Ctrl, Tab, slash, Up, and Down; slash remains exactly one `0x2f` byte.
+
+`jarvis-terminald` is isolated from `jarvisd` and has no hardware, purifier,
+service, scheduler, or command-control routes. It permits only configured
+LAN/Tailscale CIDRs, uses a generated 256-bit token and self-signed certificate
+stored under `~/Library/Application Support/JARVIS/terminald`, caps input at
+4096 bytes, suppresses duplicate request IDs, avoids shell interpolation, and
+never queues disconnected input. `scripts/jarvis-mobile-terminal.sh --ensure-only`
+recreates Pi after `/quit` without attaching a second tmux client
+or changing the iPhone's pane dimensions.
+
+Install the bridge with `scripts/install-jarvis-terminald.sh`. Run
+`scripts/jarvis-terminal-provisioning.sh`, privately paste its output into the
+Apple Watch JARVIS section in iPhone Settings, and tap **Save and send to Apple
+Watch**. Never commit, log, or post that setup code.
+
+Automated validation passes 30 JARVISKit tests with three expected live skips,
+six terminal-daemon tests, 15 iPhone tests on the exact iPhone 11 simulator,
+warning-free iOS/watchOS builds, and a live Series 11 simulator HTTPS check. The
+signed archive and exported IPA contain four synchronized build-32 products and
+pass signature, hierarchy, entitlement, Release seed-removal, and Watch
+dependency-isolation audits.
+
+The exact build-32 parent IPA and archived Watch product are installed on the
+two allowlisted physical devices. Physical terminal validation observed a
+certificate-pinned, bearer-authenticated HTTPS frame stream for 15 consecutive
+samples, with payload sizes matching the live 51×44 `jarvis-ios` frame. The
+Watch and an attached iPhone simultaneously used the single `%0` pane and one
+plain Pi process. Restarting `jarvis-terminald` preserved its credentials and
+the tmux pane PID, and the Watch reconnected automatically for another 15 of 15
+samples. Canceled long polls are now closed without traceback noise. No
+production terminal input or hardware command was issued; owner acceptance of
+physical typing/dictation, key-deck bytes, Crown/touch scrolling, `/quit`, and
+wrist-down recovery remains open.
+
+### Build-31 native Pi terminal
+
+```text
+Archive: /tmp/JARVIS-build31-smooth-scroll-jarvis-tab.xcarchive
+IPA:     /tmp/JARVIS-build31-smooth-scroll-jarvis-tab-export/JARVIS.ipa
+SHA-256: 9680cf6a22716d0795062cf9ea3077b18975167d00d90f87b22bcd001246b467
+```
+
+The iPhone shell now contains Home, JARVIS, and Settings. The JARVIS tab embeds SwiftTerm
 `1.20.0` and Apple SwiftNIO SSH `0.15.0` in only the phone host target. It
 connects to TCP 22 using the configured username/password, keeps the password
 in target-local Keychain, presents the first SSH host-key fingerprint for trust,
@@ -89,38 +173,63 @@ the current LAN/Tailscale `jarvisd` endpoint. The direct terminal path is
 separate from `jarvisd`; normal hardware/status/service traffic still uses only
 the daemon.
 
-After PTY allocation, the client executes an isolated tmux command that creates
-or attaches `jarvis-ios` under the `jarvis-mobile` socket and runs Pi from
-`/Users/dylanrapanan/JARVIS`. The checked-in tmux profile enables true colour,
-CSI-u extended keys, mouse/focus events, a large history, latest-client sizing,
-and no status bar. Leaving Pi or backgrounding closes only SSH; tmux and Pi
-continue on the Mac. Returning reconnects without replaying disconnected input.
-Home polling stops while Pi is selected.
+After PTY allocation, the client executes
+`scripts/jarvis-mobile-terminal.sh`. The bootstrap exports a deterministic
+Homebrew-aware PATH, checks for the exact `jarvis-ios` session on the isolated
+`jarvis-mobile` socket, creates it detached when absent, handles concurrent
+creation races, launches plain `pi` without assigning a special Pi display
+name, and then attaches the phone PTY. This order lets the phone recreate Pi
+after `/quit` instead of losing the session between creation and attachment.
+The checked-in tmux profile enables true colour, CSI-u extended
+keys, mouse/focus events, a large history, latest-client sizing, and no status
+bar. Leaving JARVIS or backgrounding closes only SSH; tmux and Pi continue on
+the Mac. Returning reconnects without replaying disconnected input. Home
+polling stops while JARVIS is selected.
 
-The authentic terminal occupies the tab above a horizontally scrollable key
-deck with Escape, latched Ctrl, Tab, Ctrl-C, arrows, Shift-Return,
-Option-Return, Pi shortcuts, paste, and keyboard dismissal. Hardware keyboard
-input is passed through by SwiftTerm. Pinch changes the persistent monospaced
-font size. iPhone portrait and both landscape orientations are enabled.
+The authentic terminal occupies the tab above a compact key deck containing only
+Escape, latched Ctrl, Tab, slash, Up, and Down. The fixed keyboard toggle remains
+at the trailing edge. Ctrl-C and removed navigation shortcuts remain available
+through the software or hardware keyboard. Build 28 migrates legacy saved zoom once to an
+18-point starting size; subsequent pinch zoom remains persisted and clamped to
+9–20 points. A fixed trailing control remains visible beside the scrolling keys and toggles
+terminal focus/the software keyboard. Pi connects keyboard-free, tapping the
+terminal opens input, a downward terminal swipe dismisses it, shortcut keys do
+not reopen it, and leaving JARVIS resigns focus. Hardware keyboard input is passed
+through by SwiftTerm. iPhone portrait and both landscape orientations are
+enabled.
 
-A disposable password-authenticated SSH fixture validated PTY transport,
+A disposable password-authenticated SSH fixture validates PTY transport,
 24-bit ANSI rendering, initial host trust, reconnect after app termination, and
-changed-host-key rejection in the iPhone 11 simulator. A separate host preflight
-launched Pi `0.84.2 --no-session` inside the exact isolated tmux profile,
-captured its true-colour `~/JARVIS` TUI, and removed the test server/session.
-The production `jarvis-ios` session has not been started. Homebrew tmux `3.7c`
-is installed, its profile parses, macOS Remote Login is listening on TCP 22, and
-no hardware/service command was run.
+changed-host-key rejection in the iPhone 11 simulator. Build-26 simulator
+interaction validates keyboard-free launch, the fixed toggle, software keyboard
+open/hide/reopen, downward-swipe dismissal, shortcut behavior, portrait, and
+landscape. Build-28 unit and build gates validate the one-time 18-point zoom
+migration, later saved-zoom preservation, and rejection of any bootstrap
+`--name` override. Build-29 tests additionally reject SwiftTerm's touch mouse-
+drag recognizer, disable long/multi-tap selection, verify exact SGR wheel-up and
+wheel-down sequences, and verify the slash key emits only `0x2f`. Build-30 gates
+require the deck to end at Down and verify a 45-point wheel threshold at the
+18-point default zoom. Build-31 gates verify 60 Hz display-linked delivery,
+bounded pending steps, reversal cancellation, and the JARVIS tab label. A
+disposable tmux PTY confirms those SGR wheel events
+reach the Pi pane. Minimal-PATH host
+tests reproduce the original SSH-only launch failure and confirm the corrected bootstrap leaves
+Pi alive as `node`. Fresh creation, attach/detach persistence, existing-session
+reattachment, and `/quit` recreation pass. Homebrew tmux `3.7c` is installed,
+its profile parses, macOS Remote Login is listening on TCP 22, and no
+hardware/service command was run.
 
-Verification passes with 28 JARVISKit tests/3 live skips, 12 AppState tests,
+Verification passes with 28 JARVISKit tests/3 live skips, 15 AppState tests,
 warning-free iOS/watchOS simulator builds, target-isolation checks, and all
-existing Siri/widget metadata gates. The Release archive and IPA contain four
-synchronized `0.3.0 (24)` products, pass deep signatures, Personal Team,
-hierarchy, entitlement, App Intent, and Release-only seed-removal audits. The
-archive log has no compiler warnings or errors. Physical iPhone password,
-first-host trust, live Pi interaction, persistence, keyboard, landscape, and
-LAN/Tailscale testing are the remaining gates; Watch build 23 can remain
-installed because build 24 changes no Watch behaviour.
+existing Siri/widget metadata gates. Repository smoke reports `PASS=105 WARN=0
+FAIL=0`. The Release archive and IPA contain four synchronized `0.3.0 (31)`
+products and pass deep signatures, Personal Team, hierarchy, entitlement, App
+Intent, Release-only seed-removal, terminal isolation, and bootstrap audits.
+The archive log has no compiler warnings or errors. Build 30 is physically
+installed. Physical build-31 smooth-scroll and JARVIS-label review plus `/quit`
+recreation, background/foreground, force-quit, and LAN/Tailscale validation
+remain; Watch build 23 can remain installed because builds 24–31 change no
+Watch behaviour.
 
 ### Build-23 “Hey JARVIS” Siri command form
 

@@ -44,6 +44,7 @@ private struct WidgetReloadValue: Equatable {
 public final class AppState: ObservableObject {
     public let store: EndpointStore
     public let client: any JarvisAPI
+    let watchTerminalProvisioning: WatchTerminalProvisioningSettings
 
     @Published public var connectionState: ConnectionState = .idle
     @Published public var errorMessage: String?
@@ -91,6 +92,7 @@ public final class AppState: ObservableObject {
         let resolvedStore = store ?? EndpointStore(defaults: JARVISSharedStore.defaults)
         self.store = resolvedStore
         self.client = client
+        self.watchTerminalProvisioning = WatchTerminalProvisioningSettings()
         self.activeRefreshInterval = activeRefreshInterval
         self.endpointDraft = resolvedStore.endpointURLString ?? ""
         seedFromLaunchArgumentsIfPresent()
@@ -123,6 +125,9 @@ public final class AppState: ObservableObject {
         if let snapshot = lastState, let data = try? JSONEncoder().encode(snapshot) {
             WatchBridge.shared.sendState(json: data)
             WatchBridge.shared.updateApplicationContext(stateJSON: data, endpoint: currentEndpoint?.absoluteString)
+        }
+        if let terminalConfiguration = watchTerminalProvisioning.configuration {
+            WatchBridge.shared.publishTerminalConfiguration(terminalConfiguration)
         }
     }
 

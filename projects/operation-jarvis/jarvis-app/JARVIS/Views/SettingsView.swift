@@ -15,6 +15,8 @@ struct SettingsView: View {
     @State private var sshUsername = ""
     @State private var sshPassword = ""
     @State private var sshSaved = false
+    @State private var watchTerminalSetupCode = ""
+    @State private var watchTerminalSent = false
 
     var body: some View {
         NavigationStack {
@@ -26,6 +28,7 @@ struct SettingsView: View {
                 }
                 connectionSection
                 piTerminalSection
+                watchTerminalSection
                 statusSection
                 if app.connectionState == .failed, let error = app.errorMessage {
                     errorSection(error)
@@ -151,7 +154,7 @@ struct SettingsView: View {
         } header: {
             Text("Pi Terminal")
         } footer: {
-            Text("Leave the host blank to use JARVIS’s current LAN or Tailscale address. Opening the Pi tab connects over SSH and attaches to the persistent jarvis-ios tmux session.")
+            Text("Leave the host blank to use JARVIS’s current LAN or Tailscale address. Opening the JARVIS tab connects over SSH and attaches to the persistent jarvis-ios tmux session.")
         }
     }
 
@@ -161,6 +164,48 @@ struct SettingsView: View {
         sshUsername = piTerminal.settings.username
         sshPassword = piTerminal.settings.passwordForEditing()
         sshSaved = false
+        watchTerminalSent = false
+    }
+
+    // MARK: - Watch terminal
+
+    private var watchTerminalSection: some View {
+        Section {
+            SecureField("Watch terminal setup code", text: $watchTerminalSetupCode)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
+
+            Button {
+                guard app.watchTerminalProvisioning.save(provisioningCode: watchTerminalSetupCode),
+                      let configuration = app.watchTerminalProvisioning.configuration else {
+                    watchTerminalSent = false
+                    return
+                }
+                WatchBridge.shared.publishTerminalConfiguration(configuration)
+                watchTerminalSetupCode = ""
+                watchTerminalSent = true
+            } label: {
+                Label(
+                    watchTerminalSent ? "Sent to Apple Watch" : "Save and send to Apple Watch",
+                    systemImage: watchTerminalSent ? "checkmark.circle.fill" : "applewatch.radiowaves.left.and.right"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .disabled(watchTerminalSetupCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            if app.watchTerminalProvisioning.isProvisioned {
+                LabeledContent("Bridge", value: app.watchTerminalProvisioning.endpoint)
+                    .font(.caption)
+            }
+            if let error = app.watchTerminalProvisioning.errorMessage {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+        } header: {
+            Text("Apple Watch JARVIS")
+        } footer: {
+            Text("Paste the private setup code printed by scripts/jarvis-terminal-provisioning.sh. The private token is stored in Keychain and transferred only to your paired Watch.")
+        }
     }
 
     // MARK: - Status

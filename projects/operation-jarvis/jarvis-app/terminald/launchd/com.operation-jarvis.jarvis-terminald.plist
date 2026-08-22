@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.operation-jarvis.jarvis-terminald</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/terminald/jarvis_terminald.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/terminald</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>JARVIS_TERMINAL_HOST</key>
+    <string>0.0.0.0</string>
+    <key>JARVIS_TERMINAL_PORT</key>
+    <string>8792</string>
+    <key>JARVIS_TERMINAL_TRUSTED_CIDRS</key>
+    <string>127.0.0.0/8,192.168.0.0/16,100.64.0.0/10</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/terminald/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/terminald/logs/launchd.err.log</string>
+</dict>
+</plist>

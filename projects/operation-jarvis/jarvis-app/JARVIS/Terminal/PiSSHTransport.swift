@@ -55,6 +55,46 @@ final class PiPendingHostTrust: Identifiable, @unchecked Sendable {
     }
 }
 
+enum PiTerminalKeyDeck {
+    static let slashBytes: [UInt8] = [0x2f]
+}
+
+enum PiTerminalTouchScroll {
+    static let deliveryFramesPerSecond = 60
+    static let maximumPendingSteps = 8
+
+    static func pointsPerWheelStep(fontSize: CGFloat) -> CGFloat {
+        max(36, fontSize * 2.5)
+    }
+
+    static func pendingSteps(after current: Int, scrollingUp: Bool) -> Int {
+        let direction = scrollingUp ? 1 : -1
+        let alignedCurrent = current.signum() == direction ? current : 0
+        return min(max(alignedCurrent + direction, -maximumPendingSteps), maximumPendingSteps)
+    }
+
+    static func wheelBytes(scrollingUp: Bool, column: Int, row: Int) -> [UInt8] {
+        let button = scrollingUp ? 64 : 65
+        return Array("\u{1b}[<\(button);\(max(1, column));\(max(1, row))M".utf8)
+    }
+}
+
+enum PiTerminalPresentation {
+    static let fontSizeDefaultsKey = "jarvis.pi-terminal.font-size"
+    static let zoomSchemaDefaultsKey = "jarvis.pi-terminal.zoom-schema"
+    static let currentZoomSchema = 1
+    static let minimumFontSize: CGFloat = 9
+    static let defaultFontSize: CGFloat = 18
+    static let maximumFontSize: CGFloat = 20
+
+    static func resolvedFontSize(savedValue: Double, savedZoomSchema: Int) -> CGFloat {
+        guard savedZoomSchema >= currentZoomSchema, savedValue > 0 else {
+            return defaultFontSize
+        }
+        return min(max(CGFloat(savedValue), minimumFontSize), maximumFontSize)
+    }
+}
+
 private enum PiSSHError: LocalizedError {
     case invalidChannelType
     case hostKeyChanged
@@ -411,33 +451,56 @@ private final class PiSSHConnection: @unchecked Sendable {
     }
 }
 
-final class PiTerminalHostView: TerminalView, TerminalViewDelegate {
+final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRecognizerDelegate {
     var stateChanged: ((PiTerminalConnectionStatus) -> Void)?
     var hostTrustRequested: ((PiPendingHostTrust) -> Void)?
     var controlLatchChanged: ((Bool) -> Void)?
+    var keyboardFocusChanged: ((Bool) -> Void)?
 
     private var sshConnection: PiSSHConnection?
     private var connectionID = UUID()
     private var controlLatched = false {
         didSet { controlLatchChanged?(controlLatched) }
     }
-    private var pinchStartFontSize: CGFloat = 12
+    private var pinchStartFontSize = PiTerminalPresentation.defaultFontSize
+    private var touchScrollPan: UIPanGestureRecognizer!
+    private var keyboardDismissPan: UIPanGestureRecognizer!
+    private var remoteMouseModeEnabled = false
+    private var touchScrollRemainder: CGFloat = 0
+    private var pendingTouchScrollSteps = 0
+    private var pendingTouchScrollLocation = (column: 1, row: 1)
+    private var touchScrollDisplayLink: CADisplayLink?
+    var isRoutingTouchScrollToPi: Bool { remoteMouseModeEnabled }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         terminalDelegate = self
         nativeBackgroundColor = .black
         nativeForegroundColor = .white
-        let savedFontSize = UserDefaults.standard.double(forKey: "jarvis.pi-terminal.font-size")
-        let fontSize = savedFontSize > 0 ? min(max(savedFontSize, 9), 20) : 12
+        let defaults = UserDefaults.standard
+        let savedFontSize = defaults.double(forKey: PiTerminalPresentation.fontSizeDefaultsKey)
+        let savedZoomSchema = defaults.integer(forKey: PiTerminalPresentation.zoomSchemaDefaultsKey)
+        let fontSize = PiTerminalPresentation.resolvedFontSize(
+            savedValue: savedFontSize,
+            savedZoomSchema: savedZoomSchema
+        )
+        defaults.set(Double(fontSize), forKey: PiTerminalPresentation.fontSizeDefaultsKey)
+        defaults.set(PiTerminalPresentation.currentZoomSchema, forKey: PiTerminalPresentation.zoomSchemaDefaultsKey)
         font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
         pinchStartFontSize = fontSize
         optionAsMetaKey = true
-        allowMouseReporting = true
+        allowMouseReporting = false
         linkReporting = .implicit
         inputAccessoryView = nil
+        keyboardDismissMode = .interactive
+        prioritizeTouchScrolling()
 
         addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(handleFontPinch(_:))))
+        let dismissPan = UIPanGestureRecognizer(target: self, action: #selector(handleKeyboardDismissPan(_:)))
+        dismissPan.cancelsTouchesInView = false
+        dismissPan.delegate = self
+        keyboardDismissPan = dismissPan
+        addGestureRecognizer(dismissPan)
     }
 
     required init?(coder: NSCoder) {
@@ -445,7 +508,43 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate {
     }
 
     deinit {
+        stopTouchScrollDelivery(clearPending: true)
         sshConnection?.disconnect()
+    }
+
+    private func prioritizeTouchScrolling() {
+        alwaysBounceVertical = true
+        isDirectionalLockEnabled = true
+
+        // SwiftTerm installs long-press and multi-tap selection recognizers.
+        // The phone terminal reserves touch drags for Pi viewport scrolling;
+        // copy-response and paste remain available from the fixed key deck.
+        for recognizer in gestureRecognizers ?? [] {
+            if recognizer is UILongPressGestureRecognizer {
+                recognizer.isEnabled = false
+            } else if let tap = recognizer as? UITapGestureRecognizer,
+                      tap.numberOfTapsRequired > 1 {
+                tap.isEnabled = false
+            }
+        }
+
+        let scrollPan = UIPanGestureRecognizer(target: self, action: #selector(handleTouchScrollPan(_:)))
+        scrollPan.cancelsTouchesInView = false
+        scrollPan.delegate = self
+        touchScrollPan = scrollPan
+        addGestureRecognizer(scrollPan)
+        panGestureRecognizer.require(toFail: scrollPan)
+    }
+
+    override func mouseModeChanged(source: Terminal) {
+        // Pi owns its fullscreen transcript. Suppress SwiftTerm's button-drag
+        // recognizer (which selects text) and route vertical touch movement to
+        // SGR wheel events instead. Outside mouse mode, native scrollback wins.
+        remoteMouseModeEnabled = source.mouseMode != .off
+        if !remoteMouseModeEnabled {
+            stopTouchScrollDelivery(clearPending: true)
+            touchScrollRemainder = 0
+        }
     }
 
     func connect(configuration: PiTerminalConfiguration, trustedHostKey: String?) {
@@ -474,7 +573,6 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.connectionID == id else { return }
                     self.stateChanged?(.connected)
-                    _ = self.becomeFirstResponder()
                 }
             },
             onTrust: { [weak self] request in
@@ -503,17 +601,138 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate {
         sshConnection = nil
         connection?.disconnect()
         controlLatched = false
+        remoteMouseModeEnabled = false
+        touchScrollRemainder = 0
+        stopTouchScrollDelivery(clearPending: true)
     }
 
     @objc private func handleFontPinch(_ recognizer: UIPinchGestureRecognizer) {
         if recognizer.state == .began {
             pinchStartFontSize = font.pointSize
         }
-        let nextSize = min(max(pinchStartFontSize * recognizer.scale, 9), 20)
+        let nextSize = min(
+            max(pinchStartFontSize * recognizer.scale, PiTerminalPresentation.minimumFontSize),
+            PiTerminalPresentation.maximumFontSize
+        )
         font = .monospacedSystemFont(ofSize: nextSize, weight: .regular)
         if recognizer.state == .ended || recognizer.state == .cancelled {
-            UserDefaults.standard.set(Double(nextSize), forKey: "jarvis.pi-terminal.font-size")
+            UserDefaults.standard.set(Double(nextSize), forKey: PiTerminalPresentation.fontSizeDefaultsKey)
         }
+    }
+
+    @objc private func handleTouchScrollPan(_ recognizer: UIPanGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            touchScrollRemainder = 0
+        case .changed:
+            touchScrollRemainder += recognizer.translation(in: self).y
+            recognizer.setTranslation(.zero, in: self)
+
+            let pointsPerWheelStep = PiTerminalTouchScroll.pointsPerWheelStep(fontSize: font.pointSize)
+            let location = recognizer.location(in: self)
+            let terminal = getTerminal()
+            let column = min(
+                max(1, Int((location.x / max(bounds.width, 1)) * CGFloat(max(terminal.cols, 1))) + 1),
+                max(terminal.cols, 1)
+            )
+            let row = min(
+                max(1, Int((location.y / max(bounds.height, 1)) * CGFloat(max(terminal.rows, 1))) + 1),
+                max(terminal.rows, 1)
+            )
+
+            while abs(touchScrollRemainder) >= pointsPerWheelStep {
+                let scrollingUp = touchScrollRemainder > 0
+                enqueueTouchScrollStep(scrollingUp: scrollingUp, column: column, row: row)
+                touchScrollRemainder += scrollingUp ? -pointsPerWheelStep : pointsPerWheelStep
+            }
+        case .ended, .cancelled, .failed:
+            touchScrollRemainder = 0
+        default:
+            break
+        }
+    }
+
+    private func enqueueTouchScrollStep(scrollingUp: Bool, column: Int, row: Int) {
+        guard sshConnection != nil, remoteMouseModeEnabled else { return }
+        pendingTouchScrollLocation = (column, row)
+        pendingTouchScrollSteps = PiTerminalTouchScroll.pendingSteps(
+            after: pendingTouchScrollSteps,
+            scrollingUp: scrollingUp
+        )
+        guard touchScrollDisplayLink == nil else { return }
+
+        let displayLink = CADisplayLink(target: self, selector: #selector(deliverNextTouchScrollStep(_:)))
+        displayLink.preferredFramesPerSecond = PiTerminalTouchScroll.deliveryFramesPerSecond
+        displayLink.add(to: .main, forMode: .common)
+        touchScrollDisplayLink = displayLink
+    }
+
+    @objc private func deliverNextTouchScrollStep(_ displayLink: CADisplayLink) {
+        guard sshConnection != nil, remoteMouseModeEnabled, pendingTouchScrollSteps != 0 else {
+            stopTouchScrollDelivery(clearPending: true)
+            return
+        }
+
+        let scrollingUp = pendingTouchScrollSteps > 0
+        pendingTouchScrollSteps += scrollingUp ? -1 : 1
+        sendAccessoryBytes(PiTerminalTouchScroll.wheelBytes(
+            scrollingUp: scrollingUp,
+            column: pendingTouchScrollLocation.column,
+            row: pendingTouchScrollLocation.row
+        ))
+        if pendingTouchScrollSteps == 0 {
+            stopTouchScrollDelivery(clearPending: false)
+        }
+    }
+
+    private func stopTouchScrollDelivery(clearPending: Bool) {
+        touchScrollDisplayLink?.invalidate()
+        touchScrollDisplayLink = nil
+        if clearPending {
+            pendingTouchScrollSteps = 0
+        }
+    }
+
+    @objc private func handleKeyboardDismissPan(_ recognizer: UIPanGestureRecognizer) {
+        guard recognizer.state == .ended,
+              recognizer.translation(in: self).y >= 44 else { return }
+        _ = resignFirstResponder()
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+        let velocity = pan.velocity(in: self)
+        let isVertical = abs(velocity.y) > abs(velocity.x)
+        if gestureRecognizer === touchScrollPan {
+            return remoteMouseModeEnabled && isVertical
+        }
+        if gestureRecognizer === keyboardDismissPan {
+            return isFirstResponder && velocity.y > 0 && isVertical
+        }
+        return true
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        gestureRecognizer === keyboardDismissPan || otherGestureRecognizer === keyboardDismissPan
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let becameFirstResponder = super.becomeFirstResponder()
+        if becameFirstResponder {
+            keyboardFocusChanged?(true)
+        }
+        return becameFirstResponder
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resignedFirstResponder = super.resignFirstResponder()
+        if resignedFirstResponder {
+            keyboardFocusChanged?(false)
+        }
+        return resignedFirstResponder
     }
 
     func sendAccessoryBytes(_ bytes: [UInt8]) {

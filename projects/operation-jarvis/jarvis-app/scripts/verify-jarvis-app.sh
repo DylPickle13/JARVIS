@@ -21,7 +21,8 @@ xcodegen generate
 
 printf '%s\n' '== Python unit tests =='
 python3 -m unittest discover -s jarvisd/tests -v
-python3 -m py_compile jarvisd/jarvisd.py ../jarvis.py ../../../.pi/discord-cron/runner.py
+python3 -m unittest discover -s terminald/tests -v
+python3 -m py_compile jarvisd/jarvisd.py terminald/jarvis_terminald.py ../jarvis.py ../../../.pi/discord-cron/runner.py
 
 printf '%s\n' '== plist, icon, and shell syntax =='
 plutil -lint \
@@ -30,7 +31,8 @@ plutil -lint \
   JARVISWidget/Info.plist \
   JARVISWatch/Info.plist \
   JARVISWatchWidget/Info.plist \
-  jarvisd/launchd/*.plist
+  jarvisd/launchd/*.plist \
+  terminald/launchd/*.plist
 python3 -m json.tool JARVIS/Assets.xcassets/JARVISMark.imageset/Contents.json >/dev/null
 python3 -m json.tool JARVISWatch/Assets.xcassets/JARVISMark.imageset/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/Contents.json >/dev/null
@@ -44,7 +46,8 @@ printf '%s\n' '== native navigation contract =='
 [[ ! -e JARVIS/Views/EventsView.swift ]]
 [[ "$(grep -c '\.tabItem' JARVIS/JARVISApp.swift)" == "3" ]]
 grep -q 'Label("Home"' JARVIS/JARVISApp.swift
-grep -q 'Label("Pi"' JARVIS/JARVISApp.swift
+grep -q 'Label("JARVIS"' JARVIS/JARVISApp.swift
+reject_match 'Pi tab must be labeled JARVIS' -Fq 'Label("Pi"' JARVIS/JARVISApp.swift
 grep -q 'Label("Settings"' JARVIS/JARVISApp.swift
 grep -q 'case pi' JARVIS/AppState.swift
 grep -q 'case "pi": selection = .pi' JARVIS/JARVISApp.swift
@@ -56,17 +59,71 @@ grep -q 'exactVersion: 0.15.0' project.yml
 grep -q 'exactVersion: 2.101.3' project.yml
 grep -q 'import SwiftTerm' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'import NIOSSH' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'new-session -A' JARVIS/Terminal/PiTerminalSettings.swift
-grep -q 'jarvis-mobile' JARVIS/Terminal/PiTerminalSettings.swift
-grep -q 'jarvis-ios' JARVIS/Terminal/PiTerminalSettings.swift
+grep -q 'defaultFontSize: CGFloat = 18' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'zoomSchemaDefaultsKey = "jarvis.pi-terminal.zoom-schema"' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'savedZoomSchema >= currentZoomSchema' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'keyboardDismissMode = .interactive' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'handleKeyboardDismissPan' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'allowMouseReporting = false' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'override func mouseModeChanged' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'prioritizeTouchScrolling' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'handleTouchScrollPan' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'let button = scrollingUp ? 64 : 65' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'max(36, fontSize \* 2.5)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'static let deliveryFramesPerSecond = 60' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'CADisplayLink(target: self, selector: #selector(deliverNextTouchScrollStep(_:)))' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'stopTouchScrollDelivery(clearPending: true)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'toggleTerminalKeyboard' JARVIS/Terminal/PiTerminalController.swift
+grep -q 'keyboard.chevron.compact.down' JARVIS/Terminal/PiTerminalView.swift
+grep -q 'slashBytes: \[UInt8\] = \[0x2f\]' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'key("/", label: "Slash", bytes: PiTerminalKeyDeck.slashBytes)' JARVIS/Terminal/PiTerminalView.swift
+reject_match 'Pi key deck must not retain the dedicated Control-C button' -Fq 'Control C, abort' JARVIS/Terminal/PiTerminalView.swift
+reject_match 'Pi key deck must end at the Down arrow' -E 'Left arrow|Right arrow|Shift Return|Option Return|Pi keyboard shortcuts|accessibilityLabel\("Paste"\)' JARVIS/Terminal/PiTerminalView.swift
+reject_match 'Pi terminal must not force the keyboard open when its view appears' -Fq 'DispatchQueue.main.async { _ = view.becomeFirstResponder() }' JARVIS/Terminal/PiTerminalView.swift
+reject_match 'Pi terminal key deck must not implicitly reopen the keyboard' -RqsE 'focusTerminal|hideTerminalKeyboard' JARVIS/Terminal
+
+grep -q 'scripts/jarvis-mobile-terminal.sh' JARVIS/Terminal/PiTerminalSettings.swift
+[[ -x scripts/jarvis-mobile-terminal.sh ]]
+zsh -n scripts/jarvis-mobile-terminal.sh
+grep -q 'TMUX_SOCKET="jarvis-mobile"' scripts/jarvis-mobile-terminal.sh
+grep -q 'TMUX_SESSION="jarvis-ios"' scripts/jarvis-mobile-terminal.sh
+grep -q 'new-session -d' scripts/jarvis-mobile-terminal.sh
+grep -q 'attach-session' scripts/jarvis-mobile-terminal.sh
+grep -q 'export PATH="/opt/homebrew/bin:' scripts/jarvis-mobile-terminal.sh
+grep -q "PI_COMMAND='/opt/homebrew/bin/pi'" scripts/jarvis-mobile-terminal.sh
+reject_match 'Pi terminal must not assign a special Pi session name' -Fq -- '--name' scripts/jarvis-mobile-terminal.sh
 grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVIS/Terminal/PiTerminalSettings.swift
 grep -q 'String(openSSHPublicKey: hostKey)' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'extended-keys-format csi-u' config/jarvis-mobile.tmux.conf
 grep -q 'window-size latest' config/jarvis-mobile.tmux.conf
 reject_match 'Pi terminal must not accept every SSH host key' -RqsE 'AcceptAllHostKeys|acceptAnything' JARVIS/Terminal
 reject_match 'Pi terminal reconnect must not queue input' -RqsE 'queuedInput|pendingInput|inputQueue' JARVIS/Terminal
-reject_match 'Pi launcher must not kill its persistent session' -RqsE 'kill-session|kill-server' JARVIS/Terminal config/jarvis-mobile.tmux.conf
+reject_match 'Pi launcher must not kill its persistent session' -RqsE 'kill-session|kill-server' JARVIS/Terminal config/jarvis-mobile.tmux.conf scripts/jarvis-mobile-terminal.sh
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations' JARVIS/Info.plist | grep -c UIInterfaceOrientationLandscape)" == "2" ]]
+
+grep -q -- '--ensure-only' scripts/jarvis-mobile-terminal.sh
+
+printf '%s\n' '== Watch JARVIS terminal contract =='
+grep -q 'DEFAULT_PORT = 8792' terminald/jarvis_terminald.py
+grep -q 'ThreadingHTTPServer' terminald/jarvis_terminald.py
+grep -q 'ssl.PROTOCOL_TLS_SERVER' terminald/jarvis_terminald.py
+grep -q 'hmac.compare_digest' terminald/jarvis_terminald.py
+grep -q 'MAX_INPUT_BYTES = 4096' terminald/jarvis_terminald.py
+grep -q 'capture-pane' terminald/jarvis_terminald.py
+grep -q 'paste-buffer' terminald/jarvis_terminald.py
+grep -q 'processed_request_ids' terminald/jarvis_terminald.py
+grep -q 'terminalConfiguration' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVIS/Terminal/WatchTerminalProvisioningSettings.swift
+grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'SecTrustCopyCertificateChain' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'digitalCrownRotation' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalKeyBytes.slash' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalView(controller: model.terminal)' JARVISWatch/Views/WatchDashboardContent.swift
+[[ -x terminald/jarvis_terminald.py ]]
+[[ -x scripts/install-jarvis-terminald.sh ]]
+[[ -x scripts/jarvis-terminal-provisioning.sh ]]
+reject_match 'Watch terminal must not open SSH directly' -RqsE 'import NIOSSH|import NIOPosix|import SwiftTerm' JARVISWatch
+reject_match 'terminal bridge must remain separate from jarvisd' -RqsF 'terminal/frame' jarvisd
 
 printf '%s\n' '== native refresh contract =='
 grep -q 'activeInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
@@ -293,7 +350,7 @@ if [[ "${JARVIS_RUN_IOS_TESTS:-0}" == "1" ]]; then
     -project JARVIS.xcodeproj \
     -scheme JARVIS \
     -configuration Debug \
-    -destination 'platform=iOS Simulator,name=iPhone 11,OS=26.5' \
+    -destination 'platform=iOS Simulator,name=JARVIS iPhone 11,OS=26.5' \
     -derivedDataPath "$DERIVED_DATA_PATH" \
     CODE_SIGNING_ALLOWED=NO \
     test

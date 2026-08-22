@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import JARVIS
 import JARVISKit
 
@@ -225,13 +226,67 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(app.lastScheduledJobs.isEmpty)
     }
 
-    func testPiTerminalContractUsesPersistentTmuxSession() {
+    func testPiTerminalContractUsesPersistentTmuxBootstrap() {
         XCTAssertEqual(AppSection(rawValue: "pi"), .pi)
-        XCTAssertTrue(PiTerminalConfiguration.remoteCommand.contains("tmux -L jarvis-mobile"))
-        XCTAssertTrue(PiTerminalConfiguration.remoteCommand.contains("new-session -A"))
-        XCTAssertTrue(PiTerminalConfiguration.remoteCommand.contains("-s jarvis-ios"))
-        XCTAssertTrue(PiTerminalConfiguration.remoteCommand.contains("/opt/homebrew/bin/pi"))
+        XCTAssertEqual(
+            PiTerminalConfiguration.remoteCommand,
+            "/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/scripts/jarvis-mobile-terminal.sh"
+        )
         XCTAssertFalse(PiTerminalConfiguration.remoteCommand.contains("kill-session"))
+    }
+
+    func testPiTerminalMigratesLegacyZoomAndPreservesLaterPinchChanges() {
+        XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 0, savedZoomSchema: 0), 18)
+        XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 12.5, savedZoomSchema: 0), 18)
+        XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 12.5, savedZoomSchema: 1), 12.5)
+        XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 4, savedZoomSchema: 1), 9)
+        XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 40, savedZoomSchema: 1), 20)
+    }
+
+    func testPiTerminalUsesInteractiveKeyboardDismissal() {
+        let terminalView = PiTerminalHostView(frame: .zero)
+        XCTAssertEqual(terminalView.keyboardDismissMode, .interactive)
+        XCTAssertFalse(terminalView.isFirstResponder)
+    }
+
+    func testPiTerminalPrioritizesTouchScrollingAndProvidesSlashShortcut() {
+        let terminalView = PiTerminalHostView(frame: .zero)
+        XCTAssertFalse(terminalView.allowMouseReporting)
+        XCTAssertTrue(terminalView.alwaysBounceVertical)
+        XCTAssertTrue(terminalView.isDirectionalLockEnabled)
+        XCTAssertEqual(PiTerminalKeyDeck.slashBytes, [0x2f])
+        XCTAssertEqual(PiTerminalTouchScroll.pointsPerWheelStep(fontSize: 18), 45)
+        XCTAssertEqual(PiTerminalTouchScroll.pointsPerWheelStep(fontSize: 9), 36)
+        XCTAssertEqual(PiTerminalTouchScroll.deliveryFramesPerSecond, 60)
+        XCTAssertEqual(PiTerminalTouchScroll.pendingSteps(after: 0, scrollingUp: true), 1)
+        XCTAssertEqual(PiTerminalTouchScroll.pendingSteps(after: 7, scrollingUp: true), 8)
+        XCTAssertEqual(PiTerminalTouchScroll.pendingSteps(after: 8, scrollingUp: true), 8)
+        XCTAssertEqual(PiTerminalTouchScroll.pendingSteps(after: 4, scrollingUp: false), -1)
+        XCTAssertEqual(PiTerminalTouchScroll.pendingSteps(after: -7, scrollingUp: false), -8)
+        XCTAssertEqual(PiTerminalTouchScroll.pendingSteps(after: -8, scrollingUp: false), -8)
+        XCTAssertEqual(
+            String(bytes: PiTerminalTouchScroll.wheelBytes(scrollingUp: true, column: 8, row: 12), encoding: .utf8),
+            "\u{1b}[<64;8;12M"
+        )
+        XCTAssertEqual(
+            String(bytes: PiTerminalTouchScroll.wheelBytes(scrollingUp: false, column: 8, row: 12), encoding: .utf8),
+            "\u{1b}[<65;8;12M"
+        )
+
+        let multiTapRecognizers = (terminalView.gestureRecognizers ?? []).compactMap { $0 as? UITapGestureRecognizer }
+            .filter { $0.numberOfTapsRequired > 1 }
+        let longPressRecognizers = (terminalView.gestureRecognizers ?? []).compactMap { $0 as? UILongPressGestureRecognizer }
+        XCTAssertFalse(multiTapRecognizers.isEmpty)
+        XCTAssertFalse(longPressRecognizers.isEmpty)
+        XCTAssertTrue(multiTapRecognizers.allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(longPressRecognizers.allSatisfy { !$0.isEnabled })
+
+        let panCountBeforeMouseMode = (terminalView.gestureRecognizers ?? []).filter { $0 is UIPanGestureRecognizer }.count
+        let mouseModeSequence = Array("\u{1b}[?1002h".utf8)
+        terminalView.feed(byteArray: mouseModeSequence[...])
+        XCTAssertTrue(terminalView.isRoutingTouchScrollToPi)
+        let panCountAfterMouseMode = (terminalView.gestureRecognizers ?? []).filter { $0 is UIPanGestureRecognizer }.count
+        XCTAssertEqual(panCountAfterMouseMode, panCountBeforeMouseMode)
     }
 
     func testCommandFailureRemainsVisibleAfterStateRefresh() async throws {

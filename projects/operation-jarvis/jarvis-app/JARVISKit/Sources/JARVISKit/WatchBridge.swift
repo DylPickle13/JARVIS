@@ -25,6 +25,7 @@ public protocol WatchBridgeDelegate: AnyObject {
     func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge, requestID: String)
     func watchBridgeDidReceiveState(_ bridge: WatchBridge, json: Data)
     func watchBridgeDidReceiveEndpoint(_ bridge: WatchBridge, endpoint: String)
+    func watchBridgeDidReceiveTerminalConfiguration(_ bridge: WatchBridge, configuration: WatchTerminalConfiguration)
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String)
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult)
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError)
@@ -33,6 +34,7 @@ public protocol WatchBridgeDelegate: AnyObject {
 public extension WatchBridgeDelegate {
     func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge, requestID: String) {}
     func watchBridgeDidReceiveEndpoint(_ bridge: WatchBridge, endpoint: String) {}
+    func watchBridgeDidReceiveTerminalConfiguration(_ bridge: WatchBridge, configuration: WatchTerminalConfiguration) {}
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String) {}
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult) {}
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError) {}
@@ -67,6 +69,9 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     private var _isActivationNeeded = false
     private var pendingStateRequests: [String: CheckedContinuation<Result<Data, WatchRelayFailure>, Never>] = [:]
     private var pendingCommandRequests: [String: CheckedContinuation<Result<CommandResult, WatchRelayFailure>, Never>] = [:]
+    private var latestStateJSON: Data?
+    private var latestEndpoint: String?
+    private var latestTerminalConfiguration: Data?
 
     public var isWatchReachable: Bool {
         lock.lock(); defer { lock.unlock() }
@@ -220,13 +225,40 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     }
 
     public func updateApplicationContext(stateJSON: Data?, endpoint: String? = nil) {
+        lock.lock()
+        if let stateJSON { latestStateJSON = stateJSON }
+        if let endpoint { latestEndpoint = endpoint }
+        lock.unlock()
+        publishLatestApplicationContext()
+    }
+
+    /// Publishes the target-local terminal credential to the paired Watch.
+    /// WatchConnectivity protects this device-to-device transfer; the value is
+    /// never included in logs or the repository.
+    public func publishTerminalConfiguration(_ configuration: WatchTerminalConfiguration) {
+        guard configuration.isValid,
+              let payload = try? JSONEncoder().encode(configuration) else { return }
+        lock.lock()
+        latestTerminalConfiguration = payload
+        lock.unlock()
+        publishLatestApplicationContext()
+        send(WatchMessage(type: "terminalConfiguration", payload: payload))
+    }
+
+    private func publishLatestApplicationContext() {
         guard let session, session.activationState == .activated else { return }
         #if os(iOS)
         guard session.isPaired, session.isWatchAppInstalled else { return }
         #endif
+        lock.lock()
+        let stateJSON = latestStateJSON
+        let endpoint = latestEndpoint
+        let terminalConfiguration = latestTerminalConfiguration
+        lock.unlock()
         var context: [String: Any] = ["version": 1, "sentAt": ISO8601DateFormatter().string(from: Date())]
         if let stateJSON { context["state"] = stateJSON }
         if let endpoint { context["endpoint"] = endpoint }
+        if let terminalConfiguration { context["terminalConfiguration"] = terminalConfiguration }
         do {
             try session.updateApplicationContext(context)
         } catch {
@@ -346,6 +378,11 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
             guard let data = raw["payload"] as? Data,
                   let intent = try? JSONDecoder().decode(PlugIntent.self, from: data) else { return }
             delegate?.watchBridgeDidReceivePlugCommand(self, name: intent.name, isOn: intent.isOn, requestID: requestID)
+        case "terminalConfiguration":
+            guard let data = raw["payload"] as? Data,
+                  let configuration = try? JSONDecoder().decode(WatchTerminalConfiguration.self, from: data),
+                  configuration.isValid else { return }
+            delegate?.watchBridgeDidReceiveTerminalConfiguration(self, configuration: configuration)
         default:
             break
         }
@@ -401,6 +438,11 @@ extension WatchBridge: WCSessionDelegate {
         if let state = applicationContext["state"] as? Data {
             delegate?.watchBridgeDidReceiveState(self, json: state)
         }
+        if let data = applicationContext["terminalConfiguration"] as? Data,
+           let configuration = try? JSONDecoder().decode(WatchTerminalConfiguration.self, from: data),
+           configuration.isValid {
+            delegate?.watchBridgeDidReceiveTerminalConfiguration(self, configuration: configuration)
+        }
     }
 
     public func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
@@ -449,6 +491,7 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     @discardableResult
     public func sendCommandError(requestID: String, message: String) -> Bool { false }
     public func updateApplicationContext(stateJSON: Data?, endpoint: String? = nil) {}
+    public func publishTerminalConfiguration(_ configuration: WatchTerminalConfiguration) {}
 }
 
 #endif

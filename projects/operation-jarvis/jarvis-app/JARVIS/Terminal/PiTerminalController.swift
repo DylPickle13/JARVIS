@@ -15,6 +15,7 @@ final class PiTerminalController: ObservableObject {
     @Published private(set) var status: PiTerminalConnectionStatus = .idle
     @Published private(set) var pendingHostTrust: PiPendingHostTrust?
     @Published private(set) var isControlLatched = false
+    @Published private(set) var isTerminalFocused = false
 
     let settings: PiTerminalSettings
 
@@ -38,11 +39,19 @@ final class PiTerminalController: ObservableObject {
         terminalView = view
         view.stateChanged = { [weak self] newStatus in
             Task { @MainActor [weak self] in
-                self?.status = newStatus
+                guard let self else { return }
+                self.status = newStatus
+                if newStatus.isFailure {
+                    _ = self.terminalView?.resignFirstResponder()
+                    self.isTerminalFocused = false
+                }
             }
         }
         view.controlLatchChanged = { [weak self] latched in
             Task { @MainActor [weak self] in self?.isControlLatched = latched }
+        }
+        view.keyboardFocusChanged = { [weak self] focused in
+            Task { @MainActor [weak self] in self?.isTerminalFocused = focused }
         }
         view.hostTrustRequested = { [weak self] request in
             Task { @MainActor [weak self] in
@@ -65,12 +74,14 @@ final class PiTerminalController: ObservableObject {
 
     func detach(_ view: PiTerminalHostView) {
         guard terminalView === view else { return }
+        _ = view.resignFirstResponder()
         view.disconnectSSH()
         terminalView = nil
         pendingHostTrust?.reject()
         pendingHostTrust = nil
         status = .idle
         isControlLatched = false
+        isTerminalFocused = false
     }
 
     func sendTerminalBytes(_ bytes: [UInt8]) {
@@ -85,12 +96,13 @@ final class PiTerminalController: ObservableObject {
         terminalView?.paste(nil)
     }
 
-    func hideTerminalKeyboard() {
-        _ = terminalView?.resignFirstResponder()
-    }
-
-    func focusTerminal() {
-        _ = terminalView?.becomeFirstResponder()
+    func toggleTerminalKeyboard() {
+        guard let terminalView else { return }
+        if terminalView.isFirstResponder {
+            _ = terminalView.resignFirstResponder()
+        } else {
+            _ = terminalView.becomeFirstResponder()
+        }
     }
 
     func setVisible(_ visible: Bool, fallbackHost: String?) {
@@ -101,8 +113,10 @@ final class PiTerminalController: ObservableObject {
         } else {
             pendingHostTrust?.reject()
             pendingHostTrust = nil
+            _ = terminalView?.resignFirstResponder()
             terminalView?.disconnectSSH()
             status = .idle
+            isTerminalFocused = false
         }
     }
 
@@ -115,8 +129,10 @@ final class PiTerminalController: ObservableObject {
         appIsActive = false
         pendingHostTrust?.reject()
         pendingHostTrust = nil
+        _ = terminalView?.resignFirstResponder()
         terminalView?.disconnectSSH()
         status = .idle
+        isTerminalFocused = false
     }
 
     func retry() {
@@ -174,8 +190,10 @@ final class PiTerminalController: ObservableObject {
                 if self.networkAvailable, !wasAvailable {
                     self.maybeConnect(force: true)
                 } else if !self.networkAvailable {
+                    _ = self.terminalView?.resignFirstResponder()
                     self.terminalView?.disconnectSSH()
                     self.status = .failed("The network is unavailable.")
+                    self.isTerminalFocused = false
                 }
             }
         }

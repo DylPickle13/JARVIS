@@ -128,6 +128,51 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(decoded, payload)
     }
 
+    func testWatchTerminalProvisioningRoundTripsAndValidates() throws {
+        let configuration = WatchTerminalConfiguration(
+            endpoint: "https://192.0.2.10:8792",
+            token: String(repeating: "a", count: 64),
+            certificateSHA256: String(repeating: "AB:", count: 31) + "AB"
+        )
+        XCTAssertTrue(configuration.isValid)
+        XCTAssertEqual(configuration.certificateSHA256, String(repeating: "ab", count: 32))
+        XCTAssertEqual(
+            WatchTerminalConfiguration.fromProvisioningCode(try configuration.provisioningCode()),
+            configuration
+        )
+        XCTAssertNil(WatchTerminalConfiguration.fromProvisioningCode("not-a-provisioning-code"))
+        XCTAssertFalse(
+            WatchTerminalConfiguration(
+                endpoint: "http://192.0.2.10:8792",
+                token: String(repeating: "a", count: 64),
+                certificateSHA256: String(repeating: "ab", count: 32)
+            ).isValid
+        )
+    }
+
+    func testWatchTerminalFrameFollowsCursorAndKeyBytesAreExact() {
+        let frame = WatchTerminalFrame(
+            sequence: 4,
+            columns: 48,
+            rows: 8,
+            cursorColumn: 7,
+            cursorRow: 6,
+            alternateScreen: true,
+            mouseMode: true,
+            historySize: 20,
+            lines: (0..<8).map { "line-\($0)" }
+        )
+        XCTAssertEqual(frame.visibleText(maximumLines: 3), "line-5\nline-6\nline-7")
+        XCTAssertEqual(WatchTerminalKeyBytes.slash, Data([0x2f]))
+        XCTAssertEqual(WatchTerminalKeyBytes.control(0x43), Data([0x03]))
+        XCTAssertEqual(
+            String(data: WatchTerminalKeyBytes.wheel(scrollingUp: true, column: 8, row: 12), encoding: .utf8),
+            "\u{1b}[<64;8;12M"
+        )
+        let input = WatchTerminalInput(data: WatchTerminalKeyBytes.slash, appendReturn: false)
+        XCTAssertEqual(input.data, Data([0x2f]))
+    }
+
     func testCommandRequestEncodesDesiredPlugState() throws {
         let request = CommandRequest(action: "plug-on", params: ["plug": .string("family-room-light")])
         let data = try JSONEncoder().encode(request)

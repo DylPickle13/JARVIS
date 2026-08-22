@@ -10,7 +10,7 @@ struct PiTerminalConfiguration: Equatable, Sendable {
 
     static let defaultPort = 22
     static let defaultUsername = "dylanrapanan"
-    static let remoteCommand = #"/opt/homebrew/bin/tmux -L jarvis-mobile -f /Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/config/jarvis-mobile.tmux.conf new-session -A -s jarvis-ios -c /Users/dylanrapanan/JARVIS '/opt/homebrew/bin/pi --name "JARVIS iPhone"'"#
+    static let remoteCommand = "/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/scripts/jarvis-mobile-terminal.sh"
 }
 
 @MainActor

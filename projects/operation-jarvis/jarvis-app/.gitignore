@@ -31,3 +31,6 @@ local-config.json
 jarvisd/logs/
 jarvisd/__pycache__/
 jarvisd/tests/__pycache__/
+terminald/logs/
+terminald/__pycache__/
+terminald/tests/__pycache__/

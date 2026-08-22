@@ -59,7 +59,7 @@ private struct RootTabView: View {
                 .tag(AppSection.home)
 
             PiTerminalView()
-                .tabItem { Label("Pi", systemImage: "terminal.fill") }
+                .tabItem { Label("JARVIS", systemImage: "terminal.fill") }
                 .tag(AppSection.pi)
 
             SettingsView()
