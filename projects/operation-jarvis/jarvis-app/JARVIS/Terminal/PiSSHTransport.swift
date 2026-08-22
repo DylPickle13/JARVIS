@@ -59,6 +59,15 @@ enum PiTerminalKeyDeck {
     static let slashBytes: [UInt8] = [0x2f]
 }
 
+enum PiTerminalKeyboard {
+    // SwiftTerm's UIKeyInput reports `hasText == false` when its temporary
+    // local buffer is empty, which makes iOS stop software-keyboard Backspace
+    // auto-repeat even though the remote terminal still has editable input.
+    // This marked, zero-width sentinel keeps Backspace enabled without sending
+    // any sentinel bytes to SSH; real text replaces it normally.
+    static let backspaceRepeatSentinel = "\u{200B}"
+}
+
 enum PiTerminalTouchScroll {
     static let deliveryFramesPerSecond = 60
     static let maximumPendingSteps = 8
@@ -491,6 +500,11 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
         optionAsMetaKey = true
         allowMouseReporting = false
         linkReporting = .implicit
+        autocapitalizationType = .none
+        autocorrectionType = .no
+        spellCheckingType = .no
+        smartDashesType = .no
+        smartQuotesType = .no
         inputAccessoryView = nil
         keyboardDismissMode = .interactive
         prioritizeTouchScrolling()
@@ -722,6 +736,7 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
     override func becomeFirstResponder() -> Bool {
         let becameFirstResponder = super.becomeFirstResponder()
         if becameFirstResponder {
+            ensureBackspaceAutoRepeatSentinel()
             keyboardFocusChanged?(true)
         }
         return becameFirstResponder
@@ -755,6 +770,18 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
             return
         }
         super.insertText(text)
+        ensureBackspaceAutoRepeatSentinel()
+    }
+
+    override func deleteBackward() {
+        super.deleteBackward()
+        ensureBackspaceAutoRepeatSentinel()
+    }
+
+    func ensureBackspaceAutoRepeatSentinel() {
+        guard !hasText else { return }
+        let sentinel = PiTerminalKeyboard.backspaceRepeatSentinel
+        setMarkedText(sentinel, selectedRange: NSRange(location: sentinel.utf16.count, length: 0))
     }
 
     func scrolled(source: TerminalView, position: Double) {}

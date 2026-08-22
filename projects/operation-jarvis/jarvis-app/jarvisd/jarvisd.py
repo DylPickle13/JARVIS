@@ -129,6 +129,9 @@ MAX_SCHEDULED_JOBS_OUTPUT_BYTES = min(
 )
 TAILSCALE_IP_FALLBACK = os.environ.get("JARVISD_TAILSCALE_IP", "")
 TAILSCALE_SOCKET = Path(os.environ.get("TAILSCALE_SOCKET", str(Path.home() / ".local/share/tailscale/tailscaled.socket")))
+TAILSCALE_APP_CLI = Path(
+    os.environ.get("JARVISD_TAILSCALE_APP_CLI", "/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+)
 LAUNCH_AGENTS_DIR = Path(
     os.environ.get("JARVISD_LAUNCH_AGENTS_DIR", str(Path.home() / "Library/LaunchAgents"))
 ).expanduser().resolve()
@@ -476,14 +479,45 @@ def _tailscale_ip() -> str | None:
             conn.close()
         except Exception:  # noqa: BLE001
             pass
+    # Network extensions do not always expose a local-api socket to a LaunchAgent.
+    # The Tailscale tunnel still has an RFC 6598 address, so inspect only utun
+    # interfaces before falling back to either CLI implementation.
     try:
-        env = dict(os.environ, TSD_SOCKET=str(TAILSCALE_SOCKET))
-        out = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=5, env=env)
-        ip = out.stdout.strip().splitlines()[0].strip() if out.stdout.strip() else ""
-        if ip.startswith("100."):
-            return ip
-    except Exception:  # noqa: BLE001
+        out = subprocess.run(["/sbin/ifconfig"], capture_output=True, text=True, timeout=5)
+        interface = ""
+        for line in out.stdout.splitlines():
+            if line and not line[0].isspace():
+                interface = line.partition(":")[0]
+                continue
+            match = re.match(r"\s+inet\s+(\S+)", line)
+            if not interface.startswith("utun") or match is None:
+                continue
+            address = ipaddress.ip_address(match.group(1))
+            if isinstance(address, ipaddress.IPv4Address) and address in ipaddress.ip_network("100.64.0.0/10"):
+                return str(address)
+    except (OSError, ValueError, subprocess.SubprocessError):
         pass
+
+    env = dict(os.environ, TSD_SOCKET=str(TAILSCALE_SOCKET))
+    # The standalone Homebrew CLI talks to a Unix socket, while the signed
+    # macOS app exposes its own CLI through the app bundle. Try both so a
+    # Tailscale app reinstall/address rotation cannot leave stale network data.
+    executables = [str(TAILSCALE_APP_CLI), "tailscale"]
+    for executable in executables:
+        try:
+            out = subprocess.run(
+                [executable, "ip", "-4"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=env,
+            )
+            ip = out.stdout.strip().splitlines()[0].strip() if out.stdout.strip() else ""
+            address = ipaddress.ip_address(ip)
+            if isinstance(address, ipaddress.IPv4Address) and address in ipaddress.ip_network("100.64.0.0/10"):
+                return ip
+        except (OSError, ValueError, subprocess.SubprocessError):
+            continue
     return TAILSCALE_IP_FALLBACK or None
 
 

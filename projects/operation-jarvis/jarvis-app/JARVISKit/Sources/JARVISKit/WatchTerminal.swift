@@ -32,6 +32,37 @@ public struct WatchTerminalConfiguration: Codable, Equatable, Sendable {
             && certificateSHA256.allSatisfy(\.isHexDigit)
     }
 
+    /// Direct terminal bridge candidates in priority order. Existing setup
+    /// codes contain one preferred endpoint, normally the home LAN address.
+    /// The stable MagicDNS and current Tailscale hosts are derived from the
+    /// canonical jarvisd candidate list so previously provisioned Watches gain
+    /// off-LAN recovery without retransmitting credentials.
+    public var candidateBaseURLs: [URL] {
+        guard let preferred = baseURL else { return [] }
+        var output: [URL] = []
+        var seen = Set<String>()
+
+        func add(_ url: URL?) {
+            guard let url else { return }
+            let key = url.absoluteString.lowercased()
+            guard seen.insert(key).inserted else { return }
+            output.append(url)
+        }
+
+        add(preferred)
+        for controlEndpoint in JarvisEndpoints.defaults {
+            guard let controlURL = URL(string: controlEndpoint),
+                  let host = controlURL.host else { continue }
+            var components = URLComponents()
+            components.scheme = "https"
+            components.host = host
+            components.port = preferred.port ?? 8792
+            components.path = preferred.path
+            add(components.url)
+        }
+        return output
+    }
+
     public func provisioningCode() throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -91,13 +122,34 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
         self.lines = lines
     }
 
-    public func visibleText(maximumLines: Int) -> String {
-        guard maximumLines > 0, lines.count > maximumLines else {
-            return lines.joined(separator: "\n")
-        }
+    public func visibleLines(maximumLines: Int) -> [String] {
+        guard maximumLines > 0, lines.count > maximumLines else { return lines }
         let preferredStart = cursorRow - maximumLines + 2
         let start = min(max(0, preferredStart), lines.count - maximumLines)
-        return lines[start..<(start + maximumLines)].joined(separator: "\n")
+        return Array(lines[start..<(start + maximumLines)])
+    }
+
+    public func visibleText(maximumLines: Int) -> String {
+        visibleLines(maximumLines: maximumLines).joined(separator: "\n")
+    }
+}
+
+public enum WatchTerminalLayout {
+    public static let maximumFontSize = 6.8
+    public static let minimumFontSize = 4.8
+    public static let monospacedCharacterWidthRatio = 0.61
+    public static let lineHeightRatio = 1.22
+
+    /// Fits one tmux row onto one Watch display row. The renderer also applies
+    /// a one-line limit and clipping so a long pane row can never soft-wrap.
+    public static func fontSize(columns: Int, availableWidth: Double) -> Double {
+        guard columns > 0, availableWidth > 0 else { return maximumFontSize }
+        let fitted = availableWidth / Double(columns) / monospacedCharacterWidthRatio
+        return min(maximumFontSize, max(minimumFontSize, fitted))
+    }
+
+    public static func lineHeight(fontSize: Double) -> Double {
+        fontSize * lineHeightRatio
     }
 }
 

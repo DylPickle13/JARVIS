@@ -243,10 +243,21 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 40, savedZoomSchema: 1), 20)
     }
 
-    func testPiTerminalUsesInteractiveKeyboardDismissal() {
+    func testPiTerminalUsesInteractiveKeyboardDismissalAndBackspaceRepeatSentinel() {
         let terminalView = PiTerminalHostView(frame: .zero)
         XCTAssertEqual(terminalView.keyboardDismissMode, .interactive)
+        XCTAssertEqual(terminalView.autocorrectionType, .no)
         XCTAssertFalse(terminalView.isFirstResponder)
+
+        terminalView.ensureBackspaceAutoRepeatSentinel()
+        XCTAssertTrue(terminalView.hasText)
+        let markedRange = try? XCTUnwrap(terminalView.markedTextRange)
+        XCTAssertEqual(markedRange.flatMap { terminalView.text(in: $0) }, PiTerminalKeyboard.backspaceRepeatSentinel)
+
+        terminalView.deleteBackward()
+        XCTAssertTrue(terminalView.hasText)
+        let repeatedRange = try? XCTUnwrap(terminalView.markedTextRange)
+        XCTAssertEqual(repeatedRange.flatMap { terminalView.text(in: $0) }, PiTerminalKeyboard.backspaceRepeatSentinel)
     }
 
     func testPiTerminalPrioritizesTouchScrollingAndProvidesSlashShortcut() {

@@ -6,9 +6,9 @@
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current candidate:** `0.3.0 (32)`
+**Current candidate:** `0.3.0 (34)`
 
-**Physical installation:** iPhone `0.3.0 (32)` and Apple Watch `0.3.0 (32)` on Dylan's allowlisted devices
+**Physical installation:** iPhone `0.3.0 (33)` and Apple Watch `0.3.0 (33)` on Dylan's allowlisted devices
 
 This is the single architecture, security, packaging, deployment, validation,
 and recovery reference for the JARVIS iPhone app, Apple Watch app, widgets, and
@@ -46,7 +46,9 @@ never deploy to a device outside Dylan's allowlist.
 - Physical iPhone and Watch widget galleries expose the final four widget types.
 - Physical plug-control tests restored their initial states and produced one
   command/event pair per intentional desired-state change.
-- Cellular/Tailscale cold launch and relaunch pass without a hardware command.
+- Build-33 cellular/Tailscale cold launch and relaunch pass without a hardware
+  or terminal command. Discovery prefers LAN, stable MagicDNS, then the current
+  Tailscale address and replaces obsolete saved endpoint hints.
 - Build 14 embeds the canonical JARVIS artwork in the Watch widget and uses it
   for circular, corner, and rectangular Open JARVIS presentations. Inline keeps
   a system glyph.
@@ -105,8 +107,19 @@ never deploy to a device outside Dylan's allowlist.
   stores that token in target-local Keychain, and receives provisioning from the
   iPhone through WatchConnectivity. Wrist-down/background cancellation leaves
   tmux and Pi running.
+- Build 33 makes Terminal the first face directly, removes the old launcher,
+  and retains Plugs and System as pages two and three for exactly three pages.
+  It also restores stale-endpoint recovery through stable MagicDNS after the
+  Mac's Tailscale address changed.
+- Candidate build 34 derives LAN, MagicDNS, and current Tailscale terminal
+  bridge candidates from every existing provisioned endpoint. A successful
+  frame pins the active route; terminal input remains immediate-only and is
+  never retried or replayed across routes. The Watch renderer dynamically fits
+  the tmux column count and clips every source row to one display row. The
+  iPhone terminal uses a local zero-width marked sentinel so iOS keeps software
+  Backspace auto-repeat enabled without sending sentinel bytes over SSH.
 
-### Build-32 Watch JARVIS terminal
+### Watch JARVIS terminal (build 32 onward)
 
 ```text
 Archive: /tmp/JARVIS-build32-watch-terminal.xcarchive
@@ -114,14 +127,17 @@ IPA:     /tmp/JARVIS-build32-watch-terminal-export/JARVIS.ipa
 SHA-256: 26037a06fdb67f751cbbcb7c10e0d3389dbe5e32e901cffc86d53ae4c521f477
 ```
 
-The Watch dashboard now has a fourth JARVIS page that opens a full-screen,
-monospaced view of the same `jarvis-mobile` / `jarvis-ios` pane used by the
-iPhone. It does not open SSH: watchOS blocks ordinary low-level TCP networking.
-Instead, foreground `URLSession` long polling retrieves plain tmux frames over
-pinned HTTPS. The Digital Crown and vertical touch drags emit the same SGR wheel
-input used by the phone; Watch keyboard, Scribble, dictation, or Continuity
-Keyboard sends bounded text with an explicit Return. The compact deck contains
-Esc, Ctrl, Tab, slash, Up, and Down; slash remains exactly one `0x2f` byte.
+The Watch dashboard opens directly on a full-screen, monospaced terminal face,
+then vertically pages to Plugs and System. It does not open SSH: watchOS blocks
+ordinary low-level TCP networking. Instead, foreground `URLSession` long
+polling retrieves plain tmux frames over pinned HTTPS. Build 34 tries the saved
+bridge first, then LAN, stable Tailscale MagicDNS, and the current Tailscale
+address; after a frame succeeds it keeps that route active. The Digital Crown
+and vertical touch drags emit the same SGR wheel input used by the phone; Watch
+keyboard, Scribble, dictation, or Continuity Keyboard sends bounded text with
+an explicit Return. The compact deck contains Esc, Ctrl, Tab, slash, Up, and
+Down; slash remains exactly one `0x2f` byte. Every captured tmux row is rendered
+as one fitted, clipped Watch row and cannot soft-wrap into the following row.
 
 `jarvis-terminald` is isolated from `jarvisd` and has no hardware, purifier,
 service, scheduler, or command-control routes. It permits only configured

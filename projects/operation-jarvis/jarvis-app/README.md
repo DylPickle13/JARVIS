@@ -10,29 +10,32 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. Build `0.3.0 (32)` is installed on the allowlisted iPhone 11 and Apple
-Watch Series 11. Build 32 adds a native
-Watch JARVIS terminal backed by a separate certificate-pinned HTTPS bridge on
-TCP `8792`. It renders and controls the same persistent `jarvis-ios` tmux pane,
-accepts Watch keyboard/Scribble/dictation input, and scrolls with the Digital
-Crown or touch while remaining separate from `jarvisd`. Build 31 retains build
-30's scroll
-speed while pacing wheel input on 60 Hz display frames for burst-free movement,
-and renames the Pi tab to JARVIS. Build 30 ends the compact key deck at the Down
-arrow and slows touch scrolling by 60%. Build 29 maps vertical touch drags to
-Pi's fullscreen wheel scrolling instead of text
-selection and replaces the dedicated Control-C key with a slash key. Build 28
-performs a one-time migration to an 18-point starting zoom, then preserves later
-pinch changes. Build 27 removed the explicit Pi session display name while
-retaining SwiftTerm, SwiftNIO SSH, and the persistent isolated tmux session on
-this Mac. It preserves build 18's Events cleanup, build 19's foreground refresh,
-and build 23's exact “Hey JARVIS” plug phrases. Build 32 passes 30 shared tests
-with three expected live skips, six terminal-daemon tests, 15 iPhone tests,
-warning-free iOS/watchOS builds, signed archive audits, and repository smoke
-`PASS=107 WARN=0 FAIL=0`. Physical Watch validation confirms authenticated
-pinned-HTTPS frames, one shared Pi pane during simultaneous iPhone attachment,
-and automatic bridge-restart recovery without recreating tmux. Owner typing,
-dictation, key-deck, Crown, and touch acceptance remain open. The three-slot Smart Stack launcher artwork now passes physical review. Physical consoles
+UI. Build `0.3.0 (33)` is installed on the allowlisted iPhone 11 and Apple
+Watch Series 11; its cellular/Tailscale cold-launch and relaunch test passes.
+Candidate build 34 adds Watch terminal failover from the saved LAN endpoint to
+stable Tailscale MagicDNS and the current Tailscale address, fits every tmux row
+onto one clipped Watch display row, and restores held-Backspace repeat for the
+iPhone SwiftTerm keyboard. Build 33 makes the Watch terminal the first of
+exactly three vertical pages, followed by Plugs and System, with no launcher
+button. Build 32 introduced the native Watch JARVIS terminal backed by a
+separate certificate-pinned HTTPS bridge on TCP `8792`. It renders and controls
+the same persistent `jarvis-ios` tmux pane, accepts Watch keyboard/Scribble/
+dictation input, and scrolls with the Digital Crown or touch while remaining
+separate from `jarvisd`. Build 31 retains build 30's scroll speed while pacing
+wheel input on 60 Hz display frames for burst-free movement, and renames the Pi
+tab to JARVIS. Build 30 ends the compact key deck at the Down arrow and slows
+touch scrolling by 60%. Build 29 maps vertical touch drags to Pi's fullscreen
+wheel scrolling instead of text selection and replaces the dedicated Control-C
+key with a slash key. Build 28 performs a one-time migration to an 18-point
+starting zoom, then preserves later pinch changes. Build 27 removed the explicit
+Pi session display name while retaining SwiftTerm, SwiftNIO SSH, and the
+persistent isolated tmux session on this Mac. It preserves build 18's Events
+cleanup, build 19's foreground refresh, and build 23's exact “Hey JARVIS” plug
+phrases. Physical Watch validation confirms authenticated pinned-HTTPS frames,
+one shared Pi pane during simultaneous iPhone attachment, and automatic bridge-
+restart recovery without recreating tmux. Owner typing, dictation, key-deck,
+Crown, touch, and build-34 off-LAN acceptance remain open. The three-slot Smart
+Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
 weather, reordered Home, and removed the System tab. Build 10 adds read-only
@@ -196,10 +199,12 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   parent registration plus developer Watch install produces
   `isWatchAppInstalled=true` and `isCompanionAppInstalled=true` under free
   provisioning; the final physical reachability/relay matrix remains open.
-  Build 32 adds a fourth JARVIS page that opens a foreground terminal view of
-  the existing `jarvis-ios` pane. It uses pinned HTTPS snapshots instead of
-  direct SSH, stores its token in Watch-local Keychain, supports system text
-  entry plus Esc/Ctrl/Tab/slash/Up/Down, and cancels polling when inactive.
+  Build 33 places the foreground terminal directly on page one, followed by
+  Plugs and System for exactly three vertical pages. It uses pinned HTTPS
+  snapshots instead of direct SSH, stores its token in Watch-local Keychain,
+  supports system text entry plus Esc/Ctrl/Tab/slash/Up/Down, and cancels
+  polling when inactive. Build 34 adds LAN-to-Tailscale route failover and a
+  fitted one-tmux-row-per-display-row renderer.
 - **Siri plug control** — the iPhone and Watch hosts advertise exactly two
   dynamic App Shortcuts. Their only phrases are “Hey JARVIS, turn on/off [the]
   [plug]” plus parameterless “a plug” forms that ask which plug. Invoke the

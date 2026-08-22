@@ -26,7 +26,9 @@ optional Metal component; install it once with
   HTTPS Watch terminal bridge on TCP `8792`.
 - `jarvis-terminal-provisioning.sh` — prints the private, certificate-pinned
   setup code that is pasted once into iPhone Settings and transferred to the
-  paired Watch through WatchConnectivity. Never commit or post its output.
+  paired Watch through WatchConnectivity. Existing LAN setup codes also derive
+  stable MagicDNS and current Tailscale bridge fallbacks in build 34; no secret
+  retransmission is required. Never commit or post the code's output.
 - `verify-jarvis-app.sh` — runs project-contained daemon and package tests,
   plist/shell checks, opaque icon validation, combined iOS/embedded-Watch
   simulator verification, and the standalone watchOS simulator build. iOS and

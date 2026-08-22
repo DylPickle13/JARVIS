@@ -53,9 +53,13 @@ private final class WatchTerminalHTTPClient: @unchecked Sendable {
     private let configuration: WatchTerminalConfiguration
     private let delegate: WatchTerminalPinnedSessionDelegate
     private let session: URLSession
+    private let candidateBaseURLs: [URL]
+    private let endpointLock = NSLock()
+    private var activeBaseURL: URL?
 
     init(configuration: WatchTerminalConfiguration) {
         self.configuration = configuration
+        self.candidateBaseURLs = configuration.candidateBaseURLs
         self.delegate = WatchTerminalPinnedSessionDelegate(expectedFingerprint: configuration.certificateSHA256)
         let sessionConfiguration = URLSessionConfiguration.ephemeral
         sessionConfiguration.timeoutIntervalForRequest = 4
@@ -69,22 +73,39 @@ private final class WatchTerminalHTTPClient: @unchecked Sendable {
     }
 
     func frame(after sequence: Int) async throws -> WatchTerminalFrame {
-        var components = try endpointComponents(path: "v1/terminal/frame")
-        components.queryItems = [URLQueryItem(name: "after", value: String(sequence))]
-        guard let url = components.url else { throw WatchTerminalError.notConfigured }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        authorize(&request)
-        let (data, response) = try await session.data(for: request)
-        try validate(response: response, data: data)
-        guard let frame = try? JSONDecoder().decode(WatchTerminalFrame.self, from: data) else {
-            throw WatchTerminalError.invalidResponse
+        var lastError: Error = WatchTerminalError.notConfigured
+        for baseURL in orderedBaseURLs() {
+            if Task.isCancelled { throw CancellationError() }
+            do {
+                var components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/frame")
+                components.queryItems = [URLQueryItem(name: "after", value: String(sequence))]
+                guard let url = components.url else { throw WatchTerminalError.notConfigured }
+                var request = URLRequest(url: url)
+                request.httpMethod = "GET"
+                authorize(&request)
+                let (data, response) = try await session.data(for: request)
+                try validate(response: response, data: data)
+                guard let frame = try? JSONDecoder().decode(WatchTerminalFrame.self, from: data) else {
+                    throw WatchTerminalError.invalidResponse
+                }
+                rememberActive(baseURL)
+                return frame
+            } catch let error as URLError where error.code == .cancelled {
+                throw CancellationError()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                lastError = error
+            }
         }
-        return frame
+        throw lastError
     }
 
     func send(_ input: WatchTerminalInput) async throws {
-        let components = try endpointComponents(path: "v1/terminal/input")
+        // Input is immediate-only and is never replayed across endpoints. A
+        // successful frame chooses the active route before controls are enabled.
+        guard let baseURL = preferredBaseURL() else { throw WatchTerminalError.notConfigured }
+        let components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/input")
         guard let url = components.url else { throw WatchTerminalError.notConfigured }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -95,9 +116,28 @@ private final class WatchTerminalHTTPClient: @unchecked Sendable {
         try validate(response: response, data: data)
     }
 
-    private func endpointComponents(path: String) throws -> URLComponents {
-        guard let baseURL = configuration.baseURL,
-              let url = URL(string: path, relativeTo: baseURL)?.absoluteURL,
+    private func preferredBaseURL() -> URL? {
+        endpointLock.lock()
+        defer { endpointLock.unlock() }
+        return activeBaseURL ?? candidateBaseURLs.first
+    }
+
+    private func orderedBaseURLs() -> [URL] {
+        endpointLock.lock()
+        let active = activeBaseURL
+        endpointLock.unlock()
+        guard let active else { return candidateBaseURLs }
+        return [active] + candidateBaseURLs.filter { $0 != active }
+    }
+
+    private func rememberActive(_ baseURL: URL) {
+        endpointLock.lock()
+        activeBaseURL = baseURL
+        endpointLock.unlock()
+    }
+
+    private func endpointComponents(baseURL: URL, path: String) throws -> URLComponents {
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL,
               let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
             throw WatchTerminalError.notConfigured
         }
@@ -357,9 +397,21 @@ final class WatchTerminalController: ObservableObject {
 
 struct WatchTerminalView: View {
     @ObservedObject var controller: WatchTerminalController
+    let isActive: Bool
+    let onAdvancePage: (() -> Void)?
     @State private var showingComposer = false
     @State private var draft = ""
     @State private var crownPosition = 0.0
+
+    init(
+        controller: WatchTerminalController,
+        isActive: Bool = true,
+        onAdvancePage: (() -> Void)? = nil
+    ) {
+        self.controller = controller
+        self.isActive = isActive
+        self.onAdvancePage = onAdvancePage
+    }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -384,11 +436,10 @@ struct WatchTerminalView: View {
             guard newValue != oldValue else { return }
             controller.sendWheel(scrollingUp: newValue < oldValue)
         }
-        .onAppear { controller.setVisible(true) }
+        .onAppear { controller.setVisible(isActive) }
+        .onChange(of: isActive) { _, active in controller.setVisible(active) }
         .onDisappear { controller.setVisible(false) }
         .sheet(isPresented: $showingComposer) { composer }
-        .navigationTitle("JARVIS")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var header: some View {
@@ -418,18 +469,32 @@ struct WatchTerminalView: View {
 
     private var terminal: some View {
         GeometryReader { geometry in
-            let lineHeight: CGFloat = 8.2
-            let maximumLines = max(1, Int(geometry.size.height / lineHeight))
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color(red: 0.015, green: 0.035, blue: 0.045))
                 if let frame = controller.frame {
-                    Text(frame.visibleText(maximumLines: maximumLines))
-                        .font(.system(size: 6.8, weight: .regular, design: .monospaced))
-                        .foregroundStyle(Color(red: 0.72, green: 0.95, blue: 1.0))
-                        .lineSpacing(0)
-                        .padding(5)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    let contentWidth = max(1, geometry.size.width - 10)
+                    let fontSize = CGFloat(WatchTerminalLayout.fontSize(
+                        columns: frame.columns,
+                        availableWidth: Double(contentWidth)
+                    ))
+                    let lineHeight = CGFloat(WatchTerminalLayout.lineHeight(fontSize: Double(fontSize)))
+                    let maximumLines = max(1, Int(max(0, geometry.size.height - 10) / lineHeight))
+                    let visibleLines = frame.visibleLines(maximumLines: maximumLines)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(visibleLines.enumerated()), id: \.offset) { _, line in
+                            Text(verbatim: line)
+                                .font(.system(size: fontSize, weight: .regular, design: .monospaced))
+                                .foregroundStyle(Color(red: 0.72, green: 0.95, blue: 1.0))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight, alignment: .leading)
+                                .clipped()
+                        }
+                    }
+                    .padding(5)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 } else {
                     VStack(spacing: 5) {
                         if controller.status == .connecting { ProgressView().controlSize(.small) }
@@ -447,7 +512,11 @@ struct WatchTerminalView: View {
             .gesture(
                 DragGesture(minimumDistance: 12).onEnded { value in
                     guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                    controller.sendWheel(scrollingUp: value.translation.height > 0)
+                    if value.translation.height < -60, let onAdvancePage {
+                        onAdvancePage()
+                    } else {
+                        controller.sendWheel(scrollingUp: value.translation.height > 0)
+                    }
                 }
             )
         }

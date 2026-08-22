@@ -30,13 +30,9 @@ public enum JARVISWidgetStateLoader {
         let cached = store.load()
         let endpointStore = EndpointStore(defaults: JARVISSharedStore.defaults)
         let client = JarvisClient()
-        let endpointURL: URL?
-        if let saved = endpointStore.endpointURL {
-            endpointURL = saved
-        } else {
-            endpointURL = await client.discover(JarvisEndpoints.candidates(override: nil), timeout: 3)
-        }
-        guard let endpointURL else { return cached }
+        let candidates = JarvisEndpoints.candidates(override: endpointStore.endpointURL)
+        guard let endpointURL = await client.discover(candidates, timeout: 3) else { return cached }
+        endpointStore.endpointURLString = endpointURL.absoluteString
         do {
             let state = try await client.state(
                 JarvisEndpoint(baseURL: endpointURL, token: endpointStore.token ?? "")

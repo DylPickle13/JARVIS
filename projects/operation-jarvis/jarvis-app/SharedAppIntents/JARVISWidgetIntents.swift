@@ -45,13 +45,11 @@ struct SetPlugIntent: AppIntent {
         do {
             let store = EndpointStore(defaults: JARVISSharedStore.defaults)
             let client = JarvisClient()
-            let url: URL?
-            if let saved = store.endpointURL {
-                url = saved
-            } else {
-                url = await client.discover(JarvisEndpoints.candidates(override: nil), timeout: 3)
+            let candidates = JarvisEndpoints.candidates(override: store.endpointURL)
+            guard let url = await client.discover(candidates, timeout: 3) else {
+                throw JARVISWidgetIntentError.unreachable
             }
-            guard let url else { throw JARVISWidgetIntentError.unreachable }
+            store.endpointURLString = url.absoluteString
             let result = try await client.command(
                 JarvisEndpoint(baseURL: url, token: store.token ?? ""),
                 action: isOn ? "plug-on" : "plug-off",

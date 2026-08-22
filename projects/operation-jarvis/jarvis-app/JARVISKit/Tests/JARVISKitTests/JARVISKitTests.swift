@@ -19,7 +19,7 @@ final class JARVISKitTests: XCTestCase {
               "plugs": {"lamp": {"ok": true, "isOn": false, "host": "192.168.21.80", "rssi": -56, "alias": "Plug 3"}}},
             "purifier": {"ok": true, "isOn": true, "mode": "auto", "pm25": 1},
             "pi": {"ok": true, "active": 1, "localActive": 1, "localTotal": 2, "rpcActive": 0},
-            "network": {"ok": true, "macLanIp": "192.168.21.215", "tailscaleIp": "100.96.55.86"}
+            "network": {"ok": true, "macLanIp": "192.168.21.215", "tailscaleIp": "100.87.28.34"}
           }
         }
         """
@@ -27,7 +27,15 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(snapshot.ok, true)
         XCTAssertEqual(snapshot.summary?.plugsOn, 1)
         XCTAssertEqual(snapshot.subsystems?.plugs?.plugs?["lamp"]?.isOn, false)
-        XCTAssertEqual(snapshot.subsystems?.network?.tailscaleIp, "100.96.55.86")
+        XCTAssertEqual(snapshot.subsystems?.network?.tailscaleIp, "100.87.28.34")
+    }
+
+    func testDefaultEndpointsPreferMagicDNSBeforeTailscaleIPFallback() throws {
+        let candidates = JarvisEndpoints.candidates(override: nil)
+        XCTAssertEqual(candidates.count, 3)
+        XCTAssertEqual(candidates[0].host, "192.168.21.215")
+        XCTAssertEqual(candidates[1].host, "dylans-mac-mini-2.tailcba1e5.ts.net")
+        XCTAssertEqual(candidates[2].host, "100.87.28.34")
     }
 
     func testDecodeCommandResultPlug() throws {
@@ -140,6 +148,9 @@ final class JARVISKitTests: XCTestCase {
             WatchTerminalConfiguration.fromProvisioningCode(try configuration.provisioningCode()),
             configuration
         )
+        XCTAssertEqual(configuration.candidateBaseURLs.first?.host, "192.0.2.10")
+        XCTAssertTrue(configuration.candidateBaseURLs.contains { $0.host == "dylans-mac-mini-2.tailcba1e5.ts.net" && $0.port == 8792 })
+        XCTAssertTrue(configuration.candidateBaseURLs.contains { $0.host == "100.87.28.34" && $0.port == 8792 })
         XCTAssertNil(WatchTerminalConfiguration.fromProvisioningCode("not-a-provisioning-code"))
         XCTAssertFalse(
             WatchTerminalConfiguration(
@@ -162,7 +173,16 @@ final class JARVISKitTests: XCTestCase {
             historySize: 20,
             lines: (0..<8).map { "line-\($0)" }
         )
+        XCTAssertEqual(frame.visibleLines(maximumLines: 3), ["line-5", "line-6", "line-7"])
         XCTAssertEqual(frame.visibleText(maximumLines: 3), "line-5\nline-6\nline-7")
+        let fittedFontSize = WatchTerminalLayout.fontSize(columns: 51, availableWidth: 190)
+        XCTAssertLessThan(fittedFontSize, WatchTerminalLayout.maximumFontSize)
+        XCTAssertGreaterThanOrEqual(fittedFontSize, WatchTerminalLayout.minimumFontSize)
+        XCTAssertEqual(
+            WatchTerminalLayout.lineHeight(fontSize: fittedFontSize),
+            fittedFontSize * WatchTerminalLayout.lineHeightRatio,
+            accuracy: 0.001
+        )
         XCTAssertEqual(WatchTerminalKeyBytes.slash, Data([0x2f]))
         XCTAssertEqual(WatchTerminalKeyBytes.control(0x43), Data([0x03]))
         XCTAssertEqual(

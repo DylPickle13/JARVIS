@@ -204,7 +204,7 @@ struct HomeView: View {
 
     private var networkLabel: String {
         guard let host = app.currentEndpoint?.host else { return "—" }
-        if host.hasPrefix("100.") { return "Tailscale" }
+        if host.hasPrefix("100.") || host.hasSuffix(".ts.net") { return "Tailscale" }
         if host.hasPrefix("192.168") || host.hasPrefix("10.") || host.hasPrefix("172.") { return "LAN" }
         return host
     }

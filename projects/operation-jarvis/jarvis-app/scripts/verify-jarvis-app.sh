@@ -118,15 +118,34 @@ grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVISWatch/Views/WatchTe
 grep -q 'SecTrustCopyCertificateChain' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'digitalCrownRotation' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalKeyBytes.slash' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'WatchTerminalView(controller: model.terminal)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'configuration.candidateBaseURLs' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
+grep -q '\.lineLimit(1)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'ensureBackspaceAutoRepeatSentinel' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'override func deleteBackward()' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'WatchTerminalView(' JARVISWatch/Views/WatchDashboardContent.swift
+[[ "$(grep -c '\.tag(WatchDashboardPage\.' JARVISWatch/Views/WatchDashboardContent.swift)" == "3" ]]
+first_watch_page="$(grep -n '\.tag(WatchDashboardPage\.' JARVISWatch/Views/WatchDashboardContent.swift | head -n 1)"
+[[ "$first_watch_page" == *'WatchDashboardPage.terminal'* ]]
+reject_match 'Watch terminal must not require an Open button' -qs 'Open JARVIS' JARVISWatch/Views/WatchDashboardContent.swift
+reject_match 'Watch terminal must not use a navigation launcher' -qs 'NavigationLink' JARVISWatch/Views/WatchDashboardContent.swift
 [[ -x terminald/jarvis_terminald.py ]]
 [[ -x scripts/install-jarvis-terminald.sh ]]
 [[ -x scripts/jarvis-terminal-provisioning.sh ]]
 reject_match 'Watch terminal must not open SSH directly' -RqsE 'import NIOSSH|import NIOPosix|import SwiftTerm' JARVISWatch
 reject_match 'terminal bridge must remain separate from jarvisd' -RqsF 'terminal/frame' jarvisd
 
-printf '%s\n' '== native refresh contract =='
+printf '%s\n' '== native refresh and Tailscale contract =='
 grep -q 'activeInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
+grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
+grep -q '100.87.28.34' JARVISKit/Sources/JARVISKit/Endpoints.swift
+grep -q 'TAILSCALE_APP_CLI' jarvisd/jarvisd.py
+for plist in JARVIS/Info.plist JARVISWatch/Info.plist JARVISWidget/Info.plist JARVISWatchWidget/Info.plist; do
+  grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' "$plist"
+  grep -q '100.87.28.34' "$plist"
+done
+reject_match 'retired Tailscale node address is still present' -RqsF '100.96.55.86' \
+  JARVIS JARVISWatch JARVISWidget JARVISWatchWidget JARVISKit/Sources jarvisd
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVIS/AppState.swift
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'sceneDidBecomeActive' JARVISWatch/Views/WatchConnectView.swift
@@ -196,7 +215,6 @@ grep -q 'reloadTimelines(ofKind: "JARVISWatchLauncherWidget.v2")' JARVISWatch/JA
 [[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/JARVISWidgetIcon@2x.png ]]
 [[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIconAccented.imageset/JARVISWidgetIconAccented@2x.png ]]
 grep -Rqs 'Image("JARVISMark")' JARVIS/Views
-grep -Rqs 'Image("JARVISMark")' JARVISWatch/Views
 [[ -s JARVIS/Assets.xcassets/JARVISMark.imageset/JARVISMark.png ]]
 [[ -s JARVISWatch/Assets.xcassets/JARVISMark.imageset/JARVISMark.png ]]
 reject_match 'completed widget refresh attempts must not be retained' -qsF 'lastAttempt' JARVISKit/Sources/JARVISKit/WidgetSupport.swift

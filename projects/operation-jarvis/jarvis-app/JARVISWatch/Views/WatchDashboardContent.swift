@@ -1,9 +1,16 @@
 import SwiftUI
 import JARVISKit
 
+private enum WatchDashboardPage: Hashable {
+    case terminal
+    case plugs
+    case system
+}
+
 struct WatchDashboardContent: View {
     @ObservedObject var model: WatchConnectModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var selectedPage: WatchDashboardPage = .terminal
 
     private let plugOrder = ["family-room-light", "lamp", "pedalboard", "tv"]
     private let gridColumns = [
@@ -16,120 +23,40 @@ struct WatchDashboardContent: View {
             WatchJarvisStyle.background
                 .ignoresSafeArea()
 
-            if dynamicTypeSize.isAccessibilitySize {
-                accessibilityLayout
-            } else {
-                TabView {
-                    overviewPage
-                    plugsPage
-                    systemPage
-                    jarvisPage
-                }
-                .tabViewStyle(.verticalPage)
+            TabView(selection: $selectedPage) {
+                WatchTerminalView(
+                    controller: model.terminal,
+                    isActive: selectedPage == .terminal,
+                    onAdvancePage: { selectedPage = .plugs }
+                )
+                .tag(WatchDashboardPage.terminal)
+
+                resolvedPlugsPage
+                    .tag(WatchDashboardPage.plugs)
+                resolvedSystemPage
+                    .tag(WatchDashboardPage.system)
             }
+            .tabViewStyle(.verticalPage)
         }
         .tint(WatchJarvisStyle.cyan)
     }
 
-    // MARK: - Overview
-
-    private var overviewPage: some View {
-        VStack(spacing: 8) {
-            brandHeader
-            overviewHero
-            HStack(spacing: 7) {
-                metricTile(
-                    value: model.lastState?.summary?.pm25.map(String.init) ?? "—",
-                    label: "PM2.5",
-                    symbol: "aqi.medium"
-                )
-                metricTile(
-                    value: model.lastState?.summary?.piActive.map(String.init) ?? "—",
-                    label: "Pi active",
-                    symbol: "cpu"
-                )
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-    }
-
-    private var brandHeader: some View {
-        HStack(spacing: 8) {
-            JARVISWatchMark(size: 38)
-            VStack(alignment: .leading, spacing: 0) {
-                Text("JARVIS")
-                    .font(.headline.weight(.bold))
-                    .tracking(1.2)
-                Text("CONTROL")
-                    .font(.system(size: 8, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 2)
-            connectionPill
+    @ViewBuilder
+    private var resolvedPlugsPage: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            accessibilityPlugsPage
+        } else {
+            plugsPage
         }
     }
 
-    private var overviewHero: some View {
-        VStack(spacing: 3) {
-            if model.connectionState == .connecting, model.lastState == nil {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Establishing link")
-                    .font(.caption.weight(.semibold))
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(model.lastState?.summary?.plugsOn.map(String.init) ?? "—")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                    Text("of \(model.lastState?.summary?.plugsTotal.map(String.init) ?? "—")")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                Text("PLUGS ACTIVE")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(1.1)
-                    .foregroundStyle(WatchJarvisStyle.cyan)
-            }
-            Text(freshnessText)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(model.isStale ? WatchJarvisStyle.warning : .secondary)
-                .lineLimit(1)
+    @ViewBuilder
+    private var resolvedSystemPage: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            accessibilitySystemPage
+        } else {
+            systemPage
         }
-        .frame(maxWidth: .infinity, minHeight: 72)
-        .background(WatchJarvisStyle.heroFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(WatchJarvisStyle.cyan.opacity(0.24), lineWidth: 1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(overviewAccessibilityLabel)
-    }
-
-    private func metricTile(value: String, label: String, symbol: String) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: symbol)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(WatchJarvisStyle.cyan)
-                .frame(width: 22, height: 22)
-                .background(WatchJarvisStyle.cyan.opacity(0.13), in: Circle())
-            VStack(alignment: .leading, spacing: 0) {
-                Text(value)
-                    .font(.caption.weight(.bold))
-                    .monospacedDigit()
-                Text(label)
-                    .font(.system(size: 8))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .frame(maxWidth: .infinity, minHeight: 42)
-        .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label), \(value)")
     }
 
     // MARK: - Plug controls
@@ -274,66 +201,38 @@ struct WatchDashboardContent: View {
         .disabled(model.isRefreshing)
     }
 
-    // MARK: - JARVIS terminal
+    // MARK: - Accessibility pages
 
-    private var jarvisPage: some View {
-        VStack(spacing: 9) {
-            pageHeader("JARVIS", symbol: "terminal.fill", trailing: model.terminal.status.label)
-            NavigationLink {
-                WatchTerminalView(controller: model.terminal)
-            } label: {
-                VStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .fill(WatchJarvisStyle.cyan.opacity(0.15))
-                            .frame(width: 58, height: 58)
-                        Image(systemName: "terminal.fill")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(WatchJarvisStyle.cyan)
-                    }
-                    Text("Open JARVIS")
-                        .font(.headline.weight(.bold))
-                    Text("Same persistent Pi session")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 142)
-                .background(WatchJarvisStyle.heroFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(WatchJarvisStyle.cyan.opacity(0.26), lineWidth: 1)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open the JARVIS terminal")
-            .accessibilityValue(model.terminal.status.label)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-    }
-
-    // MARK: - Accessibility layout
-
-    private var accessibilityLayout: some View {
+    private var accessibilityPlugsPage: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                brandHeader
-                overviewHero
                 pageHeader("Plugs", symbol: "powerplug.fill", trailing: plugSummary)
-                ForEach(availablePlugNames, id: \.self) { name in
-                    accessiblePlugButton(name)
+                if availablePlugNames.isEmpty {
+                    unavailablePanel("Plug status unavailable", symbol: "powerplug")
+                } else {
+                    ForEach(availablePlugNames, id: \.self) { name in
+                        accessiblePlugButton(name)
+                    }
                 }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private var accessibilitySystemPage: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
                 pageHeader("System", symbol: "waveform.path.ecg", trailing: sourceLabel)
                 purifierPanel
                 sourcePanel
-                NavigationLink {
-                    WatchTerminalView(controller: model.terminal)
-                } label: {
-                    Label("Open JARVIS terminal", systemImage: "terminal.fill")
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                }
                 if model.shouldShowRetry {
                     retryButton
+                }
+                if let message = model.errorMessage, !message.isEmpty {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(WatchJarvisStyle.warning)
                 }
             }
             .padding(.horizontal, 8)
@@ -371,21 +270,6 @@ struct WatchDashboardContent: View {
     }
 
     // MARK: - Helpers
-
-    private var connectionPill: some View {
-        HStack(spacing: 4) {
-            Circle().fill(model.dotColor).frame(width: 6, height: 6)
-            Text(shortConnectionLabel)
-                .font(.system(size: 8, weight: .bold))
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 5)
-        .background(model.dotColor.opacity(0.13), in: Capsule())
-        .overlay { Capsule().stroke(model.dotColor.opacity(0.28), lineWidth: 0.5) }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Connection \(model.statusText)")
-    }
 
     private func pageHeader(_ title: String, symbol: String, trailing: String) -> some View {
         HStack(spacing: 6) {
@@ -428,15 +312,6 @@ struct WatchDashboardContent: View {
         return "\(on)/\(total) on"
     }
 
-    private var shortConnectionLabel: String {
-        switch model.connectionState {
-        case .connected: return model.isStale ? "STALE" : (model.isViaPhone ? "PHONE" : "DIRECT")
-        case .connecting: return "LINKING"
-        case .failed: return "OFFLINE"
-        case .idle: return "IDLE"
-        }
-    }
-
     private var sourceLabel: String {
         switch model.connectionState {
         case .connected:
@@ -456,12 +331,6 @@ struct WatchDashboardContent: View {
         if seconds < 60 { return "Updated \(seconds)s ago" }
         if seconds < 3_600 { return "Updated \(seconds / 60)m ago" }
         return "Updated \(seconds / 3_600)h ago"
-    }
-
-    private var overviewAccessibilityLabel: String {
-        let on = model.lastState?.summary?.plugsOn.map(String.init) ?? "unknown"
-        let total = model.lastState?.summary?.plugsTotal.map(String.init) ?? "unknown"
-        return "\(on) of \(total) plugs active. \(freshnessText)."
     }
 
     private var purifierSummary: String {
@@ -575,41 +444,10 @@ private struct WatchPlugTile: View {
     }
 }
 
-private struct JARVISWatchMark: View {
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [WatchJarvisStyle.cyan.opacity(0.34), WatchJarvisStyle.cyan.opacity(0.04)],
-                        center: .center,
-                        startRadius: 1,
-                        endRadius: size / 2
-                    )
-                )
-                .blur(radius: 2)
-            Image("JARVISMark")
-                .resizable()
-                .scaledToFit()
-                .padding(3)
-                .clipShape(Circle())
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
-    }
-}
-
 enum WatchJarvisStyle {
     static let cyan = Color(red: 0.29, green: 0.82, blue: 1.0)
     static let warning = Color(red: 1.0, green: 0.67, blue: 0.24)
     static let surface = Color.white.opacity(0.075)
-    static let heroFill = LinearGradient(
-        colors: [cyan.opacity(0.18), Color.white.opacity(0.055)],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
     static let background = LinearGradient(
         colors: [Color.black, Color(red: 0.01, green: 0.08, blue: 0.12), Color.black],
         startPoint: .topLeading,

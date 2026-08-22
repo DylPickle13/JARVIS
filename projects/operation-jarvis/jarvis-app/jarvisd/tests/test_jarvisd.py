@@ -60,6 +60,30 @@ class DaemonUnitTests(unittest.TestCase):
         self.assertNotIn("weather", coordinator.collectors)
         self.assertNotIn("weather", coordinator.DEFAULT_INTERVALS)
 
+    def test_tailscale_ip_reads_network_extension_interface(self):
+        completed = mock.Mock(
+            stdout="utun11: flags=8051<UP,POINTOPOINT,RUNNING> mtu 1280\n"
+                   "\tinet 100.87.28.34 --> 100.87.28.34 netmask 0xffffffff\n"
+        )
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(jarvisd, "TAILSCALE_SOCKET", Path(directory) / "missing.sock"), \
+             mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
+            self.assertEqual(jarvisd._tailscale_ip(), "100.87.28.34")
+        run.assert_called_once_with(["/sbin/ifconfig"], capture_output=True, text=True, timeout=5)
+
+    def test_tailscale_ip_uses_signed_macos_app_cli(self):
+        ifconfig = mock.Mock(stdout="utun0: flags=8051<UP> mtu 1380\n")
+        app_cli = mock.Mock(stdout="100.87.28.34\n")
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(jarvisd, "TAILSCALE_SOCKET", Path(directory) / "missing.sock"), \
+             mock.patch.object(jarvisd, "TAILSCALE_APP_CLI", Path("/Applications/Tailscale.app/Contents/MacOS/Tailscale")), \
+             mock.patch.object(jarvisd.subprocess, "run", side_effect=[ifconfig, app_cli]) as run:
+            self.assertEqual(jarvisd._tailscale_ip(), "100.87.28.34")
+        self.assertEqual(
+            run.call_args.args[0],
+            ["/Applications/Tailscale.app/Contents/MacOS/Tailscale", "ip", "-4"],
+        )
+
     def test_public_command_result_filters_adapter_internals(self):
         result = jarvisd._public_command_result(
             "plug-on",
