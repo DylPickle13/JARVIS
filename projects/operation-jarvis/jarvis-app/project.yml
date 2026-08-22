@@ -12,13 +12,22 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "23"
+    MARKETING_VERSION: "0.3.0"
+    CURRENT_PROJECT_VERSION: "24"
     CODE_SIGN_STYLE: Automatic
 
 packages:
   JARVISKit:
     path: JARVISKit
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm.git
+    exactVersion: 1.20.0
+  swift-nio-ssh:
+    url: https://github.com/apple/swift-nio-ssh.git
+    exactVersion: 0.15.0
+  swift-nio:
+    url: https://github.com/apple/swift-nio.git
+    exactVersion: 2.101.3
 
 targets:
   JARVIS:
@@ -32,6 +41,13 @@ targets:
       - path: HostAppIntents
     dependencies:
       - package: JARVISKit
+      - package: SwiftTerm
+      - package: swift-nio-ssh
+        product: NIOSSH
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
       - target: JARVISWatch
         platforms: [iOS]
         platformFilter: iOS

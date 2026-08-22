@@ -42,10 +42,31 @@ bash -n scripts/*.sh jarvisd/resurrector.sh ../scripts/install-discord-bot-launc
 
 printf '%s\n' '== native navigation contract =='
 [[ ! -e JARVIS/Views/EventsView.swift ]]
-[[ "$(grep -c '\.tabItem' JARVIS/JARVISApp.swift)" == "2" ]]
+[[ "$(grep -c '\.tabItem' JARVIS/JARVISApp.swift)" == "3" ]]
 grep -q 'Label("Home"' JARVIS/JARVISApp.swift
+grep -q 'Label("Pi"' JARVIS/JARVISApp.swift
 grep -q 'Label("Settings"' JARVIS/JARVISApp.swift
+grep -q 'case pi' JARVIS/AppState.swift
+grep -q 'case "pi": selection = .pi' JARVIS/JARVISApp.swift
 reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case events|fetchEvents|lastEvents|eventsLoading' JARVIS
+
+printf '%s\n' '== Pi terminal source contract =='
+grep -q 'exactVersion: 1.20.0' project.yml
+grep -q 'exactVersion: 0.15.0' project.yml
+grep -q 'exactVersion: 2.101.3' project.yml
+grep -q 'import SwiftTerm' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'import NIOSSH' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'new-session -A' JARVIS/Terminal/PiTerminalSettings.swift
+grep -q 'jarvis-mobile' JARVIS/Terminal/PiTerminalSettings.swift
+grep -q 'jarvis-ios' JARVIS/Terminal/PiTerminalSettings.swift
+grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVIS/Terminal/PiTerminalSettings.swift
+grep -q 'String(openSSHPublicKey: hostKey)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'extended-keys-format csi-u' config/jarvis-mobile.tmux.conf
+grep -q 'window-size latest' config/jarvis-mobile.tmux.conf
+reject_match 'Pi terminal must not accept every SSH host key' -RqsE 'AcceptAllHostKeys|acceptAnything' JARVIS/Terminal
+reject_match 'Pi terminal reconnect must not queue input' -RqsE 'queuedInput|pendingInput|inputQueue' JARVIS/Terminal
+reject_match 'Pi launcher must not kill its persistent session' -RqsE 'kill-session|kill-server' JARVIS/Terminal config/jarvis-mobile.tmux.conf
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations' JARVIS/Info.plist | grep -c UIInterfaceOrientationLandscape)" == "2" ]]
 
 printf '%s\n' '== native refresh contract =='
 grep -q 'activeInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
@@ -162,6 +183,7 @@ fi
 
 printf '%s\n' '== iOS simulator build =='
 xcodebuild \
+  -skipPackagePluginValidation \
   -project JARVIS.xcodeproj \
   -scheme JARVIS \
   -configuration Debug \
@@ -267,6 +289,7 @@ done
 if [[ "${JARVIS_RUN_IOS_TESTS:-0}" == "1" ]]; then
   printf '%s\n' '== iOS unit tests =='
   xcodebuild \
+    -skipPackagePluginValidation \
     -project JARVIS.xcodeproj \
     -scheme JARVIS \
     -configuration Debug \
@@ -278,6 +301,7 @@ fi
 
 printf '%s\n' '== watchOS simulator build =='
 xcodebuild \
+  -skipPackagePluginValidation \
   -project JARVIS.xcodeproj \
   -scheme JARVISWatch \
   -configuration Debug \
@@ -287,5 +311,9 @@ xcodebuild \
   build
 [[ -d "$DERIVED_DATA_PATH/Build/Products/Debug-watchsimulator/JARVISWatch.app/PlugIns/JARVISWatchWidget.appex" ]] \
   || { echo "watch widget was not embedded" >&2; exit 1; }
+WATCH_HOST_BINARY="$DERIVED_DATA_PATH/Build/Products/Debug-watchsimulator/JARVISWatch.app/JARVISWatch"
+[[ -f "$DERIVED_DATA_PATH/Build/Products/Debug-watchsimulator/JARVISWatch.app/JARVISWatch.debug.dylib" ]] \
+  && WATCH_HOST_BINARY="$DERIVED_DATA_PATH/Build/Products/Debug-watchsimulator/JARVISWatch.app/JARVISWatch.debug.dylib"
+reject_match 'SSH terminal code leaked into the Watch host' -aFq 'PiTerminalConfiguration' "$WATCH_HOST_BINARY"
 
 printf '%s\n' '== complete =='

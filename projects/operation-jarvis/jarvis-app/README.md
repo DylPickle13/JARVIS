@@ -10,13 +10,12 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. Signed `0.2.0 (23)` is installed on Dylan's allowlisted iPhone and Apple
-Watch. It includes build 18's Events-tab removal, build 19's shared foreground
-refresh policy, and two dynamic plug-only Siri shortcuts. Build 23 advertises
-only “Hey JARVIS, turn on/off [the] [plug]” invocation phrases, as requested;
-older “with JARVIS”, “Use JARVIS”, and contact-directed “Tell JARVIS” phrases
-are absent. Upgrade-time dynamic catalogue publication remains enforced. Owner
-Watch invocation testing remains pending. The
+UI. Signed `0.3.0 (24)` is archived and ready for Dylan's iPhone connection;
+the physical iPhone and Apple Watch remain on `0.2.0 (23)` until deployment.
+Build 24 adds a real Pi terminal as the middle iPhone tab using SwiftTerm,
+SwiftNIO SSH, and a persistent isolated tmux session on this Mac. It preserves
+build 18's Events cleanup, build 19's foreground refresh, and build 23's exact
+“Hey JARVIS” plug phrases. Owner physical SSH/Pi validation remains pending. The
 three-slot Smart Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
@@ -57,12 +56,20 @@ and replaces normal refresh buttons with automatic status plus failure-only
 retry on Watch. Build 20 added only Turn On JARVIS Plug and Turn Off JARVIS Plug
 to Siri/Shortcuts. Build 23 makes their sole spoken form “Hey JARVIS, turn
 on/off [the] [plug]” and keeps upgrade-time parameter publication reliable.
-Their plug parameter is populated from current `jarvisd` state rather than a
-compiled list; the generic widget action is not discoverable.
+Build 24 changes iPhone navigation to Home, Pi, and Settings. The Pi tab opens
+an authentic 24-bit terminal, connects directly to macOS SSH, and creates or
+reattaches the `jarvis-ios` tmux session running Pi in this repository. Their
+plug parameter is populated from current `jarvisd` state rather than a compiled
+list; the generic widget action is not discoverable.
+
+Build-24 artifacts: `/tmp/JARVIS-build24-pi-terminal.xcarchive` and
+`/tmp/JARVIS-build24-pi-terminal-export/JARVIS.ipa` (SHA-256
+`a91d698ca710d985f2c82ea3469b14489e33ab251bc21083b12a1c95c58e47cf`).
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
-backend is the small `jarvisd` daemon in this folder, which is the app's only
-control plane. APNs push + Live Activities are out (free Apple ID can't do
+backend is the small `jarvisd` daemon in this folder, which remains the only
+hardware/status/service API control plane. The iPhone Pi tab adds a separate,
+explicit SSH terminal data plane. APNs push + Live Activities are out (free Apple ID can't do
 APNs); oMLX is out of app scope entirely. The widget catalogue is Open JARVIS,
 JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
 
@@ -82,8 +89,8 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   network, uptime, Discord bot, room audio, scheduler, and scheduled jobs),
   service start/stop/restart (room-audio server), launcher,
   configurable plug, plug-grid, and purifier-status widgets on iPhone and Watch,
-  and Siri/Shortcuts via App Intents,
-  Tailscale remote access.
+  Siri/Shortcuts via App Intents, and the iPhone-only SSH-backed Pi terminal,
+  with LAN and Tailscale remote access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
   word, Raspberry Pi room endpoint, Discord bot/scheduler process mutation and
   scheduled-job mutation in the read-only first release, **APNs push
@@ -114,7 +121,7 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   `/api/v1/command` (allowlisted, rejects cast), `/api/jarvis/events` ingest,
   `/api/v1/events`, `/api/v1/services` (server-allowlisted lifecycle actions),
   and `/api/v1/scheduled-jobs` (sanitized read-only inventory).
-- **iOS app — Home screen** — 2-tab shell (Home / Settings). Home shows:
+- **iOS app — navigation** — 3-tab shell (Home / Pi / Settings). Home shows:
   connection header (LAN vs Tailscale + IP), Pi session
   count, a **2-column plug grid**, then the **air purifier** (power switch +
   Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
@@ -131,8 +138,16 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   lifecycle, retries with backoff after transport failures, observes network
   path changes, refreshes Home immediately and every 15 seconds, and cancels
   polling in Settings or the background. Pull-to-refresh remains an optional
-  fallback. `jarvisd` state reads are cached, so warm snapshots return in
-  milliseconds.
+  fallback. Polling also stops while Pi is selected. `jarvisd` state reads are
+  cached, so warm snapshots return in milliseconds.
+- **iOS app — Pi terminal** — SwiftTerm renders the real Pi TUI while SwiftNIO
+  SSH carries a password-authenticated PTY to this Mac. First use confirms and
+  remembers the SSH host key; the password is kept in target-local Keychain.
+  An isolated `jarvis-mobile` tmux server creates or attaches `jarvis-ios`, so
+  Pi survives tab changes, app backgrounding, termination, and reconnection.
+  The compact horizontal key deck exposes Escape, Ctrl, Tab, Ctrl-C, arrows,
+  Shift/Option-Return, common Pi shortcuts, paste, and keyboard dismissal.
+  Pinch adjusts the terminal font and landscape is enabled.
 - **watchOS app** — builds for Apple Watch Series 11 (46mm), uses real
   `WCSessionDelegate` reachability callbacks, refreshes immediately on
   activation and every 15 seconds while visible, cancels work when inactive,
@@ -198,14 +213,15 @@ jarvis-app/
 │   ├── Sources/JARVISKit/      #   Models, JarvisClient, EndpointStore, WatchBridge
 │   └── Tests/JARVISKitTests/   #   unit + live integration tests
 ├── JARVIS/                     # iOS app target (SwiftUI)
-│   ├── JARVISApp.swift         #   @main + Home/Settings tab shell
+│   ├── JARVISApp.swift         #   @main + Home/Pi/Settings tab shell
 │   ├── AppState.swift          #   connection + state + command model
 │   ├── AppStateWatchBridge.swift
 │   ├── Info.plist              #   scoped local/Tailscale ATS policy
 │   ├── PrivacyInfo.xcprivacy
 │   ├── Assets.xcassets/        #   icon + accent color
+│   ├── Terminal/               #   SwiftTerm + SwiftNIO SSH + Pi key deck
 │   └── Views/
-│       ├── HomeView.swift      #   Pi, plugs, purifier, services + daemon info
+│       ├── HomeView.swift      #   Pi telemetry, plugs, purifier, services + daemon info
 │       ├── SettingsView.swift  #   connection management + about
 │       └── Components.swift    #   badge, card, formatting helpers
 ├── JARVISWatch/                # watchOS app target

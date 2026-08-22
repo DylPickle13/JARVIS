@@ -9,6 +9,12 @@ import JARVISKit
 
 struct SettingsView: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var piTerminal: PiTerminalController
+    @State private var sshHost = ""
+    @State private var sshPort = "22"
+    @State private var sshUsername = ""
+    @State private var sshPassword = ""
+    @State private var sshSaved = false
 
     var body: some View {
         NavigationStack {
@@ -19,6 +25,7 @@ struct SettingsView: View {
                         .listRowInsets(EdgeInsets())
                 }
                 connectionSection
+                piTerminalSection
                 statusSection
                 if app.connectionState == .failed, let error = app.errorMessage {
                     errorSection(error)
@@ -28,6 +35,7 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(JarvisBackdrop())
             .navigationTitle("Settings")
+            .onAppear { loadPiTerminalSettings() }
         }
     }
 
@@ -93,6 +101,66 @@ struct SettingsView: View {
         } footer: {
             Text("JARVIS finds the Mac automatically (home LAN or Tailscale) — no token needed. Leave the endpoint blank to auto-detect, or enter one to force it.")
         }
+    }
+
+    // MARK: - Pi terminal
+
+    private var piTerminalSection: some View {
+        Section {
+            TextField("SSH host (optional)", text: $sshHost, prompt: Text(app.currentEndpoint?.host ?? "Mac hostname or IP"))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .font(.body.monospaced())
+            TextField("SSH port", text: $sshPort)
+                .keyboardType(.numberPad)
+                .font(.body.monospaced())
+            TextField("SSH username", text: $sshUsername)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
+            SecureField("Mac login password", text: $sshPassword)
+                .textContentType(.password)
+                .font(.body.monospaced())
+
+            Button {
+                sshSaved = piTerminal.settings.save(
+                    host: sshHost,
+                    portText: sshPort,
+                    username: sshUsername,
+                    password: sshPassword
+                )
+                if sshSaved {
+                    piTerminal.reconnectAfterSettingsChange(fallbackHost: app.currentEndpoint?.host)
+                }
+            } label: {
+                Label(sshSaved ? "SSH login saved" : "Save SSH login", systemImage: sshSaved ? "checkmark.circle.fill" : "key.fill")
+                    .frame(maxWidth: .infinity)
+            }
+
+            Button(role: .destructive) {
+                piTerminal.forgetTrustedHost(fallbackHost: app.currentEndpoint?.host)
+            } label: {
+                Label("Forget trusted SSH host", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity)
+            }
+
+            if let error = piTerminal.settings.credentialError {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+        } header: {
+            Text("Pi Terminal")
+        } footer: {
+            Text("Leave the host blank to use JARVIS’s current LAN or Tailscale address. Opening the Pi tab connects over SSH and attaches to the persistent jarvis-ios tmux session.")
+        }
+    }
+
+    private func loadPiTerminalSettings() {
+        sshHost = piTerminal.settings.host
+        sshPort = String(piTerminal.settings.port)
+        sshUsername = piTerminal.settings.username
+        sshPassword = piTerminal.settings.passwordForEditing()
+        sshSaved = false
     }
 
     // MARK: - Status
@@ -193,5 +261,8 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView().environmentObject(AppState())
+    let settings = PiTerminalSettings(defaults: UserDefaults(suiteName: "pi-settings-preview")!)
+    return SettingsView()
+        .environmentObject(AppState())
+        .environmentObject(PiTerminalController(settings: settings))
 }

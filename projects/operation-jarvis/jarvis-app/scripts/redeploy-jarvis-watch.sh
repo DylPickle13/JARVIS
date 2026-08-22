@@ -102,6 +102,7 @@ ok "Physical Watch UDID: $WATCH_DEVICE_UDID"
 
 printf 'Building %s (%s) for watchOS device…\n' "$SCHEME" "$CONFIG"
 BUILD_ARGS=(
+  -skipPackagePluginValidation
   -project JARVIS.xcodeproj
   -scheme "$SCHEME"
   -configuration "$CONFIG"

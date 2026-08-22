@@ -6,6 +6,7 @@ import JARVISKit
 
 public enum AppSection: String, Sendable {
     case home
+    case pi
     case settings
 }
 

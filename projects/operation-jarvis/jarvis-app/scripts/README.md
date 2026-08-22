@@ -1,6 +1,8 @@
 # scripts/
 
-Build and deployment helpers:
+Build and deployment helpers. Build 24's SwiftTerm renderer requires Xcode's
+optional Metal component; install it once with
+`xcodebuild -downloadComponent MetalToolchain` if needed.
 
 - `redeploy-jarvis-app.sh` — builds and installs the free-provisioned iPhone
   app through CoreDevice. This is appropriate for iPhone-only iteration, but

@@ -42,6 +42,8 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -62,6 +64,6 @@
 		</dict>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>JARVIS talks to jarvisd on your local network to read status and control approved devices.</string>
+	<string>JARVIS connects to jarvisd and this Mac’s SSH service on your local network.</string>
 </dict>
 </plist>

@@ -93,6 +93,7 @@ ok "Verified target identity: Dylan’s iPhone"
 
 printf 'Building %s (%s) for device…\n' "$SCHEME" "$CONFIG"
 xcodebuild \
+  -skipPackagePluginValidation \
   -project JARVIS.xcodeproj \
   -scheme "$SCHEME" \
   -configuration "$CONFIG" \

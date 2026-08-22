@@ -1,10 +1,14 @@
 import SwiftUI
+
 @main
 struct JARVISApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var app = AppState()
+    @StateObject private var piTerminal: PiTerminalController
 
     init() {
+        let settings = PiTerminalSettings()
+        _piTerminal = StateObject(wrappedValue: PiTerminalController(settings: settings))
         JARVISAppShortcuts.updateAppShortcutParameters()
     }
 
@@ -12,17 +16,21 @@ struct JARVISApp: App {
         WindowGroup {
             RootTabView()
                 .environmentObject(app)
+                .environmentObject(piTerminal)
                 .tint(Color.accentColor)
                 .task {
                     app.startWatchBridge()
                     app.sceneDidBecomeActive()
+                    piTerminal.sceneDidBecomeActive()
                 }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active:
                         app.sceneDidBecomeActive()
+                        piTerminal.sceneDidBecomeActive()
                     case .inactive, .background:
                         app.sceneWillResignActive()
+                        piTerminal.sceneWillResignActive()
                     @unknown default:
                         break
                     }
@@ -33,6 +41,7 @@ struct JARVISApp: App {
 
 private struct RootTabView: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var piTerminal: PiTerminalController
     @State private var selection: AppSection = .home
 
     init() {
@@ -49,20 +58,33 @@ private struct RootTabView: View {
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(AppSection.home)
 
+            PiTerminalView()
+                .tabItem { Label("Pi", systemImage: "terminal.fill") }
+                .tag(AppSection.pi)
+
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
                 .tag(AppSection.settings)
         }
-        .onAppear { app.setActiveSection(selection) }
+        .onAppear {
+            app.setActiveSection(selection)
+            setPiVisibility(selection)
+        }
         .onChange(of: selection) { _, value in
             app.setActiveSection(value)
+            setPiVisibility(value)
         }
         .onOpenURL { url in
             guard url.scheme?.lowercased() == "jarvis" else { return }
             switch url.host?.lowercased() {
             case "settings": selection = .settings
+            case "pi": selection = .pi
             default: selection = .home
             }
         }
+    }
+
+    private func setPiVisibility(_ section: AppSection) {
+        piTerminal.setVisible(section == .pi, fallbackHost: app.currentEndpoint?.host)
     }
 }

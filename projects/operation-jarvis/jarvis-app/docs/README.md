@@ -6,9 +6,9 @@
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current candidate:** `0.2.0 (23)`
+**Current candidate:** `0.3.0 (24)`
 
-**Physical installation:** iPhone and Apple Watch `0.2.0 (23)`; “Hey JARVIS” Watch invocation is owner-pending
+**Physical installation:** iPhone and Apple Watch remain `0.2.0 (23)`; build 24 is archived and awaiting Dylan's iPhone connection
 
 This is the single architecture, security, packaging, deployment, validation,
 and recovery reference for the JARVIS iPhone app, Apple Watch app, widgets, and
@@ -27,12 +27,13 @@ never deploy to a device outside Dylan's allowlist.
 
 ### Completed
 
-- `jarvisd` is the sole Apple-client control plane on TCP `8790`.
+- `jarvisd` remains the sole hardware/status/service API control plane on TCP
+  `8790`; build 24 adds a separate iPhone-only SSH terminal data plane.
 - The deprecated Node/PWA dashboard, LaunchAgent, APIs, PWA, and TCP `8787`
   listener are fully removed.
 - Weather and Open-Meteo are removed from the daemon and native contract.
-- iPhone navigation is Home and Settings; build 18 removes the unused Events
-  tab and its foreground event polling while retaining backend audit ingestion.
+- iPhone navigation is Home, Pi, and Settings. Build 18's Events removal and
+  backend audit retention remain unchanged.
 - Home order is Pi sessions, plugs, air purifier, then services/scheduled jobs
   and protected `jarvisd` information.
 - Discord bot, room audio, scheduler, and sanitized scheduled-job telemetry are
@@ -68,6 +69,58 @@ never deploy to a device outside Dylan's allowlist.
   Contacts without issuing a JARVIS command.
 - Build 23 adopts Dylan's requested “Hey JARVIS” command form and removes all
   “with JARVIS”, “Use JARVIS”, and “Tell JARVIS” advertised alternatives.
+- Build 24 adds the iPhone-only SSH-backed Pi terminal with persistent tmux
+  reattachment while leaving Watch, widgets, and hardware APIs unchanged.
+
+### Build-24 native Pi terminal
+
+```text
+Archive: /tmp/JARVIS-build24-pi-terminal.xcarchive
+IPA:     /tmp/JARVIS-build24-pi-terminal-export/JARVIS.ipa
+SHA-256: a91d698ca710d985f2c82ea3469b14489e33ab251bc21083b12a1c95c58e47cf
+```
+
+The iPhone shell now contains Home, Pi, and Settings. Pi embeds SwiftTerm
+`1.20.0` and Apple SwiftNIO SSH `0.15.0` in only the phone host target. It
+connects to TCP 22 using the configured username/password, keeps the password
+in target-local Keychain, presents the first SSH host-key fingerprint for trust,
+and fails closed if that key later changes. A blank host inherits the host from
+the current LAN/Tailscale `jarvisd` endpoint. The direct terminal path is
+separate from `jarvisd`; normal hardware/status/service traffic still uses only
+the daemon.
+
+After PTY allocation, the client executes an isolated tmux command that creates
+or attaches `jarvis-ios` under the `jarvis-mobile` socket and runs Pi from
+`/Users/dylanrapanan/JARVIS`. The checked-in tmux profile enables true colour,
+CSI-u extended keys, mouse/focus events, a large history, latest-client sizing,
+and no status bar. Leaving Pi or backgrounding closes only SSH; tmux and Pi
+continue on the Mac. Returning reconnects without replaying disconnected input.
+Home polling stops while Pi is selected.
+
+The authentic terminal occupies the tab above a horizontally scrollable key
+deck with Escape, latched Ctrl, Tab, Ctrl-C, arrows, Shift-Return,
+Option-Return, Pi shortcuts, paste, and keyboard dismissal. Hardware keyboard
+input is passed through by SwiftTerm. Pinch changes the persistent monospaced
+font size. iPhone portrait and both landscape orientations are enabled.
+
+A disposable password-authenticated SSH fixture validated PTY transport,
+24-bit ANSI rendering, initial host trust, reconnect after app termination, and
+changed-host-key rejection in the iPhone 11 simulator. A separate host preflight
+launched Pi `0.84.2 --no-session` inside the exact isolated tmux profile,
+captured its true-colour `~/JARVIS` TUI, and removed the test server/session.
+The production `jarvis-ios` session has not been started. Homebrew tmux `3.7c`
+is installed, its profile parses, macOS Remote Login is listening on TCP 22, and
+no hardware/service command was run.
+
+Verification passes with 28 JARVISKit tests/3 live skips, 12 AppState tests,
+warning-free iOS/watchOS simulator builds, target-isolation checks, and all
+existing Siri/widget metadata gates. The Release archive and IPA contain four
+synchronized `0.3.0 (24)` products, pass deep signatures, Personal Team,
+hierarchy, entitlement, App Intent, and Release-only seed-removal audits. The
+archive log has no compiler warnings or errors. Physical iPhone password,
+first-host trust, live Pi interaction, persistence, keyboard, landscape, and
+LAN/Tailscale testing are the remaining gates; Watch build 23 can remain
+installed because build 24 changes no Watch behaviour.
 
 ### Build-23 “Hey JARVIS” Siri command form
 
@@ -192,8 +245,9 @@ SHA-256: 63f1bcca99ac6773def2739052fe14b51150f2e6d25104c440e2a81403eb6370
 
 Build 18 removes only the native Events presentation and polling path. It
 deletes `EventsView`, its tab and deep-link route, AppState event UI/cache
-fields, and the five-second selected-tab poller. The verifier now locks the
-Home/Settings-only navigation contract. The bounded `jarvisd` event-ingest and
+fields, and the five-second selected-tab poller. At that checkpoint the verifier
+locked the Home/Settings-only navigation contract; build 24 intentionally adds
+Pi as the third tab. The bounded `jarvisd` event-ingest and
 event-list APIs remain available for operational audit and compatibility;
 hardware, service, widget, Watch relay, and command-safety contracts are
 unchanged.
@@ -304,18 +358,24 @@ or managed-service mutation was emitted during these deployments.
 
 ### Remaining release gates
 
-1. Inspect the redesigned physical iPhone Home and Settings screens and all
+1. Install build 24 on Dylan's iPhone, enter the Mac login password, approve the
+   displayed host fingerprint, and validate the live Pi TUI without issuing a
+   hardware command.
+2. Validate Pi persistence across Home/Pi tab changes, backgrounding, force
+   termination, portrait/landscape, software/hardware keyboards, and a live
+   LAN/Tailscale path change.
+3. Inspect the redesigned physical iPhone Home and Settings screens and all
    three Watch pages in normal and large-text presentation.
-2. Inspect the remaining Watch accessory families.
-3. Force stale, unknown, and offline widget states and prove writes are blocked.
-4. Complete the Watch-originated state request, correlated relay command result,
+4. Inspect the remaining Watch accessory families.
+5. Force stale, unknown, and offline widget states and prove writes are blocked.
+6. Complete the Watch-originated state request, correlated relay command result,
    timeout, duplicate-request, direct/relay failover, and offline-cache matrix.
-5. Complete live Wi-Fi/cellular path switching and Local Network permission
-   recovery.
-6. Complete physical VoiceOver, Dynamic Type, contrast, and remaining
+7. Complete live Wi-Fi/cellular path switching and Local Network permission
+   recovery for daemon traffic.
+8. Complete physical VoiceOver, Dynamic Type, contrast, and remaining
    accessibility checks.
-7. Run the remaining event audit and disposable-service UI smoke, then one final
-   verification/deployment pass before `0.3.0`.
+9. Run the remaining event audit and disposable-service UI smoke, then one final
+   verification/deployment pass before release acceptance.
 
 The purifier physical write gate remains intentionally incomplete after VeSync
 cloud lag and timeouts. The purifier may remain off; do not retry a purifier
@@ -342,6 +402,14 @@ iPhone app / iPhone widgets / Watch app / Watch widgets
   Pi/network files   jarvis-cli     launchctl registry
                          │          jarvisd event store
                   plugctl / purifierctl
+
+              iPhone Pi tab only
+                         │
+               SwiftTerm + SSH :22
+                         │
+                tmux jarvis-ios
+                         │
+                         Pi
 ```
 
 ### Included
@@ -357,7 +425,9 @@ iPhone app / iPhone widgets / Watch app / Watch widgets
   cached stale fallback.
 - Open JARVIS, configurable JARVIS Plug, JARVIS Plug Grid, and read-only Air
   Purifier widgets on iPhone and Watch.
-- Typed App Intents and `jarvis://home` deep linking.
+- Typed App Intents and `jarvis://home`, `jarvis://pi`, and
+  `jarvis://settings` deep linking.
+- iPhone-only authentic Pi TUI over SSH with persistent tmux reattachment.
 - LAN and Tailscale access.
 
 ### Excluded
@@ -412,8 +482,10 @@ jarvis-app/
 │   ├── tests/
 │   ├── resurrector.sh
 │   └── launchd/
+├── config/
+│   └── jarvis-mobile.tmux.conf # isolated persistent Pi terminal profile
 ├── JARVISKit/                  # models, API client, discovery, cache, WCSession
-├── JARVIS/                     # iOS host app
+├── JARVIS/                     # iOS host app; Terminal/ owns SwiftTerm + SSH
 ├── JARVISWidget/               # iOS WidgetKit extension
 ├── JARVISWatch/                # watchOS host app
 ├── JARVISWatchWidget/          # watchOS WidgetKit extension
@@ -753,6 +825,15 @@ simulator dependency graph. The canonical artwork source is
 
 ### Comprehensive local verification
 
+SwiftTerm's renderer requires Xcode's optional Metal compiler. Install it once
+if `metal` is missing:
+
+```bash
+xcodebuild -downloadComponent MetalToolchain
+```
+
+Then run:
+
 ```bash
 cd /Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app
 JARVIS_RUN_IOS_TESTS=1 ./scripts/verify-jarvis-app.sh
@@ -790,9 +871,10 @@ Use private environment variables such as `TEAM_ID`, `ARCHIVE`,
 rm -rf "$ARCHIVE" "$DERIVED_DATA"
 
 xcodebuild \
+  -skipPackagePluginValidation \
   -project JARVIS.xcodeproj \
   -scheme JARVIS \
-  -configuration Debug \
+  -configuration Release \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \
   -derivedDataPath "$DERIVED_DATA" \
@@ -1122,6 +1204,7 @@ All commits remain local unless Dylan separately requests a push.
 | Build 21 | Intermediate deployment removes contact-directed phrases, adds parameterless fallbacks, and persists a schema/catalogue publication signature. |
 | Build 22 | Adds exact optional-article phrase variants for Watch's fixed matching, revalidates metadata/signatures, and installs the corrected products on both devices; owner phrase retest remains pending. |
 | Build 23 | Replaces every advertised phrase with “Hey JARVIS, turn on/off [the] [plug]” or its parameterless prompt, increments the publication schema, and installs the exact signed products on both devices; owner Watch invocation remains pending. |
+| Build 24 | Adds the iPhone-only authentic Pi terminal using SwiftTerm, SwiftNIO SSH, Keychain login, first-use host trust, and persistent isolated tmux reattachment; archive and simulator transport tests pass, and physical iPhone validation is pending. |
 
 Notable local commits include dashboard retirement (`590f937`), daemon hardening
 (`4e47501`), Apple reliability/packaging (`042fdd4`), deployment operations

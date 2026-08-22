@@ -34,20 +34,27 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(api.stateCalls, api.servicesCalls)
         XCTAssertEqual(api.stateCalls, api.scheduledJobsCalls)
 
-        app.setActiveSection(.settings)
+        app.setActiveSection(.pi)
         try await Task.sleep(for: .milliseconds(50))
-        let settingsCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.healthCalls)
+        let piCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.healthCalls)
         try await Task.sleep(for: .milliseconds(250))
-        XCTAssertEqual(api.stateCalls, settingsCounts.0)
-        XCTAssertEqual(api.servicesCalls, settingsCounts.1)
-        XCTAssertEqual(api.scheduledJobsCalls, settingsCounts.2)
-        XCTAssertEqual(api.healthCalls, settingsCounts.3)
+        XCTAssertEqual(api.stateCalls, piCounts.0)
+        XCTAssertEqual(api.servicesCalls, piCounts.1)
+        XCTAssertEqual(api.scheduledJobsCalls, piCounts.2)
+        XCTAssertEqual(api.healthCalls, piCounts.3)
+
+        app.setActiveSection(.settings)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(api.stateCalls, piCounts.0)
+        XCTAssertEqual(api.servicesCalls, piCounts.1)
+        XCTAssertEqual(api.scheduledJobsCalls, piCounts.2)
+        XCTAssertEqual(api.healthCalls, piCounts.3)
 
         app.setActiveSection(.home)
-        for _ in 0..<20 where api.stateCalls == settingsCounts.0 {
+        for _ in 0..<20 where api.stateCalls == piCounts.0 {
             try await Task.sleep(for: .milliseconds(25))
         }
-        XCTAssertGreaterThan(api.stateCalls, settingsCounts.0)
+        XCTAssertGreaterThan(api.stateCalls, piCounts.0)
 
         app.sceneWillResignActive()
         try await Task.sleep(for: .milliseconds(50))
@@ -216,6 +223,15 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(app.scheduledJobsLoaded)
         XCTAssertNotNil(app.scheduledJobsErrorMessage)
         XCTAssertTrue(app.lastScheduledJobs.isEmpty)
+    }
+
+    func testPiTerminalContractUsesPersistentTmuxSession() {
+        XCTAssertEqual(AppSection(rawValue: "pi"), .pi)
+        XCTAssertTrue(PiTerminalConfiguration.remoteCommand.contains("tmux -L jarvis-mobile"))
+        XCTAssertTrue(PiTerminalConfiguration.remoteCommand.contains("new-session -A"))
+        XCTAssertTrue(PiTerminalConfiguration.remoteCommand.contains("-s jarvis-ios"))
+        XCTAssertTrue(PiTerminalConfiguration.remoteCommand.contains("/opt/homebrew/bin/pi"))
+        XCTAssertFalse(PiTerminalConfiguration.remoteCommand.contains("kill-session"))
     }
 
     func testCommandFailureRemainsVisibleAfterStateRefresh() async throws {
