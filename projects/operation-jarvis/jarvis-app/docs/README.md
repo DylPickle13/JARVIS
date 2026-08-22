@@ -6,9 +6,9 @@
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current candidate:** `0.2.0 (17)`
+**Current candidate:** `0.2.0 (19)`
 
-**Physical installation:** iPhone `0.2.0 (16)`; Apple Watch `0.2.0 (17)`; three-slot Smart Stack artwork passed
+**Physical installation:** iPhone and Apple Watch `0.2.0 (19)`; three-slot Smart Stack artwork passed
 
 This is the single architecture, security, packaging, deployment, validation,
 and recovery reference for the JARVIS iPhone app, Apple Watch app, widgets, and
@@ -31,7 +31,8 @@ never deploy to a device outside Dylan's allowlist.
 - The deprecated Node/PWA dashboard, LaunchAgent, APIs, PWA, and TCP `8787`
   listener are fully removed.
 - Weather and Open-Meteo are removed from the daemon and native contract.
-- iPhone navigation is Home, Events, and Settings.
+- iPhone navigation is Home and Settings; build 18 removes the unused Events
+  tab and its foreground event polling while retaining backend audit ingestion.
 - Home order is Pi sessions, plugs, air purifier, then services/scheduled jobs
   and protected `jarvisd` information.
 - Discord bot, room audio, scheduler, and sanitized scheduled-job telemetry are
@@ -57,6 +58,67 @@ never deploy to a device outside Dylan's allowlist.
 - Build 17 makes the circular Open JARVIS complication rendering-mode aware and
   the physical three-slot Smart Stack Combination widget now displays the
   JARVIS logo.
+- Build 18 simplifies the iPhone shell to Home and Settings. `EventsView`, its
+  tab/deep-link route, UI state, and five-second event polling are removed.
+- Build 19 gives both host apps one shared immediate-then-15-second foreground
+  refresh policy and removes normal refresh buttons from the visible UI.
+
+### Build-19 automatic host refresh
+
+```text
+Archive: /tmp/JARVIS-build19-refresh.xcarchive
+IPA:     /tmp/JARVIS-build19-refresh-export/JARVIS.ipa
+SHA-256: 18ce74f7a5143ecb3912068f9913087980bde87a8706415be64c68f44ad7003e
+```
+
+`JARVISRefreshPolicy` now defines one 15-second active cadence for iPhone and
+Watch. Both refresh immediately on activation, continue only while visible, and
+cancel polling when inactive. iPhone Home refreshes state, services, scheduled
+jobs, and health together; Settings performs no polling. Its toolbar button is
+removed while pull-to-refresh remains an optional recovery gesture. Watch
+refreshes direct-first with automatic iPhone-relay fallback, coalesces concurrent
+refreshes, requests a fresh phone snapshot when relaying, and blocks plug writes
+while offline. Its normal Refresh status controls are replaced by passive
+freshness feedback and a failure-only Retry now action. WidgetKit timelines stay
+at approximately 15 minutes.
+
+All four archived products report `0.2.0 (19)`, use the configured Personal
+Team, pass deep signature verification, and preserve the required Watch bundle
+hierarchy. Verification passes with 21 JARVISKit tests/3 live skips, 8 AppState
+tests, warning-free iOS/watchOS simulator builds, and repository smoke
+`PASS=105 WARN=0 FAIL=0`. The verifier also makes its negative source-contract
+checks fail explicitly rather than relying on shell negation under `set -e`.
+The exact parent IPA and archived Watch product installed on the two allowlisted
+devices; both inventories report build 19 and all four host/widget processes
+were active after launch. A 40-second physical observation showed immediate and
+approximately 15-second read-only health/state/service/job request cycles. It
+emitted no hardware, service, purifier, job, or event mutation POST.
+
+### Build-18 two-tab iPhone cleanup
+
+```text
+Archive: /tmp/JARVIS-build18-two-tab.xcarchive
+IPA:     /tmp/JARVIS-build18-two-tab-export/JARVIS.ipa
+SHA-256: 63f1bcca99ac6773def2739052fe14b51150f2e6d25104c440e2a81403eb6370
+```
+
+Build 18 removes only the native Events presentation and polling path. It
+deletes `EventsView`, its tab and deep-link route, AppState event UI/cache
+fields, and the five-second selected-tab poller. The verifier now locks the
+Home/Settings-only navigation contract. The bounded `jarvisd` event-ingest and
+event-list APIs remain available for operational audit and compatibility;
+hardware, service, widget, Watch relay, and command-safety contracts are
+unchanged.
+
+All four archived products report `0.2.0 (18)`, use the configured Personal
+Team, pass deep signature verification, and preserve the required Watch bundle
+hierarchy. Verification passes with 20 JARVISKit tests/3 live skips, 7 AppState
+tests, warning-free iOS/watchOS simulator builds, and repository smoke
+`PASS=105 WARN=0 FAIL=0`. The exact parent IPA was installed on the allowlisted
+iPhone, whose inventory reports build 18; the phone host and widget extension
+were active after launch. The Apple Watch intentionally remains on build 17.
+Deployment and launch emitted no hardware, service, purifier, job, or event
+mutation POST.
 
 ### Build-15 aesthetic candidate
 
@@ -154,8 +216,8 @@ or managed-service mutation was emitted during these deployments.
 
 ### Remaining release gates
 
-1. Inspect the redesigned physical iPhone Home, Events, and Settings screens and
-   all three Watch pages in normal and large-text presentation.
+1. Inspect the redesigned physical iPhone Home and Settings screens and all
+   three Watch pages in normal and large-text presentation.
 2. Inspect the remaining Watch accessory families.
 3. Force stale, unknown, and offline widget states and prove writes are blocked.
 4. Complete the Watch-originated state request, correlated relay command result,
@@ -199,7 +261,7 @@ iPhone app / iPhone widgets / Watch app / Watch widgets
 - Pi-session, network, daemon, plug, purifier, service, scheduler, and scheduled-
   job status.
 - Idempotent plug control and guarded purifier controls in the main app.
-- Event feed.
+- Bounded backend event ingestion and audit storage; no native event-feed UI.
 - Server-allowlisted room-audio lifecycle control.
 - Read-only Discord-bot and scheduler status.
 - Sanitized, dynamic, read-only scheduled-job inventory.
@@ -233,12 +295,13 @@ infrastructure and must not be deleted as dashboard cleanup.
 There is one user-action event sink:
 
 ```text
-jarvis-cli action → POST /api/jarvis/events on jarvisd → native Events tab
+jarvis-cli action → POST /api/jarvis/events on jarvisd → bounded audit store/API
 ```
 
 Read-only collectors set `JARVIS_EMIT_EVENTS=0`; idle status polling must not
 create lifecycle events. Accepted user writes produce bounded start/complete or
-failure events. No surviving runtime attempts a second dashboard event post.
+failure events. Native Apple clients do not poll or display the event feed. No
+surviving runtime attempts a second dashboard event post.
 
 ---
 
@@ -379,15 +442,13 @@ due boundary.
 ### iPhone
 
 - **Home:** Pi sessions → plugs → air purifier → services/jobs/`jarvisd`.
-- **Events:** newest-first event feed with incremental polling and pull-to-
-  refresh.
 - **Settings:** discovery, endpoint override, connection state, and About.
 - Health establishes connectivity before the slower state resource is loaded.
 - Scene lifecycle owns connection and polling; backgrounding cancels frequent
   work, foregrounding reconnects, and network-path changes trigger rediscovery.
-- State polls about every 10 seconds while active. Services, scheduled jobs, and
-  health poll independently about every 15 seconds. Events poll about every five
-  seconds only while selected.
+- State, services, scheduled jobs, and health refresh together immediately and
+  every 15 seconds while Home is active. Settings performs no background
+  resource polling. Pull-to-refresh remains available but is not required.
 - Failure in one resource preserves the last successful values from others.
 - Missing data renders Loading, Stale, Unavailable, or Unknown—not plausible
   zero/off/stopped values.
@@ -411,9 +472,13 @@ repeated relay request executes once. The Watch remains pending until a result,
 error, or timeout instead of inferring success from a later snapshot.
 
 The iPhone sends the latest endpoint and state through application context.
-The Watch cannot join the iPhone's Tailscale client directly, so away-from-home
-operation relies on the iPhone relay. Inventory, installed flags, reachability,
-state delivery, and command correlation are separate assertions.
+The Watch refreshes immediately whenever it becomes active and every 15 seconds
+while visible, using a single coalesced refresh task. It cancels that task when
+inactive. Normal refresh buttons are absent; passive freshness is always shown
+and Retry now appears only after an automatic failure. The Watch cannot join the
+iPhone's Tailscale client directly, so away-from-home operation relies on the
+iPhone relay. Inventory, installed flags, reachability, state delivery, and
+command correlation are separate assertions.
 
 ### Accessibility and presentation
 
@@ -943,6 +1008,8 @@ All commits remain local unless Dylan separately requests a push.
 | Build 15 | Unified both host apps under the holographic visual system; added the three-page Watch dashboard and refined iPhone Home, Events, and Settings; physical review exposed a blank circular launcher image. |
 | Build 16 | Forces the Watch launcher asset to consume its accessory frame and render full-colour, reloads its static timeline on host launch, and is installed on both devices; the three-slot Combination widget remained blank. |
 | Build 17 | Adds exact Watch-scale full-colour and accented launcher assets, rendering-mode selection, explicit circular geometry, and a fresh widget kind; the physical three-slot Smart Stack logo passed. |
+| Build 18 | Removes the unused iPhone Events tab, view, deep-link route, UI state, and five-second polling while retaining bounded backend event audit APIs. |
+| Build 19 | Gives both host apps a shared immediate-then-15-second foreground cadence, lifecycle cancellation, coalesced Watch refresh/relay fallback, passive freshness, and failure-only retry. |
 
 Notable local commits include dashboard retirement (`590f937`), daemon hardening
 (`4e47501`), Apple reliability/packaging (`042fdd4`), deployment operations

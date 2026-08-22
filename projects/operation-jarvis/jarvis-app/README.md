@@ -2,7 +2,7 @@
 
 Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
 surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier,
-status/telemetry, events, service control), over LAN or Tailscale.
+status/telemetry, service control), over LAN or Tailscale.
 
 **Status:** **M2.1 implementation complete; dashboard removal complete; physical M3 regression gate pending** —
 M0–M2 were verified on the iPhone 11; `jarvisd` now has explicit
@@ -10,8 +10,9 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. The iPhone remains on signed `0.2.0 (16)` and the exact archived Watch
-product `0.2.0 (17)` is installed on Dylan's allowlisted Apple Watch. The
+UI. Signed `0.2.0 (19)` is installed on Dylan's allowlisted iPhone and Apple
+Watch. It includes build 18's removal of the unused iPhone Events tab and adds a
+shared immediate-then-15-second foreground refresh policy to both host apps. The
 three-slot Smart Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
@@ -44,7 +45,12 @@ rendering mode. Build 17 now branches on `widgetRenderingMode`, uses exact
 100×100 Watch-scale full-colour and high-contrast accented assets, explicitly
 sizes the circular slot with `GeometryReader`, and advances the launcher kind to
 clear the old cached rendition. The re-added physical widget displays the
-JARVIS logo successfully.
+JARVIS logo successfully. Build 18 deletes `EventsView`, removes its tab and
+deep-link route, and strips its AppState UI/polling state. The backend event
+audit contract remains intact. Build 19 refreshes both hosts immediately on
+activation and every 15 seconds while visible, cancels polling when inactive,
+and replaces normal refresh buttons with automatic status plus failure-only
+retry on Watch.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
@@ -66,7 +72,7 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
 
 - **In:** smart plugs, air purifier, status and telemetry (Pi session count,
   network, uptime, Discord bot, room audio, scheduler, and scheduled jobs),
-  events feed, service start/stop/restart (room-audio server), launcher,
+  service start/stop/restart (room-audio server), launcher,
   configurable plug, plug-grid, and purifier-status widgets on iPhone and Watch,
   and Siri/Shortcuts via App Intents,
   Tailscale remote access.
@@ -100,8 +106,8 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   `/api/v1/command` (allowlisted, rejects cast), `/api/jarvis/events` ingest,
   `/api/v1/events`, `/api/v1/services` (server-allowlisted lifecycle actions),
   and `/api/v1/scheduled-jobs` (sanitized read-only inventory).
-- **iOS app — Home screen** — 3-tab shell (Home / Events / Settings). Home
-  shows: connection header (LAN vs Tailscale + IP), Pi session
+- **iOS app — Home screen** — 2-tab shell (Home / Settings). Home shows:
+  connection header (LAN vs Tailscale + IP), Pi session
   count, a **2-column plug grid**, then the **air purifier** (power switch +
   Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
   external data collection are removed. At the bottom, Home lists the Discord
@@ -110,17 +116,21 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   the new Discord and scheduler cards are read-only. Plug controls send
   desired-state `plug-on`/`plug-off`
   commands, serialize per resource, and show busy/error/unavailable states.
-- **iOS app — Events (M2)** — live activity feed from `/api/v1/events`: one row
-  per event (✓/✗/○ status glyph, action, summary, relative time), newest-first,
-  auto-polls every 5 s + pull-to-refresh. The event bridge in `jarvis.py` posts
-  to jarvisd directly through the single event-ingest sink.
-- **iOS app — M2.1 lifecycle** — health-first discovery is owned by the scene
+- **Event audit backend** — the bounded `/api/v1/events` API and single
+  `/api/jarvis/events` ingest sink remain available to operational tooling, but
+  the native iPhone client no longer displays or polls an Events feed.
+- **iOS app — lifecycle** — health-first discovery is owned by the scene
   lifecycle, retries with backoff after transport failures, observes network
-  path changes, cancels background polling, and polls only the selected tab.
-  `jarvisd` state reads are cached, so warm snapshots return in milliseconds.
+  path changes, refreshes Home immediately and every 15 seconds, and cancels
+  polling in Settings or the background. Pull-to-refresh remains an optional
+  fallback. `jarvisd` state reads are cached, so warm snapshots return in
+  milliseconds.
 - **watchOS app** — builds for Apple Watch Series 11 (46mm), uses real
-  `WCSessionDelegate` reachability callbacks, supports direct/relay/cache plug
-  controls, and is embedded in the iPhone bundle under `Watch/`. The corrected
+  `WCSessionDelegate` reachability callbacks, refreshes immediately on
+  activation and every 15 seconds while visible, cancels work when inactive,
+  and supports direct/relay/cache plug controls. The normal refresh control is
+  gone; Retry appears only after failure. The app is embedded in the iPhone
+  bundle under `Watch/`. The corrected
   parent registration plus developer Watch install produces
   `isWatchAppInstalled=true` and `isCompanionAppInstalled=true` under free
   provisioning; the final physical reachability/relay matrix remains open.
@@ -169,7 +179,7 @@ jarvis-app/
 │   ├── Sources/JARVISKit/      #   Models, JarvisClient, EndpointStore, WatchBridge
 │   └── Tests/JARVISKitTests/   #   unit + live integration tests
 ├── JARVIS/                     # iOS app target (SwiftUI)
-│   ├── JARVISApp.swift         #   @main + 3-tab shell
+│   ├── JARVISApp.swift         #   @main + Home/Settings tab shell
 │   ├── AppState.swift          #   connection + state + command model
 │   ├── AppStateWatchBridge.swift
 │   ├── Info.plist              #   scoped local/Tailscale ATS policy
@@ -177,7 +187,6 @@ jarvis-app/
 │   ├── Assets.xcassets/        #   icon + accent color
 │   └── Views/
 │       ├── HomeView.swift      #   Pi, plugs, purifier, services + daemon info
-│       ├── EventsView.swift    #   M2 live event feed (5 s poll + pull-to-refresh)
 │       ├── SettingsView.swift  #   connection management + about
 │       └── Components.swift    #   badge, card, formatting helpers
 ├── JARVISWatch/                # watchOS app target

@@ -50,18 +50,7 @@ struct HomeView: View {
             }
             .background(JarvisBackdrop())
             .navigationTitle("JARVIS")
-            .refreshable { await refreshHome() }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await refreshHome() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .accessibilityLabel("Refresh home status")
-                    .disabled(app.isStateLoading || app.servicesLoading || app.connectionState != .connected)
-                }
-            }
+            .refreshable { await app.refreshHome() }
             .confirmationDialog(
                 serviceConfirmationTitle,
                 isPresented: Binding(
@@ -824,14 +813,6 @@ struct HomeView: View {
         default:
             return "This will \(action) \(displayName) now."
         }
-    }
-
-    private func refreshHome() async {
-        async let state: Void = app.fetchState()
-        async let services: Void = app.fetchServices()
-        async let jobs: Void = app.fetchScheduledJobs()
-        async let health: Void = app.fetchHealth()
-        _ = await (state, services, jobs, health)
     }
 
     private func performServiceAction(_ name: String, _ action: String) async {

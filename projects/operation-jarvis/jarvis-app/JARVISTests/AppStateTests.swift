@@ -19,27 +19,61 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(app.isStateLoading)
     }
 
-    func testHomePollingWaitsBeforeItsFirstRefresh() async throws {
+    func testHomePollingRefreshesTogetherAndStopsOutsideHome() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        let app = AppState(store: store, client: api, activeRefreshInterval: .milliseconds(100))
+        app.endpointDraft = "http://fake.jarvis:8790"
+
+        app.sceneDidBecomeActive()
+        for _ in 0..<40 where api.stateCalls < 2 || api.servicesCalls < 2 || api.scheduledJobsCalls < 2 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertGreaterThanOrEqual(api.stateCalls, 2)
+        XCTAssertEqual(api.stateCalls, api.servicesCalls)
+        XCTAssertEqual(api.stateCalls, api.scheduledJobsCalls)
+
+        app.setActiveSection(.settings)
+        try await Task.sleep(for: .milliseconds(50))
+        let settingsCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.healthCalls)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(api.stateCalls, settingsCounts.0)
+        XCTAssertEqual(api.servicesCalls, settingsCounts.1)
+        XCTAssertEqual(api.scheduledJobsCalls, settingsCounts.2)
+        XCTAssertEqual(api.healthCalls, settingsCounts.3)
+
+        app.setActiveSection(.home)
+        for _ in 0..<20 where api.stateCalls == settingsCounts.0 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertGreaterThan(api.stateCalls, settingsCounts.0)
+
+        app.sceneWillResignActive()
+        try await Task.sleep(for: .milliseconds(50))
+        let backgroundCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.healthCalls)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(api.stateCalls, backgroundCounts.0)
+        XCTAssertEqual(api.servicesCalls, backgroundCounts.1)
+        XCTAssertEqual(api.scheduledJobsCalls, backgroundCounts.2)
+        XCTAssertEqual(api.healthCalls, backgroundCounts.3)
+    }
+
+    func testWatchStateRequestFetchesFreshStateBeforeReplying() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
         let store = EndpointStore(defaults: defaults)
         let app = AppState(store: store, client: api)
         app.endpointDraft = "http://fake.jarvis:8790"
-
-        app.sceneDidBecomeActive()
-        for _ in 0..<20 where api.stateCalls == 0 {
-            try await Task.sleep(for: .milliseconds(50))
-        }
+        await app.refresh()
         let initialCalls = api.stateCalls
-        XCTAssertEqual(initialCalls, 1)
-        for _ in 0..<20 where api.servicesCalls == 0 || api.scheduledJobsCalls == 0 {
+
+        app.watchBridgeDidReceiveStateRequest(.shared)
+        for _ in 0..<20 where api.stateCalls == initialCalls {
             try await Task.sleep(for: .milliseconds(25))
         }
-        XCTAssertEqual(api.servicesCalls, 1)
-        XCTAssertEqual(api.scheduledJobsCalls, 1)
-        try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(api.stateCalls, initialCalls)
-        app.sceneWillResignActive()
+
+        XCTAssertGreaterThan(api.stateCalls, initialCalls)
     }
 
     func testPlugWritesUseDesiredStateAndRefresh() async throws {
@@ -131,6 +165,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     let scheduledJobsSucceeds: Bool
     var commands: [String] = []
     var stateCalls = 0
+    var healthCalls = 0
     var servicesCalls = 0
     var scheduledJobsCalls = 0
 
@@ -149,7 +184,8 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     }
 
     func health(_ endpoint: JarvisEndpoint) async throws -> HealthResponse {
-        HealthResponse(ok: true, version: "test", uptimeSeconds: 2)
+        healthCalls += 1
+        return HealthResponse(ok: true, version: "test", uptimeSeconds: 2)
     }
 
     func state(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {

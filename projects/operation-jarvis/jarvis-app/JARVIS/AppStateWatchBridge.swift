@@ -5,7 +5,12 @@ extension AppState: WatchBridgeDelegate {
     public nonisolated func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge) {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if self.lastState == nil { await self.fetchState() }
+            if self.currentEndpoint == nil || self.connectionState != .connected {
+                await self.refresh()
+            } else {
+                await self.fetchState()
+                if self.connectionState != .connected { await self.refresh() }
+            }
             guard let state = self.lastState, let data = try? JSONEncoder().encode(state) else { return }
             bridge.sendState(json: data)
             bridge.updateApplicationContext(stateJSON: data, endpoint: self.currentEndpoint?.absoluteString)

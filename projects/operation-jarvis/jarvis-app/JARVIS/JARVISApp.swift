@@ -45,10 +45,6 @@ private struct RootTabView: View {
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(AppSection.home)
 
-            EventsView()
-                .tabItem { Label("Events", systemImage: "list.bullet") }
-                .tag(AppSection.events)
-
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
                 .tag(AppSection.settings)
@@ -60,7 +56,6 @@ private struct RootTabView: View {
         .onOpenURL { url in
             guard url.scheme?.lowercased() == "jarvis" else { return }
             switch url.host?.lowercased() {
-            case "events": selection = .events
             case "settings": selection = .settings
             default: selection = .home
             }

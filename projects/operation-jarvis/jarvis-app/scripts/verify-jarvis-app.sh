@@ -7,6 +7,15 @@ ROOT="$(pwd)"
 DERIVED_DATA_PATH="$(mktemp -d "${TMPDIR:-/tmp}/jarvis-verify-derived.XXXXXX")"
 trap 'rm -rf "$DERIVED_DATA_PATH"' EXIT
 
+reject_match() {
+  local message="$1"
+  shift
+  if grep "$@"; then
+    echo "$message" >&2
+    exit 1
+  fi
+}
+
 printf '%s\n' '== XcodeGen =='
 xcodegen generate
 
@@ -31,9 +40,26 @@ bash -n scripts/*.sh jarvisd/resurrector.sh ../scripts/install-discord-bot-launc
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVIS/Info.plist)" == "jarvis" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVISWatch/Info.plist)" == "jarvis" ]]
 
+printf '%s\n' '== native navigation contract =='
+[[ ! -e JARVIS/Views/EventsView.swift ]]
+[[ "$(grep -c '\.tabItem' JARVIS/JARVISApp.swift)" == "2" ]]
+grep -q 'Label("Home"' JARVIS/JARVISApp.swift
+grep -q 'Label("Settings"' JARVIS/JARVISApp.swift
+reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case events|fetchEvents|lastEvents|eventsLoading' JARVIS
+
+printf '%s\n' '== native refresh contract =='
+grep -q 'activeInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
+grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVIS/AppState.swift
+grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'sceneDidBecomeActive' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'sceneWillResignActive' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'Retry now' JARVISWatch/Views/WatchDashboardContent.swift
+reject_match 'always-visible Watch refresh control is still present' -qs 'Refresh status' JARVISWatch/Views/WatchDashboardContent.swift
+reject_match 'iPhone toolbar refresh control is still present' -qs 'accessibilityLabel("Refresh home status")' JARVIS/Views/HomeView.swift
+
 printf '%s\n' '== widget source contract =='
-! grep -Rqs 'let kind = "JARVISPlugWidget"' JARVISWidget
-! grep -Rqs 'let kind = "JARVISWatchWidget"' JARVISWatchWidget
+reject_match 'legacy iPhone widget kind is still present' -RqsF 'let kind = "JARVISPlugWidget"' JARVISWidget
+reject_match 'legacy Watch widget kind is still present' -RqsF 'let kind = "JARVISWatchWidget"' JARVISWatchWidget
 for kind in \
   JARVISLauncherWidget.v1 \
   JARVISSelectedPlugWidget.v1 \
@@ -48,8 +74,8 @@ for kind in \
   JARVISWatchPurifierWidget.v1; do
   grep -Rqs "let kind = \"$kind\"" JARVISWatchWidget || { echo "missing watch widget kind: $kind" >&2; exit 1; }
 done
-! grep -q 'Button(intent:' JARVISWidget/PurifierWidget.swift
-! grep -q 'Button(intent:' JARVISWatchWidget/PurifierWidget.swift
+reject_match 'iPhone purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWidget/PurifierWidget.swift
+reject_match 'Watch purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWatchWidget/PurifierWidget.swift
 grep -q 'applyConfirmedPlugState' SharedAppIntents/JARVISWidgetIntents.swift
 grep -q 'JARVISWidgetControlStore.shared' SharedAppIntents/JARVISWidgetIntents.swift
 grep -q 'reloadTimelines(ofKind:' SharedAppIntents/JARVISWidgetIntents.swift
@@ -57,7 +83,7 @@ grep -q 'pendingCommand(for:' JARVISWidget/SelectedPlugWidget.swift
 grep -q 'pendingCommand(for:' JARVISWatchWidget/SelectedPlugWidget.swift
 [[ "$(grep -c 'AppIntentRecommendation(intent:' JARVISWatchWidget/WidgetSupport.swift)" == "1" ]]
 grep -q 'JARVISPlugChoice.allCases.compactMap' JARVISWatchWidget/PlugGridWidget.swift
-! grep -q 'prefix(2)' JARVISWatchWidget/PlugGridWidget.swift
+reject_match 'Watch plug grid must not truncate its inventory' -qsF 'prefix(2)' JARVISWatchWidget/PlugGridWidget.swift
 grep -q 'Image("JARVISWidgetIcon", bundle: .main)' JARVISWatchWidget/LauncherWidget.swift
 grep -q 'Image("JARVISWidgetIconAccented", bundle: .main)' JARVISWatchWidget/LauncherWidget.swift
 grep -q '@Environment(\\.widgetRenderingMode)' JARVISWatchWidget/LauncherWidget.swift
@@ -70,7 +96,7 @@ grep -Rqs 'Image("JARVISMark")' JARVIS/Views
 grep -Rqs 'Image("JARVISMark")' JARVISWatch/Views
 [[ -s JARVIS/Assets.xcassets/JARVISMark.imageset/JARVISMark.png ]]
 [[ -s JARVISWatch/Assets.xcassets/JARVISMark.imageset/JARVISMark.png ]]
-! grep -q 'lastAttempt' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
+reject_match 'completed widget refresh attempts must not be retained' -qsF 'lastAttempt' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
 
 icon_is_opaque_square() {
   local path="$1"

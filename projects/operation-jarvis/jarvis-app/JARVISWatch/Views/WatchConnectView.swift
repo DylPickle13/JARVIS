@@ -2,13 +2,24 @@ import SwiftUI
 import JARVISKit
 
 struct WatchConnectView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = WatchConnectModel()
 
     var body: some View {
         WatchDashboardContent(model: model)
             .task {
-                await model.refreshIfConfigured()
+                if scenePhase == .active { model.sceneDidBecomeActive() }
                 await model.runDebugRelaySmokeIfRequested()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                switch phase {
+                case .active:
+                    model.sceneDidBecomeActive()
+                case .inactive, .background:
+                    model.sceneWillResignActive()
+                @unknown default:
+                    break
+                }
             }
     }
 }
@@ -22,6 +33,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     @Published var cachedAt: Date?
     @Published var busyPlug: String?
     @Published var pendingRelay = false
+    @Published private(set) var isRefreshing = false
 
     private struct RelayResponse {
         let result: CommandResult?
@@ -30,13 +42,19 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
 
     private var relayResponses: [String: RelayResponse] = [:]
     private let forceEndpointForTesting: Bool
+    private let activeRefreshInterval: Duration
     private var debugRelaySmokeDidRun = false
+    private var appIsActive = false
+    private var refreshGeneration = 0
+    private var refreshLoopTask: Task<Void, Never>?
+    private var refreshTask: Task<Void, Never>?
 
     let store = EndpointStore(defaults: JARVISSharedStore.defaults)
     let client = JarvisClient()
     let snapshotStore = SnapshotStore()
 
-    init() {
+    init(activeRefreshInterval: Duration = JARVISRefreshPolicy.activeInterval) {
+        self.activeRefreshInterval = activeRefreshInterval
         #if DEBUG
         let arguments = CommandLine.arguments
         forceEndpointForTesting = arguments.contains("-jarvisForceEndpoint")
@@ -59,9 +77,14 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     func isPlugStateStale(_ name: String) -> Bool {
-        isStale
+        connectionState != .connected
+            || isStale
             || lastState?.subsystems?.plugs?.stale == true
             || lastState?.subsystems?.plugs?.plugs?[name]?.stale == true
+    }
+
+    var shouldShowRetry: Bool {
+        connectionState == .failed || (isStale && errorMessage != nil)
     }
 
     var dotColor: Color {
@@ -84,8 +107,40 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         }
     }
 
-    func refreshIfConfigured() async { await refresh() }
+    func sceneDidBecomeActive() {
+        guard !appIsActive else { return }
+        appIsActive = true
+        startRefreshLoop()
+    }
+
+    func sceneWillResignActive() {
+        appIsActive = false
+        refreshLoopTask?.cancel()
+        refreshLoopTask = nil
+        refreshGeneration += 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        isRefreshing = false
+    }
+
     func connect() async { await refresh() }
+
+    private func startRefreshLoop() {
+        refreshLoopTask?.cancel()
+        refreshLoopTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.refresh()
+            while !Task.isCancelled, self.appIsActive {
+                do {
+                    try await Task.sleep(for: self.activeRefreshInterval)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, self.appIsActive else { return }
+                await self.refresh()
+            }
+        }
+    }
 
     func runDebugRelaySmokeIfRequested() async {
         #if DEBUG
@@ -114,8 +169,28 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     func refresh() async {
-        connectionState = .connecting
+        if let refreshTask {
+            await refreshTask.value
+            return
+        }
+        let generation = refreshGeneration
+        isRefreshing = true
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performRefresh()
+        }
+        refreshTask = task
+        await task.value
+        if generation == refreshGeneration {
+            refreshTask = nil
+            isRefreshing = false
+        }
+    }
+
+    private func performRefresh() async {
+        if connectionState != .connected { connectionState = .connecting }
         errorMessage = nil
+
         let candidates: [URL]
         if forceEndpointForTesting, let endpoint = store.endpointURL {
             candidates = [endpoint]
@@ -123,44 +198,55 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             candidates = JarvisEndpoints.candidates(override: store.endpointURL)
         }
         guard let discovered = await client.discover(candidates, timeout: 3) else {
-            if WatchBridge.shared.isPhoneReachable {
-                isViaPhone = true
-                connectionState = .connected
-                WatchBridge.shared.requestState()
-                if lastState == nil { errorMessage = "Waiting for the iPhone relay." }
-            } else if lastState != nil {
-                connectionState = .connected
-                isViaPhone = true
-                errorMessage = "Using cached status; no relay is reachable."
-            } else {
-                connectionState = .failed
-                errorMessage = "JARVIS is unreachable."
-            }
+            guard !Task.isCancelled else { return }
+            useRelayOrCache()
             return
         }
+        guard !Task.isCancelled else { return }
         store.endpointURLString = discovered.absoluteString
         do {
             let endpoint = JarvisEndpoint(baseURL: discovered, token: store.token ?? "")
             _ = try await client.health(endpoint)
             let state = try await client.state(endpoint)
+            guard !Task.isCancelled else { return }
             lastState = state
             snapshotStore.save(state)
             cachedAt = Date()
             isViaPhone = false
             connectionState = .connected
+            errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch let error as JarvisError {
-            connectionState = .failed
-            errorMessage = error.errorDescription
+            guard !Task.isCancelled else { return }
+            useRelayOrCache(directError: error.errorDescription)
         } catch {
+            guard !Task.isCancelled else { return }
+            useRelayOrCache(directError: error.localizedDescription)
+        }
+    }
+
+    private func useRelayOrCache(directError: String? = nil) {
+        if WatchBridge.shared.isPhoneReachable {
+            isViaPhone = true
+            connectionState = lastState == nil ? .connecting : .connected
+            WatchBridge.shared.requestState()
+            errorMessage = lastState == nil || isStale ? "Waiting for a fresh iPhone relay." : nil
+        } else if lastState != nil {
+            isViaPhone = false
             connectionState = .failed
-            errorMessage = error.localizedDescription
+            errorMessage = directError ?? "Using cached status; JARVIS is unreachable."
+        } else {
+            isViaPhone = false
+            connectionState = .failed
+            errorMessage = directError ?? "JARVIS is unreachable."
         }
     }
 
     func setPlug(_ name: String, isOn: Bool) async {
         guard busyPlug == nil else { return }
         guard !isPlugStateStale(name) else {
-            errorMessage = "Plug data is stale; refresh before changing it."
+            errorMessage = "Plug data is stale; waiting for an automatic refresh."
             return
         }
         busyPlug = name
@@ -186,6 +272,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
                 return
             }
             errorMessage = nil
+            WatchBridge.shared.requestState()
             return
         }
         guard let endpoint = store.endpoint else {

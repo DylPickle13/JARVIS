@@ -6,7 +6,6 @@ import JARVISKit
 
 public enum AppSection: String, Sendable {
     case home
-    case events
     case settings
 }
 
@@ -54,11 +53,6 @@ public final class AppState: ObservableObject {
     @Published public var isStateLoading = false
     @Published public var stateErrorMessage: String?
 
-    @Published public var lastEvents: [EventItem] = []
-    @Published public var eventsLoaded = false
-    @Published public var eventsLoading = false
-    @Published public var eventsErrorMessage: String?
-
     @Published public var lastServices: [String: ServiceActionResult] = [:]
     @Published public var servicesLoaded = false
     @Published public var servicesLoading = false
@@ -77,7 +71,7 @@ public final class AppState: ObservableObject {
     private var appIsActive = false
     private var networkAvailable = true
     private var retryAllowed = true
-    private var lastEventSequence: Int?
+    private let activeRefreshInterval: Duration
     private var refreshTask: Task<Void, Never>?
     private var connectionLoopTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
@@ -88,10 +82,15 @@ public final class AppState: ObservableObject {
     var watchCommandResponseOrder: [String] = []
     let watchCommandCacheLimit = 50
 
-    public init(store: EndpointStore? = nil, client: any JarvisAPI = JarvisClient()) {
+    public init(
+        store: EndpointStore? = nil,
+        client: any JarvisAPI = JarvisClient(),
+        activeRefreshInterval: Duration = JARVISRefreshPolicy.activeInterval
+    ) {
         let resolvedStore = store ?? EndpointStore(defaults: JARVISSharedStore.defaults)
         self.store = resolvedStore
         self.client = client
+        self.activeRefreshInterval = activeRefreshInterval
         self.endpointDraft = resolvedStore.endpointURLString ?? ""
         seedFromLaunchArgumentsIfPresent()
         self.endpointDraft = resolvedStore.endpointURLString ?? ""
@@ -127,12 +126,13 @@ public final class AppState: ObservableObject {
     }
 
     public func sceneDidBecomeActive() {
+        guard !appIsActive else { return }
         appIsActive = true
         startPathMonitorIfNeeded()
         if connectionState != .connected {
             startConnectionLoop()
         } else {
-            restartPolling()
+            restartPolling(refreshImmediately: true)
         }
     }
 
@@ -149,8 +149,9 @@ public final class AppState: ObservableObject {
     }
 
     public func setActiveSection(_ section: AppSection) {
+        guard activeSection != section else { return }
         activeSection = section
-        restartPolling()
+        restartPolling(refreshImmediately: section == .home)
     }
 
     private func startPathMonitorIfNeeded() {
@@ -231,9 +232,8 @@ public final class AppState: ObservableObject {
             lastHealth = try await client.health(endpoint)
             connectionState = .connected
             errorMessage = nil
-            isStateLoading = true
-            await fetchState()
-            restartPolling()
+            await refreshHomeResources(refreshHealth: false)
+            restartPolling(refreshImmediately: false)
         } catch let error as JarvisError {
             connectionState = .failed
             retryAllowed = error.isRetryable
@@ -453,32 +453,7 @@ public final class AppState: ObservableObject {
         )
     }
 
-    // MARK: - Events/services
-
-    public func fetchEvents(limit: Int = 100) async {
-        guard let endpoint = activeEndpoint else { return }
-        eventsLoading = true
-        defer { eventsLoading = false }
-        do {
-            let response = try await client.events(endpoint, since: lastEventSequence, limit: limit)
-            if lastEventSequence == nil {
-                lastEvents = response.events
-            } else {
-                var merged = Dictionary(uniqueKeysWithValues: lastEvents.map { ($0.seq, $0) })
-                response.events.forEach { merged[$0.seq] = $0 }
-                lastEvents = Array(merged.values.sorted { $0.seq < $1.seq }.suffix(500))
-            }
-            lastEventSequence = lastEvents.map(\.seq).max() ?? lastEventSequence
-            eventsLoaded = true
-            eventsErrorMessage = nil
-        } catch let error as JarvisError {
-            eventsErrorMessage = error.errorDescription
-        } catch is CancellationError {
-            return
-        } catch {
-            eventsErrorMessage = error.localizedDescription
-        }
-    }
+    // MARK: - Services
 
     public func fetchServices() async {
         guard let endpoint = activeEndpoint else { return }
@@ -565,49 +540,42 @@ public final class AppState: ObservableObject {
 
     // MARK: - Polling
 
-    private func restartPolling() {
+    public func refreshHome() async {
+        await refreshHomeResources(refreshHealth: true)
+    }
+
+    private func refreshHomeResources(refreshHealth: Bool) async {
+        async let state: Void = fetchState()
+        async let services: Void = fetchServices()
+        async let jobs: Void = fetchScheduledJobs()
+        if refreshHealth {
+            async let health: Void = fetchHealth()
+            _ = await (state, services, jobs, health)
+        } else {
+            _ = await (state, services, jobs)
+        }
+    }
+
+    private func restartPolling(refreshImmediately: Bool) {
         pollingTask?.cancel()
         pollingTask = nil
-        guard appIsActive, connectionState == .connected else { return }
-        let section = activeSection
-        guard section != .settings else { return }
+        guard appIsActive, connectionState == .connected, activeSection == .home else { return }
         pollingTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            switch section {
-            case .home:
-                async let statePolling: Void = self.pollHomeState()
-                async let servicesPolling: Void = self.pollHomeServices()
-                _ = await (statePolling, servicesPolling)
-            case .events:
-                while !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
-                      self.activeSection == section {
-                    await self.fetchEvents()
-                    try? await Task.sleep(for: .seconds(5))
-                }
-            case .settings:
-                return
+            if refreshImmediately {
+                await self.refreshHome()
             }
-        }
-    }
-
-    private func pollHomeState() async {
-        while !Task.isCancelled, appIsActive, connectionState == .connected,
-              activeSection == .home {
-            try? await Task.sleep(for: .seconds(10))
-            guard !Task.isCancelled, appIsActive, connectionState == .connected,
-                  activeSection == .home else { return }
-            await fetchState()
-        }
-    }
-
-    private func pollHomeServices() async {
-        while !Task.isCancelled, appIsActive, connectionState == .connected,
-              activeSection == .home {
-            async let services: Void = fetchServices()
-            async let jobs: Void = fetchScheduledJobs()
-            async let health: Void = fetchHealth()
-            _ = await (services, jobs, health)
-            try? await Task.sleep(for: .seconds(15))
+            while !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
+                  self.activeSection == .home {
+                do {
+                    try await Task.sleep(for: self.activeRefreshInterval)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
+                      self.activeSection == .home else { return }
+                await self.refreshHome()
+            }
         }
     }
 
@@ -621,12 +589,9 @@ public final class AppState: ObservableObject {
         store.clear()
         lastState = nil
         lastHealth = nil
-        lastEvents = []
         lastServices = [:]
         lastScheduledJobs = []
         scheduledJobsSummary = nil
-        lastEventSequence = nil
-        eventsLoaded = false
         servicesLoaded = false
         scheduledJobsLoaded = false
         scheduledJobsErrorMessage = nil

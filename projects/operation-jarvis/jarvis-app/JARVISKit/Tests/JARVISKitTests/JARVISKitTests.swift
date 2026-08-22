@@ -2,6 +2,10 @@ import XCTest
 @testable import JARVISKit
 
 final class JARVISKitTests: XCTestCase {
+    func testNativeAppsShareFifteenSecondActiveRefreshPolicy() {
+        XCTAssertEqual(JARVISRefreshPolicy.activeInterval, .seconds(15))
+    }
+
     func testDecodeStateSnapshot() throws {
         let json = """
         {

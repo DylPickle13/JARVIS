@@ -165,7 +165,7 @@ struct WatchDashboardContent: View {
         .disabled(state == nil || stale || model.busyPlug != nil)
         .accessibilityLabel("\(WatchFormat.displayName(name)) plug")
         .accessibilityValue(busy ? "updating" : (stale ? "stale" : (state.map { $0 ? "on" : "off" } ?? "unavailable")))
-        .accessibilityHint(stale ? "Refresh before changing this plug" : "Double tap to set the opposite state")
+        .accessibilityHint(stale ? "Wait for automatic refresh before changing this plug" : "Double tap to set the opposite state")
     }
 
     // MARK: - System
@@ -176,23 +176,9 @@ struct WatchDashboardContent: View {
             purifierPanel
             sourcePanel
 
-            Button {
-                Task { await model.connect() }
-            } label: {
-                HStack(spacing: 6) {
-                    if model.connectionState == .connecting {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    Text(model.connectionState == .connecting ? "Refreshing" : "Refresh status")
-                        .font(.caption.weight(.semibold))
-                }
-                .frame(maxWidth: .infinity, minHeight: 31)
+            if model.shouldShowRetry {
+                retryButton
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.capsule)
-            .disabled(model.connectionState == .connecting)
 
             if let message = model.errorMessage, !message.isEmpty {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -264,7 +250,7 @@ struct WatchDashboardContent: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if model.pendingRelay {
+            if model.pendingRelay || model.isRefreshing {
                 ProgressView().controlSize(.small)
             }
         }
@@ -272,6 +258,19 @@ struct WatchDashboardContent: View {
         .frame(maxWidth: .infinity, minHeight: 48)
         .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+
+    private var retryButton: some View {
+        Button {
+            Task { await model.connect() }
+        } label: {
+            Label("Retry now", systemImage: "arrow.clockwise")
+                .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 31)
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .disabled(model.isRefreshing)
     }
 
     // MARK: - Accessibility layout
@@ -288,12 +287,9 @@ struct WatchDashboardContent: View {
                 pageHeader("System", symbol: "waveform.path.ecg", trailing: sourceLabel)
                 purifierPanel
                 sourcePanel
-                Button("Refresh status") {
-                    Task { await model.connect() }
+                if model.shouldShowRetry {
+                    retryButton
                 }
-                .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
-                .disabled(model.connectionState == .connecting)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
