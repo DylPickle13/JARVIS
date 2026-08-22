@@ -10,12 +10,13 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. Signed `0.2.0 (22)` is installed on Dylan's allowlisted iPhone and Apple
+UI. Signed `0.2.0 (23)` is installed on Dylan's allowlisted iPhone and Apple
 Watch. It includes build 18's Events-tab removal, build 19's shared foreground
-refresh policy, and two dynamic plug-only Siri shortcuts. Build 22 replaces the
-contact-directed “Tell JARVIS” wording after Siri on Watch routed it to Contacts,
-adds fixed verb-first phrases with optional “the”, and reliably republishes the
-dynamic plug catalogue after upgrades. Owner retesting remains pending. The
+refresh policy, and two dynamic plug-only Siri shortcuts. Build 23 advertises
+only “Hey JARVIS, turn on/off [the] [plug]” invocation phrases, as requested;
+older “with JARVIS”, “Use JARVIS”, and contact-directed “Tell JARVIS” phrases
+are absent. Upgrade-time dynamic catalogue publication remains enforced. Owner
+Watch invocation testing remains pending. The
 three-slot Smart Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
@@ -54,9 +55,10 @@ audit contract remains intact. Build 19 refreshes both hosts immediately on
 activation and every 15 seconds while visible, cancels polling when inactive,
 and replaces normal refresh buttons with automatic status plus failure-only
 retry on Watch. Build 20 added only Turn On JARVIS Plug and Turn Off JARVIS Plug
-to Siri/Shortcuts. Build 22 makes their Watch invocation phrases contact-safe and
-upgrade-safe. Their plug parameter is populated from current `jarvisd` state
-rather than a compiled list; the generic widget action is not discoverable.
+to Siri/Shortcuts. Build 23 makes their sole spoken form “Hey JARVIS, turn
+on/off [the] [plug]” and keeps upgrade-time parameter publication reliable.
+Their plug parameter is populated from current `jarvisd` state rather than a
+compiled list; the generic widget action is not discoverable.
 
 **v5 note:** the app is the native Apple client for Operation JARVIS. Its
 backend is the small `jarvisd` daemon in this folder, which is the app's only
@@ -141,15 +143,16 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   `isWatchAppInstalled=true` and `isCompanionAppInstalled=true` under free
   provisioning; the final physical reachability/relay matrix remains open.
 - **Siri plug control** — the iPhone and Watch hosts advertise exactly two
-  dynamic App Shortcuts. Fixed Watch-friendly phrases include “Turn on/off [the]
-  [plug] with JARVIS” and “Use JARVIS to turn on/off [the] [plug]”; parameterless
-  fallbacks ask which plug. Contact-directed “Tell JARVIS” wording is excluded.
-  A target-local schema/catalogue signature republishes parameter phrases after
-  an upgrade even when cached plug IDs are unchanged. Runtime entities are
-  derived from the current daemon plug map. Writes require fresh exact state,
-  skip an already-satisfied request, use only `plug-on`/`plug-off`, and confirm
-  the result. Watch uses direct access first and an immediate correlated iPhone
-  relay second; it never queues a Siri write after timeout.
+  dynamic App Shortcuts. Their only phrases are “Hey JARVIS, turn on/off [the]
+  [plug]” plus parameterless “a plug” forms that ask which plug. Invoke the
+  complete phrase as “Hey Siri, hey JARVIS, turn on/off the [plug].” No “with
+  JARVIS”, “Use JARVIS”, or contact-directed “Tell JARVIS” fallback is
+  advertised. A target-local schema/catalogue signature republishes parameter
+  phrases after an upgrade even when cached plug IDs are unchanged. Runtime
+  entities are derived from the current daemon plug map. Writes require fresh
+  exact state, skip an already-satisfied request, use only `plug-on`/`plug-off`,
+  and confirm the result. Watch uses direct access first and an immediate
+  correlated iPhone relay second; it never queues a Siri write after timeout.
 - **M3 widget foundations** — each embedded WidgetKit extension publishes four
   focused widgets: Open JARVIS, configurable JARVIS Plug, JARVIS Plug Grid, and
   read-only Air Purifier. Plug controls use typed desired-state App Intents;

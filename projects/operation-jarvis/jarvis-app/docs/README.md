@@ -6,9 +6,9 @@
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current candidate:** `0.2.0 (22)`
+**Current candidate:** `0.2.0 (23)`
 
-**Physical installation:** iPhone and Apple Watch `0.2.0 (22)`; corrected Watch Siri invocation is owner-pending
+**Physical installation:** iPhone and Apple Watch `0.2.0 (23)`; “Hey JARVIS” Watch invocation is owner-pending
 
 This is the single architecture, security, packaging, deployment, validation,
 and recovery reference for the JARVIS iPhone app, Apple Watch app, widgets, and
@@ -66,6 +66,39 @@ never deploy to a device outside Dylan's allowlist.
 - Build 22 corrects Watch Siri phrase routing and upgrade-time parameter
   publication after the first physical build-20 invocation fell through to
   Contacts without issuing a JARVIS command.
+- Build 23 adopts Dylan's requested “Hey JARVIS” command form and removes all
+  “with JARVIS”, “Use JARVIS”, and “Tell JARVIS” advertised alternatives.
+
+### Build-23 “Hey JARVIS” Siri command form
+
+```text
+Archive: /tmp/JARVIS-build23-hey-jarvis.xcarchive
+IPA:     /tmp/JARVIS-build23-hey-jarvis-export/JARVIS.ipa
+SHA-256: 1803e84e78f223d694520360c2bd1aaf868d5aee47bf290cab53e4b7621ce6b2
+```
+
+The two plug intents now advertise only “Hey JARVIS, turn on/off [the] [plug]”
+and parameterless “Hey JARVIS, turn on/off a plug” forms. A normal voice request
+is therefore “Hey Siri, hey JARVIS, turn on the lamp”: the first “Hey Siri” wakes
+the system assistant and the remaining phrase is the registered JARVIS command.
+There is no “with JARVIS”, “Use JARVIS”, or “Tell JARVIS” fallback in compiled
+host metadata. The optional article variants remain explicit because Watch Siri
+uses fixed App Shortcut phrase matching. The phrase schema is version 4, forcing
+both hosts to republish the unchanged dynamic plug catalogue after upgrading.
+
+All four archived products report `0.2.0 (23)` and pass deep signature, required
+bundle hierarchy, Personal Team, entitlement, synchronized-version, and exact
+App Intent metadata audits. The archive's App Intents training step accepted all
+six phrases. Verification passes with 28 JARVISKit tests/3 live skips, 11
+AppState tests, iOS/watchOS simulator builds, and repository smoke
+`PASS=105 WARN=0 FAIL=0`. The exact parent IPA and archived Watch product are
+installed on the two allowlisted devices, and both inventories report build 23.
+A physical iPhone console confirmed publication of all four dynamic plug values.
+CoreDevice again could not foreground the Watch app because watchOS denied
+navigation from the clock during an active system state, so Dylan must manually
+open JARVIS on Watch before testing the new phrase. Deployment generated only
+read-only state GETs and zero command, service, or event mutation POSTs. No Siri
+phrase or physical plug command was exercised automatically.
 
 ### Build-22 Watch Siri phrase and registration recovery
 
@@ -547,12 +580,13 @@ not the widget's fixed configuration enum. Cached state may help resolve a
 spoken name, but only fresh direct or relayed state may authorize a write. A
 persisted target-local phrase-schema/catalogue signature ensures publication on
 first fresh state after an install or phrase update as well as after identifiers
-are added, removed, or renamed. Contact-directed “Tell JARVIS” phrases are not
-advertised; fixed Watch phrases use “Turn on/off [the] [plug] with JARVIS” or
-“Use JARVIS to turn on/off [the] [plug],” with parameterless prompting fallbacks.
-Matching is normalized but not fuzzy; ambiguity is handed back to Siri instead
-of guessing. The widget-only raw intent remains non-discoverable. No purifier,
-service, scheduler, status, launcher, or general JARVIS shortcut is published.
+are added, removed, or renamed. The only fixed Watch phrases are “Hey JARVIS,
+turn on/off [the] [plug]” and parameterless “a plug” forms that prompt for the
+entity. “With JARVIS”, “Use JARVIS”, and contact-directed “Tell JARVIS” forms are
+not advertised. Matching is normalized but not fuzzy; ambiguity is handed back
+to Siri instead of guessing. The widget-only raw intent remains non-discoverable.
+No purifier, service, scheduler, status, launcher, or general JARVIS shortcut is
+published.
 
 ### Accessibility and presentation
 
@@ -1087,6 +1121,7 @@ All commits remain local unless Dylan separately requests a push.
 | Build 20 | Adds exactly two dynamic plug-only Siri shortcuts, fresh-state validation, confirmed desired-state results, duplicate suppression, and immediate-only correlated Watch relay fallback. Its first physical Watch phrase fell through to Contacts without a command. |
 | Build 21 | Intermediate deployment removes contact-directed phrases, adds parameterless fallbacks, and persists a schema/catalogue publication signature. |
 | Build 22 | Adds exact optional-article phrase variants for Watch's fixed matching, revalidates metadata/signatures, and installs the corrected products on both devices; owner phrase retest remains pending. |
+| Build 23 | Replaces every advertised phrase with “Hey JARVIS, turn on/off [the] [plug]” or its parameterless prompt, increments the publication schema, and installs the exact signed products on both devices; owner Watch invocation remains pending. |
 
 Notable local commits include dashboard retirement (`590f937`), daemon hardening
 (`4e47501`), Apple reliability/packaging (`042fdd4`), deployment operations

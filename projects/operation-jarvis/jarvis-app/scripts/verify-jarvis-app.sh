@@ -62,13 +62,13 @@ grep -q 'struct TurnOnJARVISPlugIntent: AppIntent' HostAppIntents/JARVISSiriPlug
 grep -q 'struct TurnOffJARVISPlugIntent: AppIntent' HostAppIntents/JARVISSiriPlugIntents.swift
 grep -q 'struct JARVISPlugEntity: AppEntity' HostAppIntents/JARVISSiriPlugIntents.swift
 grep -q 'struct JARVISPlugEntityQuery: EntityStringQuery' HostAppIntents/JARVISSiriPlugIntents.swift
-grep -q 'Turn on a plug with \\(\.applicationName)' HostAppIntents/JARVISSiriPlugIntents.swift
-grep -q 'Turn off a plug with \\(\.applicationName)' HostAppIntents/JARVISSiriPlugIntents.swift
-grep -q 'Turn on \\(\\.\$plug) with \\(\.applicationName)' HostAppIntents/JARVISSiriPlugIntents.swift
-grep -q 'Turn on the \\(\\.\$plug) with \\(\.applicationName)' HostAppIntents/JARVISSiriPlugIntents.swift
-grep -q 'Turn off \\(\\.\$plug) with \\(\.applicationName)' HostAppIntents/JARVISSiriPlugIntents.swift
-grep -q 'Turn off the \\(\\.\$plug) with \\(\.applicationName)' HostAppIntents/JARVISSiriPlugIntents.swift
-reject_match 'contact-directed Tell phrase is still advertised to Siri' -qsF 'Tell \(.applicationName)' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'Hey \\(\.applicationName), turn on a plug' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'Hey \\(\.applicationName), turn off a plug' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'Hey \\(\.applicationName), turn on \\(\\.\$plug)' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'Hey \\(\.applicationName), turn on the \\(\\.\$plug)' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'Hey \\(\.applicationName), turn off \\(\\.\$plug)' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'Hey \\(\.applicationName), turn off the \\(\\.\$plug)' HostAppIntents/JARVISSiriPlugIntents.swift
+reject_match 'legacy Siri phrase is still advertised' -qsE 'Tell \\(\.applicationName)| with \\(\.applicationName)|Use \\(\.applicationName)' HostAppIntents/JARVISSiriPlugIntents.swift
 [[ "$(grep -c 'AppShortcut(' HostAppIntents/JARVISSiriPlugIntents.swift)" == "2" ]]
 grep -q 'static var isDiscoverable: Bool { false }' SharedAppIntents/JARVISWidgetIntents.swift
 grep -q 'queueIfUnreachable: false' JARVISKit/Sources/JARVISKit/WatchBridge.swift
@@ -76,7 +76,7 @@ grep -q 'allowsWatchRelayFallback' JARVISKit/Sources/JARVISKit/PlugCommandExecut
 grep -q 'private actor JARVISSiriCatalogueCoordinator' HostAppIntents/JARVISSiriPlugIntents.swift
 grep -q 'private let retention: TimeInterval = 15' HostAppIntents/JARVISSiriPlugIntents.swift
 grep -q 'final class JARVISSiriParameterRegistrar' HostAppIntents/JARVISSiriPlugIntents.swift
-grep -q 'schemaVersion: Int = 3' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'schemaVersion: Int = 4' HostAppIntents/JARVISSiriPlugIntents.swift
 grep -q 'jarvis.siri.parameter-signature.v1' HostAppIntents/JARVISSiriPlugIntents.swift
 reject_match 'Siri source contains a compiled production plug identifier' -qsE 'family-room-light|pedalboard|"lamp"|"tv"' HostAppIntents/JARVISSiriPlugIntents.swift
 reject_match 'non-plug Siri surface is present' -qsiE 'purifier|scheduled.?job|serviceAction|discord|room.?audio' HostAppIntents/JARVISSiriPlugIntents.swift
@@ -226,27 +226,22 @@ for path in sys.argv[3:]:
     ], path
     expected_phrases = {
         "TurnOnJARVISPlugIntent": [
-            "Turn on a plug with ${applicationName}",
-            "Use ${applicationName} to turn on a plug",
-            "Turn on ${plug} with ${applicationName}",
-            "Turn on the ${plug} with ${applicationName}",
-            "Use ${applicationName} to turn on ${plug}",
-            "Use ${applicationName} to turn on the ${plug}",
+            "Hey ${applicationName}, turn on a plug",
+            "Hey ${applicationName}, turn on ${plug}",
+            "Hey ${applicationName}, turn on the ${plug}",
         ],
         "TurnOffJARVISPlugIntent": [
-            "Turn off a plug with ${applicationName}",
-            "Use ${applicationName} to turn off a plug",
-            "Turn off ${plug} with ${applicationName}",
-            "Turn off the ${plug} with ${applicationName}",
-            "Use ${applicationName} to turn off ${plug}",
-            "Use ${applicationName} to turn off the ${plug}",
+            "Hey ${applicationName}, turn off a plug",
+            "Hey ${applicationName}, turn off ${plug}",
+            "Hey ${applicationName}, turn off the ${plug}",
         ],
     }
     for shortcut in shortcuts:
         phrases = [item["key"] for item in shortcut.get("phraseTemplates", [])]
         assert phrases == expected_phrases[shortcut["actionIdentifier"]], (path, phrases)
         assert any("${plug}" not in phrase for phrase in phrases), path
-        assert all(not phrase.startswith("Tell ") for phrase in phrases), path
+        assert all(phrase.startswith("Hey ${applicationName}, ") for phrase in phrases), path
+        assert all(" with ${applicationName}" not in phrase for phrase in phrases), path
     assert "JARVISPlugEntity" in payload.get("entities", {}), path
     assert "JARVISPlugEntityQuery" in payload.get("queries", {}), path
 PY

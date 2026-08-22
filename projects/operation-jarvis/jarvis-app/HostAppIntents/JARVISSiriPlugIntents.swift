@@ -88,12 +88,9 @@ struct JARVISAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: TurnOnJARVISPlugIntent(),
             phrases: [
-                "Turn on a plug with \(.applicationName)",
-                "Use \(.applicationName) to turn on a plug",
-                "Turn on \(\.$plug) with \(.applicationName)",
-                "Turn on the \(\.$plug) with \(.applicationName)",
-                "Use \(.applicationName) to turn on \(\.$plug)",
-                "Use \(.applicationName) to turn on the \(\.$plug)",
+                "Hey \(.applicationName), turn on a plug",
+                "Hey \(.applicationName), turn on \(\.$plug)",
+                "Hey \(.applicationName), turn on the \(\.$plug)",
             ],
             shortTitle: "Turn On Plug",
             systemImageName: "powerplug.fill"
@@ -101,12 +98,9 @@ struct JARVISAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: TurnOffJARVISPlugIntent(),
             phrases: [
-                "Turn off a plug with \(.applicationName)",
-                "Use \(.applicationName) to turn off a plug",
-                "Turn off \(\.$plug) with \(.applicationName)",
-                "Turn off the \(\.$plug) with \(.applicationName)",
-                "Use \(.applicationName) to turn off \(\.$plug)",
-                "Use \(.applicationName) to turn off the \(\.$plug)",
+                "Hey \(.applicationName), turn off a plug",
+                "Hey \(.applicationName), turn off \(\.$plug)",
+                "Hey \(.applicationName), turn off the \(\.$plug)",
             ],
             shortTitle: "Turn Off Plug",
             systemImageName: "powerplug"
@@ -227,7 +221,7 @@ final class JARVISSiriParameterRegistrar {
 
     init(
         defaults: UserDefaults = JARVISSharedStore.defaults,
-        schemaVersion: Int = 3,
+        schemaVersion: Int = 4,
         seed: @escaping ([JARVISPlugDescriptor]) async -> Void = { plugs in
             await JARVISSiriPlugRuntime.seedCatalogue(plugs)
         },
