@@ -99,8 +99,8 @@ const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 				},
 			},
 			{
-				id: "Qwen3.6-35B-A3B-6bit",
-				name: "Qwen3.6-35B-A3B-6bit",
+				id: "Qwen3.6-35B-A3B-4bit",
+				name: "Qwen3.6-35B-A3B-4bit",
 				reasoning: true,
 				input: ["text", "image"],
 				contextWindow: 262144,

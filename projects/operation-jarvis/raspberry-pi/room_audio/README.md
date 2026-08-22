@@ -57,7 +57,7 @@ Optional environment variables:
 - `JARVIS_ROOM_AUDIO_HOST` / `JARVIS_ROOM_AUDIO_PORT`
 - `JARVIS_ROOM_AUDIO_TOKEN` — if set, clients must send `x-jarvis-room-token`
 - `JARVIS_ROOM_AUDIO_PI_MODEL` — defaults to `DISCORD_VOICE_PI_MODEL`, then `DISCORD_PI_MODEL`
-- `JARVIS_ROOM_AUDIO_PI_THINKING` — defaults to `DISCORD_PI_THINKING`; current JARVIS voice/room-audio setting is `xhigh`.
+- `JARVIS_ROOM_AUDIO_PI_THINKING` — defaults to `DISCORD_PI_THINKING`; current JARVIS voice/room-audio setting is `high`.
 - `JARVIS_ROOM_AUDIO_WAKE_WORD` — legacy transcript-wake setting; room audio no longer uses it to reject turns after Pi-side openWakeWord has accepted them.
 - `JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS` — code default `450`; current `.env` uses `1000` for Bluetooth/A2DP first-syllable protection. If the acknowledgement ever clips again, raise this to about `1300`–`1500`.
 - `JARVIS_ROOM_AUDIO_PROCESSING_ACK_ENABLED` — defaults to `DISCORD_VOICE_PROCESSING_ACK_ENABLED`; when enabled, accepted turns can immediately play the acknowledgement.

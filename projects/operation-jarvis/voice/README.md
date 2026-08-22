@@ -69,7 +69,7 @@ Busy: short Discord PCM candidate → Whisper ASR → exact bare `stop` cancels 
 Recommended installed models:
 
 - ASR in oMLX: `mlx-community/whisper-large-v3-turbo-asr-4bit`
-- Pi response model: configured by `DISCORD_VOICE_PI_MODEL`, currently `omlx-64/Qwen3.6-35B-A3B-6bit` with `DISCORD_PI_THINKING=xhigh`; set it empty to fall back to root `DISCORD_PI_MODEL`, or use `/jarvis model` in the voice channel text chat to change the voice LLM session.
+- Pi response model: configured by `DISCORD_VOICE_PI_MODEL`, currently `omlx-64/Qwen3.6-35B-A3B-4bit` with `DISCORD_PI_THINKING=high`; set it empty to fall back to root `DISCORD_PI_MODEL`, or use `/jarvis model` in the voice channel text chat to change the voice LLM session.
 - Local TTS: Piper JARVIS model from `jgkawell/jarvis`, quality `high`
 
 The standalone `discord_voice_bot.py` still uses the direct oMLX chat path configured by `DISCORD_VOICE_LLM_MODEL`; the main bot injects a Pi RPC response callback instead. In main-bot voice mode, joining the voice channel starts a fresh Pi session, all wake-word prompts during that shared voice-channel connection stay in that one Pi session, and disconnecting ends/stops it.
@@ -123,7 +123,7 @@ Do not run this standalone voice bot and the main JARVIS bot with the same Disco
 - `DISCORD_VOICE_GREETING_STATE_PATH`: optional state file override; defaults to `projects/operation-jarvis/data/voice_greeting_state.json`.
 - `DISCORD_VOICE_PRELOAD_ON_JOIN`: load required oMLX models when the bot joins; also validates the selected TTS backend. In the main bot, the voice response model is owned by the Pi RPC session, not this preload step.
 - `DISCORD_VOICE_BASE_URL`: oMLX/OpenAI-compatible base URL. Use `OMLX_API_KEY` for shared bearer auth or `DISCORD_VOICE_API_KEY` as a voice-specific override.
-- `DISCORD_VOICE_ASR_MODEL`, `DISCORD_VOICE_ASR_LANGUAGE`: configured oMLX ASR model/language. `DISCORD_VOICE_PI_MODEL` is the voice-only Pi LLM override used by the main bot and defaults/templates to `omlx-64/Qwen3.6-35B-A3B-6bit`; set it empty to fall back to root `DISCORD_PI_MODEL`. `DISCORD_VOICE_LLM_MODEL` only applies to the standalone direct-oMLX runner. `DISCORD_PI_MODEL_OPTIONS` controls the model IDs exposed in the `/jarvis model` panel for easy swapping.
+- `DISCORD_VOICE_ASR_MODEL`, `DISCORD_VOICE_ASR_LANGUAGE`: configured oMLX ASR model/language. `DISCORD_VOICE_PI_MODEL` is the voice-only Pi LLM override used by the main bot and defaults/templates to `omlx-64/Qwen3.6-35B-A3B-4bit`; set it empty to fall back to root `DISCORD_PI_MODEL`. `DISCORD_VOICE_LLM_MODEL` only applies to the standalone direct-oMLX runner. `DISCORD_PI_MODEL_OPTIONS` controls the model IDs exposed in the `/jarvis model` panel for easy swapping.
 - `DISCORD_VOICE_LLM_MAX_TOKENS`, `DISCORD_VOICE_LLM_TEMPERATURE`, `DISCORD_VOICE_LLM_TOP_P`, `DISCORD_VOICE_LLM_DISABLE_THINKING`, `DISCORD_VOICE_HISTORY_TURNS`, `DISCORD_VOICE_SYSTEM_PROMPT`: standalone direct-oMLX runner response controls. Main-bot live voice uses Pi RPC plus `APPEND_SYSTEM.md` instead.
 - `DISCORD_VOICE_TTS_BACKEND`: must be `piper`.
 - `DISCORD_VOICE_TTS_PIPER_REPO_ID`, `DISCORD_VOICE_TTS_PIPER_QUALITY`, `DISCORD_VOICE_TTS_PIPER_LENGTH_SCALE`, `DISCORD_VOICE_TTS_PIPER_VOLUME`, `DISCORD_VOICE_TTS_PIPER_NOISE_SCALE`, `DISCORD_VOICE_TTS_PIPER_NOISE_W_SCALE`: Piper JARVIS voice selection/tuning. Quality is `medium` or `high`.

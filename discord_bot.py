@@ -100,6 +100,7 @@ DISCORD_VOICE_CHANNEL_NAME = (
     if discord_voice is not None
     else os.getenv("DISCORD_VOICE_CHANNEL_NAME", "jarvis")
 ).strip().lower()
+QWEN36_35B_MODEL = "omlx-64/Qwen3.6-35B-A3B-4bit"
 QWEN38_27B_MODEL = "omlx-64/Qwen3.8-27B-4bit"
 QWEN35_9B_PROVIDER = "omlx"
 QWEN35_9B_MODEL_ID = "Qwen3.5-9B-6bit"
@@ -116,6 +117,7 @@ DISCORD_EXTRA_PI_MODEL_OPTIONS = tuple(
     dict.fromkeys(
         model
         for model in (
+            QWEN36_35B_MODEL,
             QWEN38_27B_MODEL,
             f"{QWEN35_9B_PROVIDER}/{QWEN35_9B_MODEL_ID}",
             DISCORD_TEXT_QWEN35_9B_MODEL,
@@ -129,7 +131,7 @@ DISCORD_HIDDEN_PI_MODEL_OPTIONS = {
     "github-copilot/gpt-5.4-mini",
     "github-copilot/gpt-5.3-codex",
 }
-DEFAULT_DISCORD_VOICE_PI_MODEL = "omlx-64/Qwen3.6-35B-A3B-6bit"
+DEFAULT_DISCORD_VOICE_PI_MODEL = QWEN36_35B_MODEL
 DISCORD_VOICE_PI_MODEL = config.get_str_env("DISCORD_VOICE_PI_MODEL", DEFAULT_DISCORD_VOICE_PI_MODEL)
 
 
