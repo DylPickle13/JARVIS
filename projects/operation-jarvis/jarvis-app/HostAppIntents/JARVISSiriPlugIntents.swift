@@ -88,8 +88,12 @@ struct JARVISAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: TurnOnJARVISPlugIntent(),
             phrases: [
-                "Tell \(.applicationName) to turn on \(\.$plug)",
+                "Turn on a plug with \(.applicationName)",
+                "Use \(.applicationName) to turn on a plug",
                 "Turn on \(\.$plug) with \(.applicationName)",
+                "Turn on the \(\.$plug) with \(.applicationName)",
+                "Use \(.applicationName) to turn on \(\.$plug)",
+                "Use \(.applicationName) to turn on the \(\.$plug)",
             ],
             shortTitle: "Turn On Plug",
             systemImageName: "powerplug.fill"
@@ -97,8 +101,12 @@ struct JARVISAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: TurnOffJARVISPlugIntent(),
             phrases: [
-                "Tell \(.applicationName) to turn off \(\.$plug)",
+                "Turn off a plug with \(.applicationName)",
+                "Use \(.applicationName) to turn off a plug",
                 "Turn off \(\.$plug) with \(.applicationName)",
+                "Turn off the \(\.$plug) with \(.applicationName)",
+                "Use \(.applicationName) to turn off \(\.$plug)",
+                "Use \(.applicationName) to turn off the \(\.$plug)",
             ],
             shortTitle: "Turn Off Plug",
             systemImageName: "powerplug"
@@ -116,8 +124,8 @@ enum JARVISSiriPlugRuntime {
         }
     }
 
-    static func seedCatalogue(from state: StateSnapshot) async {
-        await catalogueCoordinator.seed(JARVISPlugCatalog.descriptors(from: state))
+    static func seedCatalogue(_ plugs: [JARVISPlugDescriptor]) async {
+        await catalogueCoordinator.seed(plugs)
     }
 
     private static func loadCatalogue() async -> [JARVISPlugDescriptor] {
@@ -203,20 +211,78 @@ enum JARVISSiriPlugRuntime {
     #endif
 }
 
-/// Call only when the set of daemon-advertised identifiers changes. This asks
-/// Siri and Shortcuts to regenerate parameterized phrases after add/remove/
-/// rename without polling or embedding a fixed list in the app.
-func updateJARVISSiriParametersIfNeeded(previous: StateSnapshot?, current: StateSnapshot) {
-    let oldIDs = Set(previous.map { JARVISPlugCatalog.descriptors(from: $0).map(\.id) } ?? [])
-    let newIDs = Set(JARVISPlugCatalog.descriptors(from: current).map(\.id))
-    guard oldIDs != newIDs else { return }
-    Task {
-        // Seed before notifying App Intents so its burst of parameter queries
-        // resolves from one known-fresh catalogue instead of multiplying LAN
-        // discovery and state requests.
-        await JARVISSiriPlugRuntime.seedCatalogue(from: current)
-        JARVISAppShortcuts.updateAppShortcutParameters()
+/// Persistently tracks which catalogue and phrase schema were advertised to
+/// App Intents. Comparing two state snapshots is insufficient after an app
+/// upgrade because both may contain the same cached plugs even though the new
+/// provider has never published its parameter phrases on this device.
+@MainActor
+final class JARVISSiriParameterRegistrar {
+    static let signatureKey = "jarvis.siri.parameter-signature.v1"
+
+    private let defaults: UserDefaults
+    private let schemaVersion: Int
+    private let seed: ([JARVISPlugDescriptor]) async -> Void
+    private let publish: () -> Void
+    private var inFlightSignature: String?
+
+    init(
+        defaults: UserDefaults = JARVISSharedStore.defaults,
+        schemaVersion: Int = 3,
+        seed: @escaping ([JARVISPlugDescriptor]) async -> Void = { plugs in
+            await JARVISSiriPlugRuntime.seedCatalogue(plugs)
+        },
+        publish: @escaping () -> Void = {
+            JARVISAppShortcuts.updateAppShortcutParameters()
+        }
+    ) {
+        self.defaults = defaults
+        self.schemaVersion = schemaVersion
+        self.seed = seed
+        self.publish = publish
     }
+
+    func updateIfNeeded(from state: StateSnapshot) {
+        let plugs = JARVISPlugCatalog.descriptors(from: state)
+        let signature = Self.signature(schemaVersion: schemaVersion, plugs: plugs)
+        guard defaults.string(forKey: Self.signatureKey) != signature,
+              inFlightSignature != signature else { return }
+        inFlightSignature = signature
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Seed before notifying App Intents so its burst of parameter
+            // queries resolves locally instead of multiplying LAN requests.
+            await self.seed(plugs)
+            guard self.inFlightSignature == signature else { return }
+            self.publish()
+            self.defaults.set(signature, forKey: Self.signatureKey)
+            self.inFlightSignature = nil
+            NSLog("[JARVIS Siri] published %d plug parameter values", plugs.count)
+        }
+    }
+
+    static func signature(schemaVersion: Int, plugs: [JARVISPlugDescriptor]) -> String {
+        let catalogue = plugs
+            .sorted { $0.id < $1.id }
+            .map {
+                let id = Data($0.id.utf8).base64EncodedString()
+                let name = Data($0.displayName.utf8).base64EncodedString()
+                return "\(id):\(name)"
+            }
+            .joined(separator: ",")
+        return "schema=\(schemaVersion)|\(catalogue)"
+    }
+}
+
+@MainActor
+private let jarvisSiriParameterRegistrar = JARVISSiriParameterRegistrar()
+
+/// Publish on the first fresh state after installation or a phrase-schema
+/// update, and again after any add/remove/rename. The persisted signature makes
+/// repeated 15-second foreground refreshes no-ops.
+@MainActor
+func updateJARVISSiriParametersIfNeeded(previous _: StateSnapshot?, current: StateSnapshot) {
+    jarvisSiriParameterRegistrar.updateIfNeeded(from: current)
 }
 
 private actor JARVISSiriCatalogueCoordinator {

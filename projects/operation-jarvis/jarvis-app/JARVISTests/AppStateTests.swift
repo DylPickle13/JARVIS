@@ -161,6 +161,45 @@ final class AppStateTests: XCTestCase {
         XCTAssertNotNil(app.watchCommandResponses[requestID]?.error)
     }
 
+    func testSiriParameterRegistrarPublishesOnceAndRepublishesForNewPhraseSchema() async throws {
+        let api = FakeAPI()
+        let suite = "jarvis.siri-registrar.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var seededCatalogues: [[String]] = []
+        var publishCount = 0
+
+        let registrar = JARVISSiriParameterRegistrar(
+            defaults: defaults,
+            schemaVersion: 1,
+            seed: { plugs in seededCatalogues.append(plugs.map(\.id)) },
+            publish: { publishCount += 1 }
+        )
+        registrar.updateIfNeeded(from: api.state)
+        for _ in 0..<20 where publishCount == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(publishCount, 1)
+        XCTAssertEqual(seededCatalogues, [["lamp", "tv"]])
+
+        registrar.updateIfNeeded(from: api.state)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(publishCount, 1)
+
+        let upgradedRegistrar = JARVISSiriParameterRegistrar(
+            defaults: defaults,
+            schemaVersion: 2,
+            seed: { plugs in seededCatalogues.append(plugs.map(\.id)) },
+            publish: { publishCount += 1 }
+        )
+        upgradedRegistrar.updateIfNeeded(from: api.state)
+        for _ in 0..<20 where publishCount == 1 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(publishCount, 2)
+        XCTAssertEqual(seededCatalogues, [["lamp", "tv"], ["lamp", "tv"]])
+    }
+
     func testScheduledJobsFailureDoesNotHideServiceStatus() async throws {
         let api = FakeAPI(scheduledJobsSucceeds: false)
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
