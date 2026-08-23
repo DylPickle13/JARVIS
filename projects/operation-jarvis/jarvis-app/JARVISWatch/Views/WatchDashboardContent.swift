@@ -10,6 +10,7 @@ private enum WatchDashboardPage: Hashable, CaseIterable {
 
 struct WatchDashboardContent: View {
     @ObservedObject var model: WatchConnectModel
+    let siriTerminalRequestSequence: Int
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedPage: WatchDashboardPage = .terminal
 
@@ -32,12 +33,23 @@ struct WatchDashboardContent: View {
         }
         .tint(WatchJarvisStyle.cyan)
         .animation(.easeInOut(duration: 0.16), value: selectedPage)
+        .onAppear {
+            #if DEBUG && targetEnvironment(simulator)
+            if CommandLine.arguments.contains("-jarvisOpenWatchSystem") {
+                selectedPage = .system
+            }
+            #endif
+        }
         .onChange(of: selectedPage) { _, page in
             if page == .system {
                 Task { await model.refreshCodexQuotaWhenVisible() }
             } else {
                 model.cancelCodexQuotaViewRefresh()
             }
+        }
+        .onChange(of: siriTerminalRequestSequence) { oldValue, newValue in
+            guard newValue != oldValue else { return }
+            selectedPage = .terminal
         }
     }
 
@@ -220,6 +232,10 @@ struct WatchDashboardContent: View {
            quota.available == true,
            let remaining = quota.weekly?.remainingPercent {
             let color = codexQuotaColor(remaining)
+            let isCritical = CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)
+            let panelColors = isCritical
+                ? [color.opacity(0.16), WatchJarvisStyle.surface]
+                : [WatchJarvisStyle.surface, WatchJarvisStyle.surface]
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
@@ -232,6 +248,7 @@ struct WatchDashboardContent: View {
                         Text("\(Int(remaining.rounded()))%")
                             .font(.system(size: 13, weight: .bold, design: .rounded))
                             .monospacedDigit()
+                            .foregroundStyle(color)
                         Text("LEFT")
                             .font(.system(size: 6, weight: .bold))
                             .tracking(0.5)
@@ -256,6 +273,7 @@ struct WatchDashboardContent: View {
                     }
                     Text(codexResetLabel(quota.weekly))
                         .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(isCritical ? color : Color.primary)
                         .lineLimit(1)
                     HStack(spacing: 4) {
                         Text(codexFiveHourCompactLabel(quota))
@@ -277,7 +295,10 @@ struct WatchDashboardContent: View {
             }
             .padding(.horizontal, 10)
             .frame(maxWidth: .infinity, minHeight: 72)
-            .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(
+                LinearGradient(colors: panelColors, startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(color.opacity(0.16), lineWidth: 0.75)
@@ -443,7 +464,9 @@ struct WatchDashboardContent: View {
     }
 
     private func codexQuotaColor(_ remaining: Double) -> Color {
-        WatchJarvisStyle.electricBlue
+        CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)
+            ? WatchJarvisStyle.critical
+            : WatchJarvisStyle.electricBlue
     }
 
     private func codexPlanLabel(_ plan: String?) -> String {
@@ -601,6 +624,7 @@ private struct WatchPlugTile: View {
 enum WatchJarvisStyle {
     static let cyan = Color(red: 0.29, green: 0.82, blue: 1.0)
     static let electricBlue = Color(red: 0.28, green: 0.49, blue: 1.0)
+    static let critical = Color(red: 1.0, green: 0.25, blue: 0.30)
     static let warning = Color(red: 1.0, green: 0.67, blue: 0.24)
     static let surface = Color.white.opacity(0.075)
     static let background = LinearGradient(

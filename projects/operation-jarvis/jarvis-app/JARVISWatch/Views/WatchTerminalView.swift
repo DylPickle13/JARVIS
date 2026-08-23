@@ -306,8 +306,9 @@ struct WatchTerminalView: View {
             terminal
             inputDock
         }
-        .padding(.horizontal, 2)
-        .padding(.bottom, 2)
+        .padding(.horizontal, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
         .background(Color.black.ignoresSafeArea())
         .overlay(alignment: .bottom) {
             if showingKeyPalette {
@@ -425,9 +426,9 @@ struct WatchTerminalView: View {
     }
 
     private func terminalSpan(_ span: WatchTerminalANSISpan, fontSize: CGFloat) -> some View {
-        let defaultForeground = Color(red: 0.83, green: 0.83, blue: 0.83)
+        let defaultForeground = Color(red: 0.94, green: 0.94, blue: 0.94)
         let defaultBackground = Color.black
-        let rawForeground = terminalColor(span.style.foreground, defaultColor: defaultForeground)
+        let rawForeground = terminalForegroundColor(span.style.foreground, defaultColor: defaultForeground)
         let rawBackground = terminalColor(span.style.background, defaultColor: defaultBackground)
         let foreground = span.style.inverse ? rawBackground : rawForeground
         let background = span.style.inverse ? rawForeground : rawBackground
@@ -444,9 +445,19 @@ struct WatchTerminalView: View {
         if span.style.underline { text = text.underline() }
         if span.style.strikethrough { text = text.strikethrough() }
         return text
-            .foregroundStyle(foreground.opacity(span.style.dim ? 0.62 : 1))
+            .foregroundStyle(foreground.opacity(span.style.dim ? 0.82 : 1))
             .background(background)
             .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func terminalForegroundColor(_ color: WatchTerminalANSIColor, defaultColor: Color) -> Color {
+        guard case .rgb(let value) = color else { return defaultColor }
+        let brightened = WatchTerminalLayout.brightenedForeground(value)
+        return Color(
+            red: Double(brightened.red) / 255,
+            green: Double(brightened.green) / 255,
+            blue: Double(brightened.blue) / 255
+        )
     }
 
     private func terminalColor(_ color: WatchTerminalANSIColor, defaultColor: Color) -> Color {
@@ -566,7 +577,7 @@ struct WatchTerminalView: View {
                 Text("/")
                     .font(.system(size: 15, weight: .bold, design: .monospaced))
                     .foregroundStyle(Color.cyan)
-                    .frame(width: 32, height: 35)
+                    .frame(width: 28, height: 35)
                     .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -580,7 +591,7 @@ struct WatchTerminalView: View {
                 Image(systemName: "delete.backward.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Color.cyan)
-                    .frame(width: 32, height: 35)
+                    .frame(width: 28, height: 35)
                     .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -595,7 +606,7 @@ struct WatchTerminalView: View {
                 Image(systemName: "return")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color.black)
-                    .frame(width: 32, height: 35)
+                    .frame(width: 28, height: 35)
                     .background(Color.cyan, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -613,11 +624,13 @@ struct WatchTerminalView: View {
     }
 
     private func dockLabel(symbol: String, title: String, emphasized: Bool) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             Image(systemName: symbol)
-                .font(.system(size: emphasized ? 13 : 11, weight: .bold))
+                .font(.system(size: emphasized ? 12 : 10, weight: .bold))
             Text(title)
-                .font(.system(size: emphasized ? 10 : 9, weight: .bold))
+                .font(.system(size: emphasized ? 9 : 8, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
         .foregroundStyle(emphasized ? Color.black : Color.primary)
         .frame(maxWidth: .infinity, minHeight: 35)

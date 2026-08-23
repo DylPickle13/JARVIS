@@ -704,6 +704,21 @@ public enum WatchTerminalLayout {
     public static let lineHeightRatio = 1.24
     public static let minimumReadableColumns = 20
     public static let maximumReadableColumns = 36
+    public static let minimumForegroundLuminance = 188
+
+    /// Raises dark ANSI foregrounds for the small OLED display while retaining
+    /// their hue relationships. True black stays black for inverse cells.
+    public static func brightenedForeground(_ color: WatchTerminalRGBColor) -> WatchTerminalRGBColor {
+        guard max(color.red, max(color.green, color.blue)) > 0 else { return color }
+        let luminance = (299 * color.red + 587 * color.green + 114 * color.blue) / 1_000
+        guard luminance < minimumForegroundLuminance else { return color }
+        let lift = minimumForegroundLuminance - luminance
+        return WatchTerminalRGBColor(
+            red: color.red + lift,
+            green: color.green + lift,
+            blue: color.blue + lift
+        )
+    }
 
     public static func displayColumns(availableWidth: Double, fontSize: Double = readableFontSize) -> Int {
         guard availableWidth > 0, fontSize > 0 else { return minimumReadableColumns }

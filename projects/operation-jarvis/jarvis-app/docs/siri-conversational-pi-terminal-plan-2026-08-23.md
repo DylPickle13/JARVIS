@@ -45,7 +45,9 @@ The existing public App Intents stack already supports the required conversation
 - An `AppShortcut` can advertise the literal phrase `"Hey \(.applicationName)"`.
 - A missing `String` `@Parameter` can use `requestValueDialog` so Siri asks for the prompt.
 - `perform()` can submit the resolved text and return a spoken `IntentDialog` acknowledgement.
-- `openAppWhenRun` can remain `false`.
+- iPhone can keep `openAppWhenRun=false` and return a success-only
+  `OpenURLIntent` on current OS releases; Watch can retain its host foreground
+  behavior and switch pages only after confirmed delivery.
 
 The exact bare phrase must still pass Xcode metadata validation and physical Siri routing. If Siri reserves or misroutes it, retain **“Hey JARVIS”** as the acceptance target and test **“Ask JARVIS”** only as a diagnostic fallback—not as a silent product substitution.
 
@@ -100,7 +102,11 @@ Implemented as a host-only intent beside the existing plug intents:
 struct SendPromptToJARVISIntent: AppIntent {
     static let title: LocalizedStringResource = "Talk to JARVIS"
     static let description = IntentDescription("Send a spoken prompt to the active JARVIS Pi session.")
+    #if os(watchOS)
+    static var openAppWhenRun: Bool { true }
+    #else
     static var openAppWhenRun: Bool { false }
+    #endif
 
     @Parameter(
         title: "Prompt",
@@ -242,6 +248,13 @@ Repeat the same flow with Siri initiated on the Watch:
 - No contact-directed “Tell JARVIS” phrasing returns.
 - Watch manual input remains explicit: Input stages without Return, `/` and DEL
   emit exact bytes, and only the Return-symbol button emits `0x0d`.
+- Build 42 consumed one terminal-page request after `.sent`, but physical iPhone
+  testing showed its unconditional host foreground remained beneath Siri's
+  result sheet until manual dismissal.
+- Build 43 keeps iPhone background-capable during delivery and returns a
+  success-only `OpenURLIntent` for `jarvis://terminal` on iOS 18.2 or newer.
+  Watch retains its passing foreground behavior and still selects Terminal only
+  after `.sent`. Widget metadata still excludes the prompt intent.
 - No plug, purifier, service, scheduler, or production terminal mutation occurs during automated tests.
 
 ## 7. Rollout sequence

@@ -5,7 +5,11 @@ import JARVISKit
 struct SendPromptToJARVISIntent: AppIntent {
     static let title: LocalizedStringResource = "Talk to JARVIS"
     static let description = IntentDescription("Send a spoken prompt to the active JARVIS Pi session.")
+    #if os(watchOS)
+    static var openAppWhenRun: Bool { true }
+    #else
     static var openAppWhenRun: Bool { false }
+    #endif
 
     @Parameter(
         title: "Prompt",
@@ -16,7 +20,17 @@ struct SendPromptToJARVISIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         switch await JARVISSiriPromptRuntime.submit(prompt) {
         case .sent:
-            return .result(dialog: IntentDialog("Sent to JARVIS."))
+            JARVISSiriNavigation.requestTerminalPresentation()
+            let dialog = IntentDialog("Sent to JARVIS.")
+            #if os(iOS)
+            if #available(iOS 18.2, *) {
+                return .result(
+                    opensIntent: OpenURLIntent(JARVISSiriNavigation.terminalURL),
+                    dialog: dialog
+                )
+            }
+            #endif
+            return .result(dialog: dialog)
         case .empty:
             return .result(dialog: IntentDialog("I didn’t hear a prompt."))
         case .invalidControls:
@@ -36,6 +50,32 @@ struct SendPromptToJARVISIntent: AppIntent {
         case .unconfirmed:
             return .result(dialog: IntentDialog("Send was not confirmed; check JARVIS."))
         }
+    }
+}
+
+enum JARVISSiriNavigation {
+    static let terminalRequestNotification = Notification.Name("com.operation-jarvis.siri-terminal-requested")
+    static let terminalURL = URL(string: "jarvis://terminal")!
+    private static let terminalRequestKey = "jarvis.siri-terminal-requested"
+
+    static func isTerminalURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "jarvis" else { return false }
+        return url.host?.lowercased() == "terminal"
+    }
+
+    static func requestTerminalPresentation(
+        defaults: UserDefaults = .standard,
+        notificationCenter: NotificationCenter = .default
+    ) {
+        defaults.set(true, forKey: terminalRequestKey)
+        notificationCenter.post(name: terminalRequestNotification, object: nil)
+    }
+
+    @discardableResult
+    static func consumeTerminalPresentationRequest(defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.bool(forKey: terminalRequestKey) else { return false }
+        defaults.removeObject(forKey: terminalRequestKey)
+        return true
     }
 }
 

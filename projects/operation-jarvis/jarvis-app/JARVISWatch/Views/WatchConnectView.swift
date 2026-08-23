@@ -1,9 +1,11 @@
+import Foundation
 import SwiftUI
 import JARVISKit
 
 struct WatchConnectView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = WatchConnectModel()
+    @State private var siriTerminalRequestSequence = 0
 
     var body: some View {
         // TimelineView gives frontmost Always On snapshots a supported periodic
@@ -27,12 +29,21 @@ struct WatchConnectView: View {
             @unknown default:
                 break
             }
+            openSiriTerminalIfRequested()
             await model.runDebugRelaySmokeIfRequested()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: JARVISSiriNavigation.terminalRequestNotification)) { _ in
+            openSiriTerminalIfRequested()
+        }
+        .onOpenURL { url in
+            guard JARVISSiriNavigation.isTerminalURL(url) else { return }
+            siriTerminalRequestSequence += 1
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
                 model.sceneDidBecomeActive()
+                openSiriTerminalIfRequested()
             case .inactive:
                 // Always On is inactive but still frontmost. Preserve polling,
                 // the selected route, current terminal frame, and button state.
@@ -51,11 +62,16 @@ struct WatchConnectView: View {
         if CommandLine.arguments.contains("-jarvisOpenWatchTerminal") {
             WatchTerminalView(controller: model.terminal)
         } else {
-            WatchDashboardContent(model: model)
+            WatchDashboardContent(model: model, siriTerminalRequestSequence: siriTerminalRequestSequence)
         }
         #else
-        WatchDashboardContent(model: model)
+        WatchDashboardContent(model: model, siriTerminalRequestSequence: siriTerminalRequestSequence)
         #endif
+    }
+
+    private func openSiriTerminalIfRequested() {
+        guard JARVISSiriNavigation.consumeTerminalPresentationRequest() else { return }
+        siriTerminalRequestSequence += 1
     }
 }
 

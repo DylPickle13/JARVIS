@@ -232,6 +232,37 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(deliveredInput?.appendReturn, true)
     }
 
+    func testSiriTerminalURLOnlyAcceptsTheTerminalDeepLink() {
+        XCTAssertTrue(JARVISSiriNavigation.isTerminalURL(JARVISSiriNavigation.terminalURL))
+        XCTAssertFalse(JARVISSiriNavigation.isTerminalURL(URL(string: "jarvis://settings")!))
+        XCTAssertFalse(JARVISSiriNavigation.isTerminalURL(URL(string: "https://terminal")!))
+    }
+
+    func testSuccessfulSiriPromptNavigationRequestPersistsAndConsumesOnce() {
+        let suite = "jarvis.siri-navigation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let center = NotificationCenter()
+        let posted = expectation(description: "terminal navigation posted")
+        let token = center.addObserver(
+            forName: JARVISSiriNavigation.terminalRequestNotification,
+            object: nil,
+            queue: nil
+        ) { _ in
+            posted.fulfill()
+        }
+        defer { center.removeObserver(token) }
+
+        JARVISSiriNavigation.requestTerminalPresentation(
+            defaults: defaults,
+            notificationCenter: center
+        )
+
+        wait(for: [posted], timeout: 1)
+        XCTAssertTrue(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults))
+        XCTAssertFalse(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults))
+    }
+
     func testSiriPromptFailsBeforeNetworkAndMapsAmbiguousSend() async {
         var loadedConfiguration = false
         var attemptedDelivery = false

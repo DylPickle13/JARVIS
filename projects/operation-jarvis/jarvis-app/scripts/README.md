@@ -37,11 +37,15 @@ optional Metal component; install it once with
   plist/shell checks, opaque icon validation, combined iOS/embedded-Watch
   simulator verification, and the standalone watchOS simulator build. Its Watch
   contracts require the exact ANSI mirror, Crown-only read-only viewport, direct
-  native keyboard Input, build 41's removed prompt rail, centered/inset header,
-  compact `/`/DEL/Return-symbol keys, spinner-free repeatable Backspace, Always
-  On foreground lifecycle, on-view Codex refresh, and atomic Siri Return. It also
-  audits the third host-only bare “Hey JARVIS” prompt shortcut while ensuring widgets do
-  not contain it. iOS and live integration tests remain opt-in.
+  native keyboard Input, removed prompt rail, centered/safe-inset header and dock,
+  brightened Watch foregrounds, compact equal `/`/DEL/Return-symbol keys,
+  spinner-free repeatable Backspace, Always On foreground lifecycle, on-view
+  Codex refresh, shared sub-30% critical quota threshold, and atomic Siri Return.
+  It also audits the third host-only bare “Hey JARVIS” prompt shortcut, requires
+  iPhone's success-only `OpenURLIntent` handoff, preserves Watch's foreground
+  behavior, verifies both hosts consume only a confirmed terminal request, and
+  ensures widgets do not contain the prompt intent. iOS and live integration
+  tests remain opt-in.
 
 For initial companion registration under free provisioning:
 

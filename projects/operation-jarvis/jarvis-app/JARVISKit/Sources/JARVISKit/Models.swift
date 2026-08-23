@@ -236,6 +236,14 @@ public struct CodexQuotaWindow: Codable, Equatable, Sendable {
     public let resetAt: String?
 }
 
+public enum CodexQuotaPresentationPolicy {
+    public static let criticalRemainingPercent = 30.0
+
+    public static func isCritical(remainingPercent: Double) -> Bool {
+        remainingPercent < criticalRemainingPercent
+    }
+}
+
 /// The state endpoint's services entry is a map in the daemon JSON. This
 /// struct remains permissive for compatibility with older snapshots.
 public struct ServicesSubsystem: Codable, Equatable, Sendable {

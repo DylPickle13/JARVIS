@@ -329,6 +329,7 @@ struct HomeView: View {
                 Text("\(Int(remaining.rounded()))%")
                     .font(.title2.weight(.bold))
                     .monospacedDigit()
+                    .foregroundStyle(color)
                 Text("REMAINING")
                     .font(.system(size: 8, weight: .bold))
                     .tracking(0.7)
@@ -365,7 +366,9 @@ struct HomeView: View {
     }
 
     private func codexQuotaColor(_ remaining: Double) -> Color {
-        JarvisPalette.electricBlue
+        CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)
+            ? JarvisPalette.critical
+            : JarvisPalette.electricBlue
     }
 
     private func codexPlanLabel(_ plan: String?) -> String {

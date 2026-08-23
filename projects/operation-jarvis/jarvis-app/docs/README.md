@@ -214,6 +214,26 @@ never deploy to a device outside Dylan's allowlist.
   ordinary state for completion. The collector remains the fixed read-only
   `quotas.py codex --json` command with no probe/save flag and remains
   non-critical to plug/purifier freshness.
+- Build 42 raises dark Watch ANSI foregrounds to a tested minimum luminance while
+  retaining hue relationships, keeps true black for inverse cells, raises dim
+  opacity from `0.62` to `0.82`, and uses 8-point horizontal/bottom plus 6-point
+  top terminal-face insets. Equal-size slash, DEL, and Return controls narrow to
+  28×35 points so Keys and Input remain single-line inside the safer width.
+- Build 42 applies one shared strict threshold: weekly Codex remaining below
+  `30%` is red themed on iPhone and Watch; exactly `30%` remains electric blue.
+  The red theme covers ring, percentage, progress/badge, phone glow, and Watch
+  panel/border accents.
+- Build 42 records and announces a one-shot terminal presentation request only
+  after a confirmed `.sent` outcome. Physical iPhone testing found that its
+  unconditional `openAppWhenRun` foregrounded JARVIS underneath Siri's result
+  sheet, so the user still had to dismiss Siri before seeing Pi connect.
+- Build 43 makes that handoff platform-specific. iPhone now keeps
+  `openAppWhenRun=false` and, on iOS 18.2 or later, returns a success-only
+  `OpenURLIntent` for `jarvis://terminal`; the URL selects the JARVIS tab. Watch
+  retains the already-passing host foreground behavior and consumes the success
+  marker to select Terminal. Failure paths return only their existing dialogs.
+  Widgets still contain no prompt intent, and terminal input is still attempted
+  exactly once.
 - Build 37 replaces the Watch System page's connection-source panel with an
   aesthetic Codex quota card and adds a larger counterpart to iPhone Home after
   Pi activity. Build 37 originally scheduled the fixed read-only
@@ -225,7 +245,52 @@ never deploy to a device outside Dylan's allowlist.
   refresh preserves the last good value and cannot make plugs, purifier, or the
   global JARVIS state stale.
 
-### Signed build 41 physical-test candidate
+### Signed build 43 physical-test candidate
+
+```text
+Archive: /tmp/JARVIS-build43-siri-success-handoff.xcarchive
+IPA:     /tmp/JARVIS-build43-siri-success-handoff-export/JARVIS.ipa
+SHA-256: ad2abf0b7d9a36b466d3e2dabf8bd309706c043972b8736f6add292042457632
+```
+
+All four Personal-Team-signed products report `0.3.0 (43)`. Deep and individual
+signatures, required Watch hierarchy, iPhone `openAppWhenRun=false`, Watch
+`openAppWhenRun=true`, widget prompt exclusion, allowlisted provisioning,
+explicit Always On metadata, and Watch dependency isolation pass. Validation
+passes 26 `jarvisd`, nine terminal-daemon, 43 JARVISKit tests with three expected
+live skips, 19 iPhone tests, repository smoke `PASS=104 WARN=0 FAIL=0`, and
+warning-free signed archive/export logs. The iPhone simulator confirms that
+`jarvis://terminal` selects the JARVIS tab in
+`/tmp/JARVIS-build43-iphone-terminal-openurl.png`. The system-level Siri sheet
+handoff remains a physical acceptance gate. Build 43 has not been installed.
+
+### Installed build 42
+
+```text
+Archive: /tmp/JARVIS-build42-bright-safe-red-siri.xcarchive
+IPA:     /tmp/JARVIS-build42-bright-safe-red-siri-export/JARVIS.ipa
+SHA-256: d0724f25933242236f44efb15d659826d9e6fd9e70e3f153fbaa642172a9e771
+```
+
+All four Personal-Team-signed products report `0.3.0 (42)`. The exact IPA was
+upgraded with explicit `ideviceinstaller -w upgrade`; the exact archived Watch
+product installed directly through CoreDevice. Both inventories reported build
+42, both host apps launched, and the Watch app/widget pair ran. Physical review
+passed brighter terminal text, rounded-edge safety, one-line controls, and the
+live 11% critical quota theme. Siri delivered the phone prompt exactly once,
+but JARVIS remained beneath the Siri result sheet until manual dismissal; build
+43 supersedes that handoff.
+
+Simulator evidence retained from build 42:
+
+- `/tmp/JARVIS-build42-watch-bright-safe-terminal-fit.png` — brighter ANSI text,
+  single-line Keys/Input, and the full header/dock inset from rounded edges.
+- `/tmp/JARVIS-build42-watch-codex-critical-red.png` — 29% Watch quota panel in
+  the red critical theme.
+- `/tmp/JARVIS-build42-iphone-codex-critical-red-top.png` — matching 29% iPhone
+  quota card theme.
+
+### Superseded installed build 41
 
 ```text
 Archive: /tmp/JARVIS-build41-watch-dock-always-on-codex.xcarchive
@@ -236,7 +301,7 @@ SHA-256: efd9be1c4c87d617b26bc7f90784a1d9e994377dc3b790c0db858a3c89fb8125
 All four Personal-Team-signed products report `0.3.0 (41)`. Deep signatures,
 required Watch hierarchy, exact host-only Siri metadata, widget exclusion,
 bundle relationships, explicit Always On metadata, and Watch dependency
-isolation pass. Validation passes 26 `jarvisd`, nine terminal-daemon, 41
+isolation pass. Validation passed 26 `jarvisd`, nine terminal-daemon, 41
 JARVISKit tests with three expected live skips, 17 iPhone tests, repository smoke
 `PASS=105 WARN=0 FAIL=0`, and warning-free signed archive/export logs.
 
@@ -262,7 +327,13 @@ completed sanitized quota snapshot. `jarvis-terminald` remains PID `45590`.
 The production tmux pane remains `%0`, PID `66665`, session `$0`, command `node`;
 it was not restarted and received no test input. Physical compact-dock,
 rapid-Backspace, Always On, wrist-raise, and quota-refresh acceptance remain
-owner-operated. The exact build-41 IPA and Watch product have not been installed.
+owner-operated. The exact build-41 IPA was upgraded with explicit `ideviceinstaller -w upgrade`;
+the exact archived Watch product installed through CoreDevice after one
+non-destructive retry for a transient tunnel timeout. CoreDevice inventories
+reported build 41, both host/widget process pairs ran, the Watch established its
+terminal and state connections, and per-view quota refresh requests arrived.
+Owner review found the ANSI text too dark and the edge controls too close to the
+rounded display; build 42 is the correction.
 
 ### Installed build 40
 
@@ -439,7 +510,10 @@ mirror already displays its editor. The dock is now Keys, Input, fixed-size `/`,
 fixed-size DEL, and fixed-size Return symbol. Slash emits one `0x2f`; Backspace
 emits one immediate `0x7f` without a spinner and remains tappable while earlier
 DEL confirmations are in flight; Return emits one `0x0d`. Esc, Ctrl, Tab, Up,
-and Down remain in the on-demand palette.
+and Down remain in the on-demand palette. Build 42 brightens dark ANSI
+foregrounds without changing true black, raises dim-cell opacity, and insets the
+whole terminal face from the rounded display. The three byte controls remain
+equal at 28×35 points so Keys and Input fit on one line.
 
 `jarvis-terminald` is isolated from `jarvisd` and has no hardware, purifier,
 service, scheduler, or command-control routes. It permits only configured

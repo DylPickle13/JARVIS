@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 @main
@@ -40,6 +41,7 @@ struct JARVISApp: App {
 }
 
 private struct RootTabView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject var app: AppState
     @EnvironmentObject var piTerminal: PiTerminalController
     @State private var selection: AppSection = .home
@@ -67,6 +69,7 @@ private struct RootTabView: View {
                 .tag(AppSection.settings)
         }
         .onAppear {
+            openSiriTerminalIfRequested()
             app.setActiveSection(selection)
             setPiVisibility(selection)
         }
@@ -75,6 +78,10 @@ private struct RootTabView: View {
             setPiVisibility(value)
         }
         .onOpenURL { url in
+            if JARVISSiriNavigation.isTerminalURL(url) {
+                selection = .pi
+                return
+            }
             guard url.scheme?.lowercased() == "jarvis" else { return }
             switch url.host?.lowercased() {
             case "settings": selection = .settings
@@ -82,6 +89,17 @@ private struct RootTabView: View {
             default: selection = .home
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: JARVISSiriNavigation.terminalRequestNotification)) { _ in
+            openSiriTerminalIfRequested()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { openSiriTerminalIfRequested() }
+        }
+    }
+
+    private func openSiriTerminalIfRequested() {
+        guard JARVISSiriNavigation.consumeTerminalPresentationRequest() else { return }
+        selection = .pi
     }
 
     private func setPiVisibility(_ section: AppSection) {

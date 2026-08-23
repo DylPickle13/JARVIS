@@ -10,9 +10,9 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. Build `0.3.0 (40)` is installed and running on the allowlisted iPhone 11
-and Apple Watch Series 11 from the exact audited artifacts. Signed build
-`0.3.0 (41)` is the current exact-artifact physical-test candidate. Build 37 retains
+UI. Build `0.3.0 (42)` is installed on the allowlisted iPhone 11 and Apple
+Watch Series 11 from the exact audited artifacts. Signed build `0.3.0 (43)` is
+the current exact-artifact physical-test candidate. Build 37 retains
 build 36's fixed-editor fullscreen
 Pi renderer, one-line wheel behavior, cursor correction, full-screen Watch
 shell, 11-point readable transcript, 9-point pannable Raw grid, pinned input
@@ -39,12 +39,21 @@ the latest interface instead of declaring it offline, and forces immediate
 status/terminal reconnection on wrist raise. watchOS may still throttle redraws
 and suspend live networking while dimmed. Codex quota now refreshes read-only
 every minute and receives one immediate authenticated refresh request whenever
-the Watch System page comes into view.
+the Watch System page comes into view. Build 42 lifts dark ANSI foregrounds for
+the Watch OLED, raises dim text opacity, and moves the entire terminal face and
+dock inward from the rounded display edges. Codex stays electric blue at 30% or
+higher and changes to a red ring, progress, badge, glow/panel, and percentage on
+both hosts below 30%. Build 43 corrects build 42's iPhone Siri handoff: the phone
+host no longer foregrounds underneath Siri before delivery, and a confirmed
+`.sent` result instead opens `jarvis://terminal` through `OpenURLIntent` so the
+result sheet can hand off directly to the JARVIS tab. Watch retains its
+physically passing foreground behavior and still switches pages only after
+`.sent`; failure paths never request the terminal.
 Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
 than inferring Pi features. Codex quota accents now use a consistent electric-
-blue theme on iPhone and Watch. Its focused Digital Crown moves a local read-only
+blue healthy-state theme on iPhone and Watch. Its focused Digital Crown moves a local read-only
 viewport through 160 captured tmux-history rows, never sends terminal input,
 and passed simulator scroll interaction in both directions. Build 40 reserves
 vertical history scrolling exclusively for the Crown; terminal touch drags no
@@ -83,8 +92,11 @@ Crown and build-34 off-LAN acceptance remain open. Build-37 staged-input/
 explicit-Send behavior and physical Codex quota rendering remain owner
 acceptance gates. Build-40 physical Crown-only scrolling, keyboard-first Input,
 Backspace, ANSI rendering, and immediate bare-phrase Siri routing remain
-acceptance gates. Build-41 compact-dock layout, rapid Backspace, Always On/wrist-
-raise recovery, and on-view quota refresh remain physical acceptance gates. The three-slot Smart
+acceptance gates. Build 42 is physically installed; owner review passed its
+brightness, safe-inset, compact-control, and live 11% red-quota presentation.
+Its iPhone Siri send succeeded but foregrounded JARVIS underneath Siri's result
+sheet, requiring manual dismissal. Build 43's success-only iPhone Siri handoff
+remains the physical acceptance gate. The three-slot Smart
 Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
@@ -148,14 +160,34 @@ bursting multiple terminal redraws together. The terminal tab is now labeled
 JARVIS. Siri's plug parameter is populated from current `jarvisd` state rather
 than a compiled list; the generic widget action is not discoverable.
 
-Signed and audited build-41 physical-test candidate:
+Signed and audited build-43 physical-test candidate:
+`/tmp/JARVIS-build43-siri-success-handoff.xcarchive` and
+`/tmp/JARVIS-build43-siri-success-handoff-export/JARVIS.ipa`
+(SHA-256 `ad2abf0b7d9a36b466d3e2dabf8bd309706c043972b8736f6add292042457632`).
+All four products report `0.3.0 (43)`, are Personal-Team signed, and preserve the
+required nested Watch hierarchy. Build 43 has not been physically installed.
+
+Installed and audited build-42 artifacts:
+`/tmp/JARVIS-build42-bright-safe-red-siri.xcarchive` and
+`/tmp/JARVIS-build42-bright-safe-red-siri-export/JARVIS.ipa`
+(SHA-256 `d0724f25933242236f44efb15d659826d9e6fd9e70e3f153fbaa642172a9e771`).
+The exact IPA was upgraded onto the allowlisted iPhone with
+`ideviceinstaller -w upgrade`, and the exact archived Watch product was
+installed directly through CoreDevice. Both inventories report `0.3.0 (42)`.
+Physical brightness, rounded-edge safety, compact controls, and live 11% red
+quota passed; the phone Siri result-sheet handoff is superseded by build 43.
+
+Superseded installed build-41 artifacts:
 `/tmp/JARVIS-build41-watch-dock-always-on-codex.xcarchive` and
 `/tmp/JARVIS-build41-watch-dock-always-on-codex-export/JARVIS.ipa`
 (SHA-256 `efd9be1c4c87d617b26bc7f90784a1d9e994377dc3b790c0db858a3c89fb8125`).
-All four products report `0.3.0 (41)` and remain Personal-Team signed. The exact
-IPA and archived Watch product have not yet been physically installed.
+The exact IPA was upgraded onto the allowlisted iPhone with
+`ideviceinstaller -w upgrade`; the exact archived Watch product was installed
+through CoreDevice after one non-destructive retry for a transient tunnel
+timeout. Both inventories report `0.3.0 (41)`, and both host/widget process pairs
+were confirmed running.
 
-Installed and audited build-40 artifacts:
+Superseded installed build-40 artifacts:
 `/tmp/JARVIS-build40-crown-keyboard-backspace-siri.xcarchive` and
 `/tmp/JARVIS-build40-crown-keyboard-backspace-siri-export/JARVIS.ipa`
 (SHA-256 `d46801ac0e417da247af4295cdeaf57770bef45243612e20fa95540160f83697`).

@@ -11,6 +11,32 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(AirQualityGauge.cleanlinessProgress(pm25: 100), 0)
     }
 
+    func testCodexQuotaBecomesCriticalOnlyBelowThirtyPercent() {
+        XCTAssertTrue(CodexQuotaPresentationPolicy.isCritical(remainingPercent: 29.999))
+        XCTAssertTrue(CodexQuotaPresentationPolicy.isCritical(remainingPercent: 0))
+        XCTAssertFalse(CodexQuotaPresentationPolicy.isCritical(remainingPercent: 30))
+        XCTAssertFalse(CodexQuotaPresentationPolicy.isCritical(remainingPercent: 100))
+    }
+
+    func testWatchTerminalBrightensDarkForegroundsWithoutChangingBlackOrBrightCells() {
+        XCTAssertEqual(
+            WatchTerminalLayout.brightenedForeground(WatchTerminalRGBColor(red: 102, green: 102, blue: 102)),
+            WatchTerminalRGBColor(red: 188, green: 188, blue: 188)
+        )
+        XCTAssertEqual(
+            WatchTerminalLayout.brightenedForeground(WatchTerminalRGBColor(red: 178, green: 148, blue: 187)),
+            WatchTerminalRGBColor(red: 205, green: 175, blue: 214)
+        )
+        XCTAssertEqual(
+            WatchTerminalLayout.brightenedForeground(WatchTerminalRGBColor(red: 229, green: 229, blue: 229)),
+            WatchTerminalRGBColor(red: 229, green: 229, blue: 229)
+        )
+        XCTAssertEqual(
+            WatchTerminalLayout.brightenedForeground(WatchTerminalRGBColor(red: 0, green: 0, blue: 0)),
+            WatchTerminalRGBColor(red: 0, green: 0, blue: 0)
+        )
+    }
+
     func testNativeAppsShareFifteenSecondActiveRefreshPolicy() {
         XCTAssertEqual(JARVISRefreshPolicy.activeInterval, .seconds(15))
     }

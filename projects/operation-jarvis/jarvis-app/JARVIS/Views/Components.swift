@@ -89,6 +89,7 @@ struct Card<Content: View>: View {
 enum JarvisPalette {
     static let cyan = Color(red: 0.20, green: 0.72, blue: 0.96)
     static let electricBlue = Color(red: 0.28, green: 0.49, blue: 1.0)
+    static let critical = Color(red: 1.0, green: 0.22, blue: 0.28)
     static let warning = Color(red: 0.96, green: 0.58, blue: 0.16)
     static let surface = Color(.secondarySystemGroupedBackground).opacity(0.94)
 

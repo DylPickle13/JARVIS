@@ -172,10 +172,21 @@ grep -q '"capturedLines": lines' terminald/jarvis_terminald.py
 grep -q '"capturedANSILines": ansi_lines' terminald/jarvis_terminald.py
 grep -q 'Text("/")' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'controller.sendKey(WatchTerminalKeyBytes.slash)' JARVISWatch/Views/WatchTerminalView.swift
-[[ "$(grep -c '\.frame(width: 32, height: 35)' JARVISWatch/Views/WatchTerminalView.swift)" == "3" ]]
+[[ "$(grep -c '\.frame(width: 28, height: 35)' JARVISWatch/Views/WatchTerminalView.swift)" == "3" ]]
 reject_match 'Slash must not remain duplicated in the expandable key palette' -Fq 'terminalKey("/"' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.padding(\.horizontal, 8)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.padding(\.top, 6)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.padding(\.bottom, 8)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalLayout.brightenedForeground(value)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'foreground.opacity(span.style.dim ? 0.82 : 1)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'public static let minimumForegroundLuminance = 188' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'private var codexQuotaPanel' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func codexQuotaCard' JARVIS/Views/HomeView.swift
+grep -q 'public static let criticalRemainingPercent = 30.0' JARVISKit/Sources/JARVISKit/Models.swift
+grep -q 'CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)' JARVIS/Views/HomeView.swift
+grep -q 'CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q '? JarvisPalette.critical' JARVIS/Views/HomeView.swift
+grep -q '? WatchJarvisStyle.critical' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVIS/Views/HomeView.swift
 grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'let pollutedFraction = (Double(value) - 1) / 74' JARVISKit/Sources/JARVISKit/AirQualityGauge.swift
@@ -249,6 +260,19 @@ grep -q 'struct SendPromptToJARVISIntent: AppIntent' HostAppIntents/JARVISSiriPr
 grep -q 'requestValueDialog: IntentDialog("What would you like me to send to JARVIS?")' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'JARVISSpokenPrompt.normalize(rawPrompt)' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'WatchTerminalInput(data: Data(normalized.utf8), appendReturn: true)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q '#if os(watchOS)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'static var openAppWhenRun: Bool { true }' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'static var openAppWhenRun: Bool { false }' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'case \.sent:' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'JARVISSiriNavigation.requestTerminalPresentation()' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'opensIntent: OpenURLIntent(JARVISSiriNavigation.terminalURL)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'URL(string: "jarvis://terminal")' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'selection = \.pi' JARVIS/JARVISApp.swift
+grep -q 'selectedPage = \.terminal' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest()' JARVIS/JARVISApp.swift
+grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest()' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVIS/JARVISApp.swift
+grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'phrases: \["Hey \\(.applicationName)"\]' HostAppIntents/JARVISSiriPlugIntents.swift
 [[ "$(grep -c 'AppShortcut(' HostAppIntents/JARVISSiriPlugIntents.swift)" == "3" ]]
 grep -q 'static var isDiscoverable: Bool { false }' SharedAppIntents/JARVISWidgetIntents.swift
@@ -402,6 +426,8 @@ for path in sys.argv[3:]:
     assert actions["TurnOnJARVISPlugIntent"]["isDiscoverable"] is True, path
     assert actions["TurnOffJARVISPlugIntent"]["isDiscoverable"] is True, path
     assert actions["SendPromptToJARVISIntent"]["isDiscoverable"] is True, path
+    expected_open_app = "/Watch/" in path
+    assert actions["SendPromptToJARVISIntent"]["openAppWhenRun"] is expected_open_app, path
     prompt_parameter = actions["SendPromptToJARVISIntent"]["parameters"][0]
     assert prompt_parameter["name"] == "prompt", path
     assert prompt_parameter["isOptional"] is False, path
