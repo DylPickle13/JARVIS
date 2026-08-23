@@ -45,19 +45,6 @@ function hasYesFlag(args: string): boolean {
     .some((part) => part === "--yes" || part === "-y" || part === "yes" || part === "confirm");
 }
 
-function formatDeletedMessage(result: DeleteSessionFileResult, oldSessionFile: string, entryCount: number): string {
-  const name = basename(oldSessionFile);
-  if (!result.ok) {
-    return `Started a fresh Pi session, but failed to delete ${name}: ${result.error}`;
-  }
-  if (result.method === "missing") {
-    return "Started a fresh Pi session. No saved session file existed yet.";
-  }
-  const action = result.method === "trash" ? "moved to trash" : "deleted";
-  const countText = entryCount === 1 ? "1 entry" : `${entryCount} entries`;
-  return `Started a fresh Pi session and ${action} ${name} (${countText}).`;
-}
-
 export default function registerDeleteCurrentSession(pi: ExtensionAPI) {
   pi.registerCommand("delete", {
     description: "Delete/discard the current saved Pi session and immediately switch to a fresh session. Use /delete --yes to skip confirmation.",
@@ -65,7 +52,6 @@ export default function registerDeleteCurrentSession(pi: ExtensionAPI) {
       await ctx.waitForIdle();
 
       const oldSessionFile = ctx.sessionManager.getSessionFile();
-      const oldEntryCount = ctx.sessionManager.getEntries().length;
       const skipConfirm = hasYesFlag(args);
 
       if (oldSessionFile && !skipConfirm) {
@@ -82,15 +68,20 @@ export default function registerDeleteCurrentSession(pi: ExtensionAPI) {
       const result = await ctx.newSession({
         withSession: async (newCtx) => {
           if (!oldSessionFile) {
-            newCtx.ui.notify("Started a fresh Pi session. The previous session was not persisted.", "info");
+            newCtx.ui.notify("New session started", "info");
             return;
           }
 
           const deletion = deleteSessionFile(oldSessionFile);
-          newCtx.ui.notify(
-            formatDeletedMessage(deletion, oldSessionFile, oldEntryCount),
-            deletion.ok ? "info" : "error",
-          );
+          if (!deletion.ok) {
+            newCtx.ui.notify(
+              `New session started, but failed to delete ${basename(oldSessionFile)}: ${deletion.error}`,
+              "error",
+            );
+            return;
+          }
+
+          newCtx.ui.notify("New session started", "info");
         },
       });
 
