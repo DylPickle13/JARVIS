@@ -35,7 +35,6 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `56-github-cli.ts` — guarded GitHub CLI adapter.
 - `58-reaper-bridge.ts` — live REAPER inline-Lua bridge.
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
-- `61-live-dictation.ts` — F1-controlled PowerConf live dictation through local oMLX Whisper transcription.
 - `98-slim-provider-payload.ts` — deterministic provider payload/schema slimming, including OpenAI deferred `tool_search_output` schemas.
 - `99-lazy-tools.ts` — additive lazy optional tool activation using Pi's native deferred-loading protocol where supported.
 - `thinking-level-on-model-select.ts` — applies thinking levels pinned in `enabledModels`/`--models` on active model switches, falling back to `xhigh`; Qwen3.8 27B is pinned to `medium` in `.pi/settings.json`.

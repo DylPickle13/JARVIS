@@ -325,7 +325,6 @@ expected_extension_roots=(
   .pi/extensions/56-github-cli.ts
   .pi/extensions/58-reaper-bridge.ts
   .pi/extensions/60-pdf-read-result.ts
-  .pi/extensions/61-live-dictation.ts
   .pi/extensions/98-slim-provider-payload.ts
   .pi/extensions/99-lazy-tools.ts
   .pi/extensions/thinking-level-on-model-select.ts
