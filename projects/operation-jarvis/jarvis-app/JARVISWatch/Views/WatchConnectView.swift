@@ -7,6 +7,11 @@ struct WatchConnectView: View {
 
     var body: some View {
         rootContent
+            // watchOS exposes status-bar suppression through this watch-only
+            // SwiftUI modifier. Reclaim both the former clock strip and the
+            // otherwise-unused bottom inset while JARVIS is foregrounded.
+            ._statusBarHidden()
+            .ignoresSafeArea()
             .task {
                 if scenePhase == .active { model.sceneDidBecomeActive() }
                 await model.runDebugRelaySmokeIfRequested()
@@ -27,12 +32,12 @@ struct WatchConnectView: View {
     private var rootContent: some View {
         #if DEBUG && targetEnvironment(simulator)
         if CommandLine.arguments.contains("-jarvisOpenWatchTerminal") {
-            NavigationStack { WatchTerminalView(controller: model.terminal) }
+            WatchTerminalView(controller: model.terminal)
         } else {
-            NavigationStack { WatchDashboardContent(model: model) }
+            WatchDashboardContent(model: model)
         }
         #else
-        NavigationStack { WatchDashboardContent(model: model) }
+        WatchDashboardContent(model: model)
         #endif
     }
 }

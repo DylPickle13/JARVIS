@@ -10,6 +10,7 @@
 		00A8A57CB85F3DEEC79B83AF /* WatchTerminalProvisioningSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20440B35638B5FF94AF10A0 /* WatchTerminalProvisioningSettings.swift */; };
 		0238BFAC7D9D67865051829A /* PiTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CDED70C520590C29476EBEF /* PiTerminalView.swift */; };
 		0270B90D3D4F52F5A77FE14E /* WidgetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40C659E6D5CAA095003D8887 /* WidgetSupport.swift */; };
+		0A666BCB6A0896655C0ACE28 /* JARVISTerminalConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325AC9EE99D5B5BA85A84D73 /* JARVISTerminalConfigurationStore.swift */; };
 		12F9F00C45DC77569AC6FF99 /* JARVISWidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB663313210EC6BDA6EBB3 /* JARVISWidgetIntents.swift */; };
 		1D5E7CC1DB8E703A3D114F61 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8068A9EC5CBE6A47B603710 /* JARVISKit */; };
 		21E9789B6D7FDCFD43AD0B35 /* WidgetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */; };
@@ -38,6 +39,7 @@
 		9E9F58260B97E592FE005E0A /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */; };
 		9F7750E53DFD346691617377 /* PiTerminalSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0CD22FC05E2E9D489FE3A76 /* PiTerminalSettings.swift */; };
 		A3B29AD957474CD9FBB73D4F /* SelectedPlugWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A25639C5046D8136A8AEBE3F /* SelectedPlugWidget.swift */; };
+		A65E646E19987B41F50BE458 /* JARVISTerminalConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325AC9EE99D5B5BA85A84D73 /* JARVISTerminalConfigurationStore.swift */; };
 		A6D11EDF6F1A5FA7EF55C9E4 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = CFF3B3FAF711B9F03333ABD8 /* JARVISKit */; };
 		AF578B6E7C4E716DA9270205 /* JARVISSiriPlugIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F34D4FBF48F603C40A1C72A /* JARVISSiriPlugIntents.swift */; };
 		BB211C6FB4A23BD0C80D09DD /* WatchDashboardContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 771620AD2CA9D898AE768103 /* WatchDashboardContent.swift */; };
@@ -53,8 +55,10 @@
 		EE6EDA808F77C51AC4D53B6A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FE2FCABFFCEEADC0022C58 /* AppState.swift */; };
 		EEE4CC5EB02DFF6C33B54B6D /* AppStateWatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B3A49AB08F03AB80167B37B /* AppStateWatchBridge.swift */; };
 		EEF5AF3EBBE8F552CDBE8AD7 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = BA99DC927D3AD3324FD8A12D /* NIOPosix */; };
+		EF1CB94BDED2CA7AA9FAECD9 /* JARVISSiriPromptIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64AD2C56B02C620DFD3C0790 /* JARVISSiriPromptIntent.swift */; };
 		FCF833080CAEA662AA8530EB /* JARVISWatchWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */; };
 		FD95A85E202BD3525C7A4A4E /* JARVISWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1548C41F74BB5F0E3EF25885 /* JARVISWidgetBundle.swift */; };
+		FE8D5C18EDBC05C290A999F4 /* JARVISSiriPromptIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64AD2C56B02C620DFD3C0790 /* JARVISSiriPromptIntent.swift */; };
 		FFF7A45F6375FCF4A3B382ED /* WatchConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A2A9AA1169ECDB2E5008ACC /* WatchConnectView.swift */; };
 /* End PBXBuildFile section */
 
@@ -135,10 +139,12 @@
 		28C023257637E052A6CBCF4A /* PiSSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiSSHTransport.swift; sourceTree = "<group>"; };
 		29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWatchWidgetBundle.swift; sourceTree = "<group>"; };
 		31627FF42650862FB0296B9C /* PiTerminalController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalController.swift; sourceTree = "<group>"; };
+		325AC9EE99D5B5BA85A84D73 /* JARVISTerminalConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISTerminalConfigurationStore.swift; sourceTree = "<group>"; };
 		366131BF98CEBD234A1B3EAC /* JARVISWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWatchApp.swift; sourceTree = "<group>"; };
 		3B3A49AB08F03AB80167B37B /* AppStateWatchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateWatchBridge.swift; sourceTree = "<group>"; };
 		40C659E6D5CAA095003D8887 /* WidgetSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSupport.swift; sourceTree = "<group>"; };
 		4A2A9AA1169ECDB2E5008ACC /* WatchConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectView.swift; sourceTree = "<group>"; };
+		64AD2C56B02C620DFD3C0790 /* JARVISSiriPromptIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISSiriPromptIntent.swift; sourceTree = "<group>"; };
 		65BFEC04E2CD0C7D691F114D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6BD318AB3793295E0031F850 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		6BF5A98DC51DC81EE26993D8 /* PlugGridWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlugGridWidget.swift; sourceTree = "<group>"; };
@@ -220,6 +226,8 @@
 			isa = PBXGroup;
 			children = (
 				1F34D4FBF48F603C40A1C72A /* JARVISSiriPlugIntents.swift */,
+				64AD2C56B02C620DFD3C0790 /* JARVISSiriPromptIntent.swift */,
+				325AC9EE99D5B5BA85A84D73 /* JARVISTerminalConfigurationStore.swift */,
 			);
 			path = HostAppIntents;
 			sourceTree = "<group>";
@@ -582,6 +590,8 @@
 				DD7391FF9563157D2965AEEE /* HomeView.swift in Sources */,
 				9133343133C13A0DA96CDEF2 /* JARVISApp.swift in Sources */,
 				AF578B6E7C4E716DA9270205 /* JARVISSiriPlugIntents.swift in Sources */,
+				EF1CB94BDED2CA7AA9FAECD9 /* JARVISSiriPromptIntent.swift in Sources */,
+				A65E646E19987B41F50BE458 /* JARVISTerminalConfigurationStore.swift in Sources */,
 				12F9F00C45DC77569AC6FF99 /* JARVISWidgetIntents.swift in Sources */,
 				E51BAC21CD90FE23E49E721D /* PiSSHTransport.swift in Sources */,
 				4531362D9F95607130CA5155 /* PiTerminalController.swift in Sources */,
@@ -605,6 +615,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				966D9E3F979B134FF9914B2B /* JARVISSiriPlugIntents.swift in Sources */,
+				FE8D5C18EDBC05C290A999F4 /* JARVISSiriPromptIntent.swift in Sources */,
+				0A666BCB6A0896655C0ACE28 /* JARVISTerminalConfigurationStore.swift in Sources */,
 				5031EA9725F243EAEA791808 /* JARVISWatchApp.swift in Sources */,
 				598C75FFF1AE8EC3B2B0920F /* JARVISWidgetIntents.swift in Sources */,
 				FFF7A45F6375FCF4A3B382ED /* WatchConnectView.swift in Sources */,
@@ -779,7 +791,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 39;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -881,7 +893,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 39;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

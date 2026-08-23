@@ -2,9 +2,17 @@ import base64
 import json
 import os
 from pathlib import Path
+import shlex
+import shutil
+import ssl
 import subprocess
+import sys
 import tempfile
+import threading
+import time
 import unittest
+from urllib import request as urllib_request
+import uuid
 from unittest import mock
 
 from terminald import jarvis_terminald as terminald
@@ -40,11 +48,34 @@ class TerminalServiceTests(unittest.TestCase):
         self.assertEqual(first["cursorRow"], 6)
         self.assertTrue(first["mouseMode"])
         self.assertEqual(len(first["lines"]), 28)
+        self.assertEqual(first["ansiLines"], first["lines"])
+        self.assertEqual(first["screenStart"], 0)
+        capture_call = next(call[0] for call in runner.calls if "capture-pane" in call[0])
+        self.assertIn("-e", capture_call)
+        self.assertIn("-N", capture_call)
+        self.assertEqual(capture_call[capture_call.index("-S") + 1], "-4")
 
         runner.capture = ("UPDATED\n" + ("\n" * 27)).encode()
         third = service.frame_after(0)
         self.assertEqual(third["sequence"], 2)
         self.assertEqual(third["lines"][0], "UPDATED")
+
+    def test_frame_preserves_ansi_styles_and_strips_only_sgr_for_plain_lines(self):
+        runner = FakeRunner()
+        runner.capture = ("\x1b[3m\x1b[38;2;128;128;128mThinking\x1b[0m\n" + ("\n" * 27)).encode()
+        frame = terminald.TerminalService(runner).frame_after(0)
+        self.assertEqual(frame["lines"][0], "Thinking")
+        self.assertEqual(frame["ansiLines"][0], "\x1b[3m\x1b[38;2;128;128;128mThinking\x1b[0m")
+
+    def test_live_lines_remain_build_38_compatible_while_capture_adds_history(self):
+        runner = FakeRunner()
+        runner.capture = ("history-0\nhistory-1\nhistory-2\nhistory-3\n" + "screen\n" + ("\n" * 27)).encode()
+        frame = terminald.TerminalService(runner).frame_after(0)
+        self.assertEqual(frame["screenStart"], 4)
+        self.assertEqual(len(frame["lines"]), 28)
+        self.assertEqual(frame["lines"][0], "screen")
+        self.assertEqual(len(frame["capturedLines"]), 32)
+        self.assertEqual(frame["capturedLines"][0], "history-0")
 
     def test_input_is_byte_exact_bounded_and_deduplicated(self):
         runner = FakeRunner()
@@ -72,6 +103,121 @@ class TerminalServiceTests(unittest.TestCase):
         send_key_calls = [call for call in runner.calls if "send-keys" in call[0]]
         self.assertEqual(len(send_key_calls), 1)
         self.assertEqual(send_key_calls[0][0][-1], "Enter")
+
+    def test_disposable_https_tmux_receives_one_prompt_and_one_return(self):
+        tmux = shutil.which("tmux")
+        if not tmux:
+            self.skipTest("tmux is unavailable")
+        socket = "jarvis-terminal-test-{}".format(uuid.uuid4().hex)
+        session = "fixture"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "input.bin"
+            reader = root / "reader.py"
+            reader.write_text(
+                "import pathlib,sys\n"
+                "print('READY', flush=True)\n"
+                "pathlib.Path(sys.argv[1]).write_bytes(sys.stdin.buffer.readline())\n",
+                encoding="utf-8",
+            )
+            command = "{} {}".format(shlex.quote(sys.executable), shlex.quote(str(reader)))
+            command += " {}".format(shlex.quote(str(output)))
+            subprocess.run(
+                [tmux, "-L", socket, "new-session", "-d", "-s", session, "-x", "48", "-y", "20", command],
+                check=True,
+                timeout=10,
+            )
+            try:
+                for _ in range(50):
+                    captured = subprocess.run(
+                        [tmux, "-L", socket, "capture-pane", "-p", "-t", session + ":"],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        timeout=5,
+                    ).stdout
+                    if b"READY" in captured:
+                        break
+                    time.sleep(0.02)
+                else:
+                    self.fail("disposable tmux reader did not become ready")
+
+                cert = root / "fixture-cert.pem"
+                key = root / "fixture-key.pem"
+                subprocess.run(
+                    [
+                        "/usr/bin/openssl", "req", "-x509", "-newkey", "rsa:2048", "-sha256",
+                        "-days", "1", "-nodes", "-subj", "/CN=JARVIS Disposable Fixture",
+                        "-keyout", str(key), "-out", str(cert),
+                    ],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=30,
+                )
+                token = "fixture-" + ("a" * 56)
+                with mock.patch.object(terminald, "TMUX", tmux), \
+                     mock.patch.object(terminald, "TMUX_SOCKET", socket), \
+                     mock.patch.object(terminald, "TMUX_SESSION", session), \
+                     mock.patch.object(terminald, "TMUX_TARGET", session + ":"):
+                    service = terminald.TerminalService()
+                    service.ensure_session = lambda: None
+                    server = terminald.TerminalHTTPServer(
+                        ("127.0.0.1", 0),
+                        service,
+                        token,
+                        terminald.parse_cidrs("127.0.0.0/8"),
+                    )
+                    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                    tls.load_cert_chain(str(cert), str(key))
+                    server.socket = tls.wrap_socket(server.socket, server_side=True)
+                    thread = threading.Thread(target=server.serve_forever, daemon=True)
+                    thread.start()
+                    try:
+                        base = "https://127.0.0.1:{}".format(server.server_address[1])
+                        context = ssl._create_unverified_context()
+                        frame_request = urllib_request.Request(
+                            base + "/v1/terminal/frame?after=0",
+                            headers={"Authorization": "Bearer " + token},
+                        )
+                        with urllib_request.urlopen(frame_request, context=context, timeout=5) as response:
+                            frame = json.load(response)
+                        self.assertEqual(frame["columns"], 48)
+
+                        payload = json.dumps({
+                            "requestID": "disposable-request",
+                            "dataBase64": base64.b64encode(b"fixture prompt").decode(),
+                            "appendReturn": True,
+                        }).encode()
+                        for _ in range(2):
+                            post = urllib_request.Request(
+                                base + "/v1/terminal/input",
+                                data=payload,
+                                method="POST",
+                                headers={
+                                    "Authorization": "Bearer " + token,
+                                    "Content-Type": "application/json",
+                                },
+                            )
+                            with urllib_request.urlopen(post, context=context, timeout=5) as response:
+                                self.assertTrue(json.load(response)["ok"])
+                    finally:
+                        server.shutdown()
+                        server.server_close()
+                        thread.join(timeout=5)
+
+                for _ in range(100):
+                    if output.exists():
+                        break
+                    time.sleep(0.02)
+                self.assertEqual(output.read_bytes(), b"fixture prompt\n")
+            finally:
+                subprocess.run(
+                    [tmux, "-L", socket, "kill-server"],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                )
 
     def test_provisioning_code_contains_valid_https_configuration_without_writing_repo(self):
         with tempfile.TemporaryDirectory() as temporary:

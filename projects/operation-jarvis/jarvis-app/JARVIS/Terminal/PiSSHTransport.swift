@@ -82,6 +82,13 @@ enum PiTerminalTouchScroll {
         return min(max(alignedCurrent + direction, -maximumPendingSteps), maximumPendingSteps)
     }
 
+    static func cursorLocation(column: Int, row: Int, columns: Int, rows: Int) -> (column: Int, row: Int) {
+        (
+            min(max(column + 1, 1), max(columns, 1)),
+            min(max(row + 1, 1), max(rows, 1))
+        )
+    }
+
     static func wheelBytes(scrollingUp: Bool, column: Int, row: Int) -> [UInt8] {
         let button = scrollingUp ? 64 : 65
         return Array("\u{1b}[<\(button);\(max(1, column));\(max(1, row))M".utf8)
@@ -508,6 +515,10 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
         inputAccessoryView = nil
         keyboardDismissMode = .interactive
         prioritizeTouchScrolling()
+        // Pi paints its own inverse-video cursor in the fixed input editor. Keep
+        // the terminal hardware cursor hidden so tmux redraw/copy-mode cursor
+        // movements can never flash over transcript rows.
+        getTerminal().hideCursor()
 
         addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(handleFontPinch(_:))))
         let dismissPan = UIPanGestureRecognizer(target: self, action: #selector(handleKeyboardDismissPan(_:)))
@@ -559,6 +570,13 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
             stopTouchScrollDelivery(clearPending: true)
             touchScrollRemainder = 0
         }
+    }
+
+    override func showCursor(source: Terminal) {
+        // The app-rendered Pi cursor remains visible in the input editor. A
+        // hardware cursor is redundant and can momentarily appear wherever a
+        // remote differential redraw or tmux copy operation left it.
+        source.hideCursor()
     }
 
     func connect(configuration: PiTerminalConfiguration, trustedHostKey: String?) {
@@ -643,20 +661,17 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
             recognizer.setTranslation(.zero, in: self)
 
             let pointsPerWheelStep = PiTerminalTouchScroll.pointsPerWheelStep(fontSize: font.pointSize)
-            let location = recognizer.location(in: self)
             let terminal = getTerminal()
-            let column = min(
-                max(1, Int((location.x / max(bounds.width, 1)) * CGFloat(max(terminal.cols, 1))) + 1),
-                max(terminal.cols, 1)
-            )
-            let row = min(
-                max(1, Int((location.y / max(bounds.height, 1)) * CGFloat(max(terminal.rows, 1))) + 1),
-                max(terminal.rows, 1)
+            let location = PiTerminalTouchScroll.cursorLocation(
+                column: terminal.buffer.x,
+                row: terminal.buffer.y,
+                columns: terminal.cols,
+                rows: terminal.rows
             )
 
             while abs(touchScrollRemainder) >= pointsPerWheelStep {
                 let scrollingUp = touchScrollRemainder > 0
-                enqueueTouchScrollStep(scrollingUp: scrollingUp, column: column, row: row)
+                enqueueTouchScrollStep(scrollingUp: scrollingUp, column: location.column, row: location.row)
                 touchScrollRemainder += scrollingUp ? -pointsPerWheelStep : pointsPerWheelStep
             }
         case .ended, .cancelled, .failed:

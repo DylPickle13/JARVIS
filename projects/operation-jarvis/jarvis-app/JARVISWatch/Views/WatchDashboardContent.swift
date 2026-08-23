@@ -1,7 +1,8 @@
+import Foundation
 import SwiftUI
 import JARVISKit
 
-private enum WatchDashboardPage: Hashable {
+private enum WatchDashboardPage: Hashable, CaseIterable {
     case terminal
     case plugs
     case system
@@ -23,22 +24,66 @@ struct WatchDashboardContent: View {
             WatchJarvisStyle.background
                 .ignoresSafeArea()
 
-            TabView(selection: $selectedPage) {
-                WatchTerminalView(
-                    controller: model.terminal,
-                    isActive: selectedPage == .terminal,
-                    onAdvancePage: { selectedPage = .plugs }
-                )
-                .tag(WatchDashboardPage.terminal)
+            selectedPageContent
+                .id(selectedPage)
+                .transition(.opacity)
 
-                resolvedPlugsPage
-                    .tag(WatchDashboardPage.plugs)
-                resolvedSystemPage
-                    .tag(WatchDashboardPage.system)
-            }
-            .tabViewStyle(.verticalPage)
+            pageIndicator
         }
         .tint(WatchJarvisStyle.cyan)
+        .animation(.easeInOut(duration: 0.16), value: selectedPage)
+    }
+
+    @ViewBuilder
+    private var selectedPageContent: some View {
+        switch selectedPage {
+        case .terminal:
+            WatchTerminalView(
+                controller: model.terminal,
+                isActive: true,
+                onAdvancePage: { selectedPage = .plugs }
+            )
+        case .plugs:
+            resolvedPlugsPage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(pageDragGesture(previous: .terminal, next: .system))
+        case .system:
+            resolvedSystemPage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(pageDragGesture(previous: .plugs, next: nil))
+        }
+    }
+
+    private var pageIndicator: some View {
+        VStack(spacing: 5) {
+            ForEach(WatchDashboardPage.allCases, id: \.self) { page in
+                Circle()
+                    .fill(page == selectedPage ? Color.white : Color.secondary.opacity(0.55))
+                    .frame(width: page == selectedPage ? 6 : 5, height: page == selectedPage ? 6 : 5)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .padding(.trailing, 1)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func pageDragGesture(
+        previous: WatchDashboardPage?,
+        next: WatchDashboardPage?
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                guard abs(value.translation.height) > abs(value.translation.width),
+                      abs(value.translation.height) >= 52 else { return }
+                if value.translation.height < 0, let next {
+                    selectedPage = next
+                } else if value.translation.height > 0, let previous {
+                    selectedPage = previous
+                }
+            }
     }
 
     @ViewBuilder
@@ -100,9 +145,9 @@ struct WatchDashboardContent: View {
 
     private var systemPage: some View {
         VStack(spacing: 7) {
-            pageHeader("System", symbol: "waveform.path.ecg", trailing: sourceLabel)
+            pageHeader("System", symbol: "waveform.path.ecg", trailing: codexQuotaHeader)
             purifierPanel
-            sourcePanel
+            codexQuotaPanel
 
             if model.shouldShowRetry {
                 retryButton
@@ -162,30 +207,101 @@ struct WatchDashboardContent: View {
         .accessibilityLabel("Air quality \(airQualityLabel(pm25)), PM2.5 \(pm25.map(String.init) ?? "unavailable"), \(purifierSummary)")
     }
 
-    private var sourcePanel: some View {
-        HStack(spacing: 9) {
-            Image(systemName: model.isViaPhone ? "iphone.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(model.dotColor)
-                .frame(width: 28, height: 28)
-                .background(model.dotColor.opacity(0.14), in: Circle())
-            VStack(alignment: .leading, spacing: 1) {
-                Text(sourceLabel)
-                    .font(.caption.weight(.semibold))
-                Text(freshnessText)
-                    .font(.system(size: 9))
+    @ViewBuilder
+    private var codexQuotaPanel: some View {
+        if let quota = model.lastState?.subsystems?.codexQuota,
+           quota.available == true,
+           let remaining = quota.weekly?.remainingPercent {
+            let color = codexQuotaColor(remaining)
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .stroke(color.opacity(0.18), lineWidth: 5)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0.015), 1)))
+                        .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    VStack(spacing: -1) {
+                        Text("\(Int(remaining.rounded()))%")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                        Text("LEFT")
+                            .font(.system(size: 6, weight: .bold))
+                            .tracking(0.5)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 48, height: 48)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 4) {
+                        Text("WEEKLY")
+                            .font(.system(size: 8, weight: .bold))
+                            .tracking(0.7)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 2)
+                        Text(codexPlanLabel(quota.planType))
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(color)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(color.opacity(0.12), in: Capsule())
+                    }
+                    Text(codexResetLabel(quota.weekly))
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(codexFiveHourCompactLabel(quota))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.12), in: Capsule())
+                        if let credits = codexCreditsLabel(quota.creditBalance) {
+                            Text(credits)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.12), in: Capsule())
+                        }
+                    }
+                    .font(.system(size: 7.5, weight: .bold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
-            if model.pendingRelay || model.isRefreshing {
-                ProgressView().controlSize(.small)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 72)
+            .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(color.opacity(0.16), lineWidth: 0.75)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Codex weekly quota, \(Int(remaining.rounded())) percent remaining, \(codexResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))")
+        } else {
+            HStack(spacing: 9) {
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, height: 34)
+                    .background(Color.secondary.opacity(0.12), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Codex quota")
+                        .font(.caption.weight(.semibold))
+                    Text(model.lastState?.subsystems?.codexQuota?.refreshing == true ? "Checking usage…" : "Usage unavailable")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if model.lastState?.subsystems?.codexQuota?.refreshing == true {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 60)
+            .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Codex quota unavailable")
         }
-        .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, minHeight: 48)
-        .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .accessibilityElement(children: .combine)
     }
 
     private var retryButton: some View {
@@ -223,9 +339,9 @@ struct WatchDashboardContent: View {
     private var accessibilitySystemPage: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                pageHeader("System", symbol: "waveform.path.ecg", trailing: sourceLabel)
+                pageHeader("System", symbol: "waveform.path.ecg", trailing: codexQuotaHeader)
                 purifierPanel
-                sourcePanel
+                codexQuotaPanel
                 if model.shouldShowRetry {
                     retryButton
                 }
@@ -312,25 +428,57 @@ struct WatchDashboardContent: View {
         return "\(on)/\(total) on"
     }
 
-    private var sourceLabel: String {
-        switch model.connectionState {
-        case .connected:
-            if model.pendingRelay { return "Waiting for iPhone" }
-            return model.isViaPhone ? "Via iPhone" : "Direct to Mac"
-        case .connecting: return "Connecting"
-        case .failed: return "Offline"
-        case .idle: return "Not connected"
-        }
+    private var codexQuotaHeader: String {
+        guard let quota = model.lastState?.subsystems?.codexQuota,
+              quota.available == true,
+              let remaining = quota.weekly?.remainingPercent else { return "Codex —" }
+        return "\(Int(remaining.rounded()))% left"
     }
 
-    private var freshnessText: String {
-        if model.isStale { return "Status is stale" }
-        guard let date = model.cachedAt else { return model.lastState == nil ? "Waiting for status" : "Current status" }
-        let seconds = max(0, Int(Date().timeIntervalSince(date)))
-        if seconds < 5 { return "Updated now" }
-        if seconds < 60 { return "Updated \(seconds)s ago" }
-        if seconds < 3_600 { return "Updated \(seconds / 60)m ago" }
-        return "Updated \(seconds / 3_600)h ago"
+    private func codexQuotaColor(_ remaining: Double) -> Color {
+        WatchJarvisStyle.electricBlue
+    }
+
+    private func codexPlanLabel(_ plan: String?) -> String {
+        guard let plan, !plan.isEmpty else { return "CODEX" }
+        return plan.replacingOccurrences(of: "_", with: " ").uppercased()
+    }
+
+    private func codexResetLabel(_ window: CodexQuotaWindow?) -> String {
+        let seconds: Int?
+        if let resetAt = window?.resetAt,
+           let date = ISO8601DateFormatter().date(from: resetAt) {
+            seconds = max(0, Int(date.timeIntervalSinceNow))
+        } else {
+            seconds = window?.resetAfterSeconds
+        }
+        guard let seconds else { return "Reset unavailable" }
+        if seconds < 60 { return "<1m to reset" }
+        if seconds < 3_600 { return "\(seconds / 60)m to reset" }
+        if seconds < 86_400 { return "\(seconds / 3_600)h \((seconds % 3_600) / 60)m to reset" }
+        return "\(seconds / 86_400)d \((seconds % 86_400) / 3_600)h to reset"
+    }
+
+    private func codexFiveHourCompactLabel(_ quota: CodexQuotaSubsystem) -> String {
+        if let remaining = quota.fiveHour?.remainingPercent {
+            return "5H \(Int(remaining.rounded()))%"
+        }
+        if quota.fiveHourEnforced == false { return "5H PAUSED" }
+        return "5H —"
+    }
+
+    private func codexFiveHourLabel(_ quota: CodexQuotaSubsystem) -> String {
+        if let remaining = quota.fiveHour?.remainingPercent {
+            return "5H \(Int(remaining.rounded()))% left"
+        }
+        if quota.fiveHourEnforced == false { return "5H paused" }
+        return "5H unavailable"
+    }
+
+    private func codexCreditsLabel(_ balance: Double?) -> String? {
+        guard let balance else { return nil }
+        if balance >= 1_000 { return String(format: "%.1fK credits", balance / 1_000) }
+        return "\(Int(balance.rounded())) credits"
     }
 
     private var purifierSummary: String {
@@ -446,6 +594,7 @@ private struct WatchPlugTile: View {
 
 enum WatchJarvisStyle {
     static let cyan = Color(red: 0.29, green: 0.82, blue: 1.0)
+    static let electricBlue = Color(red: 0.28, green: 0.49, blue: 1.0)
     static let warning = Color(red: 1.0, green: 0.67, blue: 0.24)
     static let surface = Color.white.opacity(0.075)
     static let background = LinearGradient(

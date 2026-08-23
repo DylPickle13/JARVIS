@@ -19,7 +19,10 @@ final class JARVISKitTests: XCTestCase {
               "plugs": {"lamp": {"ok": true, "isOn": false, "host": "192.168.21.80", "rssi": -56, "alias": "Plug 3"}}},
             "purifier": {"ok": true, "isOn": true, "mode": "auto", "pm25": 1},
             "pi": {"ok": true, "active": 1, "localActive": 1, "localTotal": 2, "rpcActive": 0},
-            "network": {"ok": true, "macLanIp": "192.168.21.215", "tailscaleIp": "100.87.28.34"}
+            "network": {"ok": true, "macLanIp": "192.168.21.215", "tailscaleIp": "100.87.28.34"},
+            "codexQuota": {"ok": true, "available": true, "planType": "prolite", "creditBalance": 1887.24,
+              "weekly": {"usedPercent": 69, "remainingPercent": 31, "resetAfterSeconds": 360706, "resetAt": "2026-08-27T21:37:51Z"}}
+
           }
         }
         """
@@ -28,6 +31,8 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(snapshot.summary?.plugsOn, 1)
         XCTAssertEqual(snapshot.subsystems?.plugs?.plugs?["lamp"]?.isOn, false)
         XCTAssertEqual(snapshot.subsystems?.network?.tailscaleIp, "100.87.28.34")
+        XCTAssertEqual(snapshot.subsystems?.codexQuota?.weekly?.remainingPercent, 31)
+        XCTAssertEqual(snapshot.subsystems?.codexQuota?.creditBalance, 1887.24)
     }
 
     func testDefaultEndpointsPreferMagicDNSBeforeTailscaleIPFallback() throws {
@@ -175,15 +180,16 @@ final class JARVISKitTests: XCTestCase {
         )
         XCTAssertEqual(frame.visibleLines(maximumLines: 3), ["line-5", "line-6", "line-7"])
         XCTAssertEqual(frame.visibleText(maximumLines: 3), "line-5\nline-6\nline-7")
-        let fittedFontSize = WatchTerminalLayout.fontSize(columns: 51, availableWidth: 190)
-        XCTAssertLessThan(fittedFontSize, WatchTerminalLayout.maximumFontSize)
-        XCTAssertGreaterThanOrEqual(fittedFontSize, WatchTerminalLayout.minimumFontSize)
+        let displayColumns = WatchTerminalLayout.displayColumns(availableWidth: 190)
+        XCTAssertGreaterThanOrEqual(displayColumns, WatchTerminalLayout.minimumReadableColumns)
+        XCTAssertLessThanOrEqual(displayColumns, WatchTerminalLayout.maximumReadableColumns)
         XCTAssertEqual(
-            WatchTerminalLayout.lineHeight(fontSize: fittedFontSize),
-            fittedFontSize * WatchTerminalLayout.lineHeightRatio,
+            WatchTerminalLayout.lineHeight(fontSize: WatchTerminalLayout.readableFontSize),
+            WatchTerminalLayout.readableFontSize * WatchTerminalLayout.lineHeightRatio,
             accuracy: 0.001
         )
         XCTAssertEqual(WatchTerminalKeyBytes.slash, Data([0x2f]))
+        XCTAssertEqual(WatchTerminalKeyBytes.carriageReturn, Data([0x0d]))
         XCTAssertEqual(WatchTerminalKeyBytes.control(0x43), Data([0x03]))
         XCTAssertEqual(
             String(data: WatchTerminalKeyBytes.wheel(scrollingUp: true, column: 8, row: 12), encoding: .utf8),
@@ -191,6 +197,36 @@ final class JARVISKitTests: XCTestCase {
         )
         let input = WatchTerminalInput(data: WatchTerminalKeyBytes.slash, appendReturn: false)
         XCTAssertEqual(input.data, Data([0x2f]))
+        let stagedText = WatchTerminalInput(data: Data("hello Pi".utf8), appendReturn: false)
+        XCTAssertEqual(stagedText.data, Data("hello Pi".utf8))
+        XCTAssertFalse(stagedText.appendReturn)
+        let explicitSubmit = WatchTerminalInput(data: WatchTerminalKeyBytes.carriageReturn, appendReturn: false)
+        XCTAssertEqual(explicitSubmit.data, Data([0x0d]))
+        XCTAssertFalse(explicitSubmit.appendReturn)
+    }
+
+    func testWatchTerminalReadableLayoutWrapsOutputAndPinsPrompt() {
+        let frame = WatchTerminalFrame(
+            sequence: 5,
+            columns: 80,
+            rows: 3,
+            cursorColumn: 5,
+            cursorRow: 1,
+            alternateScreen: true,
+            mouseMode: true,
+            historySize: 0,
+            lines: ["alpha beta  ", "input command", "status"]
+        )
+
+        XCTAssertEqual(
+            frame.readableOutputLines(displayColumns: 5, maximumLines: 4),
+            ["alpha", " beta", "statu", "s"]
+        )
+        XCTAssertEqual(frame.promptViewport(displayColumns: 8), "input▌ c")
+        XCTAssertEqual(WatchTerminalLayout.wrapTerminalLine("🙂abc  ", displayColumns: 2), ["🙂a", "bc"])
+        XCTAssertEqual(WatchTerminalLayout.wrapTerminalLine("hello world", displayColumns: 8), ["hello", "world"])
+        XCTAssertEqual(WatchTerminalLayout.wrapTerminalLine("──────────", displayColumns: 4), ["────"])
+        XCTAssertEqual(WatchTerminalLayout.wrapTerminalLine("   ", displayColumns: 2), [""])
     }
 
     func testCommandRequestEncodesDesiredPlugState() throws {

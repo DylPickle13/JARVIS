@@ -1,171 +1,9 @@
-import CryptoKit
 import Foundation
 import JARVISKit
-import Security
 import SwiftUI
-
-private enum WatchTerminalError: LocalizedError {
-    case notConfigured
-    case invalidResponse
-    case rejected(String)
-    case certificateRejected
-
-    var errorDescription: String? {
-        switch self {
-        case .notConfigured: return "Set up the Watch terminal from iPhone Settings."
-        case .invalidResponse: return "The terminal bridge returned an invalid response."
-        case .rejected(let message): return message
-        case .certificateRejected: return "The Mac terminal certificate did not match."
-        }
-    }
-}
-
-private final class WatchTerminalPinnedSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
-    private let expectedFingerprint: String
-
-    init(expectedFingerprint: String) {
-        self.expectedFingerprint = WatchTerminalConfiguration.normalizeFingerprint(expectedFingerprint)
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let trust = challenge.protectionSpace.serverTrust,
-              let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
-              let leaf = chain.first else {
-            completionHandler(.cancelAuthenticationChallenge, nil)
-            return
-        }
-        let digest = SHA256.hash(data: SecCertificateCopyData(leaf) as Data)
-        let actual = digest.map { String(format: "%02x", $0) }.joined()
-        guard actual == expectedFingerprint else {
-            completionHandler(.cancelAuthenticationChallenge, nil)
-            return
-        }
-        completionHandler(.useCredential, URLCredential(trust: trust))
-    }
-}
-
-private final class WatchTerminalHTTPClient: @unchecked Sendable {
-    private let configuration: WatchTerminalConfiguration
-    private let delegate: WatchTerminalPinnedSessionDelegate
-    private let session: URLSession
-    private let candidateBaseURLs: [URL]
-    private let endpointLock = NSLock()
-    private var activeBaseURL: URL?
-
-    init(configuration: WatchTerminalConfiguration) {
-        self.configuration = configuration
-        self.candidateBaseURLs = configuration.candidateBaseURLs
-        self.delegate = WatchTerminalPinnedSessionDelegate(expectedFingerprint: configuration.certificateSHA256)
-        let sessionConfiguration = URLSessionConfiguration.ephemeral
-        sessionConfiguration.timeoutIntervalForRequest = 4
-        sessionConfiguration.timeoutIntervalForResource = 6
-        sessionConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        self.session = URLSession(configuration: sessionConfiguration, delegate: delegate, delegateQueue: nil)
-    }
-
-    func close() {
-        session.invalidateAndCancel()
-    }
-
-    func frame(after sequence: Int) async throws -> WatchTerminalFrame {
-        var lastError: Error = WatchTerminalError.notConfigured
-        for baseURL in orderedBaseURLs() {
-            if Task.isCancelled { throw CancellationError() }
-            do {
-                var components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/frame")
-                components.queryItems = [URLQueryItem(name: "after", value: String(sequence))]
-                guard let url = components.url else { throw WatchTerminalError.notConfigured }
-                var request = URLRequest(url: url)
-                request.httpMethod = "GET"
-                authorize(&request)
-                let (data, response) = try await session.data(for: request)
-                try validate(response: response, data: data)
-                guard let frame = try? JSONDecoder().decode(WatchTerminalFrame.self, from: data) else {
-                    throw WatchTerminalError.invalidResponse
-                }
-                rememberActive(baseURL)
-                return frame
-            } catch let error as URLError where error.code == .cancelled {
-                throw CancellationError()
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                lastError = error
-            }
-        }
-        throw lastError
-    }
-
-    func send(_ input: WatchTerminalInput) async throws {
-        // Input is immediate-only and is never replayed across endpoints. A
-        // successful frame chooses the active route before controls are enabled.
-        guard let baseURL = preferredBaseURL() else { throw WatchTerminalError.notConfigured }
-        let components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/input")
-        guard let url = components.url else { throw WatchTerminalError.notConfigured }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        authorize(&request)
-        request.httpBody = try JSONEncoder().encode(input)
-        let (data, response) = try await session.data(for: request)
-        try validate(response: response, data: data)
-    }
-
-    private func preferredBaseURL() -> URL? {
-        endpointLock.lock()
-        defer { endpointLock.unlock() }
-        return activeBaseURL ?? candidateBaseURLs.first
-    }
-
-    private func orderedBaseURLs() -> [URL] {
-        endpointLock.lock()
-        let active = activeBaseURL
-        endpointLock.unlock()
-        guard let active else { return candidateBaseURLs }
-        return [active] + candidateBaseURLs.filter { $0 != active }
-    }
-
-    private func rememberActive(_ baseURL: URL) {
-        endpointLock.lock()
-        activeBaseURL = baseURL
-        endpointLock.unlock()
-    }
-
-    private func endpointComponents(baseURL: URL, path: String) throws -> URLComponents {
-        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL,
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
-            throw WatchTerminalError.notConfigured
-        }
-        return components
-    }
-
-    private func authorize(_ request: inout URLRequest) {
-        request.setValue("Bearer \(configuration.token)", forHTTPHeaderField: "Authorization")
-        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
-    }
-
-    private func validate(response: URLResponse, data: Data) throws {
-        guard let http = response as? HTTPURLResponse else { throw WatchTerminalError.invalidResponse }
-        guard (200..<300).contains(http.statusCode) else {
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let message = object?["error"] as? String ?? "Terminal bridge rejected the request."
-            throw WatchTerminalError.rejected(message)
-        }
-    }
-}
 
 @MainActor
 private final class WatchTerminalSettings {
-    private let defaults = UserDefaults.standard
-    private let endpointKey = "jarvis.watch-terminal.endpoint"
-    private let fingerprintKey = "jarvis.watch-terminal.certificate-sha256"
-    private let keychainService = "com.operation-jarvis.jarvis.watchkitapp.watch-terminal"
-    private let tokenAccount = "bridge.token"
     #if DEBUG && targetEnvironment(simulator)
     private var simulatorConfiguration: WatchTerminalConfiguration?
     #endif
@@ -174,13 +12,10 @@ private final class WatchTerminalSettings {
         #if DEBUG && targetEnvironment(simulator)
         if let simulatorConfiguration { return simulatorConfiguration }
         #endif
-        guard let token = readToken() else { return nil }
-        let configuration = WatchTerminalConfiguration(
-            endpoint: defaults.string(forKey: endpointKey) ?? "",
-            token: token,
-            certificateSHA256: defaults.string(forKey: fingerprintKey) ?? ""
-        )
-        return configuration.isValid ? configuration : nil
+        guard case .configured(let configuration) = JARVISTerminalConfigurationStore.load() else {
+            return nil
+        }
+        return configuration
     }
 
     @discardableResult
@@ -188,40 +23,10 @@ private final class WatchTerminalSettings {
         guard configuration.isValid else { return false }
         #if DEBUG && targetEnvironment(simulator)
         simulatorConfiguration = configuration
-        #else
-        guard writeToken(configuration.token) else { return false }
-        #endif
-        defaults.set(configuration.endpoint, forKey: endpointKey)
-        defaults.set(configuration.certificateSHA256, forKey: fingerprintKey)
         return true
-    }
-
-    private func writeToken(_ token: String) -> Bool {
-        guard let data = token.data(using: .utf8) else { return false }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: tokenAccount,
-        ]
-        SecItemDelete(query as CFDictionary)
-        var add = query
-        add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
-    }
-
-    private func readToken() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: tokenAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        #else
+        return JARVISTerminalConfigurationStore.save(configuration)
+        #endif
     }
 }
 
@@ -259,7 +64,7 @@ final class WatchTerminalController: ObservableObject {
     @Published var controlLatched = false
 
     private let settings = WatchTerminalSettings()
-    private var client: WatchTerminalHTTPClient?
+    private var client: WatchTerminalClient?
     private var pollTask: Task<Void, Never>?
     private var appIsActive = false
     private var isVisible = false
@@ -325,12 +130,6 @@ final class WatchTerminalController: ObservableObject {
         send(bytes, appendReturn: false)
     }
 
-    func sendWheel(scrollingUp: Bool) {
-        let column = (frame?.cursorColumn ?? 0) + 1
-        let row = (frame?.cursorRow ?? 0) + 1
-        send(WatchTerminalKeyBytes.wheel(scrollingUp: scrollingUp, column: column, row: row), appendReturn: false)
-    }
-
     private func restartIfNeeded() {
         stop()
         guard appIsActive, isVisible else { return }
@@ -339,7 +138,7 @@ final class WatchTerminalController: ObservableObject {
             errorMessage = "Open iPhone JARVIS Settings to provision the Watch terminal."
             return
         }
-        let client = WatchTerminalHTTPClient(configuration: configuration)
+        let client = WatchTerminalClient(configuration: configuration)
         self.client = client
         status = .connecting
         errorMessage = nil
@@ -395,13 +194,33 @@ final class WatchTerminalController: ObservableObject {
     }
 }
 
+private enum WatchTerminalDisplayMode: String {
+    case fit
+    case grid
+}
+
 struct WatchTerminalView: View {
     @ObservedObject var controller: WatchTerminalController
     let isActive: Bool
     let onAdvancePage: (() -> Void)?
-    @State private var showingComposer = false
-    @State private var draft = ""
+    @AppStorage("jarvis.watch-terminal.display-mode") private var displayModeRaw = WatchTerminalDisplayMode.fit.rawValue
+    @State private var showingKeyPalette = false
     @State private var crownPosition = 0.0
+    @State private var scrollOffset = 0
+    @FocusState private var crownIsFocused: Bool
+
+    private var displayMode: WatchTerminalDisplayMode {
+        get {
+            if displayModeRaw == "raw" { return .grid }
+            if displayModeRaw == "readable" { return .fit }
+            return WatchTerminalDisplayMode(rawValue: displayModeRaw) ?? .fit
+        }
+        nonmutating set { displayModeRaw = newValue.rawValue }
+    }
+
+    private var inputIsEnabled: Bool {
+        controller.status == .live && !controller.isSending
+    }
 
     init(
         controller: WatchTerminalController,
@@ -414,15 +233,25 @@ struct WatchTerminalView: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
-            header
+        VStack(spacing: 2) {
             terminal
-            keyDeck
+            promptRail
+            inputDock
         }
-        .padding(.horizontal, 4)
-        .padding(.bottom, 3)
+        .padding(.horizontal, 2)
+        .padding(.bottom, 2)
         .background(Color.black.ignoresSafeArea())
-        .focusable()
+        .overlay(alignment: .bottom) {
+            if showingKeyPalette {
+                keyPalette
+                    .padding(.horizontal, 3)
+                    .padding(.bottom, 42)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.16), value: showingKeyPalette)
+        .focusable(isActive)
+        .focused($crownIsFocused)
         .digitalCrownRotation(
             $crownPosition,
             from: -100_000,
@@ -434,106 +263,304 @@ struct WatchTerminalView: View {
         )
         .onChange(of: crownPosition) { oldValue, newValue in
             guard newValue != oldValue else { return }
-            controller.sendWheel(scrollingUp: newValue < oldValue)
+            let steps = max(1, min(8, Int(abs(newValue - oldValue).rounded())))
+            adjustScroll(towardHistory: newValue < oldValue, steps: steps)
         }
-        .onAppear { controller.setVisible(isActive) }
-        .onChange(of: isActive) { _, active in controller.setVisible(active) }
-        .onDisappear { controller.setVisible(false) }
-        .sheet(isPresented: $showingComposer) { composer }
-    }
-
-    private var header: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(controller.status.color)
-                .frame(width: 6, height: 6)
-            Text(controller.status.label)
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 2)
-            Button {
-                showingComposer = true
-            } label: {
-                Image(systemName: "text.cursor")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Color.cyan)
-                    .frame(width: 26, height: 26)
-                    .background(Color.cyan.opacity(0.14), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(controller.status != .live)
-            .accessibilityLabel("Type a JARVIS command")
+        .onAppear {
+            controller.setVisible(isActive)
+            crownIsFocused = isActive
         }
-        .frame(height: 24)
+        .onChange(of: isActive) { _, active in
+            controller.setVisible(active)
+            crownIsFocused = active
+        }
+        .onDisappear {
+            crownIsFocused = false
+            controller.setVisible(false)
+        }
     }
 
     private var terminal: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(red: 0.015, green: 0.035, blue: 0.045))
-                if let frame = controller.frame {
-                    let contentWidth = max(1, geometry.size.width - 10)
-                    let fontSize = CGFloat(WatchTerminalLayout.fontSize(
-                        columns: frame.columns,
-                        availableWidth: Double(contentWidth)
-                    ))
-                    let lineHeight = CGFloat(WatchTerminalLayout.lineHeight(fontSize: Double(fontSize)))
-                    let maximumLines = max(1, Int(max(0, geometry.size.height - 10) / lineHeight))
-                    let visibleLines = frame.visibleLines(maximumLines: maximumLines)
+                Color(red: 0.008, green: 0.022, blue: 0.028)
 
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(visibleLines.enumerated()), id: \.offset) { _, line in
-                            Text(verbatim: line)
-                                .font(.system(size: fontSize, weight: .regular, design: .monospaced))
-                                .foregroundStyle(Color(red: 0.72, green: 0.95, blue: 1.0))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight, alignment: .leading)
-                                .clipped()
-                        }
-                    }
-                    .padding(5)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                if let frame = controller.frame {
+                    mirroredTerminal(frame: frame, geometry: geometry, fitToWidth: displayMode == .fit)
                 } else {
-                    VStack(spacing: 5) {
-                        if controller.status == .connecting { ProgressView().controlSize(.small) }
-                        Text(controller.errorMessage ?? "Waiting for the Mac terminal")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(8)
+                    waitingTerminal
                 }
+
+                terminalStatusOverlay
             }
-            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             .contentShape(Rectangle())
-            .gesture(
+            .simultaneousGesture(
                 DragGesture(minimumDistance: 12).onEnded { value in
                     guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                    if value.translation.height < -60, let onAdvancePage {
+                    if value.translation.height < -60, scrollOffset == 0, let onAdvancePage {
                         onAdvancePage()
                     } else {
-                        controller.sendWheel(scrollingUp: value.translation.height > 0)
+                        let steps = max(1, min(12, Int(abs(value.translation.height) / 12)))
+                        adjustScroll(towardHistory: value.translation.height > 0, steps: steps)
                     }
                 }
             )
         }
     }
 
-    private var keyDeck: some View {
-        HStack(spacing: 2) {
-            terminalKey("Esc", accessibility: "Escape") { controller.sendKey(WatchTerminalKeyBytes.escape) }
-            terminalKey("Ctrl", accessibility: "Control modifier", selected: controller.controlLatched) {
-                controller.controlLatched.toggle()
+    private func mirroredTerminal(
+        frame: WatchTerminalFrame,
+        geometry: GeometryProxy,
+        fitToWidth: Bool
+    ) -> some View {
+        let contentWidth = max(1, geometry.size.width - 10)
+        let fontSize = CGFloat(
+            fitToWidth
+                ? WatchTerminalLayout.mirrorFontSize(
+                    availableWidth: Double(contentWidth),
+                    terminalColumns: frame.columns
+                )
+                : WatchTerminalLayout.rawFontSize
+        )
+        let lineHeight = CGFloat(WatchTerminalLayout.lineHeight(fontSize: Double(fontSize)))
+        let maximumLines = max(1, Int(max(0, geometry.size.height - 29) / lineHeight))
+        let safeOffset = min(scrollOffset, frame.maximumScrollOffset(maximumLines: maximumLines))
+        let visibleRange = frame.viewportRange(maximumLines: maximumLines, scrollOffset: safeOffset)
+        let mirroredStyles = WatchTerminalANSIParser.parse(lines: frame.ansiLines)
+        let styledLines = Array(mirroredStyles[visibleRange])
+        let terminalWidth = max(
+            contentWidth,
+            CGFloat(frame.columns) * fontSize * CGFloat(WatchTerminalLayout.monospacedCharacterWidthRatio)
+        )
+
+        return ScrollView(.horizontal, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(styledLines.enumerated()), id: \.offset) { _, spans in
+                    HStack(spacing: 0) {
+                        ForEach(Array(spans.enumerated()), id: \.offset) { _, span in
+                            terminalSpan(span, fontSize: fontSize)
+                        }
+                    }
+                    .frame(width: terminalWidth, height: lineHeight, alignment: .leading)
+                    .clipped()
+                }
             }
-            terminalKey("Tab", accessibility: "Tab") { controller.sendKey(WatchTerminalKeyBytes.tab) }
-            terminalKey("/", accessibility: "Slash") { controller.sendKey(WatchTerminalKeyBytes.slash) }
-            terminalKey("↑", accessibility: "Up arrow") { controller.sendKey(WatchTerminalKeyBytes.up) }
-            terminalKey("↓", accessibility: "Down arrow") { controller.sendKey(WatchTerminalKeyBytes.down) }
+            .padding(.horizontal, 5)
         }
-        .frame(height: 25)
+        .contentMargins(.top, 25, for: .scrollContent)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityLabel("Mirrored Pi terminal")
+        .accessibilityValue(safeOffset == 0 ? "Live" : "Scrolled back \(safeOffset) rows")
+        .task(id: safeOffset) {
+            if scrollOffset != safeOffset { scrollOffset = safeOffset }
+        }
+    }
+
+    private func terminalSpan(_ span: WatchTerminalANSISpan, fontSize: CGFloat) -> some View {
+        let defaultForeground = Color(red: 0.83, green: 0.83, blue: 0.83)
+        let defaultBackground = Color.black
+        let rawForeground = terminalColor(span.style.foreground, defaultColor: defaultForeground)
+        let rawBackground = terminalColor(span.style.background, defaultColor: defaultBackground)
+        let foreground = span.style.inverse ? rawBackground : rawForeground
+        let background = span.style.inverse ? rawForeground : rawBackground
+        let visibleText = span.style.hidden
+            ? String(repeating: " ", count: span.text.count)
+            : span.text
+        var text = Text(verbatim: visibleText)
+            .font(.system(
+                size: fontSize,
+                weight: span.style.bold ? .bold : .regular,
+                design: .monospaced
+            ))
+        if span.style.italic { text = text.italic() }
+        if span.style.underline { text = text.underline() }
+        if span.style.strikethrough { text = text.strikethrough() }
+        return text
+            .foregroundStyle(foreground.opacity(span.style.dim ? 0.62 : 1))
+            .background(background)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func terminalColor(_ color: WatchTerminalANSIColor, defaultColor: Color) -> Color {
+        guard case .rgb(let value) = color else { return defaultColor }
+        return Color(
+            red: Double(value.red) / 255,
+            green: Double(value.green) / 255,
+            blue: Double(value.blue) / 255
+        )
+    }
+
+    private func adjustScroll(towardHistory: Bool, steps: Int) {
+        guard let frame = controller.frame else { return }
+        if towardHistory {
+            scrollOffset = min(frame.lines.count, scrollOffset + max(1, steps))
+        } else {
+            scrollOffset = max(0, scrollOffset - max(1, steps))
+        }
+        crownIsFocused = true
+    }
+
+    private var waitingTerminal: some View {
+        VStack(spacing: 7) {
+            if controller.status == .connecting { ProgressView().controlSize(.small) }
+            Text(controller.errorMessage ?? "Waiting for the Mac terminal")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.top, 20)
+    }
+
+    private var terminalStatusOverlay: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(controller.status.color)
+                .frame(width: 7, height: 7)
+                .accessibilityLabel("Terminal status")
+                .accessibilityValue(controller.status.label)
+            if scrollOffset > 0 {
+                Text("↑\(scrollOffset)")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.cyan)
+                    .accessibilityLabel("Scrolled back \(scrollOffset) terminal rows")
+            }
+            Spacer(minLength: 0)
+            Button {
+                displayMode = displayMode == .fit ? .grid : .fit
+                crownIsFocused = true
+            } label: {
+                Text(displayMode == .fit ? "FIT" : "GRID")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(displayMode == .fit ? Color.cyan : Color.secondary)
+                    .padding(.horizontal, 7)
+                    .frame(height: 21)
+                    .background(Color.black.opacity(0.82), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Terminal display mode")
+            .accessibilityValue(displayMode == .fit ? "Fit mirrored grid" : "Full-size mirrored grid")
+            .accessibilityHint("Double tap to switch mirror sizes")
+        }
+        .padding(.horizontal, 6)
+        .padding(.top, 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var promptRail: some View {
+        GeometryReader { geometry in
+            let contentWidth = max(1, geometry.size.width - 34)
+            let columns = WatchTerminalLayout.displayColumns(
+                availableWidth: Double(contentWidth),
+                fontSize: WatchTerminalLayout.promptFontSize
+            )
+            let prompt = controller.frame?.promptViewport(displayColumns: columns) ?? "Waiting for Pi input"
+
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(Color.cyan)
+                Text(verbatim: prompt)
+                    .font(.system(size: CGFloat(WatchTerminalLayout.promptFontSize), weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipped()
+                if controller.isSending {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, 7)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.cyan.opacity(0.10), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Current Pi input")
+            .accessibilityValue(prompt)
+        }
+        .frame(height: 27)
+    }
+
+    private var inputDock: some View {
+        HStack(spacing: 3) {
+            Button {
+                showingKeyPalette.toggle()
+            } label: {
+                dockLabel(symbol: showingKeyPalette ? "xmark" : "command", title: "Keys", emphasized: false)
+            }
+            .buttonStyle(.plain)
+            .disabled(!inputIsEnabled)
+            .accessibilityLabel(showingKeyPalette ? "Hide terminal keys" : "Show terminal keys")
+
+            TextFieldLink(prompt: Text("Message JARVIS")) {
+                dockLabel(symbol: "keyboard", title: "Input", emphasized: false)
+            } onSubmit: { input in
+                stageInput(input)
+            }
+            .buttonStyle(.plain)
+            .disabled(!inputIsEnabled)
+            .accessibilityLabel("Input text at the Pi cursor")
+            .accessibilityHint("Opens Apple Watch keyboard with microphone input. Text is inserted without submitting.")
+
+            Button {
+                showingKeyPalette = false
+                controller.sendKey(WatchTerminalKeyBytes.carriageReturn)
+            } label: {
+                dockLabel(symbol: "paperplane.fill", title: "Send", emphasized: true)
+            }
+            .buttonStyle(.plain)
+            .disabled(!inputIsEnabled)
+            .accessibilityLabel("Send current Pi input")
+            .accessibilityHint("Sends Return to submit the text at the Pi cursor.")
+        }
+        .frame(height: 39)
+    }
+
+    private func stageInput(_ input: String) {
+        let message = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+        Task { @MainActor in
+            controller.sendText(message, appendReturn: false)
+        }
+    }
+
+    private func dockLabel(symbol: String, title: String, emphasized: Bool) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol)
+                .font(.system(size: emphasized ? 13 : 11, weight: .bold))
+            Text(title)
+                .font(.system(size: emphasized ? 10 : 9, weight: .bold))
+        }
+        .foregroundStyle(emphasized ? Color.black : Color.primary)
+        .frame(maxWidth: .infinity, minHeight: 35)
+        .background(
+            emphasized ? Color.cyan : Color.white.opacity(0.09),
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+    }
+
+    private var keyPalette: some View {
+        VStack(spacing: 3) {
+            HStack(spacing: 3) {
+                terminalKey("Esc", accessibility: "Escape") { controller.sendKey(WatchTerminalKeyBytes.escape) }
+                terminalKey("Ctrl", accessibility: "Control modifier", selected: controller.controlLatched) {
+                    controller.controlLatched.toggle()
+                }
+                terminalKey("Tab", accessibility: "Tab") { controller.sendKey(WatchTerminalKeyBytes.tab) }
+            }
+            HStack(spacing: 3) {
+                terminalKey("/", accessibility: "Slash") { controller.sendKey(WatchTerminalKeyBytes.slash) }
+                terminalKey("↑", accessibility: "Up arrow") { controller.sendKey(WatchTerminalKeyBytes.up) }
+                terminalKey("↓", accessibility: "Down arrow") { controller.sendKey(WatchTerminalKeyBytes.down) }
+            }
+        }
+        .padding(5)
+        .background(Color.black.opacity(0.96), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
+        }
     }
 
     private func terminalKey(
@@ -544,34 +571,13 @@ struct WatchTerminalView: View {
     ) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: title.count > 2 ? 7 : 10, weight: .bold, design: .monospaced))
-                .frame(maxWidth: .infinity, minHeight: 21)
-                .background(selected ? Color.cyan.opacity(0.35) : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                .font(.system(size: title.count > 2 ? 9 : 12, weight: .bold, design: .monospaced))
+                .frame(maxWidth: .infinity, minHeight: 28)
+                .background(selected ? Color.cyan.opacity(0.35) : Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
         .disabled(controller.status != .live || controller.isSending)
         .accessibilityLabel(accessibility)
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private var composer: some View {
-        NavigationStack {
-            VStack(spacing: 10) {
-                TextField("Message JARVIS", text: $draft)
-                Button {
-                    let message = draft
-                    draft = ""
-                    showingComposer = false
-                    controller.sendText(message)
-                } label: {
-                    Label(controller.controlLatched ? "Send Ctrl key" : "Send", systemImage: "paperplane.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(draft.isEmpty)
-            }
-            .padding()
-            .navigationTitle("JARVIS Input")
-        }
     }
 }

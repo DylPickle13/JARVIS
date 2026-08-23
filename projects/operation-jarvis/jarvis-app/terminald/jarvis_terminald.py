@@ -14,6 +14,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import ssl
 import subprocess
@@ -36,6 +37,8 @@ MAX_INPUT_BYTES = 4096
 MAX_BODY_BYTES = 8192
 LONG_POLL_SECONDS = 1.5
 POLL_INTERVAL_SECONDS = 0.10
+MAX_SCROLLBACK_ROWS = 160
+SGR_PATTERN = re.compile(r"\x1b\[[0-9:;]*m")
 RUNTIME_DIR = Path.home() / "Library" / "Application Support" / "JARVIS" / "terminald"
 TOKEN_PATH = RUNTIME_DIR / "token"
 CERT_PATH = RUNTIME_DIR / "certificate.pem"
@@ -199,16 +202,31 @@ class TerminalService:
         except ValueError as error:
             raise TerminalError("The JARVIS pane metadata was invalid.") from error
 
+        # Preserve the actual tmux grid and its SGR attributes. Pi's thinking,
+        # tool calls, token counters, and assistant output are not reconstructed
+        # here; they remain ordinary terminal cells captured verbatim. A bounded
+        # tail of tmux history lets the Watch Crown move a local, read-only
+        # viewport without injecting unreliable mouse sequences into Pi.
+        history_start = -min(max(0, history), MAX_SCROLLBACK_ROWS)
         captured = self.runner.run(
-            self.tmux_arguments("capture-pane", "-p", "-t", TMUX_TARGET)
+            self.tmux_arguments(
+                "capture-pane",
+                "-p",
+                "-e",
+                "-N",
+                "-S",
+                str(history_start),
+                "-t",
+                TMUX_TARGET,
+            )
         ).stdout.decode("utf-8", errors="replace")
         if captured.endswith("\n"):
             captured = captured[:-1]
-        lines = captured.split("\n") if captured else []
-        if len(lines) < rows:
-            lines.extend([""] * (rows - len(lines)))
-        elif len(lines) > rows:
-            lines = lines[-rows:]
+        ansi_lines = captured.split("\n") if captured else []
+        if len(ansi_lines) < rows:
+            ansi_lines.extend([""] * (rows - len(ansi_lines)))
+        lines = [SGR_PATTERN.sub("", line) for line in ansi_lines]
+        screen_start = max(0, len(lines) - rows)
 
         content = {
             "columns": columns,
@@ -218,7 +236,14 @@ class TerminalService:
             "alternateScreen": bool(alternate),
             "mouseMode": bool(mouse),
             "historySize": history,
-            "lines": lines,
+            # Preserve build-38 compatibility: `lines` remains exactly the live
+            # screen. Build 39 opts into the bounded history mirror through the
+            # additive captured fields, so daemon/app rollout order is safe.
+            "screenStart": screen_start,
+            "lines": lines[screen_start:],
+            "ansiLines": ansi_lines[screen_start:],
+            "capturedLines": lines,
+            "capturedANSILines": ansi_lines,
         }
         digest = hashlib.sha256(
             json.dumps(content, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")

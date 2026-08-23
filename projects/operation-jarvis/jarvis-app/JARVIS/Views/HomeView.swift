@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import JARVISKit
 
@@ -38,6 +39,7 @@ struct HomeView: View {
                             loadingCard
                         }
                         piCard(state)
+                        codexQuotaCard(state)
                         plugsSection(state)
                         purifierSection(state)
                         servicesSection
@@ -255,6 +257,149 @@ struct HomeView: View {
             return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Pi session data is stale.") })
         }
         return AnyView(content)
+    }
+
+    // MARK: - Codex quota
+
+    private func codexQuotaCard(_ state: StateSnapshot) -> AnyView {
+        guard let quota = state.subsystems?.codexQuota,
+              quota.available == true,
+              let remaining = quota.weekly?.remainingPercent else {
+            return AnyView(
+                unavailableCard(
+                    title: "Codex quota unavailable",
+                    detail: state.subsystems?.codexQuota?.lastError ?? state.subsystems?.codexQuota?.error
+                )
+            )
+        }
+        let color = codexQuotaColor(remaining)
+        let content = Card {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Label("Codex usage", systemImage: "chevron.left.forwardslash.chevron.right")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    StatusPill(text: codexPlanLabel(quota.planType), color: color, symbol: "sparkles")
+                }
+
+                Group {
+                    if usesAccessibilityLayout {
+                        VStack(alignment: .leading, spacing: 14) {
+                            codexQuotaRing(remaining: remaining, color: color)
+                            codexQuotaDetails(quota, remaining: remaining, color: color)
+                        }
+                    } else {
+                        HStack(spacing: 18) {
+                            codexQuotaRing(remaining: remaining, color: color)
+                            codexQuotaDetails(quota, remaining: remaining, color: color)
+                        }
+                    }
+                }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            Circle()
+                .fill(color.opacity(0.10))
+                .frame(width: 112, height: 112)
+                .blur(radius: 28)
+                .offset(x: 22, y: -32)
+                .allowsHitTesting(false)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Codex weekly quota, \(Int(remaining.rounded())) percent remaining, " +
+            "\(codexQuotaResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))"
+        )
+        if quota.stale == true {
+            return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Codex quota data is stale.") })
+        }
+        return AnyView(content)
+    }
+
+    private func codexQuotaRing(remaining: Double, color: Color) -> some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.16), lineWidth: 8)
+            Circle()
+                .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0.01), 1)))
+                .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Text("\(Int(remaining.rounded()))%")
+                    .font(.title2.weight(.bold))
+                    .monospacedDigit()
+                Text("REMAINING")
+                    .font(.system(size: 8, weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 82, height: 82)
+    }
+
+    private func codexQuotaDetails(
+        _ quota: CodexQuotaSubsystem,
+        remaining: Double,
+        color: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Weekly capacity")
+                .font(.title3.weight(.semibold))
+            ProgressView(value: remaining, total: 100)
+                .tint(color)
+                .accessibilityHidden(true)
+            Label(codexQuotaResetLabel(quota.weekly), systemImage: "calendar.badge.clock")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Label(codexFiveHourLabel(quota), systemImage: "clock")
+                if let credits = codexCreditsLabel(quota.creditBalance) {
+                    Label(credits, systemImage: "bolt.circle")
+                }
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func codexQuotaColor(_ remaining: Double) -> Color {
+        JarvisPalette.electricBlue
+    }
+
+    private func codexPlanLabel(_ plan: String?) -> String {
+        guard let plan, !plan.isEmpty else { return "CODEX" }
+        return plan.replacingOccurrences(of: "_", with: " ").uppercased()
+    }
+
+    private func codexQuotaResetLabel(_ window: CodexQuotaWindow?) -> String {
+        let seconds: Int?
+        if let resetAt = window?.resetAt,
+           let date = JarvisFormat.parseISO8601(resetAt) {
+            seconds = max(0, Int(date.timeIntervalSinceNow))
+        } else {
+            seconds = window?.resetAfterSeconds
+        }
+        guard let seconds else { return "Reset time unavailable" }
+        if seconds < 60 { return "Resets in less than a minute" }
+        if seconds < 3_600 { return "Resets in \(seconds / 60)m" }
+        if seconds < 86_400 { return "Resets in \(seconds / 3_600)h \((seconds % 3_600) / 60)m" }
+        return "Resets in \(seconds / 86_400)d \((seconds % 86_400) / 3_600)h"
+    }
+
+    private func codexFiveHourLabel(_ quota: CodexQuotaSubsystem) -> String {
+        if let remaining = quota.fiveHour?.remainingPercent {
+            return "5-hour \(Int(remaining.rounded()))% left"
+        }
+        if quota.fiveHourEnforced == false { return "5-hour paused" }
+        return "5-hour unavailable"
+    }
+
+    private func codexCreditsLabel(_ balance: Double?) -> String? {
+        guard let balance else { return nil }
+        if balance >= 1_000 { return String(format: "%.1fK credits", balance / 1_000) }
+        return "\(Int(balance.rounded())) credits"
     }
 
     // MARK: - Purifier

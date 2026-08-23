@@ -105,6 +105,12 @@ struct JARVISAppShortcuts: AppShortcutsProvider {
             shortTitle: "Turn Off Plug",
             systemImageName: "powerplug"
         )
+        AppShortcut(
+            intent: SendPromptToJARVISIntent(),
+            phrases: ["Hey \(.applicationName)"],
+            shortTitle: "Talk to JARVIS",
+            systemImageName: "waveform"
+        )
     }
 }
 
@@ -221,7 +227,7 @@ final class JARVISSiriParameterRegistrar {
 
     init(
         defaults: UserDefaults = JARVISSharedStore.defaults,
-        schemaVersion: Int = 4,
+        schemaVersion: Int = 5,
         seed: @escaping ([JARVISPlugDescriptor]) async -> Void = { plugs in
             await JARVISSiriPlugRuntime.seedCatalogue(plugs)
         },

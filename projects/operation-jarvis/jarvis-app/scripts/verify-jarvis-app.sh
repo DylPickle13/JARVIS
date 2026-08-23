@@ -73,6 +73,8 @@ grep -q 'max(36, fontSize \* 2.5)' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'static let deliveryFramesPerSecond = 60' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'CADisplayLink(target: self, selector: #selector(deliverNextTouchScrollStep(_:)))' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'stopTouchScrollDelivery(clearPending: true)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'override func showCursor(source: Terminal)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'PiTerminalTouchScroll.cursorLocation' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'toggleTerminalKeyboard' JARVIS/Terminal/PiTerminalController.swift
 grep -q 'keyboard.chevron.compact.down' JARVIS/Terminal/PiTerminalView.swift
 grep -q 'slashBytes: \[UInt8\] = \[0x2f\]' JARVIS/Terminal/PiSSHTransport.swift
@@ -90,7 +92,10 @@ grep -q 'TMUX_SESSION="jarvis-ios"' scripts/jarvis-mobile-terminal.sh
 grep -q 'new-session -d' scripts/jarvis-mobile-terminal.sh
 grep -q 'attach-session' scripts/jarvis-mobile-terminal.sh
 grep -q 'export PATH="/opt/homebrew/bin:' scripts/jarvis-mobile-terminal.sh
-grep -q "PI_COMMAND='/opt/homebrew/bin/pi'" scripts/jarvis-mobile-terminal.sh
+grep -q "PI_COMMAND='/opt/homebrew/bin/pi --tui-mode fullscreen'" scripts/jarvis-mobile-terminal.sh
+grep -q 'source-file "$TMUX_CONFIG"' scripts/jarvis-mobile-terminal.sh
+grep -q 'send-keys -X -N 1 scroll-up' config/jarvis-mobile.tmux.conf
+grep -q 'send-keys -X -N 1 scroll-down' config/jarvis-mobile.tmux.conf
 reject_match 'Pi terminal must not assign a special Pi session name' -Fq -- '--name' scripts/jarvis-mobile-terminal.sh
 grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVIS/Terminal/PiTerminalSettings.swift
 grep -q 'String(openSSHPublicKey: hostKey)' JARVIS/Terminal/PiSSHTransport.swift
@@ -104,6 +109,9 @@ reject_match 'Pi launcher must not kill its persistent session' -RqsE 'kill-sess
 grep -q -- '--ensure-only' scripts/jarvis-mobile-terminal.sh
 
 printf '%s\n' '== Watch JARVIS terminal contract =='
+grep -q '._statusBarHidden()' JARVISWatch/Views/WatchConnectView.swift
+grep -q '^            \.ignoresSafeArea()' JARVISWatch/Views/WatchConnectView.swift
+reject_match 'Watch root NavigationStack would reserve the removed clock strip' -Fq 'NavigationStack { WatchDashboardContent' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'DEFAULT_PORT = 8792' terminald/jarvis_terminald.py
 grep -q 'ThreadingHTTPServer' terminald/jarvis_terminald.py
 grep -q 'ssl.PROTOCOL_TLS_SERVER' terminald/jarvis_terminald.py
@@ -113,20 +121,55 @@ grep -q 'capture-pane' terminald/jarvis_terminald.py
 grep -q 'paste-buffer' terminald/jarvis_terminald.py
 grep -q 'processed_request_ids' terminald/jarvis_terminald.py
 grep -q 'terminalConfiguration' JARVISKit/Sources/JARVISKit/WatchBridge.swift
-grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVIS/Terminal/WatchTerminalProvisioningSettings.swift
-grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'SecTrustCopyCertificateChain' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' HostAppIntents/JARVISTerminalConfigurationStore.swift
+grep -q 'SecTrustCopyCertificateChain' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'final class WatchTerminalClient' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'digitalCrownRotation' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.focused(\$crownIsFocused)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalANSIParser.parse(lines: frame.ansiLines)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'frame.viewportRange(maximumLines:' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'promptViewport(displayColumns:' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'case fit' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'case grid' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch Crown scrolling must remain local and read-only' -Fq 'controller.sendWheel' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'showingKeyPalette' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'TextFieldLink(prompt: Text("Message JARVIS"))' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'private func stageInput(_ input: String)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'title: "Keys"' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'title: "Input"' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'title: "Send"' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'controller.sendText(message, appendReturn: false)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'controller.sendKey(WatchTerminalKeyBytes.carriageReturn)' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch terminal must not restore the duplicate Type action' -Fq 'title: "Type"' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch terminal must not label system text input as voice-only' -Fq 'title: "Speak"' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch Input must not reopen the dictation-first WatchKit controller' -Fq 'presentTextInputController' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch Input must not require the intermediate local composer' -Fq 'inputComposer' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'mirrorFontSize(availableWidth:' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'MAX_SCROLLBACK_ROWS = 160' terminald/jarvis_terminald.py
+grep -q '"-e"' terminald/jarvis_terminald.py
+grep -q '"lines": lines\[screen_start:\]' terminald/jarvis_terminald.py
+grep -q '"capturedLines": lines' terminald/jarvis_terminald.py
+grep -q '"capturedANSILines": ansi_lines' terminald/jarvis_terminald.py
 grep -q 'WatchTerminalKeyBytes.slash' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'configuration.candidateBaseURLs' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'private var codexQuotaPanel' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'private func codexQuotaCard' JARVIS/Views/HomeView.swift
+grep -q 'public struct CodexQuotaSubsystem' JARVISKit/Sources/JARVISKit/Models.swift
+grep -q 'CODEX_QUOTAS_SCRIPT' jarvisd/jarvisd.py
+grep -q '\[sys.executable, str(CODEX_QUOTAS_SCRIPT), "codex", "--json"\]' jarvisd/jarvisd.py
+grep -q 'NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})' jarvisd/jarvisd.py
+reject_match 'Watch System page must not restore the removed Direct to Mac panel' -Fq 'Direct to Mac' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'configuration.candidateBaseURLs' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q '\.lineLimit(1)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'ensureBackspaceAutoRepeatSentinel' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'override func deleteBackward()' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'WatchTerminalView(' JARVISWatch/Views/WatchDashboardContent.swift
-[[ "$(grep -c '\.tag(WatchDashboardPage\.' JARVISWatch/Views/WatchDashboardContent.swift)" == "3" ]]
-first_watch_page="$(grep -n '\.tag(WatchDashboardPage\.' JARVISWatch/Views/WatchDashboardContent.swift | head -n 1)"
-[[ "$first_watch_page" == *'WatchDashboardPage.terminal'* ]]
+grep -q 'private enum WatchDashboardPage: Hashable, CaseIterable' JARVISWatch/Views/WatchDashboardContent.swift
+[[ "$(sed -n '/private enum WatchDashboardPage/,/^}/p' JARVISWatch/Views/WatchDashboardContent.swift | grep -c '^    case ')" == "3" ]]
+grep -q '@State private var selectedPage: WatchDashboardPage = .terminal' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'pageDragGesture(previous: .terminal, next: .system)' JARVISWatch/Views/WatchDashboardContent.swift
+reject_match 'System Watch pager must not reserve the removed clock strip' -Fq 'tabViewStyle(.verticalPage)' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch terminal must not require an Open button' -qs 'Open JARVIS' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch terminal must not use a navigation launcher' -qs 'NavigationLink' JARVISWatch/Views/WatchDashboardContent.swift
 [[ -x terminald/jarvis_terminald.py ]]
@@ -166,14 +209,19 @@ grep -q 'Hey \\(\.applicationName), turn on the \\(\\.\$plug)' HostAppIntents/JA
 grep -q 'Hey \\(\.applicationName), turn off \\(\\.\$plug)' HostAppIntents/JARVISSiriPlugIntents.swift
 grep -q 'Hey \\(\.applicationName), turn off the \\(\\.\$plug)' HostAppIntents/JARVISSiriPlugIntents.swift
 reject_match 'legacy Siri phrase is still advertised' -qsE 'Tell \\(\.applicationName)| with \\(\.applicationName)|Use \\(\.applicationName)' HostAppIntents/JARVISSiriPlugIntents.swift
-[[ "$(grep -c 'AppShortcut(' HostAppIntents/JARVISSiriPlugIntents.swift)" == "2" ]]
+grep -q 'struct SendPromptToJARVISIntent: AppIntent' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'requestValueDialog: IntentDialog("What would you like me to send to JARVIS?")' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'JARVISSpokenPrompt.normalize(rawPrompt)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'WatchTerminalInput(data: Data(normalized.utf8), appendReturn: true)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'phrases: \["Hey \\(.applicationName)"\]' HostAppIntents/JARVISSiriPlugIntents.swift
+[[ "$(grep -c 'AppShortcut(' HostAppIntents/JARVISSiriPlugIntents.swift)" == "3" ]]
 grep -q 'static var isDiscoverable: Bool { false }' SharedAppIntents/JARVISWidgetIntents.swift
 grep -q 'queueIfUnreachable: false' JARVISKit/Sources/JARVISKit/WatchBridge.swift
 grep -q 'allowsWatchRelayFallback' JARVISKit/Sources/JARVISKit/PlugCommandExecutor.swift
 grep -q 'private actor JARVISSiriCatalogueCoordinator' HostAppIntents/JARVISSiriPlugIntents.swift
 grep -q 'private let retention: TimeInterval = 15' HostAppIntents/JARVISSiriPlugIntents.swift
 grep -q 'final class JARVISSiriParameterRegistrar' HostAppIntents/JARVISSiriPlugIntents.swift
-grep -q 'schemaVersion: Int = 4' HostAppIntents/JARVISSiriPlugIntents.swift
+grep -q 'schemaVersion: Int = 5' HostAppIntents/JARVISSiriPlugIntents.swift
 grep -q 'jarvis.siri.parameter-signature.v1' HostAppIntents/JARVISSiriPlugIntents.swift
 reject_match 'Siri source contains a compiled production plug identifier' -qsE 'family-room-light|pedalboard|"lamp"|"tv"' HostAppIntents/JARVISSiriPlugIntents.swift
 reject_match 'non-plug Siri surface is present' -qsiE 'purifier|scheduled.?job|serviceAction|discord|room.?audio' HostAppIntents/JARVISSiriPlugIntents.swift
@@ -308,6 +356,7 @@ for path in sys.argv[1:3]:
     actions = payload.get("actions", {})
     assert "SelectJARVISPlugIntent" in actions, path
     assert "SetPlugIntent" in actions, path
+    assert "SendPromptToJARVISIntent" not in actions, path
 
 for path in sys.argv[3:]:
     with open(path, encoding="utf-8") as handle:
@@ -316,10 +365,16 @@ for path in sys.argv[3:]:
     assert actions["SetPlugIntent"]["isDiscoverable"] is False, path
     assert actions["TurnOnJARVISPlugIntent"]["isDiscoverable"] is True, path
     assert actions["TurnOffJARVISPlugIntent"]["isDiscoverable"] is True, path
+    assert actions["SendPromptToJARVISIntent"]["isDiscoverable"] is True, path
+    prompt_parameter = actions["SendPromptToJARVISIntent"]["parameters"][0]
+    assert prompt_parameter["name"] == "prompt", path
+    assert prompt_parameter["isOptional"] is False, path
+    assert prompt_parameter["valueType"]["primitive"]["wrapper"]["typeIdentifier"] == 0, path
     shortcuts = payload.get("autoShortcuts", [])
     assert [item["actionIdentifier"] for item in shortcuts] == [
         "TurnOnJARVISPlugIntent",
         "TurnOffJARVISPlugIntent",
+        "SendPromptToJARVISIntent",
     ], path
     expected_phrases = {
         "TurnOnJARVISPlugIntent": [
@@ -332,12 +387,16 @@ for path in sys.argv[3:]:
             "Hey ${applicationName}, turn off ${plug}",
             "Hey ${applicationName}, turn off the ${plug}",
         ],
+        "SendPromptToJARVISIntent": ["Hey ${applicationName}"],
     }
     for shortcut in shortcuts:
         phrases = [item["key"] for item in shortcut.get("phraseTemplates", [])]
         assert phrases == expected_phrases[shortcut["actionIdentifier"]], (path, phrases)
         assert any("${plug}" not in phrase for phrase in phrases), path
-        assert all(phrase.startswith("Hey ${applicationName}, ") for phrase in phrases), path
+        if shortcut["actionIdentifier"] == "SendPromptToJARVISIntent":
+            assert phrases == ["Hey ${applicationName}"], path
+        else:
+            assert all(phrase.startswith("Hey ${applicationName}, ") for phrase in phrases), path
         assert all(" with ${applicationName}" not in phrase for phrase in phrases), path
     assert "JARVISPlugEntity" in payload.get("entities", {}), path
     assert "JARVISPlugEntityQuery" in payload.get("queries", {}), path

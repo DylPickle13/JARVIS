@@ -10,9 +10,29 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. Build `0.3.0 (33)` is installed on the allowlisted iPhone 11 and Apple
-Watch Series 11; its cellular/Tailscale cold-launch and relaunch test passes.
-Candidate build 34 adds Watch terminal failover from the saved LAN endpoint to
+UI. Build `0.3.0 (39)` is installed and running on the allowlisted iPhone 11
+and Apple Watch Series 11 from the exact audited artifacts. Build 37 retains
+build 36's fixed-editor fullscreen
+Pi renderer, one-line wheel behavior, cursor correction, full-screen Watch
+shell, 11-point readable transcript, 9-point pannable Raw grid, pinned input
+rail, and on-demand six-key palette. Its dock is now **Keys / Input / Send**:
+Input opens watchOS system keyboard/dictation and inserts reviewed text at Pi's
+cursor without Return; only Send emits Return. Build 38 replaces the legacy
+WatchKit input controller—which could default directly to dictation—with public
+watchOS `TextFieldLink`, opening the keyboard surface first while retaining its
+microphone option and the same no-Return staging semantics. Build 39 mirrors
+tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
+assistant output, dividers, cursor inversion, and token/footer colors—rather
+than inferring Pi features. Codex quota accents now use a consistent electric-
+blue theme on iPhone and Watch. Its focused Digital Crown moves a local read-only
+viewport through 160 captured tmux-history rows, never sends terminal input,
+and passed simulator scroll interaction in both directions. Build 39 also adds
+the host-only bare **“Hey JARVIS”** conversational App Intent: Siri requests one
+prompt, target-local Keychain configuration preflights the shared authenticated
+and certificate-pinned terminal client, then one normalized prompt is attempted
+with `appendReturn=true` and no POST retry. Build 37 also adds sanitized,
+read-only Codex weekly quota, reset, plan, five-hour status, and credit telemetry
+from `projects/quotas` to iPhone Home and the Watch System page. Build 34 adds Watch terminal failover from the saved LAN endpoint to
 stable Tailscale MagicDNS and the current Tailscale address, fits every tmux row
 onto one clipped Watch display row, and restores held-Backspace repeat for the
 iPhone SwiftTerm keyboard. Build 33 makes the Watch terminal the first of
@@ -20,8 +40,9 @@ exactly three vertical pages, followed by Plugs and System, with no launcher
 button. Build 32 introduced the native Watch JARVIS terminal backed by a
 separate certificate-pinned HTTPS bridge on TCP `8792`. It renders and controls
 the same persistent `jarvis-ios` tmux pane, accepts Watch keyboard/Scribble/
-dictation input, and scrolls with the Digital Crown or touch while remaining
-separate from `jarvisd`. Build 31 retains build 30's scroll speed while pacing
+dictation input, and remains separate from `jarvisd`. Build 39 makes Digital
+Crown and touch scrolling local/read-only instead of injecting remote mouse
+bytes. Build 31 retains build 30's scroll speed while pacing
 wheel input on 60 Hz display frames for burst-free movement, and renames the Pi
 tab to JARVIS. Build 30 ends the compact key deck at the Down arrow and slows
 touch scrolling by 60%. Build 29 maps vertical touch drags to Pi's fullscreen
@@ -34,7 +55,10 @@ cleanup, build 19's foreground refresh, and build 23's exact “Hey JARVIS” pl
 phrases. Physical Watch validation confirms authenticated pinned-HTTPS frames,
 one shared Pi pane during simultaneous iPhone attachment, and automatic bridge-
 restart recovery without recreating tmux. Owner typing, dictation, key-deck,
-Crown, touch, and build-34 off-LAN acceptance remain open. The three-slot Smart
+Crown, touch, and build-34 off-LAN acceptance remain open. Build-37 staged-input/
+explicit-Send behavior and physical Codex quota rendering remain owner
+acceptance gates. Build-39 physical Crown/ANSI rendering and bare-phrase Siri
+routing remain acceptance gates. The three-slot Smart
 Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
@@ -72,8 +96,8 @@ deep-link route, and strips its AppState UI/polling state. The backend event
 audit contract remains intact. Build 19 refreshes both hosts immediately on
 activation and every 15 seconds while visible, cancels polling when inactive,
 and replaces normal refresh buttons with automatic status plus failure-only
-retry on Watch. Build 20 added only Turn On JARVIS Plug and Turn Off JARVIS Plug
-to Siri/Shortcuts. Build 23 makes their sole spoken form “Hey JARVIS, turn
+retry on Watch. Build 20 added Turn On JARVIS Plug and Turn Off JARVIS Plug
+to Siri/Shortcuts; build 39 adds the separate conversational prompt intent. Build 23 makes their sole spoken form “Hey JARVIS, turn
 on/off [the] [plug]” and keeps upgrade-time parameter publication reliable.
 Build 24 changes iPhone navigation to Home, Pi, and Settings. The terminal tab opens
 an authentic 24-bit terminal and connects directly to macOS SSH. Build 25 moves
@@ -97,6 +121,28 @@ steps, and emits at most one wheel step per 60 Hz display frame instead of
 bursting multiple terminal redraws together. The terminal tab is now labeled
 JARVIS. Siri's plug parameter is populated from current `jarvisd` state rather
 than a compiled list; the generic widget action is not discoverable.
+
+Installed, signed, and audited build-39 artifacts:
+`/tmp/JARVIS-build39-ansi-mirror-crown-siri.xcarchive` and
+`/tmp/JARVIS-build39-ansi-mirror-crown-siri-export/JARVIS.ipa` (SHA-256
+`a6fad3b0836e21b4dd352b9562832c218b24b3708a1f23339bfde1fdb2be1c8e`).
+
+Superseded build-38 artifacts: `/tmp/JARVIS-build38-keyboard-first-watch-input.xcarchive`
+and `/tmp/JARVIS-build38-keyboard-first-watch-input-export/JARVIS.ipa`
+(SHA-256 `c38d6e7bbc53a2708230a4107e0d25c946b76fb51d70e7e2740d9468c05d4350`).
+
+Superseded installed build-37 artifacts: `/tmp/JARVIS-build37-staged-input-codex-quota.xcarchive`
+and `/tmp/JARVIS-build37-staged-input-codex-quota-export/JARVIS.ipa`
+(SHA-256 `769d78d519303e6e11c312596f2fb8d26f4a66bb91713059e5aec3af79a19fa6`).
+
+Superseded installed build-36 artifacts: `/tmp/JARVIS-build36-readable-watch-dictation.xcarchive`
+and `/tmp/JARVIS-build36-readable-watch-dictation-export/JARVIS.ipa`
+(SHA-256 `3430df1569a1befa3acc58f430a344235490e1c7ad4fbc49a4303889ff66b9d6`).
+
+Superseded build-35 artifacts: `/tmp/JARVIS-build35-terminal-scroll-watch-fullscreen.xcarchive`
+and `/tmp/JARVIS-build35-terminal-scroll-watch-fullscreen-export/JARVIS.ipa`
+(SHA-256 `6c8d733ae1e9dfa3049e19f72fd1c34809be65aadf326e3eef68d7160763711a`).
+Build 35 was not physically deployed; build 36 supersedes it.
 
 Build-32 artifacts: `/tmp/JARVIS-build32-watch-terminal.xcarchive` and
 `/tmp/JARVIS-build32-watch-terminal-export/JARVIS.ipa` (SHA-256
@@ -185,7 +231,10 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   remembers the SSH host key; the password is kept in target-local Keychain.
   An isolated `jarvis-mobile` tmux server creates or attaches `jarvis-ios`, so
   Pi survives tab changes, app backgrounding, termination, and reconnection.
-  The compact key deck exposes Escape, Ctrl, Tab, slash, Up, and Down. A fixed trailing button
+  Build 37 retains build 36's Pi fullscreen TUI presentation,
+  fixes wheel routing to the input cursor, limits tmux's fallback to one line,
+  and hides the remote hardware cursor while retaining Pi's software cursor in
+  the fixed editor. The compact key deck exposes Escape, Ctrl, Tab, slash, Up, and Down. A fixed trailing button
   always shows or hides the keyboard; the terminal also supports tap-to-open
   and downward-swipe dismissal without letting shortcut keys reopen it. A fresh
   install starts at 18 points, pinch persists intentional zoom, and landscape
@@ -204,7 +253,23 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   snapshots instead of direct SSH, stores its token in Watch-local Keychain,
   supports system text entry plus Esc/Ctrl/Tab/slash/Up/Down, and cancels
   polling when inactive. Build 34 adds LAN-to-Tailscale route failover and a
-  fitted one-tmux-row-per-display-row renderer.
+  fitted one-tmux-row-per-display-row renderer. Build 36 adds build 35's
+  status-bar-free custom pager, reclaims the bottom inset, wraps output in an
+  11-point Read mode, preserves a pannable 9-point Raw grid, and pins the cursor
+  row. Build 37 replaces duplicate Type/Speak actions with a compact
+  Keys/Input/Send dock. Input uses WatchKit's public system text controller for
+  keyboard or dictation and inserts bytes with `appendReturn=false`; the
+  separate Send action emits exactly `0x0d`. Build 38 uses keyboard-first
+  `TextFieldLink` instead of the legacy controller that could open directly in
+  dictation; microphone entry remains available in the system keyboard. The
+  prompt rail is the final review surface, disconnected input remains disabled
+  and unqueued, and no text-input completion can execute a command. Build 37 also replaces the System page's
+  connection-source panel with a Codex quota ring and adds the same tracker to
+  iPhone Home. `jarvisd` runs the quotas project's fixed read-only
+  `codex --json` command every five minutes, publishes only sanitized quota fields,
+  retains the last good value on provider failure, and excludes quota failure
+  from global hardware-state staleness. The Watch still uses an underscored
+  status-bar modifier that requires physical regression after OS/Xcode updates.
 - **Siri plug control** — the iPhone and Watch hosts advertise exactly two
   dynamic App Shortcuts. Their only phrases are “Hey JARVIS, turn on/off [the]
   [plug]” plus parameterless “a plug” forms that ask which plug. Invoke the

@@ -127,6 +127,14 @@ MAX_SCHEDULED_JOBS_OUTPUT_BYTES = min(
     1024 * 1024,
     max(4096, int(os.environ.get("JARVISD_MAX_SCHEDULED_JOBS_OUTPUT_BYTES", str(256 * 1024)))),
 )
+CODEX_QUOTAS_SCRIPT = Path(
+    os.environ.get("JARVISD_CODEX_QUOTAS_SCRIPT", str(JARVIS_ROOT / "projects" / "quotas" / "quotas.py"))
+).expanduser().resolve()
+CODEX_QUOTA_TIMEOUT = min(60.0, max(5.0, float(os.environ.get("JARVISD_CODEX_QUOTA_TIMEOUT", "45"))))
+MAX_CODEX_QUOTA_OUTPUT_BYTES = min(
+    2 * 1024 * 1024,
+    max(4096, int(os.environ.get("JARVISD_MAX_CODEX_QUOTA_OUTPUT_BYTES", str(1024 * 1024)))),
+)
 TAILSCALE_IP_FALLBACK = os.environ.get("JARVISD_TAILSCALE_IP", "")
 TAILSCALE_SOCKET = Path(os.environ.get("TAILSCALE_SOCKET", str(Path.home() / ".local/share/tailscale/tailscaled.socket")))
 TAILSCALE_APP_CLI = Path(
@@ -864,15 +872,111 @@ def _scheduled_jobs() -> dict:
         return _scheduled_jobs_unavailable()
 
 
+def _bounded_number(value: Any, minimum: float, maximum: float) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not minimum <= number <= maximum:
+        return None
+    return round(number, 2)
+
+
+def _codex_quota_window(value: Any) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    used = _bounded_number(value.get("used_percent"), 0, 100)
+    remaining = _bounded_number(value.get("remaining_percent"), 0, 100)
+    if remaining is None and used is not None:
+        remaining = round(100 - used, 2)
+    reset_after = _bounded_number(value.get("reset_after_seconds"), 0, 366 * 24 * 60 * 60)
+    reset_at_value = _bounded_number(value.get("reset_at"), 0, 4_102_444_800)
+    reset_at = None
+    if reset_at_value is not None:
+        reset_at = dt.datetime.fromtimestamp(reset_at_value, dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    return {
+        "usedPercent": used,
+        "remainingPercent": remaining,
+        "resetAfterSeconds": int(reset_after) if reset_after is not None else None,
+        "resetAt": reset_at,
+    }
+
+
+def _codex_quota_unavailable() -> dict:
+    # The coordinator preserves the last good quota snapshot on failure. Its
+    # non-critical classification keeps provider outages from marking plugs,
+    # purifier, or other JARVIS state stale.
+    return {"ok": False, "available": False, "error": "Codex quota unavailable"}
+
+
+def _public_codex_quota(payload: Any) -> dict:
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return _codex_quota_unavailable()
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return _codex_quota_unavailable()
+    weekly = _codex_quota_window(usage.get("weekly"))
+    if weekly is None:
+        return _codex_quota_unavailable()
+    plan_type = usage.get("plan_type")
+    if not isinstance(plan_type, str) or not re.fullmatch(r"[A-Za-z0-9 _+.-]{1,32}", plan_type):
+        plan_type = None
+    checked_at = payload.get("checked_at")
+    if not isinstance(checked_at, str) or len(checked_at) > 64:
+        checked_at = None
+    credits = usage.get("credits") if isinstance(usage.get("credits"), dict) else {}
+    primary_limit = usage.get("primary_limit") if isinstance(usage.get("primary_limit"), dict) else {}
+    five_hour_status = primary_limit.get("status")
+    if not isinstance(five_hour_status, str) or not re.fullmatch(r"[A-Za-z0-9 _-]{1,32}", five_hour_status):
+        five_hour_status = None
+    return {
+        "ok": True,
+        "available": True,
+        "checkedAt": checked_at,
+        "planType": plan_type,
+        "allowed": usage.get("allowed") if isinstance(usage.get("allowed"), bool) else None,
+        "limitReached": usage.get("effective_limit_reached") if isinstance(usage.get("effective_limit_reached"), bool) else None,
+        "weekly": weekly,
+        "fiveHour": _codex_quota_window(usage.get("five_hour")),
+        "fiveHourEnforced": primary_limit.get("enforced") if isinstance(primary_limit.get("enforced"), bool) else None,
+        "fiveHourStatus": five_hour_status,
+        "creditBalance": _bounded_number(credits.get("balance"), 0, 1_000_000_000),
+        "error": None,
+    }
+
+
+def _codex_quota() -> dict:
+    if not CODEX_QUOTAS_SCRIPT.is_file():
+        return _codex_quota_unavailable()
+    try:
+        # This is the quotas project's read-only Codex check. Never add a probe
+        # flag here: probes make a model request and consume quota.
+        proc = subprocess.run(
+            [sys.executable, str(CODEX_QUOTAS_SCRIPT), "codex", "--json"],
+            cwd=str(JARVIS_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=CODEX_QUOTA_TIMEOUT,
+        )
+        stdout = proc.stdout or ""
+        if proc.returncode != 0 or len(stdout.encode("utf-8")) > MAX_CODEX_QUOTA_OUTPUT_BYTES:
+            return _codex_quota_unavailable()
+        return _public_codex_quota(json.loads(stdout))
+    except Exception:  # noqa: BLE001
+        return _codex_quota_unavailable()
+
+
 class StateCoordinator:
     """Background, single-flight subsystem cache for the state endpoint."""
 
+    NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})
     DEFAULT_INTERVALS = {
         "pi": 5.0,
         "plugs": 10.0,
         "services": 15.0,
         "purifier": 45.0,
         "network": 60.0,
+        "codexQuota": 300.0,
     }
 
     def __init__(
@@ -887,6 +991,7 @@ class StateCoordinator:
             "pi": _pi_sessions,
             "services": lambda: {"ok": True, "services": _services_state(_load_services())},
             "network": _collect_network,
+            "codexQuota": _codex_quota,
         }
         self.intervals = {**self.DEFAULT_INTERVALS, **(intervals or {})}
         self._now = now
@@ -1113,12 +1218,19 @@ class StateCoordinator:
         plugs = subsystems.get("plugs", {})
         purifier = subsystems.get("purifier", {})
         pi = subsystems.get("pi", {})
-        ages = [m["ageSeconds"] for m in metadata.values() if m["ageSeconds"] is not None]
+        critical_records = {
+            name: record for name, record in records.items() if name not in self.NONCRITICAL_SUBSYSTEMS
+        }
+        ages = [
+            metadata[name]["ageSeconds"]
+            for name in critical_records
+            if metadata[name]["ageSeconds"] is not None
+        ]
         return {
             "ok": True,
-            "loading": any(record["data"] is None for record in records.values()),
-            "refreshing": any(record["refreshing"] for record in records.values()),
-            "stale": any(record["stale"] for record in records.values()),
+            "loading": any(record["data"] is None for record in critical_records.values()),
+            "refreshing": any(record["refreshing"] for record in critical_records.values()),
+            "stale": any(record["stale"] for record in critical_records.values()),
             "generatedAt": _iso_now(),
             "ageSeconds": round(max(ages), 1) if ages else None,
             "version": VERSION,

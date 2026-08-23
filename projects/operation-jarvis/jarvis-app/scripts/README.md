@@ -18,12 +18,15 @@ optional Metal component; install it once with
   the corrected iPhone/Watch target relationship.
 - `jarvis-mobile-terminal.sh` — macOS SSH bootstrap for the phone terminal. It
   supplies Homebrew's PATH, creates the exact `jarvis-ios` tmux session while
-  detached when absent, tolerates concurrent reconnect creation, launches plain
-  `pi` without a display-name override, and then attaches the phone PTY. Its
+  detached when absent, tolerates concurrent reconnect creation, launches Pi's
+  fullscreen TUI without a display-name override, re-sources the checked-in
+  one-line wheel fallback bindings, and then attaches the phone PTY. Its
   `--ensure-only` mode lets the Watch bridge recreate the same session without
   attaching another tmux client or changing terminal dimensions.
 - `install-jarvis-terminald.sh` — installs and starts the separate authenticated
-  HTTPS Watch terminal bridge on TCP `8792`.
+  HTTPS Watch/Siri terminal bridge on TCP `8792`. Build 39 captures a bounded
+  ANSI-styled tmux-history grid for local Crown scrolling; it does not interpret
+  Pi concepts or route through `jarvisd`.
 - `jarvis-terminal-provisioning.sh` — prints the private, certificate-pinned
   setup code that is pasted once into iPhone Settings and transferred to the
   paired Watch through WatchConnectivity. Existing LAN setup codes also derive
@@ -31,8 +34,11 @@ optional Metal component; install it once with
   retransmission is required. Never commit or post the code's output.
 - `verify-jarvis-app.sh` — runs project-contained daemon and package tests,
   plist/shell checks, opaque icon validation, combined iOS/embedded-Watch
-  simulator verification, and the standalone watchOS simulator build. iOS and
-  live integration tests remain opt-in.
+  simulator verification, and the standalone watchOS simulator build. Its Watch
+  contracts require build 39's exact ANSI mirror, local read-only Crown viewport,
+  pinned prompt rail, keyboard-first Input, and explicit Send path. It also audits
+  the third host-only bare “Hey JARVIS” prompt shortcut while ensuring widgets do
+  not contain it. iOS and live integration tests remain opt-in.
 
 For initial companion registration under free provisioning:
 

@@ -208,6 +208,58 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(seededCatalogues, [["lamp", "tv"], ["lamp", "tv"]])
     }
 
+    func testSiriPromptNormalizesAndDeliversOneAtomicReturnRequest() async {
+        let configuration = WatchTerminalConfiguration(
+            endpoint: "https://fixture.invalid:8792",
+            token: String(repeating: "a", count: 64),
+            certificateSHA256: String(repeating: "ab", count: 32)
+        )
+        var deliveredConfiguration: WatchTerminalConfiguration?
+        var deliveredInput: WatchTerminalInput?
+
+        let outcome = await JARVISSiriPromptRuntime.submit(
+            "  inspect this\r\nonce  ",
+            configurationLoader: { .configured(configuration) },
+            delivery: { value, input in
+                deliveredConfiguration = value
+                deliveredInput = input
+            }
+        )
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(deliveredConfiguration, configuration)
+        XCTAssertEqual(deliveredInput?.data, Data("inspect this once".utf8))
+        XCTAssertEqual(deliveredInput?.appendReturn, true)
+    }
+
+    func testSiriPromptFailsBeforeNetworkAndMapsAmbiguousSend() async {
+        var loadedConfiguration = false
+        var attemptedDelivery = false
+        let emptyOutcome = await JARVISSiriPromptRuntime.submit(
+            "\r\n",
+            configurationLoader: {
+                loadedConfiguration = true
+                return .missing
+            },
+            delivery: { _, _ in attemptedDelivery = true }
+        )
+        XCTAssertEqual(emptyOutcome, .empty)
+        XCTAssertFalse(loadedConfiguration)
+        XCTAssertFalse(attemptedDelivery)
+
+        let configuration = WatchTerminalConfiguration(
+            endpoint: "https://fixture.invalid:8792",
+            token: String(repeating: "a", count: 64),
+            certificateSHA256: String(repeating: "ab", count: 32)
+        )
+        let uncertainOutcome = await JARVISSiriPromptRuntime.submit(
+            "send once",
+            configurationLoader: { .configured(configuration) },
+            delivery: { _, _ in throw WatchTerminalClientError.submissionUnconfirmed }
+        )
+        XCTAssertEqual(uncertainOutcome, .unconfirmed)
+    }
+
     func testScheduledJobsFailureDoesNotHideServiceStatus() async throws {
         let api = FakeAPI(scheduledJobsSucceeds: false)
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
@@ -275,6 +327,12 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(PiTerminalTouchScroll.pendingSteps(after: 4, scrollingUp: false), -1)
         XCTAssertEqual(PiTerminalTouchScroll.pendingSteps(after: -7, scrollingUp: false), -8)
         XCTAssertEqual(PiTerminalTouchScroll.pendingSteps(after: -8, scrollingUp: false), -8)
+        let cursorLocation = PiTerminalTouchScroll.cursorLocation(column: 7, row: 11, columns: 48, rows: 28)
+        XCTAssertEqual(cursorLocation.column, 8)
+        XCTAssertEqual(cursorLocation.row, 12)
+        let clampedCursorLocation = PiTerminalTouchScroll.cursorLocation(column: 99, row: -2, columns: 48, rows: 28)
+        XCTAssertEqual(clampedCursorLocation.column, 48)
+        XCTAssertEqual(clampedCursorLocation.row, 1)
         XCTAssertEqual(
             String(bytes: PiTerminalTouchScroll.wheelBytes(scrollingUp: true, column: 8, row: 12), encoding: .utf8),
             "\u{1b}[<64;8;12M"

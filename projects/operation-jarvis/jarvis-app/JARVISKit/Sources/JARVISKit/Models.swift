@@ -87,6 +87,7 @@ public struct Subsystems: Codable, Equatable, Sendable {
     public let pi: PiSubsystem?
     public let services: ServicesSubsystem?
     public let network: NetworkSubsystem?
+    public let codexQuota: CodexQuotaSubsystem?
 }
 
 public struct PlugsSubsystem: Codable, Equatable, Sendable {
@@ -146,7 +147,8 @@ public extension StateSnapshot {
             purifier: subsystems.purifier,
             pi: subsystems.pi,
             services: subsystems.services,
-            network: subsystems.network
+            network: subsystems.network,
+            codexQuota: subsystems.codexQuota
         )
         let updatedSummary = summary.map {
             Summary(
@@ -206,6 +208,32 @@ public struct PiSubsystem: Codable, Equatable, Sendable {
     public let rpcActive: Int?
     public let error: String?
     public let lastError: String?
+}
+
+public struct CodexQuotaSubsystem: Codable, Equatable, Sendable {
+    public let ok: Bool?
+    public let available: Bool?
+    public let stale: Bool?
+    public let refreshing: Bool?
+    public let updatedAt: String?
+    public let checkedAt: String?
+    public let planType: String?
+    public let allowed: Bool?
+    public let limitReached: Bool?
+    public let weekly: CodexQuotaWindow?
+    public let fiveHour: CodexQuotaWindow?
+    public let fiveHourEnforced: Bool?
+    public let fiveHourStatus: String?
+    public let creditBalance: Double?
+    public let error: String?
+    public let lastError: String?
+}
+
+public struct CodexQuotaWindow: Codable, Equatable, Sendable {
+    public let usedPercent: Double?
+    public let remainingPercent: Double?
+    public let resetAfterSeconds: Int?
+    public let resetAt: String?
 }
 
 /// The state endpoint's services entry is a map in the daemon JSON. This

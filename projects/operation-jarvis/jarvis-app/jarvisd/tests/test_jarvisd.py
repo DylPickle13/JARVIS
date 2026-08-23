@@ -59,6 +59,82 @@ class DaemonUnitTests(unittest.TestCase):
         coordinator = jarvisd.StateCoordinator()
         self.assertNotIn("weather", coordinator.collectors)
         self.assertNotIn("weather", coordinator.DEFAULT_INTERVALS)
+        self.assertIn("codexQuota", coordinator.collectors)
+        self.assertEqual(coordinator.DEFAULT_INTERVALS["codexQuota"], 300.0)
+
+    def test_codex_quota_failure_does_not_stale_critical_state(self):
+        coordinator = jarvisd.StateCoordinator(
+            collectors={"core": lambda: {"ok": True}, "codexQuota": jarvisd._codex_quota},
+            now=lambda: 100,
+        )
+        coordinator._records["core"].update({
+            "data": {"ok": True, "value": 1},
+            "updatedAt": "2026-08-23T17:26:07Z",
+            "lastGoodAt": 100,
+            "stale": False,
+        })
+        with mock.patch.object(coordinator, "start"):
+            snapshot = coordinator.snapshot()
+        self.assertFalse(snapshot["loading"])
+        self.assertFalse(snapshot["stale"])
+        self.assertTrue(snapshot["subsystems"]["codexQuota"]["stale"])
+
+    def test_codex_quota_contract_is_bounded_and_sanitized(self):
+        result = jarvisd._public_codex_quota({
+            "ok": True,
+            "checked_at": "2026-08-23T17:26:07Z",
+            "private_account": "must-not-leak",
+            "usage": {
+                "plan_type": "prolite",
+                "allowed": True,
+                "effective_limit_reached": False,
+                "weekly": {
+                    "used_percent": 69,
+                    "remaining_percent": 31,
+                    "reset_after_seconds": 360706,
+                    "reset_at": 1787866671,
+                    "private": "must-not-leak",
+                },
+                "five_hour": None,
+                "primary_limit": {"enforced": False, "status": "temporarily_suspended", "source": "private"},
+                "credits": {"balance": "1887.2380505000", "private": "must-not-leak"},
+            },
+            "models": {"models": [{"id": "private-model"}]},
+        })
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["available"])
+        self.assertEqual(result["weekly"]["remainingPercent"], 31.0)
+        self.assertEqual(result["weekly"]["resetAt"], "2026-08-27T21:37:51Z")
+        self.assertEqual(result["creditBalance"], 1887.24)
+        encoded = json.dumps(result)
+        self.assertNotIn("must-not-leak", encoded)
+        self.assertNotIn("private-model", encoded)
+        self.assertNotIn("source", encoded)
+
+    def test_codex_quota_collector_uses_read_only_fixed_command_and_fails_noncritical(self):
+        payload = {
+            "ok": True,
+            "checked_at": "2026-08-23T17:26:07Z",
+            "usage": {"weekly": {"remaining_percent": 31}},
+        }
+        completed = mock.Mock(returncode=0, stdout=json.dumps(payload), stderr="private stderr")
+        with mock.patch.object(jarvisd, "CODEX_QUOTAS_SCRIPT", Path(__file__)), \
+             mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
+            result = jarvisd._codex_quota()
+        self.assertTrue(result["available"])
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[-2:], ["codex", "--json"])
+        self.assertNotIn("--probe", argv)
+        self.assertNotIn("--save", argv)
+
+        completed.returncode = 2
+        completed.stdout = "private provider response"
+        with mock.patch.object(jarvisd, "CODEX_QUOTAS_SCRIPT", Path(__file__)), \
+             mock.patch.object(jarvisd.subprocess, "run", return_value=completed):
+            unavailable = jarvisd._codex_quota()
+        self.assertFalse(unavailable["ok"])
+        self.assertFalse(unavailable["available"])
+        self.assertNotIn("private provider response", json.dumps(unavailable))
 
     def test_tailscale_ip_reads_network_extension_interface(self):
         completed = mock.Mock(
