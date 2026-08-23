@@ -976,7 +976,7 @@ class StateCoordinator:
         "services": 15.0,
         "purifier": 45.0,
         "network": 60.0,
-        "codexQuota": 300.0,
+        "codexQuota": 60.0,
     }
 
     def __init__(
@@ -1694,6 +1694,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/state":
             if not self._auth_or_respond():
                 return
+            # Authenticated hosts may request an immediate refresh of the
+            # read-only Codex usage collector. The response remains the fast
+            # current snapshot; clients can observe `refreshing` and poll the
+            # ordinary state endpoint for completion.
+            if query.get("refresh") == ["codexQuota"]:
+                STATE_COORDINATOR.request_refresh("codexQuota")
             self._send(200, collect_state())
             return
         if path == "/api/v1/events":

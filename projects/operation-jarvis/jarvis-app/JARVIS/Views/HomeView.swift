@@ -553,8 +553,7 @@ struct HomeView: View {
     }
 
     private func purifierQualityProgress(_ value: Int?) -> CGFloat {
-        guard let value else { return 0 }
-        return min(max(CGFloat(value) / 75, 0.04), 1)
+        CGFloat(AirQualityGauge.cleanlinessProgress(pm25: value))
     }
 
     private func purifierFanSlider(

@@ -110,7 +110,7 @@ grep -q -- '--ensure-only' scripts/jarvis-mobile-terminal.sh
 
 printf '%s\n' '== Watch JARVIS terminal contract =='
 grep -q '._statusBarHidden()' JARVISWatch/Views/WatchConnectView.swift
-grep -q '^            \.ignoresSafeArea()' JARVISWatch/Views/WatchConnectView.swift
+grep -q '^[[:space:]]*\.ignoresSafeArea()' JARVISWatch/Views/WatchConnectView.swift
 reject_match 'Watch root NavigationStack would reserve the removed clock strip' -Fq 'NavigationStack { WatchDashboardContent' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'DEFAULT_PORT = 8792' terminald/jarvis_terminald.py
 grep -q 'ThreadingHTTPServer' terminald/jarvis_terminald.py
@@ -129,21 +129,40 @@ grep -q '\.focused(\$crownIsFocused)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalANSIParser.parse(lines: frame.ansiLines)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'frame.viewportRange(maximumLines:' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'promptViewport(displayColumns:' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch terminal must not duplicate Pi input in a prompt rail' -E 'private var promptRail|promptViewport\(displayColumns:' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Text("JARVIS")' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.frame(maxWidth: \.infinity, alignment: \.center)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.padding(\.trailing, 14)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Image(systemName: "terminal.fill")' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'case fit' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'case grid' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Crown scrolling must remain local and read-only' -Fq 'controller.sendWheel' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'showingKeyPalette' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'TextFieldLink(prompt: Text("Message JARVIS"))' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'TextField("", text: \$keyboardDraft, prompt:' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.submitLabel(.done)' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch Input must not use the system chooser that can resume in dictation' -Fq 'TextFieldLink' JARVISWatch/Views/WatchTerminalView.swift
+[[ "$(grep -c 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift)" == "2" ]]
+grep -q 'Touch remains page navigation only' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'private func stageInput(_ input: String)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'title: "Keys"' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'title: "Input"' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'title: "Send"' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Image(systemName: "return")' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch terminal Return must be symbol-only' -E 'title: "Enter"|Text\("Enter"\)' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch terminal Return must not be mislabeled Send' -Fq 'title: "Send"' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'controller.sendText(message, appendReturn: false)' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'controller.sendKey(WatchTerminalKeyBytes.carriageReturn)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'controller.sendEnter()' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'send(WatchTerminalKeyBytes.carriageReturn, appendReturn: false)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'controller.sendBackspace()' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalInput(data: WatchTerminalKeyBytes.backspace, appendReturn: false)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'pendingBackspaceCount = pendingBackspaceIDs.count' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch Backspace must not enter the normal loading state' -Fq 'isSending = true' < <(sed -n '/func sendBackspace()/,/private func restartIfNeeded()/p' JARVISWatch/Views/WatchTerminalView.swift)
+reject_match 'Watch input dock must not show a Backspace loading indicator' -Fq 'ProgressView' < <(sed -n '/private var inputDock/,/private func stageInput/p' JARVISWatch/Views/WatchTerminalView.swift)
+grep -q 'public static let backspace = Data(\[0x7f\])' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'payload = data + (b"\\r" if append_return else b"")' terminald/jarvis_terminald.py
+reject_match 'Siri Return must stay atomic with its prompt' -Fq 'send-keys", "-t", TMUX_TARGET, "Enter"' terminald/jarvis_terminald.py
 reject_match 'Watch terminal must not restore the duplicate Type action' -Fq 'title: "Type"' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch terminal must not label system text input as voice-only' -Fq 'title: "Speak"' JARVISWatch/Views/WatchTerminalView.swift
-reject_match 'Watch Input must not reopen the dictation-first WatchKit controller' -Fq 'presentTextInputController' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch Input must not reopen a WatchKit input chooser' -Fq 'presentTextInputController' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Input must not require the intermediate local composer' -Fq 'inputComposer' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'mirrorFontSize(availableWidth:' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'MAX_SCROLLBACK_ROWS = 160' terminald/jarvis_terminald.py
@@ -151,17 +170,27 @@ grep -q '"-e"' terminald/jarvis_terminald.py
 grep -q '"lines": lines\[screen_start:\]' terminald/jarvis_terminald.py
 grep -q '"capturedLines": lines' terminald/jarvis_terminald.py
 grep -q '"capturedANSILines": ansi_lines' terminald/jarvis_terminald.py
-grep -q 'WatchTerminalKeyBytes.slash' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Text("/")' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'controller.sendKey(WatchTerminalKeyBytes.slash)' JARVISWatch/Views/WatchTerminalView.swift
+[[ "$(grep -c '\.frame(width: 32, height: 35)' JARVISWatch/Views/WatchTerminalView.swift)" == "3" ]]
+reject_match 'Slash must not remain duplicated in the expandable key palette' -Fq 'terminalKey("/"' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'private var codexQuotaPanel' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func codexQuotaCard' JARVIS/Views/HomeView.swift
+grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVIS/Views/HomeView.swift
+grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'let pollutedFraction = (Double(value) - 1) / 74' JARVISKit/Sources/JARVISKit/AirQualityGauge.swift
 grep -q 'public struct CodexQuotaSubsystem' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'CODEX_QUOTAS_SCRIPT' jarvisd/jarvisd.py
 grep -q '\[sys.executable, str(CODEX_QUOTAS_SCRIPT), "codex", "--json"\]' jarvisd/jarvisd.py
+grep -q '"codexQuota": 60.0' jarvisd/jarvisd.py
+grep -q 'query.get("refresh") == \["codexQuota"\]' jarvisd/jarvisd.py
+grep -q 'stateRefreshingCodexQuota' JARVISKit/Sources/JARVISKit/JarvisClient.swift
+grep -q 'model.refreshCodexQuotaWhenVisible()' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'page == .system' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})' jarvisd/jarvisd.py
 reject_match 'Watch System page must not restore the removed Direct to Mac panel' -Fq 'Direct to Mac' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'configuration.candidateBaseURLs' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
-grep -q '\.lineLimit(1)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'ensureBackspaceAutoRepeatSentinel' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'override func deleteBackward()' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'WatchTerminalView(' JARVISWatch/Views/WatchDashboardContent.swift
@@ -192,7 +221,14 @@ reject_match 'retired Tailscale node address is still present' -RqsF '100.96.55.
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVIS/AppState.swift
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'sceneDidBecomeActive' JARVISWatch/Views/WatchConnectView.swift
-grep -q 'sceneWillResignActive' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'TimelineView(.periodic(from: .now, by: 15))' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'model.sceneDidEnterAlwaysOn()' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'model.sceneDidEnterBackground()' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'terminal.sceneDidEnterAlwaysOn()' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'terminal.sceneDidEnterBackground()' JARVISWatch/Views/WatchConnectView.swift
+grep -q '<true/>' < <(sed -n '/<key>WKSupportsAlwaysOnDisplay<\/key>/,+1p' JARVISWatch/Info.plist)
+reject_match 'Always On must not be treated as background' -Fq 'case .inactive, .background:' JARVISWatch/Views/WatchConnectView.swift
+reject_match 'Watch lifecycle must not disconnect merely because the scene became inactive' -Fq 'sceneWillResignActive' JARVISWatch/Views/WatchConnectView.swift JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Retry now' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'always-visible Watch refresh control is still present' -qs 'Refresh status' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'iPhone toolbar refresh control is still present' -qs 'accessibilityLabel("Refresh home status")' JARVIS/Views/HomeView.swift

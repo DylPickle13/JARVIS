@@ -3,7 +3,7 @@
 **Date:** 2026-08-23 EDT
 
 **Proposed release:** `0.3.0 (39)`
-**Status:** Implemented in build 39; physical Siri routing acceptance pending
+**Status:** Implemented in build 39; atomic immediate-submit correction in build 40; physical Siri routing acceptance pending
 
 ## Implementation result
 
@@ -13,12 +13,15 @@ iPhone and Watch. `SendPromptToJARVISIntent` advertises exactly bare
 Keychain configuration, normalizes one logical line with a 3,500-byte UTF-8
 cap, performs an authenticated pinned frame preflight, and then attempts exactly
 one `appendReturn=true` POST. The foreground Watch terminal now consumes the
-same extracted `WatchTerminalClient`.
+same extracted `WatchTerminalClient`. Build 40 keeps the network request
+unchanged but makes terminald load the normalized prompt bytes and trailing
+`0x0d` into one exact tmux paste buffer, eliminating the separate `send-keys`
+step so Pi begins the prompt immediately.
 
 Xcode accepted and trained the exact bare phrase in both host metadata products.
-Unit tests cover normalization, controls, bounds, preflight, atomic payload,
-ambiguous POST non-retry, and dialog outcome mapping. A disposable TLS server
-and isolated tmux socket verified one prompt plus one Return with duplicate
+Unit tests cover normalization, controls, bounds, preflight, one-buffer atomic
+prompt/Return delivery, ambiguous POST non-retry, and dialog outcome mapping. A
+disposable TLS server and isolated tmux socket verified one prompt plus one Return with duplicate
 request suppression; no automated test writes to the production Pi pane.
 Physical iPhone/Watch Siri routing, lock-state, and cellular acceptance remain
 pending because the devices were intentionally disconnected during implementation.
@@ -237,7 +240,8 @@ Repeat the same flow with Siri initiated on the Watch:
 - “Hey JARVIS, turn on/off …” continues routing only to plug intents.
 - Bare “Hey JARVIS” routes only to the prompt intent.
 - No contact-directed “Tell JARVIS” phrasing returns.
-- Watch Keys/Input/Send behavior remains unchanged.
+- Watch manual input remains explicit: Input stages without Return, `/` and DEL
+  emit exact bytes, and only the Return-symbol button emits `0x0d`.
 - No plug, purifier, service, scheduler, or production terminal mutation occurs during automated tests.
 
 ## 7. Rollout sequence

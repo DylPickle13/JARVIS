@@ -60,7 +60,7 @@ class DaemonUnitTests(unittest.TestCase):
         self.assertNotIn("weather", coordinator.collectors)
         self.assertNotIn("weather", coordinator.DEFAULT_INTERVALS)
         self.assertIn("codexQuota", coordinator.collectors)
-        self.assertEqual(coordinator.DEFAULT_INTERVALS["codexQuota"], 300.0)
+        self.assertEqual(coordinator.DEFAULT_INTERVALS["codexQuota"], 60.0)
 
     def test_codex_quota_failure_does_not_stale_critical_state(self):
         coordinator = jarvisd.StateCoordinator(
@@ -566,6 +566,24 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         status, _, _ = self.request("POST", "/api/jarvis/events", {"source": "test"}, token="api-secret")
         self.assertEqual(status, 401)
+
+    def test_state_can_request_authenticated_read_only_codex_refresh(self):
+        snapshot = {"ok": True}
+        with mock.patch.object(jarvisd.STATE_COORDINATOR, "request_refresh") as refresh, \
+             mock.patch.object(jarvisd, "collect_state", return_value=snapshot):
+            status, _, body = self.request(
+                "GET",
+                "/api/v1/state?refresh=codexQuota",
+                token="api-secret",
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), snapshot)
+        refresh.assert_called_once_with("codexQuota")
+
+        with mock.patch.object(jarvisd.STATE_COORDINATOR, "request_refresh") as unauthenticated:
+            status, _, _ = self.request("GET", "/api/v1/state?refresh=codexQuota")
+        self.assertEqual(status, 401)
+        unauthenticated.assert_not_called()
 
     def test_scheduled_jobs_endpoint_returns_sanitized_contract(self):
         response = {

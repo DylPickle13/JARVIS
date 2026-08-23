@@ -96,13 +96,22 @@ class TerminalServiceTests(unittest.TestCase):
         with self.assertRaises(terminald.TerminalError):
             service.send_input("request-2", b"x" * (terminald.MAX_INPUT_BYTES + 1), False)
 
-    def test_append_return_is_explicit(self):
+    def test_append_return_is_atomic_with_prompt(self):
         runner = FakeRunner()
         service = terminald.TerminalService(runner)
         service.send_input("request-return", b"hello", append_return=True)
+
+        load_calls = [call for call in runner.calls if "load-buffer" in call[0]]
+        paste_calls = [call for call in runner.calls if "paste-buffer" in call[0]]
         send_key_calls = [call for call in runner.calls if "send-keys" in call[0]]
-        self.assertEqual(len(send_key_calls), 1)
-        self.assertEqual(send_key_calls[0][0][-1], "Enter")
+        self.assertEqual(len(load_calls), 1)
+        self.assertEqual(load_calls[0][1], b"hello\r")
+        self.assertEqual(len(paste_calls), 1)
+        self.assertEqual(send_key_calls, [])
+
+        service.send_input("request-return-only", b"", append_return=True)
+        return_loads = [call for call in runner.calls if "load-buffer" in call[0]]
+        self.assertEqual(return_loads[-1][1], b"\r")
 
     def test_disposable_https_tmux_receives_one_prompt_and_one_return(self):
         tmux = shutil.which("tmux")

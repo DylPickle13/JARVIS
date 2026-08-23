@@ -25,7 +25,8 @@ optional Metal component; install it once with
   attaching another tmux client or changing terminal dimensions.
 - `install-jarvis-terminald.sh` — installs and starts the separate authenticated
   HTTPS Watch/Siri terminal bridge on TCP `8792`. Build 39 captures a bounded
-  ANSI-styled tmux-history grid for local Crown scrolling; it does not interpret
+  ANSI-styled tmux-history grid for local Crown scrolling; build 40 atomically
+  pastes a Siri prompt and its Return in one ordered buffer. It does not interpret
   Pi concepts or route through `jarvisd`.
 - `jarvis-terminal-provisioning.sh` — prints the private, certificate-pinned
   setup code that is pasted once into iPhone Settings and transferred to the
@@ -35,9 +36,11 @@ optional Metal component; install it once with
 - `verify-jarvis-app.sh` — runs project-contained daemon and package tests,
   plist/shell checks, opaque icon validation, combined iOS/embedded-Watch
   simulator verification, and the standalone watchOS simulator build. Its Watch
-  contracts require build 39's exact ANSI mirror, local read-only Crown viewport,
-  pinned prompt rail, keyboard-first Input, and explicit Send path. It also audits
-  the third host-only bare “Hey JARVIS” prompt shortcut while ensuring widgets do
+  contracts require the exact ANSI mirror, Crown-only read-only viewport, direct
+  native keyboard Input, build 41's removed prompt rail, centered/inset header,
+  compact `/`/DEL/Return-symbol keys, spinner-free repeatable Backspace, Always
+  On foreground lifecycle, on-view Codex refresh, and atomic Siri Return. It also
+  audits the third host-only bare “Hey JARVIS” prompt shortcut while ensuring widgets do
   not contain it. iOS and live integration tests remain opt-in.
 
 For initial companion registration under free provisioning:

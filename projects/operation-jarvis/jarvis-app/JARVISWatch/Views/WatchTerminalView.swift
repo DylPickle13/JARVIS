@@ -61,13 +61,16 @@ final class WatchTerminalController: ObservableObject {
     @Published private(set) var status: Status
     @Published private(set) var errorMessage: String?
     @Published private(set) var isSending = false
+    @Published private(set) var pendingBackspaceCount = 0
     @Published var controlLatched = false
 
     private let settings = WatchTerminalSettings()
     private var client: WatchTerminalClient?
     private var pollTask: Task<Void, Never>?
-    private var appIsActive = false
+    private var appIsForeground = false
     private var isVisible = false
+    private var connectionGeneration = 0
+    private var pendingBackspaceIDs = Set<UUID>()
 
     init() {
         #if DEBUG && targetEnvironment(simulator)
@@ -89,12 +92,20 @@ final class WatchTerminalController: ObservableObject {
     }
 
     func sceneDidBecomeActive() {
-        appIsActive = true
+        appIsForeground = true
+        // Re-establish the long poll immediately after the display leaves
+        // Always On, even if watchOS suspended foreground execution.
         restartIfNeeded()
     }
 
-    func sceneWillResignActive() {
-        appIsActive = false
+    func sceneDidEnterAlwaysOn() {
+        guard !appIsForeground else { return }
+        appIsForeground = true
+        restartIfNeeded()
+    }
+
+    func sceneDidEnterBackground() {
+        appIsForeground = false
         stop()
     }
 
@@ -130,9 +141,49 @@ final class WatchTerminalController: ObservableObject {
         send(bytes, appendReturn: false)
     }
 
+    func sendEnter() {
+        controlLatched = false
+        send(WatchTerminalKeyBytes.carriageReturn, appendReturn: false)
+    }
+
+    /// Backspace remains immediate and repeatable. Each tap attempts one exact
+    /// DEL POST without entering the normal input loading state. Concurrent
+    /// DEL requests are safe because terminald serializes its tmux writes, and
+    /// no request is queued, retried, or replayed by the Watch.
+    func sendBackspace() {
+        controlLatched = false
+        guard appIsForeground, isVisible, status == .live, !isSending, let client else {
+            if status != .notConfigured { errorMessage = "The terminal is not connected." }
+            return
+        }
+
+        let trackingID = UUID()
+        pendingBackspaceIDs.insert(trackingID)
+        pendingBackspaceCount = pendingBackspaceIDs.count
+        let generation = connectionGeneration
+        let input = WatchTerminalInput(data: WatchTerminalKeyBytes.backspace, appendReturn: false)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.pendingBackspaceIDs.remove(trackingID)
+                self.pendingBackspaceCount = self.pendingBackspaceIDs.count
+            }
+            do {
+                try await client.send(input)
+                guard self.connectionGeneration == generation else { return }
+                self.errorMessage = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard self.connectionGeneration == generation else { return }
+                self.errorMessage = "Backspace was not confirmed: \(error.localizedDescription)"
+            }
+        }
+    }
+
     private func restartIfNeeded() {
         stop()
-        guard appIsActive, isVisible else { return }
+        guard appIsForeground, isVisible else { return }
         guard let configuration = settings.configuration else {
             status = .notConfigured
             errorMessage = "Open iPhone JARVIS Settings to provision the Watch terminal."
@@ -145,7 +196,7 @@ final class WatchTerminalController: ObservableObject {
         pollTask = Task { @MainActor [weak self] in
             guard let self else { return }
             var sequence = self.frame?.sequence ?? 0
-            while !Task.isCancelled, self.appIsActive, self.isVisible {
+            while !Task.isCancelled, self.appIsForeground, self.isVisible {
                 do {
                     let next = try await client.frame(after: sequence)
                     guard !Task.isCancelled else { return }
@@ -166,28 +217,39 @@ final class WatchTerminalController: ObservableObject {
     }
 
     private func stop() {
+        connectionGeneration += 1
         pollTask?.cancel()
         pollTask = nil
         client?.close()
         client = nil
         isSending = false
+        pendingBackspaceIDs.removeAll()
+        pendingBackspaceCount = 0
         if settings.configuration != nil, status != .notConfigured { status = .offline }
     }
 
     private func send(_ data: Data, appendReturn: Bool) {
-        guard appIsActive, isVisible, status == .live, !isSending, let client else {
+        guard appIsForeground, isVisible, status == .live, !isSending,
+              pendingBackspaceCount == 0, let client else {
             if status != .notConfigured { errorMessage = "The terminal is not connected." }
             return
         }
         isSending = true
+        let generation = connectionGeneration
         let input = WatchTerminalInput(data: data, appendReturn: appendReturn)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.isSending = false }
+            defer {
+                if self.connectionGeneration == generation { self.isSending = false }
+            }
             do {
                 try await client.send(input)
+                guard self.connectionGeneration == generation else { return }
                 self.errorMessage = nil
+            } catch is CancellationError {
+                return
             } catch {
+                guard self.connectionGeneration == generation else { return }
                 self.errorMessage = "Input was not confirmed: \(error.localizedDescription)"
             }
         }
@@ -205,6 +267,7 @@ struct WatchTerminalView: View {
     let onAdvancePage: (() -> Void)?
     @AppStorage("jarvis.watch-terminal.display-mode") private var displayModeRaw = WatchTerminalDisplayMode.fit.rawValue
     @State private var showingKeyPalette = false
+    @State private var keyboardDraft = ""
     @State private var crownPosition = 0.0
     @State private var scrollOffset = 0
     @FocusState private var crownIsFocused: Bool
@@ -218,7 +281,13 @@ struct WatchTerminalView: View {
         nonmutating set { displayModeRaw = newValue.rawValue }
     }
 
-    private var inputIsEnabled: Bool {
+    private var normalInputIsEnabled: Bool {
+        controller.status == .live
+            && !controller.isSending
+            && controller.pendingBackspaceCount == 0
+    }
+
+    private var backspaceIsEnabled: Bool {
         controller.status == .live && !controller.isSending
     }
 
@@ -235,7 +304,6 @@ struct WatchTerminalView: View {
     var body: some View {
         VStack(spacing: 2) {
             terminal
-            promptRail
             inputDock
         }
         .padding(.horizontal, 2)
@@ -295,15 +363,14 @@ struct WatchTerminalView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 12).onEnded { value in
-                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                    if value.translation.height < -60, scrollOffset == 0, let onAdvancePage {
-                        onAdvancePage()
-                    } else {
-                        let steps = max(1, min(12, Int(abs(value.translation.height) / 12)))
-                        adjustScroll(towardHistory: value.translation.height > 0, steps: steps)
-                    }
+            .gesture(
+                DragGesture(minimumDistance: 24).onEnded { value in
+                    guard value.translation.height < -60,
+                          abs(value.translation.height) > abs(value.translation.width),
+                          let onAdvancePage else { return }
+                    // Touch remains page navigation only. Terminal history is
+                    // controlled exclusively by the focused Digital Crown.
+                    onAdvancePage()
                 }
             )
         }
@@ -415,71 +482,52 @@ struct WatchTerminalView: View {
     }
 
     private var terminalStatusOverlay: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(controller.status.color)
-                .frame(width: 7, height: 7)
-                .accessibilityLabel("Terminal status")
-                .accessibilityValue(controller.status.label)
-            if scrollOffset > 0 {
-                Text("↑\(scrollOffset)")
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Color.cyan)
-                    .accessibilityLabel("Scrolled back \(scrollOffset) terminal rows")
-            }
-            Spacer(minLength: 0)
-            Button {
-                displayMode = displayMode == .fit ? .grid : .fit
-                crownIsFocused = true
-            } label: {
-                Text(displayMode == .fit ? "FIT" : "GRID")
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                    .foregroundStyle(displayMode == .fit ? Color.cyan : Color.secondary)
-                    .padding(.horizontal, 7)
-                    .frame(height: 21)
-                    .background(Color.black.opacity(0.82), in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Terminal display mode")
-            .accessibilityValue(displayMode == .fit ? "Fit mirrored grid" : "Full-size mirrored grid")
-            .accessibilityHint("Double tap to switch mirror sizes")
-        }
-        .padding(.horizontal, 6)
-        .padding(.top, 2)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    private var promptRail: some View {
-        GeometryReader { geometry in
-            let contentWidth = max(1, geometry.size.width - 34)
-            let columns = WatchTerminalLayout.displayColumns(
-                availableWidth: Double(contentWidth),
-                fontSize: WatchTerminalLayout.promptFontSize
-            )
-            let prompt = controller.frame?.promptViewport(displayColumns: columns) ?? "Waiting for Pi input"
+        ZStack(alignment: .top) {
+            Text("JARVIS")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: 5) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .black))
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Color.cyan)
-                Text(verbatim: prompt)
-                    .font(.system(size: CGFloat(WatchTerminalLayout.promptFontSize), weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .clipped()
-                if controller.isSending {
-                    ProgressView().controlSize(.mini)
+                    .accessibilityHidden(true)
+                Circle()
+                    .fill(controller.status.color)
+                    .frame(width: 7, height: 7)
+                    .accessibilityLabel("Terminal status")
+                    .accessibilityValue(controller.status.label)
+                if scrollOffset > 0 {
+                    Text("↑\(scrollOffset)")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color.cyan)
+                        .accessibilityLabel("Scrolled back \(scrollOffset) terminal rows")
                 }
+                Spacer(minLength: 0)
+                Button {
+                    displayMode = displayMode == .fit ? .grid : .fit
+                    crownIsFocused = true
+                } label: {
+                    Text(displayMode == .fit ? "FIT" : "GRID")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(displayMode == .fit ? Color.cyan : Color.secondary)
+                        .padding(.horizontal, 6)
+                        .frame(minWidth: 36)
+                        .frame(height: 21)
+                        .background(Color.black.opacity(0.82), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Terminal display mode")
+                .accessibilityValue(displayMode == .fit ? "Fit mirrored grid" : "Full-size mirrored grid")
+                .accessibilityHint("Double tap to switch mirror sizes")
             }
-            .padding(.horizontal, 7)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.cyan.opacity(0.10), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Current Pi input")
-            .accessibilityValue(prompt)
+            .padding(.leading, 7)
+            .padding(.trailing, 14)
         }
-        .frame(height: 27)
+        .padding(.top, 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var inputDock: some View {
@@ -490,29 +538,70 @@ struct WatchTerminalView: View {
                 dockLabel(symbol: showingKeyPalette ? "xmark" : "command", title: "Keys", emphasized: false)
             }
             .buttonStyle(.plain)
-            .disabled(!inputIsEnabled)
+            .disabled(!normalInputIsEnabled)
             .accessibilityLabel(showingKeyPalette ? "Hide terminal keys" : "Show terminal keys")
 
-            TextFieldLink(prompt: Text("Message JARVIS")) {
-                dockLabel(symbol: "keyboard", title: "Input", emphasized: false)
-            } onSubmit: { input in
-                stageInput(input)
+            TextField("", text: $keyboardDraft, prompt: Text("Input").foregroundStyle(Color.clear))
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+                .onSubmit {
+                    stageInput(keyboardDraft)
+                    keyboardDraft = ""
+                }
+                .overlay {
+                    dockLabel(symbol: "keyboard", title: "Input", emphasized: false)
+                        .allowsHitTesting(false)
+                }
+                .frame(maxWidth: .infinity, minHeight: 35)
+                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .disabled(!normalInputIsEnabled)
+                .accessibilityLabel("Input text at the Pi cursor")
+                .accessibilityHint("Opens the Apple Watch keyboard first. Text is inserted without submitting.")
+
+            Button {
+                controller.sendKey(WatchTerminalKeyBytes.slash)
+            } label: {
+                Text("/")
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.cyan)
+                    .frame(width: 32, height: 35)
+                    .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
-            .disabled(!inputIsEnabled)
-            .accessibilityLabel("Input text at the Pi cursor")
-            .accessibilityHint("Opens Apple Watch keyboard with microphone input. Text is inserted without submitting.")
+            .disabled(!normalInputIsEnabled)
+            .accessibilityLabel("Slash")
+            .accessibilityHint("Inserts one slash at the Pi cursor.")
+
+            Button {
+                controller.sendBackspace()
+            } label: {
+                Image(systemName: "delete.backward.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.cyan)
+                    .frame(width: 32, height: 35)
+                    .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(!backspaceIsEnabled)
+            .accessibilityLabel("Backspace current Pi input")
+            .accessibilityHint("Sends one immediate delete without showing a loading indicator.")
 
             Button {
                 showingKeyPalette = false
-                controller.sendKey(WatchTerminalKeyBytes.carriageReturn)
+                controller.sendEnter()
             } label: {
-                dockLabel(symbol: "paperplane.fill", title: "Send", emphasized: true)
+                Image(systemName: "return")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.black)
+                    .frame(width: 32, height: 35)
+                    .background(Color.cyan, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
-            .disabled(!inputIsEnabled)
-            .accessibilityLabel("Send current Pi input")
-            .accessibilityHint("Sends Return to submit the text at the Pi cursor.")
+            .disabled(!normalInputIsEnabled)
+            .accessibilityLabel("Enter current Pi input")
+            .accessibilityHint("Sends one terminal Return byte to submit at the Pi cursor.")
         }
         .frame(height: 39)
     }
@@ -520,9 +609,7 @@ struct WatchTerminalView: View {
     private func stageInput(_ input: String) {
         let message = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return }
-        Task { @MainActor in
-            controller.sendText(message, appendReturn: false)
-        }
+        controller.sendText(message, appendReturn: false)
     }
 
     private func dockLabel(symbol: String, title: String, emphasized: Bool) -> some View {
@@ -550,7 +637,6 @@ struct WatchTerminalView: View {
                 terminalKey("Tab", accessibility: "Tab") { controller.sendKey(WatchTerminalKeyBytes.tab) }
             }
             HStack(spacing: 3) {
-                terminalKey("/", accessibility: "Slash") { controller.sendKey(WatchTerminalKeyBytes.slash) }
                 terminalKey("↑", accessibility: "Up arrow") { controller.sendKey(WatchTerminalKeyBytes.up) }
                 terminalKey("↓", accessibility: "Down arrow") { controller.sendKey(WatchTerminalKeyBytes.down) }
             }
@@ -576,7 +662,11 @@ struct WatchTerminalView: View {
                 .background(selected ? Color.cyan.opacity(0.35) : Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-        .disabled(controller.status != .live || controller.isSending)
+        .disabled(
+            controller.status != .live
+                || controller.isSending
+                || controller.pendingBackspaceCount > 0
+        )
         .accessibilityLabel(accessibility)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

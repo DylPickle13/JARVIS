@@ -32,6 +32,13 @@ struct WatchDashboardContent: View {
         }
         .tint(WatchJarvisStyle.cyan)
         .animation(.easeInOut(duration: 0.16), value: selectedPage)
+        .onChange(of: selectedPage) { _, page in
+            if page == .system {
+                Task { await model.refreshCodexQuotaWhenVisible() }
+            } else {
+                model.cancelCodexQuotaViewRefresh()
+            }
+        }
     }
 
     @ViewBuilder
@@ -509,8 +516,7 @@ struct WatchDashboardContent: View {
     }
 
     private func airQualityProgress(_ value: Int?) -> CGFloat {
-        guard let value else { return 0 }
-        return min(max(CGFloat(value) / 75, 0.04), 1)
+        CGFloat(AirQualityGauge.cleanlinessProgress(pm25: value))
     }
 }
 

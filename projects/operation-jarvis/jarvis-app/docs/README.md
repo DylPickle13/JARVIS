@@ -6,9 +6,11 @@
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current release:** `0.3.0 (39)`
+**Current release:** `0.3.0 (40)`
 
-**Physical installation:** iPhone `0.3.0 (39)` and Apple Watch `0.3.0 (39)` on Dylan's allowlisted devices, installed from the exact audited artifacts
+**Current signed deployment candidate:** `0.3.0 (41)`
+
+**Physical installation:** iPhone `0.3.0 (40)` and Apple Watch `0.3.0 (40)` on Dylan's allowlisted devices, installed from the exact audited artifacts
 
 **Implemented feature record:** [Siri conversational prompt-to-Pi](siri-conversational-pi-terminal-plan-2026-08-23.md)
 
@@ -162,30 +164,155 @@ never deploy to a device outside Dylan's allowlist.
   accent instead of switching to orange at the current quota level.
 - Build 39 fixes Digital Crown scrolling by keeping Watch focus on the terminal
   and moving a local, read-only viewport through the latest 160 tmux history
-  rows. Crown and touch scrolling no longer inject SGR mouse bytes, so scrolling
-  works independently of Pi mouse mode and can never become delayed terminal
-  input. Simulator interaction verified live → 27 rows back → live movement.
+  rows. It no longer injects SGR mouse bytes, so scrolling works independently
+  of Pi mouse mode and can never become delayed terminal input. Simulator
+  interaction verified live → 27 rows back → live movement.
+- Build 40 adds a **JARVIS** header with a terminal glyph and live status dot to
+  the Terminal face, matching the titled Plugs and System pages.
+- Build 40 removes vertical touch-history scrolling: only the Digital Crown can
+  change the terminal viewport. An upward terminal swipe remains page navigation
+  to Plugs. Simulator evidence confirms a downward drag stays live while Crown
+  movement reaches 21 rows of history.
+- Build 40 replaces `TextFieldLink`, which could restore dictation on the physical
+  Watch, with a native inline `TextField`. One Input tap now presents the QWERTY
+  keyboard directly; the keyboard's microphone option remains available and Done
+  still stages text with `appendReturn=false`. A small Backspace button at the
+  right edge of the prompt rail emits exactly `0x7f` without submitting.
+- Build 40 reverses the main iPhone and Watch air-quality rings so visual fullness
+  represents cleanliness rather than pollution. PM2.5 `1` (or lower) is a full
+  circle, the ring drains linearly to empty at `75`, and unavailable remains empty.
 - Build 39 implements the host-only Siri prompt intent on iPhone and Watch. Bare
   “Hey JARVIS” asks for a required prompt, normalizes it to one logical line,
   preflights the shared authenticated/certificate-pinned terminal client, and
   makes one non-retried `appendReturn=true` POST. Existing plug shortcuts remain
   unchanged; widgets contain no prompt intent and `jarvisd` gains no route.
+- Build 40 makes `appendReturn=true` one exact tmux buffer containing normalized
+  prompt bytes followed by `0x0d`, instead of a paste followed by a separate
+  `send-keys`. Disposable HTTPS/tmux testing confirms the prompt starts
+  immediately, remains deduplicated by request ID, and is never retried.
+- Build 41 removes the duplicate native Watch prompt rail because the ANSI Pi
+  mirror already displays Pi's editor and cursor. The terminal gains the freed
+  vertical space, **JARVIS** is geometrically centered, and FIT/GRID moves 14
+  points inward from the curved right edge.
+- Build 41 changes the terminal dock to **Keys / Input / “/” / DEL /
+  Return-symbol**. Slash leaves the expandable palette. The fixed-size Return
+  symbol emits only exact `0x0d`. The fixed-size Backspace emits exact `0x7f`
+  through a non-retried immediate POST that does not set the normal loading
+  indicator, so repeated taps remain enabled while earlier DEL responses are in
+  flight. Other terminal actions wait for those confirmations to preserve order.
+- Build 41 treats Watch scene `.inactive` as frontmost Always On instead of
+  background. It preserves the selected route, current terminal frame, button
+  state, and foreground refresh loops; a 15-second `TimelineView` provides the
+  supported UI-redraw schedule, which watchOS may throttle to minute cadence.
+  A wrist raise forces immediate status refresh and terminal long-poll restart.
+  `WKSupportsAlwaysOnDisplay` is explicitly enabled. This avoids JARVIS
+  deliberately disconnecting, but watchOS can still suspend live networking
+  while dimmed, so continuous terminal streaming in Always On is not promised.
+- Build 41 reduces the background Codex quota collector interval from five
+  minutes to one minute. Every transition into the Watch System page also sends
+  one authenticated `GET /api/v1/state?refresh=codexQuota`, then briefly polls
+  ordinary state for completion. The collector remains the fixed read-only
+  `quotas.py codex --json` command with no probe/save flag and remains
+  non-critical to plug/purifier freshness.
 - Build 37 replaces the Watch System page's connection-source panel with an
   aesthetic Codex quota card and adds a larger counterpart to iPhone Home after
-  Pi activity. `jarvisd` invokes the existing quotas project with the fixed
-  read-only `quotas.py codex --json` command every five minutes and no probe or save flag. It
-  publishes only plan, weekly/five-hour percentages and reset data, allowance,
+  Pi activity. Build 37 originally scheduled the fixed read-only
+  `quotas.py codex --json` command every five minutes; build 41 lowers that to
+  one minute and retains no probe or save flag. It publishes only plan,
+  weekly/five-hour percentages and reset data, allowance,
   limit state, and credit balance. Model catalog, account data, credentials, and
   raw provider errors never enter the native state contract. A failed quota
   refresh preserves the last good value and cannot make plugs, purifier, or the
   global JARVIS state stale.
 
-### Installed build 39
+### Signed build 41 physical-test candidate
+
+```text
+Archive: /tmp/JARVIS-build41-watch-dock-always-on-codex.xcarchive
+IPA:     /tmp/JARVIS-build41-watch-dock-always-on-codex-export/JARVIS.ipa
+SHA-256: efd9be1c4c87d617b26bc7f90784a1d9e994377dc3b790c0db858a3c89fb8125
+```
+
+All four Personal-Team-signed products report `0.3.0 (41)`. Deep signatures,
+required Watch hierarchy, exact host-only Siri metadata, widget exclusion,
+bundle relationships, explicit Always On metadata, and Watch dependency
+isolation pass. Validation passes 26 `jarvisd`, nine terminal-daemon, 41
+JARVISKit tests with three expected live skips, 17 iPhone tests, repository smoke
+`PASS=105 WARN=0 FAIL=0`, and warning-free signed archive/export logs.
+
+Simulator and disposable-bridge evidence:
+
+- `/tmp/JARVIS-build41-watch-final-compact-keys.png` — centered **JARVIS**,
+  readable inset GRID, no duplicate prompt rail, and equal-size `/`, DEL, and
+  Return-symbol buttons.
+- `/tmp/JARVIS-build41-watch-key-palette-no-slash.png` — the expandable palette
+  now contains only Esc, Ctrl, Tab, Up, and Down.
+- `/tmp/JARVIS-build41-watch-final-rapid-backspace.png` — five Backspaces are
+  simultaneously in flight without a loading indicator; the delayed fixture
+  received five exact `7f false` requests in under one second.
+- `/tmp/JARVIS-build41-watch-system-codex-refresh.png` — the System page renders
+  quota and generated exactly one forced refresh request per page entry; leaving
+  and returning generated a second request.
+- Simulator lock/wake retained the last interface and generated an immediate
+  ordinary state request within four seconds of wake.
+
+`jarvisd` was restarted from PID `71713` to `77314` to activate the one-minute
+and on-view read-only quota paths; a live forced refresh returned an available,
+completed sanitized quota snapshot. `jarvis-terminald` remains PID `45590`.
+The production tmux pane remains `%0`, PID `66665`, session `$0`, command `node`;
+it was not restarted and received no test input. Physical compact-dock,
+rapid-Backspace, Always On, wrist-raise, and quota-refresh acceptance remain
+owner-operated. The exact build-41 IPA and Watch product have not been installed.
+
+### Installed build 40
+
+```text
+Archive: /tmp/JARVIS-build40-crown-keyboard-backspace-siri.xcarchive
+IPA:     /tmp/JARVIS-build40-crown-keyboard-backspace-siri-export/JARVIS.ipa
+SHA-256: d46801ac0e417da247af4295cdeaf57770bef45243612e20fa95540160f83697
+```
+
+All four Personal-Team-signed products report `0.3.0 (40)`. Deep signatures,
+required Watch hierarchy, exact host-only Siri metadata, widget exclusion,
+keyboard-path Release strings, bundle relationships, and Watch dependency
+isolation pass. Validation passes 25 `jarvisd`, nine terminal-daemon, 40
+JARVISKit tests with three expected live skips, 17 iPhone tests, repository smoke
+`PASS=105 WARN=0 FAIL=0`, and warning-free archive/export logs.
+
+Simulator evidence:
+
+- `/tmp/JARVIS-build40-watch-jarvis-title.png` — terminal glyph, **JARVIS**
+  title, live status dot, Backspace, and the compact Keys/Input/Send dock.
+- `/tmp/JARVIS-build40-watch-clean-keyboard.png` — one Input tap opens the
+  native QWERTY keyboard rather than dictation.
+- `/tmp/JARVIS-build40-watch-touch-does-not-scroll.png` — a vertical terminal
+  drag remains on the live viewport.
+- `/tmp/JARVIS-build40-watch-crown-only-scroll.png` — the Crown alone moves 21
+  rows into bounded history.
+- `/tmp/JARVIS-build40-watch-air-quality-full-at-1.png` — Watch System renders
+  PM2.5 `1` as a full cleanliness ring.
+- `/tmp/JARVIS-build40-iphone-air-quality-full-at-1.png` — iPhone Home uses the
+  same full-at-1 ring semantics.
+
+The nine terminal-daemon tests include both a one-buffer prompt/Return assertion
+and a disposable HTTPS/tmux round trip that receives exactly one prompt plus one
+newline. `jarvis-terminald` was restarted from PID `19659` to `45590` to activate
+that atomic path. The production pane remains `%0`, PID `66665`, session `$0`,
+command `node`; it was not restarted and received no test input. The exact IPA
+was installed with explicit `ideviceinstaller -w upgrade`, and the exact archived
+Watch product was installed through CoreDevice. The known process-scoped Watch
+install-coordination conflict cleared with one non-destructive retry. Device
+inventories report `0.3.0 (40)` on both allowlisted devices, and the iPhone
+app/widget plus Watch app/widget processes were confirmed running. Physical
+Crown, keyboard, Backspace, purifier-ring, rendering, Siri-routing, and
+failure-path acceptance remain owner-operated.
+
+### Superseded installed build 39
 
 ```text
 Archive: /tmp/JARVIS-build39-ansi-mirror-crown-siri.xcarchive
 IPA:     /tmp/JARVIS-build39-ansi-mirror-crown-siri-export/JARVIS.ipa
-SHA-256: a6fad3b0836e21b4dd352b9562832c218b24b3708a1f23339bfde1fdb2be1c8e
+SHA-256: 355b2c524d3e9e285873dab919b9d89e999bf4178fb028d1a5782651e53a05b5
 ```
 
 All four Personal-Team-signed products report `0.3.0 (39)`. Deep signatures,
@@ -297,18 +424,22 @@ ordinary low-level TCP networking. Instead, foreground `URLSession` long
 polling retrieves tmux frames over pinned HTTPS. Build 34 tries the saved bridge
 first, then LAN, stable Tailscale MagicDNS, and the current Tailscale address;
 after a frame succeeds it keeps that route active. Build 39 preserves tmux's
-actual SGR cell attributes and a bounded 160-row history tail. The focused
-Digital Crown and vertical touch drags move only a local read-only viewport;
-they no longer emit terminal mouse/input bytes and cannot queue during a network
-loss. FIT mirrors all Pi columns at Watch width, while GRID provides a 9-point
+actual SGR cell attributes and a bounded 160-row history tail. Build 40 allows
+only the focused Digital Crown to move the local read-only history viewport;
+vertical touch no longer scrolls terminal output and cannot become terminal
+input during a network loss. FIT mirrors all Pi columns at Watch width, while
+GRID provides a 9-point
 horizontally pannable mirror. Thinking, tool calls, assistant text, dividers,
 and usage/footer rows retain Pi's own styling without semantic reconstruction.
 Watch keyboard, Scribble, dictation, or Continuity Keyboard still produces
-bounded text. Build 37 stages completed system input
-at the current Pi cursor with no Return beneath a Keys/Input/Send dock. Esc,
-Ctrl, Tab, slash, Up, and Down remain in an on-demand palette; slash remains
-exactly one `0x2f` byte. The owner reviews staged text in Pi's pinned prompt rail
-and taps Send to emit one `0x0d` Return.
+bounded text. Build 40 uses a native inline `TextField` to open the QWERTY
+keyboard first and preserves build 37's completed-text staging at the current Pi
+cursor with no Return. Build 41 removes the duplicate prompt rail because the Pi
+mirror already displays its editor. The dock is now Keys, Input, fixed-size `/`,
+fixed-size DEL, and fixed-size Return symbol. Slash emits one `0x2f`; Backspace
+emits one immediate `0x7f` without a spinner and remains tappable while earlier
+DEL confirmations are in flight; Return emits one `0x0d`. Esc, Ctrl, Tab, Up,
+and Down remain in the on-demand palette.
 
 `jarvis-terminald` is isolated from `jarvisd` and has no hardware, purifier,
 service, scheduler, or command-control routes. It permits only configured

@@ -278,11 +278,15 @@ class TerminalService:
             if request_id in self.processed_request_ids:
                 return
             self.ensure_session()
-            if data:
+            # Keep the requested Return in the same exact tmux buffer as the
+            # text. This makes Siri's prompt plus submission one ordered PTY
+            # write instead of racing a paste against a second send-keys call.
+            payload = data + (b"\r" if append_return else b"")
+            if payload:
                 buffer_name = "jarvis-watch-{}".format(request_id.replace("-", "")[:32])
                 self.runner.run(
                     self.tmux_arguments("load-buffer", "-b", buffer_name, "-"),
-                    input_data=data,
+                    input_data=payload,
                 )
                 self.runner.run(
                     self.tmux_arguments(
@@ -296,8 +300,6 @@ class TerminalService:
                         TMUX_TARGET,
                     )
                 )
-            if append_return:
-                self.runner.run(self.tmux_arguments("send-keys", "-t", TMUX_TARGET, "Enter"))
             self.processed_request_ids[request_id] = time.monotonic()
             if len(self.processed_request_ids) > 100:
                 oldest = sorted(self.processed_request_ids.items(), key=lambda item: item[1])[:25]

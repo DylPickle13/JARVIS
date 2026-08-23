@@ -6,26 +6,43 @@ struct WatchConnectView: View {
     @StateObject private var model = WatchConnectModel()
 
     var body: some View {
-        rootContent
-            // watchOS exposes status-bar suppression through this watch-only
-            // SwiftUI modifier. Reclaim both the former clock strip and the
-            // otherwise-unused bottom inset while JARVIS is foregrounded.
-            ._statusBarHidden()
-            .ignoresSafeArea()
-            .task {
-                if scenePhase == .active { model.sceneDidBecomeActive() }
-                await model.runDebugRelaySmokeIfRequested()
+        // TimelineView gives frontmost Always On snapshots a supported periodic
+        // redraw. watchOS may reduce this cadence to minutes while dimmed.
+        TimelineView(.periodic(from: .now, by: 15)) { _ in
+            rootContent
+        }
+        // watchOS exposes status-bar suppression through this watch-only
+        // SwiftUI modifier. Reclaim both the former clock strip and the
+        // otherwise-unused bottom inset while JARVIS is foregrounded.
+        ._statusBarHidden()
+        .ignoresSafeArea()
+        .task {
+            switch scenePhase {
+            case .active:
+                model.sceneDidBecomeActive()
+            case .inactive:
+                model.sceneDidEnterAlwaysOn()
+            case .background:
+                break
+            @unknown default:
+                break
             }
-            .onChange(of: scenePhase) { _, phase in
-                switch phase {
-                case .active:
-                    model.sceneDidBecomeActive()
-                case .inactive, .background:
-                    model.sceneWillResignActive()
-                @unknown default:
-                    break
-                }
+            await model.runDebugRelaySmokeIfRequested()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active:
+                model.sceneDidBecomeActive()
+            case .inactive:
+                // Always On is inactive but still frontmost. Preserve polling,
+                // the selected route, current terminal frame, and button state.
+                model.sceneDidEnterAlwaysOn()
+            case .background:
+                model.sceneDidEnterBackground()
+            @unknown default:
+                break
             }
+        }
     }
 
     @ViewBuilder
@@ -62,10 +79,11 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     private let forceEndpointForTesting: Bool
     private let activeRefreshInterval: Duration
     private var debugRelaySmokeDidRun = false
-    private var appIsActive = false
+    private var appIsForeground = false
     private var refreshGeneration = 0
     private var refreshLoopTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
+    private var codexViewRefreshTask: Task<Void, Never>?
 
     let store = EndpointStore(defaults: JARVISSharedStore.defaults)
     let client = JarvisClient()
@@ -127,37 +145,68 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     func sceneDidBecomeActive() {
-        guard !appIsActive else { return }
-        appIsActive = true
+        appIsForeground = true
+        // A wrist raise must immediately refresh buttons and re-establish the
+        // terminal long poll in case watchOS suspended work while dimmed.
         terminal.sceneDidBecomeActive()
         startRefreshLoop()
     }
 
-    func sceneWillResignActive() {
-        appIsActive = false
+    func sceneDidEnterAlwaysOn() {
+        guard !appIsForeground else { return }
+        appIsForeground = true
+        terminal.sceneDidEnterAlwaysOn()
+        startRefreshLoop()
+    }
+
+    func sceneDidEnterBackground() {
+        appIsForeground = false
         refreshLoopTask?.cancel()
         refreshLoopTask = nil
         refreshGeneration += 1
         refreshTask?.cancel()
         refreshTask = nil
+        codexViewRefreshTask?.cancel()
+        codexViewRefreshTask = nil
         isRefreshing = false
-        terminal.sceneWillResignActive()
+        terminal.sceneDidEnterBackground()
     }
 
     func connect() async { await refresh() }
+
+    func refreshCodexQuotaWhenVisible() async {
+        guard appIsForeground else { return }
+        if let codexViewRefreshTask {
+            await codexViewRefreshTask.value
+            return
+        }
+        let generation = refreshGeneration
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performCodexQuotaViewRefresh()
+        }
+        codexViewRefreshTask = task
+        await task.value
+        if generation == refreshGeneration { codexViewRefreshTask = nil }
+    }
+
+    func cancelCodexQuotaViewRefresh() {
+        codexViewRefreshTask?.cancel()
+        codexViewRefreshTask = nil
+    }
 
     private func startRefreshLoop() {
         refreshLoopTask?.cancel()
         refreshLoopTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.refresh()
-            while !Task.isCancelled, self.appIsActive {
+            while !Task.isCancelled, self.appIsForeground {
                 do {
                     try await Task.sleep(for: self.activeRefreshInterval)
                 } catch {
                     return
                 }
-                guard !Task.isCancelled, self.appIsActive else { return }
+                guard !Task.isCancelled, self.appIsForeground else { return }
                 await self.refresh()
             }
         }
@@ -230,14 +279,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             _ = try await client.health(endpoint)
             let state = try await client.state(endpoint)
             guard !Task.isCancelled else { return }
-            let previousState = lastState
-            lastState = state
-            updateJARVISSiriParametersIfNeeded(previous: previousState, current: state)
-            snapshotStore.save(state)
-            cachedAt = Date()
-            isViaPhone = false
-            connectionState = .connected
-            errorMessage = nil
+            acceptDirectState(state)
         } catch is CancellationError {
             return
         } catch let error as JarvisError {
@@ -247,6 +289,53 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             guard !Task.isCancelled else { return }
             useRelayOrCache(directError: error.localizedDescription)
         }
+    }
+
+    private func performCodexQuotaViewRefresh() async {
+        if connectionState != .connected || store.endpointURL == nil { await refresh() }
+        guard !Task.isCancelled, appIsForeground, let url = store.endpointURL else { return }
+        let endpoint = JarvisEndpoint(baseURL: url, token: store.token ?? "")
+        let previousUpdatedAt = lastState?.subsystems?.codexQuota?.updatedAt
+
+        do {
+            let triggered = try await client.stateRefreshingCodexQuota(endpoint)
+            guard !Task.isCancelled else { return }
+            acceptDirectState(triggered)
+
+            // jarvisd starts the single-flight collector asynchronously. Poll
+            // only while this page-entry refresh is active; ordinary 15-second
+            // state polling takes over after this short bounded window.
+            for _ in 0..<12 {
+                try await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, appIsForeground else { return }
+                let state = try await client.state(endpoint)
+                guard !Task.isCancelled else { return }
+                acceptDirectState(state)
+                let quota = state.subsystems?.codexQuota
+                if quota?.refreshing != true,
+                   let updatedAt = quota?.updatedAt,
+                   updatedAt != previousUpdatedAt {
+                    return
+                }
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            // Keep quota failure non-critical and fall back to normal endpoint
+            // discovery/cache behavior without invalidating plug controls.
+            await refresh()
+        }
+    }
+
+    private func acceptDirectState(_ state: StateSnapshot) {
+        let previousState = lastState
+        lastState = state
+        updateJARVISSiriParametersIfNeeded(previous: previousState, current: state)
+        snapshotStore.save(state)
+        cachedAt = Date()
+        isViaPhone = false
+        connectionState = .connected
+        errorMessage = nil
     }
 
     private func useRelayOrCache(directError: String? = nil) {

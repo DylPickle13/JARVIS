@@ -784,6 +784,7 @@ public enum WatchTerminalKeyBytes {
     public static let escape = Data([0x1b])
     public static let tab = Data([0x09])
     public static let carriageReturn = Data([0x0d])
+    public static let backspace = Data([0x7f])
     public static let slash = Data([0x2f])
     public static let up = Data([0x1b, 0x5b, 0x41])
     public static let down = Data([0x1b, 0x5b, 0x42])

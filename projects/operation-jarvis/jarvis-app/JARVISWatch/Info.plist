@@ -33,6 +33,8 @@
 	<dict/>
 	<key>WKApplication</key>
 	<true/>
+	<key>WKSupportsAlwaysOnDisplay</key>
+	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>com.operation-jarvis.jarvis</string>
 	<key>WKRunsIndependentlyOfCompanionApp</key>

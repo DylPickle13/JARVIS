@@ -2,6 +2,15 @@ import XCTest
 @testable import JARVISKit
 
 final class JARVISKitTests: XCTestCase {
+    func testAirQualityGaugeIsFullForOneAndDrainsAsPollutionRises() {
+        XCTAssertEqual(AirQualityGauge.cleanlinessProgress(pm25: nil), 0)
+        XCTAssertEqual(AirQualityGauge.cleanlinessProgress(pm25: 0), 1)
+        XCTAssertEqual(AirQualityGauge.cleanlinessProgress(pm25: 1), 1)
+        XCTAssertEqual(AirQualityGauge.cleanlinessProgress(pm25: 38), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(AirQualityGauge.cleanlinessProgress(pm25: 75), 0)
+        XCTAssertEqual(AirQualityGauge.cleanlinessProgress(pm25: 100), 0)
+    }
+
     func testNativeAppsShareFifteenSecondActiveRefreshPolicy() {
         XCTAssertEqual(JARVISRefreshPolicy.activeInterval, .seconds(15))
     }
@@ -203,6 +212,7 @@ final class JARVISKitTests: XCTestCase {
         let explicitSubmit = WatchTerminalInput(data: WatchTerminalKeyBytes.carriageReturn, appendReturn: false)
         XCTAssertEqual(explicitSubmit.data, Data([0x0d]))
         XCTAssertFalse(explicitSubmit.appendReturn)
+        XCTAssertEqual(WatchTerminalKeyBytes.backspace, Data([0x7f]))
     }
 
     func testWatchTerminalReadableLayoutWrapsOutputAndPinsPrompt() {

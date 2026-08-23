@@ -10,8 +10,9 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. Build `0.3.0 (39)` is installed and running on the allowlisted iPhone 11
-and Apple Watch Series 11 from the exact audited artifacts. Build 37 retains
+UI. Build `0.3.0 (40)` is installed and running on the allowlisted iPhone 11
+and Apple Watch Series 11 from the exact audited artifacts. Signed build
+`0.3.0 (41)` is the current exact-artifact physical-test candidate. Build 37 retains
 build 36's fixed-editor fullscreen
 Pi renderer, one-line wheel behavior, cursor correction, full-screen Watch
 shell, 11-point readable transcript, 9-point pannable Raw grid, pinned input
@@ -20,17 +21,40 @@ Input opens watchOS system keyboard/dictation and inserts reviewed text at Pi's
 cursor without Return; only Send emits Return. Build 38 replaces the legacy
 WatchKit input controller—which could default directly to dictation—with public
 watchOS `TextFieldLink`, opening the keyboard surface first while retaining its
-microphone option and the same no-Return staging semantics. Build 39 mirrors
+microphone option and the same no-Return staging semantics. Build 40 adds a
+**JARVIS** terminal-face header matching the titled Plugs and System pages, then
+replaces the resumable input link with an inline native `TextField`, so one Input tap
+opens the QWERTY keyboard directly rather than restoring dictation. It also adds
+a small `0x7f` Backspace button at the right edge of the live prompt rail.
+Build 40 also reverses the shared iPhone/Watch purifier gauge: lower PM2.5 now
+fills more of the ring, with a reading of 1 shown as completely full. Build 41
+removes the duplicate Watch prompt rail because Pi already mirrors its editor,
+centers **JARVIS**, and moves FIT/GRID inward from the curved right edge. The
+compact dock is now **Keys / Input / “/” / DEL / Return-symbol**; `/` leaves the
+expandable palette, Return remains exact `0x0d`, and rapid Backspace taps issue
+independent exact `0x7f` attempts without a spinner or Backspace lockout.
+Build 41 also keeps the frontmost Watch lifecycle alive through Always On's
+inactive scene phase, uses a supported low-frequency `TimelineView`, preserves
+the latest interface instead of declaring it offline, and forces immediate
+status/terminal reconnection on wrist raise. watchOS may still throttle redraws
+and suspend live networking while dimmed. Codex quota now refreshes read-only
+every minute and receives one immediate authenticated refresh request whenever
+the Watch System page comes into view.
+Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
 than inferring Pi features. Codex quota accents now use a consistent electric-
 blue theme on iPhone and Watch. Its focused Digital Crown moves a local read-only
 viewport through 160 captured tmux-history rows, never sends terminal input,
-and passed simulator scroll interaction in both directions. Build 39 also adds
-the host-only bare **“Hey JARVIS”** conversational App Intent: Siri requests one
-prompt, target-local Keychain configuration preflights the shared authenticated
-and certificate-pinned terminal client, then one normalized prompt is attempted
-with `appendReturn=true` and no POST retry. Build 37 also adds sanitized,
+and passed simulator scroll interaction in both directions. Build 40 reserves
+vertical history scrolling exclusively for the Crown; terminal touch drags no
+longer change the viewport, while an upward swipe still advances to Plugs.
+Build 39 also adds the host-only bare **“Hey JARVIS”** conversational App Intent:
+Siri requests one prompt, target-local Keychain configuration preflights the
+shared authenticated and certificate-pinned terminal client, then one normalized
+prompt is attempted with `appendReturn=true` and no POST retry. Build 40 makes
+that accepted prompt and its carriage return one ordered tmux-buffer/PTY write,
+so Siri starts Pi immediately without a later manual Send. Build 37 also adds sanitized,
 read-only Codex weekly quota, reset, plan, five-hour status, and credit telemetry
 from `projects/quotas` to iPhone Home and the Watch System page. Build 34 adds Watch terminal failover from the saved LAN endpoint to
 stable Tailscale MagicDNS and the current Tailscale address, fits every tmux row
@@ -40,9 +64,9 @@ exactly three vertical pages, followed by Plugs and System, with no launcher
 button. Build 32 introduced the native Watch JARVIS terminal backed by a
 separate certificate-pinned HTTPS bridge on TCP `8792`. It renders and controls
 the same persistent `jarvis-ios` tmux pane, accepts Watch keyboard/Scribble/
-dictation input, and remains separate from `jarvisd`. Build 39 makes Digital
-Crown and touch scrolling local/read-only instead of injecting remote mouse
-bytes. Build 31 retains build 30's scroll speed while pacing
+dictation input, and remains separate from `jarvisd`. Build 39 makes terminal
+history scrolling local/read-only instead of injecting remote mouse bytes;
+build 40 removes touch-history scrolling entirely and leaves it Crown-only. Build 31 retains build 30's scroll speed while pacing
 wheel input on 60 Hz display frames for burst-free movement, and renames the Pi
 tab to JARVIS. Build 30 ends the compact key deck at the Down arrow and slows
 touch scrolling by 60%. Build 29 maps vertical touch drags to Pi's fullscreen
@@ -55,10 +79,12 @@ cleanup, build 19's foreground refresh, and build 23's exact “Hey JARVIS” pl
 phrases. Physical Watch validation confirms authenticated pinned-HTTPS frames,
 one shared Pi pane during simultaneous iPhone attachment, and automatic bridge-
 restart recovery without recreating tmux. Owner typing, dictation, key-deck,
-Crown, touch, and build-34 off-LAN acceptance remain open. Build-37 staged-input/
+Crown and build-34 off-LAN acceptance remain open. Build-37 staged-input/
 explicit-Send behavior and physical Codex quota rendering remain owner
-acceptance gates. Build-39 physical Crown/ANSI rendering and bare-phrase Siri
-routing remain acceptance gates. The three-slot Smart
+acceptance gates. Build-40 physical Crown-only scrolling, keyboard-first Input,
+Backspace, ANSI rendering, and immediate bare-phrase Siri routing remain
+acceptance gates. Build-41 compact-dock layout, rapid Backspace, Always On/wrist-
+raise recovery, and on-view quota refresh remain physical acceptance gates. The three-slot Smart
 Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
@@ -122,10 +148,26 @@ bursting multiple terminal redraws together. The terminal tab is now labeled
 JARVIS. Siri's plug parameter is populated from current `jarvisd` state rather
 than a compiled list; the generic widget action is not discoverable.
 
-Installed, signed, and audited build-39 artifacts:
+Signed and audited build-41 physical-test candidate:
+`/tmp/JARVIS-build41-watch-dock-always-on-codex.xcarchive` and
+`/tmp/JARVIS-build41-watch-dock-always-on-codex-export/JARVIS.ipa`
+(SHA-256 `efd9be1c4c87d617b26bc7f90784a1d9e994377dc3b790c0db858a3c89fb8125`).
+All four products report `0.3.0 (41)` and remain Personal-Team signed. The exact
+IPA and archived Watch product have not yet been physically installed.
+
+Installed and audited build-40 artifacts:
+`/tmp/JARVIS-build40-crown-keyboard-backspace-siri.xcarchive` and
+`/tmp/JARVIS-build40-crown-keyboard-backspace-siri-export/JARVIS.ipa`
+(SHA-256 `d46801ac0e417da247af4295cdeaf57770bef45243612e20fa95540160f83697`).
+The exact IPA was upgraded onto the allowlisted iPhone with
+`ideviceinstaller -w upgrade`; the exact archived Watch product was installed
+through CoreDevice. Both inventories report `0.3.0 (40)`, and both host/widget
+process pairs were confirmed running.
+
+Superseded installed build-39 artifacts:
 `/tmp/JARVIS-build39-ansi-mirror-crown-siri.xcarchive` and
 `/tmp/JARVIS-build39-ansi-mirror-crown-siri-export/JARVIS.ipa` (SHA-256
-`a6fad3b0836e21b4dd352b9562832c218b24b3708a1f23339bfde1fdb2be1c8e`).
+`355b2c524d3e9e285873dab919b9d89e999bf4178fb028d1a5782651e53a05b5`).
 
 Superseded build-38 artifacts: `/tmp/JARVIS-build38-keyboard-first-watch-input.xcarchive`
 and `/tmp/JARVIS-build38-keyboard-first-watch-input-export/JARVIS.ipa`
@@ -241,8 +283,8 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   is enabled.
 - **watchOS app** — builds for Apple Watch Series 11 (46mm), uses real
   `WCSessionDelegate` reachability callbacks, refreshes immediately on
-  activation and every 15 seconds while visible, cancels work when inactive,
-  and supports direct/relay/cache plug controls. The normal refresh control is
+  activation and every 15 seconds while visible, preserves frontmost work while
+  Always On is inactive, cancels only on background, and supports direct/relay/cache plug controls. The normal refresh control is
   gone; Retry appears only after failure. The app is embedded in the iPhone
   bundle under `Watch/`. The corrected
   parent registration plus developer Watch install produces
@@ -261,12 +303,13 @@ JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
   keyboard or dictation and inserts bytes with `appendReturn=false`; the
   separate Send action emits exactly `0x0d`. Build 38 uses keyboard-first
   `TextFieldLink` instead of the legacy controller that could open directly in
-  dictation; microphone entry remains available in the system keyboard. The
-  prompt rail is the final review surface, disconnected input remains disabled
-  and unqueued, and no text-input completion can execute a command. Build 37 also replaces the System page's
+  dictation; microphone entry remains available in the system keyboard. Build
+  41 removes the now-duplicate prompt rail, uses compact slash/DEL/Return-symbol
+  buttons, and keeps disconnected input disabled and unqueued; no text-input
+  completion can execute a command. Build 37 also replaces the System page's
   connection-source panel with a Codex quota ring and adds the same tracker to
-  iPhone Home. `jarvisd` runs the quotas project's fixed read-only
-  `codex --json` command every five minutes, publishes only sanitized quota fields,
+  iPhone Home. Build 41 runs the quotas project's fixed read-only
+  `codex --json` command every minute and on each Watch System-page entry, publishes only sanitized quota fields,
   retains the last good value on provider failure, and excludes quota failure
   from global hardware-state staleness. The Watch still uses an underscored
   status-bar modifier that requires physical regression after OS/Xcode updates.

@@ -39,6 +39,21 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertEqual(result.version, "test")
     }
 
+    func testCodexQuotaRefreshUsesAuthenticatedReadOnlyStateQuery() async throws {
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/v1/state")
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            XCTAssertEqual(query.first(where: { $0.name == "refresh" })?.value, "codexQuota")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            return MockURLProtocol.response(request, status: 200, body: #"{"ok":true}"#)
+        }
+
+        let result = try await client.stateRefreshingCodexQuota(endpoint)
+
+        XCTAssertTrue(result.ok)
+    }
+
     func testHTTPErrorPreservesStatusAndBoundedBody() async throws {
         MockURLProtocol.handler = { request in
             MockURLProtocol.response(request, status: 400, body: #"{"ok":false,"error":"not allowlisted"}"#)

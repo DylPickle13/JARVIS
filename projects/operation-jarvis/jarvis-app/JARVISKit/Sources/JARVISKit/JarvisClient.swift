@@ -163,6 +163,13 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         try await perform(endpoint, "/api/v1/state", as: StateSnapshot.self)
     }
 
+    /// Requests one immediate refresh of jarvisd's read-only Codex quota
+    /// collector and returns the current state snapshot. Completion remains
+    /// observable through subsequent ordinary state reads.
+    public func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        try await perform(endpoint, "/api/v1/state?refresh=codexQuota", as: StateSnapshot.self)
+    }
+
     public func command(
         _ endpoint: JarvisEndpoint,
         action: String,
