@@ -1,12 +1,8 @@
 import SwiftUI
 import JARVISKit
 
-// Settings tab — connection management + app info.
-//
-// Holds the endpoint override (advanced; blank = auto-detect), the Connect /
-// Reset actions, the live status, and a small "About" block. This is the
-// former M0 connect screen, now one of the four tabs.
-
+/// Compact settings index. Infrequent configuration and diagnostics remain
+/// fully available one level deeper instead of occupying the primary viewport.
 struct SettingsView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var piTerminal: PiTerminalController
@@ -20,142 +16,322 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    settingsHero
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets())
+            ScrollView {
+                VStack(alignment: .leading, spacing: 15) {
+                    settingsGroup(title: "Connections") {
+                        NavigationLink {
+                            connectionDetail
+                        } label: {
+                            settingsRow(
+                                title: "JARVIS daemon",
+                                systemImage: "server.rack",
+                                value: daemonSummary,
+                                color: daemonColor
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        settingsDivider
+
+                        NavigationLink {
+                            piTerminalDetail
+                        } label: {
+                            settingsRow(
+                                title: "Pi terminal",
+                                systemImage: "terminal.fill",
+                                value: piTerminalSummary,
+                                color: piTerminal.settings.hasPassword ? JarvisPalette.cyan : JarvisPalette.warning
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        settingsDivider
+
+                        NavigationLink {
+                            watchTerminalDetail
+                        } label: {
+                            settingsRow(
+                                title: "Apple Watch",
+                                systemImage: "applewatch",
+                                value: app.watchTerminalProvisioning.isProvisioned ? "Provisioned" : "Setup required",
+                                color: app.watchTerminalProvisioning.isProvisioned ? JarvisPalette.cyan : JarvisPalette.warning
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    settingsGroup(title: "Support") {
+                        NavigationLink {
+                            diagnosticsDetail
+                        } label: {
+                            settingsRow(
+                                title: "Diagnostics",
+                                systemImage: "stethoscope",
+                                value: diagnosticsSummary,
+                                color: app.connectionState == .failed ? .red : .secondary
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        settingsDivider
+
+                        NavigationLink {
+                            aboutDetail
+                        } label: {
+                            settingsRow(
+                                title: "About JARVIS",
+                                systemImage: "info.circle",
+                                value: appVersion,
+                                color: .secondary
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if app.connectionState == .failed, let error = app.errorMessage {
+                        Label {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                        }
+                        .padding(.horizontal, 4)
+                        .accessibilityElement(children: .combine)
+                    }
                 }
-                connectionSection
-                piTerminalSection
-                watchTerminalSection
-                statusSection
-                if app.connectionState == .failed, let error = app.errorMessage {
-                    errorSection(error)
-                }
-                aboutSection
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
-            .scrollContentBackground(.hidden)
+            .scrollIndicators(.hidden)
             .background(JarvisBackdrop())
             .navigationTitle("Settings")
             .onAppear { loadPiTerminalSettings() }
         }
     }
 
-    private var settingsHero: some View {
-        HStack(spacing: 14) {
-            JARVISMark(size: 54)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("JARVIS")
-                    .font(.headline.weight(.bold))
-                    .tracking(1.4)
-                Text("Native control plane")
-                    .font(.subheadline.weight(.semibold))
-                Text(app.connectionState == .connected ? "Connected and ready" : "Connection and app preferences")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+    // MARK: - Compact index
+
+    private func settingsGroup<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.semibold))
+                .tracking(0.7)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 3)
+            MinimalCard {
+                VStack(spacing: 0) { content() }
             }
-            Spacer(minLength: 0)
         }
-        .padding(16)
-        .background(JarvisPalette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(JarvisPalette.cyan.opacity(0.16), lineWidth: 0.8)
-        }
-        .accessibilityElement(children: .combine)
     }
 
-    // MARK: - Connection
+    private func settingsRow(
+        title: String,
+        systemImage: String,
+        value: String,
+        color: Color
+    ) -> some View {
+        HStack(spacing: 11) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(JarvisPalette.cyan)
+                .frame(width: 24)
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
 
-    private var connectionSection: some View {
-        Section {
-            TextField("Endpoint (optional)", text: $app.endpointDraft, prompt: Text("auto-detect: LAN or Tailscale"))
+    private var settingsDivider: some View {
+        Divider().padding(.leading, 35)
+    }
+
+    private var daemonSummary: String {
+        switch app.connectionState {
+        case .connected: return "Connected · \(networkLabel)"
+        case .connecting: return "Connecting"
+        case .failed: return "Offline"
+        case .idle: return "Not connected"
+        }
+    }
+
+    private var daemonColor: Color {
+        switch app.connectionState {
+        case .connected: return JarvisPalette.cyan
+        case .connecting: return JarvisPalette.warning
+        case .failed: return .red
+        case .idle: return .secondary
+        }
+    }
+
+    private var piTerminalSummary: String {
+        piTerminal.settings.hasPassword ? "Configured" : "Setup required"
+    }
+
+    private var diagnosticsSummary: String {
+        app.connectionState == .failed ? "Needs attention" : "Status and network"
+    }
+
+    private var networkLabel: String {
+        guard let host = app.currentEndpoint?.host else { return "—" }
+        if host.hasPrefix("100.") || host.hasSuffix(".ts.net") { return "Tailscale" }
+        if host.hasPrefix("192.168") || host.hasPrefix("10.") || host.hasPrefix("172.") { return "LAN" }
+        return host
+    }
+
+    // MARK: - JARVIS connection
+
+    private var connectionDetail: some View {
+        Form {
+            Section("Status") {
+                LabeledContent("JARVIS daemon") {
+                    ConnectionBadge(state: app.connectionState, detail: daemonSummary)
+                }
+                if let uptime = app.lastHealth?.uptimeSeconds {
+                    LabeledContent("Uptime", value: JarvisFormat.uptime(uptime))
+                }
+                if let using = usingString {
+                    LabeledContent("Using", value: using)
+                        .font(.callout)
+                }
+            }
+
+            Section {
+                TextField(
+                    "Endpoint override",
+                    text: $app.endpointDraft,
+                    prompt: Text("Automatic · LAN or Tailscale")
+                )
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
                 .font(.body.monospaced())
-                .padding(.vertical, 4)
 
-            Button {
-                Task { await app.connect() }
-            } label: {
-                HStack {
-                    Spacer()
-                    if app.connectionState == .connecting {
-                        ProgressView().frame(width: 20)
-                        Text("Connecting…")
-                    } else {
-                        Label("Connect", systemImage: "link")
+                Button {
+                    Task { await app.connect() }
+                } label: {
+                    HStack {
+                        Spacer()
+                        if app.connectionState == .connecting {
+                            ProgressView().frame(width: 20)
+                            Text("Connecting…")
+                        } else {
+                            Label("Connect", systemImage: "link")
+                        }
+                        Spacer()
                     }
-                    Spacer()
+                }
+                .disabled(app.connectionState == .connecting)
+            } header: {
+                Text("Endpoint")
+            } footer: {
+                Text("Leave blank to discover the Mac automatically over the home LAN or Tailscale.")
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    app.clearConnection()
+                } label: {
+                    Label("Reset connection", systemImage: "arrow.counterclockwise")
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .disabled(app.connectionState == .connecting)
 
-            Button(role: .destructive) {
-                app.clearConnection()
-            } label: {
-                Label("Reset connection", systemImage: "arrow.counterclockwise")
-                    .frame(maxWidth: .infinity)
+            if app.connectionState == .failed, let error = app.errorMessage {
+                Section("Error") {
+                    Label {
+                        Text(error).font(.callout).foregroundStyle(.red)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    }
+                }
             }
-        } header: {
-            Text("Connection")
-        } footer: {
-            Text("JARVIS finds the Mac automatically (home LAN or Tailscale) — no token needed. Leave the endpoint blank to auto-detect, or enter one to force it.")
         }
+        .compactSettingsForm(title: "JARVIS connection")
     }
 
     // MARK: - Pi terminal
 
-    private var piTerminalSection: some View {
-        Section {
-            TextField("SSH host (optional)", text: $sshHost, prompt: Text(app.currentEndpoint?.host ?? "Mac hostname or IP"))
+    private var piTerminalDetail: some View {
+        Form {
+            Section {
+                TextField(
+                    "SSH host",
+                    text: $sshHost,
+                    prompt: Text(app.currentEndpoint?.host ?? "Automatic from JARVIS")
+                )
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
                 .font(.body.monospaced())
-            TextField("SSH port", text: $sshPort)
-                .keyboardType(.numberPad)
-                .font(.body.monospaced())
-            TextField("SSH username", text: $sshUsername)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.body.monospaced())
-            SecureField("Mac login password", text: $sshPassword)
-                .textContentType(.password)
-                .font(.body.monospaced())
 
-            Button {
-                sshSaved = piTerminal.settings.save(
-                    host: sshHost,
-                    portText: sshPort,
-                    username: sshUsername,
-                    password: sshPassword
-                )
-                if sshSaved {
-                    piTerminal.reconnectAfterSettingsChange(fallbackHost: app.currentEndpoint?.host)
+                TextField("SSH port", text: $sshPort)
+                    .keyboardType(.numberPad)
+                    .font(.body.monospaced())
+
+                TextField("SSH username", text: $sshUsername)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.body.monospaced())
+
+                SecureField("Mac login password", text: $sshPassword)
+                    .textContentType(.password)
+                    .font(.body.monospaced())
+            } header: {
+                Text("SSH login")
+            } footer: {
+                Text("A blank host follows JARVIS between LAN and Tailscale. Opening the JARVIS tab attaches to the persistent jarvis-ios tmux session.")
+            }
+
+            Section {
+                Button {
+                    sshSaved = piTerminal.settings.save(
+                        host: sshHost,
+                        portText: sshPort,
+                        username: sshUsername,
+                        password: sshPassword
+                    )
+                    if sshSaved {
+                        piTerminal.reconnectAfterSettingsChange(fallbackHost: app.currentEndpoint?.host)
+                    }
+                } label: {
+                    Label(
+                        sshSaved ? "SSH login saved" : "Save SSH login",
+                        systemImage: sshSaved ? "checkmark.circle.fill" : "key.fill"
+                    )
+                    .frame(maxWidth: .infinity)
                 }
-            } label: {
-                Label(sshSaved ? "SSH login saved" : "Save SSH login", systemImage: sshSaved ? "checkmark.circle.fill" : "key.fill")
-                    .frame(maxWidth: .infinity)
-            }
 
-            Button(role: .destructive) {
-                piTerminal.forgetTrustedHost(fallbackHost: app.currentEndpoint?.host)
-            } label: {
-                Label("Forget trusted SSH host", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
-                    .frame(maxWidth: .infinity)
-            }
+                Button(role: .destructive) {
+                    piTerminal.forgetTrustedHost(fallbackHost: app.currentEndpoint?.host)
+                } label: {
+                    Label("Forget trusted SSH host", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                        .frame(maxWidth: .infinity)
+                }
 
-            if let error = piTerminal.settings.credentialError {
-                Text(error).font(.caption).foregroundStyle(.red)
+                if let error = piTerminal.settings.credentialError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
             }
-        } header: {
-            Text("Pi Terminal")
-        } footer: {
-            Text("Leave the host blank to use JARVIS’s current LAN or Tailscale address. Opening the JARVIS tab connects over SSH and attaches to the persistent jarvis-ios tmux session.")
         }
+        .compactSettingsForm(title: "Pi terminal")
+        .onAppear { loadPiTerminalSettings() }
     }
 
     private func loadPiTerminalSettings() {
@@ -169,139 +345,119 @@ struct SettingsView: View {
 
     // MARK: - Watch terminal
 
-    private var watchTerminalSection: some View {
-        Section {
-            SecureField("Watch terminal setup code", text: $watchTerminalSetupCode)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.body.monospaced())
-
-            Button {
-                guard app.watchTerminalProvisioning.save(provisioningCode: watchTerminalSetupCode),
-                      let configuration = app.watchTerminalProvisioning.configuration else {
-                    watchTerminalSent = false
-                    return
-                }
-                WatchBridge.shared.publishTerminalConfiguration(configuration)
-                watchTerminalSetupCode = ""
-                watchTerminalSent = true
-            } label: {
-                Label(
-                    watchTerminalSent ? "Sent to Apple Watch" : "Save and send to Apple Watch",
-                    systemImage: watchTerminalSent ? "checkmark.circle.fill" : "applewatch.radiowaves.left.and.right"
+    private var watchTerminalDetail: some View {
+        Form {
+            Section {
+                LabeledContent(
+                    "Status",
+                    value: app.watchTerminalProvisioning.isProvisioned ? "Provisioned" : "Not provisioned"
                 )
-                .frame(maxWidth: .infinity)
+                if app.watchTerminalProvisioning.isProvisioned {
+                    LabeledContent("Bridge", value: app.watchTerminalProvisioning.endpoint)
+                        .font(.caption)
+                }
             }
-            .disabled(watchTerminalSetupCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-            if app.watchTerminalProvisioning.isProvisioned {
-                LabeledContent("Bridge", value: app.watchTerminalProvisioning.endpoint)
-                    .font(.caption)
+            Section {
+                SecureField("Watch terminal setup code", text: $watchTerminalSetupCode)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.body.monospaced())
+
+                Button {
+                    guard app.watchTerminalProvisioning.save(provisioningCode: watchTerminalSetupCode),
+                          let configuration = app.watchTerminalProvisioning.configuration else {
+                        watchTerminalSent = false
+                        return
+                    }
+                    WatchBridge.shared.publishTerminalConfiguration(configuration)
+                    watchTerminalSetupCode = ""
+                    watchTerminalSent = true
+                } label: {
+                    Label(
+                        watchTerminalSent ? "Sent to Apple Watch" : "Save and send to Apple Watch",
+                        systemImage: watchTerminalSent ? "checkmark.circle.fill" : "applewatch.radiowaves.left.and.right"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .disabled(watchTerminalSetupCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if let error = app.watchTerminalProvisioning.errorMessage {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
+            } header: {
+                Text("Provisioning")
+            } footer: {
+                Text("Paste the private code printed by scripts/jarvis-terminal-provisioning.sh. The token stays in Keychain and is transferred only to your paired Watch.")
             }
-            if let error = app.watchTerminalProvisioning.errorMessage {
-                Text(error).font(.caption).foregroundStyle(.red)
-            }
-        } header: {
-            Text("Apple Watch JARVIS")
-        } footer: {
-            Text("Paste the private setup code printed by scripts/jarvis-terminal-provisioning.sh. The private token is stored in Keychain and transferred only to your paired Watch.")
         }
+        .compactSettingsForm(title: "Apple Watch")
     }
 
-    // MARK: - Status
+    // MARK: - Diagnostics and About
 
-    @ViewBuilder
-    private var statusSection: some View {
-        switch app.connectionState {
-        case .connected: connectedStatus
-        case .connecting: connectingStatus
-        case .failed: failedStatus
-        case .idle: idleStatus
-        }
-    }
-
-    private var connectedStatus: some View {
-        Section("Status") {
-            statusBadgeRow
-            if let uptime = app.lastHealth?.uptimeSeconds {
-                LabeledContent("Uptime", value: JarvisFormat.uptime(uptime))
+    private var diagnosticsDetail: some View {
+        Form {
+            Section("Connection") {
+                LabeledContent("Status") {
+                    ConnectionBadge(state: app.connectionState, detail: daemonSummary)
+                }
+                LabeledContent("Endpoint", value: usingString ?? "—")
+                LabeledContent("Daemon", value: "jarvisd \(app.lastHealth?.version ?? "—")")
+                if let uptime = app.lastHealth?.uptimeSeconds {
+                    LabeledContent("Uptime", value: JarvisFormat.uptime(uptime))
+                }
             }
-            networkAndUsingRows
+
+            Section("Network") {
+                if let network = app.lastState?.subsystems?.network {
+                    LabeledContent("LAN IP", value: network.macLanIp ?? "—")
+                    LabeledContent("Tailscale IP", value: network.tailscaleIp ?? "—")
+                } else {
+                    LabeledContent("Network telemetry", value: "Unavailable")
+                }
+            }
+
+            if let error = app.errorMessage {
+                Section("Last error") {
+                    Text(error).foregroundStyle(.red)
+                }
+            }
         }
+        .compactSettingsForm(title: "Diagnostics")
     }
 
-    private var statusBadgeRow: some View {
-        LabeledContent("Status") {
-            ConnectionBadge(state: .connected, detail: "jarvisd \(app.lastHealth?.version ?? "")")
+    private var aboutDetail: some View {
+        Form {
+            Section {
+                LabeledContent("App", value: "JARVIS")
+                LabeledContent("Version", value: appVersion)
+                LabeledContent("Daemon", value: "jarvisd \(app.lastHealth?.version ?? "—")")
+            }
         }
-    }
-
-    @ViewBuilder
-    private var networkAndUsingRows: some View {
-        if let net = app.lastState?.subsystems?.network {
-            LabeledContent("LAN IP", value: net.macLanIp ?? "—")
-            LabeledContent("Tailscale IP", value: net.tailscaleIp ?? "—")
-        }
-        if let using = usingString {
-            LabeledContent("Using", value: using)
-        }
+        .compactSettingsForm(title: "About JARVIS")
     }
 
     private var usingString: String? {
-        guard let ep = app.currentEndpoint, let host = ep.host else { return nil }
-        let port = ep.port.map { "\($0)" } ?? "8790"
+        guard let endpoint = app.currentEndpoint, let host = endpoint.host else { return nil }
+        let port = endpoint.port.map(String.init) ?? "8790"
         return host + ":" + port
     }
 
-    private var connectingStatus: some View {
-        Section("Status") {
-            HStack {
-                ProgressView()
-                Text("Connecting to jarvisd…")
-            }
-        }
-    }
-
-    private var failedStatus: some View {
-        Section("Status") {
-            LabeledContent("Status") { ConnectionBadge(state: .failed, detail: "offline") }
-        }
-    }
-
-    private var idleStatus: some View {
-        Section("Status") {
-            LabeledContent("Status") { ConnectionBadge(state: .idle, detail: "not connected") }
-        }
-    }
-
-    // MARK: - Error
-
-    private func errorSection(_ message: String) -> some View {
-        Section {
-            Label {
-                Text(message).font(.callout).foregroundStyle(.red)
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
-            }
-        } header: {
-            Text("Error")
-        }
-    }
-
-    // MARK: - About
-
-    private var aboutSection: some View {
-        Section("About") {
-            LabeledContent("App", value: "JARVIS")
-            LabeledContent("Daemon", value: "jarvisd \(app.lastHealth?.version ?? "—")")
-            LabeledContent("Version", value: appVersion)
-        }
-    }
-
     private var appVersion: String {
-        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-        return "\(v) (\(b))"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "\(version) (\(build))"
+    }
+}
+
+private extension View {
+    func compactSettingsForm(title: String) -> some View {
+        self
+            .scrollContentBackground(.hidden)
+            .background(JarvisBackdrop())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
 

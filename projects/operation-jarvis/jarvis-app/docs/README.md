@@ -234,6 +234,11 @@ never deploy to a device outside Dylan's allowlist.
   marker to select Terminal. Failure paths return only their existing dialogs.
   Widgets still contain no prompt intent, and terminal input is still attempted
   exactly once.
+- Build 44 keeps that Siri contract unchanged and compresses the iPhone Home
+  and Settings roots to fit the iPhone 11 viewport without required scrolling.
+  Pi sessions and the full Codex card remain directly visible; plugs and the
+  purifier use compact controls; service/job details and Settings configuration
+  move behind summary rows without removing any action or telemetry.
 - Build 37 replaces the Watch System page's connection-source panel with an
   aesthetic Codex quota card and adds a larger counterpart to iPhone Home after
   Pi activity. Build 37 originally scheduled the fixed read-only
@@ -245,7 +250,37 @@ never deploy to a device outside Dylan's allowlist.
   refresh preserves the last good value and cannot make plugs, purifier, or the
   global JARVIS state stale.
 
-### Signed build 43 physical-test candidate
+### Installed build 44 on iPhone
+
+```text
+Archive: /tmp/JARVIS-build44-minimal-home-settings.xcarchive
+IPA:     /tmp/JARVIS-build44-minimal-home-settings-export/JARVIS.ipa
+SHA-256: 18d9a83f1c4753fe9820664323424c2371eb671077630b570b7614c6fc4a0e78
+```
+
+All four Personal-Team-signed products report `0.3.0 (44)`. Deep and individual
+signatures, required Watch hierarchy, iPhone `openAppWhenRun=false`, Watch
+`openAppWhenRun=true`, widget prompt exclusion, and Watch dependency isolation
+pass. Validation passes 26 `jarvisd`, nine terminal-daemon, 43 JARVISKit tests
+with three expected live skips, 19 iPhone tests, repository smoke
+`PASS=104 WARN=0 FAIL=0`, and warning-free signed archive/export logs. The exact
+IPA was upgraded with `ideviceinstaller -w upgrade`; CoreDevice inventory reports
+build 44 and the iPhone host launched successfully. Simulator evidence:
+
+- `/tmp/JARVIS-build44-home-direct-pi-codex.png` — the complete Home root with
+  direct Pi/Codex cards, plugs, purifier, and System visible without scrolling.
+- `/tmp/JARVIS-build44-home-direct-codex-critical-red.png` — direct 29% Codex
+  card in the strict critical-red theme.
+- `/tmp/JARVIS-build44-minimal-settings-final.png` — the complete compact
+  Settings index visible without scrolling.
+
+The exact archived Watch product was attempted only on Dylan's allowlisted
+Watch. CoreDevice tunnel negotiation remained unavailable, so no destructive
+recovery was attempted and the Watch remains installed on build 42. Build 44's
+system-level iPhone Siri sheet handoff and compact physical layout remain owner
+acceptance gates.
+
+### Superseded signed build 43 candidate
 
 ```text
 Archive: /tmp/JARVIS-build43-siri-success-handoff.xcarchive
@@ -253,16 +288,9 @@ IPA:     /tmp/JARVIS-build43-siri-success-handoff-export/JARVIS.ipa
 SHA-256: ad2abf0b7d9a36b466d3e2dabf8bd309706c043972b8736f6add292042457632
 ```
 
-All four Personal-Team-signed products report `0.3.0 (43)`. Deep and individual
-signatures, required Watch hierarchy, iPhone `openAppWhenRun=false`, Watch
-`openAppWhenRun=true`, widget prompt exclusion, allowlisted provisioning,
-explicit Always On metadata, and Watch dependency isolation pass. Validation
-passes 26 `jarvisd`, nine terminal-daemon, 43 JARVISKit tests with three expected
-live skips, 19 iPhone tests, repository smoke `PASS=104 WARN=0 FAIL=0`, and
-warning-free signed archive/export logs. The iPhone simulator confirms that
-`jarvis://terminal` selects the JARVIS tab in
-`/tmp/JARVIS-build43-iphone-terminal-openurl.png`. The system-level Siri sheet
-handoff remains a physical acceptance gate. Build 43 has not been installed.
+All four Personal-Team-signed products report `0.3.0 (43)`. Its security,
+signing, hierarchy, and validation gates passed, but it was not physically
+installed. Build 44 carries its success-only Siri handoff unchanged.
 
 ### Installed build 42
 

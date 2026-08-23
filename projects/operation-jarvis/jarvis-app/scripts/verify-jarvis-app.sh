@@ -53,6 +53,17 @@ grep -q 'case pi' JARVIS/AppState.swift
 grep -q 'case "pi": selection = .pi' JARVIS/JARVISApp.swift
 reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case events|fetchEvents|lastEvents|eventsLoading' JARVIS
 
+printf '%s\n' '== compact iPhone dashboard contract =='
+grep -q 'private var compactConnectionStrip' JARVIS/Views/HomeView.swift
+grep -q 'MinimalSectionHeader(title: "System"' JARVIS/Views/HomeView.swift
+grep -q 'private func settingsGroup<Content: View>' JARVIS/Views/SettingsView.swift
+grep -q 'private var diagnosticsDetail' JARVIS/Views/SettingsView.swift
+grep -q 'private var piTerminalDetail' JARVIS/Views/SettingsView.swift
+grep -q 'private var watchTerminalDetail' JARVIS/Views/SettingsView.swift
+reject_match 'legacy oversized iPhone status hero remains' -RqsE 'private var statusHeader|private var settingsHero|Native control plane' JARVIS/Views
+reject_match 'legacy expanded Home service groups remain' -qsE 'runtimeServicesExpanded|scheduledJobsExpanded|DisclosureGroup' JARVIS/Views/HomeView.swift
+reject_match 'Pi and Codex summaries must remain directly visible on Home' -qsE 'codexDetail|navigationTitle\("Codex usage"\)' JARVIS/Views/HomeView.swift
+
 printf '%s\n' '== Pi terminal source contract =='
 grep -q 'exactVersion: 1.20.0' project.yml
 grep -q 'exactVersion: 0.15.0' project.yml

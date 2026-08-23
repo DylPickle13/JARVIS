@@ -84,6 +84,54 @@ struct Card<Content: View>: View {
     }
 }
 
+// MARK: - Compact surfaces
+
+/// A quieter card for information-dense dashboard and settings summaries.
+/// Detail screens retain `Card`; primary screens use this surface to avoid
+/// decorative padding and shadows consuming the viewport.
+struct MinimalCard<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                JarvisPalette.surface,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.primary.opacity(0.055), lineWidth: 0.75)
+            }
+    }
+}
+
+struct MinimalSectionHeader: View {
+    let title: String
+    let systemImage: String
+    var detail: String? = nil
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+            Spacer(minLength: 8)
+            if let detail {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+}
+
 // MARK: - JARVIS visual system
 
 enum JarvisPalette {

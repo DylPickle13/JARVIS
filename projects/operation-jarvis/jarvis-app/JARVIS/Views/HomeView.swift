@@ -8,8 +8,6 @@ struct HomeView: View {
     @State private var fanLocal: Double = 2
     @State private var isDraggingFan = false
     @State private var pendingServiceAction: PendingServiceAction?
-    @State private var runtimeServicesExpanded = false
-    @State private var scheduledJobsExpanded = false
 
     private struct PendingServiceAction {
         let name: String
@@ -20,14 +18,15 @@ struct HomeView: View {
 
     private var usesAccessibilityLayout: Bool { dynamicTypeSize.isAccessibilitySize }
     private var gridColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 12), count: usesAccessibilityLayout ? 1 : 2)
+        Array(repeating: GridItem(.flexible(), spacing: 8), count: usesAccessibilityLayout ? 1 : 2)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
-                    statusHeader
+                VStack(spacing: 10) {
+                    compactConnectionStrip
+
                     if let operationError = app.operationErrorMessage {
                         OperationErrorCard(message: operationError)
                     }
@@ -37,19 +36,21 @@ struct HomeView: View {
                     } else if app.connectionState == .connected, let state = app.lastState {
                         if state.loading == true && state.subsystems == nil {
                             loadingCard
+                        } else {
+                            piCard(state)
+                            codexQuotaCard(state)
+                            plugsSection(state)
+                            purifierSection(state)
+                            systemSection
                         }
-                        piCard(state)
-                        codexQuotaCard(state)
-                        plugsSection(state)
-                        purifierSection(state)
-                        servicesSection
                     } else {
-                        notConnectedCard
+                        compactOfflineCard
                     }
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 6)
             }
+            .scrollIndicators(.hidden)
             .background(JarvisBackdrop())
             .navigationTitle("JARVIS")
             .refreshable { await app.refreshHome() }
@@ -77,116 +78,51 @@ struct HomeView: View {
         }
     }
 
-    private var statusHeader: some View {
-        Card {
-            Group {
-                if usesAccessibilityLayout {
-                    VStack(alignment: .leading, spacing: 14) {
-                        pulseIdentity
-                        pulseMetadata
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(spacing: 14) {
-                            pulseIdentity
-                            Spacer(minLength: 8)
-                            connectionStatusPill
-                        }
-                        pulseMetadata
-                    }
-                }
-            }
-        }
-        .overlay(alignment: .topTrailing) {
+    // MARK: - Compact overview
+
+    private var compactConnectionStrip: some View {
+        HStack(spacing: 9) {
             Circle()
-                .fill(JarvisPalette.cyan.opacity(0.13))
-                .frame(width: 116, height: 116)
-                .blur(radius: 32)
-                .offset(x: 26, y: -34)
-                .allowsHitTesting(false)
-        }
-        .accessibilityElement(children: .contain)
-    }
+                .fill(connectionColor)
+                .frame(width: 9, height: 9)
+                .shadow(color: connectionColor.opacity(0.45), radius: 3)
 
-    private var pulseIdentity: some View {
-        HStack(spacing: 13) {
-            JARVISMark(size: 50)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("JARVIS")
-                    .font(.headline.weight(.bold))
-                    .tracking(1.6)
-                Text(pulseTitle)
-                    .font(.title3.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(statusDetail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            Text(connectionHeadline)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if app.isStateLoading || app.connectionState == .connecting {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Refreshing JARVIS status")
             }
+
+            Text(freshnessLabel)
+                .font(.caption)
+                .foregroundStyle(app.lastState?.stale == true ? JarvisPalette.warning : .secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-    }
-
-    @ViewBuilder
-    private var pulseMetadata: some View {
-        if usesAccessibilityLayout {
-            VStack(alignment: .leading, spacing: 8) {
-                connectionStatusPill
-                Label(freshnessLabel, systemImage: app.lastState?.stale == true ? "clock.badge.exclamationmark" : "clock")
-                    .font(.caption)
-                    .foregroundStyle(app.lastState?.stale == true ? JarvisPalette.warning : .secondary)
-            }
-        } else {
-            HStack {
-                Label(freshnessLabel, systemImage: app.lastState?.stale == true ? "clock.badge.exclamationmark" : "clock")
-                    .font(.caption)
-                    .foregroundStyle(app.lastState?.stale == true ? JarvisPalette.warning : .secondary)
-                Spacer()
-                if app.isStateLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Refreshing JARVIS status")
-                } else {
-                    Text("BUILD \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—")")
-                        .font(.caption2.weight(.semibold))
-                        .tracking(0.8)
-                        .foregroundStyle(.tertiary)
-                }
-            }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 42)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(connectionColor.opacity(0.14), lineWidth: 0.75)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(connectionHeadline), \(freshnessLabel)")
     }
 
-    private var connectionStatusPill: some View {
-        StatusPill(text: connectionPillText, color: connectionColor)
-    }
-
-    private var pulseTitle: String {
+    private var connectionHeadline: String {
         switch app.connectionState {
         case .connected:
-            if app.lastState?.stale == true { return "Telemetry needs attention" }
-            if app.operationErrorMessage != nil { return "Action needs attention" }
-            return "Systems online"
-        case .connecting: return "Establishing link"
-        case .failed: return "JARVIS offline"
+            return app.lastState?.stale == true ? "Connected · stale" : "Online · \(networkLabel)"
+        case .connecting: return "Connecting"
+        case .failed: return "Offline"
         case .idle: return "Ready to connect"
-        }
-    }
-
-    private var statusDetail: String {
-        switch app.connectionState {
-        case .connected:
-            return app.isStateLoading ? "Connected · refreshing" : "Connected via \(networkLabel)"
-        case .connecting: return "Searching LAN and Tailscale"
-        case .failed: return "Open Settings to review the connection"
-        case .idle: return "Connection has not started"
-        }
-    }
-
-    private var connectionPillText: String {
-        switch app.connectionState {
-        case .connected: return app.lastState?.stale == true ? "STALE" : networkLabel.uppercased()
-        case .connecting: return "LINKING"
-        case .failed: return "OFFLINE"
-        case .idle: return "IDLE"
         }
     }
 
@@ -200,7 +136,10 @@ struct HomeView: View {
     }
 
     private var freshnessLabel: String {
-        if app.lastState?.stale == true { return "Status is stale" }
+        if app.lastState?.stale == true { return "Needs refresh" }
+        if app.connectionState == .connected, app.lastState != nil, app.lastState?.ageSeconds == nil {
+            return "Status current"
+        }
         return JarvisFormat.freshness(ageSeconds: app.lastState?.ageSeconds)
     }
 
@@ -212,327 +151,233 @@ struct HomeView: View {
     }
 
     private var loadingCard: some View {
-        Card {
-            HStack(spacing: 12) {
+        MinimalCard {
+            HStack(spacing: 10) {
                 ProgressView()
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Loading status…")
-                        .font(.headline)
-                    Text("jarvisd is connected; subsystem data is arriving.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    // MARK: - Pi
-
-    private func piCard(_ state: StateSnapshot) -> some View {
-        guard let pi = state.subsystems?.pi, pi.ok == true, let active = pi.active else {
-            return AnyView(unavailableCard(title: "Pi sessions unavailable", detail: state.subsystems?.pi?.error))
-        }
-        let content = Card {
-            HStack(spacing: 14) {
-                Image(systemName: "terminal.fill")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(JarvisPalette.cyan)
-                    .frame(width: 42, height: 42)
-                    .background(JarvisPalette.cyan.opacity(0.12), in: Circle())
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Pi sessions").font(.headline)
-                    Text("\(active) active").font(.subheadline).foregroundStyle(.secondary)
-                }
+                Text("Loading JARVIS status…")
+                    .font(.subheadline.weight(.medium))
                 Spacer()
-                Text("\(active)")
-                    .font(.title2.weight(.bold))
-                    .monospacedDigit()
-                    .foregroundStyle(JarvisPalette.cyan)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Pi sessions: \(active) active")
-        if pi.stale == true {
-            return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Pi session data is stale.") })
-        }
-        return AnyView(content)
     }
 
-    // MARK: - Codex quota
-
-    private func codexQuotaCard(_ state: StateSnapshot) -> AnyView {
-        guard let quota = state.subsystems?.codexQuota,
-              quota.available == true,
-              let remaining = quota.weekly?.remainingPercent else {
-            return AnyView(
-                unavailableCard(
-                    title: "Codex quota unavailable",
-                    detail: state.subsystems?.codexQuota?.lastError ?? state.subsystems?.codexQuota?.error
-                )
-            )
-        }
-        let color = codexQuotaColor(remaining)
-        let content = Card {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    Label("Codex usage", systemImage: "chevron.left.forwardslash.chevron.right")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    StatusPill(text: codexPlanLabel(quota.planType), color: color, symbol: "sparkles")
+    private var compactOfflineCard: some View {
+        MinimalCard {
+            HStack(spacing: 12) {
+                Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.connectionState == .failed ? "JARVIS is offline" : "JARVIS is not connected")
+                        .font(.subheadline.weight(.semibold))
+                    if let error = app.errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
                 }
+                Spacer(minLength: 8)
+                Button("Connect") { Task { await app.connect() } }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+        }
+    }
 
-                Group {
-                    if usesAccessibilityLayout {
-                        VStack(alignment: .leading, spacing: 14) {
-                            codexQuotaRing(remaining: remaining, color: color)
-                            codexQuotaDetails(quota, remaining: remaining, color: color)
+    // MARK: - Plugs
+
+    private func plugsSection(_ state: StateSnapshot) -> some View {
+        let subsystem = state.subsystems?.plugs
+        let plugs = subsystem?.plugs ?? [:]
+        let items = plugs.keys.sorted().map { (name: $0, isOn: plugs[$0]?.isOn) }
+        let unavailable = subsystem?.ok != true
+        let stale = state.stale == true || subsystem?.stale == true
+
+        return VStack(alignment: .leading, spacing: 7) {
+            MinimalSectionHeader(
+                title: "Plugs",
+                systemImage: "powerplug",
+                detail: unavailable ? "Unavailable" : plugCountLabel(subsystem)
+            )
+
+            if unavailable || items.isEmpty {
+                MinimalCard {
+                    compactUnavailableRow(
+                        title: unavailable ? "Plug status unavailable" : "No plugs configured",
+                        detail: subsystem?.lastError ?? subsystem?.error
+                    )
+                }
+            } else {
+                LazyVGrid(columns: gridColumns, spacing: 8) {
+                    ForEach(items, id: \.name) { item in
+                        Button {
+                            guard let isOn = item.isOn else { return }
+                            Task { await app.setPlug(item.name, isOn: !isOn) }
+                        } label: {
+                            PlugCard(
+                                name: item.name,
+                                isOn: item.isOn,
+                                isBusy: app.isOperationBusy("plug:\(item.name)")
+                            )
                         }
-                    } else {
-                        HStack(spacing: 18) {
-                            codexQuotaRing(remaining: remaining, color: color)
-                            codexQuotaDetails(quota, remaining: remaining, color: color)
-                        }
+                        .buttonStyle(.plain)
+                        .disabled(
+                            item.isOn == nil || stale || app.isOperationBusy("plug:\(item.name)")
+                        )
+                        .accessibilityLabel("\(JarvisFormat.displayName(item.name)) plug")
+                        .accessibilityValue(item.isOn.map { $0 ? "on" : "off" } ?? "unavailable")
+                        .accessibilityHint(
+                            item.isOn == nil
+                                ? "State unavailable"
+                                : (stale ? "State is stale; refresh before changing it" : "Double tap to set the opposite state")
+                        )
                     }
                 }
             }
+
+            if stale { staleCaption("Plug data is stale.") }
         }
-        .overlay(alignment: .topTrailing) {
-            Circle()
-                .fill(color.opacity(0.10))
-                .frame(width: 112, height: 112)
-                .blur(radius: 28)
-                .offset(x: 22, y: -32)
-                .allowsHitTesting(false)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "Codex weekly quota, \(Int(remaining.rounded())) percent remaining, " +
-            "\(codexQuotaResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))"
-        )
-        if quota.stale == true {
-            return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Codex quota data is stale.") })
-        }
-        return AnyView(content)
+        .accessibilityElement(children: .contain)
     }
 
-    private func codexQuotaRing(remaining: Double, color: Color) -> some View {
-        ZStack {
-            Circle()
-                .stroke(color.opacity(0.16), lineWidth: 8)
-            Circle()
-                .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0.01), 1)))
-                .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 0) {
-                Text("\(Int(remaining.rounded()))%")
-                    .font(.title2.weight(.bold))
-                    .monospacedDigit()
-                    .foregroundStyle(color)
-                Text("REMAINING")
-                    .font(.system(size: 8, weight: .bold))
-                    .tracking(0.7)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 82, height: 82)
-    }
-
-    private func codexQuotaDetails(
-        _ quota: CodexQuotaSubsystem,
-        remaining: Double,
-        color: Color
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("Weekly capacity")
-                .font(.title3.weight(.semibold))
-            ProgressView(value: remaining, total: 100)
-                .tint(color)
-                .accessibilityHidden(true)
-            Label(codexQuotaResetLabel(quota.weekly), systemImage: "calendar.badge.clock")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 10) {
-                Label(codexFiveHourLabel(quota), systemImage: "clock")
-                if let credits = codexCreditsLabel(quota.creditBalance) {
-                    Label(credits, systemImage: "bolt.circle")
-                }
-            }
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func codexQuotaColor(_ remaining: Double) -> Color {
-        CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)
-            ? JarvisPalette.critical
-            : JarvisPalette.electricBlue
-    }
-
-    private func codexPlanLabel(_ plan: String?) -> String {
-        guard let plan, !plan.isEmpty else { return "CODEX" }
-        return plan.replacingOccurrences(of: "_", with: " ").uppercased()
-    }
-
-    private func codexQuotaResetLabel(_ window: CodexQuotaWindow?) -> String {
-        let seconds: Int?
-        if let resetAt = window?.resetAt,
-           let date = JarvisFormat.parseISO8601(resetAt) {
-            seconds = max(0, Int(date.timeIntervalSinceNow))
-        } else {
-            seconds = window?.resetAfterSeconds
-        }
-        guard let seconds else { return "Reset time unavailable" }
-        if seconds < 60 { return "Resets in less than a minute" }
-        if seconds < 3_600 { return "Resets in \(seconds / 60)m" }
-        if seconds < 86_400 { return "Resets in \(seconds / 3_600)h \((seconds % 3_600) / 60)m" }
-        return "Resets in \(seconds / 86_400)d \((seconds % 86_400) / 3_600)h"
-    }
-
-    private func codexFiveHourLabel(_ quota: CodexQuotaSubsystem) -> String {
-        if let remaining = quota.fiveHour?.remainingPercent {
-            return "5-hour \(Int(remaining.rounded()))% left"
-        }
-        if quota.fiveHourEnforced == false { return "5-hour paused" }
-        return "5-hour unavailable"
-    }
-
-    private func codexCreditsLabel(_ balance: Double?) -> String? {
-        guard let balance else { return nil }
-        if balance >= 1_000 { return String(format: "%.1fK credits", balance / 1_000) }
-        return "\(Int(balance.rounded())) credits"
+    private func plugCountLabel(_ subsystem: PlugsSubsystem?) -> String {
+        guard let on = subsystem?.onCount, let total = subsystem?.count else { return "—" }
+        return "\(on) of \(total) on"
     }
 
     // MARK: - Purifier
 
-    private func purifierSection(_ state: StateSnapshot) -> AnyView {
-        guard let purifier = state.subsystems?.purifier, purifier.ok == true else {
-            return AnyView(unavailableCard(title: "Air purifier unavailable", detail: state.subsystems?.purifier?.lastError ?? state.subsystems?.purifier?.error))
-        }
-        let isOn = purifier.isOn
-        let mode = ["auto", "manual", "sleep", "pet"].contains(purifier.mode ?? "") ? (purifier.mode ?? "auto") : "auto"
-        let fan = purifier.fanSetLevel ?? purifier.fanLevel
-        let busy = app.isOperationBusy("purifier")
-        let stale = state.stale == true || purifier.stale == true
-        let content = VStack(alignment: .leading, spacing: 8) {
-            if usesAccessibilityLayout {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Air purifier", systemImage: "wind").font(.headline)
-                    Toggle("Power", isOn: powerBinding)
-                        .accessibilityLabel("Air purifier power")
-                        .disabled(isOn == nil || stale || busy)
-                }
-                .padding(.horizontal, 4)
-            } else {
-                HStack {
-                    Label("Air purifier", systemImage: "wind").font(.headline)
-                    Spacer()
-                    Toggle("Power", isOn: powerBinding)
-                        .labelsHidden()
-                        .accessibilityLabel("Air purifier power")
-                        .disabled(isOn == nil || stale || busy)
-                }
-                .padding(.horizontal, 4)
-            }
+    @ViewBuilder
+    private func purifierSection(_ state: StateSnapshot) -> some View {
+        if let purifier = state.subsystems?.purifier, purifier.ok == true {
+            let isOn = purifier.isOn
+            let mode = ["auto", "manual", "sleep", "pet"].contains(purifier.mode ?? "")
+                ? (purifier.mode ?? "auto")
+                : "auto"
+            let fan = purifier.fanSetLevel ?? purifier.fanLevel
+            let busy = app.isOperationBusy("purifier")
+            let stale = state.stale == true || purifier.stale == true
 
-            Card {
-                VStack(alignment: .leading, spacing: 14) {
-                    if usesAccessibilityLayout {
-                        VStack(alignment: .leading, spacing: 8) {
-                            purifierReading(purifier)
-                            Text("\(mode.capitalized) · fan \(fan.map(String.init) ?? "—")")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+            MinimalCard {
+                VStack(spacing: 9) {
+                    HStack(spacing: 10) {
+                        Label("Air purifier", systemImage: "wind")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 6)
+                        purifierReading(purifier)
+                        if busy {
+                            ProgressView().controlSize(.small)
                         }
-                    } else {
-                        HStack(alignment: .center) {
-                            purifierReading(purifier)
-                            Spacer()
-                            Text("\(mode.capitalized) · fan \(fan.map(String.init) ?? "—")")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+                        Toggle("Power", isOn: powerBinding)
+                            .labelsHidden()
+                            .accessibilityLabel("Air purifier power")
+                            .disabled(isOn == nil || stale || busy)
                     }
 
-                    if usesAccessibilityLayout {
-                        Picker("Mode", selection: modeBinding) {
-                            Text("Auto").tag("auto")
-                            Text("Manual").tag("manual")
-                            Text("Sleep").tag("sleep")
-                            Text("Pet").tag("pet")
-                        }
-                        .pickerStyle(.menu)
-                        .disabled(isOn != true || stale || busy)
-                        .accessibilityLabel("Air purifier mode")
-                    } else {
-                        Picker("Mode", selection: modeBinding) {
-                            Text("Auto").tag("auto")
-                            Text("Manual").tag("manual")
-                            Text("Sleep").tag("sleep")
-                            Text("Pet").tag("pet")
-                        }
-                        .pickerStyle(.segmented)
-                        .disabled(isOn != true || stale || busy)
-                        .accessibilityLabel("Air purifier mode")
-                    }
+                    Divider()
 
                     if usesAccessibilityLayout {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Fan \(isDraggingFan ? "\(Int(fanLocal))" : (fan.map(String.init) ?? "—"))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            purifierFanSlider(isOn: isOn, mode: mode, stale: stale, busy: busy, fan: fan)
+                            purifierModePicker(isOn: isOn, stale: stale, busy: busy)
+                            purifierFanControl(isOn: isOn, mode: mode, stale: stale, busy: busy, fan: fan)
                         }
                     } else {
                         HStack(spacing: 10) {
-                            Text("Fan").font(.caption).foregroundStyle(.secondary)
-                            purifierFanSlider(isOn: isOn, mode: mode, stale: stale, busy: busy, fan: fan)
-                            Text(isDraggingFan ? "\(Int(fanLocal))" : (fan.map(String.init) ?? "—"))
-                                .font(.body.monospacedDigit())
-                                .frame(width: 18)
+                            purifierModePicker(isOn: isOn, stale: stale, busy: busy)
+                            Spacer(minLength: 4)
+                            purifierFanControl(isOn: isOn, mode: mode, stale: stale, busy: busy, fan: fan)
                         }
                     }
                 }
             }
+
+            if stale { staleCaption("Air-purifier data is stale.") }
+        } else {
+            VStack(alignment: .leading, spacing: 7) {
+                MinimalSectionHeader(title: "Air purifier", systemImage: "wind")
+                MinimalCard {
+                    compactUnavailableRow(
+                        title: "Air purifier unavailable",
+                        detail: state.subsystems?.purifier?.lastError ?? state.subsystems?.purifier?.error
+                    )
+                }
+            }
         }
-        .accessibilityElement(children: .contain)
-        if stale {
-            return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Air-purifier data is stale.") })
+    }
+
+    private func purifierModePicker(isOn: Bool?, stale: Bool, busy: Bool) -> some View {
+        HStack(spacing: 4) {
+            Text("Mode")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("Mode", selection: modeBinding) {
+                Text("Auto").tag("auto")
+                Text("Manual").tag("manual")
+                Text("Sleep").tag("sleep")
+                Text("Pet").tag("pet")
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .disabled(isOn != true || stale || busy)
+            .accessibilityLabel("Air purifier mode")
         }
-        return AnyView(content)
+    }
+
+    @ViewBuilder
+    private func purifierFanControl(
+        isOn: Bool?,
+        mode: String,
+        stale: Bool,
+        busy: Bool,
+        fan: Int?
+    ) -> some View {
+        if mode == "manual" {
+            HStack(spacing: 7) {
+                Text("Fan")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                purifierFanSlider(isOn: isOn, mode: mode, stale: stale, busy: busy, fan: fan)
+                    .frame(minWidth: 72, maxWidth: 120)
+                Text(isDraggingFan ? "\(Int(fanLocal))" : (fan.map(String.init) ?? "—"))
+                    .font(.caption.monospacedDigit())
+                    .frame(width: 14)
+            }
+        } else {
+            Text("Fan \(fan.map(String.init) ?? "—")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
     }
 
     private func purifierReading(_ purifier: PurifierSubsystem) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 7) {
             ZStack {
                 Circle()
-                    .stroke(purifierQualityColor(purifier.pm25).opacity(0.18), lineWidth: 6)
+                    .stroke(purifierQualityColor(purifier.pm25).opacity(0.16), lineWidth: 4)
                 Circle()
                     .trim(from: 0, to: purifierQualityProgress(purifier.pm25))
                     .stroke(
                         purifierQualityColor(purifier.pm25),
-                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
                 Text(purifier.pm25.map(String.init) ?? "—")
-                    .font(.headline.weight(.bold))
+                    .font(.caption.weight(.bold))
                     .monospacedDigit()
             }
-            .frame(width: 58, height: 58)
+            .frame(width: 34, height: 34)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(purifierQualityLabel(purifier.pm25))
-                    .font(.headline)
-                Text("PM2.5 · µg/m³")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(purifierQualityLabel(purifier.pm25))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(purifierQualityColor(purifier.pm25))
+                .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Air quality \(purifierQualityLabel(purifier.pm25)), PM2.5 \(purifier.pm25.map(String.init) ?? "unavailable") micrograms per cubic meter")
+        .accessibilityLabel(
+            "Air quality \(purifierQualityLabel(purifier.pm25)), PM2.5 \(purifier.pm25.map(String.init) ?? "unavailable") micrograms per cubic meter"
+        )
     }
 
     private func purifierQualityLabel(_ value: Int?) -> String {
@@ -583,52 +428,83 @@ struct HomeView: View {
         .disabled(isOn != true || mode != "manual" || stale || busy)
     }
 
-    // MARK: - Plugs
+    // MARK: - System summary
 
-    private func plugsSection(_ state: StateSnapshot) -> some View {
-        guard let subsystem = state.subsystems?.plugs, subsystem.ok == true else {
-            return AnyView(unavailableCard(title: "Plugs unavailable", detail: state.subsystems?.plugs?.lastError ?? state.subsystems?.plugs?.error))
-        }
-        let plugs = subsystem.plugs ?? [:]
-        let items = plugs.keys.sorted().map { (name: $0, isOn: plugs[$0]?.isOn) }
-        return AnyView(VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Plugs", systemImage: "powerplug").font(.headline)
-                Spacer()
-                if let on = subsystem.onCount, let total = subsystem.count {
-                    Text("\(on) / \(total) on")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
-            .padding(.horizontal, 4)
+    private var systemSection: some View {
+        MinimalCard {
+            VStack(spacing: 0) {
+                MinimalSectionHeader(title: "System", systemImage: "server.rack")
+                    .padding(.bottom, 5)
 
-            if items.isEmpty {
-                Card { Text("No plugs configured.").foregroundStyle(.secondary) }
-            } else {
-                LazyVGrid(columns: gridColumns, spacing: 12) {
-                    ForEach(items, id: \.name) { item in
-                        Button {
-                            guard let isOn = item.isOn else { return }
-                            Task { await app.setPlug(item.name, isOn: !isOn) }
-                        } label: {
-                            PlugCard(name: item.name, isOn: item.isOn, isBusy: app.isOperationBusy("plug:\(item.name)"))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(item.isOn == nil || state.stale == true || subsystem.stale == true || app.isOperationBusy("plug:\(item.name)"))
-                        .accessibilityLabel("\(JarvisFormat.displayName(item.name)) plug")
-                        .accessibilityValue(item.isOn.map { $0 ? "on" : "off" } ?? "unavailable")
-                        .accessibilityHint(item.isOn == nil ? "State unavailable" : (state.stale == true || subsystem.stale == true ? "State is stale; refresh before changing it" : "Double tap to set the opposite state"))
-                    }
+                Divider()
+
+                NavigationLink {
+                    servicesDetail
+                } label: {
+                    systemSummaryRow(
+                        title: "Services",
+                        systemImage: "gearshape.2",
+                        value: runtimeServiceSummary,
+                        color: app.servicesErrorMessage == nil ? .secondary : JarvisPalette.warning,
+                        showsChevron: true
+                    )
                 }
+                .buttonStyle(.plain)
+
+                compactDivider
+
+                NavigationLink {
+                    scheduledJobsDetail
+                } label: {
+                    systemSummaryRow(
+                        title: "Scheduled jobs",
+                        systemImage: "calendar.badge.clock",
+                        value: scheduledJobsSummary,
+                        color: app.scheduledJobsErrorMessage == nil ? .secondary : JarvisPalette.warning,
+                        showsChevron: true
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            if state.stale == true || subsystem.stale == true { staleCaption("Plug data is stale.") }
         }
-        .accessibilityElement(children: .contain))
+        .accessibilityElement(children: .contain)
     }
 
-    // MARK: - Services
+    private func systemSummaryRow(
+        title: String,
+        systemImage: String,
+        value: String,
+        color: Color,
+        showsChevron: Bool = false
+    ) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(color == .secondary ? JarvisPalette.cyan : color)
+                .frame(width: 20)
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .monospacedDigit()
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(minHeight: 35)
+        .contentShape(Rectangle())
+    }
+
+    private var compactDivider: some View {
+        Divider().padding(.leading, 29)
+    }
 
     private var sortedServices: [(name: String, service: ServiceActionResult)] {
         app.lastServices.map { (name: $0.key, service: $0.value) }.sorted { left, right in
@@ -643,63 +519,214 @@ struct HomeView: View {
 
     private var runtimeServiceSummary: String {
         guard app.servicesLoaded else { return "Loading" }
-        guard !sortedServices.isEmpty else { return "No runtimes" }
+        guard !sortedServices.isEmpty else { return "No services" }
         let running = sortedServices.filter { $0.service.running == true }.count
         return "\(running) of \(sortedServices.count) running"
     }
 
-    @ViewBuilder
-    private var servicesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Services", systemImage: "gearshape.2").font(.headline)
-                Spacer()
-                if app.servicesLoading || app.scheduledJobsLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Refreshing services and scheduled jobs")
-                }
-            }
-            .padding(.horizontal, 4)
+    private var scheduledJobsSummary: String {
+        guard app.scheduledJobsLoaded else { return "Loading" }
+        guard let summary = app.scheduledJobsSummary else { return "No jobs" }
+        return "\(summary.enabled) of \(summary.total) enabled"
+    }
 
-            DisclosureGroup(isExpanded: $runtimeServicesExpanded) {
-                VStack(alignment: .leading, spacing: 8) {
-                    if let error = app.servicesErrorMessage {
-                        statusErrorCard(title: "Runtime status unavailable", message: error)
-                    }
-                    if !app.servicesLoaded {
-                        loadingStatusCard("Loading runtime services…")
-                    } else if sortedServices.isEmpty {
-                        Card { Text("No registered runtime services.").foregroundStyle(.secondary) }
+    // MARK: - Pi and Codex overview cards
+
+    private func piCard(_ state: StateSnapshot) -> AnyView {
+        guard let pi = state.subsystems?.pi, pi.ok == true, let active = pi.active else {
+            return AnyView(
+                MinimalCard {
+                    compactUnavailableRow(title: "Pi sessions unavailable", detail: state.subsystems?.pi?.error)
+                }
+            )
+        }
+
+        let content = MinimalCard {
+            HStack(spacing: 11) {
+                Image(systemName: "terminal.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(JarvisPalette.cyan)
+                    .frame(width: 34, height: 34)
+                    .background(JarvisPalette.cyan.opacity(0.11), in: Circle())
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Pi sessions").font(.subheadline.weight(.semibold))
+                    Text("\(active) active").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("\(active)")
+                    .font(.title3.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(JarvisPalette.cyan)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Pi sessions: \(active) active")
+
+        if pi.stale == true {
+            return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Pi session data is stale.") })
+        }
+        return AnyView(content)
+    }
+
+    private func codexQuotaCard(_ state: StateSnapshot) -> AnyView {
+        guard let quota = state.subsystems?.codexQuota,
+              quota.available == true,
+              let remaining = quota.weekly?.remainingPercent else {
+            return AnyView(
+                unavailableCard(
+                    title: "Codex quota unavailable",
+                    detail: state.subsystems?.codexQuota?.lastError ?? state.subsystems?.codexQuota?.error
+                )
+            )
+        }
+        let color = codexQuotaColor(remaining)
+        let content = MinimalCard {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Label("Codex usage", systemImage: "chevron.left.forwardslash.chevron.right")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    StatusPill(text: codexPlanLabel(quota.planType), color: color, symbol: "sparkles")
+                        .controlSize(.small)
+                }
+
+                Group {
+                    if usesAccessibilityLayout {
+                        VStack(alignment: .leading, spacing: 8) {
+                            codexQuotaRing(remaining: remaining, color: color)
+                            codexQuotaDetails(quota, remaining: remaining, color: color)
+                        }
                     } else {
-                        ForEach(sortedServices, id: \.name) { item in
-                            serviceCard(name: item.name, service: item.service)
+                        HStack(spacing: 12) {
+                            codexQuotaRing(remaining: remaining, color: color)
+                            codexQuotaDetails(quota, remaining: remaining, color: color)
                         }
                     }
                 }
-                .padding(.top, 8)
-            } label: {
-                HStack {
-                    Label("Runtime services", systemImage: "server.rack")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    if app.servicesErrorMessage != nil {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(JarvisPalette.warning)
-                    }
-                    Text(runtimeServiceSummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Codex weekly quota, \(Int(remaining.rounded())) percent remaining, " +
+            "\(codexQuotaResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))"
+        )
+        if quota.stale == true {
+            return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Codex quota data is stale.") })
+        }
+        return AnyView(content)
+    }
+
+    private func codexQuotaRing(remaining: Double, color: Color) -> some View {
+        ZStack {
+            Circle().stroke(color.opacity(0.16), lineWidth: 8)
+            Circle()
+                .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0.01), 1)))
+                .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Text("\(Int(remaining.rounded()))%")
+                    .font(.headline.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(color)
+                Text("REMAINING")
+                    .font(.system(size: 6, weight: .bold))
+                    .tracking(0.45)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 58, height: 58)
+    }
+
+    private func codexQuotaDetails(
+        _ quota: CodexQuotaSubsystem,
+        remaining: Double,
+        color: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Weekly capacity")
+                .font(.subheadline.weight(.semibold))
+            ProgressView(value: remaining, total: 100)
+                .tint(color)
+                .accessibilityHidden(true)
+            Label(codexQuotaResetLabel(quota.weekly), systemImage: "calendar.badge.clock")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Label(codexFiveHourLabel(quota), systemImage: "clock")
+                if let credits = codexCreditsLabel(quota.creditBalance) {
+                    Label(credits, systemImage: "bolt.circle")
                 }
             }
-            .padding(.horizontal, 4)
-            .accessibilityHint(runtimeServicesExpanded ? "Double tap to collapse runtime services" : "Double tap to expand runtime services")
-
-            scheduledJobsSection
-            daemonCard
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
         }
-        .accessibilityElement(children: .contain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func codexQuotaColor(_ remaining: Double) -> Color {
+        CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)
+            ? JarvisPalette.critical
+            : JarvisPalette.electricBlue
+    }
+
+    private func codexPlanLabel(_ plan: String?) -> String {
+        guard let plan, !plan.isEmpty else { return "CODEX" }
+        return plan.replacingOccurrences(of: "_", with: " ").uppercased()
+    }
+
+    private func codexQuotaResetLabel(_ window: CodexQuotaWindow?) -> String {
+        let seconds: Int?
+        if let resetAt = window?.resetAt, let date = JarvisFormat.parseISO8601(resetAt) {
+            seconds = max(0, Int(date.timeIntervalSinceNow))
+        } else {
+            seconds = window?.resetAfterSeconds
+        }
+        guard let seconds else { return "Reset time unavailable" }
+        if seconds < 60 { return "Resets in less than a minute" }
+        if seconds < 3_600 { return "Resets in \(seconds / 60)m" }
+        if seconds < 86_400 { return "Resets in \(seconds / 3_600)h \((seconds % 3_600) / 60)m" }
+        return "Resets in \(seconds / 86_400)d \((seconds % 86_400) / 3_600)h"
+    }
+
+    private func codexFiveHourLabel(_ quota: CodexQuotaSubsystem) -> String {
+        if let remaining = quota.fiveHour?.remainingPercent {
+            return "5-hour \(Int(remaining.rounded()))% left"
+        }
+        if quota.fiveHourEnforced == false { return "5-hour paused" }
+        return "5-hour unavailable"
+    }
+
+    private func codexCreditsLabel(_ balance: Double?) -> String? {
+        guard let balance else { return nil }
+        if balance >= 1_000 { return String(format: "%.1fK credits", balance / 1_000) }
+        return "\(Int(balance.rounded())) credits"
+    }
+
+    // MARK: - Service detail
+
+    private var servicesDetail: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                if let error = app.servicesErrorMessage {
+                    statusErrorCard(title: "Runtime status unavailable", message: error)
+                }
+                if !app.servicesLoaded {
+                    loadingStatusCard("Loading runtime services…")
+                } else if sortedServices.isEmpty {
+                    Card { Text("No registered runtime services.").foregroundStyle(.secondary) }
+                } else {
+                    ForEach(sortedServices, id: \.name) { item in
+                        serviceCard(name: item.name, service: item.service)
+                    }
+                }
+                daemonCard
+            }
+            .padding(16)
+        }
+        .background(JarvisBackdrop())
+        .navigationTitle("Services")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await app.refreshHome() }
     }
 
     private func serviceCard(name: String, service: ServiceActionResult) -> some View {
@@ -712,32 +739,22 @@ struct HomeView: View {
         let displayName = service.displayName ?? JarvisFormat.displayName(name)
         let status = !isKnown ? "Unknown" : (isRunning ? "Running" : (isUnconfigured ? "Unconfigured" : (isLoaded ? "Stopped" : "Unloaded")))
         let color: Color = !isKnown || isUnconfigured ? .orange : (isRunning ? .green : .secondary)
+
         return Card {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 10, height: 10)
-                    Text(displayName)
-                        .font(.headline)
-                        .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 9) {
+                    Circle().fill(color).frame(width: 9, height: 9)
+                    Text(displayName).font(.headline)
                     Spacer(minLength: 8)
-                    Text(status)
-                        .font(.subheadline)
-                        .foregroundStyle(color)
+                    Text(status).font(.subheadline).foregroundStyle(color)
                 }
                 if let description = service.description, !description.isEmpty {
-                    Text(description)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(description).font(.subheadline).foregroundStyle(.secondary)
                 }
                 if isRunning, let pid = service.pid {
                     Text("PID \(pid)").font(.caption).foregroundStyle(.tertiary)
                 } else if isUnconfigured {
-                    Text("LaunchAgent configuration is unavailable.")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                    Text("LaunchAgent configuration is unavailable.").font(.caption).foregroundStyle(.orange)
                 } else if !isKnown, let error = service.error {
                     Text(error).font(.caption).foregroundStyle(.orange)
                 }
@@ -747,7 +764,7 @@ struct HomeView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         if isRunning, allowed.contains("stop") {
                             Button(role: .destructive) {
                                 requestServiceAction(name: name, service: service, action: "stop")
@@ -777,19 +794,35 @@ struct HomeView: View {
                     }
                 }
                 if busy {
-                    ProgressView("Applying action…")
-                        .font(.caption)
-                        .accessibilityLabel("Applying service action")
+                    ProgressView("Applying action…").font(.caption)
                 }
             }
         }
         .accessibilityElement(children: .contain)
     }
 
-    @ViewBuilder
-    private var scheduledJobsSection: some View {
-        DisclosureGroup(isExpanded: $scheduledJobsExpanded) {
-            VStack(alignment: .leading, spacing: 8) {
+    private var daemonCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 7) {
+                Label("jarvisd", systemImage: "server.rack").font(.headline)
+                if let version = app.lastHealth?.version {
+                    LabeledContent("Version", value: version).font(.subheadline)
+                }
+                if let uptime = app.lastHealth?.uptimeSeconds {
+                    LabeledContent("Uptime", value: JarvisFormat.uptime(uptime)).font(.subheadline)
+                }
+                if app.lastHealth == nil {
+                    Text("Daemon info unavailable.").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    // MARK: - Scheduled-job detail
+
+    private var scheduledJobsDetail: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
                 if let error = app.scheduledJobsErrorMessage {
                     statusErrorCard(title: "Scheduled jobs unavailable", message: error)
                 }
@@ -803,35 +836,23 @@ struct HomeView: View {
                     }
                 }
             }
-            .padding(.top, 8)
-        } label: {
-            HStack {
-                Label("Scheduled jobs", systemImage: "calendar.badge.clock")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                if let summary = app.scheduledJobsSummary {
-                    Text("\(summary.enabled) of \(summary.total) enabled")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
+            .padding(16)
         }
-        .padding(.horizontal, 4)
-        .accessibilityHint(scheduledJobsExpanded ? "Double tap to collapse scheduled jobs" : "Double tap to expand scheduled jobs")
+        .background(JarvisBackdrop())
+        .navigationTitle("Scheduled jobs")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await app.refreshHome() }
     }
 
     private func scheduledJobCard(_ job: ScheduledJob) -> some View {
         let status = job.lastStatus ?? "never run"
         return Card {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 9) {
                     Circle()
                         .fill(job.enabled ? scheduledJobStatusColor(job.lastStatus) : Color.secondary)
-                        .frame(width: 10, height: 10)
-                    Text(JarvisFormat.displayName(job.name))
-                        .font(.headline)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 9, height: 9)
+                    Text(JarvisFormat.displayName(job.name)).font(.headline)
                     Spacer(minLength: 8)
                     Text(job.enabled ? "Enabled" : "Disabled")
                         .font(.subheadline)
@@ -840,23 +861,13 @@ struct HomeView: View {
                 Text(JarvisFormat.scheduleDescription(kind: job.kind, schedule: job.schedule))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 if let description = job.description, !description.isEmpty {
-                    Text(description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(description).font(.caption).foregroundStyle(.secondary)
                 }
-                if let next = JarvisFormat.localDateTime(job.nextRunAt) {
-                    LabeledContent("Next", value: next)
-                        .font(.caption)
-                } else {
-                    LabeledContent("Next", value: job.enabled ? "Pending" : "Not scheduled")
-                        .font(.caption)
-                }
+                LabeledContent("Next", value: JarvisFormat.localDateTime(job.nextRunAt) ?? (job.enabled ? "Pending" : "Not scheduled"))
+                    .font(.caption)
                 HStack {
-                    Text("Last: \(status)")
-                        .foregroundStyle(scheduledJobStatusColor(job.lastStatus))
+                    Text("Last: \(status)").foregroundStyle(scheduledJobStatusColor(job.lastStatus))
                     Spacer()
                     if !JarvisFormat.relativeTime(job.lastRunAt).isEmpty {
                         Text("\(JarvisFormat.relativeTime(job.lastRunAt)) ago")
@@ -888,6 +899,8 @@ struct HomeView: View {
         return "\(JarvisFormat.displayName(job.name)), \(enabled). \(JarvisFormat.scheduleDescription(kind: job.kind, schedule: job.schedule)). Next \(next). Last status \(last). \(job.runCount) runs."
     }
 
+    // MARK: - Detail helpers and actions
+
     private func loadingStatusCard(_ message: String) -> some View {
         Card {
             HStack(spacing: 12) {
@@ -907,24 +920,6 @@ struct HomeView: View {
                 }
             } icon: {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var daemonCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("jarvisd", systemImage: "server.rack").font(.headline)
-                if let version = app.lastHealth?.version {
-                    LabeledContent("Version", value: version).font(.subheadline)
-                }
-                if let uptime = app.lastHealth?.uptimeSeconds {
-                    LabeledContent("Uptime", value: JarvisFormat.uptime(uptime)).font(.subheadline)
-                }
-                if app.lastHealth == nil {
-                    Text("Daemon info unavailable.").font(.subheadline).foregroundStyle(.secondary)
-                }
             }
         }
     }
@@ -966,49 +961,31 @@ struct HomeView: View {
         _ = await app.runServiceAction(name, action)
     }
 
-    // MARK: - Connection/error cards
-
-    private var notConnectedCard: some View {
-        Card {
-            VStack(spacing: 12) {
-                Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                    .font(.system(size: 34))
-                    .foregroundStyle(.secondary)
-                Text(app.connectionState == .failed ? "Offline" : "Not connected").font(.headline)
-                if let error = app.errorMessage {
-                    Text(error).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                }
-                Button {
-                    Task { await app.connect() }
-                } label: {
-                    Label("Connect", systemImage: "link").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .frame(maxWidth: .infinity)
-        }
-    }
-
     @ViewBuilder
     private func unavailableCard(title: String, detail: String?) -> some View {
         Card {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.headline)
-                    if let detail, !detail.isEmpty {
-                        Text(detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                    } else {
-                        Text("No current telemetry is available.").font(.subheadline).foregroundStyle(.secondary)
-                    }
+            compactUnavailableRow(title: title, detail: detail)
+        }
+    }
+
+    private func compactUnavailableRow(title: String, detail: String?) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold))
+                if let detail, !detail.isEmpty {
+                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
-            } icon: {
-                Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
             }
+        } icon: {
+            Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
         }
     }
 
     private func staleCaption(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading)
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(JarvisPalette.warning)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Bindings
@@ -1035,62 +1012,42 @@ struct PlugCard: View {
     let name: String
     let isOn: Bool?
     let isBusy: Bool
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .top) {
-                ZStack {
-                    Circle()
-                        .fill(iconColor.opacity(0.13))
-                    if isBusy {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: JarvisFormat.plugSymbol(name))
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(iconColor)
-                    }
+        HStack(spacing: 8) {
+            ZStack {
+                Circle().fill(iconColor.opacity(0.12))
+                if isBusy {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: JarvisFormat.plugSymbol(name))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(iconColor)
                 }
-                .frame(width: 42, height: 42)
+            }
+            .frame(width: 30, height: 30)
 
-                Spacer(minLength: 8)
+            Text(JarvisFormat.displayName(name))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
 
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 7, height: 7)
-                        .shadow(color: isOn == true ? JarvisPalette.cyan.opacity(0.65) : .clear, radius: 4)
-                    Text(stateLabel)
-                        .font(.caption2.weight(.bold))
-                        .tracking(0.5)
-                }
+            Spacer(minLength: 4)
+
+            Text(stateLabel)
+                .font(.caption2.weight(.bold))
                 .foregroundStyle(statusColor)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(statusColor.opacity(0.10), in: Capsule())
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(JarvisFormat.displayName(name))
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .minimumScaleFactor(0.8)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(isBusy ? "Applying desired state" : (isOn.map { $0 ? "Power available" : "Power inactive" } ?? "State unavailable"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+                .lineLimit(1)
         }
-        .padding(15)
-        .frame(maxWidth: .infinity, minHeight: 116, alignment: .leading)
-        .background(tileFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 54, maxHeight: 54)
+        .background(tileFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isOn == true ? JarvisPalette.cyan.opacity(0.30) : Color.primary.opacity(0.065), lineWidth: 0.8)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isOn == true ? JarvisPalette.cyan.opacity(0.28) : Color.primary.opacity(0.055), lineWidth: 0.75)
         }
-        .shadow(color: isOn == true ? JarvisPalette.cyan.opacity(0.10) : Color.black.opacity(0.045), radius: 12, y: 5)
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var iconColor: Color {
@@ -1104,15 +1061,15 @@ struct PlugCard: View {
     }
 
     private var stateLabel: String {
-        if isBusy { return "UPDATING" }
-        return isOn.map { $0 ? "ON" : "OFF" } ?? "UNKNOWN"
+        if isBusy { return "…" }
+        return isOn.map { $0 ? "ON" : "OFF" } ?? "—"
     }
 
     private var tileFill: AnyShapeStyle {
         if isOn == true {
             return AnyShapeStyle(
                 LinearGradient(
-                    colors: [JarvisPalette.cyan.opacity(0.13), JarvisPalette.surface],
+                    colors: [JarvisPalette.cyan.opacity(0.11), JarvisPalette.surface],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )

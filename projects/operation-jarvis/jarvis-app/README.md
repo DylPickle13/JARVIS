@@ -10,9 +10,9 @@ trusted-network/token auth modes, bounded HTTP input, background single-flight
 state caching, reversible LaunchAgent controls, bounded event persistence, and
 daemon regression tests. The iOS app owns one scene-aware connection/polling
 coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. Build `0.3.0 (42)` is installed on the allowlisted iPhone 11 and Apple
-Watch Series 11 from the exact audited artifacts. Signed build `0.3.0 (43)` is
-the current exact-artifact physical-test candidate. Build 37 retains
+UI. Build `0.3.0 (44)` is installed on the allowlisted iPhone 11 from the
+exact audited IPA; the Watch remains on build 42 because its build-44 CoreDevice
+tunnel was unavailable and no destructive recovery was attempted. Build 37 retains
 build 36's fixed-editor fullscreen
 Pi renderer, one-line wheel behavior, cursor correction, full-screen Watch
 shell, 11-point readable transcript, 9-point pannable Raw grid, pinned input
@@ -48,7 +48,14 @@ host no longer foregrounds underneath Siri before delivery, and a confirmed
 `.sent` result instead opens `jarvis://terminal` through `OpenURLIntent` so the
 result sheet can hand off directly to the JARVIS tab. Watch retains its
 physically passing foreground behavior and still switches pages only after
-`.sent`; failure paths never request the terminal.
+`.sent`; failure paths never request the terminal. Build 44 carries that Siri
+correction forward and makes the iPhone Home and Settings roots fit the iPhone
+11 viewport without required scrolling. Home uses a slim connection strip,
+compact plug controls, one purifier card, direct Pi-session and full Codex cards,
+and a two-row System summary whose service/job details remain one tap away.
+Settings removes duplicated branding and presents daemon, Pi terminal, Watch,
+diagnostics, and About summaries while retaining every field and action in
+focused subpages.
 Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
@@ -95,8 +102,8 @@ Backspace, ANSI rendering, and immediate bare-phrase Siri routing remain
 acceptance gates. Build 42 is physically installed; owner review passed its
 brightness, safe-inset, compact-control, and live 11% red-quota presentation.
 Its iPhone Siri send succeeded but foregrounded JARVIS underneath Siri's result
-sheet, requiring manual dismissal. Build 43's success-only iPhone Siri handoff
-remains the physical acceptance gate. The three-slot Smart
+sheet, requiring manual dismissal. Build 44 includes build 43's success-only
+iPhone Siri handoff, which remains the physical acceptance gate. The three-slot Smart
 Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
@@ -160,12 +167,25 @@ bursting multiple terminal redraws together. The terminal tab is now labeled
 JARVIS. Siri's plug parameter is populated from current `jarvisd` state rather
 than a compiled list; the generic widget action is not discoverable.
 
-Signed and audited build-43 physical-test candidate:
+Installed and audited build-44 iPhone artifact:
+`/tmp/JARVIS-build44-minimal-home-settings.xcarchive` and
+`/tmp/JARVIS-build44-minimal-home-settings-export/JARVIS.ipa`
+(SHA-256 `18d9a83f1c4753fe9820664323424c2371eb671077630b570b7614c6fc4a0e78`).
+All four archived products report `0.3.0 (44)`, are Personal-Team signed, and
+preserve the required nested Watch hierarchy. The exact IPA was upgraded onto
+the allowlisted iPhone with `ideviceinstaller -w upgrade`; CoreDevice inventory
+reports build 44 and the host launched successfully. The exact archived Watch
+product was attempted only on Dylan's allowlisted Watch, but transient tunnel
+negotiation remained unavailable; the Watch was left paired, untouched, and on
+build 42.
+
+Superseded signed build-43 candidate:
 `/tmp/JARVIS-build43-siri-success-handoff.xcarchive` and
 `/tmp/JARVIS-build43-siri-success-handoff-export/JARVIS.ipa`
 (SHA-256 `ad2abf0b7d9a36b466d3e2dabf8bd309706c043972b8736f6add292042457632`).
 All four products report `0.3.0 (43)`, are Personal-Team signed, and preserve the
-required nested Watch hierarchy. Build 43 has not been physically installed.
+required nested Watch hierarchy. Build 43 was not physically installed; build
+44 carries its Siri handoff unchanged.
 
 Installed and audited build-42 artifacts:
 `/tmp/JARVIS-build42-bright-safe-red-siri.xcarchive` and
