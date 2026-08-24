@@ -13,7 +13,7 @@ This root README is a map and quick-start guide. Detailed subsystem notes live i
 - **Inputs** — text prompts, saved file attachments, native image attachments, and Discord mobile voice messages transcribed through an OpenAI-compatible oMLX Whisper endpoint.
 - **Live voice** — [`projects/operation-jarvis/voice/`](projects/operation-jarvis/voice/) is loaded by the main bot: Discord PCM → openWakeWord → oMLX Whisper ASR → Pi RPC → Piper JARVIS TTS → Discord playback. Its central `voice_commands.py` policy also gives Discord and room audio the same busy-only exact bare-`stop` behavior.
 - **Pi extensions** — [`.pi/extensions/`](.pi/extensions/) provides web/search helpers, lazy tool loading, memory, session search, Discord cron/ping/file upload tools, browser/Google/Maps/YouTube integrations, and Operation JARVIS tools.
-- **Operation JARVIS** — [`projects/operation-jarvis/`](projects/operation-jarvis/) contains the native iOS/watchOS app and `jarvisd` control plane, Cast/Spotify media, TP-Link Kasa smart plugs, Levoit/VeSync air-purifier control, and Raspberry Pi room audio.
+- **Operation JARVIS** — [`projects/operation-jarvis/`](projects/operation-jarvis/) contains the native iOS/watchOS app and `jarvisd` control plane, Codex/Copilot quota telemetry, Cast/Spotify media, TP-Link Kasa smart plugs, Levoit/VeSync air-purifier control, and Raspberry Pi room audio.
 - **Runtime data** — `.env`, attachments, generated media/data, SQLite indexes, logs, cron runs, and Pi runtime status files are ignored by git.
 
 ## Public/Private Configuration Model
@@ -39,7 +39,7 @@ Tracked files provide generic defaults and placeholders. Local deployments shoul
 | [`.pi/memory/`](.pi/memory/) | SQLite-backed project memory runner. |
 | [`.pi/session-search/`](.pi/session-search/) | Semantic search over prior Pi/JARVIS sessions. |
 | [`.pi/discord-cron/`](.pi/discord-cron/) | Independent scheduled Pi jobs that post results to Discord. |
-| [`projects/operation-jarvis/`](projects/operation-jarvis/) | Native Apple clients/`jarvisd`, voice, room audio, Cast/media, smart plugs, and purifier subsystems. |
+| [`projects/operation-jarvis/`](projects/operation-jarvis/) | Native Apple clients/`jarvisd`, provider quotas, voice, room audio, Cast/media, smart plugs, and purifier subsystems. |
 | `attachments/` | Runtime Discord attachment storage, created locally and ignored by git. |
 
 ## Quick Start
@@ -123,6 +123,7 @@ Use the Discord-specific tools for their narrow jobs: `discord_cron` for schedul
 - [Pi extensions and tool surface](.pi/docs/PI_EXTENSIONS.md)
 - [Rebuild JARVIS from scratch](.pi/docs/REBUILD_FROM_SCRATCH.md)
 - [Operation JARVIS overview](projects/operation-jarvis/README.md)
+- [Provider quota tracker](projects/operation-jarvis/quotas/README.md)
 - [Live Discord voice](projects/operation-jarvis/voice/README.md)
 - [Raspberry Pi endpoint](projects/operation-jarvis/raspberry-pi/README.md)
 - [Raspberry Pi room audio](projects/operation-jarvis/raspberry-pi/room_audio/README.md)

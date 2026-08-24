@@ -128,7 +128,10 @@ MAX_SCHEDULED_JOBS_OUTPUT_BYTES = min(
     max(4096, int(os.environ.get("JARVISD_MAX_SCHEDULED_JOBS_OUTPUT_BYTES", str(256 * 1024)))),
 )
 CODEX_QUOTAS_SCRIPT = Path(
-    os.environ.get("JARVISD_CODEX_QUOTAS_SCRIPT", str(JARVIS_ROOT / "projects" / "quotas" / "quotas.py"))
+    os.environ.get(
+        "JARVISD_CODEX_QUOTAS_SCRIPT",
+        str(JARVIS_ROOT / "projects" / "operation-jarvis" / "quotas" / "quotas.py"),
+    )
 ).expanduser().resolve()
 CODEX_QUOTA_TIMEOUT = min(60.0, max(5.0, float(os.environ.get("JARVISD_CODEX_QUOTA_TIMEOUT", "45"))))
 MAX_CODEX_QUOTA_OUTPUT_BYTES = min(
@@ -949,7 +952,7 @@ def _codex_quota() -> dict:
     if not CODEX_QUOTAS_SCRIPT.is_file():
         return _codex_quota_unavailable()
     try:
-        # This is the quotas project's read-only Codex check. Never add a probe
+        # This is Operation JARVIS's read-only Codex quota check. Never add a probe
         # flag here: probes make a model request and consume quota.
         proc = subprocess.run(
             [sys.executable, str(CODEX_QUOTAS_SCRIPT), "codex", "--json"],

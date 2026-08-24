@@ -67,9 +67,12 @@ final class WatchTerminalController: ObservableObject {
     private let settings = WatchTerminalSettings()
     private var client: WatchTerminalClient?
     private var pollTask: Task<Void, Never>?
+    private var wakeRecoveryTask: Task<Void, Never>?
     private var appIsForeground = false
+    private var sceneIsActive = false
     private var isVisible = false
     private var connectionGeneration = 0
+    private var successfulPollCount = 0
     private var pendingBackspaceIDs = Set<UUID>()
 
     init() {
@@ -92,26 +95,51 @@ final class WatchTerminalController: ObservableObject {
     }
 
     func sceneDidBecomeActive() {
+        let resumedFromInactive = appIsForeground && !sceneIsActive
         appIsForeground = true
-        // Re-establish the long poll immediately after the display leaves
-        // Always On, even if watchOS suspended foreground execution.
-        restartIfNeeded()
+        sceneIsActive = true
+
+        guard isVisible else { return }
+        guard pollTask != nil, client != nil else {
+            restartIfNeeded()
+            return
+        }
+
+        if status == .offline {
+            // The normal retry loop may be waiting after a route failure. A
+            // foreground wake is an explicit opportunity to retry now.
+            restartIfNeeded(preserveLiveStatus: false)
+        } else if resumedFromInactive {
+            // Keep a healthy URLSession/route instead of flashing orange and
+            // rebuilding it for every wrist raise or tap. If watchOS suspended
+            // the in-flight long poll and it does not resume, recover once
+            // after a bounded grace period while keeping the last frame live.
+            scheduleWakeRecovery()
+        }
     }
 
     func sceneDidEnterAlwaysOn() {
+        sceneIsActive = false
+        wakeRecoveryTask?.cancel()
+        wakeRecoveryTask = nil
         guard !appIsForeground else { return }
         appIsForeground = true
         restartIfNeeded()
     }
 
     func sceneDidEnterBackground() {
+        sceneIsActive = false
         appIsForeground = false
         stop()
     }
 
     func setVisible(_ visible: Bool) {
         isVisible = visible
-        if visible { restartIfNeeded() } else { stop() }
+        if visible {
+            if pollTask == nil || client == nil { restartIfNeeded() }
+        } else {
+            stop()
+        }
     }
 
     func sendText(_ text: String, appendReturn: Bool = true) {
@@ -181,8 +209,9 @@ final class WatchTerminalController: ObservableObject {
         }
     }
 
-    private func restartIfNeeded() {
-        stop()
+    private func restartIfNeeded(preserveLiveStatus: Bool = false) {
+        let keepsLiveStatus = preserveLiveStatus && frame != nil && status == .live
+        stop(markOffline: !keepsLiveStatus)
         guard appIsForeground, isVisible else { return }
         guard let configuration = settings.configuration else {
             status = .notConfigured
@@ -191,7 +220,7 @@ final class WatchTerminalController: ObservableObject {
         }
         let client = WatchTerminalClient(configuration: configuration)
         self.client = client
-        status = .connecting
+        status = keepsLiveStatus ? .live : .connecting
         errorMessage = nil
         pollTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -202,12 +231,17 @@ final class WatchTerminalController: ObservableObject {
                     guard !Task.isCancelled else { return }
                     self.frame = next
                     sequence = next.sequence
+                    self.successfulPollCount += 1
+                    self.wakeRecoveryTask?.cancel()
+                    self.wakeRecoveryTask = nil
                     self.status = .live
                     self.errorMessage = nil
                 } catch is CancellationError {
                     return
                 } catch {
                     guard !Task.isCancelled else { return }
+                    self.wakeRecoveryTask?.cancel()
+                    self.wakeRecoveryTask = nil
                     self.status = .offline
                     self.errorMessage = error.localizedDescription
                     try? await Task.sleep(for: .seconds(1))
@@ -216,8 +250,34 @@ final class WatchTerminalController: ObservableObject {
         }
     }
 
-    private func stop() {
+    private func scheduleWakeRecovery() {
+        wakeRecoveryTask?.cancel()
+        let generation = connectionGeneration
+        let observedPollCount = successfulPollCount
+        wakeRecoveryTask = Task { @MainActor [weak self] in
+            do {
+                // A normal terminald long poll completes in at most 1.5 seconds.
+                // Seven seconds also covers the pinned session's resource
+                // timeout when a request was frozen during Always On.
+                try await Task.sleep(for: .seconds(7))
+            } catch {
+                return
+            }
+            guard let self,
+                  self.connectionGeneration == generation,
+                  self.appIsForeground,
+                  self.sceneIsActive,
+                  self.isVisible,
+                  self.status == .live,
+                  self.successfulPollCount == observedPollCount else { return }
+            self.restartIfNeeded(preserveLiveStatus: true)
+        }
+    }
+
+    private func stop(markOffline: Bool = true) {
         connectionGeneration += 1
+        wakeRecoveryTask?.cancel()
+        wakeRecoveryTask = nil
         pollTask?.cancel()
         pollTask = nil
         client?.close()
@@ -225,7 +285,7 @@ final class WatchTerminalController: ObservableObject {
         isSending = false
         pendingBackspaceIDs.removeAll()
         pendingBackspaceCount = 0
-        if settings.configuration != nil, status != .notConfigured { status = .offline }
+        if markOffline, settings.configuration != nil, status != .notConfigured { status = .offline }
     }
 
     private func send(_ data: Data, appendReturn: Bool) {

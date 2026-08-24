@@ -61,4 +61,4 @@ For initial companion registration under free provisioning:
 Follow the complete procedure, trust step, identity rules, diagnostics, and
 non-destructive recovery order in:
 
-[`../docs/README.md`](../docs/README.md)
+[`../README.md`](../README.md)

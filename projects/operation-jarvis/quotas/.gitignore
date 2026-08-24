@@ -1,0 +1,3 @@
+# Runtime quota snapshots and optional session-cost exports.
+data/*
+!data/.gitkeep

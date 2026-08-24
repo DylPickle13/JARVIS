@@ -205,8 +205,8 @@ DISCORD_VOICE_PI_APPEND_SYSTEM_PROMPT = "\n\n".join(
 MAX_MODEL_BUTTONS = 24
 # Keep each config panel active until a newer /jarvis model panel replaces it.
 CONFIG_MENU_TIMEOUT_SECONDS: float | None = None
-QUOTAS_SCRIPT_PATH = PROJECT_ROOT / "projects" / "quotas" / "quotas.py"
-QUOTAS_LATEST_PATH = PROJECT_ROOT / "projects" / "quotas" / "data" / "latest.json"
+QUOTAS_SCRIPT_PATH = PROJECT_ROOT / "projects" / "operation-jarvis" / "quotas" / "quotas.py"
+QUOTAS_LATEST_PATH = PROJECT_ROOT / "projects" / "operation-jarvis" / "quotas" / "data" / "latest.json"
 QUOTA_CHECK_TIMEOUT_SECONDS = config.get_int_env(
     "DISCORD_QUOTA_CHECK_TIMEOUT_SECONDS",
     90,

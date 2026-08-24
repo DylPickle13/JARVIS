@@ -88,10 +88,6 @@ struct JARVISNeuralCoreArtwork: View {
                 .contentTransition(.interpolate)
                 .widgetAccentable()
 
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(palette.silver.opacity(0.32), lineWidth: 0.5)
-                    .widgetAccentable()
-
                 Text("JARVIS")
                     .font(.system(
                         size: layout == .watch ? 6.5 : 12,

@@ -8,6 +8,7 @@ Unified project for a practical real-world JARVIS loop using:
 4. **Smart plugs** — local TP-Link Kasa HS103 control for devices around the house.
 5. **Air purifier** — direct VeSync/Levoit Vital 200S-P status and control through `purifier-status` and `purifier-set`.
 6. **Raspberry Pi room audio** — always-listening room microphone/speaker endpoint.
+7. **Provider quotas** — read-only Codex/Copilot quota and model telemetry for the native app and Discord configuration panel.
 
 **Local/private operations note:** this README intentionally contains LAN IPs, device names, service paths, and other local runbook details. Keep it private; do not publish without redaction.
 
@@ -25,6 +26,7 @@ Cast = room speaker/media output
 Smart plugs = local house device power control
 Air purifier = VeSync/Levoit air quality, filter, and purifier controls
 Raspberry Pi room audio = room mic/speaker bridge
+Provider quotas = Codex/Copilot telemetry for jarvisd + Discord
 ```
 
 ## Local SSH machine inventory
@@ -69,7 +71,8 @@ projects/operation-jarvis/
 ├── jarvis-cli                  # wrapper for jarvis.py
 ├── voice/                      # Discord voice ASR → Pi RPC → Piper TTS subsystem
 ├── raspberry-pi/               # Pi hardware, helper scripts, docs, and room_audio subsystem
-├── jarvis-app/                # Native iOS/watchOS clients + jarvisd backend
+├── jarvis-app/                 # Native iOS/watchOS clients + jarvisd backend
+├── quotas/                     # Codex/Copilot quota + model telemetry
 ├── smart-plug/                 # local TP-Link Kasa HS103 control subsystem
 ├── scripts/
 │   ├── connect_chromecast.py   # Cast target resolution
@@ -144,6 +147,7 @@ python discord_bot.py
 | Operation CLI status | `./jarvis-cli --json status --no-cast` | Safe local smoke check from this folder. |
 | Native Apple backend | `curl -fsS http://127.0.0.1:8790/health` | `jarvisd` serves iPhone, Watch, widget, event, and service APIs. |
 | Native app verification | `jarvis-app/scripts/verify-jarvis-app.sh` | Local daemon/package/plist/build verification. |
+| Provider quota check | `python3 quotas/quotas.py codex --json` | Read-only Codex telemetry consumed by `jarvisd`; use `check --json --save` for the Discord snapshot. |
 | Smart plugs | `./jarvis-cli plug-list` | Requires smart-plug venv/credentials. |
 | Air purifier | `./jarvis-cli purifier-status` | Requires air-purifier venv/VeSync credentials. |
 | Room audio server | `.venv/bin/python raspberry-pi/room_audio/room_audio_server.py --host 0.0.0.0 --port 8791` | Mac-side bridge used by Pi client. |
@@ -280,6 +284,7 @@ Credentials load from `smart-plug/.env`, `projects/operation-jarvis/.env`, then 
 | Subsystem | Canonical docs | Runtime owner |
 |---|---|---|
 | Native Apple clients | [`jarvis-app/README.md`](jarvis-app/README.md) | iPhone/Watch + `jarvisd` LaunchAgents |
+| Provider quotas | [`quotas/README.md`](quotas/README.md) | `jarvisd` read-only collector + root Discord bot |
 | Live Discord voice | [`voice/README.md`](voice/README.md) | Root `discord_bot.py` |
 | Raspberry Pi endpoint | [`raspberry-pi/README.md`](raspberry-pi/README.md) | Pi SSH/systemd + Mac room server |
 | Room audio | [`raspberry-pi/room_audio/README.md`](raspberry-pi/room_audio/README.md) | Pi client + Mac HTTP bridge |

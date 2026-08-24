@@ -135,6 +135,11 @@ grep -q 'terminalConfiguration' JARVISKit/Sources/JARVISKit/WatchBridge.swift
 grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' HostAppIntents/JARVISTerminalConfigurationStore.swift
 grep -q 'SecTrustCopyCertificateChain' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'final class WatchTerminalClient' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'private var sceneIsActive = false' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'private func scheduleWakeRecovery()' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'self.restartIfNeeded(preserveLiveStatus: true)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'self.successfulPollCount += 1' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch terminal must not fake a workout or unsupported extended-runtime category' -E 'WKExtendedRuntimeSession|HKWorkoutSession|isFrontmostTimeoutExtended' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'digitalCrownRotation' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.focused(\$crownIsFocused)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift
@@ -166,7 +171,7 @@ grep -q 'send(WatchTerminalKeyBytes.carriageReturn, appendReturn: false)' JARVIS
 grep -q 'controller.sendBackspace()' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalInput(data: WatchTerminalKeyBytes.backspace, appendReturn: false)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'pendingBackspaceCount = pendingBackspaceIDs.count' JARVISWatch/Views/WatchTerminalView.swift
-reject_match 'Watch Backspace must not enter the normal loading state' -Fq 'isSending = true' < <(sed -n '/func sendBackspace()/,/private func restartIfNeeded()/p' JARVISWatch/Views/WatchTerminalView.swift)
+reject_match 'Watch Backspace must not enter the normal loading state' -Fq 'isSending = true' < <(sed -n '/func sendBackspace()/,/private func restartIfNeeded/p' JARVISWatch/Views/WatchTerminalView.swift)
 reject_match 'Watch input dock must not show a Backspace loading indicator' -Fq 'ProgressView' < <(sed -n '/private var inputDock/,/private func stageInput/p' JARVISWatch/Views/WatchTerminalView.swift)
 grep -q 'public static let backspace = Data(\[0x7f\])' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'payload = data + (b"\\r" if append_return else b"")' terminald/jarvis_terminald.py
@@ -203,6 +208,7 @@ grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVISWatch/Views/Wat
 grep -q 'let pollutedFraction = (Double(value) - 1) / 74' JARVISKit/Sources/JARVISKit/AirQualityGauge.swift
 grep -q 'public struct CodexQuotaSubsystem' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'CODEX_QUOTAS_SCRIPT' jarvisd/jarvisd.py
+grep -q 'JARVIS_ROOT / "projects" / "operation-jarvis" / "quotas" / "quotas.py"' jarvisd/jarvisd.py
 grep -q '\[sys.executable, str(CODEX_QUOTAS_SCRIPT), "codex", "--json"\]' jarvisd/jarvisd.py
 grep -q '"codexQuota": 60.0' jarvisd/jarvisd.py
 grep -q 'query.get("refresh") == \["codexQuota"\]' jarvisd/jarvisd.py
@@ -333,6 +339,7 @@ grep -q 'Color.clear' JARVISWatchWidget/NeuralCoreWidget.swift
 grep -q 'URL(string: "jarvis://home")' JARVISWidget/NeuralCoreWidget.swift
 grep -q 'URL(string: "jarvis://terminal")' JARVISWatchWidget/NeuralCoreWidget.swift
 grep -q 'JARVISNeuralCoreTelemetry' JARVISKit/Sources/JARVISKit/NeuralCoreTelemetry.swift
+reject_match 'Neural Core widgets must not draw an authored outer frame' -qsF '.strokeBorder(' WidgetShared/NeuralCoreArtwork.swift
 reject_match 'Neural Core widgets must remain read-only artwork' -RqsE 'Button\(|AppIntentButton|Toggle\(' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
 reject_match 'Neural Core must not run a process-driven animation loop' -RqsE 'TimelineView|Timer[[:space:]]*\(|repeatForever|AnimationTimelineSchedule|CADisplayLink' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
 reject_match 'Neural Core must not use private clock-hand animation effects' -RqsE 'ClockHandRotationEffect|clockHandRotationEffect|_ClockHand' JARVISWidget JARVISWatchWidget WidgetShared
