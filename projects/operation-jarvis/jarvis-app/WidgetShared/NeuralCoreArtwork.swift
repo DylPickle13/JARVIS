@@ -78,7 +78,7 @@ struct JARVISNeuralCoreArtwork: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint("Opens the JARVIS Pi terminal")
+            .accessibilityHint(layout == .phone ? "Opens JARVIS Home" : "Opens the JARVIS Pi terminal")
         }
     }
 

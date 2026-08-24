@@ -13,7 +13,7 @@ private struct JARVISNeuralCoreWidgetView: View {
         JARVISNeuralCoreArtwork(telemetry: telemetry, layout: .phone)
             .padding(.horizontal, 13)
             .padding(.vertical, 8)
-            .widgetURL(JARVISNeuralCoreWidget.terminalURL)
+            .widgetURL(JARVISNeuralCoreWidget.homeURL)
             .containerBackground(for: .widget) {
                 Color(red: 0.008, green: 0.018, blue: 0.024)
             }
@@ -21,7 +21,7 @@ private struct JARVISNeuralCoreWidgetView: View {
 }
 
 struct JARVISNeuralCoreWidget: Widget {
-    static let terminalURL = URL(string: "jarvis://terminal")!
+    static let homeURL = URL(string: "jarvis://home")!
     let kind = "JARVISNeuralCoreWidget.v1"
 
     var body: some WidgetConfiguration {
@@ -29,7 +29,7 @@ struct JARVISNeuralCoreWidget: Widget {
             JARVISNeuralCoreWidgetView(entry: entry)
         }
         .configurationDisplayName("JARVIS Neural Core")
-        .description("A live, state-reactive JARVIS system link. Tap to open the Pi terminal.")
+        .description("A live, state-reactive JARVIS system link. Tap to open JARVIS Home.")
         .supportedFamilies([.systemMedium])
         .contentMarginsDisabled()
     }

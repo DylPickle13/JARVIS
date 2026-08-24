@@ -326,27 +326,27 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 40, savedZoomSchema: 1), 20)
     }
 
-    func testPiTerminalUsesUndecoratedBackspaceRepeatSentinel() throws {
+    func testPiTerminalUsesIsolatedKeyboardProxyForBackspaceRepeat() {
         let terminalView = PiTerminalHostView(frame: .zero)
         XCTAssertEqual(terminalView.keyboardDismissMode, .interactive)
         XCTAssertEqual(terminalView.autocorrectionType, .no)
-        XCTAssertFalse(terminalView.isFirstResponder)
+        XCTAssertFalse(terminalView.hasText)
+        XCTAssertNil(terminalView.markedTextRange, "SwiftTerm must not retain text that UIKit can decorate")
 
-        terminalView.ensureBackspaceAutoRepeatSentinel()
-        XCTAssertTrue(terminalView.hasText)
-        XCTAssertNil(terminalView.markedTextRange, "Marked text makes UIKit draw dotted rows over SwiftTerm")
-        let initialRange = try XCTUnwrap(
-            terminalView.textRange(from: terminalView.beginningOfDocument, to: terminalView.endOfDocument)
-        )
-        XCTAssertEqual(terminalView.text(in: initialRange), PiTerminalKeyboard.backspaceRepeatSentinel)
+        let responder = PiTerminalKeyboardResponder()
+        var insertedText: [String] = []
+        var deleteCount = 0
+        responder.insertTextHandler = { insertedText.append($0) }
+        responder.deleteBackwardHandler = { deleteCount += 1 }
 
-        terminalView.deleteBackward()
-        XCTAssertTrue(terminalView.hasText)
-        XCTAssertNil(terminalView.markedTextRange)
-        let repeatedRange = try XCTUnwrap(
-            terminalView.textRange(from: terminalView.beginningOfDocument, to: terminalView.endOfDocument)
-        )
-        XCTAssertEqual(terminalView.text(in: repeatedRange), PiTerminalKeyboard.backspaceRepeatSentinel)
+        responder.insertText("hello")
+        for _ in 0..<20 { responder.deleteBackward() }
+
+        XCTAssertEqual(insertedText, ["hello"])
+        XCTAssertEqual(deleteCount, 20)
+        XCTAssertTrue(responder.hasText, "Backspace auto-repeat must remain enabled")
+        XCTAssertEqual(responder.text, PiTerminalKeyboard.proxyBufferSentinel)
+        XCTAssertNil(responder.markedTextRange)
     }
 
     func testPiTerminalPrioritizesTouchScrollingAndProvidesSlashShortcut() {

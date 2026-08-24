@@ -213,9 +213,11 @@ grep -q 'NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})' jarvisd/jarvisd.py
 reject_match 'Watch System page must not restore the removed Direct to Mac panel' -Fq 'Direct to Mac' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'configuration.candidateBaseURLs' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
-grep -q 'ensureBackspaceAutoRepeatSentinel' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'markedTextRange = nil' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'final class PiTerminalKeyboardResponder: UITextView' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'override var hasText: Bool { true }' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'private let keyboardResponder = PiTerminalKeyboardResponder()' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'override func deleteBackward()' JARVIS/Terminal/PiSSHTransport.swift
+reject_match 'SwiftTerm must not regain the marked repeat sentinel' -qsF 'setMarkedText(sentinel' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'WatchTerminalView(' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private enum WatchDashboardPage: Hashable, CaseIterable' JARVISWatch/Views/WatchDashboardContent.swift
 [[ "$(sed -n '/private enum WatchDashboardPage/,/^}/p' JARVISWatch/Views/WatchDashboardContent.swift | grep -c '^    case ')" == "3" ]]
@@ -328,7 +330,8 @@ grep -q 'JARVISWatchNeuralCoreWidget()' JARVISWatchWidget/JARVISWatchWidgetBundl
 grep -q 'supportedFamilies(\[.systemMedium\])' JARVISWidget/NeuralCoreWidget.swift
 grep -q 'supportedFamilies(\[.accessoryRectangular\])' JARVISWatchWidget/NeuralCoreWidget.swift
 grep -q 'Color.clear' JARVISWatchWidget/NeuralCoreWidget.swift
-grep -q 'URL(string: "jarvis://terminal")' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift
+grep -q 'URL(string: "jarvis://home")' JARVISWidget/NeuralCoreWidget.swift
+grep -q 'URL(string: "jarvis://terminal")' JARVISWatchWidget/NeuralCoreWidget.swift
 grep -q 'JARVISNeuralCoreTelemetry' JARVISKit/Sources/JARVISKit/NeuralCoreTelemetry.swift
 reject_match 'Neural Core widgets must remain read-only artwork' -RqsE 'Button\(|AppIntentButton|Toggle\(' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
 reject_match 'Neural Core artwork must not fake live animation' -RqsE 'TimelineView|Timer|\.animation\(' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared

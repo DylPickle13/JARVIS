@@ -60,14 +60,10 @@ enum PiTerminalKeyDeck {
 }
 
 enum PiTerminalKeyboard {
-    // SwiftTerm's UIKeyInput reports `hasText == false` when its temporary
-    // local buffer is empty, which makes iOS stop software-keyboard Backspace
-    // auto-repeat even though the remote terminal still has editable input.
-    // Keep a zero-width sentinel in that local buffer without leaving it marked:
-    // UIKit decorates marked text using SwiftTerm's full-view selection rectangle,
-    // which otherwise appears as rows of dots over the terminal. The sentinel is
-    // never committed or sent to SSH; real text and DEL remain immediate.
-    static let backspaceRepeatSentinel = "\u{200B}"
+    // The invisible keyboard proxy owns this local sentinel so UIKit keeps
+    // software-keyboard Backspace auto-repeat enabled. It never enters
+    // SwiftTerm's full-screen UITextInput storage or the SSH byte stream.
+    static let proxyBufferSentinel = "\u{200B}"
 }
 
 enum PiTerminalTouchScroll {
@@ -469,6 +465,56 @@ private final class PiSSHConnection: @unchecked Sendable {
     }
 }
 
+final class PiTerminalKeyboardResponder: UITextView {
+    var insertTextHandler: ((String) -> Void)?
+    var deleteBackwardHandler: (() -> Void)?
+    var focusChanged: ((Bool) -> Void)?
+
+    init() {
+        super.init(frame: .zero, textContainer: nil)
+        text = PiTerminalKeyboard.proxyBufferSentinel
+        selectedRange = NSRange(location: text.utf16.count, length: 0)
+        backgroundColor = .clear
+        textColor = .clear
+        tintColor = .clear
+        isScrollEnabled = false
+        isAccessibilityElement = false
+        autocapitalizationType = .none
+        autocorrectionType = .no
+        spellCheckingType = .no
+        smartDashesType = .no
+        smartQuotesType = .no
+        inputAccessoryView = nil
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var hasText: Bool { true }
+
+    override func insertText(_ text: String) {
+        insertTextHandler?(text)
+    }
+
+    override func deleteBackward() {
+        deleteBackwardHandler?()
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let becameFirstResponder = super.becomeFirstResponder()
+        if becameFirstResponder { focusChanged?(true) }
+        return becameFirstResponder
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let wasFirstResponder = isFirstResponder
+        let resignedFirstResponder = super.resignFirstResponder()
+        if wasFirstResponder, resignedFirstResponder { focusChanged?(false) }
+        return resignedFirstResponder
+    }
+}
+
 final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRecognizerDelegate {
     var stateChanged: ((PiTerminalConnectionStatus) -> Void)?
     var hostTrustRequested: ((PiPendingHostTrust) -> Void)?
@@ -477,6 +523,7 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
 
     private var sshConnection: PiSSHConnection?
     private var connectionID = UUID()
+    private let keyboardResponder = PiTerminalKeyboardResponder()
     private var controlLatched = false {
         didSet { controlLatchChanged?(controlLatched) }
     }
@@ -489,6 +536,7 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
     private var pendingTouchScrollLocation = (column: 1, row: 1)
     private var touchScrollDisplayLink: CADisplayLink?
     var isRoutingTouchScrollToPi: Bool { remoteMouseModeEnabled }
+    var isTerminalKeyboardFocused: Bool { keyboardResponder.isFirstResponder }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -516,6 +564,7 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
         smartQuotesType = .no
         inputAccessoryView = nil
         keyboardDismissMode = .interactive
+        configureKeyboardResponder()
         prioritizeTouchScrolling()
         // Pi paints its own inverse-video cursor in the fixed input editor. Keep
         // the terminal hardware cursor hidden so tmux redraw/copy-mode cursor
@@ -537,6 +586,29 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
     deinit {
         stopTouchScrollDelivery(clearPending: true)
         sshConnection?.disconnect()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        keyboardResponder.frame = CGRect(
+            x: max(bounds.maxX - 1, 0),
+            y: max(bounds.maxY - 1, 0),
+            width: 1,
+            height: 1
+        )
+    }
+
+    private func configureKeyboardResponder() {
+        keyboardResponder.insertTextHandler = { [weak self] text in
+            self?.insertText(text)
+        }
+        keyboardResponder.deleteBackwardHandler = { [weak self] in
+            self?.deleteBackward()
+        }
+        keyboardResponder.focusChanged = { [weak self] focused in
+            self?.keyboardFocusChanged?(focused)
+        }
+        addSubview(keyboardResponder)
     }
 
     private func prioritizeTouchScrolling() {
@@ -738,7 +810,7 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
             return remoteMouseModeEnabled && isVertical
         }
         if gestureRecognizer === keyboardDismissPan {
-            return isFirstResponder && velocity.y > 0 && isVertical
+            return isTerminalKeyboardFocused && velocity.y > 0 && isVertical
         }
         return true
     }
@@ -751,20 +823,12 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
     }
 
     override func becomeFirstResponder() -> Bool {
-        let becameFirstResponder = super.becomeFirstResponder()
-        if becameFirstResponder {
-            ensureBackspaceAutoRepeatSentinel()
-            keyboardFocusChanged?(true)
-        }
-        return becameFirstResponder
+        keyboardResponder.becomeFirstResponder()
     }
 
     override func resignFirstResponder() -> Bool {
-        let resignedFirstResponder = super.resignFirstResponder()
-        if resignedFirstResponder {
-            keyboardFocusChanged?(false)
-        }
-        return resignedFirstResponder
+        guard keyboardResponder.isFirstResponder else { return true }
+        return keyboardResponder.resignFirstResponder()
     }
 
     func sendAccessoryBytes(_ bytes: [UInt8]) {
@@ -787,22 +851,10 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
             return
         }
         super.insertText(text)
-        ensureBackspaceAutoRepeatSentinel()
     }
 
     override func deleteBackward() {
         super.deleteBackward()
-        ensureBackspaceAutoRepeatSentinel()
-    }
-
-    func ensureBackspaceAutoRepeatSentinel() {
-        guard !hasText else { return }
-        let sentinel = PiTerminalKeyboard.backspaceRepeatSentinel
-        setMarkedText(sentinel, selectedRange: NSRange(location: sentinel.utf16.count, length: 0))
-        // Clearing only the marked range preserves the local sentinel and
-        // `hasText == true` without invoking `unmarkText()`, which would commit
-        // the sentinel to the remote terminal.
-        markedTextRange = nil
     }
 
     func scrolled(source: TerminalView, position: Double) {}

@@ -98,7 +98,7 @@ final class PiTerminalController: ObservableObject {
 
     func toggleTerminalKeyboard() {
         guard let terminalView else { return }
-        if terminalView.isFirstResponder {
+        if terminalView.isTerminalKeyboardFocused {
             _ = terminalView.resignFirstResponder()
         } else {
             _ = terminalView.becomeFirstResponder()
