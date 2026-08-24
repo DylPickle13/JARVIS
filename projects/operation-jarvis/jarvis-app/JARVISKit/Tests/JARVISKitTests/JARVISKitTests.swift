@@ -75,6 +75,37 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(placeholder.linkLabel, "LAN")
     }
 
+    func testNeuralCoreMotionAdvancesByQuarterCycleAtWidgetCadence() {
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        XCTAssertEqual(JARVISNeuralCoreMotion.phase(for: start), 0, accuracy: 0.000_001)
+        XCTAssertEqual(
+            JARVISNeuralCoreMotion.phase(for: start.addingTimeInterval(15 * 60)),
+            0.25,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreMotion.phase(for: start.addingTimeInterval(30 * 60)),
+            0.50,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreMotion.phase(for: start.addingTimeInterval(45 * 60)),
+            0.75,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreMotion.phase(for: start.addingTimeInterval(60 * 60)),
+            0,
+            accuracy: 0.000_001
+        )
+        XCTAssertLessThanOrEqual(JARVISNeuralCoreMotion.transitionDuration, 2)
+    }
+
+    func testNeuralCoreMotionNormalizesDatesBeforeReferenceEpoch() {
+        let date = Date(timeIntervalSinceReferenceDate: -15 * 60)
+        XCTAssertEqual(JARVISNeuralCoreMotion.phase(for: date), 0.75, accuracy: 0.000_001)
+    }
+
     func testWatchTerminalBrightensDarkForegroundsWithoutChangingBlackOrBrightCells() {
         XCTAssertEqual(
             WatchTerminalLayout.brightenedForeground(WatchTerminalRGBColor(red: 102, green: 102, blue: 102)),

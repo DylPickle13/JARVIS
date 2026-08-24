@@ -10,12 +10,17 @@ private struct JARVISNeuralCoreWidgetView: View {
     }
 
     var body: some View {
-        JARVISNeuralCoreArtwork(telemetry: telemetry, layout: .phone)
+        JARVISNeuralCoreArtwork(
+            telemetry: telemetry,
+            layout: .phone,
+            motionPhase: JARVISNeuralCoreMotion.phase(for: entry.date),
+            allowsMotion: !entry.placeholder
+        )
             .padding(.horizontal, 13)
             .padding(.vertical, 8)
             .widgetURL(JARVISNeuralCoreWidget.homeURL)
             .containerBackground(for: .widget) {
-                Color(red: 0.008, green: 0.018, blue: 0.024)
+                Color(red: 0.003, green: 0.005, blue: 0.007)
             }
     }
 }
@@ -29,7 +34,7 @@ struct JARVISNeuralCoreWidget: Widget {
             JARVISNeuralCoreWidgetView(entry: entry)
         }
         .configurationDisplayName("JARVIS Neural Core")
-        .description("A live, state-reactive JARVIS system link. Tap to open JARVIS Home.")
+        .description("A native-vector, state-reactive JARVIS projection. Tap to open JARVIS Home.")
         .supportedFamilies([.systemMedium])
         .contentMarginsDisabled()
     }

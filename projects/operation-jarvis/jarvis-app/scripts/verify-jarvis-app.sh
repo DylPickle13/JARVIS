@@ -334,9 +334,15 @@ grep -q 'URL(string: "jarvis://home")' JARVISWidget/NeuralCoreWidget.swift
 grep -q 'URL(string: "jarvis://terminal")' JARVISWatchWidget/NeuralCoreWidget.swift
 grep -q 'JARVISNeuralCoreTelemetry' JARVISKit/Sources/JARVISKit/NeuralCoreTelemetry.swift
 reject_match 'Neural Core widgets must remain read-only artwork' -RqsE 'Button\(|AppIntentButton|Toggle\(' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
-reject_match 'Neural Core artwork must not fake live animation' -RqsE 'TimelineView|Timer|\.animation\(' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
+reject_match 'Neural Core artwork must not fake continuous animation' -RqsE 'TimelineView|Timer|repeatForever|AnimationTimelineSchedule|CADisplayLink' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
 reject_match 'approved artwork omits the Neural Core subtitle' -qsF 'Text("NEURAL CORE")' WidgetShared/NeuralCoreArtwork.swift
 reject_match 'approved artwork omits the synchronized subtitle' -qsF 'Text("SYNCHRONIZED")' WidgetShared/NeuralCoreArtwork.swift
+reject_match 'approved artwork omits visible signal-lost copy' -qsF 'Text("SIGNAL LOST")' WidgetShared/NeuralCoreArtwork.swift
+reject_match 'approved artwork omits visible host copy' -qsF 'Text("MAC-MINI-64")' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'Text("JARVIS")' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'JARVISNeuralCoreMotion.transitionDuration' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'accessibilityReduceMotion' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'isLuminanceReduced' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'applyConfirmedPlugState' SharedAppIntents/JARVISWidgetIntents.swift
 grep -q 'JARVISWidgetControlStore.shared' SharedAppIntents/JARVISWidgetIntents.swift
 grep -q 'reloadTimelines(ofKind:' SharedAppIntents/JARVISWidgetIntents.swift

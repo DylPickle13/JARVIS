@@ -10,7 +10,12 @@ private struct JARVISWatchNeuralCoreWidgetView: View {
     }
 
     var body: some View {
-        JARVISNeuralCoreArtwork(telemetry: telemetry, layout: .watch)
+        JARVISNeuralCoreArtwork(
+            telemetry: telemetry,
+            layout: .watch,
+            motionPhase: JARVISNeuralCoreMotion.phase(for: entry.date),
+            allowsMotion: !entry.placeholder
+        )
             .padding(.horizontal, 2)
             .widgetURL(JARVISWatchNeuralCoreWidget.terminalURL)
             .containerBackground(for: .widget) {
@@ -28,7 +33,7 @@ struct JARVISWatchNeuralCoreWidget: Widget {
             JARVISWatchNeuralCoreWidgetView(entry: entry)
         }
         .configurationDisplayName("JARVIS Neural Core")
-        .description("A transparent Modular complication driven by cached JARVIS state.")
+        .description("A transparent native-vector Cathedral driven by cached JARVIS state.")
         .supportedFamilies([.accessoryRectangular])
         .contentMarginsDisabled()
     }
