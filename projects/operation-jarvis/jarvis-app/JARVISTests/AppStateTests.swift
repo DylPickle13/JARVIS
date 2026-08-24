@@ -349,6 +349,34 @@ final class AppStateTests: XCTestCase {
         XCTAssertNil(responder.markedTextRange)
     }
 
+    func testPiTerminalResetsStaleAlternateScreenBeforeFreshConnection() {
+        let terminalView = PiTerminalHostView(frame: .zero)
+        let staleGrid = Array(("\u{1b}[?1049h" + String(repeating: ".", count: 24)).utf8)
+        terminalView.feed(byteArray: staleGrid[...])
+
+        XCTAssertEqual(terminalView.getTerminal().getCharacter(col: 0, row: 0), Character("."))
+        XCTAssertEqual(terminalView.getTerminal().getCharacter(col: 23, row: 0), Character("."))
+
+        terminalView.prepareTerminalForFreshConnection()
+
+        XCTAssertEqual(terminalView.getTerminal().getCharacter(col: 0, row: 0), Character("\u{0}"))
+        XCTAssertEqual(terminalView.getTerminal().getCharacter(col: 23, row: 0), Character("\u{0}"))
+    }
+
+    func testPiTerminalRetainsLayoutResizeUntilSSHSessionIsReady() {
+        let initial = PiTerminalWindowSize(cols: 80, rows: 25)!
+        let windowState = PiTerminalWindowState(initial: initial)
+
+        XCTAssertEqual(windowState.update(cols: 48, rows: 42), PiTerminalWindowSize(cols: 48, rows: 42))
+        XCTAssertEqual(windowState.snapshot(), PiTerminalWindowSize(cols: 48, rows: 42))
+        XCTAssertNil(windowState.update(cols: 0, rows: 42))
+        XCTAssertEqual(
+            windowState.snapshot(),
+            PiTerminalWindowSize(cols: 48, rows: 42),
+            "An invalid transient layout must not replace the latest usable PTY size"
+        )
+    }
+
     func testPiTerminalPrioritizesTouchScrollingAndProvidesSlashShortcut() {
         let terminalView = PiTerminalHostView(frame: .zero)
         XCTAssertFalse(terminalView.allowMouseReporting)

@@ -66,6 +66,42 @@ enum PiTerminalKeyboard {
     static let proxyBufferSentinel = "\u{200B}"
 }
 
+struct PiTerminalWindowSize: Equatable, Sendable {
+    let cols: Int
+    let rows: Int
+
+    init?(cols: Int, rows: Int) {
+        guard cols > 0, rows > 0 else { return nil }
+        self.cols = cols
+        self.rows = rows
+    }
+}
+
+final class PiTerminalWindowState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: PiTerminalWindowSize
+
+    init(initial: PiTerminalWindowSize) {
+        value = initial
+    }
+
+    @discardableResult
+    func update(cols: Int, rows: Int) -> PiTerminalWindowSize? {
+        guard let size = PiTerminalWindowSize(cols: cols, rows: rows) else { return nil }
+        lock.lock()
+        value = size
+        lock.unlock()
+        return size
+    }
+
+    func snapshot() -> PiTerminalWindowSize {
+        lock.lock()
+        let current = value
+        lock.unlock()
+        return current
+    }
+}
+
 enum PiTerminalTouchScroll {
     static let deliveryFramesPerSecond = 60
     static let maximumPendingSteps = 8
@@ -187,14 +223,14 @@ private final class PiSSHSessionHandler: ChannelInboundHandler, @unchecked Senda
     typealias InboundIn = SSHChannelData
 
     private let term: String
-    private let initialWindowSize: (cols: Int, rows: Int)
+    private let initialWindowSize: PiTerminalWindowSize
     private let onOutput: @Sendable ([UInt8]) -> Void
     private let onReady: @Sendable () -> Void
     private let onEnded: @Sendable () -> Void
 
     init(
         term: String,
-        initialWindowSize: (cols: Int, rows: Int),
+        initialWindowSize: PiTerminalWindowSize,
         onOutput: @escaping @Sendable ([UInt8]) -> Void,
         onReady: @escaping @Sendable () -> Void,
         onEnded: @escaping @Sendable () -> Void
@@ -265,7 +301,7 @@ private final class PiSSHSessionHandler: ChannelInboundHandler, @unchecked Senda
 private final class PiSSHConnection: @unchecked Sendable {
     private let configuration: PiTerminalConfiguration
     private let trustedHostKey: String?
-    private let initialWindowSize: (cols: Int, rows: Int)
+    private let windowState: PiTerminalWindowState
     private let onOutput: @Sendable ([UInt8]) -> Void
     private let onReady: @Sendable () -> Void
     private let onTrust: @Sendable (PiPendingHostTrust) -> Void
@@ -281,7 +317,7 @@ private final class PiSSHConnection: @unchecked Sendable {
     init(
         configuration: PiTerminalConfiguration,
         trustedHostKey: String?,
-        initialWindowSize: (cols: Int, rows: Int),
+        initialWindowSize: PiTerminalWindowSize,
         onOutput: @escaping @Sendable ([UInt8]) -> Void,
         onReady: @escaping @Sendable () -> Void,
         onTrust: @escaping @Sendable (PiPendingHostTrust) -> Void,
@@ -289,7 +325,7 @@ private final class PiSSHConnection: @unchecked Sendable {
     ) {
         self.configuration = configuration
         self.trustedHostKey = trustedHostKey
-        self.initialWindowSize = initialWindowSize
+        self.windowState = PiTerminalWindowState(initial: initialWindowSize)
         self.onOutput = onOutput
         self.onReady = onReady
         self.onTrust = onTrust
@@ -349,6 +385,9 @@ private final class PiSSHConnection: @unchecked Sendable {
     }
 
     func send(_ data: Data) {
+        stateLock.lock()
+        let sessionChannel = self.sessionChannel
+        stateLock.unlock()
         guard let sessionChannel else { return }
         sessionChannel.eventLoop.execute {
             var buffer = sessionChannel.allocator.buffer(capacity: data.count)
@@ -361,12 +400,24 @@ private final class PiSSHConnection: @unchecked Sendable {
     }
 
     func resize(cols: Int, rows: Int) {
-        guard cols > 0, rows > 0, let sessionChannel else { return }
+        // UIKit can finish the keyboard-hidden layout while SSH is still
+        // authenticating. Retain that newest size even when no child session
+        // channel exists yet; publishing only the stale PTY creation size can
+        // leave tmux painting a short grid into SwiftTerm's taller viewport.
+        guard let size = windowState.update(cols: cols, rows: rows) else { return }
+        stateLock.lock()
+        let sessionChannel = self.sessionChannel
+        stateLock.unlock()
+        guard let sessionChannel else { return }
+        publishWindowChange(size, on: sessionChannel)
+    }
+
+    private func publishWindowChange(_ size: PiTerminalWindowSize, on sessionChannel: Channel) {
         sessionChannel.eventLoop.execute {
             sessionChannel.triggerUserOutboundEvent(
                 SSHChannelRequestEvent.WindowChangeRequest(
-                    terminalCharacterWidth: cols,
-                    terminalRowHeight: rows,
+                    terminalCharacterWidth: size.cols,
+                    terminalRowHeight: size.rows,
                     terminalPixelWidth: 0,
                     terminalPixelHeight: 0
                 ),
@@ -378,13 +429,12 @@ private final class PiSSHConnection: @unchecked Sendable {
     func disconnect() {
         stateLock.lock()
         intentionalClose = true
-        stateLock.unlock()
-
         let parent = channel
         let group = group
         channel = nil
         sessionChannel = nil
         self.group = nil
+        stateLock.unlock()
 
         if let parent, let group {
             parent.closeFuture.whenComplete { _ in
@@ -411,7 +461,7 @@ private final class PiSSHConnection: @unchecked Sendable {
                     try sync.addHandler(
                         PiSSHSessionHandler(
                             term: "xterm-256color",
-                            initialWindowSize: self.initialWindowSize,
+                            initialWindowSize: self.windowState.snapshot(),
                             onOutput: self.onOutput,
                             onReady: self.onReady,
                             onEnded: { [weak self] in self?.sessionEnded() }
@@ -429,8 +479,13 @@ private final class PiSSHConnection: @unchecked Sendable {
             case .failure(let error):
                 self.fail(error)
             case .success(let childChannel):
+                self.stateLock.lock()
                 self.sessionChannel = childChannel
-                self.resize(cols: self.initialWindowSize.cols, rows: self.initialWindowSize.rows)
+                self.stateLock.unlock()
+                // A SwiftUI layout resize may have arrived before the SSH child
+                // channel. Publish the retained current viewport now rather
+                // than replaying the stale PTY creation dimensions.
+                self.publishWindowChange(self.windowState.snapshot(), on: childChannel)
             }
         }
     }
@@ -655,15 +710,16 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
 
     func connect(configuration: PiTerminalConfiguration, trustedHostKey: String?) {
         disconnectSSH()
+        prepareTerminalForFreshConnection()
         let id = UUID()
         connectionID = id
         stateChanged?(.connecting)
 
         let terminal = getTerminal()
-        let dimensions = (
+        let dimensions = PiTerminalWindowSize(
             cols: terminal.cols > 0 ? terminal.cols : 80,
             rows: terminal.rows > 0 ? terminal.rows : 24
-        )
+        )!
 
         let connection = PiSSHConnection(
             configuration: configuration,
@@ -699,6 +755,18 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
         )
         sshConnection = connection
         connection.connect()
+    }
+
+    func prepareTerminalForFreshConnection() {
+        // Every SSH PTY is a new terminal byte stream. Reusing SwiftTerm's
+        // parser, alternate-screen buffer, or repeat-character state from the
+        // previous PTY can turn tmux's differential blank-cell redraws into a
+        // viewport of stale periods while reconnecting. Reset only the local
+        // emulator; the persistent tmux pane and Pi process remain untouched.
+        let terminal = getTerminal()
+        terminal.resetToInitialState()
+        terminal.hideCursor()
+        clearSelection()
     }
 
     func disconnectSSH() {

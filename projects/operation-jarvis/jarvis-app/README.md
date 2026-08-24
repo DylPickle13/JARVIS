@@ -62,7 +62,16 @@ to complete after wake. Background exit still cancels immediately, and watchOS
 may still suspend arbitrary networking while the display is dimmed. Build 51
 also removes the authored rectangular outline from the iPhone Neural Core widget.
 Build 52 removes that authored outer frame from the Watch Neural Core as well,
-leaving the internal procedural Cathedral geometry unchanged.
+leaving the internal procedural Cathedral geometry unchanged. Build 53 resets
+only the iPhone's local SwiftTerm emulator before each fresh SSH PTY stream.
+Physical acceptance showed a second startup race: the keyboard-hidden layout
+could resize SwiftTerm while SSH was authenticating, and that authoritative
+size was dropped before the child channel existed. The remote tmux pane then
+painted its shorter initial grid into a taller local viewport until opening the
+keyboard caused another resize. Build 54 retains every valid layout size and
+uses the newest one for PTY creation, then republishes it when the authenticated
+SSH child channel is ready as a race backstop. The first keyboard-hidden frame
+and tmux now agree without synthetic input or a pane restart.
 Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
@@ -702,6 +711,17 @@ never deploy to a device outside Dylan's allowlist.
   outline so only the system-owned widget edge remains. Build 52 removes the
   authored outer frame from the Watch Neural Core too while preserving all
   internal procedural Cathedral geometry.
+- Build 53 clears SwiftTerm's local parser, buffers, character-set modes, and
+  repeat-character state before consuming each newly authenticated iPhone SSH
+  PTY stream. That removes stale client state but does not by itself close the
+  startup resize race found during physical acceptance. It does not clear,
+  restart, resize, or send input to the persistent `jarvis-ios` pane.
+- Build 54 retains the latest valid SwiftTerm columns and rows even if UIKit
+  finishes the keyboard-hidden layout before the authenticated SSH child
+  channel exists. PTY creation and session readiness publish that retained
+  viewport instead of replaying stale dimensions; normal later layout and
+  keyboard changes still use standard SSH window-change requests. No terminal
+  bytes are synthesized, and the persistent pane and Pi process are preserved.
 - Build 42 raises dark Watch ANSI foregrounds to a tested minimum luminance while
   retaining hue relationships, keeps true black for inverse cells, raises dim
   opacity from `0.62` to `0.82`, and uses 8-point horizontal/bottom plus 6-point

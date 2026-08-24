@@ -114,6 +114,14 @@ grep -q 'extended-keys-format csi-u' config/jarvis-mobile.tmux.conf
 grep -q 'window-size latest' config/jarvis-mobile.tmux.conf
 reject_match 'Pi terminal must not accept every SSH host key' -RqsE 'AcceptAllHostKeys|acceptAnything' JARVIS/Terminal
 reject_match 'Pi terminal reconnect must not queue input' -RqsE 'queuedInput|pendingInput|inputQueue' JARVIS/Terminal
+grep -q 'prepareTerminalForFreshConnection()' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'terminal.resetToInitialState()' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'windowState.update(cols: cols, rows: rows)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'initialWindowSize: self.windowState.snapshot()' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'publishWindowChange(self.windowState.snapshot(), on: childChannel)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'testPiTerminalResetsStaleAlternateScreenBeforeFreshConnection' JARVISTests/AppStateTests.swift
+grep -q 'testPiTerminalRetainsLayoutResizeUntilSSHSessionIsReady' JARVISTests/AppStateTests.swift
+reject_match 'Pi SSH session must not replay stale initial dimensions after authentication' -Fq 'self.resize(cols: self.initialWindowSize.cols, rows: self.initialWindowSize.rows)' JARVIS/Terminal/PiSSHTransport.swift
 reject_match 'Pi launcher must not kill its persistent session' -RqsE 'kill-session|kill-server' JARVIS/Terminal config/jarvis-mobile.tmux.conf scripts/jarvis-mobile-terminal.sh
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations' JARVIS/Info.plist | grep -c UIInterfaceOrientationLandscape)" == "2" ]]
 
