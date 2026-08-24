@@ -334,7 +334,17 @@ grep -q 'URL(string: "jarvis://home")' JARVISWidget/NeuralCoreWidget.swift
 grep -q 'URL(string: "jarvis://terminal")' JARVISWatchWidget/NeuralCoreWidget.swift
 grep -q 'JARVISNeuralCoreTelemetry' JARVISKit/Sources/JARVISKit/NeuralCoreTelemetry.swift
 reject_match 'Neural Core widgets must remain read-only artwork' -RqsE 'Button\(|AppIntentButton|Toggle\(' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
-reject_match 'Neural Core artwork must not fake continuous animation' -RqsE 'TimelineView|Timer|repeatForever|AnimationTimelineSchedule|CADisplayLink' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
+reject_match 'Neural Core must not run a process-driven animation loop' -RqsE 'TimelineView|Timer[[:space:]]*\(|repeatForever|AnimationTimelineSchedule|CADisplayLink' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
+reject_match 'Neural Core must not use private clock-hand animation effects' -RqsE 'ClockHandRotationEffect|clockHandRotationEffect|_ClockHand' JARVISWidget JARVISWatchWidget WidgetShared
+reject_match 'Neural Core must not embed animated media or Metal rendering' -RqsE 'VideoPlayer|AVPlayer|\.gif|\.apng|MTKView|import Metal' JARVISWidget JARVISWatchWidget WidgetShared
+grep -q 'Text(date, style: .timer)' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q 'CTFontManagerRegisterFontsForURL' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q 'phoneContinuousFrameCount = 60' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
+grep -q 'watchContinuousFrameCount = 32' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
+grep -q 'JARVISWidgetTimerAnimationFont.register()' JARVISWidget/NeuralCoreWidget.swift
+grep -q 'JARVISWidgetTimerAnimationFont.register()' JARVISWatchWidget/NeuralCoreWidget.swift
+[[ "$(shasum -a 256 WidgetShared/FillRect-Regular.otf | awk '{print $1}')" == "7a41bc7e983b7e67f055fdb444fc3dd0d94fd3e288532295b7045b79b655a42a" ]]
+[[ -f docs/third-party/AnimationLimitBreaker-LICENSE.txt ]]
 reject_match 'approved artwork omits the Neural Core subtitle' -qsF 'Text("NEURAL CORE")' WidgetShared/NeuralCoreArtwork.swift
 reject_match 'approved artwork omits the synchronized subtitle' -qsF 'Text("SYNCHRONIZED")' WidgetShared/NeuralCoreArtwork.swift
 reject_match 'approved artwork omits visible signal-lost copy' -qsF 'Text("SIGNAL LOST")' WidgetShared/NeuralCoreArtwork.swift

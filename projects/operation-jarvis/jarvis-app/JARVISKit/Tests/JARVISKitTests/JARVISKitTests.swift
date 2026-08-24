@@ -106,6 +106,57 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(JARVISNeuralCoreMotion.phase(for: date), 0.75, accuracy: 0.000_001)
     }
 
+    func testNeuralCoreContinuousFramesCoverOneNormalizedCycle() {
+        XCTAssertEqual(JARVISNeuralCoreMotion.phoneContinuousFrameCount, 60)
+        XCTAssertEqual(JARVISNeuralCoreMotion.watchContinuousFrameCount, 32)
+        XCTAssertEqual(JARVISNeuralCoreMotion.continuousLoopDuration, 2)
+        XCTAssertEqual(
+            JARVISNeuralCoreMotion.continuousFrameDuration(
+                frameCount: JARVISNeuralCoreMotion.phoneContinuousFrameCount
+            ),
+            1.0 / 30.0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreMotion.continuousFrameDuration(
+                frameCount: JARVISNeuralCoreMotion.watchContinuousFrameCount
+            ),
+            1.0 / 16.0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreMotion.continuousReferenceDate.timeIntervalSinceReferenceDate,
+            0,
+            accuracy: 0.000_001
+        )
+
+        for frameCount in [
+            JARVISNeuralCoreMotion.phoneContinuousFrameCount,
+            JARVISNeuralCoreMotion.watchContinuousFrameCount
+        ] {
+            let phases = (0..<frameCount).map {
+                JARVISNeuralCoreMotion.continuousPhase(
+                    basePhase: 0.9,
+                    frameIndex: $0,
+                    frameCount: frameCount
+                )
+            }
+            XCTAssertEqual(Set(phases).count, frameCount)
+            XCTAssertTrue(phases.allSatisfy { $0 >= 0 && $0 < 1 })
+            XCTAssertEqual(phases[0], 0.9, accuracy: 0.000_001)
+            XCTAssertEqual(phases[frameCount / 2], 0.4, accuracy: 0.000_001)
+            XCTAssertEqual(
+                JARVISNeuralCoreMotion.continuousPhase(
+                    basePhase: 0.1,
+                    frameIndex: -1,
+                    frameCount: frameCount
+                ),
+                0.1 + Double(frameCount - 1) / Double(frameCount) - 1,
+                accuracy: 0.000_001
+            )
+        }
+    }
+
     func testWatchTerminalBrightensDarkForegroundsWithoutChangingBlackOrBrightCells() {
         XCTAssertEqual(
             WatchTerminalLayout.brightenedForeground(WatchTerminalRGBColor(red: 102, green: 102, blue: 102)),
