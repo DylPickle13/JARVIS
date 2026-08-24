@@ -326,7 +326,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 40, savedZoomSchema: 1), 20)
     }
 
-    func testPiTerminalUsesInteractiveKeyboardDismissalAndBackspaceRepeatSentinel() {
+    func testPiTerminalUsesUndecoratedBackspaceRepeatSentinel() throws {
         let terminalView = PiTerminalHostView(frame: .zero)
         XCTAssertEqual(terminalView.keyboardDismissMode, .interactive)
         XCTAssertEqual(terminalView.autocorrectionType, .no)
@@ -334,13 +334,19 @@ final class AppStateTests: XCTestCase {
 
         terminalView.ensureBackspaceAutoRepeatSentinel()
         XCTAssertTrue(terminalView.hasText)
-        let markedRange = try? XCTUnwrap(terminalView.markedTextRange)
-        XCTAssertEqual(markedRange.flatMap { terminalView.text(in: $0) }, PiTerminalKeyboard.backspaceRepeatSentinel)
+        XCTAssertNil(terminalView.markedTextRange, "Marked text makes UIKit draw dotted rows over SwiftTerm")
+        let initialRange = try XCTUnwrap(
+            terminalView.textRange(from: terminalView.beginningOfDocument, to: terminalView.endOfDocument)
+        )
+        XCTAssertEqual(terminalView.text(in: initialRange), PiTerminalKeyboard.backspaceRepeatSentinel)
 
         terminalView.deleteBackward()
         XCTAssertTrue(terminalView.hasText)
-        let repeatedRange = try? XCTUnwrap(terminalView.markedTextRange)
-        XCTAssertEqual(repeatedRange.flatMap { terminalView.text(in: $0) }, PiTerminalKeyboard.backspaceRepeatSentinel)
+        XCTAssertNil(terminalView.markedTextRange)
+        let repeatedRange = try XCTUnwrap(
+            terminalView.textRange(from: terminalView.beginningOfDocument, to: terminalView.endOfDocument)
+        )
+        XCTAssertEqual(terminalView.text(in: repeatedRange), PiTerminalKeyboard.backspaceRepeatSentinel)
     }
 
     func testPiTerminalPrioritizesTouchScrollingAndProvidesSlashShortcut() {

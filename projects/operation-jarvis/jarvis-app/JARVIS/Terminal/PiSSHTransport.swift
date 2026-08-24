@@ -63,8 +63,10 @@ enum PiTerminalKeyboard {
     // SwiftTerm's UIKeyInput reports `hasText == false` when its temporary
     // local buffer is empty, which makes iOS stop software-keyboard Backspace
     // auto-repeat even though the remote terminal still has editable input.
-    // This marked, zero-width sentinel keeps Backspace enabled without sending
-    // any sentinel bytes to SSH; real text replaces it normally.
+    // Keep a zero-width sentinel in that local buffer without leaving it marked:
+    // UIKit decorates marked text using SwiftTerm's full-view selection rectangle,
+    // which otherwise appears as rows of dots over the terminal. The sentinel is
+    // never committed or sent to SSH; real text and DEL remain immediate.
     static let backspaceRepeatSentinel = "\u{200B}"
 }
 
@@ -797,6 +799,10 @@ final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRec
         guard !hasText else { return }
         let sentinel = PiTerminalKeyboard.backspaceRepeatSentinel
         setMarkedText(sentinel, selectedRange: NSRange(location: sentinel.utf16.count, length: 0))
+        // Clearing only the marked range preserves the local sentinel and
+        // `hasText == true` without invoking `unmarkText()`, which would commit
+        // the sentinel to the remote terminal.
+        markedTextRange = nil
     }
 
     func scrolled(source: TerminalView, position: Double) {}

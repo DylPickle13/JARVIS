@@ -214,6 +214,7 @@ reject_match 'Watch System page must not restore the removed Direct to Mac panel
 grep -q 'configuration.candidateBaseURLs' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q 'ensureBackspaceAutoRepeatSentinel' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'markedTextRange = nil' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'override func deleteBackward()' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'WatchTerminalView(' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private enum WatchDashboardPage: Hashable, CaseIterable' JARVISWatch/Views/WatchDashboardContent.swift
@@ -276,8 +277,11 @@ grep -q 'static var openAppWhenRun: Bool { true }' HostAppIntents/JARVISSiriProm
 grep -q 'static var openAppWhenRun: Bool { false }' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'case \.sent:' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'JARVISSiriNavigation.requestTerminalPresentation()' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'opensIntent: OpenURLIntent(JARVISSiriNavigation.terminalURL)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'struct OpenJARVISTerminalIntent: OpenIntent' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'opensIntent: OpenJARVISTerminalIntent(target: .terminal)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q '@MainActor' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'URL(string: "jarvis://terminal")' HostAppIntents/JARVISSiriPromptIntent.swift
+reject_match 'Siri terminal handoff must not use OpenURLIntent with a custom URL scheme' -qsF 'OpenURLIntent(' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'selection = \.pi' JARVIS/JARVISApp.swift
 grep -q 'selectedPage = \.terminal' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest()' JARVIS/JARVISApp.swift
@@ -302,6 +306,7 @@ printf '%s\n' '== widget source contract =='
 reject_match 'legacy iPhone widget kind is still present' -RqsF 'let kind = "JARVISPlugWidget"' JARVISWidget
 reject_match 'legacy Watch widget kind is still present' -RqsF 'let kind = "JARVISWatchWidget"' JARVISWatchWidget
 for kind in \
+  JARVISNeuralCoreWidget.v1 \
   JARVISLauncherWidget.v1 \
   JARVISSelectedPlugWidget.v1 \
   JARVISPlugGridWidget.v1 \
@@ -309,6 +314,7 @@ for kind in \
   grep -Rqs "let kind = \"$kind\"" JARVISWidget || { echo "missing iOS widget kind: $kind" >&2; exit 1; }
 done
 for kind in \
+  JARVISWatchNeuralCoreWidget.v1 \
   JARVISWatchLauncherWidget.v2 \
   JARVISWatchSelectedPlugWidget.v1 \
   JARVISWatchPlugGridWidget.v1 \
@@ -317,6 +323,17 @@ for kind in \
 done
 reject_match 'iPhone purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWidget/PurifierWidget.swift
 reject_match 'Watch purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWatchWidget/PurifierWidget.swift
+grep -q 'JARVISNeuralCoreWidget()' JARVISWidget/JARVISWidgetBundle.swift
+grep -q 'JARVISWatchNeuralCoreWidget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift
+grep -q 'supportedFamilies(\[.systemMedium\])' JARVISWidget/NeuralCoreWidget.swift
+grep -q 'supportedFamilies(\[.accessoryRectangular\])' JARVISWatchWidget/NeuralCoreWidget.swift
+grep -q 'Color.clear' JARVISWatchWidget/NeuralCoreWidget.swift
+grep -q 'URL(string: "jarvis://terminal")' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift
+grep -q 'JARVISNeuralCoreTelemetry' JARVISKit/Sources/JARVISKit/NeuralCoreTelemetry.swift
+reject_match 'Neural Core widgets must remain read-only artwork' -RqsE 'Button\(|AppIntentButton|Toggle\(' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
+reject_match 'Neural Core artwork must not fake live animation' -RqsE 'TimelineView|Timer|\.animation\(' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift WidgetShared
+reject_match 'approved artwork omits the Neural Core subtitle' -qsF 'Text("NEURAL CORE")' WidgetShared/NeuralCoreArtwork.swift
+reject_match 'approved artwork omits the synchronized subtitle' -qsF 'Text("SYNCHRONIZED")' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'applyConfirmedPlugState' SharedAppIntents/JARVISWidgetIntents.swift
 grep -q 'JARVISWidgetControlStore.shared' SharedAppIntents/JARVISWidgetIntents.swift
 grep -q 'reloadTimelines(ofKind:' SharedAppIntents/JARVISWidgetIntents.swift
@@ -439,6 +456,13 @@ for path in sys.argv[3:]:
     assert actions["SendPromptToJARVISIntent"]["isDiscoverable"] is True, path
     expected_open_app = "/Watch/" in path
     assert actions["SendPromptToJARVISIntent"]["openAppWhenRun"] is expected_open_app, path
+    if expected_open_app:
+        assert "OpenJARVISTerminalIntent" not in actions, path
+    else:
+        terminal_open = actions["OpenJARVISTerminalIntent"]
+        assert terminal_open["isDiscoverable"] is False, path
+        assert terminal_open["openAppWhenRun"] is True, path
+        assert terminal_open["parameters"][0]["name"] == "target", path
     prompt_parameter = actions["SendPromptToJARVISIntent"]["parameters"][0]
     assert prompt_parameter["name"] == "prompt", path
     assert prompt_parameter["isOptional"] is False, path
@@ -479,6 +503,7 @@ WATCH_WIDGET_BINARY="$WATCH_WIDGET/JARVISWatchWidget"
 [[ -f "$PHONE_WIDGET/JARVISWidget.debug.dylib" ]] && PHONE_WIDGET_BINARY="$PHONE_WIDGET/JARVISWidget.debug.dylib"
 [[ -f "$WATCH_WIDGET/JARVISWatchWidget.debug.dylib" ]] && WATCH_WIDGET_BINARY="$WATCH_WIDGET/JARVISWatchWidget.debug.dylib"
 for kind in \
+  JARVISNeuralCoreWidget.v1 \
   JARVISLauncherWidget.v1 \
   JARVISSelectedPlugWidget.v1 \
   JARVISPlugGridWidget.v1 \
@@ -486,6 +511,7 @@ for kind in \
   grep -aFq "$kind" "$PHONE_WIDGET_BINARY" || { echo "built iOS widget missing kind: $kind" >&2; exit 1; }
 done
 for kind in \
+  JARVISWatchNeuralCoreWidget.v1 \
   JARVISWatchLauncherWidget.v2 \
   JARVISWatchSelectedPlugWidget.v1 \
   JARVISWatchPlugGridWidget.v1 \

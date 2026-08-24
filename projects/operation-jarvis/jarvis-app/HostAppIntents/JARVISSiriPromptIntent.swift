@@ -24,8 +24,11 @@ struct SendPromptToJARVISIntent: AppIntent {
             let dialog = IntentDialog("Sent to JARVIS.")
             #if os(iOS)
             if #available(iOS 18.2, *) {
+                // OpenURLIntent accepts universal links, not this app's custom
+                // jarvis:// scheme. Chain to an OpenIntent instead so iOS
+                // foregrounds JARVIS and the persisted request selects Pi.
                 return .result(
-                    opensIntent: OpenURLIntent(JARVISSiriNavigation.terminalURL),
+                    opensIntent: OpenJARVISTerminalIntent(target: .terminal),
                     dialog: dialog
                 )
             }
@@ -52,6 +55,39 @@ struct SendPromptToJARVISIntent: AppIntent {
         }
     }
 }
+
+#if os(iOS)
+enum JARVISTerminalDestination: String, AppEnum {
+    case terminal
+
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "JARVIS Terminal")
+    static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
+        .terminal: DisplayRepresentation(title: "Pi Terminal")
+    ]
+}
+
+/// OpenIntent is the supported custom-app handoff for this Siri flow. Unlike
+/// OpenURLIntent, it does not require a public universal link.
+struct OpenJARVISTerminalIntent: OpenIntent {
+    static let title: LocalizedStringResource = "Open JARVIS Terminal"
+    static var isDiscoverable: Bool { false }
+
+    @Parameter(title: "Destination")
+    var target: JARVISTerminalDestination
+
+    init() {}
+
+    init(target: JARVISTerminalDestination) {
+        self.target = target
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        JARVISSiriNavigation.requestTerminalPresentation()
+        return .result()
+    }
+}
+#endif
 
 enum JARVISSiriNavigation {
     static let terminalRequestNotification = Notification.Name("com.operation-jarvis.siri-terminal-requested")

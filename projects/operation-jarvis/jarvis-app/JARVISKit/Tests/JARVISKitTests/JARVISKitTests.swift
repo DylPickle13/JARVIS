@@ -18,6 +18,63 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertFalse(CodexQuotaPresentationPolicy.isCritical(remainingPercent: 100))
     }
 
+    func testNeuralCoreMapsOnlyUsableCachedTelemetry() throws {
+        let state = try JSONDecoder().decode(
+            StateSnapshot.self,
+            from: Data(
+                #"{"ok":true,"summary":{"pm25":3},"subsystems":{"pi":{"ok":true,"stale":false,"active":3},"plugs":{"ok":true,"stale":false,"plugs":{"family-room-light":{"ok":true,"isOn":true},"lamp":{"ok":true,"isOn":false},"pedalboard":{"ok":false,"isOn":true},"tv":{"ok":true,"stale":true,"isOn":true}}},"purifier":{"ok":true,"stale":false,"pm25":3},"network":{"ok":true,"stale":false,"macLanIp":"192.168.21.215"},"codexQuota":{"ok":true,"available":true,"stale":false,"weekly":{"remainingPercent":30}}}}"#.utf8
+            )
+        )
+        let now = Date(timeIntervalSince1970: 1_000)
+        let telemetry = JARVISNeuralCoreTelemetry(
+            cached: CachedState(state: state, savedAt: now),
+            now: now.addingTimeInterval(60)
+        )
+
+        XCTAssertFalse(telemetry.signalLost)
+        XCTAssertEqual(telemetry.piSessions, 3)
+        XCTAssertEqual(telemetry.illuminatedSpokes, 6)
+        XCTAssertEqual(telemetry.plugStates, [.on, .off, .unknown, .unknown])
+        XCTAssertEqual(telemetry.codexRemainingPercent, 30)
+        XCTAssertFalse(telemetry.codexIsCritical, "Exactly 30 percent remains electric blue")
+        XCTAssertEqual(telemetry.pm25, 3)
+        XCTAssertEqual(telemetry.linkLabel, "LAN")
+    }
+
+    func testNeuralCoreFailsClosedWhenSnapshotIsMissingOrStale() throws {
+        let missing = JARVISNeuralCoreTelemetry(cached: nil)
+        XCTAssertTrue(missing.signalLost)
+        XCTAssertEqual(missing.illuminatedSpokes, 0)
+        XCTAssertEqual(missing.plugStates, Array(repeating: .unknown, count: 4))
+
+        let state = try JSONDecoder().decode(
+            StateSnapshot.self,
+            from: Data(#"{"ok":true,"subsystems":{"pi":{"ok":true,"active":4},"codexQuota":{"ok":true,"available":true,"weekly":{"remainingPercent":12}},"purifier":{"ok":true,"pm25":2}}}"#.utf8)
+        )
+        let savedAt = Date(timeIntervalSince1970: 1_000)
+        let stale = JARVISNeuralCoreTelemetry(
+            cached: CachedState(state: state, savedAt: savedAt),
+            now: savedAt.addingTimeInterval(JARVISWidgetStateLoader.staleAfter + 1)
+        )
+        XCTAssertTrue(stale.signalLost)
+        XCTAssertNil(stale.piSessions)
+        XCTAssertEqual(stale.illuminatedSpokes, 0)
+        XCTAssertNil(stale.codexRemainingPercent)
+        XCTAssertFalse(stale.codexIsCritical)
+        XCTAssertNil(stale.pm25)
+        XCTAssertNil(stale.linkLabel)
+    }
+
+    func testNeuralCorePlaceholderIsExplicitlyIllustrative() {
+        let placeholder = JARVISNeuralCoreTelemetry(cached: nil, placeholder: true)
+        XCTAssertFalse(placeholder.signalLost)
+        XCTAssertEqual(placeholder.piSessions, 2)
+        XCTAssertEqual(placeholder.illuminatedSpokes, 4)
+        XCTAssertEqual(placeholder.codexRemainingPercent, 82)
+        XCTAssertEqual(placeholder.pm25, 3)
+        XCTAssertEqual(placeholder.linkLabel, "LAN")
+    }
+
     func testWatchTerminalBrightensDarkForegroundsWithoutChangingBlackOrBrightCells() {
         XCTAssertEqual(
             WatchTerminalLayout.brightenedForeground(WatchTerminalRGBColor(red: 102, green: 102, blue: 102)),
