@@ -103,6 +103,45 @@ def _make_utterance() -> discord_voice._VoiceUtterance:
     )
 
 
+class FinalResponseSpeechTests(unittest.TestCase):
+    def test_final_response_tables_and_long_sections_are_chunked_without_truncation(self) -> None:
+        response = """Here's the weather for tomorrow:
+
+| | |
+|---|---|
+| **Condition** | Cloudy |
+| **High** | 24°C |
+| **Wind** | NW 20 km/h, becoming light early afternoon |
+| **UV Index** | 5 (moderate) |
+
+It'll be cloudy but mild — no rain expected. Dress in layers tonight.
+"""
+        pipeline = discord_voice.OmlxVoicePipeline(
+            discord_voice.VoicePipelineConfig(
+                max_tts_segments=0,
+                max_tts_chars_per_segment=80,
+            )
+        )
+
+        cleaned = pipeline._clean_text_for_tts(response)
+        segments = pipeline._split_for_tts(cleaned)
+
+        self.assertTrue(segments)
+        self.assertTrue(all(0 < len(segment) <= 80 for segment in segments))
+        self.assertEqual(" ".join(segments), " ".join(cleaned.split()))
+        self.assertIn("Condition: Cloudy.", cleaned)
+        self.assertIn("becoming light early afternoon", cleaned)
+        self.assertIn("UV Index: 5 (moderate).", cleaned)
+        self.assertIn("no rain expected", cleaned)
+        self.assertIn("Dress in layers tonight", cleaned)
+
+    def test_unbroken_text_is_split_without_dropping_characters(self) -> None:
+        text = "x" * 201
+        chunks = discord_voice._bounded_tts_chunks(text, 80)
+        self.assertEqual([len(chunk) for chunk in chunks], [80, 80, 41])
+        self.assertEqual("".join(chunks), text)
+
+
 class InterruptCommandTests(unittest.TestCase):
     def test_accepts_only_exact_normalized_stop(self) -> None:
         for transcript in ("stop", "Stop.", " STOP! "):

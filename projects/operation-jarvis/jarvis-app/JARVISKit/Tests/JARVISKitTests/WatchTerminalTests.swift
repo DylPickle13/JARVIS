@@ -36,6 +36,27 @@ final class WatchTerminalTests: XCTestCase {
         XCTAssertTrue(parsed[3][0].style.inverse)
     }
 
+    func testCrownHistoryClampsTheLiveEdgeInsteadOfReboundingToOne() {
+        XCTAssertEqual(
+            WatchTerminalCrownHistory.scrollOffset(crownPosition: 0, maximumOffset: 20),
+            0
+        )
+        XCTAssertEqual(
+            WatchTerminalCrownHistory.scrollOffset(crownPosition: 0.8, maximumOffset: 20),
+            0
+        )
+        XCTAssertEqual(
+            WatchTerminalCrownHistory.scrollOffset(crownPosition: -1, maximumOffset: 20),
+            1
+        )
+        XCTAssertEqual(
+            WatchTerminalCrownHistory.scrollOffset(crownPosition: -8, maximumOffset: 3),
+            3
+        )
+        XCTAssertEqual(WatchTerminalCrownHistory.crownPosition(scrollOffset: 0), 0)
+        XCTAssertEqual(WatchTerminalCrownHistory.crownPosition(scrollOffset: 3), -3)
+    }
+
     func testFrameCrownViewportMovesThroughCapturedHistoryWithoutInput() {
         let lines = ["history-0", "history-1", "screen-0", "screen-1", "prompt", "footer"]
         let frame = WatchTerminalFrame(
@@ -67,6 +88,20 @@ final class WatchTerminalTests: XCTestCase {
         let frame = try JSONDecoder().decode(WatchTerminalFrame.self, from: data)
         XCTAssertEqual(frame.screenStart, 0)
         XCTAssertEqual(frame.ansiLines, frame.lines)
+    }
+
+    func testSpeechMetadataDecodesAdditivelyWithoutExposingResponseText() throws {
+        let data = Data(#"{"sequence":3,"columns":2,"rows":2,"cursorColumn":0,"cursorRow":1,"alternateScreen":false,"mouseMode":false,"historySize":0,"speech":{"available":true,"generating":false,"responseID":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"lines":["a","b"]}"#.utf8)
+        let frame = try JSONDecoder().decode(WatchTerminalFrame.self, from: data)
+        XCTAssertEqual(
+            frame.speech,
+            WatchTerminalSpeechState(
+                available: true,
+                generating: false,
+                responseID: String(repeating: "a", count: 64)
+            )
+        )
+        XCTAssertFalse(String(data: try JSONEncoder().encode(frame), encoding: .utf8)!.contains("responseText"))
     }
 
     func testBuild39DecodesAdditiveHistoryWhileLiveLinesRemainCompatible() throws {
@@ -116,6 +151,34 @@ final class WatchTerminalTests: XCTestCase {
         XCTAssertEqual(captured.count, 1)
         XCTAssertEqual(captured[0].data, Data("hello Pi".utf8))
         XCTAssertTrue(captured[0].appendReturn)
+    }
+
+    func testSharedClientDownloadsCurrentSpeechOnceWithoutSendingText() async throws {
+        let responseID = String(repeating: "c", count: 64)
+        let speechPosts = LockedBox(0)
+        TerminalURLProtocol.handler = { request in
+            if request.httpMethod == "GET" {
+                return (200, try JSONEncoder().encode(self.fixtureFrame()))
+            }
+            XCTAssertEqual(request.url?.path, "/v1/terminal/speech")
+            let payload = try JSONSerialization.jsonObject(with: request.bodyData) as? [String: String]
+            XCTAssertEqual(payload, ["responseID": responseID])
+            speechPosts.update { $0 += 1 }
+            var wav = Data("RIFF".utf8)
+            wav.append(contentsOf: [36, 0, 0, 0])
+            wav.append(Data("WAVEfmt ".utf8))
+            wav.append(Data(repeating: 0, count: 28))
+            return (200, wav)
+        }
+        let client = fixtureClient()
+        defer { client.close() }
+        _ = try await client.preflight()
+
+        let url = try await client.speechAudio(responseID: responseID)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        XCTAssertEqual(speechPosts.snapshot(), 1)
+        XCTAssertEqual(try Data(contentsOf: url).prefix(4), Data("RIFF".utf8))
     }
 
     func testSharedClientNeverRetriesAmbiguousPost() async throws {
@@ -184,7 +247,11 @@ private final class TerminalURLProtocol: URLProtocol {
                 url: request.url!,
                 statusCode: status,
                 httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": "application/json"]
+                headerFields: [
+                    "Content-Type": request.url?.path.hasSuffix("/speech") == true
+                        ? "audio/wav"
+                        : "application/json"
+                ]
             )!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)

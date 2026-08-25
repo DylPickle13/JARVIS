@@ -29,7 +29,12 @@ struct JARVISApp: App {
                     case .active:
                         app.sceneDidBecomeActive()
                         piTerminal.sceneDidBecomeActive()
-                    case .inactive, .background:
+                    case .inactive:
+                        app.sceneWillResignActive()
+                        // Siri and system overlays make a foreground iPhone
+                        // inactive. Keep the SSH terminal attached so a prompt
+                        // submitted out-of-band can stream into its open pane.
+                    case .background:
                         app.sceneWillResignActive()
                         piTerminal.sceneWillResignActive()
                     @unknown default:

@@ -22,7 +22,36 @@ xcodegen generate
 printf '%s\n' '== Python unit tests =='
 python3 -m unittest discover -s jarvisd/tests -v
 python3 -m unittest discover -s terminald/tests -v
-python3 -m py_compile jarvisd/jarvisd.py terminald/jarvis_terminald.py ../jarvis.py ../../../.pi/discord-cron/runner.py
+python3 -m py_compile \
+  jarvisd/jarvisd.py \
+  terminald/jarvis_terminald.py \
+  ../jarvis.py \
+  ../raspberry-pi/room_audio/room_audio_server.py \
+  ../voice/discord_voice.py \
+  ../../../.pi/discord-cron/runner.py
+
+printf '%s\n' '== semantic Watch speech selection =='
+node --experimental-strip-types --input-type=module <<'NODE'
+import { selectWatchTerminalSpeech } from '../../../.pi/extensions/47-watch-terminal-speech.ts';
+const entries = [
+  { type: 'message', id: 'user0001', message: { role: 'user', content: [{ type: 'text', text: 'status' }] } },
+  { type: 'message', id: 'tools001', message: { role: 'assistant', stopReason: 'toolUse', content: [
+    { type: 'thinking', thinking: 'secret reasoning' },
+    { type: 'text', text: 'intermediate status' },
+    { type: 'toolCall', name: 'bash' },
+  ] } },
+  { type: 'message', id: 'result01', message: { role: 'toolResult', content: [{ type: 'text', text: 'private output' }] } },
+  { type: 'message', id: 'final001', message: { role: 'assistant', stopReason: 'stop', timestamp: 1, content: [
+    { type: 'thinking', thinking: 'more secret reasoning' },
+    { type: 'text', text: 'Final answer, sir.' },
+  ] } },
+];
+const selected = selectWatchTerminalSpeech(entries, 'session');
+if (!selected || selected.text !== 'Final answer, sir.' || selected.responseID.length !== 64) {
+  throw new Error(`semantic speech selection failed: ${JSON.stringify(selected)}`);
+}
+if (selectWatchTerminalSpeech([], 'session') !== undefined) throw new Error('empty session speech must be unavailable');
+NODE
 
 printf '%s\n' '== plist, icon, and shell syntax =='
 plutil -lint \
@@ -103,7 +132,8 @@ grep -q 'TMUX_SESSION="jarvis-ios"' scripts/jarvis-mobile-terminal.sh
 grep -q 'new-session -d' scripts/jarvis-mobile-terminal.sh
 grep -q 'attach-session' scripts/jarvis-mobile-terminal.sh
 grep -q 'export PATH="/opt/homebrew/bin:' scripts/jarvis-mobile-terminal.sh
-grep -q "PI_COMMAND='/opt/homebrew/bin/pi --tui-mode fullscreen'" scripts/jarvis-mobile-terminal.sh
+grep -q "PI_COMMAND='/opt/homebrew/bin/pi --tui-mode regular'" scripts/jarvis-mobile-terminal.sh
+reject_match 'Mobile Pi launcher must not restore fullscreen TUI mode' -Fq -- '--tui-mode fullscreen' scripts/jarvis-mobile-terminal.sh
 grep -q 'source-file "$TMUX_CONFIG"' scripts/jarvis-mobile-terminal.sh
 grep -q 'send-keys -X -N 1 scroll-up' config/jarvis-mobile.tmux.conf
 grep -q 'send-keys -X -N 1 scroll-down' config/jarvis-mobile.tmux.conf
@@ -139,6 +169,8 @@ grep -q 'MAX_INPUT_BYTES = 4096' terminald/jarvis_terminald.py
 grep -q 'capture-pane' terminald/jarvis_terminald.py
 grep -q 'paste-buffer' terminald/jarvis_terminald.py
 grep -q 'processed_request_ids' terminald/jarvis_terminald.py
+grep -q 'refresh-client' terminald/jarvis_terminald.py
+grep -q 'Record successful delivery before the best-effort client redraw' terminald/jarvis_terminald.py
 grep -q 'terminalConfiguration' JARVISKit/Sources/JARVISKit/WatchBridge.swift
 grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' HostAppIntents/JARVISTerminalConfigurationStore.swift
 grep -q 'SecTrustCopyCertificateChain' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
@@ -147,10 +179,32 @@ grep -q 'private var sceneIsActive = false' JARVISWatch/Views/WatchTerminalView.
 grep -q 'private func scheduleWakeRecovery()' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'self.restartIfNeeded(preserveLiveStatus: true)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'self.successfulPollCount += 1' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'selectWatchTerminalSpeech' ../../../.pi/extensions/47-watch-terminal-speech.ts
+grep -q 'pi.on("agent_settled"' ../../../.pi/extensions/47-watch-terminal-speech.ts
+grep -q 'message.stopReason !== "stop" && message.stopReason !== "length"' ../../../.pi/extensions/47-watch-terminal-speech.ts
+grep -q 'part?.type === "text"' ../../../.pi/extensions/47-watch-terminal-speech.ts
+grep -q 'ROOM_SPEECH_URL = "http://127.0.0.1:8791/synthesize"' terminald/jarvis_terminald.py
+grep -q 'parsed.path not in {"/v1/terminal/input", "/v1/terminal/speech"}' terminald/jarvis_terminald.py
+grep -q 'path == "/synthesize"' ../raspberry-pi/room_audio/room_audio_server.py
+grep -q 'is_loopback_address(self.client_address\[0\])' ../raspberry-pi/room_audio/room_audio_server.py
+grep -q 'public func speechAudio(responseID: String)' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'import AVFoundation' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Image(systemName: controller.isSpeechPlaying ? "stop.fill" : "speaker.wave.2.fill")' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'AVAudioPlayer(contentsOf: downloadedURL)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'stop(preserveSpeechPlayback: isSpeechPlaying)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'stop(markOffline: !keepsLiveStatus, preserveSpeechPlayback: isSpeechPlaying)' JARVISWatch/Views/WatchTerminalView.swift
+/usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes:0' JARVISWatch/Info.plist | grep -qx 'audio'
+grep -q 'def _bounded_tts_chunks' ../voice/discord_voice.py
+grep -q 'cleaned_text = self._clean_text_for_tts(text)' ../voice/discord_voice.py
+reject_match 'Watch terminal frame must never carry raw final response text' -RqsE 'responseText|speechText' JARVISKit/Sources/JARVISKit/WatchTerminal.swift terminald/jarvis_terminald.py
+reject_match 'Watch speech must not accept arbitrary client text' -Fq '"text"' < <(sed -n '/    def do_POST(self)/,/^def parse_cidrs/p' terminald/jarvis_terminald.py)
 reject_match 'Watch terminal must not fake a workout or unsupported extended-runtime category' -E 'WKExtendedRuntimeSession|HKWorkoutSession|isFrontmostTimeoutExtended' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'digitalCrownRotation' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.focused(\$crownIsFocused)' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'through: 0' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'isContinuous: false' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalCrownHistory.scrollOffset' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch Crown live edge must not use rebound-prone incremental history' -Fq 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalANSIParser.parse(lines: frame.ansiLines)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'frame.viewportRange(maximumLines:' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch terminal must not duplicate Pi input in a prompt rail' -E 'private var promptRail|promptViewport\(displayColumns:' JARVISWatch/Views/WatchTerminalView.swift
@@ -165,7 +219,6 @@ grep -q 'showingKeyPalette' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'TextField("", text: \$keyboardDraft, prompt:' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.submitLabel(.done)' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Input must not use the system chooser that can resume in dictation' -Fq 'TextFieldLink' JARVISWatch/Views/WatchTerminalView.swift
-[[ "$(grep -c 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift)" == "2" ]]
 grep -q 'Touch remains page navigation only' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'private func stageInput(_ input: String)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'title: "Keys"' JARVISWatch/Views/WatchTerminalView.swift

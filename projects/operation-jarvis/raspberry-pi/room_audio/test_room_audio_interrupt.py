@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import io
+import tempfile
 import threading
 import time
 import unittest
+import wave
 from pathlib import Path
 
 import room_audio_server
@@ -29,6 +32,53 @@ class _FakeSession:
     def abort_active(self) -> bool:
         self.abort_calls += 1
         return True
+
+
+class _SpeechPipeline:
+    def __init__(self) -> None:
+        self.paths: list[Path] = []
+        self.texts: list[str] = []
+
+    def synthesize_text(self, text: str) -> list[Path]:
+        self.texts.append(text)
+        for value in (1000, -1000):
+            handle = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            path = Path(handle.name)
+            handle.close()
+            with wave.open(str(path), "wb") as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(22050)
+                output.writeframes(int(value).to_bytes(2, "little", signed=True))
+            self.paths.append(path)
+        return list(self.paths)
+
+
+class WatchSpeechTests(unittest.TestCase):
+    def test_watch_speech_uses_canonical_pipeline_without_room_leading_silence(self) -> None:
+        bridge = room_audio_server.RoomAudioBridge.__new__(room_audio_server.RoomAudioBridge)
+        pipeline = _SpeechPipeline()
+        bridge._pipeline = pipeline
+
+        audio = bridge.synthesize_watch_speech(" Final response only. ")
+
+        self.assertEqual(pipeline.texts, ["Final response only."])
+        with wave.open(io.BytesIO(audio), "rb") as result:
+            self.assertEqual(result.getnchannels(), 1)
+            self.assertEqual(result.getframerate(), 22050)
+            self.assertEqual(result.getnframes(), 2)
+            self.assertEqual(result.readframes(2), b"\xe8\x03\x18\xfc")
+        self.assertTrue(all(not path.exists() for path in pipeline.paths))
+
+    def test_watch_speech_accepts_only_loopback_and_bounded_nonempty_text(self) -> None:
+        self.assertTrue(room_audio_server.is_loopback_address("127.0.0.1"))
+        self.assertTrue(room_audio_server.is_loopback_address("::1"))
+        self.assertFalse(room_audio_server.is_loopback_address("192.168.21.215"))
+        self.assertEqual(room_audio_server.validate_watch_speech_text("  hello  "), "hello")
+        with self.assertRaises(ValueError):
+            room_audio_server.validate_watch_speech_text("")
+        with self.assertRaises(ValueError):
+            room_audio_server.validate_watch_speech_text("x" * (room_audio_server.WATCH_SPEECH_MAX_TEXT_BYTES + 1))
 
 
 class InterruptCommandTests(unittest.TestCase):

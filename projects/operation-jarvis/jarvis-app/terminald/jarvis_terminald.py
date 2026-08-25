@@ -17,13 +17,16 @@ from pathlib import Path
 import re
 import secrets
 import ssl
+import stat
 import subprocess
 import threading
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 BOOTSTRAP = APP_ROOT / "scripts" / "jarvis-mobile-terminal.sh"
@@ -35,6 +38,12 @@ DEFAULT_PORT = 8792
 DEFAULT_CIDRS = "127.0.0.0/8,192.168.0.0/16,100.64.0.0/10"
 MAX_INPUT_BYTES = 4096
 MAX_BODY_BYTES = 8192
+MAX_SPEECH_REQUEST_BYTES = 1024
+MAX_SPEECH_MARKER_BYTES = 256 * 1024
+MAX_SPEECH_TEXT_BYTES = 32 * 1024
+MAX_SPEECH_AUDIO_BYTES = 20 * 1024 * 1024
+ROOM_SPEECH_URL = "http://127.0.0.1:8791/synthesize"
+SPEECH_RESPONSE_ID_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 LONG_POLL_SECONDS = 1.5
 POLL_INTERVAL_SECONDS = 0.10
 MAX_SCROLLBACK_ROWS = 160
@@ -43,6 +52,7 @@ RUNTIME_DIR = Path.home() / "Library" / "Application Support" / "JARVIS" / "term
 TOKEN_PATH = RUNTIME_DIR / "token"
 CERT_PATH = RUNTIME_DIR / "certificate.pem"
 KEY_PATH = RUNTIME_DIR / "certificate-key.pem"
+SPEECH_DIR = RUNTIME_DIR / "speech"
 
 
 class TerminalError(RuntimeError):
@@ -150,9 +160,47 @@ class CommandRunner:
         )
 
 
+class RoomSpeechClient:
+    def synthesize(self, text: str) -> bytes:
+        payload = json.dumps({"text": text}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        request = Request(
+            ROOM_SPEECH_URL,
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json", "Cache-Control": "no-store"},
+        )
+        try:
+            with urlopen(request, timeout=180) as response:
+                content_type = response.headers.get_content_type()
+                audio = response.read(MAX_SPEECH_AUDIO_BYTES + 1)
+        except HTTPError as error:
+            detail = error.read(4096).decode("utf-8", errors="replace")
+            try:
+                message = json.loads(detail).get("error", "")
+            except (AttributeError, json.JSONDecodeError):
+                message = ""
+            raise TerminalError(message or "The JARVIS voice service rejected the response.") from error
+        except (URLError, TimeoutError, OSError) as error:
+            raise TerminalError("The JARVIS voice service is unavailable.") from error
+        if content_type != "audio/wav":
+            raise TerminalError("The JARVIS voice service returned an invalid audio type.")
+        if len(audio) > MAX_SPEECH_AUDIO_BYTES:
+            raise TerminalError("The JARVIS voice response exceeded the audio limit.")
+        if len(audio) < 12 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+            raise TerminalError("The JARVIS voice service returned invalid WAV audio.")
+        return audio
+
+
 class TerminalService:
-    def __init__(self, runner: Optional[CommandRunner] = None) -> None:
+    def __init__(
+        self,
+        runner: Optional[CommandRunner] = None,
+        speech_dir: Optional[Path] = None,
+        room_speech_client: Optional[RoomSpeechClient] = None,
+    ) -> None:
         self.runner = runner or CommandRunner()
+        self.speech_dir = speech_dir or SPEECH_DIR
+        self.room_speech_client = room_speech_client or RoomSpeechClient()
         self.lock = threading.Lock()
         self.sequence = 0
         self.last_digest: Optional[str] = None
@@ -172,6 +220,94 @@ class TerminalService:
         if result.returncode != 0:
             raise TerminalError("The persistent JARVIS session could not be created.")
 
+    def _read_speech_marker(
+        self,
+        pane_pid: int,
+        pane_id: str,
+        tmux_server_pid: int,
+        session_created_at: int,
+    ) -> Dict[str, Any]:
+        empty = {"available": False, "generating": False, "responseID": ""}
+        marker_path = self.speech_dir / "{}.json".format(pane_pid)
+        try:
+            metadata = marker_path.lstat()
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
+                return empty
+            if metadata.st_mode & 0o077 or metadata.st_size <= 0 or metadata.st_size > MAX_SPEECH_MARKER_BYTES:
+                return empty
+            payload = json.loads(marker_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return empty
+        if not isinstance(payload, dict) or payload.get("version") != 1 or payload.get("pid") != pane_pid:
+            return empty
+        if payload.get("paneID") != pane_id or payload.get("tmuxServerPID") != tmux_server_pid:
+            return empty
+        publisher_started_at = payload.get("publisherStartedAt")
+        updated_at = payload.get("updatedAt")
+        if not isinstance(publisher_started_at, (int, float)) or not isinstance(updated_at, (int, float)):
+            return empty
+        if publisher_started_at < (session_created_at - 5) * 1000 or updated_at < publisher_started_at:
+            return empty
+        if publisher_started_at > (time.time() + 60) * 1000:
+            return empty
+        status = payload.get("status")
+        if status == "generating":
+            return {"available": False, "generating": True, "responseID": ""}
+        if status != "ready":
+            return empty
+        response_id = payload.get("responseID")
+        text = payload.get("text")
+        text_byte_count = payload.get("textByteCount")
+        if not isinstance(response_id, str) or SPEECH_RESPONSE_ID_PATTERN.fullmatch(response_id) is None:
+            return empty
+        if not isinstance(text, str) or not text.strip():
+            return empty
+        actual_text_bytes = len(text.encode("utf-8"))
+        if actual_text_bytes > MAX_SPEECH_TEXT_BYTES or text_byte_count != actual_text_bytes:
+            return empty
+        return {
+            "available": True,
+            "generating": False,
+            "responseID": response_id,
+            "text": text,
+        }
+
+    def _pane_identity_locked(self) -> Tuple[int, str, int, int]:
+        identity_format = "\t".join(
+            ["#{pane_pid}", "#{pane_id}", "#{pid}", "#{session_created}", "#{pane_dead}"]
+        )
+        result = self.runner.run(
+            self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, identity_format),
+            check=False,
+        )
+        if result.returncode != 0:
+            self.ensure_session()
+            result = self.runner.run(
+                self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, identity_format)
+            )
+        values = result.stdout.decode("utf-8", errors="replace").strip().split("\t")
+        if len(values) != 5 or values[4] == "1" or not values[1].startswith("%"):
+            raise TerminalError("The persistent JARVIS pane is unavailable.")
+        try:
+            return int(values[0]), values[1], int(values[2]), int(values[3])
+        except ValueError as error:
+            raise TerminalError("The JARVIS pane identity was invalid.") from error
+
+    def synthesize_speech(self, response_id: str) -> bytes:
+        if SPEECH_RESPONSE_ID_PATTERN.fullmatch(response_id) is None:
+            raise TerminalError("The Watch speech response identifier was invalid.")
+        with self.lock:
+            pane_pid, pane_id, tmux_server_pid, session_created_at = self._pane_identity_locked()
+            speech = self._read_speech_marker(pane_pid, pane_id, tmux_server_pid, session_created_at)
+            if not speech.get("available") or speech.get("responseID") != response_id:
+                raise TerminalError("The final JARVIS response is no longer available.")
+            text = speech.get("text")
+            if not isinstance(text, str):
+                raise TerminalError("The final JARVIS response is unavailable.")
+        # Piper synthesis can be slow, so never hold the terminal capture/input
+        # lock while the loopback-only room voice service renders the WAV.
+        return self.room_speech_client.synthesize(text)
+
     def _capture_locked(self) -> Dict[str, Any]:
         metadata_format = "\t".join(
             [
@@ -183,6 +319,10 @@ class TerminalService:
                 "#{mouse_any_flag}",
                 "#{history_size}",
                 "#{pane_dead}",
+                "#{pane_pid}",
+                "#{pane_id}",
+                "#{pid}",
+                "#{session_created}",
             ]
         )
         metadata = self.runner.run(
@@ -195,12 +335,19 @@ class TerminalService:
                 self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, metadata_format)
             )
         values = metadata.stdout.decode("utf-8", errors="replace").strip().split("\t")
-        if len(values) != 8 or values[7] == "1":
+        if len(values) != 12 or values[7] == "1" or not values[9].startswith("%"):
             raise TerminalError("The persistent JARVIS pane is unavailable.")
         try:
-            columns, rows, cursor_column, cursor_row, alternate, mouse, history, _ = [int(value or "0") for value in values]
+            columns, rows, cursor_column, cursor_row, alternate, mouse, history, _ = [
+                int(value or "0") for value in values[:8]
+            ]
+            pane_pid = int(values[8])
+            pane_id = values[9]
+            tmux_server_pid = int(values[10])
+            session_created_at = int(values[11])
         except ValueError as error:
             raise TerminalError("The JARVIS pane metadata was invalid.") from error
+        speech = self._read_speech_marker(pane_pid, pane_id, tmux_server_pid, session_created_at)
 
         # Preserve the actual tmux grid and its SGR attributes. Pi's thinking,
         # tool calls, token counters, and assistant output are not reconstructed
@@ -236,6 +383,11 @@ class TerminalService:
             "alternateScreen": bool(alternate),
             "mouseMode": bool(mouse),
             "historySize": history,
+            "speech": {
+                "available": bool(speech.get("available")),
+                "generating": bool(speech.get("generating")),
+                "responseID": speech.get("responseID", "") if speech.get("available") else "",
+            },
             # Preserve build-38 compatibility: `lines` remains exactly the live
             # screen. Build 39 opts into the bounded history mirror through the
             # additive captured fields, so daemon/app rollout order is safe.
@@ -265,6 +417,34 @@ class TerminalService:
             if frame["sequence"] > after or time.monotonic() >= deadline:
                 return frame
             time.sleep(POLL_INTERVAL_SECONDS)
+
+    def _refresh_attached_clients_locked(self) -> None:
+        """Best-effort redraw for SSH clients after out-of-band Watch input.
+
+        Input reaches Pi through a detached tmux command rather than through an
+        attached SSH client's tty. Explicitly redrawing each client keeps an
+        already-open iPhone terminal on the live pane without reconnecting,
+        resizing, or injecting any additional terminal bytes.
+        """
+        try:
+            clients = self.runner.run(
+                self.tmux_arguments("list-clients", "-t", TMUX_SESSION, "-F", "#{client_name}"),
+                check=False,
+            )
+            if clients.returncode != 0:
+                return
+            for raw_name in clients.stdout.decode("utf-8", errors="replace").splitlines():
+                client_name = raw_name.strip()
+                if not client_name or len(client_name) > 512:
+                    continue
+                self.runner.run(
+                    self.tmux_arguments("refresh-client", "-t", client_name),
+                    check=False,
+                )
+        except (OSError, subprocess.SubprocessError):
+            # The prompt was already delivered. A redraw failure must never
+            # turn that confirmed write into an ambiguous/replayable request.
+            return
 
     def send_input(self, request_id: str, data: bytes, append_return: bool) -> None:
         if not request_id or len(request_id) > 128:
@@ -300,7 +480,11 @@ class TerminalService:
                         TMUX_TARGET,
                     )
                 )
+            # Record successful delivery before the best-effort client redraw.
+            # If redraw fails, this request still remains deduplicated forever
+            # within the daemon lifetime and is acknowledged as delivered.
             self.processed_request_ids[request_id] = time.monotonic()
+            self._refresh_attached_clients_locked()
             if len(self.processed_request_ids) > 100:
                 oldest = sorted(self.processed_request_ids.items(), key=lambda item: item[1])[:25]
                 for key, _ in oldest:
@@ -366,6 +550,18 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
             # Wrist-down/background cancellation is expected during a long poll.
             self.close_connection = True
 
+    def _write_audio(self, payload: bytes) -> None:
+        try:
+            self.send_response(HTTPStatus.OK.value)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError, ssl.SSLEOFError):
+            self.close_connection = True
+
     def _require_authorization(self) -> bool:
         if self._authorized():
             return True
@@ -394,7 +590,7 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path != "/v1/terminal/input":
+        if parsed.path not in {"/v1/terminal/input", "/v1/terminal/speech"}:
             self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found."})
             return
         if not self._require_authorization():
@@ -403,11 +599,19 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if length <= 0 or length > MAX_BODY_BYTES:
+        maximum_length = MAX_SPEECH_REQUEST_BYTES if parsed.path == "/v1/terminal/speech" else MAX_BODY_BYTES
+        if length <= 0 or length > maximum_length:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid request size."})
             return
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if parsed.path == "/v1/terminal/speech":
+                response_id = payload.get("responseID", "") if isinstance(payload, dict) else ""
+                if not isinstance(response_id, str):
+                    raise TerminalError("The Watch speech request was invalid.")
+                audio = self.terminal_server.service.synthesize_speech(response_id)
+                self._write_audio(audio)
+                return
             request_id = payload.get("requestID", "")
             encoded = payload.get("dataBase64", "")
             append_return = payload.get("appendReturn", False)

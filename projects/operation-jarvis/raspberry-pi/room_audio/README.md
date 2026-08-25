@@ -52,6 +52,13 @@ Health check from the Pi:
 curl http://<private-lan-ip>:8791/health
 ```
 
+The native Watch terminal can reuse this Piper voice through `POST /synthesize`.
+That route accepts bounded final-response text only from a loopback source such
+as `127.0.0.1`; LAN clients cannot use it as an arbitrary TTS endpoint. It runs
+no ASR or Pi RPC and returns a no-store `audio/wav` response without the room
+speaker's Bluetooth leading-silence padding. Readable Markdown table rows are
+normalized before long prose is split losslessly at bounded word boundaries.
+
 Optional environment variables:
 
 - `JARVIS_ROOM_AUDIO_HOST` / `JARVIS_ROOM_AUDIO_PORT`

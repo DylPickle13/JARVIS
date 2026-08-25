@@ -6,7 +6,7 @@ readonly TMUX_SOCKET="jarvis-mobile"
 readonly TMUX_SESSION="jarvis-ios"
 readonly TMUX_CONFIG="/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/config/jarvis-mobile.tmux.conf"
 readonly JARVIS_ROOT="/Users/dylanrapanan/JARVIS"
-readonly PI_COMMAND='/opt/homebrew/bin/pi --tui-mode fullscreen'
+readonly PI_COMMAND='/opt/homebrew/bin/pi --tui-mode regular'
 
 # Remote OpenSSH commands receive a minimal macOS PATH. Pi's absolute launcher
 # still uses `#!/usr/bin/env node`, so make Homebrew's Node resolvable inside the

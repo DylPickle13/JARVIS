@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import JARVISKit
 import SwiftUI
@@ -31,7 +32,7 @@ private final class WatchTerminalSettings {
 }
 
 @MainActor
-final class WatchTerminalController: ObservableObject {
+final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDelegate {
     enum Status: Equatable {
         case notConfigured
         case connecting
@@ -62,6 +63,9 @@ final class WatchTerminalController: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var isSending = false
     @Published private(set) var pendingBackspaceCount = 0
+    @Published private(set) var isSpeechLoading = false
+    @Published private(set) var isSpeechPlaying = false
+    @Published var speechErrorMessage: String?
     @Published var controlLatched = false
 
     private let settings = WatchTerminalSettings()
@@ -74,8 +78,12 @@ final class WatchTerminalController: ObservableObject {
     private var connectionGeneration = 0
     private var successfulPollCount = 0
     private var pendingBackspaceIDs = Set<UUID>()
+    private var speechTask: Task<Void, Never>?
+    private var speechPlayer: AVAudioPlayer?
+    private var speechFileURL: URL?
+    private var spokenResponseID: String?
 
-    init() {
+    override init() {
         #if DEBUG && targetEnvironment(simulator)
         let arguments = CommandLine.arguments
         if let index = arguments.firstIndex(of: "-jarvisSeedWatchTerminal"), index + 1 < arguments.count,
@@ -84,6 +92,7 @@ final class WatchTerminalController: ObservableObject {
         }
         #endif
         status = settings.configuration == nil ? .notConfigured : .offline
+        super.init()
     }
 
     func apply(configuration: WatchTerminalConfiguration) {
@@ -92,6 +101,97 @@ final class WatchTerminalController: ObservableObject {
             return
         }
         restartIfNeeded()
+    }
+
+    var canSpeakLastResponse: Bool {
+        guard status == .live, !isSpeechLoading, !isSpeechPlaying,
+              let speech = frame?.speech else { return false }
+        return speech.available && !speech.generating && !speech.responseID.isEmpty
+    }
+
+    func toggleSpeech() {
+        if isSpeechPlaying {
+            stopSpeech()
+            return
+        }
+        guard canSpeakLastResponse,
+              let responseID = frame?.speech?.responseID,
+              let client else { return }
+
+        stopSpeech()
+        speechErrorMessage = nil
+        isSpeechLoading = true
+        spokenResponseID = responseID
+        let generation = connectionGeneration
+        speechTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var downloadedURL: URL?
+            defer {
+                self.isSpeechLoading = false
+                if !self.isSpeechPlaying { self.speechTask = nil }
+                if let downloadedURL, downloadedURL != self.speechFileURL {
+                    try? FileManager.default.removeItem(at: downloadedURL)
+                }
+            }
+            do {
+                downloadedURL = try await client.speechAudio(responseID: responseID)
+                try Task.checkCancellation()
+                guard self.connectionGeneration == generation,
+                      self.frame?.speech?.responseID == responseID,
+                      self.frame?.speech?.available == true else {
+                    throw CancellationError()
+                }
+
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .spokenAudio, options: [])
+                try session.setActive(true)
+                guard let downloadedURL else { throw WatchTerminalClientError.invalidAudio }
+                let player = try AVAudioPlayer(contentsOf: downloadedURL)
+                player.delegate = self
+                guard player.prepareToPlay(), player.play() else {
+                    throw WatchTerminalClientError.invalidAudio
+                }
+                self.speechFileURL = downloadedURL
+                self.speechPlayer = player
+                self.isSpeechPlaying = true
+                self.isSpeechLoading = false
+                self.speechTask = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                self.spokenResponseID = nil
+                self.speechErrorMessage = error.localizedDescription
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            }
+        }
+    }
+
+    func stopSpeech(clearError: Bool = true) {
+        speechTask?.cancel()
+        speechTask = nil
+        speechPlayer?.stop()
+        speechPlayer = nil
+        if let speechFileURL { try? FileManager.default.removeItem(at: speechFileURL) }
+        speechFileURL = nil
+        spokenResponseID = nil
+        isSpeechLoading = false
+        isSpeechPlaying = false
+        if clearError { speechErrorMessage = nil }
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            self?.stopSpeech(clearError: false)
+        }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.stopSpeech(clearError: false)
+            self.speechErrorMessage = error?.localizedDescription ?? "The JARVIS voice audio could not be played."
+        }
     }
 
     func sceneDidBecomeActive() {
@@ -130,7 +230,10 @@ final class WatchTerminalController: ObservableObject {
     func sceneDidEnterBackground() {
         sceneIsActive = false
         appIsForeground = false
-        stop()
+        // Stop terminal networking immediately, but let an already-started,
+        // fully local voice response finish after wrist-down or app switching.
+        // The user can still stop it before leaving the terminal page.
+        stop(preserveSpeechPlayback: isSpeechPlaying)
     }
 
     func setVisible(_ visible: Bool) {
@@ -211,7 +314,9 @@ final class WatchTerminalController: ObservableObject {
 
     private func restartIfNeeded(preserveLiveStatus: Bool = false) {
         let keepsLiveStatus = preserveLiveStatus && frame != nil && status == .live
-        stop(markOffline: !keepsLiveStatus)
+        // Route recovery must not interrupt a WAV that has already downloaded
+        // and is playing locally. A changed response ID still stops it below.
+        stop(markOffline: !keepsLiveStatus, preserveSpeechPlayback: isSpeechPlaying)
         guard appIsForeground, isVisible else { return }
         guard let configuration = settings.configuration else {
             status = .notConfigured
@@ -230,6 +335,10 @@ final class WatchTerminalController: ObservableObject {
                     let next = try await client.frame(after: sequence)
                     guard !Task.isCancelled else { return }
                     self.frame = next
+                    if next.speech?.generating == true
+                        || (self.spokenResponseID != nil && next.speech?.responseID != self.spokenResponseID) {
+                        self.stopSpeech()
+                    }
                     sequence = next.sequence
                     self.successfulPollCount += 1
                     self.wakeRecoveryTask?.cancel()
@@ -274,8 +383,9 @@ final class WatchTerminalController: ObservableObject {
         }
     }
 
-    private func stop(markOffline: Bool = true) {
+    private func stop(markOffline: Bool = true, preserveSpeechPlayback: Bool = false) {
         connectionGeneration += 1
+        if !preserveSpeechPlayback { stopSpeech() }
         wakeRecoveryTask?.cancel()
         wakeRecoveryTask = nil
         pollTask?.cancel()
@@ -384,16 +494,20 @@ struct WatchTerminalView: View {
         .digitalCrownRotation(
             $crownPosition,
             from: -100_000,
-            through: 100_000,
+            through: 0,
             by: 1,
             sensitivity: .medium,
-            isContinuous: true,
+            isContinuous: false,
             isHapticFeedbackEnabled: true
         )
-        .onChange(of: crownPosition) { oldValue, newValue in
-            guard newValue != oldValue else { return }
-            let steps = max(1, min(8, Int(abs(newValue - oldValue).rounded())))
-            adjustScroll(towardHistory: newValue < oldValue, steps: steps)
+        .onChange(of: crownPosition) { _, newValue in
+            guard let frame = controller.frame else { return }
+            let requestedOffset = WatchTerminalCrownHistory.scrollOffset(
+                crownPosition: newValue,
+                maximumOffset: frame.lines.count
+            )
+            if scrollOffset != requestedOffset { scrollOffset = requestedOffset }
+            crownIsFocused = true
         }
         .onAppear {
             controller.setVisible(isActive)
@@ -406,6 +520,17 @@ struct WatchTerminalView: View {
         .onDisappear {
             crownIsFocused = false
             controller.setVisible(false)
+        }
+        .alert(
+            "Speech unavailable",
+            isPresented: Binding(
+                get: { controller.speechErrorMessage != nil },
+                set: { if !$0 { controller.speechErrorMessage = nil } }
+            )
+        ) {
+            Button("OK") { controller.speechErrorMessage = nil }
+        } message: {
+            Text(controller.speechErrorMessage ?? "The JARVIS voice could not be played.")
         }
     }
 
@@ -482,6 +607,8 @@ struct WatchTerminalView: View {
         .accessibilityValue(safeOffset == 0 ? "Live" : "Scrolled back \(safeOffset) rows")
         .task(id: safeOffset) {
             if scrollOffset != safeOffset { scrollOffset = safeOffset }
+            let synchronizedPosition = WatchTerminalCrownHistory.crownPosition(scrollOffset: safeOffset)
+            if crownPosition != synchronizedPosition { crownPosition = synchronizedPosition }
         }
     }
 
@@ -529,16 +656,6 @@ struct WatchTerminalView: View {
         )
     }
 
-    private func adjustScroll(towardHistory: Bool, steps: Int) {
-        guard let frame = controller.frame else { return }
-        if towardHistory {
-            scrollOffset = min(frame.lines.count, scrollOffset + max(1, steps))
-        } else {
-            scrollOffset = max(0, scrollOffset - max(1, steps))
-        }
-        crownIsFocused = true
-    }
-
     private var waitingTerminal: some View {
         VStack(spacing: 7) {
             if controller.status == .connecting { ProgressView().controlSize(.small) }
@@ -577,6 +694,38 @@ struct WatchTerminalView: View {
                         .accessibilityLabel("Scrolled back \(scrollOffset) terminal rows")
                 }
                 Spacer(minLength: 0)
+                Button {
+                    controller.toggleSpeech()
+                    crownIsFocused = true
+                } label: {
+                    Group {
+                        if controller.isSpeechLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                                .scaleEffect(0.65)
+                        } else {
+                            Image(systemName: controller.isSpeechPlaying ? "stop.fill" : "speaker.wave.2.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(
+                                    controller.isSpeechPlaying || controller.canSpeakLastResponse
+                                        ? Color.cyan
+                                        : Color.secondary
+                                )
+                        }
+                    }
+                    .frame(width: 23, height: 21)
+                    .background(Color.black.opacity(0.82), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(controller.isSpeechLoading || (!controller.isSpeechPlaying && !controller.canSpeakLastResponse))
+                .accessibilityLabel(controller.isSpeechPlaying ? "Stop JARVIS speech" : "Read last JARVIS response")
+                .accessibilityValue(
+                    controller.isSpeechLoading
+                        ? "Loading"
+                        : controller.canSpeakLastResponse ? "Ready" : "Unavailable"
+                )
+                .accessibilityHint("Plays only the final text from the latest completed Pi turn")
+
                 Button {
                     displayMode = displayMode == .fit ? .grid : .fit
                     crownIsFocused = true

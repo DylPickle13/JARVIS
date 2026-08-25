@@ -420,6 +420,26 @@ def _tts_segment_dedupe_key(text: str) -> str:
     return key if len(key) >= _TTS_SEGMENT_DEDUPE_MIN_KEY_CHARS else ""
 
 
+def _bounded_tts_chunks(text: str, maximum_chars: int) -> list[str]:
+    """Split prose at word boundaries without dropping any non-whitespace text."""
+    remaining = re.sub(r"\s+", " ", text or "").strip()
+    if not remaining:
+        return []
+    limit = max(1, maximum_chars)
+    chunks: list[str] = []
+    while len(remaining) > limit:
+        cut = remaining.rfind(" ", 0, limit + 1)
+        if cut <= 0:
+            cut = limit
+        chunk = remaining[:cut].strip()
+        if chunk:
+            chunks.append(chunk)
+        remaining = remaining[cut:].strip()
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
 def _sanitize_text_for_piper_retry(text: str) -> str:
     """Conservative fallback for Piper segments with awkward Unicode/markup.
 
@@ -632,6 +652,30 @@ class OmlxVoicePipeline:
         if not cleaned:
             raise VoicePipelineNoOutputError("Voice notice text is empty.")
         return self._synthesize_segment(cleaned)
+
+    def synthesize_text(self, text: str) -> list[Path]:
+        """Synthesize all playable final prose with the canonical JARVIS voice."""
+        audio_paths: list[Path] = []
+        try:
+            # Clean while line structure is intact so Markdown tables can be
+            # converted to speech before chunking. The old order collapsed the
+            # response first, then silently shortened long sections to one
+            # segment, producing a valid but incomplete Watch WAV every time.
+            cleaned_text = self._clean_text_for_tts(text)
+            for segment in self._split_for_tts(cleaned_text):
+                if not segment:
+                    continue
+                audio_paths.append(self._synthesize_segment(segment))
+        except Exception:
+            for path in audio_paths:
+                try:
+                    path.unlink(missing_ok=True)
+                except Exception:
+                    LOGGER.debug("Failed to clean partial text TTS file %s", path, exc_info=True)
+            raise
+        if not audio_paths:
+            raise VoicePipelineNoOutputError("Text contained no playable speech.")
+        return audio_paths
 
     def transcribe_audio(self, input_wav_path: Path) -> tuple[str, float, float]:
         """Transcribe an input WAV and return transcript, input seconds, and ASR seconds."""
@@ -1448,27 +1492,25 @@ class OmlxVoicePipeline:
         if not raw_sentences:
             raw_sentences = [text]
 
+        limit = self.config.max_tts_chars_per_segment
         segments: list[str] = []
         current = ""
         for sentence in raw_sentences:
             candidate = f"{current} {sentence}".strip() if current else sentence
-            if len(candidate) <= self.config.max_tts_chars_per_segment:
+            if len(candidate) <= limit:
                 current = candidate
                 continue
             if current:
                 segments.append(current)
-            current = sentence
+                current = ""
+            sentence_chunks = _bounded_tts_chunks(sentence, limit)
+            if sentence_chunks:
+                segments.extend(sentence_chunks[:-1])
+                current = sentence_chunks[-1]
         if current:
             segments.append(current)
 
-        shortened: list[str] = []
-        limited_segments = segments if self.config.max_tts_segments <= 0 else segments[: self.config.max_tts_segments]
-        for segment in limited_segments:
-            if len(segment) <= self.config.max_tts_chars_per_segment:
-                shortened.append(segment)
-                continue
-            shortened.append(segment[: self.config.max_tts_chars_per_segment].rsplit(" ", 1)[0].strip() or segment)
-        return shortened
+        return segments if self.config.max_tts_segments <= 0 else segments[: self.config.max_tts_segments]
 
     def _clean_text_for_tts(self, text: str) -> str:
         """Remove text that should never be spoken by TTS.
@@ -1501,7 +1543,16 @@ class OmlxVoicePipeline:
                 if _MARKDOWN_TABLE_DIVIDER_RE.match(line):
                     continue
                 if "|" in line and line.count("|") >= 2:
-                    continue
+                    cells = [cell.strip() for cell in line.strip("|").split("|")]
+                    cells = [cell for cell in cells if cell]
+                    if not cells:
+                        continue
+                    if len(cells) >= 2:
+                        line = f"{cells[0]}: {', '.join(cells[1:])}"
+                    else:
+                        line = cells[0]
+                    if line[-1:] not in ".!?":
+                        line += "."
                 cleaned_lines.append(line)
             text = " ".join(cleaned_lines) if cleaned_lines else text
             text = _HTML_TAG_RE.sub(" ", text)

@@ -319,6 +319,7 @@ expected_extension_roots=(
   .pi/extensions/35-memory.ts
   .pi/extensions/45-jarvis.ts
   .pi/extensions/46-local-pi-session-status.ts
+  .pi/extensions/47-watch-terminal-speech.ts
   .pi/extensions/50-browser
   .pi/extensions/50-minecraft-jarvis-chat.ts
   .pi/extensions/55-ssh-exec.ts

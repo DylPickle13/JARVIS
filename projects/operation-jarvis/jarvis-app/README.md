@@ -69,9 +69,23 @@ could resize SwiftTerm while SSH was authenticating, and that authoritative
 size was dropped before the child channel existed. The remote tmux pane then
 painted its shorter initial grid into a taller local viewport until opening the
 keyboard caused another resize. Build 54 retains every valid layout size and
-uses the newest one for PTY creation, then republishes it when the authenticated
-SSH child channel is ready as a race backstop. The first keyboard-hidden frame
-and tmux now agree without synthetic input or a pane restart.
+publishes the newest one as soon as the authenticated SSH session channel is
+ready, so the first keyboard-hidden frame and tmux agree without synthetic
+input or a pane restart. Build 54 also adds an explicit Watch speaker button
+that becomes available only after the current Pi turn settles. A PID-and-tmux-bound Pi extension publishes only the
+latest final assistant text blocks; thinking, tool calls, tool results, and
+intermediate tool-use messages never enter speech state. terminald sends that
+private text only to the loopback room-audio Piper service and relays the WAV to
+the Watch over its existing authenticated, certificate-pinned TLS route. Build
+55 bounds the non-continuous Crown at position zero so returning to the live edge
+cannot rebound to a synthetic `↑1` offset. Build 57 keeps an already-open iPhone
+SSH client attached through foreground Siri overlays and explicitly redraws every
+attached tmux client after confirmed out-of-band Watch/Siri input. Final-response
+speech now converts readable table rows before lossless word-boundary chunking;
+no long section is shortened to one TTS segment. Its downloaded local WAV may
+finish through wrist-down or app switching using watchOS's supported audio
+background mode, while terminal polling/networking still stops immediately in
+the true background.
 Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
@@ -718,10 +732,27 @@ never deploy to a device outside Dylan's allowlist.
   restart, resize, or send input to the persistent `jarvis-ios` pane.
 - Build 54 retains the latest valid SwiftTerm columns and rows even if UIKit
   finishes the keyboard-hidden layout before the authenticated SSH child
-  channel exists. PTY creation and session readiness publish that retained
-  viewport instead of replaying stale dimensions; normal later layout and
+  channel exists. Session readiness publishes that retained viewport instead
+  of replaying the stale PTY creation dimensions; normal later layout and
   keyboard changes still use standard SSH window-change requests. No terminal
   bytes are synthesized, and the persistent pane and Pi process are preserved.
+  Build 54 also adds a top-bar Watch speaker/stop control. It is fail-closed while
+  there is no completed conversation, while Pi is generating, while speech is
+  loading, or while the terminal is offline. The current Pi process publishes a
+  private, atomic final-text marker on `agent_settled`; only `text` blocks from
+  the latest final `stop`/`length` assistant message are eligible. terminald
+  exposes only readiness plus an opaque response ID in frames, accepts no text
+  from the Watch, and forwards the matching private text to the loopback-only
+  room-audio `/synthesize` endpoint. The endpoint reuses the canonical Piper
+  JARVIS voice and returns a bounded WAV. The Watch downloads it through the
+  existing bearer-authenticated, certificate-pinned route and plays it with
+  public `AVAudioPlayer`; page exit, a new response, or Stop cancels playback and
+  removes the temporary file. Build 57 preserves only an already-started local
+  WAV through wrist-down or app switching with the supported watchOS `audio`
+  background mode; terminal polling and network sessions still stop immediately.
+  It also converts readable table rows and splits long prose at bounded word
+  boundaries without shortening final text. No automatic speech, new credential,
+  new port, workout, extended runtime session, or terminal input path is added.
 - Build 42 raises dark Watch ANSI foregrounds to a tested minimum luminance while
   retaining hue relationships, keeps true black for inverse cells, raises dim
   opacity from `0.62` to `0.82`, and uses 8-point horizontal/bottom plus 6-point
@@ -1108,8 +1139,11 @@ After PTY allocation, the client executes
 `scripts/jarvis-mobile-terminal.sh`. The bootstrap exports a deterministic
 Homebrew-aware PATH, checks for the exact `jarvis-ios` session on the isolated
 `jarvis-mobile` socket, creates it detached when absent, handles concurrent
-creation races, launches `pi --tui-mode fullscreen` without assigning a special
-Pi display name, and then attaches the phone PTY. The presentation override is
+creation races, launches `pi --tui-mode regular` without assigning a special
+Pi display name, and then attaches the phone PTY. The regular main-screen layout
+keeps the editor and newly streamed response together near the top until output
+grows, so the Watch mirror sees the first response rows immediately instead of
+cropping them above a fullscreen bottom editor. The presentation override is
 mobile-session-local and does not change Pi's global setting. This order lets the phone recreate Pi
 after `/quit` instead of losing the session between creation and attachment.
 The checked-in tmux profile enables true colour, CSI-u extended

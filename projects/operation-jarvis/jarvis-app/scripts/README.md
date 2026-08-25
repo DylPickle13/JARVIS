@@ -19,15 +19,20 @@ optional Metal component; install it once with
 - `jarvis-mobile-terminal.sh` — macOS SSH bootstrap for the phone terminal. It
   supplies Homebrew's PATH, creates the exact `jarvis-ios` tmux session while
   detached when absent, tolerates concurrent reconnect creation, launches Pi's
-  fullscreen TUI without a display-name override, re-sources the checked-in
-  one-line wheel fallback bindings, and then attaches the phone PTY. Its
+  regular main-screen TUI without a display-name override so Watch captures see
+  response output immediately, re-sources the checked-in one-line wheel fallback
+  bindings, and then attaches the phone PTY. Its
   `--ensure-only` mode lets the Watch bridge recreate the same session without
   attaching another tmux client or changing terminal dimensions.
 - `install-jarvis-terminald.sh` — installs and starts the separate authenticated
   HTTPS Watch/Siri terminal bridge on TCP `8792`. Build 39 captures a bounded
   ANSI-styled tmux-history grid for local Crown scrolling; build 40 atomically
-  pastes a Siri prompt and its Return in one ordered buffer. It does not interpret
-  Pi concepts or route through `jarvisd`.
+  pastes a Siri prompt and its Return in one ordered buffer. Build 54 adds a
+  response-ID-matched `/v1/terminal/speech` relay: terminald reads only the
+  current PID/tmux-bound extension marker, sends its private final text to the
+  loopback room-audio Piper endpoint, and returns the WAV without exposing text
+  in terminal frames. It does not infer Pi concepts from ANSI, accept arbitrary
+  speech text, control hardware, or route through `jarvisd`.
 - `jarvis-terminal-provisioning.sh` — prints the private, certificate-pinned
   setup code that is pasted once into iPhone Settings and transferred to the
   paired Watch through WatchConnectivity. Existing LAN setup codes also derive
@@ -40,7 +45,8 @@ optional Metal component; install it once with
   native keyboard Input, removed prompt rail, centered/safe-inset header and dock,
   brightened Watch foregrounds, compact equal `/`/DEL/Return-symbol keys,
   spinner-free repeatable Backspace, Always On foreground lifecycle, on-view
-  Codex refresh, shared sub-30% critical quota threshold, and atomic Siri Return.
+  Codex refresh, shared sub-30% critical quota threshold, atomic Siri Return,
+  and final-text-only authenticated Watch speech playback.
   It also audits the third host-only bare “Hey JARVIS” prompt shortcut, requires
   iPhone's success-only `OpenURLIntent` handoff, preserves Watch's foreground
   behavior, verifies both hosts consume only a confirmed terminal request, and

@@ -22,16 +22,46 @@ class FakeRunner:
     def __init__(self):
         self.calls = []
         self.capture = ("JARVIS\n" + ("\n" * 27)).encode()
+        self.pane_pid = 4242
+        self.pane_id = "%7"
+        self.tmux_server_pid = 4000
+        self.session_created_at = int(time.time()) - 60
 
     def run(self, arguments, input_data=None, timeout=5, check=True):
         arguments = list(arguments)
         self.calls.append((arguments, input_data))
+        if "list-clients" in arguments:
+            return subprocess.CompletedProcess(arguments, 0, b"/dev/ttys001\n/dev/ttys002\n", b"")
         if "display-message" in arguments:
-            stdout = b"48\t28\t2\t6\t0\t1\t4\t0\n"
+            format_string = arguments[-1]
+            if "#{pane_width}" in format_string:
+                stdout = "48\t28\t2\t6\t0\t1\t4\t0\t{}\t{}\t{}\t{}\n".format(
+                    self.pane_pid,
+                    self.pane_id,
+                    self.tmux_server_pid,
+                    self.session_created_at,
+                ).encode()
+            else:
+                stdout = "{}\t{}\t{}\t{}\t0\n".format(
+                    self.pane_pid,
+                    self.pane_id,
+                    self.tmux_server_pid,
+                    self.session_created_at,
+                ).encode()
             return subprocess.CompletedProcess(arguments, 0, stdout, b"")
         if "capture-pane" in arguments:
             return subprocess.CompletedProcess(arguments, 0, self.capture, b"")
         return subprocess.CompletedProcess(arguments, 0, b"", b"")
+
+
+class FakeRoomSpeechClient:
+    def __init__(self):
+        self.texts = []
+        self.audio = b"RIFF\x04\x00\x00\x00WAVE"
+
+    def synthesize(self, text):
+        self.texts.append(text)
+        return self.audio
 
 
 class TerminalServiceTests(unittest.TestCase):
@@ -77,6 +107,83 @@ class TerminalServiceTests(unittest.TestCase):
         self.assertEqual(len(frame["capturedLines"]), 32)
         self.assertEqual(frame["capturedLines"][0], "history-0")
 
+    def test_frame_publishes_only_semantic_speech_availability(self):
+        runner = FakeRunner()
+        with tempfile.TemporaryDirectory() as temporary:
+            speech_dir = Path(temporary)
+            marker = speech_dir / "{}.json".format(runner.pane_pid)
+            final_text = "Final answer only; never expose this text in a terminal frame."
+            marker.write_text(
+                json.dumps({
+                    "version": 1,
+                    "pid": runner.pane_pid,
+                    "paneID": runner.pane_id,
+                    "tmuxServerPID": runner.tmux_server_pid,
+                    "publisherStartedAt": (runner.session_created_at + 1) * 1000,
+                    "updatedAt": int(time.time() * 1000),
+                    "status": "ready",
+                    "responseID": "a" * 64,
+                    "textByteCount": len(final_text.encode("utf-8")),
+                    "text": final_text,
+                }),
+                encoding="utf-8",
+            )
+            marker.chmod(0o600)
+            service = terminald.TerminalService(runner, speech_dir=speech_dir)
+
+            frame = service.frame_after(0)
+
+            self.assertEqual(
+                frame["speech"],
+                {"available": True, "generating": False, "responseID": "a" * 64},
+            )
+            self.assertNotIn(final_text, json.dumps(frame))
+
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+            payload.update({"status": "generating", "responseID": "", "textByteCount": 0, "text": ""})
+            marker.write_text(json.dumps(payload), encoding="utf-8")
+            marker.chmod(0o600)
+            next_frame = service.frame_after(frame["sequence"])
+            self.assertEqual(
+                next_frame["speech"],
+                {"available": False, "generating": True, "responseID": ""},
+            )
+
+    def test_speech_requires_current_response_id_and_forwards_only_marker_text(self):
+        runner = FakeRunner()
+        speech_client = FakeRoomSpeechClient()
+        with tempfile.TemporaryDirectory() as temporary:
+            speech_dir = Path(temporary)
+            marker = speech_dir / "{}.json".format(runner.pane_pid)
+            final_text = "The final response, sir."
+            marker.write_text(
+                json.dumps({
+                    "version": 1,
+                    "pid": runner.pane_pid,
+                    "paneID": runner.pane_id,
+                    "tmuxServerPID": runner.tmux_server_pid,
+                    "publisherStartedAt": (runner.session_created_at + 1) * 1000,
+                    "updatedAt": int(time.time() * 1000),
+                    "status": "ready",
+                    "responseID": "b" * 64,
+                    "textByteCount": len(final_text.encode("utf-8")),
+                    "text": final_text,
+                }),
+                encoding="utf-8",
+            )
+            marker.chmod(0o600)
+            service = terminald.TerminalService(
+                runner,
+                speech_dir=speech_dir,
+                room_speech_client=speech_client,
+            )
+
+            self.assertEqual(service.synthesize_speech("b" * 64), speech_client.audio)
+            self.assertEqual(speech_client.texts, [final_text])
+            with self.assertRaises(terminald.TerminalError):
+                service.synthesize_speech("c" * 64)
+            self.assertEqual(speech_client.texts, [final_text])
+
     def test_input_is_byte_exact_bounded_and_deduplicated(self):
         runner = FakeRunner()
         service = terminald.TerminalService(runner)
@@ -92,9 +199,33 @@ class TerminalServiceTests(unittest.TestCase):
         self.assertEqual(len(paste_calls), 1)
         self.assertIn("-S", paste_calls[0][0])
         self.assertIn("-r", paste_calls[0][0])
+        refresh_calls = [call for call in runner.calls if "refresh-client" in call[0]]
+        self.assertEqual(len(refresh_calls), 2)
+        self.assertEqual(
+            [call[0][call[0].index("-t") + 1] for call in refresh_calls],
+            ["/dev/ttys001", "/dev/ttys002"],
+        )
 
         with self.assertRaises(terminald.TerminalError):
             service.send_input("request-2", b"x" * (terminald.MAX_INPUT_BYTES + 1), False)
+
+    def test_redraw_failure_after_delivery_never_makes_input_replayable(self):
+        class RefreshFailureRunner(FakeRunner):
+            def run(self, arguments, input_data=None, timeout=5, check=True):
+                arguments = list(arguments)
+                if "refresh-client" in arguments:
+                    self.calls.append((arguments, input_data))
+                    raise subprocess.TimeoutExpired(arguments, timeout)
+                return super().run(arguments, input_data=input_data, timeout=timeout, check=check)
+
+        runner = RefreshFailureRunner()
+        service = terminald.TerminalService(runner)
+
+        service.send_input("request-refresh-failure", b"send once", append_return=True)
+        service.send_input("request-refresh-failure", b"send once", append_return=True)
+
+        self.assertEqual(len([call for call in runner.calls if "paste-buffer" in call[0]]), 1)
+        self.assertEqual(len([call for call in runner.calls if "refresh-client" in call[0]]), 1)
 
     def test_append_return_is_atomic_with_prompt(self):
         runner = FakeRunner()

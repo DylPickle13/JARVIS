@@ -29,6 +29,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `35-memory.ts` — explicit durable project-local memory; no prompt-time auto-recall or system-prompt mutation.
 - `45-jarvis.ts` — Operation JARVIS Cast, smart plugs, and VeSync/Levoit air purifier actions.
 - `46-local-pi-session-status.ts` — local Pi session heartbeat consumed by `jarvisd`.
+- `47-watch-terminal-speech.ts` — publishes only the current tmux-bound Pi session's latest completed assistant text blocks to a private Watch-speech runtime marker; thinking and tool activity are excluded.
 - `50-browser/` — visible Chrome control through a persistent CDP bridge, hard-scoped to a dedicated JARVIS window in the user's signed-in profile.
 - `50-minecraft-jarvis-chat.ts` — Minecraft jarvis bot chat/control.
 - `55-ssh-exec.ts` — unrestricted configured SSH execution plus directly attached and stateful interactive PTY sessions.

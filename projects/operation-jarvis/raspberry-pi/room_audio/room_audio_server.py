@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ipaddress
 import json
 import os
 import re
@@ -66,6 +67,8 @@ LOGGER = config.get_logger("operation_jarvis.room_audio")
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8791
 DEFAULT_MAX_REQUEST_BYTES = 25 * 1024 * 1024
+WATCH_SPEECH_MAX_REQUEST_BYTES = 256 * 1024
+WATCH_SPEECH_MAX_TEXT_BYTES = 32 * 1024
 DEFAULT_CHANNEL_ID = "room-audio"
 DEFAULT_CHANNEL_NAME = "raspberry-pi-room-audio"
 DEFAULT_TTS_LEADING_SILENCE_MS = config.get_int_env("JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS", 450, minimum=0)
@@ -177,7 +180,25 @@ def normalize_wake_words(transcript: str) -> str:
     return transcript.strip()
 
 
-def combine_wavs(paths: list[Path]) -> bytes:
+def is_loopback_address(raw: str) -> bool:
+    try:
+        return ipaddress.ip_address(raw).is_loopback
+    except ValueError:
+        return False
+
+
+def validate_watch_speech_text(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("text is required")
+    text = value.strip()
+    if not text:
+        raise ValueError("text is empty")
+    if len(text.encode("utf-8")) > WATCH_SPEECH_MAX_TEXT_BYTES:
+        raise ValueError("text exceeds the Watch speech limit")
+    return text
+
+
+def combine_wavs(paths: list[Path], *, leading_silence_ms: int | None = None) -> bytes:
     if not paths:
         raise RuntimeError("No TTS audio paths were produced.")
 
@@ -200,7 +221,8 @@ def combine_wavs(paths: list[Path]) -> bytes:
                 raise RuntimeError(f"Cannot concatenate WAVs with mismatched parameters: {path}")
             frame_blocks.append(handle.readframes(handle.getnframes()))
 
-    leading_silence_frames = int(frame_rate * DEFAULT_TTS_LEADING_SILENCE_MS / 1000)
+    effective_leading_silence_ms = DEFAULT_TTS_LEADING_SILENCE_MS if leading_silence_ms is None else max(0, leading_silence_ms)
+    leading_silence_frames = int(frame_rate * effective_leading_silence_ms / 1000)
     leading_silence = b"\x00" * leading_silence_frames * channels * sample_width
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -369,6 +391,20 @@ class RoomAudioBridge:
         finally:
             if greeting_path is not None:
                 greeting_path.unlink(missing_ok=True)
+
+    def synthesize_watch_speech(self, text: str) -> bytes:
+        audio_paths: list[Path] = []
+        try:
+            audio_paths = self._pipeline.synthesize_text(validate_watch_speech_text(text))
+            # Bluetooth wake-up padding belongs only to the room speaker. The
+            # Watch has already activated its local audio route before playback.
+            return combine_wavs(audio_paths, leading_silence_ms=0)
+        finally:
+            for path in audio_paths:
+                try:
+                    path.unlink(missing_ok=True)
+                except Exception:
+                    LOGGER.debug("Failed to remove temporary Watch speech file %s", path, exc_info=True)
 
     def _synthesize_accepted_turn(
         self,
@@ -773,6 +809,18 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_audio(self, body: bytes) -> None:
+        try:
+            self.send_response(HTTPStatus.OK.value)
+            self.send_header("content-type", "audio/wav")
+            self.send_header("content-length", str(len(body)))
+            self.send_header("cache-control", "no-store")
+            self.send_header("x-content-type-options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
     def _authorized(self) -> bool:
         token = self.server.token
         if not token:
@@ -831,8 +879,34 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
             }
         )
 
+    def _handle_watch_speech(self) -> None:
+        # This endpoint accepts private final-response text only from terminald
+        # on the same Mac. LAN room clients cannot turn it into arbitrary TTS.
+        if not is_loopback_address(self.client_address[0]):
+            self._send_json({"ok": False, "error": "forbidden"}, HTTPStatus.FORBIDDEN)
+            return
+        try:
+            content_length = int(self.headers.get("content-length", "0"))
+        except ValueError:
+            content_length = 0
+        if content_length <= 0 or content_length > WATCH_SPEECH_MAX_REQUEST_BYTES:
+            self._send_json({"ok": False, "error": "invalid request size"}, HTTPStatus.BAD_REQUEST)
+            return
+        try:
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+            text = validate_watch_speech_text(payload.get("text") if isinstance(payload, dict) else None)
+            self._send_audio(self.server.bridge.synthesize_watch_speech(text))
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        except Exception as exc:
+            LOGGER.exception("Watch speech synthesis failed")
+            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
+
     def do_POST(self) -> None:  # noqa: N802 - stdlib method name
         path = urlparse(self.path).path.rstrip("/") or "/"
+        if path == "/synthesize":
+            self._handle_watch_speech()
+            return
         if path not in {"/turn", "/interrupt"}:
             self._send_json({"ok": False, "error": "not found"}, HTTPStatus.NOT_FOUND)
             return

@@ -99,6 +99,7 @@ public enum WatchTerminalClientError: LocalizedError, Equatable, Sendable {
     case offline
     case notConnected
     case submissionUnconfirmed
+    case invalidAudio
 
     public var errorDescription: String? {
         switch self {
@@ -109,6 +110,7 @@ public enum WatchTerminalClientError: LocalizedError, Equatable, Sendable {
         case .offline: return "The terminal is offline."
         case .notConnected: return "No authenticated terminal route is selected."
         case .submissionUnconfirmed: return "Terminal submission was not confirmed."
+        case .invalidAudio: return "The JARVIS voice service returned invalid audio."
         }
     }
 }
@@ -167,6 +169,7 @@ public final class WatchTerminalClient: @unchecked Sendable {
     private let configuration: WatchTerminalConfiguration
     private let delegate: WatchTerminalPinnedSessionDelegate
     private let session: URLSession
+    private let speechSession: URLSession
     private let candidateBaseURLs: [URL]
     private let endpointLock = NSLock()
     private var activeBaseURL: URL?
@@ -181,17 +184,25 @@ public final class WatchTerminalClient: @unchecked Sendable {
         self.delegate = WatchTerminalPinnedSessionDelegate(expectedFingerprint: configuration.certificateSHA256)
         if let injectedSession {
             self.session = injectedSession
+            self.speechSession = injectedSession
         } else {
             let sessionConfiguration = URLSessionConfiguration.ephemeral
             sessionConfiguration.timeoutIntervalForRequest = 4
             sessionConfiguration.timeoutIntervalForResource = 6
             sessionConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
             self.session = URLSession(configuration: sessionConfiguration, delegate: delegate, delegateQueue: nil)
+
+            let speechConfiguration = URLSessionConfiguration.ephemeral
+            speechConfiguration.timeoutIntervalForRequest = 180
+            speechConfiguration.timeoutIntervalForResource = 180
+            speechConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            self.speechSession = URLSession(configuration: speechConfiguration, delegate: delegate, delegateQueue: nil)
         }
     }
 
     public func close() {
         session.invalidateAndCancel()
+        if speechSession !== session { speechSession.invalidateAndCancel() }
     }
 
     @discardableResult
@@ -268,6 +279,62 @@ public final class WatchTerminalClient: @unchecked Sendable {
             // POST and never select another route after transmission begins.
             throw WatchTerminalClientError.submissionUnconfirmed
         }
+    }
+
+    public func speechAudio(responseID: String) async throws -> URL {
+        guard responseID.count == 64, responseID.allSatisfy(\.isHexDigit) else {
+            throw WatchTerminalClientError.invalidResponse
+        }
+        guard let baseURL = preferredBaseURL() else { throw WatchTerminalClientError.notConnected }
+        let components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/speech")
+        guard let url = components.url else { throw WatchTerminalClientError.notConfigured }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 180
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        authorize(&request)
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["responseID": responseID])
+
+        let temporaryURL: URL
+        let response: URLResponse
+        do {
+            (temporaryURL, response) = try await speechSession.download(for: request)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            if delegate.rejectedCertificate { throw WatchTerminalClientError.certificateRejected }
+            throw WatchTerminalClientError.offline
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw WatchTerminalClientError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let data = (try? Data(contentsOf: temporaryURL, options: [.mappedIfSafe])) ?? Data()
+            try validate(response: response, data: data)
+            throw WatchTerminalClientError.invalidResponse
+        }
+        guard http.value(forHTTPHeaderField: "Content-Type")?.lowercased().hasPrefix("audio/wav") == true else {
+            throw WatchTerminalClientError.invalidAudio
+        }
+        let values = try temporaryURL.resourceValues(forKeys: [.fileSizeKey])
+        guard let fileSize = values.fileSize, fileSize > 12, fileSize <= 20 * 1024 * 1024 else {
+            throw WatchTerminalClientError.invalidAudio
+        }
+        let handle = try FileHandle(forReadingFrom: temporaryURL)
+        defer { try? handle.close() }
+        let header = try handle.read(upToCount: 12) ?? Data()
+        guard header.count == 12,
+              String(data: header.prefix(4), encoding: .ascii) == "RIFF",
+              String(data: header.suffix(4), encoding: .ascii) == "WAVE" else {
+            throw WatchTerminalClientError.invalidAudio
+        }
+
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jarvis-watch-speech-\(UUID().uuidString)")
+            .appendingPathExtension("wav")
+        try FileManager.default.moveItem(at: temporaryURL, to: destination)
+        return destination
     }
 
     private func preferredBaseURL() -> URL? {
@@ -350,6 +417,34 @@ public enum JARVISSpokenPrompt {
     }
 }
 
+public struct WatchTerminalSpeechState: Codable, Equatable, Sendable {
+    public let available: Bool
+    public let generating: Bool
+    public let responseID: String
+
+    public init(available: Bool, generating: Bool, responseID: String) {
+        self.available = available
+        self.generating = generating
+        self.responseID = responseID
+    }
+}
+
+/// Maps the bounded Digital Crown position directly to read-only terminal
+/// history. Position zero is the live edge, so the Crown cannot cross it and
+/// rebound into a synthetic one-row history offset.
+public enum WatchTerminalCrownHistory {
+    public static func scrollOffset(crownPosition: Double, maximumOffset: Int) -> Int {
+        guard crownPosition.isFinite else { return 0 }
+        let safeMaximum = max(0, maximumOffset)
+        let bounded = min(Double(safeMaximum), max(0, -crownPosition))
+        return Int(bounded.rounded())
+    }
+
+    public static func crownPosition(scrollOffset: Int) -> Double {
+        -Double(max(0, scrollOffset))
+    }
+}
+
 public struct WatchTerminalFrame: Codable, Equatable, Sendable {
     public let sequence: Int
     public let columns: Int
@@ -359,6 +454,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
     public let alternateScreen: Bool
     public let mouseMode: Bool
     public let historySize: Int
+    public let speech: WatchTerminalSpeechState?
     public let screenStart: Int
     public let lines: [String]
     public let ansiLines: [String]
@@ -372,6 +468,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
         case alternateScreen
         case mouseMode
         case historySize
+        case speech
         case screenStart
         case lines
         case ansiLines
@@ -388,6 +485,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
         alternateScreen: Bool,
         mouseMode: Bool,
         historySize: Int,
+        speech: WatchTerminalSpeechState? = nil,
         screenStart: Int? = nil,
         lines: [String],
         ansiLines: [String]? = nil
@@ -400,6 +498,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
         self.alternateScreen = alternateScreen
         self.mouseMode = mouseMode
         self.historySize = historySize
+        self.speech = speech
         self.screenStart = min(max(0, screenStart ?? max(0, lines.count - rows)), lines.count)
         self.lines = lines
         self.ansiLines = ansiLines?.count == lines.count ? ansiLines! : lines
@@ -415,6 +514,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
         alternateScreen = try values.decode(Bool.self, forKey: .alternateScreen)
         mouseMode = try values.decode(Bool.self, forKey: .mouseMode)
         historySize = try values.decode(Int.self, forKey: .historySize)
+        speech = try values.decodeIfPresent(WatchTerminalSpeechState.self, forKey: .speech)
         let liveLines = try values.decode([String].self, forKey: .lines)
         let mirroredLines = try values.decodeIfPresent([String].self, forKey: .capturedLines) ?? liveLines
         lines = mirroredLines
@@ -441,6 +541,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
         try values.encode(alternateScreen, forKey: .alternateScreen)
         try values.encode(mouseMode, forKey: .mouseMode)
         try values.encode(historySize, forKey: .historySize)
+        try values.encodeIfPresent(speech, forKey: .speech)
         try values.encode(screenStart, forKey: .screenStart)
         try values.encode(lines, forKey: .lines)
         try values.encode(ansiLines, forKey: .ansiLines)
