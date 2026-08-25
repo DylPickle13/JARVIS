@@ -145,7 +145,9 @@ telemetry, luminance reduction, and unavailable-font contexts still use the norm
 accessible static state rather than claiming unsupported motion. A real timeline
 replacement receives a fresh identity, and launching the host requests a
 WidgetKit-controlled reload; neither path runs a process timer or claims iOS must
-animate continuously.
+animate continuously. Build 75 restores the Watch-only live rendering tree to the
+previously accepted 32 complete masked Cathedral views, while retaining build 74's
+phone-only lightweight 60-phase path.
 Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
@@ -918,6 +920,9 @@ never deploy to a device outside Dylan's allowlist.
   product produced two successful physical timeline reloads with zero memory kills,
   archive rejections, or reload failures; a 7.17-second capture sampled 17 distinct
   Cathedral frames with no static run.
+- Build 75 isolates those iPhone-only archive optimizations from watchOS. The Watch
+  live path is restored to its previously accepted 32 complete Cathedral views,
+  each with its original system-timer mask; phone build-74 rendering is unchanged.
 - Build 42 raises dark Watch ANSI foregrounds to a tested minimum luminance while
   retaining hue relationships, keeps true black for inverse cells, raises dim
   opacity from `0.62` to `0.82`, and uses 8-point horizontal/bottom plus 6-point

@@ -67,39 +67,72 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                 GeometryReader { geometry in
                     let extent = max(1, max(geometry.size.width, geometry.size.height))
 
-                    ZStack(alignment: .topLeading) {
-                        // The live phone path contains only its 60 timer-selected
-                        // phases: no unmasked Cathedral underlay and no opaque
-                        // per-frame background. This is the smallest archive and
-                        // memory shape available to the best-effort 30 FPS selector.
-                        ForEach(0..<layout.continuousFrameCount, id: \.self) { index in
-                            JARVISNeuralCoreAnimationFrame(
-                                telemetry: telemetry,
-                                layout: layout,
-                                motionPhase: JARVISNeuralCoreMotion.continuousPhase(
-                                    basePhase: basePhase,
-                                    frameIndex: index,
-                                    frameCount: layout.continuousFrameCount
+                    if layout == .watch {
+                        // Preserve the physically accepted Watch implementation:
+                        // 32 complete Cathedral views, each selected by its own
+                        // system timer mask. Phone archive optimizations must not
+                        // alter this watchOS rendering tree.
+                        ZStack {
+                            ForEach(0..<layout.continuousFrameCount, id: \.self) { index in
+                                JARVISNeuralCoreArtwork(
+                                    telemetry: telemetry,
+                                    layout: layout,
+                                    motionPhase: JARVISNeuralCoreMotion.continuousPhase(
+                                        basePhase: basePhase,
+                                        frameIndex: index,
+                                        frameCount: layout.continuousFrameCount
+                                    ),
+                                    allowsMotion: true,
+                                    hidesAccessibility: true
                                 )
-                            )
-                            .mask {
-                                JARVISWidgetTimerFrameWindow(
-                                    frameIndex: index,
-                                    frameCount: layout.continuousFrameCount,
-                                    extent: extent
-                                )
-                                .frame(
-                                    width: geometry.size.width,
-                                    height: geometry.size.height
-                                )
+                                .mask {
+                                    JARVISWidgetTimerFrameWindow(
+                                        frameIndex: index,
+                                        frameCount: layout.continuousFrameCount,
+                                        extent: extent
+                                    )
+                                    .frame(
+                                        width: geometry.size.width,
+                                        height: geometry.size.height
+                                    )
+                                }
                             }
                         }
+                    } else {
+                        ZStack(alignment: .topLeading) {
+                            // The live phone path contains only its 60 timer-selected
+                            // phases: no unmasked Cathedral underlay and no opaque
+                            // per-frame background. This is the smallest archive and
+                            // memory shape available to the best-effort 30 FPS selector.
+                            ForEach(0..<layout.continuousFrameCount, id: \.self) { index in
+                                JARVISNeuralCoreAnimationFrame(
+                                    telemetry: telemetry,
+                                    layout: layout,
+                                    motionPhase: JARVISNeuralCoreMotion.continuousPhase(
+                                        basePhase: basePhase,
+                                        frameIndex: index,
+                                        frameCount: layout.continuousFrameCount
+                                    )
+                                )
+                                .mask {
+                                    JARVISWidgetTimerFrameWindow(
+                                        frameIndex: index,
+                                        frameCount: layout.continuousFrameCount,
+                                        extent: extent
+                                    )
+                                    .frame(
+                                        width: geometry.size.width,
+                                        height: geometry.size.height
+                                    )
+                                }
+                            }
 
-                        // The phase-independent brand label is serialized once,
-                        // not once per frame. This preserves the always-visible
-                        // wordmark while staying under the 30 MB extension cap.
-                        JARVISNeuralCoreWordmark(layout: layout)
-                            .accessibilityHidden(true)
+                            // The phase-independent brand label is serialized once,
+                            // not once per frame. This preserves the always-visible
+                            // wordmark while staying under the 30 MB extension cap.
+                            JARVISNeuralCoreWordmark(layout: layout)
+                                .accessibilityHidden(true)
+                        }
                     }
                 }
             } else {

@@ -456,7 +456,11 @@ grep -q '.id(entry.date.timeIntervalSinceReferenceDate)' JARVISWidget/NeuralCore
 grep -q 'ZStack(alignment: .topLeading)' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'ForEach(0..<layout.continuousFrameCount' WidgetShared/NeuralCoreContinuousAnimation.swift
 reject_match 'live Neural Core must not retain an unmasked frame-zero fallback' -qsF 'firstMaskedFrame' WidgetShared/NeuralCoreContinuousAnimation.swift
-[[ "$(grep -c 'JARVISWidgetTimerFrameWindow(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "1" ]]
+# One mutually exclusive selector stack per platform; neither runtime path
+# duplicates a frame's mask as the rejected build-71 replacement did.
+[[ "$(grep -c 'JARVISWidgetTimerFrameWindow(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "2" ]]
+grep -q 'if layout == .watch' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q '32 complete Cathedral views' WidgetShared/NeuralCoreContinuousAnimation.swift
 reject_match 'phone Neural Core motion must not be disabled by a host rendering-mode classification' -qsF 'layout != .phone || renderingMode == .fullColor' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'JARVISNeuralCoreFrameArtwork' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q '.widgetAccentable(true)' WidgetShared/NeuralCoreArtwork.swift
@@ -467,7 +471,9 @@ grep -q 'layout.curveSegments(watch: 46, phone: 44)' WidgetShared/NeuralCoreArtw
 grep -q 'layout.curveSegments(watch: 9, phone: 8)' WidgetShared/NeuralCoreArtwork.swift
 reject_match 'phone Cathedral curves must retain archive-safe physical tessellation' -Eq 'layout == \.watch \? (34 : 64|30 : 56|46 : 82|38 : 72|24 : 46|9 : 14)' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'JARVISNeuralCoreWordmark(layout: layout)' WidgetShared/NeuralCoreContinuousAnimation.swift
-[[ "$(grep -c 'JARVISNeuralCoreArtwork(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "1" ]]
+# The Watch branch restores full per-phase artwork; the other occurrence is the
+# common accessible static branch. Phone live phases remain Canvas-only.
+[[ "$(grep -c 'JARVISNeuralCoreArtwork(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "2" ]]
 [[ "$(grep -c 'Text("JARVIS")' WidgetShared/NeuralCoreArtwork.swift)" == "1" ]]
 grep -q 'reloadTimelines(ofKind: "JARVISNeuralCoreWidget.v1")' JARVIS/JARVISApp.swift
 grep -q 'JARVISWidgetTimerAnimationFont.register()' JARVISWatchWidget/NeuralCoreWidget.swift
