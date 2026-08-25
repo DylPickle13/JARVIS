@@ -169,10 +169,13 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     func sceneDidEnterAlwaysOn() {
-        guard !appIsForeground else { return }
+        let resumedAsFrontmost = !appIsForeground
         appIsForeground = true
+        // Always forward active -> inactive wrist-down transitions. The terminal
+        // must know the scene is inactive so a suspended long poll is retained
+        // as the last live frame instead of being reported as a disconnect.
         terminal.sceneDidEnterAlwaysOn()
-        startRefreshLoop()
+        if resumedAsFrontmost { startRefreshLoop() }
     }
 
     func sceneDidEnterBackground() {

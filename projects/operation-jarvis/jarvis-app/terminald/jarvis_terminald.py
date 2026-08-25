@@ -202,6 +202,8 @@ class TerminalService:
         self.speech_dir = speech_dir or SPEECH_DIR
         self.room_speech_client = room_speech_client or RoomSpeechClient()
         self.lock = threading.Lock()
+        self.speech_synthesis_lock = threading.Lock()
+        self.speech_synthesis_events: Dict[str, threading.Event] = {}
         self.sequence = 0
         self.last_digest: Optional[str] = None
         self.last_frame: Optional[Dict[str, Any]] = None
@@ -293,6 +295,52 @@ class TerminalService:
         except ValueError as error:
             raise TerminalError("The JARVIS pane identity was invalid.") from error
 
+    def _speech_cache_path(self, response_id: str) -> Path:
+        return self.speech_dir / "{}.wav".format(response_id)
+
+    def _read_cached_speech(self, response_id: str) -> Optional[bytes]:
+        cache_path = self._speech_cache_path(response_id)
+        try:
+            metadata = cache_path.lstat()
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
+                return None
+            if metadata.st_mode & 0o077 or metadata.st_size < 12 or metadata.st_size > MAX_SPEECH_AUDIO_BYTES:
+                return None
+            audio = cache_path.read_bytes()
+        except OSError:
+            return None
+        if len(audio) < 12 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+            return None
+        return audio
+
+    def _write_cached_speech(self, response_id: str, audio: bytes) -> None:
+        self.speech_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(self.speech_dir, 0o700)
+        cache_path = self._speech_cache_path(response_id)
+        temporary_path = self.speech_dir / ".{}.{}.tmp".format(response_id, secrets.token_hex(8))
+        descriptor = os.open(str(temporary_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            output = os.fdopen(descriptor, "wb")
+            descriptor = -1
+            with output:
+                output.write(audio)
+            os.chmod(temporary_path, 0o600)
+            os.replace(temporary_path, cache_path)
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            try:
+                temporary_path.unlink()
+            except FileNotFoundError:
+                pass
+        # Keep only the current response WAV. Marker JSON files remain untouched.
+        for stale_path in self.speech_dir.glob("*.wav"):
+            if stale_path != cache_path:
+                try:
+                    stale_path.unlink()
+                except OSError:
+                    pass
+
     def synthesize_speech(self, response_id: str) -> bytes:
         if SPEECH_RESPONSE_ID_PATTERN.fullmatch(response_id) is None:
             raise TerminalError("The Watch speech response identifier was invalid.")
@@ -304,9 +352,42 @@ class TerminalService:
             text = speech.get("text")
             if not isinstance(text, str):
                 raise TerminalError("The final JARVIS response is unavailable.")
-        # Piper synthesis can be slow, so never hold the terminal capture/input
-        # lock while the loopback-only room voice service renders the WAV.
-        return self.room_speech_client.synthesize(text)
+
+        cached_audio = self._read_cached_speech(response_id)
+        if cached_audio is not None:
+            return cached_audio
+
+        # A Watch route can disappear while a long WAV is downloading. Coalesce
+        # duplicate requests so the complete response is rendered once and the
+        # next authenticated request receives the atomic local cache immediately.
+        with self.speech_synthesis_lock:
+            cached_audio = self._read_cached_speech(response_id)
+            if cached_audio is not None:
+                return cached_audio
+            completion = self.speech_synthesis_events.get(response_id)
+            owns_synthesis = completion is None
+            if completion is None:
+                completion = threading.Event()
+                self.speech_synthesis_events[response_id] = completion
+
+        if not owns_synthesis:
+            if not completion.wait(timeout=185):
+                raise TerminalError("The JARVIS voice response timed out.")
+            cached_audio = self._read_cached_speech(response_id)
+            if cached_audio is None:
+                raise TerminalError("The JARVIS voice response could not be prepared.")
+            return cached_audio
+
+        try:
+            # Never hold the terminal capture/input or synthesis coordination
+            # lock while the loopback-only room voice service renders the WAV.
+            audio = self.room_speech_client.synthesize(text)
+            self._write_cached_speech(response_id, audio)
+            return audio
+        finally:
+            with self.speech_synthesis_lock:
+                self.speech_synthesis_events.pop(response_id, None)
+                completion.set()
 
     def _capture_locked(self) -> Dict[str, Any]:
         metadata_format = "\t".join(

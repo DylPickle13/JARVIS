@@ -172,6 +172,9 @@ class TerminalServiceTests(unittest.TestCase):
                 encoding="utf-8",
             )
             marker.chmod(0o600)
+            stale_cache_path = speech_dir / (("a" * 64) + ".wav")
+            stale_cache_path.write_bytes(speech_client.audio)
+            stale_cache_path.chmod(0o600)
             service = terminald.TerminalService(
                 runner,
                 speech_dir=speech_dir,
@@ -179,9 +182,83 @@ class TerminalServiceTests(unittest.TestCase):
             )
 
             self.assertEqual(service.synthesize_speech("b" * 64), speech_client.audio)
+            self.assertEqual(service.synthesize_speech("b" * 64), speech_client.audio)
             self.assertEqual(speech_client.texts, [final_text])
+            cache_path = speech_dir / (("b" * 64) + ".wav")
+            self.assertEqual(cache_path.read_bytes(), speech_client.audio)
+            self.assertEqual(cache_path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(list(speech_dir.glob("*.wav")), [cache_path])
+            self.assertFalse(stale_cache_path.exists())
             with self.assertRaises(terminald.TerminalError):
                 service.synthesize_speech("c" * 64)
+            self.assertEqual(speech_client.texts, [final_text])
+
+    def test_concurrent_duplicate_speech_requests_share_one_complete_render(self):
+        class BlockingRoomSpeechClient(FakeRoomSpeechClient):
+            def __init__(self):
+                super().__init__()
+                self.started = threading.Event()
+                self.release = threading.Event()
+
+            def synthesize(self, text):
+                self.texts.append(text)
+                self.started.set()
+                if not self.release.wait(timeout=2):
+                    raise AssertionError("test synthesis was not released")
+                return self.audio
+
+        runner = FakeRunner()
+        speech_client = BlockingRoomSpeechClient()
+        with tempfile.TemporaryDirectory() as temporary:
+            speech_dir = Path(temporary)
+            final_text = "Render this response exactly once."
+            response_id = "d" * 64
+            marker = speech_dir / "{}.json".format(runner.pane_pid)
+            marker.write_text(
+                json.dumps({
+                    "version": 1,
+                    "pid": runner.pane_pid,
+                    "paneID": runner.pane_id,
+                    "tmuxServerPID": runner.tmux_server_pid,
+                    "publisherStartedAt": (runner.session_created_at + 1) * 1000,
+                    "updatedAt": int(time.time() * 1000),
+                    "status": "ready",
+                    "responseID": response_id,
+                    "textByteCount": len(final_text.encode("utf-8")),
+                    "text": final_text,
+                }),
+                encoding="utf-8",
+            )
+            marker.chmod(0o600)
+            service = terminald.TerminalService(
+                runner,
+                speech_dir=speech_dir,
+                room_speech_client=speech_client,
+            )
+            results = []
+            errors = []
+
+            def synthesize():
+                try:
+                    results.append(service.synthesize_speech(response_id))
+                except Exception as error:
+                    errors.append(error)
+
+            first = threading.Thread(target=synthesize)
+            second = threading.Thread(target=synthesize)
+            first.start()
+            self.assertTrue(speech_client.started.wait(timeout=1))
+            second.start()
+            time.sleep(0.05)
+            self.assertEqual(speech_client.texts, [final_text])
+            speech_client.release.set()
+            first.join(timeout=2)
+            second.join(timeout=2)
+
+            self.assertFalse(first.is_alive())
+            self.assertFalse(second.is_alive())
+            self.assertEqual(errors, [])
+            self.assertEqual(results, [speech_client.audio, speech_client.audio])
             self.assertEqual(speech_client.texts, [final_text])
 
     def test_input_is_byte_exact_bounded_and_deduplicated(self):

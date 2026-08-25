@@ -176,6 +176,9 @@ grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' HostAppIntents/JARVISTerm
 grep -q 'SecTrustCopyCertificateChain' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'final class WatchTerminalClient' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'private var sceneIsActive = false' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'let resumedAsFrontmost = !appIsForeground' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'terminal.sceneDidEnterAlwaysOn()' JARVISWatch/Views/WatchConnectView.swift
+reject_match 'Watch parent must not swallow active-to-inactive wrist-down transitions' -Fq 'guard !appIsForeground else { return }' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'private func scheduleWakeRecovery()' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'self.restartIfNeeded(preserveLiveStatus: true)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'self.successfulPollCount += 1' JARVISWatch/Views/WatchTerminalView.swift
@@ -190,9 +193,48 @@ grep -q 'is_loopback_address(self.client_address\[0\])' ../raspberry-pi/room_aud
 grep -q 'public func speechAudio(responseID: String)' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'import AVFoundation' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Image(systemName: controller.isSpeechPlaying ? "stop.fill" : "speaker.wave.2.fill")' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'AVAudioPlayer(contentsOf: downloadedURL)' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'stop(preserveSpeechPlayback: isSpeechPlaying)' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'stop(markOffline: !keepsLiveStatus, preserveSpeechPlayback: isSpeechPlaying)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'private func prepareSpeechIfNeeded()' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'private var speechClient: WatchTerminalClient?' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '_ = try await speechClient.preflight()' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'downloadedURL = try await speechClient.speechAudio(responseID: responseID)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'self.appIsForeground' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'self.prepareSpeechIfNeeded()' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'self.speechFileURL = try self.retainPreparedSpeech' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'AVAudioPlayer(contentsOf: speechFileURL)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'policy: \.longFormAudio' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'session.activate(options: \[\])' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch background speech must not use synchronous default-route activation' -Fq 'try session.setActive(true)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'preservePreparedSpeech: !isSpeechLoading && speechFileURL != nil' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '@Published private(set) var isConnectionConfirmed = false' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'var terminalInputIsReady: Bool' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '@Environment(\\.isLuminanceReduced) private var isLuminanceReduced' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Image(systemName: controller.frame == nil ? "circle.dotted" : "checkmark.circle.fill")' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Session retained; live networking resumes when active' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'self.isConnectionConfirmed = true' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'isConnectionConfirmed = false' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'restartIfNeeded(preserveLiveStatus: frame != nil)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'preserveLiveStatus && frame != nil && status != \.notConfigured' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'guard appIsForeground, isVisible, terminalInputIsReady' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'if !self.isSpeechPlaying { self.stopSpeech() }' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'var sequence = 0' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.frame(width: 44, height: 35)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Color.white.opacity(0.09)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'requiresLiveTerminal: false' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'preservePreparedSpeech: isSpeechLoading || speechFileURL != nil' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'if !preserveSpeechPlayback && !preservePreparedSpeech { stopSpeech() }' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'failureAge < 12' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'public enum WatchTerminalSpeechRetryPolicy' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'preferredBaseURL: preferredRoute' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'private static let preparedSpeechResponseIDKey' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'appendingPathComponent("jarvis-watch-last-response", isDirectory: false)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'values.isExcludedFromBackup = true' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'try? fileManager.removeItem(at: destination)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'guard let speech = frame?.speech else { return true }' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'private func trace(_ event: String)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'self.speech_synthesis_events: Dict\[str, threading.Event\]' terminald/jarvis_terminald.py
+grep -q 'completion.wait(timeout=185)' terminald/jarvis_terminald.py
+grep -q 'os.replace(temporary_path, cache_path)' terminald/jarvis_terminald.py
+grep -q 'for stale_path in self.speech_dir.glob("\*.wav")' terminald/jarvis_terminald.py
 /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes:0' JARVISWatch/Info.plist | grep -qx 'audio'
 grep -q 'def _bounded_tts_chunks' ../voice/discord_voice.py
 grep -q 'cleaned_text = self._clean_text_for_tts(text)' ../voice/discord_voice.py
@@ -210,7 +252,7 @@ grep -q 'frame.viewportRange(maximumLines:' JARVISWatch/Views/WatchTerminalView.
 reject_match 'Watch terminal must not duplicate Pi input in a prompt rail' -E 'private var promptRail|promptViewport\(displayColumns:' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Text("JARVIS")' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.frame(maxWidth: \.infinity, alignment: \.center)' JARVISWatch/Views/WatchTerminalView.swift
-grep -q '\.padding(\.trailing, 14)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.padding(\.horizontal, 7)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Image(systemName: "terminal.fill")' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'case fit' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'case grid' JARVISWatch/Views/WatchTerminalView.swift

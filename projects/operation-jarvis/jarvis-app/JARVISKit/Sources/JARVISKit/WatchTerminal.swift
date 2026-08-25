@@ -115,6 +115,24 @@ public enum WatchTerminalClientError: LocalizedError, Equatable, Sendable {
     }
 }
 
+public enum WatchTerminalSpeechRetryPolicy {
+    public static let maximumAttempts = 6
+
+    public static func shouldRetry(_ error: WatchTerminalClientError) -> Bool {
+        switch error {
+        case .offline, .notConnected:
+            return true
+        case .notConfigured, .invalidResponse, .rejected,
+             .certificateRejected, .submissionUnconfirmed, .invalidAudio:
+            return false
+        }
+    }
+
+    public static func delaySeconds(afterFailure attempt: Int) -> Double {
+        min(12, pow(2, Double(max(0, attempt - 1))))
+    }
+}
+
 private final class WatchTerminalPinnedSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     private let expectedFingerprint: String
     private let lock = NSLock()
@@ -175,12 +193,24 @@ public final class WatchTerminalClient: @unchecked Sendable {
     private var activeBaseURL: URL?
 
     public convenience init(configuration: WatchTerminalConfiguration) {
-        self.init(configuration: configuration, injectedSession: nil)
+        self.init(configuration: configuration, injectedSession: nil, preferredBaseURL: nil)
     }
 
-    init(configuration: WatchTerminalConfiguration, injectedSession: URLSession?) {
+    public convenience init(configuration: WatchTerminalConfiguration, preferredBaseURL: URL?) {
+        self.init(configuration: configuration, injectedSession: nil, preferredBaseURL: preferredBaseURL)
+    }
+
+    init(
+        configuration: WatchTerminalConfiguration,
+        injectedSession: URLSession?,
+        preferredBaseURL: URL? = nil
+    ) {
         self.configuration = configuration
         self.candidateBaseURLs = configuration.candidateBaseURLs
+        if let preferredBaseURL,
+           self.candidateBaseURLs.contains(where: { $0.absoluteString == preferredBaseURL.absoluteString }) {
+            self.activeBaseURL = preferredBaseURL
+        }
         self.delegate = WatchTerminalPinnedSessionDelegate(expectedFingerprint: configuration.certificateSHA256)
         if let injectedSession {
             self.session = injectedSession
@@ -198,6 +228,12 @@ public final class WatchTerminalClient: @unchecked Sendable {
             speechConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
             self.speechSession = URLSession(configuration: speechConfiguration, delegate: delegate, delegateQueue: nil)
         }
+    }
+
+    public var selectedBaseURL: URL? {
+        endpointLock.lock()
+        defer { endpointLock.unlock() }
+        return activeBaseURL
     }
 
     public func close() {

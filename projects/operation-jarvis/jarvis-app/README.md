@@ -85,7 +85,42 @@ speech now converts readable table rows before lossless word-boundary chunking;
 no long section is shortened to one TTS segment. Its downloaded local WAV may
 finish through wrist-down or app switching using watchOS's supported audio
 background mode, while terminal polling/networking still stops immediately in
-the true background.
+the true background. Build 58 prepares and downloads that same complete WAV as
+soon as a final response becomes available while the Terminal face is
+foregrounded; playback remains explicit and begins only from the fully local
+file. It replaces the tiny speaker plus top-right FIT/GRID controls with one
+44-by-35-point dock-styled voice/Stop control and moves FIT/GRID into the spare
+Keys-palette slot. Build 59 adopts watchOS's required long-form audio route
+policy and asynchronous route activation so explicit local playback survives
+wrist-down and app switching. Active playback is retained through Terminal-face
+exit and response replacement until natural completion or explicit Stop; system
+interruptions resume when watchOS authorizes it. True-background terminal
+networking remains system-suspended, but the last confirmed frame and persistent
+tmux session are retained, and every new foreground route requests an immediate
+fresh frame rather than waiting on a stale long poll. Build 60 keeps that retained
+session visually live across expected Watch view/background rebinding instead of
+flashing orange, while a separate fail-closed confirmation flag disables all
+terminal input until the recreated authenticated route returns its first frame.
+Build 61 fixes the parent lifecycle handoff so every active-to-inactive wrist-down
+transition reaches the terminal controller; expected Always-On long-poll
+suspension therefore retains the last-confirmed frame instead of being
+misclassified as an active-scene disconnect. Build 62 gives reduced-luminance
+Always-On snapshots separate truthful semantics: a monochrome checkmark means
+the persistent session/frame is retained while live transport resumes on wrist
+raise, and a neutral dotted circle means no frame has ever been confirmed. AOD
+never reuses orange/green transport colors that a stale snapshot can misstate.
+Build 63 gives foreground speech preparation its own authenticated pinned client
+and cancellation identity, so terminal long-poll recovery cannot directly cancel
+that client. Active transport failures retain the last confirmed presentation
+for a bounded 12-second handoff grace while input fails closed immediately.
+Build 64 closes the remaining physical route-loss race at both boundaries:
+terminald coalesces duplicate requests and atomically caches one complete WAV per
+opaque response ID, while the Watch uses bounded retry, seeds polling and speech
+clients with the last allowlisted authenticated route, and retains a verified
+complete local WAV independently of terminal transport status. A cached response
+can therefore be played while the terminal route is reconnecting; true background
+still cancels unfinished networking, never queues terminal input, and never
+claims unsupported continuous background transport.
 Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
@@ -737,8 +772,9 @@ never deploy to a device outside Dylan's allowlist.
   keyboard changes still use standard SSH window-change requests. No terminal
   bytes are synthesized, and the persistent pane and Pi process are preserved.
   Build 54 also adds a top-bar Watch speaker/stop control. It is fail-closed while
-  there is no completed conversation, while Pi is generating, while speech is
-  loading, or while the terminal is offline. The current Pi process publishes a
+  there is no completed conversation, while Pi is generating, or until a complete
+  local WAV is available. Once verified locally, playback no longer depends on
+  the terminal route remaining live. The current Pi process publishes a
   private, atomic final-text marker on `agent_settled`; only `text` blocks from
   the latest final `stop`/`length` assistant message are eligible. terminald
   exposes only readiness plus an opaque response ID in frames, accepts no text
@@ -746,13 +782,60 @@ never deploy to a device outside Dylan's allowlist.
   room-audio `/synthesize` endpoint. The endpoint reuses the canonical Piper
   JARVIS voice and returns a bounded WAV. The Watch downloads it through the
   existing bearer-authenticated, certificate-pinned route and plays it with
-  public `AVAudioPlayer`; page exit, a new response, or Stop cancels playback and
-  removes the temporary file. Build 57 preserves only an already-started local
-  WAV through wrist-down or app switching with the supported watchOS `audio`
-  background mode; terminal polling and network sessions still stop immediately.
+  public `AVAudioPlayer`; prepared stale audio is replaced, while an active local
+  file is retained until natural completion or explicit Stop. Build 57 preserves
+  an already-started local WAV through wrist-down or app switching with the
+  supported watchOS `audio` background mode; terminal polling and network
+  sessions still stop immediately in true background.
   It also converts readable table rows and splits long prose at bounded word
-  boundaries without shortening final text. No automatic speech, new credential,
-  new port, workout, extended runtime session, or terminal input path is added.
+  boundaries without shortening final text. Build 58 foreground-prefetches one
+  complete latest-response WAV through that existing route, but never starts
+  playback without a button tap. The 44-by-35-point voice/Stop control takes the
+  former top-right FIT/GRID position and matches the lower dock; FIT/GRID remains
+  available in the Keys palette. Backgrounding cancels unfinished preparation,
+  while an already-started fully local WAV continues unchanged. Build 59 uses
+  `.playback`/`.spokenAudio` with `.longFormAudio` and watchOS asynchronous route
+  activation, preserves active playback through page exit and response changes,
+  and resumes authorized system interruptions from the saved position. It also
+  retains the last confirmed terminal frame across expected background
+  suspension and requests sequence zero on every recreated route for immediate
+  foreground confirmation; it does not claim unsupported permanent background
+  networking. Build 60 separates retained-session presentation from live-route
+  input readiness: expected background or SwiftUI view rebinding preserves the
+  last confirmed green terminal state, but every input control remains disabled
+  until a newly created pinned client receives an authenticated frame. No input
+  is queued, retried, or replayed. Build 61 always forwards the parent scene's
+  `.inactive` transition to the terminal controller, even when the model already
+  considers JARVIS foregrounded, while avoiding duplicate refresh-loop creation.
+  Build 62 uses SwiftUI's supported `isLuminanceReduced` environment value to
+  render a monochrome retained-session checkmark in Always-On state instead of a
+  potentially stale transport color; active mode still reports verified
+  connecting/live/offline state. Build 63 decouples the foreground speech
+  download from the terminal polling client's generation and preserves prepared
+  speech across foreground route recovery. Build 64 makes response synthesis
+  idempotent at terminald: concurrent requests for one opaque response ID share
+  one render, and the complete WAV is written atomically to a private mode-0600
+  one-response cache before delivery. This is a non-archival cache: terminald
+  deletes every older WAV whenever it publishes the current response, so the Mac
+  can retain at most one WAV rather than accumulating speech history. The Watch
+  likewise uses one fixed, backup-excluded cache filename; replacement reuses
+  that slot, while stale-response cleanup, explicit Stop, natural completion,
+  and unrecoverable errors delete it. The Watch remembers only an allowlisted
+  selected route, uses bounded 1/2/4/8/12-second speech recovery, and stops the
+  loading state after six failed retries until a newly authenticated route is
+  confirmed. A validated complete local WAV is retained across terminal route
+  failure, process restoration, true background, and app switching, and can be
+  started while the terminal reconnects; unfinished network preparation is still
+  cancelled in true background. A stale response, page exit before playback,
+  explicit Stop, completion, or unrecoverable validation/trust error clears it.
+  Physical build-64 acceptance passed on both allowlisted devices: a fresh short
+  response produced exactly one synthesis, two forced cache retries returned
+  byte-identical WAVs with zero additional synthesis, and a 52.895-second response
+  remained audible through wrist-down, page changes, app switching, and natural
+  completion without incorrect orange status. OSLog lifecycle/route/speech events
+  are included for physical diagnostics. No
+  automatic speech, new credential, new port, workout, extended runtime session,
+  or terminal input path is added.
 - Build 42 raises dark Watch ANSI foregrounds to a tested minimum luminance while
   retaining hue relationships, keeps true black for inverse cells, raises dim
   opacity from `0.62` to `0.82`, and uses 8-point horizontal/bottom plus 6-point

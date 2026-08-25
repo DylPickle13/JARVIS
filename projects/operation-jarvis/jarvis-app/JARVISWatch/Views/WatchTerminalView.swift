@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import JARVISKit
+import OSLog
 import SwiftUI
 
 @MainActor
@@ -63,6 +64,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     @Published private(set) var errorMessage: String?
     @Published private(set) var isSending = false
     @Published private(set) var pendingBackspaceCount = 0
+    @Published private(set) var isConnectionConfirmed = false
     @Published private(set) var isSpeechLoading = false
     @Published private(set) var isSpeechPlaying = false
     @Published var speechErrorMessage: String?
@@ -79,9 +81,22 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     private var successfulPollCount = 0
     private var pendingBackspaceIDs = Set<UUID>()
     private var speechTask: Task<Void, Never>?
+    private var speechRetryTask: Task<Void, Never>?
+    private var speechClient: WatchTerminalClient?
+    private var speechPreparationID: UUID?
+    private var speechActivationID: UUID?
     private var speechPlayer: AVAudioPlayer?
     private var speechFileURL: URL?
-    private var spokenResponseID: String?
+    private var speechResponseID: String?
+    private var failedSpeechResponseID: String?
+    private var exhaustedSpeechResponseID: String?
+    private var speechRetryAttempt = 0
+    private var speechInterruptionResumeTime: TimeInterval?
+    private var pollFailureStartedAt: Date?
+    private let logger = Logger(subsystem: "com.operation-jarvis.jarvis.watchkitapp", category: "terminal")
+
+    private static let preparedSpeechResponseIDKey = "jarvis.watch-terminal.prepared-speech-response-id"
+    private static let preferredRouteKey = "jarvis.watch-terminal.preferred-route"
 
     override init() {
         #if DEBUG && targetEnvironment(simulator)
@@ -92,7 +107,21 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         }
         #endif
         status = settings.configuration == nil ? .notConfigured : .offline
+        if let retained = Self.retainedPreparedSpeech() {
+            speechResponseID = retained.responseID
+            speechFileURL = retained.fileURL
+        }
         super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(audioSessionWasInterrupted(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     func apply(configuration: WatchTerminalConfiguration) {
@@ -100,13 +129,205 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
             errorMessage = "Could not save the Watch terminal setup."
             return
         }
+        stopSpeech()
         restartIfNeeded()
     }
 
+    var terminalInputIsReady: Bool {
+        status == .live && isConnectionConfirmed
+    }
+
     var canSpeakLastResponse: Bool {
-        guard status == .live, !isSpeechLoading, !isSpeechPlaying,
-              let speech = frame?.speech else { return false }
-        return speech.available && !speech.generating && !speech.responseID.isEmpty
+        guard !isSpeechLoading, !isSpeechPlaying,
+              let speechResponseID, !speechResponseID.isEmpty,
+              let speechFileURL,
+              FileManager.default.fileExists(atPath: speechFileURL.path) else { return false }
+        // A complete local WAV is playable without a currently live terminal
+        // route. If fresh metadata exists, it must still identify that response.
+        guard let speech = frame?.speech else { return true }
+        if speech.generating { return false }
+        return !speech.available || speech.responseID == speechResponseID
+    }
+
+    /// Prepare exactly one complete final-response WAV while the terminal face
+    /// remains foregrounded. Playback stays explicit and never begins until the
+    /// authenticated download has finished and the entire file is local.
+    private func prepareSpeechIfNeeded() {
+        guard appIsForeground, isVisible,
+              !isSpeechLoading, !isSpeechPlaying, speechRetryTask == nil,
+              let speech = frame?.speech,
+              speech.available, !speech.generating, !speech.responseID.isEmpty,
+              failedSpeechResponseID != speech.responseID,
+              exhaustedSpeechResponseID != speech.responseID,
+              let configuration = settings.configuration else { return }
+        if speechResponseID == speech.responseID,
+           let speechFileURL,
+           FileManager.default.fileExists(atPath: speechFileURL.path) {
+            return
+        }
+
+        stopSpeech(resetPreparationFailures: false)
+        speechErrorMessage = nil
+        isSpeechLoading = true
+        speechResponseID = speech.responseID
+        let responseID = speech.responseID
+        let preparationID = UUID()
+        let preferredRoute = client?.selectedBaseURL ?? rememberedPreferredRoute(for: configuration)
+        let speechClient = WatchTerminalClient(
+            configuration: configuration,
+            preferredBaseURL: preferredRoute
+        )
+        self.speechClient = speechClient
+        trace("speech_prepare_start attempt=\(speechRetryAttempt + 1)")
+        speechPreparationID = preparationID
+        speechTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var downloadedURL: URL?
+            defer {
+                speechClient.close()
+                if self.speechClient === speechClient { self.speechClient = nil }
+                if self.speechPreparationID == preparationID {
+                    self.isSpeechLoading = false
+                    self.speechTask = nil
+                    self.speechPreparationID = nil
+                }
+                if let downloadedURL, downloadedURL != self.speechFileURL {
+                    try? FileManager.default.removeItem(at: downloadedURL)
+                }
+            }
+            do {
+                _ = try await speechClient.preflight()
+                downloadedURL = try await speechClient.speechAudio(responseID: responseID)
+                try Task.checkCancellation()
+                guard self.speechPreparationID == preparationID,
+                      self.appIsForeground,
+                      self.isVisible,
+                      self.frame?.speech?.responseID == responseID,
+                      self.frame?.speech?.available == true,
+                      let downloadedURL else {
+                    throw CancellationError()
+                }
+                self.speechFileURL = try self.retainPreparedSpeech(
+                    from: downloadedURL,
+                    responseID: responseID
+                )
+                self.speechRetryAttempt = 0
+                self.exhaustedSpeechResponseID = nil
+                self.trace("speech_prepare_ready")
+            } catch is CancellationError {
+                self.trace("speech_prepare_cancelled")
+                return
+            } catch {
+                guard self.speechPreparationID == preparationID else { return }
+                self.speechResponseID = nil
+                if let clientError = error as? WatchTerminalClientError,
+                   WatchTerminalSpeechRetryPolicy.shouldRetry(clientError),
+                   self.appIsForeground,
+                   self.isVisible,
+                   self.frame?.speech?.responseID == responseID {
+                    self.speechErrorMessage = nil
+                    self.scheduleSpeechRetry(responseID: responseID)
+                } else {
+                    self.failedSpeechResponseID = responseID
+                    self.speechErrorMessage = error.localizedDescription
+                    self.trace("speech_prepare_failed_permanently")
+                }
+            }
+        }
+    }
+
+    private static var preparedSpeechFileURL: URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("jarvis-watch-last-response", isDirectory: false)
+            .appendingPathExtension("wav")
+    }
+
+    private static func retainedPreparedSpeech() -> (responseID: String, fileURL: URL)? {
+        guard let responseID = UserDefaults.standard.string(forKey: preparedSpeechResponseIDKey),
+              responseID.count == 64, responseID.allSatisfy(\.isHexDigit),
+              let fileURL = preparedSpeechFileURL,
+              let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+              values.isRegularFile == true,
+              let size = values.fileSize, size > 12, size <= 20 * 1024 * 1024,
+              let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount: 12),
+              header.count == 12,
+              String(data: header.prefix(4), encoding: .ascii) == "RIFF",
+              String(data: header.suffix(4), encoding: .ascii) == "WAVE" else { return nil }
+        return (responseID, fileURL)
+    }
+
+    private func retainPreparedSpeech(from sourceURL: URL, responseID: String) throws -> URL {
+        guard let destination = Self.preparedSpeechFileURL else {
+            throw WatchTerminalClientError.invalidAudio
+        }
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? fileManager.removeItem(at: destination)
+        try fileManager.moveItem(at: sourceURL, to: destination)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableDestination = destination
+        try? mutableDestination.setResourceValues(values)
+        UserDefaults.standard.set(responseID, forKey: Self.preparedSpeechResponseIDKey)
+        return destination
+    }
+
+    private func discardPreparedSpeech() {
+        if let speechFileURL { try? FileManager.default.removeItem(at: speechFileURL) }
+        if let retainedURL = Self.preparedSpeechFileURL, retainedURL != speechFileURL {
+            try? FileManager.default.removeItem(at: retainedURL)
+        }
+        UserDefaults.standard.removeObject(forKey: Self.preparedSpeechResponseIDKey)
+        speechFileURL = nil
+        speechResponseID = nil
+    }
+
+    private func scheduleSpeechRetry(responseID: String) {
+        guard speechRetryAttempt < WatchTerminalSpeechRetryPolicy.maximumAttempts else {
+            exhaustedSpeechResponseID = responseID
+            trace("speech_prepare_retry_exhausted")
+            return
+        }
+        speechRetryAttempt += 1
+        let delay = WatchTerminalSpeechRetryPolicy.delaySeconds(afterFailure: speechRetryAttempt)
+        trace("speech_prepare_retry_scheduled attempt=\(speechRetryAttempt) delay=\(delay)")
+        speechRetryTask?.cancel()
+        speechRetryTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard let self else { return }
+            self.speechRetryTask = nil
+            guard self.appIsForeground,
+                  self.isVisible,
+                  self.frame?.speech?.responseID == responseID else { return }
+            self.prepareSpeechIfNeeded()
+        }
+    }
+
+    private func rememberedPreferredRoute(for configuration: WatchTerminalConfiguration) -> URL? {
+        guard let raw = UserDefaults.standard.string(forKey: Self.preferredRouteKey),
+              let route = URL(string: raw),
+              configuration.candidateBaseURLs.contains(where: { $0.absoluteString == route.absoluteString }) else {
+            return nil
+        }
+        return route
+    }
+
+    private func rememberPreferredRoute(_ route: URL?) {
+        guard let route else { return }
+        UserDefaults.standard.set(route.absoluteString, forKey: Self.preferredRouteKey)
+    }
+
+    private func trace(_ event: String) {
+        logger.notice("\(event, privacy: .public) status=\(self.status.label, privacy: .public) confirmed=\(self.isConnectionConfirmed) visible=\(self.isVisible) foreground=\(self.appIsForeground) active=\(self.sceneIsActive)")
     }
 
     func toggleSpeech() {
@@ -115,69 +336,145 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
             return
         }
         guard canSpeakLastResponse,
-              let responseID = frame?.speech?.responseID,
-              let client else { return }
+              speechResponseID != nil,
+              speechFileURL != nil else { return }
 
-        stopSpeech()
         speechErrorMessage = nil
-        isSpeechLoading = true
-        spokenResponseID = responseID
-        let generation = connectionGeneration
-        speechTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            var downloadedURL: URL?
-            defer {
+        activateAndPlayPreparedSpeech(from: 0, showsLoadingIndicator: true)
+    }
+
+    /// watchOS only grants supported wrist-down/background playback to sessions
+    /// using the long-form route policy. Its asynchronous activation API must be
+    /// used so the system can select or request an eligible local audio route.
+    private func activateAndPlayPreparedSpeech(
+        from playbackTime: TimeInterval,
+        showsLoadingIndicator: Bool
+    ) {
+        guard let speechFileURL,
+              FileManager.default.fileExists(atPath: speechFileURL.path) else {
+            isSpeechPlaying = false
+            speechErrorMessage = WatchTerminalClientError.invalidAudio.localizedDescription
+            return
+        }
+
+        let activationID = UUID()
+        speechActivationID = activationID
+        isSpeechPlaying = true
+        if showsLoadingIndicator { isSpeechLoading = true }
+
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playback,
+                mode: .spokenAudio,
+                policy: .longFormAudio,
+                options: []
+            )
+        } catch {
+            speechActivationID = nil
+            isSpeechLoading = false
+            isSpeechPlaying = false
+            speechErrorMessage = error.localizedDescription
+            return
+        }
+
+        session.activate(options: []) { [weak self] activated, error in
+            Task { @MainActor [weak self] in
+                guard let self, self.speechActivationID == activationID else { return }
+                self.speechActivationID = nil
                 self.isSpeechLoading = false
-                if !self.isSpeechPlaying { self.speechTask = nil }
-                if let downloadedURL, downloadedURL != self.speechFileURL {
-                    try? FileManager.default.removeItem(at: downloadedURL)
+                guard activated else {
+                    self.isSpeechPlaying = false
+                    self.speechErrorMessage = error?.localizedDescription
+                        ?? "The Watch could not activate an audio route."
+                    return
                 }
-            }
-            do {
-                downloadedURL = try await client.speechAudio(responseID: responseID)
-                try Task.checkCancellation()
-                guard self.connectionGeneration == generation,
-                      self.frame?.speech?.responseID == responseID,
-                      self.frame?.speech?.available == true else {
-                    throw CancellationError()
+                guard self.speechFileURL == speechFileURL,
+                      FileManager.default.fileExists(atPath: speechFileURL.path) else {
+                    self.isSpeechPlaying = false
+                    self.speechErrorMessage = WatchTerminalClientError.invalidAudio.localizedDescription
+                    try? session.setActive(false, options: .notifyOthersOnDeactivation)
+                    return
                 }
 
-                let session = AVAudioSession.sharedInstance()
-                try session.setCategory(.playback, mode: .spokenAudio, options: [])
-                try session.setActive(true)
-                guard let downloadedURL else { throw WatchTerminalClientError.invalidAudio }
-                let player = try AVAudioPlayer(contentsOf: downloadedURL)
-                player.delegate = self
-                guard player.prepareToPlay(), player.play() else {
-                    throw WatchTerminalClientError.invalidAudio
+                do {
+                    let player = try AVAudioPlayer(contentsOf: speechFileURL)
+                    player.delegate = self
+                    guard player.prepareToPlay() else {
+                        throw WatchTerminalClientError.invalidAudio
+                    }
+                    player.currentTime = min(max(0, playbackTime), player.duration)
+                    self.speechPlayer?.stop()
+                    self.speechPlayer = player
+                    guard player.play() else {
+                        self.speechPlayer = nil
+                        throw WatchTerminalClientError.invalidAudio
+                    }
+                    self.speechInterruptionResumeTime = nil
+                    self.isSpeechPlaying = true
+                } catch {
+                    self.isSpeechPlaying = false
+                    self.speechErrorMessage = error.localizedDescription
+                    try? session.setActive(false, options: .notifyOthersOnDeactivation)
                 }
-                self.speechFileURL = downloadedURL
-                self.speechPlayer = player
-                self.isSpeechPlaying = true
-                self.isSpeechLoading = false
-                self.speechTask = nil
-            } catch is CancellationError {
-                return
-            } catch {
-                self.spokenResponseID = nil
-                self.speechErrorMessage = error.localizedDescription
-                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             }
         }
     }
 
-    func stopSpeech(clearError: Bool = true) {
+    func stopSpeech(clearError: Bool = true, resetPreparationFailures: Bool = true) {
+        speechPreparationID = nil
+        speechActivationID = nil
+        speechClient?.close()
+        speechClient = nil
         speechTask?.cancel()
         speechTask = nil
+        speechRetryTask?.cancel()
+        speechRetryTask = nil
         speechPlayer?.stop()
         speechPlayer = nil
-        if let speechFileURL { try? FileManager.default.removeItem(at: speechFileURL) }
-        speechFileURL = nil
-        spokenResponseID = nil
+        discardPreparedSpeech()
+        speechInterruptionResumeTime = nil
         isSpeechLoading = false
         isSpeechPlaying = false
+        if resetPreparationFailures {
+            failedSpeechResponseID = nil
+            exhaustedSpeechResponseID = nil
+            speechRetryAttempt = 0
+        }
         if clearError { speechErrorMessage = nil }
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    @objc nonisolated private func audioSessionWasInterrupted(_ notification: Notification) {
+        let typeValue = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
+        let optionsValue = (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
+        Task { @MainActor [weak self] in
+            self?.handleAudioSessionInterruption(typeValue: typeValue, optionsValue: optionsValue)
+        }
+    }
+
+    private func handleAudioSessionInterruption(typeValue: UInt?, optionsValue: UInt) {
+        guard let typeValue,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue),
+              isSpeechPlaying else { return }
+        switch type {
+        case .began:
+            speechInterruptionResumeTime = speechPlayer?.currentTime ?? 0
+        case .ended:
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            guard options.contains(.shouldResume), speechFileURL != nil else {
+                speechPlayer = nil
+                isSpeechPlaying = false
+                speechErrorMessage = "JARVIS speech was interrupted by the system. Tap Read to resume."
+                return
+            }
+            activateAndPlayPreparedSpeech(
+                from: speechInterruptionResumeTime ?? speechPlayer?.currentTime ?? 0,
+                showsLoadingIndicator: false
+            )
+        @unknown default:
+            break
+        }
     }
 
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
@@ -198,17 +495,18 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         let resumedFromInactive = appIsForeground && !sceneIsActive
         appIsForeground = true
         sceneIsActive = true
+        trace("scene_active resumed_from_inactive=\(resumedFromInactive)")
 
         guard isVisible else { return }
         guard pollTask != nil, client != nil else {
-            restartIfNeeded()
+            restartIfNeeded(preserveLiveStatus: frame != nil)
             return
         }
 
         if status == .offline {
             // The normal retry loop may be waiting after a route failure. A
             // foreground wake is an explicit opportunity to retry now.
-            restartIfNeeded(preserveLiveStatus: false)
+            restartIfNeeded(preserveLiveStatus: frame != nil)
         } else if resumedFromInactive {
             // Keep a healthy URLSession/route instead of flashing orange and
             // rebuilding it for every wrist raise or tap. If watchOS suspended
@@ -220,28 +518,44 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
 
     func sceneDidEnterAlwaysOn() {
         sceneIsActive = false
+        trace("scene_inactive_always_on")
         wakeRecoveryTask?.cancel()
         wakeRecoveryTask = nil
         guard !appIsForeground else { return }
         appIsForeground = true
-        restartIfNeeded()
+        restartIfNeeded(preserveLiveStatus: frame != nil)
     }
 
     func sceneDidEnterBackground() {
         sceneIsActive = false
         appIsForeground = false
-        // Stop terminal networking immediately, but let an already-started,
-        // fully local voice response finish after wrist-down or app switching.
-        // The user can still stop it before leaving the terminal page.
-        stop(preserveSpeechPlayback: isSpeechPlaying)
+        trace("scene_background")
+        // watchOS suspends arbitrary terminal networking in true background.
+        // Retain the last confirmed live frame instead of falsely declaring the
+        // persistent tmux session offline, then reconnect immediately on wake.
+        // An already-started local response continues independently. A fully
+        // prepared local WAV is retained; only unfinished foreground network
+        // preparation is cancelled by true background suspension.
+        stop(
+            markOffline: false,
+            preserveSpeechPlayback: isSpeechPlaying,
+            preservePreparedSpeech: !isSpeechLoading && speechFileURL != nil
+        )
     }
 
     func setVisible(_ visible: Bool) {
         isVisible = visible
+        trace("terminal_visible=\(visible)")
         if visible {
-            if pollTask == nil || client == nil { restartIfNeeded() }
+            if pollTask == nil || client == nil {
+                restartIfNeeded(preserveLiveStatus: frame != nil)
+            }
         } else {
-            stop()
+            // Leaving the Terminal face must stop its networking, never an
+            // already-started local response or the retained tmux/session state.
+            // Input stays disabled until a fresh authenticated frame confirms
+            // the recreated route.
+            stop(markOffline: false, preserveSpeechPlayback: isSpeechPlaying)
         }
     }
 
@@ -283,7 +597,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     /// no request is queued, retried, or replayed by the Watch.
     func sendBackspace() {
         controlLatched = false
-        guard appIsForeground, isVisible, status == .live, !isSending, let client else {
+        guard appIsForeground, isVisible, terminalInputIsReady, !isSending, let client else {
             if status != .notConfigured { errorMessage = "The terminal is not connected." }
             return
         }
@@ -313,46 +627,107 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     }
 
     private func restartIfNeeded(preserveLiveStatus: Bool = false) {
-        let keepsLiveStatus = preserveLiveStatus && frame != nil && status == .live
-        // Route recovery must not interrupt a WAV that has already downloaded
-        // and is playing locally. A changed response ID still stops it below.
-        stop(markOffline: !keepsLiveStatus, preserveSpeechPlayback: isSpeechPlaying)
+        let keepsLiveStatus = preserveLiveStatus && frame != nil && status != .notConfigured
+        let previouslySelectedRoute = client?.selectedBaseURL
+        // Foreground route recovery must not interrupt active playback, discard
+        // a prepared WAV, or cancel the independent speech download. True
+        // background and deliberate page exit still cancel unfinished work.
+        stop(
+            markOffline: !keepsLiveStatus,
+            preserveSpeechPlayback: isSpeechPlaying,
+            preservePreparedSpeech: isSpeechLoading || speechFileURL != nil
+        )
         guard appIsForeground, isVisible else { return }
         guard let configuration = settings.configuration else {
             status = .notConfigured
             errorMessage = "Open iPhone JARVIS Settings to provision the Watch terminal."
             return
         }
-        let client = WatchTerminalClient(configuration: configuration)
+        let preferredRoute = previouslySelectedRoute ?? rememberedPreferredRoute(for: configuration)
+        let client = WatchTerminalClient(
+            configuration: configuration,
+            preferredBaseURL: preferredRoute
+        )
         self.client = client
         status = keepsLiveStatus ? .live : .connecting
         errorMessage = nil
+        trace("route_restart retained_frame=\(keepsLiveStatus) preferred=\(preferredRoute != nil)")
         pollTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            var sequence = self.frame?.sequence ?? 0
+            // A newly created route must confirm itself immediately instead of
+            // long-polling the last foreground sequence before showing recovery.
+            var sequence = 0
             while !Task.isCancelled, self.appIsForeground, self.isVisible {
                 do {
                     let next = try await client.frame(after: sequence)
                     guard !Task.isCancelled else { return }
+                    let recoveredRoute = !self.isConnectionConfirmed
                     self.frame = next
-                    if next.speech?.generating == true
-                        || (self.spokenResponseID != nil && next.speech?.responseID != self.spokenResponseID) {
-                        self.stopSpeech()
+                    self.isConnectionConfirmed = true
+                    self.pollFailureStartedAt = nil
+                    self.rememberPreferredRoute(client.selectedBaseURL)
+                    let nextResponseID = next.speech?.available == true ? next.speech?.responseID : nil
+                    if let nextResponseID {
+                        if self.failedSpeechResponseID != nil,
+                           self.failedSpeechResponseID != nextResponseID {
+                            self.failedSpeechResponseID = nil
+                        }
+                        if self.exhaustedSpeechResponseID != nil,
+                           self.exhaustedSpeechResponseID != nextResponseID {
+                            self.exhaustedSpeechResponseID = nil
+                            self.speechRetryAttempt = 0
+                        } else if recoveredRoute,
+                                  self.exhaustedSpeechResponseID == nextResponseID {
+                            // A newly authenticated route earns one new bounded
+                            // preparation window for the retained response.
+                            self.exhaustedSpeechResponseID = nil
+                            self.speechRetryAttempt = 0
+                        }
                     }
+                    if next.speech?.generating == true
+                        || (nextResponseID != nil
+                            && self.speechResponseID != nil
+                            && nextResponseID != self.speechResponseID) {
+                        // Replace stale prepared audio, but never interrupt a WAV
+                        // that the user explicitly started. Missing metadata does
+                        // not invalidate a complete retained local response.
+                        if !self.isSpeechPlaying { self.stopSpeech() }
+                    }
+                    if recoveredRoute { self.trace("route_confirmed") }
                     sequence = next.sequence
                     self.successfulPollCount += 1
                     self.wakeRecoveryTask?.cancel()
                     self.wakeRecoveryTask = nil
                     self.status = .live
                     self.errorMessage = nil
+                    self.prepareSpeechIfNeeded()
                 } catch is CancellationError {
                     return
                 } catch {
                     guard !Task.isCancelled else { return }
+                    let wasConfirmed = self.isConnectionConfirmed
+                    self.isConnectionConfirmed = false
+                    if wasConfirmed { self.trace("route_poll_failed") }
                     self.wakeRecoveryTask?.cancel()
                     self.wakeRecoveryTask = nil
-                    self.status = .offline
-                    self.errorMessage = error.localizedDescription
+                    if self.frame == nil {
+                        self.status = .offline
+                        self.errorMessage = error.localizedDescription
+                    } else {
+                        let now = Date()
+                        if self.pollFailureStartedAt == nil { self.pollFailureStartedAt = now }
+                        let failureAge = now.timeIntervalSince(self.pollFailureStartedAt ?? now)
+                        if !self.sceneIsActive || failureAge < 12 {
+                            // Debounce route handoffs while retaining the last
+                            // confirmed frame. Input is already fail-closed by
+                            // isConnectionConfirmed until a poll succeeds.
+                            self.status = .live
+                            self.errorMessage = nil
+                        } else {
+                            self.status = .offline
+                            self.errorMessage = error.localizedDescription
+                        }
+                    }
                     try? await Task.sleep(for: .seconds(1))
                 }
             }
@@ -383,9 +758,15 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         }
     }
 
-    private func stop(markOffline: Bool = true, preserveSpeechPlayback: Bool = false) {
+    private func stop(
+        markOffline: Bool = true,
+        preserveSpeechPlayback: Bool = false,
+        preservePreparedSpeech: Bool = false
+    ) {
         connectionGeneration += 1
-        if !preserveSpeechPlayback { stopSpeech() }
+        isConnectionConfirmed = false
+        pollFailureStartedAt = nil
+        if !preserveSpeechPlayback && !preservePreparedSpeech { stopSpeech() }
         wakeRecoveryTask?.cancel()
         wakeRecoveryTask = nil
         pollTask?.cancel()
@@ -399,7 +780,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     }
 
     private func send(_ data: Data, appendReturn: Bool) {
-        guard appIsForeground, isVisible, status == .live, !isSending,
+        guard appIsForeground, isVisible, terminalInputIsReady, !isSending,
               pendingBackspaceCount == 0, let client else {
             if status != .notConfigured { errorMessage = "The terminal is not connected." }
             return
@@ -435,6 +816,7 @@ struct WatchTerminalView: View {
     @ObservedObject var controller: WatchTerminalController
     let isActive: Bool
     let onAdvancePage: (() -> Void)?
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     @AppStorage("jarvis.watch-terminal.display-mode") private var displayModeRaw = WatchTerminalDisplayMode.fit.rawValue
     @State private var showingKeyPalette = false
     @State private var keyboardDraft = ""
@@ -452,13 +834,13 @@ struct WatchTerminalView: View {
     }
 
     private var normalInputIsEnabled: Bool {
-        controller.status == .live
+        controller.terminalInputIsReady
             && !controller.isSending
             && controller.pendingBackspaceCount == 0
     }
 
     private var backspaceIsEnabled: Bool {
-        controller.status == .live && !controller.isSending
+        controller.terminalInputIsReady && !controller.isSending
     }
 
     init(
@@ -577,7 +959,7 @@ struct WatchTerminalView: View {
                 : WatchTerminalLayout.rawFontSize
         )
         let lineHeight = CGFloat(WatchTerminalLayout.lineHeight(fontSize: Double(fontSize)))
-        let maximumLines = max(1, Int(max(0, geometry.size.height - 29) / lineHeight))
+        let maximumLines = max(1, Int(max(0, geometry.size.height - 43) / lineHeight))
         let safeOffset = min(scrollOffset, frame.maximumScrollOffset(maximumLines: maximumLines))
         let visibleRange = frame.viewportRange(maximumLines: maximumLines, scrollOffset: safeOffset)
         let mirroredStyles = WatchTerminalANSIParser.parse(lines: frame.ansiLines)
@@ -601,7 +983,7 @@ struct WatchTerminalView: View {
             }
             .padding(.horizontal, 5)
         }
-        .contentMargins(.top, 25, for: .scrollContent)
+        .contentMargins(.top, 39, for: .scrollContent)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityLabel("Mirrored Pi terminal")
         .accessibilityValue(safeOffset == 0 ? "Live" : "Scrolled back \(safeOffset) rows")
@@ -682,11 +1064,7 @@ struct WatchTerminalView: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Color.cyan)
                     .accessibilityHidden(true)
-                Circle()
-                    .fill(controller.status.color)
-                    .frame(width: 7, height: 7)
-                    .accessibilityLabel("Terminal status")
-                    .accessibilityValue(controller.status.label)
+                terminalStatusIndicator
                 if scrollOffset > 0 {
                     Text("↑\(scrollOffset)")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
@@ -702,10 +1080,10 @@ struct WatchTerminalView: View {
                         if controller.isSpeechLoading {
                             ProgressView()
                                 .controlSize(.small)
-                                .scaleEffect(0.65)
+                                .scaleEffect(0.78)
                         } else {
                             Image(systemName: controller.isSpeechPlaying ? "stop.fill" : "speaker.wave.2.fill")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(
                                     controller.isSpeechPlaying || controller.canSpeakLastResponse
                                         ? Color.cyan
@@ -713,41 +1091,51 @@ struct WatchTerminalView: View {
                                 )
                         }
                     }
-                    .frame(width: 23, height: 21)
-                    .background(Color.black.opacity(0.82), in: Capsule())
+                    .frame(width: 44, height: 35)
+                    .background(
+                        Color.white.opacity(0.09),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
                 }
                 .buttonStyle(.plain)
-                .disabled(controller.isSpeechLoading || (!controller.isSpeechPlaying && !controller.canSpeakLastResponse))
+                .disabled(
+                    (controller.isSpeechLoading && !controller.isSpeechPlaying)
+                        || (!controller.isSpeechPlaying && !controller.canSpeakLastResponse)
+                )
                 .accessibilityLabel(controller.isSpeechPlaying ? "Stop JARVIS speech" : "Read last JARVIS response")
                 .accessibilityValue(
                     controller.isSpeechLoading
-                        ? "Loading"
+                        ? "Preparing complete audio"
                         : controller.canSpeakLastResponse ? "Ready" : "Unavailable"
                 )
-                .accessibilityHint("Plays only the final text from the latest completed Pi turn")
-
-                Button {
-                    displayMode = displayMode == .fit ? .grid : .fit
-                    crownIsFocused = true
-                } label: {
-                    Text(displayMode == .fit ? "FIT" : "GRID")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundStyle(displayMode == .fit ? Color.cyan : Color.secondary)
-                        .padding(.horizontal, 6)
-                        .frame(minWidth: 36)
-                        .frame(height: 21)
-                        .background(Color.black.opacity(0.82), in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Terminal display mode")
-                .accessibilityValue(displayMode == .fit ? "Fit mirrored grid" : "Full-size mirrored grid")
-                .accessibilityHint("Double tap to switch mirror sizes")
+                .accessibilityHint("Plays the fully downloaded final response through the Watch speaker")
             }
-            .padding(.leading, 7)
-            .padding(.trailing, 14)
+            .padding(.horizontal, 7)
         }
         .padding(.top, 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private var terminalStatusIndicator: some View {
+        if isLuminanceReduced {
+            Image(systemName: controller.frame == nil ? "circle.dotted" : "checkmark.circle.fill")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(controller.frame == nil ? Color.secondary : Color.white)
+                .frame(width: 8, height: 8)
+                .accessibilityLabel("Terminal status")
+                .accessibilityValue(
+                    controller.frame == nil
+                        ? "Waiting for the first terminal frame"
+                        : "Session retained; live networking resumes when active"
+                )
+        } else {
+            Circle()
+                .fill(controller.status.color)
+                .frame(width: 7, height: 7)
+                .accessibilityLabel("Terminal status")
+                .accessibilityValue(controller.status.label)
+        }
     }
 
     private var inputDock: some View {
@@ -861,6 +1249,15 @@ struct WatchTerminalView: View {
             HStack(spacing: 3) {
                 terminalKey("↑", accessibility: "Up arrow") { controller.sendKey(WatchTerminalKeyBytes.up) }
                 terminalKey("↓", accessibility: "Down arrow") { controller.sendKey(WatchTerminalKeyBytes.down) }
+                terminalKey(
+                    displayMode == .fit ? "FIT" : "GRID",
+                    accessibility: "Terminal display mode",
+                    selected: displayMode == .fit,
+                    requiresLiveTerminal: false
+                ) {
+                    displayMode = displayMode == .fit ? .grid : .fit
+                    crownIsFocused = true
+                }
             }
         }
         .padding(5)
@@ -875,6 +1272,7 @@ struct WatchTerminalView: View {
         _ title: String,
         accessibility: String,
         selected: Bool = false,
+        requiresLiveTerminal: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -885,9 +1283,10 @@ struct WatchTerminalView: View {
         }
         .buttonStyle(.plain)
         .disabled(
-            controller.status != .live
-                || controller.isSending
-                || controller.pendingBackspaceCount > 0
+            requiresLiveTerminal
+                && (!controller.terminalInputIsReady
+                    || controller.isSending
+                    || controller.pendingBackspaceCount > 0)
         )
         .accessibilityLabel(accessibility)
         .accessibilityAddTraits(selected ? .isSelected : [])

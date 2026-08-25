@@ -130,6 +130,41 @@ final class WatchTerminalTests: XCTestCase {
         }
     }
 
+    func testSpeechRetryPolicyIsBoundedAndNeverRetriesTrustOrAudioFailures() {
+        XCTAssertTrue(WatchTerminalSpeechRetryPolicy.shouldRetry(.offline))
+        XCTAssertTrue(WatchTerminalSpeechRetryPolicy.shouldRetry(.notConnected))
+        XCTAssertFalse(WatchTerminalSpeechRetryPolicy.shouldRetry(.certificateRejected))
+        XCTAssertFalse(WatchTerminalSpeechRetryPolicy.shouldRetry(.invalidAudio))
+        XCTAssertFalse(WatchTerminalSpeechRetryPolicy.shouldRetry(.rejected("no")))
+        XCTAssertEqual(WatchTerminalSpeechRetryPolicy.maximumAttempts, 6)
+        XCTAssertEqual(WatchTerminalSpeechRetryPolicy.delaySeconds(afterFailure: 1), 1)
+        XCTAssertEqual(WatchTerminalSpeechRetryPolicy.delaySeconds(afterFailure: 4), 8)
+        XCTAssertEqual(WatchTerminalSpeechRetryPolicy.delaySeconds(afterFailure: 20), 12)
+    }
+
+    func testSharedClientSeedsOnlyAnAllowlistedPreferredRoute() {
+        let configuration = WatchTerminalConfiguration(
+            endpoint: "https://192.168.21.215:8792",
+            token: String(repeating: "a", count: 64),
+            certificateSHA256: String(repeating: "ab", count: 32)
+        )
+        let preferred = URL(string: "https://100.87.28.34:8792")!
+        let preferredClient = WatchTerminalClient(
+            configuration: configuration,
+            preferredBaseURL: preferred
+        )
+        XCTAssertEqual(preferredClient.selectedBaseURL, preferred)
+        preferredClient.close()
+
+        let rejected = URL(string: "https://untrusted.invalid:8792")!
+        let rejectedClient = WatchTerminalClient(
+            configuration: configuration,
+            preferredBaseURL: rejected
+        )
+        XCTAssertNil(rejectedClient.selectedBaseURL)
+        rejectedClient.close()
+    }
+
     func testSharedClientPreflightsThenSubmitsExactlyOnceWithReturn() async throws {
         let postInputs = LockedBox<[WatchTerminalInput]>([])
         let frame = fixtureFrame()
