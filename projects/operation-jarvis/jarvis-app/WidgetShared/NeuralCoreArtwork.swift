@@ -22,6 +22,14 @@ enum JARVISNeuralCoreLayout {
             ? JARVISNeuralCoreMotion.watchContinuousFrameCount
             : JARVISNeuralCoreMotion.phoneContinuousFrameCount
     }
+
+    /// Curves are sampled only as finely as each physical surface can resolve.
+    /// Lower phone tessellation preserves every path, particle, filament, and
+    /// 30 FPS phase while keeping WidgetKit's serialized timeline below its
+    /// archive-size ceiling. Watch values remain unchanged.
+    func curveSegments(watch: Int, phone: Int) -> Int {
+        self == .watch ? watch : phone
+    }
 }
 
 /// One complete native-vector frame for the iPhone medium widget and Watch
@@ -88,17 +96,7 @@ struct JARVISNeuralCoreArtwork: View {
                 .contentTransition(.interpolate)
                 .widgetAccentable()
 
-                Text("JARVIS")
-                    .font(.system(
-                        size: layout == .watch ? 6.5 : 12,
-                        weight: .bold,
-                        design: .default
-                    ))
-                    .tracking(layout == .watch ? 0.85 : 1.5)
-                    .foregroundStyle(palette.bright)
-                    .padding(.leading, layout == .watch ? 9 : 15)
-                    .padding(.top, layout == .watch ? 8 : 12.5)
-                    .widgetAccentable()
+                JARVISNeuralCoreWordmark(layout: layout)
             }
             .clipped()
             .animation(
@@ -117,6 +115,63 @@ struct JARVISNeuralCoreArtwork: View {
             .accessibilityHint(JARVISNeuralCoreAccessibility.hint(for: layout))
             .accessibilityHidden(hidesAccessibility)
         }
+    }
+}
+
+/// The wordmark is independent of telemetry and frame phase. Continuous widget
+/// artwork places one copy above every masked frame instead of archiving one in
+/// each frame, keeping the extension below WidgetKit's physical memory limit.
+/// A lightweight internal frame used only inside the timer-mask stack. The
+/// outer continuous artwork owns geometry, animation, transactions, and
+/// accessibility once instead of serializing those wrappers 60 times.
+struct JARVISNeuralCoreFrameArtwork: View {
+    let telemetry: JARVISNeuralCoreTelemetry
+    let layout: JARVISNeuralCoreLayout
+    let motionPhase: Double
+
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    private var palette: JARVISMonochromeCathedralPalette {
+        JARVISMonochromeCathedralPalette(usesFullColor: renderingMode == .fullColor)
+    }
+
+    var body: some View {
+        JARVISMonochromeCathedralCanvas(
+            telemetry: telemetry,
+            layout: layout,
+            phase: CGFloat(motionPhase),
+            palette: palette,
+            motionEnabled: true
+        )
+        .widgetAccentable(true)
+        .clipped()
+    }
+}
+
+struct JARVISNeuralCoreWordmark: View {
+    let layout: JARVISNeuralCoreLayout
+
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    private var palette: JARVISMonochromeCathedralPalette {
+        JARVISMonochromeCathedralPalette(usesFullColor: renderingMode == .fullColor)
+    }
+
+    var body: some View {
+        Text("JARVIS")
+            .font(.system(
+                size: layout == .watch ? 6.5 : 12,
+                weight: .bold,
+                design: .default
+            ))
+            .tracking(layout == .watch ? 0.85 : 1.5)
+            .foregroundStyle(palette.bright)
+            .padding(.leading, layout == .watch ? 9 : 15)
+            .padding(.top, layout == .watch ? 8 : 12.5)
+            .widgetAccentable()
+            // The brand label is public decoration, never telemetry.
+            // Keep it visible if WidgetKit redacts stale snapshots.
+            .unredacted()
     }
 }
 
@@ -248,7 +303,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             radius: radius * 1.54,
             start: .pi * (1.17 + wave * 0.012),
             end: .pi * (1.83 - wave * 0.012),
-            segments: layout == .watch ? 34 : 64
+            segments: layout.curveSegments(watch: 34, phone: 36)
         )
         if layout == .phone {
             stroke(
@@ -270,7 +325,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 radius: radius * 1.45,
                 start: .pi * (1.22 - wave * 0.010),
                 end: .pi * (1.78 + wave * 0.010),
-                segments: layout == .watch ? 30 : 56
+                segments: layout.curveSegments(watch: 30, phone: 34)
             ),
             context: &context,
             color: palette.silver.opacity(0.34 * signalMultiplier),
@@ -282,7 +337,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 radius: radius * 1.54,
                 start: .pi * 0.17,
                 end: .pi * 0.83,
-                segments: layout == .watch ? 34 : 64
+                segments: layout.curveSegments(watch: 34, phone: 36)
             ),
             context: &context,
             color: palette.silver.opacity(0.24 * signalMultiplier),
@@ -295,7 +350,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 radiusX: radius * 1.56,
                 radiusY: radius * 0.18,
                 rotation: sin(phase * .pi * 2) * 0.025,
-                segments: layout == .watch ? 46 : 82
+                segments: layout.curveSegments(watch: 46, phone: 44)
             ),
             context: &context,
             color: palette.silver.opacity(0.30 * signalMultiplier),
@@ -307,7 +362,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 radiusX: radius * 1.24,
                 radiusY: radius * 0.34,
                 rotation: .pi / 3 + sin(phase * .pi * 2 + 1.3) * 0.06,
-                segments: layout == .watch ? 38 : 72
+                segments: layout.curveSegments(watch: 38, phone: 40)
             ),
             context: &context,
             color: palette.cool.opacity(0.20 * signalMultiplier),
@@ -319,7 +374,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 radiusX: radius * 1.18,
                 radiusY: radius * 0.31,
                 rotation: -.pi / 3 - sin(phase * .pi * 2 + 0.5) * 0.05,
-                segments: layout == .watch ? 38 : 72
+                segments: layout.curveSegments(watch: 38, phone: 40)
             ),
             context: &context,
             color: palette.silver.opacity(0.18 * signalMultiplier),
@@ -344,7 +399,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                     radiusX: width,
                     radiusY: height,
                     rotation: sin(phase * .pi * 2 + CGFloat(index) * 0.7) * 0.018,
-                    segments: layout == .watch ? 24 : 46
+                    segments: layout.curveSegments(watch: 24, phone: 26)
                 ),
                 context: &context,
                 color: palette.pale.opacity((0.12 + Double(highlight) * 0.15) * signalMultiplier),
@@ -361,7 +416,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                     radiusX: width,
                     radiusY: radius,
                     rotation: cos(angle + phase * 0.50) * 0.10,
-                    segments: layout == .watch ? 34 : 64
+                    segments: layout.curveSegments(watch: 34, phone: 36)
                 ),
                 context: &context,
                 color: palette.silver.opacity((0.11 + Double(JARVISCathedralGeometry.pseudo(index + 40)) * 0.15) * signalMultiplier),
@@ -400,7 +455,9 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 ? palette.bright
                 : (index % 3 == 0 ? palette.cool : palette.silver)
             let width = (index % 11 == 0 ? 1.25 : 0.55) * layout.lineScale
-            let points = filament.sampledPoints(count: layout == .watch ? 9 : 14)
+            let points = filament.sampledPoints(
+                count: layout.curveSegments(watch: 9, phone: 8)
+            )
 
             if telemetry.signalLost {
                 let gapStart = max(2, points.count / 2 - 1)
@@ -689,7 +746,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 radius: radius * 1.07,
                 start: start,
                 end: end,
-                segments: layout == .watch ? 5 : 8
+                segments: layout.curveSegments(watch: 5, phone: 5)
             )
 
             if layout == .phone && runner > 0.55 {
@@ -739,7 +796,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             radius: radius * 1.22,
             start: scannerStart,
             end: scannerEnd,
-            segments: layout == .watch ? 10 : 18
+            segments: layout.curveSegments(watch: 10, phone: 10)
         )
         if layout == .phone {
             stroke(
@@ -868,7 +925,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             radius: radius,
             start: start,
             end: end,
-            segments: layout == .watch ? 12 : 20
+            segments: layout.curveSegments(watch: 12, phone: 12)
         )
         if glow {
             stroke(points, context: &context, color: palette.bright.opacity(0.10), width: width + 4.5)

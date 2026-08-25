@@ -452,6 +452,24 @@ grep -q 'CTFontManagerRegisterFontsForURL' WidgetShared/NeuralCoreContinuousAnim
 grep -q 'phoneContinuousFrameCount = 60' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'watchContinuousFrameCount = 32' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'JARVISWidgetTimerAnimationFont.register()' JARVISWidget/NeuralCoreWidget.swift
+grep -q '.id(entry.date.timeIntervalSinceReferenceDate)' JARVISWidget/NeuralCoreWidget.swift
+grep -q 'ZStack(alignment: .topLeading)' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q 'ForEach(0..<layout.continuousFrameCount' WidgetShared/NeuralCoreContinuousAnimation.swift
+reject_match 'live Neural Core must not retain an unmasked frame-zero fallback' -qsF 'firstMaskedFrame' WidgetShared/NeuralCoreContinuousAnimation.swift
+[[ "$(grep -c 'JARVISWidgetTimerFrameWindow(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "1" ]]
+reject_match 'phone Neural Core motion must not be disabled by a host rendering-mode classification' -qsF 'layout != .phone || renderingMode == .fullColor' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q 'JARVISNeuralCoreFrameArtwork' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q '.widgetAccentable(true)' WidgetShared/NeuralCoreArtwork.swift
+reject_match 'live Cathedral frames must not use extra blend passes' -Eq '\.blendMode\(|\.compositingGroup\(' WidgetShared/NeuralCoreContinuousAnimation.swift
+reject_match 'live Cathedral Canvas must not paint an opaque phone fill' -Eq 'fillsBackground|widgetAccentable\(false\)' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'func curveSegments(watch: Int, phone: Int)' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'layout.curveSegments(watch: 46, phone: 44)' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'layout.curveSegments(watch: 9, phone: 8)' WidgetShared/NeuralCoreArtwork.swift
+reject_match 'phone Cathedral curves must retain archive-safe physical tessellation' -Eq 'layout == \.watch \? (34 : 64|30 : 56|46 : 82|38 : 72|24 : 46|9 : 14)' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'JARVISNeuralCoreWordmark(layout: layout)' WidgetShared/NeuralCoreContinuousAnimation.swift
+[[ "$(grep -c 'JARVISNeuralCoreArtwork(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "1" ]]
+[[ "$(grep -c 'Text("JARVIS")' WidgetShared/NeuralCoreArtwork.swift)" == "1" ]]
+grep -q 'reloadTimelines(ofKind: "JARVISNeuralCoreWidget.v1")' JARVIS/JARVISApp.swift
 grep -q 'JARVISWidgetTimerAnimationFont.register()' JARVISWatchWidget/NeuralCoreWidget.swift
 [[ "$(shasum -a 256 WidgetShared/FillRect-Regular.otf | awk '{print $1}')" == "7a41bc7e983b7e67f055fdb444fc3dd0d94fd3e288532295b7045b79b655a42a" ]]
 [[ -f docs/third-party/AnimationLimitBreaker-LICENSE.txt ]]
@@ -460,6 +478,7 @@ reject_match 'approved artwork omits the synchronized subtitle' -qsF 'Text("SYNC
 reject_match 'approved artwork omits visible signal-lost copy' -qsF 'Text("SIGNAL LOST")' WidgetShared/NeuralCoreArtwork.swift
 reject_match 'approved artwork omits visible host copy' -qsF 'Text("MAC-MINI-64")' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'Text("JARVIS")' WidgetShared/NeuralCoreArtwork.swift
+grep -q '.unredacted()' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'JARVISNeuralCoreMotion.transitionDuration' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'accessibilityReduceMotion' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'isLuminanceReduced' WidgetShared/NeuralCoreArtwork.swift

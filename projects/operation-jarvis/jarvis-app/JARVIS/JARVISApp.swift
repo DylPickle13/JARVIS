@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import WidgetKit
 
 @main
 struct JARVISApp: App {
@@ -11,6 +12,9 @@ struct JARVISApp: App {
         let settings = PiTerminalSettings()
         _piTerminal = StateObject(wrappedValue: PiTerminalController(settings: settings))
         JARVISAppShortcuts.updateAppShortcutParameters()
+        // Rebuild the phone Neural Core's system-owned timer selectors after a
+        // host launch. WidgetKit still decides when to honor the reload.
+        WidgetCenter.shared.reloadTimelines(ofKind: "JARVISNeuralCoreWidget.v1")
     }
 
     var body: some Scene {

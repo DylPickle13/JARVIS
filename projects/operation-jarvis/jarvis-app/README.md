@@ -120,7 +120,32 @@ clients with the last allowlisted authenticated route, and retains a verified
 complete local WAV independently of terminal transport status. A cached response
 can therefore be played while the terminal route is reconnecting; true background
 still cancels unfinished networking, never queues terminal input, and never
-claims unsupported continuous background transport.
+claims unsupported continuous background transport. Builds 65–68 investigated an
+unmasked iPhone Cathedral fallback while retaining the 60-frame/two-second cadence.
+Physical logs proved that the extra tree first exceeded WidgetKit's 30 MB extension
+limit; consolidating it with frame zero removed the memory kill but retained a
+static selector state. Build 69 moved each phase to a lightweight Canvas and exposed
+the next explicit rejection: the otherwise healthy serialized timeline was
+12,016,600 bytes and exceeded the archive-size ceiling. Build 70 preserves all 60
+phases, paths, particles, and filaments while sampling curves only as finely as the
+173-point phone surface can resolve. It achieved zero memory kills, zero archive
+rejections, and successful one-entry reloads, but its opaque Canvas background was
+remapped into a solid white Clear-mode tint. Build 71's attempted replacement blend
+required duplicate masks and again reached the 30 MB hard limit. At the owner's
+request, build 72 removes the unmasked Cathedral fallback and all live frame
+backgrounds: the live phone path is exactly 60 transparent, accentable Canvas phases
+with one system-timer mask each and one shared wordmark. Its physical archive was
+still rejected at 11,169,064 bytes because the newly masked frame zero consumed the
+remaining size headroom. Build 73 retains that no-fallback structure and reduces
+only subpixel phone curve sampling further; all 60 phases and all path, filament,
+particle, ray, column, and ring counts remain unchanged. Build 74 restores the
+shared wordmark's approved top-leading placement without adding another frame or
+mask. Reduced Motion, stale
+telemetry, luminance reduction, and unavailable-font contexts still use the normal
+accessible static state rather than claiming unsupported motion. A real timeline
+replacement receives a fresh identity, and launching the host requests a
+WidgetKit-controlled reload; neither path runs a process timer or claims iOS must
+animate continuously.
 Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
@@ -836,6 +861,63 @@ never deploy to a device outside Dylan's allowlist.
   are included for physical diagnostics. No
   automatic speech, new credential, new port, workout, extended runtime session,
   or terminal input path is added.
+- Build 65 adds an iPhone-only animation fail-safe under the existing 60
+  procedural Cathedral frames. If WidgetKit suspends the timer masks in an
+  all-transparent state, the fail-safe remains a complete fixed-phase composition
+  with full authored layer density, luminance, and the JARVIS wordmark. Each
+  selected animation frame first paints the same dark background, so the fail-safe
+  adds no ghost trails during normal 30 FPS motion. A new timeline entry changes
+  the animated view identity, and host launch requests a Neural Core timeline
+  reload, giving WidgetKit supported opportunities to rebuild a suspended selector
+  without a process timer, private API, or animation claim. The non-sensitive
+  JARVIS brand label is explicitly unredacted; telemetry remains fail-closed and is
+  never exempted from WidgetKit privacy treatment.
+- Build 66 removes build 65's iPhone `widgetRenderingMode == .fullColor` motion
+  gate. Physical iOS 26 can classify a full-sized Home Screen widget as accented
+  or clear; the gate therefore selected the static branch even though the system
+  timer selector was available. Full-density fail-safe artwork remains beneath
+  all rendering modes, while reduced-motion, stale telemetry, luminance reduction,
+  and unavailable-font conditions continue to select a complete static frame.
+- Build 67 performs the first physical memory reduction after device logs proved
+  `JARVISWidget` was killed at 30,721 KB for exceeding iOS's 30 MB active hard
+  limit while producing its replacement timeline; WidgetKit then retained the old
+  static archive. Continuous artwork now omits the phase-independent wordmark from
+  the fallback and every masked frame and draws one unredacted wordmark above the
+  complete stack. Physical build-67 logging showed that removing those Text
+  subtrees alone was insufficient: the process still reached the same hard limit.
+- Build 68 removes the actual extra complete tree. Phone frame zero is both the
+  unmasked, always-present fail-safe and the normal first phase; masked frames
+  1–59 replace it during their slots. The phone therefore serializes exactly
+  60 complete Cathedral frames rather than 61 while retaining all 60 phases per
+  two seconds. Watch keeps its existing 32 masked frames with no added fallback.
+  Physical build-68 logging confirmed zero 30 MB kills, but generation still took
+  about 2.3 seconds across WidgetKit's rendering variants and the replacement file
+  missed the system archive window.
+- Build 69 replaces every internal full `JARVISNeuralCoreArtwork` subtree with a
+  lightweight Canvas-only frame. Geometry, animation transactions, clipping, and
+  accessibility remain on the outer continuous view once. Static contexts retain
+  the complete accessible artwork path. Clean physical logging then showed the
+  healthy 12,016,600-byte archive being explicitly rejected as too large.
+- Build 70 reduces only phone curve tessellation to the physical widget's resolvable
+  precision. It preserves 60 phases per two seconds and every path, filament,
+  particle, ray, column, and ring; Watch sampling is unchanged. Physical logs
+  confirmed successful timeline reloads with no memory or archive-size kill.
+- Build 71 removes the Canvas-internal phone background after physical Clear mode
+  remapped it into a solid white accented layer, but its duplicate replacement masks
+  again exceeded the 30 MB extension limit and the timeline was rejected.
+- Build 72 removes the unmasked live fallback and every per-frame background. Its
+  best-effort live path consists only of 60 transparent accentable Canvas phases,
+  one timer mask per phase, and one shared wordmark. Physical logs showed healthy
+  memory but rejected its 11,169,064-byte timeline archive as too large.
+- Build 73 reduces only subpixel phone curve sampling to recover archive headroom
+  for frame zero's timer mask. It retains all 60 phases and every artwork element;
+  Watch tessellation remains unchanged. Physical logs confirmed three successful
+  timeline reloads with no memory or archive rejection, and captured motion resumed.
+- Build 74 restores the once-shared wordmark to its approved top-leading alignment
+  without adding any frame, mask, background, or fallback. The exact signed iPhone
+  product produced two successful physical timeline reloads with zero memory kills,
+  archive rejections, or reload failures; a 7.17-second capture sampled 17 distinct
+  Cathedral frames with no static run.
 - Build 42 raises dark Watch ANSI foregrounds to a tested minimum luminance while
   retaining hue relationships, keeps true black for inverse cells, raises dim
   opacity from `0.62` to `0.82`, and uses 8-point horizontal/bottom plus 6-point

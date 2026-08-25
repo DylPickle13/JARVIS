@@ -67,18 +67,20 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                 GeometryReader { geometry in
                     let extent = max(1, max(geometry.size.width, geometry.size.height))
 
-                    ZStack {
+                    ZStack(alignment: .topLeading) {
+                        // The live phone path contains only its 60 timer-selected
+                        // phases: no unmasked Cathedral underlay and no opaque
+                        // per-frame background. This is the smallest archive and
+                        // memory shape available to the best-effort 30 FPS selector.
                         ForEach(0..<layout.continuousFrameCount, id: \.self) { index in
-                            JARVISNeuralCoreArtwork(
+                            JARVISNeuralCoreAnimationFrame(
                                 telemetry: telemetry,
                                 layout: layout,
                                 motionPhase: JARVISNeuralCoreMotion.continuousPhase(
                                     basePhase: basePhase,
                                     frameIndex: index,
                                     frameCount: layout.continuousFrameCount
-                                ),
-                                allowsMotion: true,
-                                hidesAccessibility: true
+                                )
                             )
                             .mask {
                                 JARVISWidgetTimerFrameWindow(
@@ -92,6 +94,12 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                                 )
                             }
                         }
+
+                        // The phase-independent brand label is serialized once,
+                        // not once per frame. This preserves the always-visible
+                        // wordmark while staying under the 30 MB extension cap.
+                        JARVISNeuralCoreWordmark(layout: layout)
+                            .accessibilityHidden(true)
                     }
                 }
             } else {
@@ -107,6 +115,20 @@ struct JARVISNeuralCoreContinuousArtwork: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(JARVISNeuralCoreAccessibility.label(for: telemetry))
         .accessibilityHint(JARVISNeuralCoreAccessibility.hint(for: layout))
+    }
+}
+
+private struct JARVISNeuralCoreAnimationFrame: View {
+    let telemetry: JARVISNeuralCoreTelemetry
+    let layout: JARVISNeuralCoreLayout
+    let motionPhase: Double
+
+    var body: some View {
+        JARVISNeuralCoreFrameArtwork(
+            telemetry: telemetry,
+            layout: layout,
+            motionPhase: motionPhase
+        )
     }
 }
 
