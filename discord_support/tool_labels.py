@@ -57,7 +57,6 @@ DISCORD_BOT_TOOL_KEYS = {
     "minecraft_jarvis",
     "parallel",
     "read",
-    "session_search",
     "smart_plug",
     "ssh",
     "web_search",
@@ -97,7 +96,6 @@ TOOL_EMOJIS = {
     "minecraft_jarvis": "⛏️",
     "parallel": "🔀",
     "read": "📖",
-    "session_search": "🧭",
     "smart_plug": "🔌",
     "ssh": "🔗",
     "web_search": "🔎",
@@ -224,7 +222,6 @@ TOOL_VOICE_START_NARRATIONS = {
     "minecraft_jarvis": "I’ll contact the Minecraft JARVIS bot, sir.",
     "parallel": "I’ll run those in parallel, sir.",
     "read": "I’ll inspect the file, sir.",
-    "session_search": "I’ll search the previous sessions, sir.",
     "smart_plug": "I’ll adjust the smart plug, sir.",
     "ssh": "I’ll connect over SSH, sir.",
     "web_search": "I’ll search the web, sir.",
@@ -264,7 +261,6 @@ TOOL_VOICE_FAILURE_NARRATIONS = {
     "minecraft_jarvis": "The Minecraft JARVIS call failed, sir.",
     "parallel": "The parallel tools failed, sir.",
     "read": "I couldn’t read the file, sir.",
-    "session_search": "The session search failed, sir.",
     "smart_plug": "The smart plug action failed, sir.",
     "ssh": "The SSH command failed, sir.",
     "web_search": "The web search failed, sir.",
@@ -374,11 +370,6 @@ def _tool_action_label(tool_name: str, args: object) -> str:
         message = _first_tool_arg(tool_args, "message", max_length=140)
         emoji = _tool_emoji("discord_ping")
         return f"{emoji} Sent Discord ping: \"{message}\"" if message else f"{emoji} Sent Discord ping"
-
-    if tool_key == "session_search":
-        query = _clean_tool_parameter(tool_args.get("query"))
-        emoji = _tool_emoji("session_search")
-        return f"{emoji} Searched prior sessions for \"{query}\"" if query else f"{emoji} Searched prior sessions"
 
     if tool_key == "memory":
         action = _clean_tool_parameter(tool_args.get("action"), max_length=40)
@@ -561,12 +552,11 @@ def _tool_failure_label(tool_name: str, args: object) -> str:
     if tool_key == "edit":
         path = _clean_tool_parameter(tool_args.get("path"))
         return f"❌ {emoji} Could not patch file \"{path}\"" if path else f"❌ {emoji} Could not patch file"
-    if tool_key in {"web_search", "code_search", "session_search", "memory_search", "grep", "find"}:
+    if tool_key in {"web_search", "code_search", "memory_search", "grep", "find"}:
         query = _clean_tool_parameter(tool_args.get("query") or tool_args.get("pattern"))
         readable = {
             "web_search": "web search",
             "code_search": "code reference search",
-            "session_search": "prior session search",
             "memory_search": "memory search",
             "grep": "file search",
             "find": "file lookup",

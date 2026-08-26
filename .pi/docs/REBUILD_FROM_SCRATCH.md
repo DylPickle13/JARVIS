@@ -1,6 +1,6 @@
 # Rebuild JARVIS From Scratch
 
-Updated: 2026-08-10 EDT
+Updated: 2026-08-26 EDT
 
 This runbook rebuilds the JARVIS repo, Pi extensions, Discord bot, and local tool surface from a fresh machine or fresh clone. It assumes you have access to the private secrets that are intentionally not stored in git.
 
@@ -18,10 +18,9 @@ Back up or be prepared to recreate:
 | Trusted SSH host allowlist | `.pi/ssh-hosts.json` | If SSH tools are used | Hostnames/IPs, usernames, key paths, and allowed directories; recreate from [`.pi/ssh-hosts.example.json`](../ssh-hosts.example.json). Never put private keys in this file. |
 | Operation JARVIS secrets | `projects/operation-jarvis/.env`, `projects/operation-jarvis/smart-plug/.env`, `projects/operation-jarvis/air-purifier/.env` | If used | Can also be consolidated into root `.env` for many settings. |
 | Pi auth/session provider state | `~/.pi/agent/` | Usually | Contains Pi login/auth and session history unless API keys are used. |
-| Project Pi sessions | `~/.pi/agent/sessions/<project-session-dir>` | Optional | Needed for historical session continuity. |
+| Project Pi sessions | `~/.pi/agent/sessions/<project-session-dir>` | Optional but valuable | Used for direct historical lookup with baseline coding tools; record the project-specific path in `.pi/APPEND_SYSTEM.md`. |
 | Durable JARVIS memory | `.pi/memory/memory.sqlite*` | Optional but valuable | Project memories; ignored by git. |
 | Discord scheduled jobs | `.pi/discord-cron/discord-cron.sqlite*` | Optional but valuable | If absent, recreate jobs via `discord_cron add`. |
-| Session-search index | `.pi/session-search/index.sqlite*` | No | Can be rebuilt from session files. |
 | Browser profile | `~/.pi/agent/browser-profile` or `PI_BROWSER_PROFILE_DIR` | Optional | Preserves visible-browser cookies/session state. Do not commit. |
 | Google Workspace OAuth | external `gws` token/config store | If Workspace tools are used | Run `gws auth ...` if not restored. |
 | Operation media/data artifacts | `projects/operation-jarvis/data/*`, `projects/operation-jarvis/media/*` | Optional | Captures, TTS files, runtime state; ignored by git. |
@@ -41,7 +40,7 @@ Also install/configure as needed:
 - `gws` CLI for Google Workspace access.
 - SSH for explicitly configured remote hosts, if remote tools are used.
 - Google Chrome or Chromium for the visible browser extension.
-- Access to the local oMLX/OpenAI-compatible endpoints used for Pi provider setup, PDF conversion, ASR, and embeddings.
+- Access to the local oMLX/OpenAI-compatible endpoints used for Pi provider setup, PDF conversion, and ASR.
 
 Install or update Pi:
 
@@ -73,19 +72,19 @@ install -m 600 .env.example .env
 install -m 600 .pi/settings.example.json .pi/settings.json
 install -m 600 .pi/APPEND_SYSTEM.example.md .pi/APPEND_SYSTEM.md
 install -m 600 .pi/ssh-hosts.example.json .pi/ssh-hosts.json
-install -d -m 700 .pi/runtime .pi/memory .pi/session-search .pi/discord-cron
+install -d -m 700 .pi/runtime .pi/memory .pi/discord-cron
 ```
 
 Customize these ignored local files before starting Pi:
 
 - `.env`: restore secrets from the private secret store.
 - `.pi/settings.json`: replace placeholder provider/model values while retaining the pinned package source.
-- `.pi/APPEND_SYSTEM.md`: restore preferred address, timezone, aliases, and local operating rules.
+- `.pi/APPEND_SYSTEM.md`: restore preferred address, timezone, aliases, local operating rules, and the project-specific Pi session JSONL directory for direct historical lookup.
 - `.pi/ssh-hosts.json`: replace example hosts with only explicitly trusted machines and narrow allowed directory prefixes.
 
 If private backups exist, restore them instead of copying the templates, then run `chmod 600` on the four local files and `chmod 700` on the private directories shown above. Do not commit the resulting local files. The templates are deliberately safe and cannot reproduce private host addresses, usernames, key locations, device aliases, or personal preferences without customization.
 
-`.pi/extensions/00-private-permissions.ts` reapplies these owner-only modes whenever Pi starts. The memory, session-search, and Discord-cron runners also enforce mode `0600` on their SQLite databases, WAL/SHM/journal sidecars, locks, and deletion manifests, with mode `0700` on their default data directories.
+`.pi/extensions/00-private-permissions.ts` reapplies these owner-only modes whenever Pi starts. The memory and Discord-cron runners also enforce mode `0600` on their SQLite databases, WAL/SHM/journal sidecars, locks, and deletion manifests, with mode `0700` on their default data directories.
 
 Minimum root `.env` for basic Discord/Pi operation:
 
@@ -98,7 +97,7 @@ Then fill subsystem settings as needed:
 
 - Web/search: optional `EXA_API_KEY`; optional `YOUTUBE_API_KEY` or `GOOGLE_API_KEY` for `web_search` YouTube metadata/search
 - Maps: `GOOGLE_MAPS_API_KEY` plus optional `GOOGLE_MAPS_DEFAULT_*` and `GOOGLE_MAPS_HOME_ADDRESS`
-- oMLX/PDF/voice/embeddings: `OMLX_API_KEY`, `OMLX_64_BASE_URL`, optional `OMLX_PDF_*`, `DISCORD_VOICE_*`, `SESSION_SEARCH_*`
+- oMLX/PDF/voice: `OMLX_API_KEY`, `OMLX_64_BASE_URL`, optional `OMLX_PDF_*`, `DISCORD_VOICE_*`
 - Discord helpers: `DISCORD_CRON_*`, `DISCORD_PING_*`, `JARVIS_DISCORD_SEND_FILE_MAX_BYTES`
 - Browser: optional `PI_BROWSER_CHROME_PATH`, `PI_BROWSER_PROFILE_DIR`, `PI_BROWSER_KEEP_OPEN_ON_SHUTDOWN`
 - Operation JARVIS: `JARVISD_*`, `JARVIS_API_TOKEN`, `JARVIS_EMIT_EVENTS`, `SPOTIFY_*`, `KASA_*`, `VESYNC_*`, `JARVIS_AIR_PURIFIER_*`
@@ -183,16 +182,11 @@ If you have backups, restore them now before smoke tests:
 # Examples only; adjust backup paths.
 cp /backup/JARVIS/.pi/memory/memory.sqlite* .pi/memory/ 2>/dev/null || true
 cp /backup/JARVIS/.pi/discord-cron/discord-cron.sqlite* .pi/discord-cron/ 2>/dev/null || true
-cp /backup/JARVIS/.pi/session-search/index.sqlite* .pi/session-search/ 2>/dev/null || true
 # Optional browser profile restore, if backed up:
 # rsync -a /backup/pi-browser-profile/ ~/.pi/agent/browser-profile/
 ```
 
-If you restored old Pi session JSONL files, rebuild session search later with:
-
-```bash
-/path/to/JARVIS/.venv/bin/python .pi/session-search/session_search.py --json index
-```
+If you restored old Pi session JSONL files, record their project-specific directory in `.pi/APPEND_SYSTEM.md` so baseline coding tools can search them directly.
 
 ## 8. Smoke-test the extension/tool stack
 
@@ -211,7 +205,6 @@ Deeper local status checks, if you intentionally want to open/read the local SQL
 cd /path/to/JARVIS
 pi list
 .venv/bin/python .pi/memory/memory.py --json status
-.venv/bin/python .pi/session-search/session_search.py --json status
 .venv/bin/python .pi/discord-cron/runner.py --json status
 ```
 
@@ -322,11 +315,11 @@ Do not run another bot process with the same token at the same time. The root bo
 - [ ] Root `.venv` imports `discord.py` and runs `python discord_bot.py`.
 - [ ] `.env`, `.pi/settings.json`, `.pi/APPEND_SYSTEM.md`, and `.pi/ssh-hosts.json` were privately restored or created from their tracked templates.
 - [ ] All four local files remain ignored by git and have mode `0600`.
-- [ ] `.pi/runtime`, `.pi/memory`, `.pi/session-search`, and `.pi/discord-cron` have mode `0700`; private databases and sidecars have mode `0600`.
+- [ ] `.pi/runtime`, `.pi/memory`, and `.pi/discord-cron` have mode `0700`; private databases and sidecars have mode `0600`.
 - [ ] `.pi/settings.json` retains `npm:pi-web-access@0.13.0`; `pi list` and the installed package metadata agree.
 - [ ] `/lazy-tools` works in Pi.
 - [ ] `memory.py --json status` works.
-- [ ] `session_search.py --json status` works; `index` works if embedding endpoint is available.
+- [ ] The Pi session JSONL directory recorded in `.pi/APPEND_SYSTEM.md` exists and can be searched with baseline coding tools.
 - [ ] `runner.py --json status` works for Discord cron.
 - [ ] `jarvis-cli --json status --no-cast` works.
 - [ ] `jarvisd` starts and answers `/health`; native app verification passes.
@@ -346,7 +339,7 @@ Do not run another bot process with the same token at the same time. The root bo
 | Browser tools unavailable | Run `npm install` in `.pi/extensions/50-browser`; check Google Chrome path or set `PI_BROWSER_CHROME_PATH`. |
 | PDF reads fail | Check local oMLX `OMLX_PDF_*` settings first; ensure `pdftotext` from `poppler` is installed for fallback. |
 | Discord cron cannot post | Check `DISCORD_BOT_TOKEN`, guild/channel IDs, bot permissions, and `runner.py --json setup`. |
-| Session search fails | `status` first; then verify embedding endpoint/model and `SESSION_SEARCH_*` env vars. |
+| Prior-session lookup fails | Verify the project-specific session JSONL directory in `.pi/APPEND_SYSTEM.md`; use `rg -l` to shortlist files before parsing matching records. |
 | Memory unavailable | Load the `memory` group, run `memory` with `action: "status"`, and verify `.pi/memory/memory.sqlite`; automatic prompt-time recall is intentionally disabled. |
 | `jarvis` tool fails | Run `projects/operation-jarvis/jarvis-cli --json help`; check the Operation venv, Cast, Spotify, Kasa, purifier, and `jarvisd` configuration as appropriate. |
 

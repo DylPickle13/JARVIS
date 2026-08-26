@@ -37,9 +37,6 @@
 /.pi/discord-cron-runs/
 /.pi/discord-cron-runner.log
 /.pi/discord_bot.lock
-/.pi/session-search/index.sqlite*
-/.pi/session-search/*.lock
-/.pi/session-search/cron.log
 /.pi/memory/*.sqlite*
 /.pi/scheduled-sessions/
 /.pi/location/

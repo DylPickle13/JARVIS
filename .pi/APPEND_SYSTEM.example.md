@@ -5,3 +5,4 @@
 - Document required tool-loading and safety rules for home-control requests here.
 - Document purifier or other device-specific control paths here.
 - State the canonical local host/root and reserve SSH for explicit remote hosts. Keep connection details in ignored config files.
+- Record the project-specific Pi session JSONL directory under `~/.pi/agent/sessions/`. For prior-session questions, use `rg -l` with distinctive literal terms, then parse/read only the small set of matching files; never bulk-load the session directory.

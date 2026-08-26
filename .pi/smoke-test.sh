@@ -197,12 +197,12 @@ require_mode "project secrets" ".env" "600"
 require_mode "Pi settings" ".pi/settings.json" "600"
 require_mode "local system context" ".pi/APPEND_SYSTEM.md" "600"
 require_mode "SSH host allowlist" ".pi/ssh-hosts.json" "600"
-for directory in .pi/runtime .pi/memory .pi/session-search .pi/discord-cron; do
+for directory in .pi/runtime .pi/memory .pi/discord-cron; do
   require_mode "private directory" "$directory" "700"
 done
 while IFS= read -r path; do
   require_mode "private runtime file" "$path" "600"
-done < <(find .pi .pi/memory .pi/session-search .pi/discord-cron -maxdepth 1 -type f \
+done < <(find .pi .pi/memory .pi/discord-cron -maxdepth 1 -type f \
   \( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -name '*.sqlite-journal' \
      -o -name '*.sqlite.lock' -o -name 'deleted-sessions-*.json' \) -print 2>/dev/null)
 if [[ -d .pi/runtime/pi-web-access ]]; then
@@ -313,7 +313,6 @@ expected_extension_roots=(
   .pi/extensions/10-discord-cron.ts
   .pi/extensions/15-discord-send-file.ts
   .pi/extensions/16-discord-ping.ts
-  .pi/extensions/20-session-search.ts
   .pi/extensions/30-google-access.ts
   .pi/extensions/34-maps.ts
   .pi/extensions/35-memory.ts
@@ -477,7 +476,6 @@ const optionalToolFiles = [
   '.pi/extensions/10-discord-cron.ts',
   '.pi/extensions/15-discord-send-file.ts',
   '.pi/extensions/16-discord-ping.ts',
-  '.pi/extensions/20-session-search.ts',
   '.pi/extensions/30-google-access.ts',
   '.pi/extensions/35-memory.ts',
   '.pi/extensions/45-jarvis.ts',
@@ -514,14 +512,12 @@ import requests  # noqa: F401
 print('root direct runtime imports ok')
 PY
   run_check "memory CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/memory/memory.py --help
-  run_check "session-search CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/session-search/session_search.py --help
   run_check "discord-cron CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/discord-cron/runner.py --help
 fi
 run_check "Operation JARVIS CLI help" env PYTHONDONTWRITEBYTECODE=1 JARVIS_EMIT_EVENTS=0 projects/operation-jarvis/jarvis-cli --help
 
 section "Runtime data presence only"
 warn_file "memory DB present" ".pi/memory/memory.sqlite"
-warn_file "session-search index present" ".pi/session-search/index.sqlite"
 warn_file "discord-cron DB present" ".pi/discord-cron/discord-cron.sqlite"
 pi_session_dir_name="--${PWD#/}--"
 pi_session_dir_name="${pi_session_dir_name//\//-}"

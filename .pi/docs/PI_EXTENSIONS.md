@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-08-10 EDT
+Updated: 2026-08-26 EDT
 
 The local Pi extension inventory lives in `.pi/extensions/`. `.pi/smoke-test.sh` keeps a read-only manifest check so added or removed extension roots are visible during smoke testing. The manifest intentionally ignores the shared `.pi/extensions/lib/` directory.
 
@@ -23,7 +23,6 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `10-discord-cron.ts` — scheduled Discord-backed Pi jobs.
 - `15-discord-send-file.ts` — current-channel Discord file upload helper.
 - `16-discord-ping.ts` — immediate Discord notifications and attachments.
-- `20-session-search.ts` — prior Pi/JARVIS session search.
 - `30-google-access.ts` — Google Workspace tool.
 - `34-maps.ts` — Google Maps places/geocode/routes natural-language tool.
 - `35-memory.ts` — explicit durable project-local memory; no prompt-time auto-recall or system-prompt mutation.
@@ -61,7 +60,6 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `google` | `google_workspace` |
 | `cron` | `discord_cron` |
 | `discord` | `discord_ping`, `discord_send_file` |
-| `sessions` | `session_search` |
 | `reaper` | `reaper_ping`, `reaper_lua` |
 | `browser` | `browser_status`, `browser_open`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_upload`, `browser_key`, `browser_scroll`, `browser_wait`, `browser_extract`, `browser_tabs`, `browser_close` |
 
@@ -70,6 +68,8 @@ The provider-visible `load_tools` description, prompt snippet, parameter help, a
 Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full group playbooks are returned by model-called `load_tools` and remain in conversation context. Manual `/load-tools` queues the same hidden playbook for the next user turn. `98-slim-provider-payload.ts` preserves the registry-generated top-level `load_tools` description and also slims deferred schemas nested in OpenAI `tool_search_output` items. The smoke test checks these invariants for drift.
 
 Durable memory is explicit-only. Loading the `memory` group preserves search/remember/update/forget/list/status functionality without performing prompt-time recall or changing the system prompt between user turns.
+
+Prior Pi/JARVIS sessions are searched directly with baseline coding tools. The project-specific JSONL directory and raw-search workflow belong in ignored `.pi/APPEND_SYSTEM.md`; use `rg -l` to shortlist files, then parse/read only the relevant records.
 
 The `jarvis` group includes Operation JARVIS actions for Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
 

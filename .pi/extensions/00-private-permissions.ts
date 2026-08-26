@@ -23,7 +23,6 @@ const PRIVATE_FILES = [
 const PRIVATE_DIRS = [
 	join(PROJECT_ROOT, ".pi", "runtime"),
 	join(PROJECT_ROOT, ".pi", "memory"),
-	join(PROJECT_ROOT, ".pi", "session-search"),
 	join(PROJECT_ROOT, ".pi", "discord-cron"),
 ];
 

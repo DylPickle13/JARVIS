@@ -1,6 +1,6 @@
 # JARVIS
 
-JARVIS is a Discord-facing control layer for the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent) and a local “Operation JARVIS” room stack. The main bot process handles Discord text chat, live voice, attachments, and persistent Pi RPC sessions. The repository also provides scheduled jobs, memory/session search, browser automation, Cast/Spotify media, smart plugs, the Levoit air purifier, room audio, and native iOS/watchOS control through `jarvisd`.
+JARVIS is a Discord-facing control layer for the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent) and a local “Operation JARVIS” room stack. The main bot process handles Discord text chat, live voice, attachments, and persistent Pi RPC sessions. The repository also provides scheduled jobs, durable memory, direct raw-session lookup, browser automation, Cast/Spotify media, smart plugs, the Levoit air purifier, room audio, and native iOS/watchOS control through `jarvisd`.
 
 The repository is public by design, but it expects private local configuration. Secrets, device mappings, LAN hosts, SSH targets, runtime databases, generated media, and personal prompt overrides belong in ignored files such as `.env`, `.pi/APPEND_SYSTEM.md`, `.pi/ssh-hosts.json`, and Operation JARVIS hardware config files.
 
@@ -12,7 +12,7 @@ This root README is a map and quick-start guide. Detailed subsystem notes live i
 - **Pi RPC sessions** — [`llm.py`](llm.py) keeps persistent per-channel `pi --mode rpc` sessions with model/thinking controls, steering, cancellation, session deletion, manual compaction, and local session telemetry consumed by `jarvisd`.
 - **Inputs** — text prompts, saved file attachments, native image attachments, and Discord mobile voice messages transcribed through an OpenAI-compatible oMLX Whisper endpoint.
 - **Live voice** — [`projects/operation-jarvis/voice/`](projects/operation-jarvis/voice/) is loaded by the main bot: Discord PCM → openWakeWord → oMLX Whisper ASR → Pi RPC → Piper JARVIS TTS → Discord playback. Its central `voice_commands.py` policy also gives Discord and room audio the same busy-only exact bare-`stop` behavior.
-- **Pi extensions** — [`.pi/extensions/`](.pi/extensions/) provides web/search helpers, lazy tool loading, memory, session search, Discord cron/ping/file upload tools, browser/Google/Maps/YouTube integrations, and Operation JARVIS tools.
+- **Pi extensions** — [`.pi/extensions/`](.pi/extensions/) provides web/search helpers, lazy tool loading, memory, Discord cron/ping/file upload tools, browser/Google/Maps/YouTube integrations, and Operation JARVIS tools.
 - **Operation JARVIS** — [`projects/operation-jarvis/`](projects/operation-jarvis/) contains the native iOS/watchOS app and `jarvisd` control plane, Codex/Copilot quota telemetry, Cast/Spotify media, TP-Link Kasa smart plugs, Levoit/VeSync air-purifier control, and Raspberry Pi room audio.
 - **Runtime data** — `.env`, attachments, generated media/data, SQLite indexes, logs, cron runs, and Pi runtime status files are ignored by git.
 
@@ -37,7 +37,6 @@ Tracked files provide generic defaults and placeholders. Local deployments shoul
 | [`.pi/docs/`](.pi/docs/) | Cold-rebuild and Pi extension/tool documentation. |
 | [`.pi/extensions/`](.pi/extensions/) | Project Pi extensions and lazy tool groups. |
 | [`.pi/memory/`](.pi/memory/) | SQLite-backed project memory runner. |
-| [`.pi/session-search/`](.pi/session-search/) | Semantic search over prior Pi/JARVIS sessions. |
 | [`.pi/discord-cron/`](.pi/discord-cron/) | Independent scheduled Pi jobs that post results to Discord. |
 | [`projects/operation-jarvis/`](projects/operation-jarvis/) | Native Apple clients/`jarvisd`, provider quotas, voice, room audio, Cast/media, smart plugs, and purifier subsystems. |
 | `attachments/` | Runtime Discord attachment storage, created locally and ignored by git. |
@@ -49,7 +48,7 @@ Requirements:
 - Python 3.13+; Python 3.13 is the tested/recommended runtime for the current voice dependency pins
 - Pi CLI on `PATH`
 - Discord bot token with Message Content and Voice States intents enabled
-- oMLX/OpenAI-compatible endpoints for voice ASR, local models, and embeddings as configured
+- oMLX/OpenAI-compatible endpoints for voice ASR and local models as configured
 - `ffmpeg` for Discord voice playback
 - Node.js 20+ for Pi/browser extensions
 
@@ -83,7 +82,7 @@ Common deployment configuration lives in `.env`; [`.env.example`](.env.example) 
 - **Voice/oMLX/TTS** — ASR endpoint/model, wake-word gates, Piper voice settings, TTS streaming, and idle session refresh.
 - **Native Apple/room hardware** — `JARVISD_*` daemon settings, Raspberry Pi room-audio tuning, Cast targets, smart-plug aliases, and purifier credentials.
 - **Remote SSH machines (private)** — configure explicit remote aliases in ignored `.pi/ssh-hosts.json` or `JARVIS_SSH_*` variables. Use normal coding tools for the local host; `ssh` supports captured commands and interactive PTY sessions on remotes. See [`.pi/docs/PI_EXTENSIONS.md`](.pi/docs/PI_EXTENSIONS.md).
-- **Tools** — Exa-backed web access, Google/YouTube APIs, memory, session search embeddings, Discord cron/ping/file upload, and Kasa smart-plug credentials.
+- **Tools** — Exa-backed web access, Google/YouTube APIs, memory, direct raw-session lookup, Discord cron/ping/file upload, and Kasa smart-plug credentials.
 
 ## Discord Usage
 

@@ -10,7 +10,6 @@ type CanonicalToolGroup =
   | "google"
   | "cron"
   | "discord"
-  | "sessions"
   | "browser"
   | "reaper";
 type ToolGroup = CanonicalToolGroup | "all";
@@ -42,7 +41,6 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   google: ["google_workspace"],
   cron: ["discord_cron"],
   discord: ["discord_ping", "discord_send_file"],
-  sessions: ["session_search"],
   reaper: ["reaper_ping", "reaper_lua"],
   browser: [
     "browser_status",
@@ -69,7 +67,6 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
   cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
   discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
-  sessions: "session_search over prior Pi/JARVIS sessions",
   reaper: "reaper_ping/reaper_lua for the live REAPER session on mac-mini-16 via inline Lua bridge",
   browser: "visible Chrome for rendered/interactive web: screenshots/clicks/typing/uploads/extract",
 };
@@ -162,15 +159,6 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Call `discord_ping` only after the requested goal or condition is verified complete. Keep messages concise and outcome-focused; do not send routine progress updates or speculative results.",
       "Verify every requested attachment before sending. After browser or file work, do not notify until the specifically requested result is actually ready.",
       "If `discord_send_file` is unavailable, do not substitute it for current-channel uploads; report the unavailable context unless a user-facing ping with attachments satisfies the request.",
-    ],
-  },
-  sessions: {
-    skill: "session-search",
-    lines: [
-      "Use `session_search` before scanning raw old session files when the user asks about prior Pi/JARVIS work, decisions, logs, or memories from previous sessions.",
-      "Start with `action: \"search\"`, a natural-language `query`, and a small `limit`; set `includeText: true` only when snippets are insufficient.",
-      "Use `action: \"status\"` to check freshness. Use `action: \"index\"` only when requested or when status/search results indicate the index is stale.",
-      "Search results cite session files/chunks; use them to answer concisely or decide which raw session file to inspect next.",
     ],
   },
   reaper: {
