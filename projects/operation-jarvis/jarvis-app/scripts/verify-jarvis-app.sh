@@ -103,18 +103,44 @@ grep -q 'defaultFontSize: CGFloat = 18' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'zoomSchemaDefaultsKey = "jarvis.pi-terminal.zoom-schema"' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'savedZoomSchema >= currentZoomSchema' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'keyboardDismissMode = .interactive' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'handleKeyboardDismissPan' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'handleNativeTerminalPan' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'panGestureRecognizer.addTarget(self, action: #selector(handleNativeTerminalPan(_:)))' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'allowMouseReporting = false' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'override func mouseModeChanged' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'prioritizeTouchScrolling' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'handleTouchScrollPan' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'let button = scrollingUp ? 64 : 65' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'max(36, fontSize \* 2.5)' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'static let deliveryFramesPerSecond = 60' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'CADisplayLink(target: self, selector: #selector(deliverNextTouchScrollStep(_:)))' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'stopTouchScrollDelivery(clearPending: true)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'configureNativeTextScrolling' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'alwaysBounceVertical = true' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'isDirectionalLockEnabled = true' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'decelerationRate = .normal' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'finger scrolling is always local and read-only on iPhone' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'struct PiTerminalOutputFilter' JARVIS/Terminal/PiSSHTransport.swift
+grep -Fq 'Array("\u{1b}[?1049h".utf8)' JARVIS/Terminal/PiSSHTransport.swift
+grep -Fq 'Array("\u{1b}[?1049l".utf8)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'static let localScrollbackLines = 100_000' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'getTerminal().changeHistorySize(PiTerminalPresentation.localScrollbackLines)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'func consumeRemoteOutput(_ bytes: \[UInt8\])' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'case .fullScreenScrollUp(let count):' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'getTerminal().scroll()' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'feed(byteArray: filtered\[...\])' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'struct PiTerminalHistorySizeParser' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'struct PiTerminalHistoryPromotionState' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'private final class PiSSHHistorySizeHandler' JARVIS/Terminal/PiSSHTransport.swift
+grep -q "display-message -p -t '=jarvis-ios:.%0' '#{history_size}'" JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'let metadataRows = max(0, historyRows - explicitScrollRows)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'testPiTerminalPromotesReadOnlyTmuxHistoryDeltaBeforeCursorAddressedRedraw' JARVISTests/AppStateTests.swift
+history_monitor_command="$(grep 'static let remoteCommand = "while /opt/homebrew/bin/tmux' JARVIS/Terminal/PiSSHTransport.swift)"
+[[ "$history_monitor_command" != *capture-pane* ]]
+[[ "$history_monitor_command" != *send-keys* ]]
+[[ "$history_monitor_command" != *clear-history* ]]
+[[ "$history_monitor_command" != *set-option* ]]
 grep -q 'override func showCursor(source: Terminal)' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'PiTerminalTouchScroll.cursorLocation' JARVIS/Terminal/PiSSHTransport.swift
+reject_match 'iPhone text scrolling must not emit remote wheel input or restore snapshot interpolation' -E 'PiTerminalTouchScroll|handleTouchScrollPan|touchScrollDisplayLink|deliverNextTouchScrollStep|PiTerminalScrollPhysicsDriver|resizableSnapshotView|wheelBytes|button = scrollingUp' JARVIS/Terminal/PiSSHTransport.swift
+reject_match 'iPhone text scrolling must have exactly one native pan owner and no output-time offset writes' -E 'keyboardDismissPan|UIPanGestureRecognizer\(target: self, action: #selector\(handleNativeTerminalPan|setContentOffset\(' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'JARVIS-terminal-scroll-diagnostics.log' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'controlSequenceDiagnostics.consume(bytes, terminalRows: getTerminal().rows)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'case .controlStringEscape:' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'ops=(lf:%d ind:%d csi:%d c1:%d su:%d/%d dl:%d/%d il:%d ed:%d el:%d cup:%d vpa:%d csr:%d/%d)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'promoted=%d/%d tmuxHistory=%d pendingHistory=%d terminal=%dx%d normalLines=%d alt=%d yDisp=%d trimmed=%d region=%d-%d' JARVIS/Terminal/PiSSHTransport.swift
+reject_match 'Pi mouse mode must not install SwiftTerm remote drag reporting on iPhone' -Fq 'super.mouseModeChanged' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'toggleTerminalKeyboard' JARVIS/Terminal/PiTerminalController.swift
 grep -q 'keyboard.chevron.compact.down' JARVIS/Terminal/PiTerminalView.swift
 grep -q 'slashBytes: \[UInt8\] = \[0x2f\]' JARVIS/Terminal/PiSSHTransport.swift
@@ -167,6 +193,11 @@ grep -q 'ssl.PROTOCOL_TLS_SERVER' terminald/jarvis_terminald.py
 grep -q 'hmac.compare_digest' terminald/jarvis_terminald.py
 grep -q 'MAX_INPUT_BYTES = 4096' terminald/jarvis_terminald.py
 grep -q 'capture-pane' terminald/jarvis_terminald.py
+grep -q 'MAX_HISTORY_PAGE_ROWS = 256' terminald/jarvis_terminald.py
+grep -q 'def history_page(self, start: int, limit: int)' terminald/jarvis_terminald.py
+grep -q '"/v1/terminal/history"' terminald/jarvis_terminald.py
+grep -q 'public func historyPage(start: Int, limit: Int = WatchTerminalHistoryPage.maximumRows)' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'Array(retained.suffix(3))' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'paste-buffer' terminald/jarvis_terminald.py
 grep -q 'processed_request_ids' terminald/jarvis_terminald.py
 grep -q 'refresh-client' terminald/jarvis_terminald.py
@@ -219,7 +250,8 @@ grep -q 'if !self.isSpeechPlaying { self.stopSpeech() }' JARVISWatch/Views/Watch
 grep -q 'var sequence = 0' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.frame(width: 44, height: 35)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Color.white.opacity(0.09)' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'requiresLiveTerminal: false' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'TextField("", text: \$keyboardDraft, prompt:' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '\.opacity(0.01)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'preservePreparedSpeech: isSpeechLoading || speechFileURL != nil' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'if !preserveSpeechPlayback && !preservePreparedSpeech { stopSpeech() }' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'failureAge < 12' JARVISWatch/Views/WatchTerminalView.swift
@@ -243,22 +275,29 @@ reject_match 'Watch speech must not accept arbitrary client text' -Fq '"text"' <
 reject_match 'Watch terminal must not fake a workout or unsupported extended-runtime category' -E 'WKExtendedRuntimeSession|HKWorkoutSession|isFrontmostTimeoutExtended' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'digitalCrownRotation' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.focused(\$crownIsFocused)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'from: -100_100' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'through: 0' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'isContinuous: false' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalCrownHistory.scrollOffset' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Crown live edge must not use rebound-prone incremental history' -Fq 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalANSIParser.parse(lines: frame.ansiLines)' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'frame.viewportRange(maximumLines:' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalANSIParser.wrapped(' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalLayout.mirrorFontSize(' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'let outputColumns = max(1, frame.columns)' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch terminal must not restore the rejected oversized font' -Fq 'wrappedOutputFontSize = 12.0' JARVISKit/Sources/JARVISKit/WatchTerminal.swift JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'public var liveEditorRange: Range<Int>?' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'frame.liveEditorRange' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalANSIParser.viewport(' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'let editorFontSize = outputFontSize' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch terminal must not require horizontal swiping' -Fq 'ScrollView(.horizontal' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch terminal must not duplicate Pi input in a prompt rail' -E 'private var promptRail|promptViewport\(displayColumns:' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Text("JARVIS")' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.frame(maxWidth: \.infinity, alignment: \.center)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.padding(\.horizontal, 7)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Image(systemName: "terminal.fill")' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'case fit' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'case grid' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'Watch terminal must not restore the removed FIT/GRID selector' -E 'WatchTerminalDisplayMode|case fit|case grid|"FIT"|"GRID"' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Crown scrolling must remain local and read-only' -Fq 'controller.sendWheel' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'showingKeyPalette' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'TextField("", text: \$keyboardDraft, prompt:' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.submitLabel(.done)' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Input must not use the system chooser that can resume in dictation' -Fq 'TextFieldLink' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Touch remains page navigation only' JARVISWatch/Views/WatchTerminalView.swift

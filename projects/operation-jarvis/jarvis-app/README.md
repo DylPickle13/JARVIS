@@ -147,14 +147,45 @@ replacement receives a fresh identity, and launching the host requests a
 WidgetKit-controlled reload; neither path runs a process timer or claims iOS must
 animate continuously. Build 75 restores the Watch-only live rendering tree to the
 previously accepted 32 complete masked Cathedral views, while retaining build 74's
-phone-only lightweight 60-phase path.
-Build 39 mirrors
+phone-only lightweight 60-phase path. Build 76 keeps Pi in regular mode and makes
+Watch output and its unwrapped cursor-following editor 12-point monospaced text,
+removes FIT/GRID and horizontal panning, fixes Input's doubled system chrome, and
+pages read-only Crown history across all rows retained by tmux. Physical review
+found that typography too large; build 77 restores the original fitted font for
+both output and editor while retaining every other build-76 change. Build 79
+restores the pre-build-78 compact iPhone Home presentation, palette, navigation,
+and system appearance behavior without changing build 77's Watch terminal work.
+Build 81 replaced remote wheel delivery with SwiftTerm's native `UIScrollView`,
+but physical testing exposed that tmux's outer DECSET 1049 envelope had placed
+SwiftTerm in its intentionally history-free alternate buffer. Build 82 suppresses
+only that client-local envelope before terminal parsing and retains up to 100,000
+local rows. Physical testing then found that its second simultaneous keyboard-
+dismissal pan and output-time `contentOffset` writes could still compete with the
+native scroll view. Build 83 removed both, but physical testing still produced only
+live-edge rubber-banding. Build 84 retains the same one-pan, zero-input behavior and
+records content-free physical metrics—normal-buffer row count, terminal geometry,
+scroll-view geometry, offset, gesture state, and received byte counts—to the app's
+Caches directory. The physical trace received 266,930 bytes while the normal buffer
+remained exactly one 42-row screen, proving terminal repaint operations were being
+applied only in place. Build 85 recognizes fragmented full-screen `CSI Ps S` from tmux,
+but its physical trace received 1.22 MB of visibly line-by-line output while detecting
+zero `CSI Ps S` operations and retaining exactly 42 rows. Build 86's content-free
+classifier then measured 13,023 line feeds, 12,972 line erases, and 13,714 absolute
+cursor positions, while SwiftTerm still retained exactly 42 rows. This proves Pi's
+synchronized updates let tmux keep real history while reducing the phone stream to
+cursor-addressed redraws with no scroll operation. Build 87 opens one read-only SSH
+metadata channel that samples only tmux `history_size`; it never captures pane text.
+Each positive post-attach delta promotes the corresponding current SwiftTerm rows
+before the pending redraw is applied. A 150 ms fail-open bound preserves live output
+if metadata is unavailable. Terminal input, the persistent pane, tmux configuration,
+and the single native scrolling surface remain unchanged. Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
 than inferring Pi features. Codex quota accents now use a consistent electric-
 blue healthy-state theme on iPhone and Watch. Its focused Digital Crown moves a local read-only
-viewport through 160 captured tmux-history rows, never sends terminal input,
-and passed simulator scroll interaction in both directions. Build 40 reserves
+viewport that never sends terminal input. Build 76 retains the 160-row live tail
+but fetches bounded 256-row pages on demand across tmux's full 100,000-row regular-
+mode history, retaining at most three pages on the Watch. Build 40 reserves
 vertical history scrolling exclusively for the Crown; terminal touch drags no
 longer change the viewport, while an upward swipe still advances to Plugs.
 Build 39 also adds the host-only bare **“Hey JARVIS”** conversational App Intent:
@@ -923,6 +954,56 @@ never deploy to a device outside Dylan's allowlist.
 - Build 75 isolates those iPhone-only archive optimizations from watchOS. The Watch
   live path is restored to its previously accepted 32 complete Cathedral views,
   each with its original system-timer mask; phone build-74 rendering is unchanged.
+- Build 76 removes FIT/GRID and horizontal panning. Its first physical candidate
+  used 12-point output and editor text. The direct keyboard-first Input field keeps
+  exactly one dock surface. Authenticated read-only 256-row history pages let the
+  Crown traverse every row retained by tmux while only three pages remain in Watch
+  memory. The authoritative 48-column pane and regular-mode Pi process are never
+  resized, restarted, or sent history-navigation input.
+- Build 77 restores the original accepted FIT font size to both output and Pi's
+  unwrapped cursor-following editor after physical review found 12 points too large.
+  FIT/GRID remains removed, horizontal gestures remain absent, and build 76's Input
+  surface and full paged history remain intact.
+- Build 79 restores the accepted compact iPhone Home source after build 78's dashboard
+  redesign was physically rejected.
+- Build 81 delegated iPhone transcript movement to SwiftTerm's existing native
+  `UIScrollView`, but physical testing found no accessible history because the
+  outer `tmux attach-session` client enters DECSET 1049 and SwiftTerm correctly
+  gives that alternate buffer no scrollback.
+- Build 82 filters only that fragmented outer-client `1049h`/`1049l` envelope
+  before SwiftTerm parsing, without altering the persistent pane or requesting a
+  server snapshot. Its normal buffer retains the same bounded 100,000 rows as tmux.
+  Physical testing nevertheless found history inaccessible.
+- Build 83 removes build 82's second simultaneous keyboard-dismissal pan recognizer
+  and its output-callback `contentOffset` writes. Physical testing still produced
+  only live-edge rubber-banding, so build 83 is rejected.
+- Build 84 preserves build 83's one native pan and zero-byte scrolling path while
+  writing content-free physical diagnostics to
+  `Library/Caches/JARVIS-terminal-scroll-diagnostics.log`. A physical long-response
+  reproduction received 266,930 bytes, but `normalLines` stayed exactly equal to
+  the 42-row terminal and `contentSize` stayed equal to the viewport. This rules out
+  gesture ownership and stale `contentSize`: tmux's batched multi-line `CSI Ps S`
+  updates were only shifting SwiftTerm's screen in place.
+- Build 85 parses fragmented CSI boundaries locally. When tmux scrolls its complete
+  client region with `CSI Ps S`, the app invokes SwiftTerm's equivalent normal-buffer
+  scroll primitive once per displaced row. Restricted-region and non-SU ANSI remain
+  untouched. Physical testing rejected build 85: after 1.22 MB of visibly line-by-line
+  output, diagnostics reported `promoted=0`, `normalLines=42`, and one-viewport content.
+- Build 86 leaves build 85's rendering behavior unchanged and adds a fragmented ANSI
+  diagnostic state machine. Its physical trace measured 13,023 C0 line feeds, 12,972
+  EL commands, 13,714 CUP commands, zero SU/DL/IL/IND, and no local history growth.
+  Combined with tmux history growing to 283 rows, this identifies synchronized
+  cursor-addressed redraw as the lost-scroll path.
+- Build 87 adds one companion SSH exec channel that reads only tmux `history_size` at
+  25 ms intervals. The first count is a baseline, so old tmux history is never fetched
+  or synthesized. Positive deltas received after attachment invoke SwiftTerm's normal-
+  buffer scroll before the associated cursor-addressed redraw; the visible final screen
+  remains tmux-authored while displaced local rows enter native scrollback. It requests
+  no pane text, sends no terminal input, and makes no tmux/session/configuration mutation.
+  If no fresh metadata arrives within 150 ms, output renders immediately and the next
+  count is rebaselined instead of being applied late to the wrong screen. CSI-S remains
+  a reconciled fallback, and snapshots, overlays, offset writes, and redraw rebasing
+  remain absent.
 - Build 42 raises dark Watch ANSI foregrounds to a tested minimum luminance while
   retaining hue relationships, keeps true black for inverse cells, raises dim
   opacity from `0.62` to `0.82`, and uses 8-point horizontal/bottom plus 6-point
@@ -1232,13 +1313,16 @@ ordinary low-level TCP networking. Instead, foreground `URLSession` long
 polling retrieves tmux frames over pinned HTTPS. Build 34 tries the saved bridge
 first, then LAN, stable Tailscale MagicDNS, and the current Tailscale address;
 after a frame succeeds it keeps that route active. Build 39 preserves tmux's
-actual SGR cell attributes and a bounded 160-row history tail. Build 40 allows
+actual SGR cell attributes and a bounded 160-row live history tail. Build 40 allows
 only the focused Digital Crown to move the local read-only history viewport;
 vertical touch no longer scrolls terminal output and cannot become terminal
-input during a network loss. FIT mirrors all Pi columns at Watch width, while
-GRID provides a 9-point
-horizontally pannable mirror. Thinking, tool calls, assistant text, dividers,
-and usage/footer rows retain Pi's own styling without semantic reconstruction.
+input during a network loss. Build 76 removes FIT/GRID and every horizontal
+scroll gesture. Build 77 uses the original fitted font for both complete output
+rows and Pi's unwrapped cursor-following editor. Authenticated 256-row GET pages
+extend Crown navigation through tmux's full retained regular-mode
+history without adding terminal input or unbounded Watch memory. Thinking, tool
+calls, assistant text, dividers, and usage/footer rows retain Pi's own styling
+without semantic reconstruction.
 Watch keyboard, Scribble, dictation, or Continuity Keyboard still produces
 bounded text. Build 40 uses a native inline `TextField` to open the QWERTY
 keyboard first and preserves build 37's completed-text staging at the current Pi
