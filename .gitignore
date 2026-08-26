@@ -17,8 +17,6 @@
 /projects/operation-jarvis/**/*.pyc
 /projects/operation-jarvis/data/*
 !/projects/operation-jarvis/data/.gitkeep
-/projects/operation-jarvis/media/*
-!/projects/operation-jarvis/media/.gitkeep
 /.pi/npm/
 /.pi/APPEND_SYSTEM.md
 /.pi/runtime/

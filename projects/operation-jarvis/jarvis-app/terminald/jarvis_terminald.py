@@ -47,6 +47,7 @@ SPEECH_RESPONSE_ID_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 LONG_POLL_SECONDS = 1.5
 POLL_INTERVAL_SECONDS = 0.10
 MAX_SCROLLBACK_ROWS = 160
+MAX_HISTORY_PAGE_ROWS = 256
 SGR_PATTERN = re.compile(r"\x1b\[[0-9:;]*m")
 RUNTIME_DIR = Path.home() / "Library" / "Application Support" / "JARVIS" / "terminald"
 TOKEN_PATH = RUNTIME_DIR / "token"
@@ -459,6 +460,7 @@ class TerminalService:
         content = {
             "columns": columns,
             "rows": rows,
+            "paneID": pane_id,
             "cursorColumn": cursor_column,
             "cursorRow": cursor_row,
             "alternateScreen": bool(alternate),
@@ -498,6 +500,87 @@ class TerminalService:
             if frame["sequence"] > after or time.monotonic() >= deadline:
                 return frame
             time.sleep(POLL_INTERVAL_SECONDS)
+
+    def history_page(self, start: int, limit: int) -> Dict[str, Any]:
+        """Capture one bounded, read-only page from the full tmux history.
+
+        `start` is an oldest-first absolute history row. The endpoint never
+        changes copy mode, attaches a client, resizes the pane, or emits input.
+        Keeping each response bounded lets the Watch traverse tmux's complete
+        100,000-row history without carrying it in every live poll.
+        """
+        if start < 0:
+            raise TerminalError("The terminal history start was invalid.")
+        if limit <= 0 or limit > MAX_HISTORY_PAGE_ROWS:
+            raise TerminalError("The terminal history page size was invalid.")
+
+        with self.lock:
+            metadata_format = "\t".join(
+                ["#{history_size}", "#{pane_dead}", "#{pane_id}"]
+            )
+            metadata = self.runner.run(
+                self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, metadata_format),
+                check=False,
+            )
+            if metadata.returncode != 0:
+                self.ensure_session()
+                metadata = self.runner.run(
+                    self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, metadata_format)
+                )
+            values = metadata.stdout.decode("utf-8", errors="replace").strip().split("\t")
+            if len(values) != 3 or values[1] == "1" or not values[2].startswith("%"):
+                raise TerminalError("The persistent JARVIS pane is unavailable.")
+            try:
+                history_size = max(0, int(values[0] or "0"))
+            except ValueError as error:
+                raise TerminalError("The JARVIS history metadata was invalid.") from error
+            pane_id = values[2]
+            safe_start = min(start, history_size)
+            safe_end = min(history_size, safe_start + limit)
+            if safe_start == safe_end:
+                return {
+                    "paneID": pane_id,
+                    "historySize": history_size,
+                    "start": safe_start,
+                    "lines": [],
+                    "ansiLines": [],
+                }
+
+            # tmux addresses history relative to the top of the live screen:
+            # -history_size is the oldest retained row and -1 the newest.
+            capture_start = safe_start - history_size
+            capture_end = safe_end - history_size - 1
+            captured = self.runner.run(
+                self.tmux_arguments(
+                    "capture-pane",
+                    "-p",
+                    "-e",
+                    "-N",
+                    "-S",
+                    str(capture_start),
+                    "-E",
+                    str(capture_end),
+                    "-t",
+                    TMUX_TARGET,
+                )
+            ).stdout.decode("utf-8", errors="replace")
+            if captured.endswith("\n"):
+                captured = captured[:-1]
+            ansi_lines = captured.split("\n") if captured else []
+            expected = safe_end - safe_start
+            # Fail closed if tmux returns an impossible range; accepting extra
+            # rows would make Crown offsets point at the wrong terminal cells.
+            if len(ansi_lines) > expected:
+                ansi_lines = ansi_lines[:expected]
+            elif len(ansi_lines) < expected:
+                ansi_lines.extend([""] * (expected - len(ansi_lines)))
+            return {
+                "paneID": pane_id,
+                "historySize": history_size,
+                "start": safe_start,
+                "lines": [SGR_PATTERN.sub("", line) for line in ansi_lines],
+                "ansiLines": ansi_lines,
+            }
 
     def _refresh_attached_clients_locked(self) -> None:
         """Best-effort redraw for SSH clients after out-of-band Watch input.
@@ -656,13 +739,19 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
                 return
             self._write_json(HTTPStatus.OK, {"ok": True, "service": "jarvis-terminald", "version": 1})
             return
-        if parsed.path != "/v1/terminal/frame":
+        if parsed.path not in {"/v1/terminal/frame", "/v1/terminal/history"}:
             self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found."})
             return
         if not self._require_authorization():
             return
         query = parse_qs(parsed.query)
         try:
+            if parsed.path == "/v1/terminal/history":
+                start = int(query.get("start", ["0"])[0])
+                limit = int(query.get("limit", [str(MAX_HISTORY_PAGE_ROWS)])[0])
+                page = self.terminal_server.service.history_page(start, limit)
+                self._write_json(HTTPStatus.OK, page)
+                return
             after = max(0, int(query.get("after", ["0"])[0]))
             frame = self.terminal_server.service.frame_after(after)
             self._write_json(HTTPStatus.OK, frame)

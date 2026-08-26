@@ -41,6 +41,8 @@ class FakeRunner:
                     self.tmux_server_pid,
                     self.session_created_at,
                 ).encode()
+            elif format_string == "#{history_size}\t#{pane_dead}\t#{pane_id}":
+                stdout = "4\t0\t{}\n".format(self.pane_id).encode()
             else:
                 stdout = "{}\t{}\t{}\t{}\t0\n".format(
                     self.pane_pid,
@@ -75,6 +77,7 @@ class TerminalServiceTests(unittest.TestCase):
         self.assertEqual(second["sequence"], 1)
         self.assertEqual(first["columns"], 48)
         self.assertEqual(first["rows"], 28)
+        self.assertEqual(first["paneID"], runner.pane_id)
         self.assertEqual(first["cursorRow"], 6)
         self.assertTrue(first["mouseMode"])
         self.assertEqual(len(first["lines"]), 28)
@@ -89,6 +92,28 @@ class TerminalServiceTests(unittest.TestCase):
         third = service.frame_after(0)
         self.assertEqual(third["sequence"], 2)
         self.assertEqual(third["lines"][0], "UPDATED")
+
+    def test_history_pages_cover_full_tmux_history_in_bounded_exact_ansi_ranges(self):
+        runner = FakeRunner()
+        runner.capture = b"old-0\n\x1b[1mold-1\x1b[0m\nold-2\n"
+        service = terminald.TerminalService(runner)
+
+        page = service.history_page(start=1, limit=3)
+
+        self.assertEqual(page["paneID"], runner.pane_id)
+        self.assertEqual(page["historySize"], 4)
+        self.assertEqual(page["start"], 1)
+        self.assertEqual(page["lines"], ["old-0", "old-1", "old-2"])
+        self.assertEqual(page["ansiLines"][1], "\x1b[1mold-1\x1b[0m")
+        capture_call = next(call[0] for call in runner.calls if "capture-pane" in call[0])
+        self.assertEqual(capture_call[capture_call.index("-S") + 1], "-3")
+        self.assertEqual(capture_call[capture_call.index("-E") + 1], "-1")
+        self.assertLessEqual(len(page["lines"]), terminald.MAX_HISTORY_PAGE_ROWS)
+
+        with self.assertRaises(terminald.TerminalError):
+            service.history_page(start=-1, limit=10)
+        with self.assertRaises(terminald.TerminalError):
+            service.history_page(start=0, limit=terminald.MAX_HISTORY_PAGE_ROWS + 1)
 
     def test_frame_preserves_ansi_styles_and_strips_only_sgr_for_plain_lines(self):
         runner = FakeRunner()
@@ -320,6 +345,61 @@ class TerminalServiceTests(unittest.TestCase):
         service.send_input("request-return-only", b"", append_return=True)
         return_loads = [call for call in runner.calls if "load-buffer" in call[0]]
         self.assertEqual(return_loads[-1][1], b"\r")
+
+    def test_disposable_tmux_history_pages_reach_oldest_retained_rows(self):
+        tmux = shutil.which("tmux")
+        if not tmux:
+            self.skipTest("tmux is unavailable")
+        socket = "jarvis-history-test-{}".format(uuid.uuid4().hex)
+        session = "fixture"
+        command = (
+            "{} -c {}".format(
+                shlex.quote(sys.executable),
+                shlex.quote(
+                    "import time; "
+                    "[print(f'line-{i:04d}', flush=True) for i in range(600)]; "
+                    "time.sleep(30)"
+                ),
+            )
+        )
+        subprocess.run(
+            [tmux, "-L", socket, "new-session", "-d", "-s", session, "-x", "48", "-y", "20", command],
+            check=True,
+            timeout=10,
+        )
+        try:
+            history_size = 0
+            for _ in range(100):
+                history_size = int(subprocess.run(
+                    [tmux, "-L", socket, "display-message", "-p", "-t", session + ":", "#{history_size}"],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    timeout=5,
+                ).stdout)
+                if history_size >= 580:
+                    break
+                time.sleep(0.02)
+            self.assertGreaterEqual(history_size, 580)
+
+            with mock.patch.object(terminald, "TMUX", tmux), \
+                 mock.patch.object(terminald, "TMUX_SOCKET", socket), \
+                 mock.patch.object(terminald, "TMUX_SESSION", session), \
+                 mock.patch.object(terminald, "TMUX_TARGET", session + ":"):
+                service = terminald.TerminalService()
+                service.ensure_session = lambda: None
+                oldest = service.history_page(start=0, limit=3)
+                middle = service.history_page(start=500, limit=3)
+
+            self.assertEqual([line.strip() for line in oldest["lines"]], ["line-0000", "line-0001", "line-0002"])
+            self.assertEqual([line.strip() for line in middle["lines"]], ["line-0500", "line-0501", "line-0502"])
+        finally:
+            subprocess.run(
+                [tmux, "-L", socket, "kill-server"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
 
     def test_disposable_https_tmux_receives_one_prompt_and_one_return(self):
         tmux = shutil.which("tmux")

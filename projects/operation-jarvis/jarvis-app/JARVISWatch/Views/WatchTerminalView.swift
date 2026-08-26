@@ -67,6 +67,8 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     @Published private(set) var isConnectionConfirmed = false
     @Published private(set) var isSpeechLoading = false
     @Published private(set) var isSpeechPlaying = false
+    @Published private(set) var historyPages: [WatchTerminalHistoryPage] = []
+    @Published private(set) var isHistoryLoading = false
     @Published var speechErrorMessage: String?
     @Published var controlLatched = false
 
@@ -74,6 +76,8 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     private var client: WatchTerminalClient?
     private var pollTask: Task<Void, Never>?
     private var wakeRecoveryTask: Task<Void, Never>?
+    private var historyTask: Task<Void, Never>?
+    private var historyRequest: (paneID: String, start: Int)?
     private var appIsForeground = false
     private var sceneIsActive = false
     private var isVisible = false
@@ -135,6 +139,62 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
 
     var terminalInputIsReady: Bool {
         status == .live && isConnectionConfirmed
+    }
+
+    func cachedHistoryPage(
+        containing range: Range<Int>,
+        paneID: String
+    ) -> WatchTerminalHistoryPage? {
+        historyPages.last { $0.paneID == paneID && $0.contains(range) }
+    }
+
+    func requestHistory(
+        containing range: Range<Int>,
+        paneID: String,
+        historySize: Int
+    ) {
+        guard appIsForeground, isVisible, isConnectionConfirmed,
+              !paneID.isEmpty, range.lowerBound >= 0,
+              range.lowerBound < range.upperBound,
+              range.upperBound <= historySize,
+              cachedHistoryPage(containing: range, paneID: paneID) == nil,
+              let client else { return }
+
+        let pageStart = max(0, min(historySize, range.upperBound) - 192)
+        if historyRequest?.paneID == paneID, historyRequest?.start == pageStart { return }
+        historyTask?.cancel()
+        historyRequest = (paneID, pageStart)
+        isHistoryLoading = true
+        let generation = connectionGeneration
+        historyTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.connectionGeneration == generation,
+                   self.historyRequest?.paneID == paneID,
+                   self.historyRequest?.start == pageStart {
+                    self.historyRequest = nil
+                    self.historyTask = nil
+                    self.isHistoryLoading = false
+                }
+            }
+            do {
+                let page = try await client.historyPage(start: pageStart)
+                guard !Task.isCancelled,
+                      self.connectionGeneration == generation,
+                      page.paneID == paneID else { return }
+                var retained = self.historyPages.filter {
+                    $0.paneID == paneID && $0.start != page.start
+                }
+                retained.append(page)
+                self.historyPages = Array(retained.suffix(3))
+            } catch is CancellationError {
+                return
+            } catch {
+                // History is read-only and opportunistic. Keep the confirmed
+                // live route and input readiness independent from page failure.
+                return
+            }
+        }
     }
 
     var canSpeakLastResponse: Bool {
@@ -662,6 +722,11 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
                     let next = try await client.frame(after: sequence)
                     guard !Task.isCancelled else { return }
                     let recoveredRoute = !self.isConnectionConfirmed
+                    if let previous = self.frame,
+                       (!previous.paneID.isEmpty && previous.paneID != next.paneID
+                        || next.historySize < previous.historySize) {
+                        self.historyPages.removeAll()
+                    }
                     self.frame = next
                     self.isConnectionConfirmed = true
                     self.pollFailureStartedAt = nil
@@ -769,6 +834,10 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         if !preserveSpeechPlayback && !preservePreparedSpeech { stopSpeech() }
         wakeRecoveryTask?.cancel()
         wakeRecoveryTask = nil
+        historyTask?.cancel()
+        historyTask = nil
+        historyRequest = nil
+        isHistoryLoading = false
         pollTask?.cancel()
         pollTask = nil
         client?.close()
@@ -807,31 +876,16 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     }
 }
 
-private enum WatchTerminalDisplayMode: String {
-    case fit
-    case grid
-}
-
 struct WatchTerminalView: View {
     @ObservedObject var controller: WatchTerminalController
     let isActive: Bool
     let onAdvancePage: (() -> Void)?
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
-    @AppStorage("jarvis.watch-terminal.display-mode") private var displayModeRaw = WatchTerminalDisplayMode.fit.rawValue
     @State private var showingKeyPalette = false
     @State private var keyboardDraft = ""
     @State private var crownPosition = 0.0
     @State private var scrollOffset = 0
     @FocusState private var crownIsFocused: Bool
-
-    private var displayMode: WatchTerminalDisplayMode {
-        get {
-            if displayModeRaw == "raw" { return .grid }
-            if displayModeRaw == "readable" { return .fit }
-            return WatchTerminalDisplayMode(rawValue: displayModeRaw) ?? .fit
-        }
-        nonmutating set { displayModeRaw = newValue.rawValue }
-    }
 
     private var normalInputIsEnabled: Bool {
         controller.terminalInputIsReady
@@ -875,7 +929,8 @@ struct WatchTerminalView: View {
         .focused($crownIsFocused)
         .digitalCrownRotation(
             $crownPosition,
-            from: -100_000,
+            // tmux retains 100,000 history rows in addition to the live screen.
+            from: -100_100,
             through: 0,
             by: 1,
             sensitivity: .medium,
@@ -886,7 +941,7 @@ struct WatchTerminalView: View {
             guard let frame = controller.frame else { return }
             let requestedOffset = WatchTerminalCrownHistory.scrollOffset(
                 crownPosition: newValue,
-                maximumOffset: frame.lines.count
+                maximumOffset: frame.absoluteOutputEnd
             )
             if scrollOffset != requestedOffset { scrollOffset = requestedOffset }
             crownIsFocused = true
@@ -922,7 +977,7 @@ struct WatchTerminalView: View {
                 Color(red: 0.008, green: 0.022, blue: 0.028)
 
                 if let frame = controller.frame {
-                    mirroredTerminal(frame: frame, geometry: geometry, fitToWidth: displayMode == .fit)
+                    mirroredTerminal(frame: frame, geometry: geometry)
                 } else {
                     waitingTerminal
                 }
@@ -946,52 +1001,142 @@ struct WatchTerminalView: View {
 
     private func mirroredTerminal(
         frame: WatchTerminalFrame,
-        geometry: GeometryProxy,
-        fitToWidth: Bool
+        geometry: GeometryProxy
     ) -> some View {
+        let headerHeight = CGFloat(39)
         let contentWidth = max(1, geometry.size.width - 10)
-        let fontSize = CGFloat(
-            fitToWidth
-                ? WatchTerminalLayout.mirrorFontSize(
-                    availableWidth: Double(contentWidth),
-                    terminalColumns: frame.columns
-                )
-                : WatchTerminalLayout.rawFontSize
+        // Keep the original accepted FIT typography for every terminal row.
+        // The mode button remains removed; this one fixed presentation requires
+        // neither local wrapping nor horizontal panning.
+        let outputFontSize = CGFloat(
+            WatchTerminalLayout.mirrorFontSize(
+                availableWidth: Double(contentWidth),
+                terminalColumns: frame.columns
+            )
         )
-        let lineHeight = CGFloat(WatchTerminalLayout.lineHeight(fontSize: Double(fontSize)))
-        let maximumLines = max(1, Int(max(0, geometry.size.height - 43) / lineHeight))
-        let safeOffset = min(scrollOffset, frame.maximumScrollOffset(maximumLines: maximumLines))
-        let visibleRange = frame.viewportRange(maximumLines: maximumLines, scrollOffset: safeOffset)
-        let mirroredStyles = WatchTerminalANSIParser.parse(lines: frame.ansiLines)
-        let styledLines = Array(mirroredStyles[visibleRange])
-        let terminalWidth = max(
-            contentWidth,
-            CGFloat(frame.columns) * fontSize * CGFloat(WatchTerminalLayout.monospacedCharacterWidthRatio)
+        let outputLineHeight = CGFloat(
+            WatchTerminalLayout.lineHeight(fontSize: Double(outputFontSize))
         )
+        let outputColumns = max(1, frame.columns)
 
-        return ScrollView(.horizontal, showsIndicators: false) {
+        let allLocalStyles = WatchTerminalANSIParser.parse(lines: frame.ansiLines)
+        let editorRange = frame.liveEditorRange
+        let editorFontSize = outputFontSize
+        let editorLineHeight = outputLineHeight
+        let editorStyles: [[WatchTerminalANSISpan]] = editorRange.map { range in
+            let cursorLine = frame.liveCursorLineIndex - range.lowerBound
+            let cursorStart = max(0, frame.cursorColumn - outputColumns + 4)
+            return Array(allLocalStyles[range]).enumerated().map { index, spans in
+                WatchTerminalANSIParser.viewport(
+                    line: spans,
+                    start: index == cursorLine ? cursorStart : 0,
+                    columns: outputColumns
+                )
+            }
+        } ?? []
+        let editorHeight = editorLineHeight * CGFloat(editorStyles.count)
+        let outputHeight = max(
+            outputLineHeight,
+            geometry.size.height - headerHeight - editorHeight
+        )
+        let maximumVisualLines = max(1, Int(outputHeight / outputLineHeight))
+        let maximumSourceRows = maximumVisualLines
+        let safeOffset = min(
+            max(0, scrollOffset),
+            frame.maximumOutputScrollOffset(maximumSourceRows: maximumSourceRows)
+        )
+        let absoluteEnd = max(0, frame.absoluteOutputEnd - safeOffset)
+        let absoluteStart = max(0, absoluteEnd - maximumSourceRows)
+        let requiredRange = absoluteStart..<absoluteEnd
+        let localANSI = frame.localANSILines(inAbsoluteRange: requiredRange)
+        let pageANSI = controller.cachedHistoryPage(
+            containing: requiredRange,
+            paneID: frame.paneID
+        )?.ansiLines(in: requiredRange)
+        let sourceANSI = localANSI ?? pageANSI ?? []
+        let wrappedOutput = Array(
+            WatchTerminalANSIParser.wrapped(
+                lines: WatchTerminalANSIParser.parse(lines: sourceANSI),
+                displayColumns: outputColumns
+            ).suffix(maximumVisualLines)
+        )
+        let historyRequestRange: Range<Int>? = localANSI == nil
+            && pageANSI == nil
+            && requiredRange.lowerBound < requiredRange.upperBound
+            && requiredRange.upperBound <= frame.historySize
+                ? requiredRange
+                : nil
+
+        return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(styledLines.enumerated()), id: \.offset) { _, spans in
-                    HStack(spacing: 0) {
-                        ForEach(Array(spans.enumerated()), id: \.offset) { _, span in
-                            terminalSpan(span, fontSize: fontSize)
-                        }
-                    }
-                    .frame(width: terminalWidth, height: lineHeight, alignment: .leading)
-                    .clipped()
+                ForEach(Array(wrappedOutput.enumerated()), id: \.offset) { _, spans in
+                    terminalLine(
+                        spans,
+                        fontSize: outputFontSize,
+                        lineHeight: outputLineHeight,
+                        width: contentWidth
+                    )
                 }
             }
-            .padding(.horizontal, 5)
+            .frame(width: contentWidth, height: outputHeight, alignment: .bottomLeading)
+            .clipped()
+            .overlay {
+                if historyRequestRange != nil && controller.isHistoryLoading {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
+            }
+
+            if !editorStyles.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(editorStyles.enumerated()), id: \.offset) { _, spans in
+                        terminalLine(
+                            spans,
+                            fontSize: editorFontSize,
+                            lineHeight: editorLineHeight,
+                            width: contentWidth
+                        )
+                    }
+                }
+                .frame(width: contentWidth, height: editorHeight, alignment: .topLeading)
+                .clipped()
+            }
         }
-        .contentMargins(.top, 39, for: .scrollContent)
+        .padding(.horizontal, 5)
+        .padding(.top, headerHeight)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
         .accessibilityLabel("Mirrored Pi terminal")
         .accessibilityValue(safeOffset == 0 ? "Live" : "Scrolled back \(safeOffset) rows")
+        .task(id: historyRequestRange) {
+            if let historyRequestRange {
+                controller.requestHistory(
+                    containing: historyRequestRange,
+                    paneID: frame.paneID,
+                    historySize: frame.historySize
+                )
+            }
+        }
         .task(id: safeOffset) {
             if scrollOffset != safeOffset { scrollOffset = safeOffset }
             let synchronizedPosition = WatchTerminalCrownHistory.crownPosition(scrollOffset: safeOffset)
             if crownPosition != synchronizedPosition { crownPosition = synchronizedPosition }
         }
+    }
+
+    private func terminalLine(
+        _ spans: [WatchTerminalANSISpan],
+        fontSize: CGFloat,
+        lineHeight: CGFloat,
+        width: CGFloat
+    ) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(spans.enumerated()), id: \.offset) { _, span in
+                terminalSpan(span, fontSize: fontSize)
+            }
+        }
+        .frame(width: width, height: lineHeight, alignment: .leading)
+        .clipped()
     }
 
     private func terminalSpan(_ span: WatchTerminalANSISpan, fontSize: CGFloat) -> some View {
@@ -1149,24 +1294,31 @@ struct WatchTerminalView: View {
             .disabled(!normalInputIsEnabled)
             .accessibilityLabel(showingKeyPalette ? "Hide terminal keys" : "Show terminal keys")
 
-            TextField("", text: $keyboardDraft, prompt: Text("Input").foregroundStyle(Color.clear))
-                .textFieldStyle(.plain)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .onSubmit {
-                    stageInput(keyboardDraft)
-                    keyboardDraft = ""
-                }
-                .overlay {
-                    dockLabel(symbol: "keyboard", title: "Input", emphasized: false)
-                        .allowsHitTesting(false)
-                }
-                .frame(maxWidth: .infinity, minHeight: 35)
-                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .disabled(!normalInputIsEnabled)
-                .accessibilityLabel("Input text at the Pi cursor")
-                .accessibilityHint("Opens the Apple Watch keyboard first. Text is inserted without submitting.")
+            ZStack {
+                // Retain the direct keyboard-first TextField behavior while
+                // suppressing watchOS's oversized default field chrome. The
+                // shared dock label below owns the only visible button surface.
+                TextField("", text: $keyboardDraft, prompt: Text("Input").foregroundStyle(Color.clear))
+                    .textFieldStyle(.plain)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        stageInput(keyboardDraft)
+                        keyboardDraft = ""
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 35, maxHeight: 35)
+                    .opacity(0.01)
+                    .clipped()
+
+                dockLabel(symbol: "keyboard", title: "Input", emphasized: false)
+                    .allowsHitTesting(false)
+            }
+            .frame(maxWidth: .infinity, minHeight: 35, maxHeight: 35)
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .disabled(!normalInputIsEnabled)
+            .accessibilityLabel("Input text at the Pi cursor")
+            .accessibilityHint("Opens the Apple Watch keyboard first. Text is inserted without submitting.")
 
             Button {
                 controller.sendKey(WatchTerminalKeyBytes.slash)
@@ -1249,15 +1401,6 @@ struct WatchTerminalView: View {
             HStack(spacing: 3) {
                 terminalKey("↑", accessibility: "Up arrow") { controller.sendKey(WatchTerminalKeyBytes.up) }
                 terminalKey("↓", accessibility: "Down arrow") { controller.sendKey(WatchTerminalKeyBytes.down) }
-                terminalKey(
-                    displayMode == .fit ? "FIT" : "GRID",
-                    accessibility: "Terminal display mode",
-                    selected: displayMode == .fit,
-                    requiresLiveTerminal: false
-                ) {
-                    displayMode = displayMode == .fit ? .grid : .fit
-                    crownIsFocused = true
-                }
             }
         }
         .padding(5)

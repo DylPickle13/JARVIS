@@ -23,7 +23,7 @@ Back up or be prepared to recreate:
 | Discord scheduled jobs | `.pi/discord-cron/discord-cron.sqlite*` | Optional but valuable | If absent, recreate jobs via `discord_cron add`. |
 | Browser profile | `~/.pi/agent/browser-profile` or `PI_BROWSER_PROFILE_DIR` | Optional | Preserves visible-browser cookies/session state. Do not commit. |
 | Google Workspace OAuth | external `gws` token/config store | If Workspace tools are used | Run `gws auth ...` if not restored. |
-| Operation media/data artifacts | `projects/operation-jarvis/data/*`, `projects/operation-jarvis/media/*` | Optional | Captures, TTS files, runtime state; ignored by git. |
+| Operation data artifacts | `projects/operation-jarvis/data/*` | Optional | Runtime state (greeting history, logs); ignored by git. |
 
 ## 1. Install system prerequisites
 

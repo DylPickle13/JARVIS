@@ -36,6 +36,78 @@ final class WatchTerminalTests: XCTestCase {
         XCTAssertTrue(parsed[3][0].style.inverse)
     }
 
+    func testWrappedOutputPreservesANSIStyles() {
+        let parsed = WatchTerminalANSIParser.parse(lines: [
+            "\u{1b}[38;2;128;200;255malpha beta gamma\u{1b}[0m      ",
+            "────────────────────────────────────────────────",
+        ])
+        let wrapped = WatchTerminalANSIParser.wrapped(lines: parsed, displayColumns: 10)
+
+        XCTAssertEqual(wrapped[0].map(\.text).joined(), "alpha")
+        XCTAssertEqual(wrapped[1].map(\.text).joined(), "beta gamma")
+        XCTAssertEqual(
+            wrapped[0][0].style.foreground,
+            .rgb(WatchTerminalRGBColor(red: 128, green: 200, blue: 255))
+        )
+        XCTAssertEqual(wrapped[2].map(\.text).joined().count, 10)
+        let editor = WatchTerminalANSIParser.viewport(
+            line: parsed[0],
+            start: 6,
+            columns: 4
+        )
+        XCTAssertEqual(editor.map(\.text).joined(), "beta")
+        XCTAssertEqual(editor[0].style.foreground, parsed[0][0].style.foreground)
+    }
+
+    func testFrameFindsUnwrappedPiEditorAndMapsAbsoluteHistory() {
+        let divider = String(repeating: "─", count: 48)
+        let lines = [
+            "history-0", "history-1", "response", divider,
+            "prompt", divider, "~/JARVIS", "tokens", "",
+        ]
+        let frame = WatchTerminalFrame(
+            sequence: 4,
+            paneID: "%7",
+            columns: 48,
+            rows: 7,
+            cursorColumn: 2,
+            cursorRow: 2,
+            alternateScreen: false,
+            mouseMode: false,
+            historySize: 2,
+            screenStart: 2,
+            lines: lines,
+            ansiLines: lines
+        )
+
+        XCTAssertEqual(frame.liveEditorRange, 3..<8)
+        XCTAssertEqual(frame.liveOutputEndIndex, 3)
+        XCTAssertEqual(frame.capturedAbsoluteStart, 0)
+        XCTAssertEqual(frame.absoluteOutputEnd, 3)
+        XCTAssertEqual(frame.maximumOutputScrollOffset(maximumSourceRows: 2), 1)
+        XCTAssertEqual(frame.localANSILines(inAbsoluteRange: 0..<2), ["history-0", "history-1"])
+    }
+
+    func testHistoryPageIsBoundedAndSlicesAbsoluteRows() throws {
+        let page = WatchTerminalHistoryPage(
+            paneID: "%7",
+            historySize: 100_000,
+            start: 9_700,
+            lines: (0..<256).map { "line-\($0)" }
+        )
+        XCTAssertEqual(page.end, 9_956)
+        XCTAssertTrue(page.contains(9_800..<9_810))
+        XCTAssertEqual(page.ansiLines(in: 9_800..<9_802), ["line-100", "line-101"])
+        XCTAssertFalse(page.contains(9_600..<9_601))
+
+        let oversized = Data(
+            "{\"paneID\":\"%7\",\"historySize\":100000,\"start\":0,\"lines\":["
+                .utf8
+        ) + Data((0...WatchTerminalHistoryPage.maximumRows).map { _ in "\"x\"" }.joined(separator: ",").utf8)
+            + Data("]}".utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(WatchTerminalHistoryPage.self, from: oversized))
+    }
+
     func testCrownHistoryClampsTheLiveEdgeInsteadOfReboundingToOne() {
         XCTAssertEqual(
             WatchTerminalCrownHistory.scrollOffset(crownPosition: 0, maximumOffset: 20),
@@ -186,6 +258,32 @@ final class WatchTerminalTests: XCTestCase {
         XCTAssertEqual(captured.count, 1)
         XCTAssertEqual(captured[0].data, Data("hello Pi".utf8))
         XCTAssertTrue(captured[0].appendReturn)
+    }
+
+    func testSharedClientFetchesOneBoundedReadOnlyHistoryPage() async throws {
+        let requestedURL = LockedBox<URL?>(nil)
+        let page = WatchTerminalHistoryPage(
+            paneID: "%7",
+            historySize: 100_000,
+            start: 9_700,
+            lines: ["old-a", "old-b"],
+            ansiLines: ["\u{1b}[1mold-a\u{1b}[0m", "old-b"]
+        )
+        TerminalURLProtocol.handler = { request in
+            requestedURL.update { $0 = request.url }
+            XCTAssertEqual(request.httpMethod, "GET")
+            return (200, try JSONEncoder().encode(page))
+        }
+        let client = fixtureClient()
+        defer { client.close() }
+
+        let loaded = try await client.historyPage(start: 9_700, limit: 200)
+
+        XCTAssertEqual(loaded, page)
+        let components = URLComponents(url: try XCTUnwrap(requestedURL.snapshot()), resolvingAgainstBaseURL: false)
+        XCTAssertEqual(components?.path, "/v1/terminal/history")
+        XCTAssertEqual(components?.queryItems?.first(where: { $0.name == "start" })?.value, "9700")
+        XCTAssertEqual(components?.queryItems?.first(where: { $0.name == "limit" })?.value, "200")
     }
 
     func testSharedClientDownloadsCurrentSpeechOnceWithoutSendingText() async throws {

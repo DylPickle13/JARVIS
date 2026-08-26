@@ -290,6 +290,58 @@ public final class WatchTerminalClient: @unchecked Sendable {
         throw WatchTerminalClientError.offline
     }
 
+    public func historyPage(start: Int, limit: Int = WatchTerminalHistoryPage.maximumRows) async throws -> WatchTerminalHistoryPage {
+        guard configuration.isValid, !candidateBaseURLs.isEmpty,
+              start >= 0, limit > 0, limit <= WatchTerminalHistoryPage.maximumRows else {
+            throw WatchTerminalClientError.invalidResponse
+        }
+        var observedInvalidResponse = false
+        for baseURL in orderedBaseURLs() {
+            if Task.isCancelled { throw CancellationError() }
+            do {
+                var components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/history")
+                components.queryItems = [
+                    URLQueryItem(name: "start", value: String(start)),
+                    URLQueryItem(name: "limit", value: String(limit)),
+                ]
+                guard let url = components.url else { throw WatchTerminalClientError.notConfigured }
+                var request = URLRequest(url: url)
+                request.httpMethod = "GET"
+                request.timeoutInterval = 6
+                authorize(&request)
+                let (data, response) = try await session.data(for: request)
+                try validate(response: response, data: data)
+                let page: WatchTerminalHistoryPage
+                do {
+                    page = try JSONDecoder().decode(WatchTerminalHistoryPage.self, from: data)
+                } catch {
+                    observedInvalidResponse = true
+                    continue
+                }
+                guard page.start >= 0, page.lines.count <= limit else {
+                    observedInvalidResponse = true
+                    continue
+                }
+                rememberActive(baseURL)
+                delegate.clearRejectedCertificate()
+                return page
+            } catch let error as URLError where error.code == .cancelled {
+                throw CancellationError()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch WatchTerminalClientError.certificateRejected {
+                continue
+            } catch WatchTerminalClientError.invalidResponse {
+                observedInvalidResponse = true
+            } catch {
+                continue
+            }
+        }
+        if delegate.rejectedCertificate { throw WatchTerminalClientError.certificateRejected }
+        if observedInvalidResponse { throw WatchTerminalClientError.invalidResponse }
+        throw WatchTerminalClientError.offline
+    }
+
     public func send(_ input: WatchTerminalInput) async throws {
         guard let baseURL = preferredBaseURL() else { throw WatchTerminalClientError.notConnected }
         let components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/input")
@@ -481,8 +533,75 @@ public enum WatchTerminalCrownHistory {
     }
 }
 
+public struct WatchTerminalHistoryPage: Codable, Equatable, Sendable {
+    public static let maximumRows = 256
+
+    public let paneID: String
+    public let historySize: Int
+    public let start: Int
+    public let lines: [String]
+    public let ansiLines: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case paneID
+        case historySize
+        case start
+        case lines
+        case ansiLines
+    }
+
+    public init(
+        paneID: String,
+        historySize: Int,
+        start: Int,
+        lines: [String],
+        ansiLines: [String]? = nil
+    ) {
+        self.paneID = paneID
+        self.historySize = max(0, historySize)
+        self.start = max(0, start)
+        self.lines = Array(lines.prefix(Self.maximumRows))
+        let styled = ansiLines?.count == lines.count ? ansiLines! : lines
+        self.ansiLines = Array(styled.prefix(Self.maximumRows))
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        paneID = try values.decode(String.self, forKey: .paneID)
+        historySize = max(0, try values.decode(Int.self, forKey: .historySize))
+        start = max(0, try values.decode(Int.self, forKey: .start))
+        let decodedLines = try values.decode([String].self, forKey: .lines)
+        guard paneID.hasPrefix("%"), start <= historySize,
+              decodedLines.count <= Self.maximumRows,
+              start + decodedLines.count <= historySize else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .lines,
+                in: values,
+                debugDescription: "Terminal history page metadata was invalid."
+            )
+        }
+        lines = decodedLines
+        let styled = try values.decodeIfPresent([String].self, forKey: .ansiLines) ?? decodedLines
+        ansiLines = styled.count == decodedLines.count ? styled : decodedLines
+    }
+
+    public var end: Int { min(historySize, start + lines.count) }
+
+    public func contains(_ range: Range<Int>) -> Bool {
+        range.lowerBound >= start && range.upperBound <= end
+    }
+
+    public func ansiLines(in range: Range<Int>) -> [String]? {
+        guard contains(range) else { return nil }
+        let lower = range.lowerBound - start
+        let upper = range.upperBound - start
+        return Array(ansiLines[lower..<upper])
+    }
+}
+
 public struct WatchTerminalFrame: Codable, Equatable, Sendable {
     public let sequence: Int
+    public let paneID: String
     public let columns: Int
     public let rows: Int
     public let cursorColumn: Int
@@ -497,6 +616,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case sequence
+        case paneID
         case columns
         case rows
         case cursorColumn
@@ -514,6 +634,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
 
     public init(
         sequence: Int,
+        paneID: String = "",
         columns: Int,
         rows: Int,
         cursorColumn: Int,
@@ -527,6 +648,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
         ansiLines: [String]? = nil
     ) {
         self.sequence = sequence
+        self.paneID = paneID
         self.columns = columns
         self.rows = rows
         self.cursorColumn = cursorColumn
@@ -543,6 +665,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         sequence = try values.decode(Int.self, forKey: .sequence)
+        paneID = try values.decodeIfPresent(String.self, forKey: .paneID) ?? ""
         columns = try values.decode(Int.self, forKey: .columns)
         rows = try values.decode(Int.self, forKey: .rows)
         cursorColumn = try values.decode(Int.self, forKey: .cursorColumn)
@@ -570,6 +693,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(sequence, forKey: .sequence)
+        try values.encode(paneID, forKey: .paneID)
         try values.encode(columns, forKey: .columns)
         try values.encode(rows, forKey: .rows)
         try values.encode(cursorColumn, forKey: .cursorColumn)
@@ -586,6 +710,62 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
     public var liveCursorLineIndex: Int {
         guard !lines.isEmpty else { return 0 }
         return min(max(0, screenStart + cursorRow), lines.count - 1)
+    }
+
+    /// Absolute index of the first locally captured row in tmux's combined
+    /// history-plus-screen coordinate space.
+    public var capturedAbsoluteStart: Int {
+        max(0, historySize - screenStart)
+    }
+
+    /// The current Pi editor is bounded by full-width divider rows. This live
+    /// block stays unwrapped in a clipped, cursor-following viewport; output
+    /// above it can wrap locally without resizing the authoritative PTY.
+    public var liveEditorRange: Range<Int>? {
+        guard !lines.isEmpty else { return nil }
+        let screenEnd = min(lines.count, screenStart + max(0, rows))
+        let cursor = liveCursorLineIndex
+        guard cursor >= screenStart, cursor < screenEnd else { return nil }
+
+        let upperSearchStart = max(screenStart, cursor - 8)
+        let lowerSearchEnd = min(screenEnd, cursor + 10)
+        let upper = stride(from: cursor - 1, through: upperSearchStart, by: -1).first {
+            Self.isEditorDivider(lines[$0], terminalColumns: columns)
+        }
+        let lower = (cursor + 1..<lowerSearchEnd).first {
+            Self.isEditorDivider(lines[$0], terminalColumns: columns)
+        }
+        guard let upper, let lower, upper < cursor, cursor < lower else { return nil }
+        // Include the lower divider plus Pi's path and token/model footer rows.
+        return upper..<min(screenEnd, lower + 3)
+    }
+
+    public var liveOutputEndIndex: Int {
+        if let editor = liveEditorRange { return editor.lowerBound }
+        return max(0, min(lines.count, liveCursorLineIndex))
+    }
+
+    public var absoluteOutputEnd: Int {
+        capturedAbsoluteStart + liveOutputEndIndex
+    }
+
+    public func maximumOutputScrollOffset(maximumSourceRows: Int) -> Int {
+        max(0, absoluteOutputEnd - max(1, maximumSourceRows))
+    }
+
+    public func localANSILines(inAbsoluteRange range: Range<Int>) -> [String]? {
+        let localStart = range.lowerBound - capturedAbsoluteStart
+        let localEnd = range.upperBound - capturedAbsoluteStart
+        guard localStart >= 0, localEnd <= ansiLines.count, localStart <= localEnd else { return nil }
+        return Array(ansiLines[localStart..<localEnd])
+    }
+
+    private static func isEditorDivider(_ line: String, terminalColumns: Int) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let minimumLength = max(12, min(terminalColumns / 2, 24))
+        guard trimmed.count >= minimumLength else { return false }
+        let dividers = CharacterSet(charactersIn: "-_=~─━═")
+        return trimmed.unicodeScalars.allSatisfy { dividers.contains($0) }
     }
 
     /// Exact captured grid rows around the live Pi view, offset toward tmux
@@ -737,6 +917,126 @@ public enum WatchTerminalANSIParser {
             flush()
             return spans
         }
+    }
+
+    /// Wraps styled terminal rows for the Watch output surface without changing
+    /// the PTY grid. Default trailing padding is discarded, ANSI backgrounds
+    /// are retained, and adjacent characters with the same style are coalesced.
+    public static func wrapped(
+        lines: [[WatchTerminalANSISpan]],
+        displayColumns: Int
+    ) -> [[WatchTerminalANSISpan]] {
+        lines.flatMap { wrapped(line: $0, displayColumns: displayColumns) }
+    }
+
+    public static func wrapped(
+        line: [WatchTerminalANSISpan],
+        displayColumns: Int
+    ) -> [[WatchTerminalANSISpan]] {
+        struct Cell {
+            let character: Character
+            let style: WatchTerminalANSIStyle
+        }
+
+        let columns = max(1, displayColumns)
+        var cells = line.flatMap { span in
+            span.text.map { Cell(character: $0, style: span.style) }
+        }
+        while let last = cells.last,
+              last.character.isWhitespace,
+              last.style.background == .default,
+              !last.style.inverse {
+            cells.removeLast()
+        }
+        guard !cells.isEmpty else { return [[]] }
+
+        let dividerCharacters = CharacterSet(charactersIn: "-_=~─━═")
+        if cells.count > columns,
+           cells.allSatisfy({ cell in
+               cell.character.unicodeScalars.allSatisfy { dividerCharacters.contains($0) }
+           }) {
+            cells = Array(cells.prefix(columns))
+        }
+
+        func spans(from slice: ArraySlice<Cell>) -> [WatchTerminalANSISpan] {
+            var output: [WatchTerminalANSISpan] = []
+            var text = ""
+            var style: WatchTerminalANSIStyle?
+            for cell in slice {
+                if let style, style != cell.style {
+                    output.append(WatchTerminalANSISpan(text: text, style: style))
+                    text = ""
+                }
+                style = cell.style
+                text.append(cell.character)
+            }
+            if let style, !text.isEmpty {
+                output.append(WatchTerminalANSISpan(text: text, style: style))
+            }
+            return output
+        }
+
+        var output: [[WatchTerminalANSISpan]] = []
+        while cells.count > columns {
+            let candidate = cells.prefix(columns)
+            let lowerBound = max(1, columns / 2)
+            let breakIndex = candidate.indices.reversed().first { index in
+                index >= lowerBound
+                    && candidate[index].character.isWhitespace
+                    && candidate[index].style.background == .default
+                    && !candidate[index].style.inverse
+            }
+            if let breakIndex {
+                output.append(spans(from: cells[..<breakIndex]))
+                cells.removeFirst(breakIndex + 1)
+                while let first = cells.first,
+                      first.character.isWhitespace,
+                      first.style.background == .default,
+                      !first.style.inverse {
+                    cells.removeFirst()
+                }
+            } else {
+                output.append(spans(from: cells.prefix(columns)))
+                cells.removeFirst(columns)
+            }
+        }
+        output.append(spans(from: cells[...]))
+        return output
+    }
+
+    /// Returns one unwrapped styled cell window. The Watch editor uses this to
+    /// keep the cursor visible at the same font as output without a horizontal
+    /// gesture or any change to the 48-column PTY.
+    public static func viewport(
+        line: [WatchTerminalANSISpan],
+        start: Int,
+        columns: Int
+    ) -> [WatchTerminalANSISpan] {
+        struct Cell {
+            let character: Character
+            let style: WatchTerminalANSIStyle
+        }
+        let cells = line.flatMap { span in
+            span.text.map { Cell(character: $0, style: span.style) }
+        }
+        let safeStart = min(cells.count, max(0, start))
+        let end = min(cells.count, safeStart + max(1, columns))
+        guard safeStart < end else { return [] }
+        var output: [WatchTerminalANSISpan] = []
+        var text = ""
+        var style: WatchTerminalANSIStyle?
+        for cell in cells[safeStart..<end] {
+            if let style, style != cell.style {
+                output.append(WatchTerminalANSISpan(text: text, style: style))
+                text = ""
+            }
+            style = cell.style
+            text.append(cell.character)
+        }
+        if let style, !text.isEmpty {
+            output.append(WatchTerminalANSISpan(text: text, style: style))
+        }
+        return output
     }
 
     private static func applySGR(_ raw: String, to style: inout WatchTerminalANSIStyle) {
