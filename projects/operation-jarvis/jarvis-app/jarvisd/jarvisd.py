@@ -430,6 +430,22 @@ def _purifier_matches(state: dict, expected: dict) -> bool:
     return True
 
 
+def _purifier_pending_command(expected: Any) -> dict | None:
+    """Return only the structured desired state needed for native progress UI."""
+    if not isinstance(expected, dict):
+        return None
+    level = expected.get("fanLevel")
+    if isinstance(level, int) and level in PURIFIER_SPEEDS:
+        return {"setting": "speed", "level": level}
+    is_on = expected.get("isOn")
+    if isinstance(is_on, bool):
+        return {"setting": "power", "value": "on" if is_on else "off"}
+    mode = expected.get("mode")
+    if mode in PURIFIER_MODES:
+        return {"setting": "mode", "value": mode}
+    return None
+
+
 def _public_command_result(action: Any, result: dict) -> dict:
     """Return the bounded native-client contract, never adapter internals."""
     response: dict[str, Any] = {
@@ -625,6 +641,7 @@ def _plugs() -> dict:
 def _purifier_state(data: dict) -> dict:
     return {
         "ok": True,
+        "verificationPending": data.get("verification_pending") is True,
         "isOn": data.get("is_on"),
         "power": data.get("power"),
         "mode": data.get("mode"),
@@ -1207,6 +1224,16 @@ class StateCoordinator:
                 data["updatedAt"] = record["updatedAt"]
             if record["error"]:
                 data["lastError"] = record["error"]
+            if name == "purifier":
+                pending = record.get("pending")
+                if isinstance(pending, dict):
+                    data["verificationPending"] = True
+                    pending_command = _purifier_pending_command(pending.get("expected"))
+                    if pending_command is not None:
+                        data["pendingCommand"] = pending_command
+                else:
+                    data["verificationPending"] = False
+                    data.pop("pendingCommand", None)
             subsystems[name] = data
             age = None if record["lastGoodAt"] is None else max(0.0, now - record["lastGoodAt"])
             metadata[name] = {

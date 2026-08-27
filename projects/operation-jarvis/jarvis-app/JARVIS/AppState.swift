@@ -456,6 +456,60 @@ public final class AppState: ObservableObject {
         )
     }
 
+    func executeWatchPurifierCommand(_ command: WatchPurifierCommand) async -> CommandResult {
+        let action = "purifier-set"
+        guard command.isValid else {
+            return CommandResult(ok: false, action: action, error: "The air-purifier command was invalid.")
+        }
+        guard beginOperation("purifier") else {
+            return CommandResult(ok: false, action: action, error: "An air-purifier operation is already in progress.")
+        }
+        defer { endOperation("purifier") }
+
+        // As with plug relays, only a fresh phone-side snapshot may authorize a
+        // Watch write. Cached Watch state is presentation data, not authority.
+        await fetchState()
+        guard currentEndpoint != nil,
+              connectionState == .connected,
+              stateErrorMessage == nil,
+              let snapshot = lastState,
+              snapshot.stale != true,
+              let purifier = snapshot.subsystems?.purifier,
+              purifier.ok == true,
+              purifier.stale != true else {
+            return CommandResult(ok: false, action: action, error: "Fresh air-purifier status is unavailable.")
+        }
+        if command.matches(purifier) {
+            return CommandResult(ok: true, action: action, summary: "already-in-desired-state")
+        }
+
+        guard let result = await send(action, command.parameters), result.ok else {
+            return CommandResult(ok: false, action: action, error: operationErrorMessage ?? "The air-purifier command failed.")
+        }
+
+        // VeSync can accept a write while returning its previous cloud state.
+        // Preserve that distinct pending outcome so both native clients can
+        // show confirmation progress instead of a misleading hard failure.
+        if result.purifierVerificationPending {
+            await fetchState()
+            return result
+        }
+
+        // Never infer confirmed success from transport delivery alone. Refresh
+        // once and report confirmation only when the requested state is visible.
+        await fetchState()
+        guard connectionState == .connected,
+              stateErrorMessage == nil,
+              lastState?.stale != true,
+              let confirmed = lastState?.subsystems?.purifier,
+              confirmed.ok == true,
+              confirmed.stale != true,
+              command.matches(confirmed) else {
+            return CommandResult(ok: false, action: action, error: "The air-purifier result could not be confirmed.")
+        }
+        return result
+    }
+
     func rememberWatchCommand(_ requestID: String, entry: WatchCommandCacheEntry) {
         guard !requestID.isEmpty else { return }
         watchCommandResponses[requestID] = entry

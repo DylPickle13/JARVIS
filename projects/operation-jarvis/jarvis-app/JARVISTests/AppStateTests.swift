@@ -169,6 +169,32 @@ final class AppStateTests: XCTestCase {
         XCTAssertNotNil(app.watchCommandResponses[requestID]?.error)
     }
 
+    func testWatchPurifierRelayUsesClosedCommandAndConfirmsFreshState() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        let requestID = "purifier-power-request"
+
+        app.watchBridgeDidReceivePurifierCommand(
+            .shared,
+            command: .power(true),
+            requestID: requestID
+        )
+        for _ in 0..<40 where app.watchCommandResponses[requestID] == nil {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        XCTAssertEqual(api.commands, ["purifier-set"])
+        XCTAssertEqual(api.commandParams.first?["setting"], .string("power"))
+        XCTAssertEqual(api.commandParams.first?["value"], .string("on"))
+        XCTAssertEqual(app.watchCommandResponses[requestID]?.result?.ok, true)
+        XCTAssertNil(app.watchCommandResponses[requestID]?.error)
+        XCTAssertEqual(app.lastState?.subsystems?.purifier?.isOn, true)
+        XCTAssertTrue(app.watchCommandInFlight.isEmpty)
+    }
+
     func testSiriPromptNormalizesAndDeliversOneAtomicReturnRequest() async {
         let configuration = WatchTerminalConfiguration(
             endpoint: "https://fixture.invalid:8792",
@@ -414,15 +440,27 @@ final class AppStateTests: XCTestCase {
 }
 
 private final class FakeAPI: JarvisAPI, @unchecked Sendable {
-    let state: StateSnapshot
     let commandSucceeds: Bool
     let commandDelay: Duration?
     let scheduledJobsSucceeds: Bool
     var commands: [String] = []
+    var commandParams: [[String: JSONValue]] = []
     var stateCalls = 0
     var healthCalls = 0
     var servicesCalls = 0
     var scheduledJobsCalls = 0
+    private var purifierIsOn = false
+    private var purifierMode = "auto"
+    private var purifierFan = 2
+
+    private var state: StateSnapshot {
+        try! JSONDecoder().decode(
+            StateSnapshot.self,
+            from: Data(
+                #"{"ok":true,"stale":false,"summary":{"plugsOn":1,"plugsTotal":2,"purifierOn":\#(purifierIsOn)},"subsystems":{"plugs":{"ok":true,"stale":false,"plugs":{"lamp":{"ok":true,"stale":false,"isOn":false},"tv":{"ok":true,"stale":false,"isOn":true}}},"purifier":{"ok":true,"stale":false,"isOn":\#(purifierIsOn),"mode":"\#(purifierMode)","fanLevel":\#(purifierFan),"fanSetLevel":\#(purifierFan),"pm25":3}}}"#.utf8
+            )
+        )
+    }
 
     init(
         commandSucceeds: Bool = true,
@@ -432,10 +470,6 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         self.commandSucceeds = commandSucceeds
         self.commandDelay = commandDelay
         self.scheduledJobsSucceeds = scheduledJobsSucceeds
-        self.state = try! JSONDecoder().decode(
-            StateSnapshot.self,
-            from: Data(#"{"ok":true,"stale":false,"summary":{"plugsOn":1,"plugsTotal":2},"subsystems":{"plugs":{"ok":true,"stale":false,"plugs":{"lamp":{"ok":true,"stale":false,"isOn":false},"tv":{"ok":true,"stale":false,"isOn":true}}}}}"#.utf8)
-        )
     }
 
     func health(_ endpoint: JarvisEndpoint) async throws -> HealthResponse {
@@ -451,11 +485,27 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult {
         if let commandDelay { try await Task.sleep(for: commandDelay) }
         commands.append(action)
+        commandParams.append(params ?? [:])
+        if commandSucceeds, action == "purifier-set", case .string(let setting)? = params?["setting"] {
+            switch setting {
+            case "power":
+                if case .string(let value)? = params?["value"] { purifierIsOn = value == "on" }
+            case "mode":
+                if case .string(let value)? = params?["value"] { purifierMode = value }
+            case "speed":
+                if case .number(let value)? = params?["level"] {
+                    purifierMode = "manual"
+                    purifierFan = Int(value)
+                }
+            default:
+                break
+            }
+        }
         return CommandResult(
             ok: commandSucceeds,
             action: action,
             error: commandSucceeds ? nil : "simulated failure",
-            plug: commandSucceeds
+            plug: commandSucceeds && action.hasPrefix("plug-")
                 ? PlugCommandData(name: "lamp", is_on: action == "plug-on")
                 : nil
         )

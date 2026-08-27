@@ -70,6 +70,38 @@ extension AppState: WatchBridgeDelegate {
         }
     }
 
+    public nonisolated func watchBridgeDidReceivePurifierCommand(
+        _ bridge: WatchBridge,
+        command: WatchPurifierCommand,
+        requestID: String
+    ) {
+        #if DEBUG
+        NSLog("[JARVIS AppState] received Watch purifier command setting=%@", command.setting.rawValue)
+        #endif
+        Task { @MainActor [weak self] in
+            guard let self, command.isValid, !requestID.isEmpty else {
+                if !requestID.isEmpty {
+                    bridge.sendCommandError(requestID: requestID, message: "The air-purifier command was invalid.")
+                }
+                return
+            }
+
+            if let cached = self.watchCommandResponses[requestID] {
+                sendWatchCommandResponse(cached, bridge: bridge, requestID: requestID)
+                return
+            }
+            guard self.watchCommandInFlight.insert(requestID).inserted else { return }
+
+            let result = await self.executeWatchPurifierCommand(command)
+            let entry = result.ok
+                ? WatchCommandCacheEntry(result: result, error: nil)
+                : WatchCommandCacheEntry(result: nil, error: result.error ?? "The air-purifier command failed.")
+            self.rememberWatchCommand(requestID, entry: entry)
+            sendWatchCommandResponse(entry, bridge: bridge, requestID: requestID)
+            self.watchCommandInFlight.remove(requestID)
+        }
+    }
+
     public nonisolated func watchBridgeDidReceiveCommandResult(
         _ bridge: WatchBridge,
         requestID: String,
@@ -92,6 +124,6 @@ private func sendWatchCommandResponse(
     if let result = entry.result {
         bridge.sendCommandResult(requestID: requestID, result: result)
     } else {
-        bridge.sendCommandError(requestID: requestID, message: entry.error ?? "The plug command failed.")
+        bridge.sendCommandError(requestID: requestID, message: entry.error ?? "The Watch command failed.")
     }
 }

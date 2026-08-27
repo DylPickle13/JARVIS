@@ -21,12 +21,82 @@ public struct WatchMessage: Codable, Equatable, Sendable {
     }
 }
 
+public enum WatchPurifierSetting: String, Codable, Equatable, Sendable {
+    case power
+    case mode
+    case speed
+}
+
+/// A closed, validated purifier command surface for WatchConnectivity. The
+/// Watch cannot relay arbitrary jarvisd actions or parameters through it.
+public struct WatchPurifierCommand: Codable, Equatable, Sendable {
+    public static let supportedModes = ["auto", "manual", "sleep", "pet"]
+
+    public let setting: WatchPurifierSetting
+    public let value: String?
+    public let level: Int?
+
+    private init(setting: WatchPurifierSetting, value: String? = nil, level: Int? = nil) {
+        self.setting = setting
+        self.value = value
+        self.level = level
+    }
+
+    public static func power(_ isOn: Bool) -> WatchPurifierCommand {
+        WatchPurifierCommand(setting: .power, value: isOn ? "on" : "off")
+    }
+
+    public static func mode(_ mode: String) -> WatchPurifierCommand? {
+        let normalized = mode.lowercased()
+        guard supportedModes.contains(normalized) else { return nil }
+        return WatchPurifierCommand(setting: .mode, value: normalized)
+    }
+
+    public static func speed(_ level: Int) -> WatchPurifierCommand? {
+        guard (1...4).contains(level) else { return nil }
+        return WatchPurifierCommand(setting: .speed, level: level)
+    }
+
+    public var isValid: Bool {
+        switch setting {
+        case .power:
+            return level == nil && (value == "on" || value == "off")
+        case .mode:
+            return level == nil && value.map(Self.supportedModes.contains) == true
+        case .speed:
+            return value == nil && level.map { (1...4).contains($0) } == true
+        }
+    }
+
+    public var parameters: [String: JSONValue] {
+        switch setting {
+        case .power, .mode:
+            return ["setting": .string(setting.rawValue), "value": .string(value ?? "")]
+        case .speed:
+            return ["setting": .string(setting.rawValue), "level": .number(Double(level ?? 0))]
+        }
+    }
+
+    public func matches(_ purifier: PurifierSubsystem) -> Bool {
+        switch setting {
+        case .power:
+            return purifier.isOn == (value == "on")
+        case .mode:
+            return purifier.mode?.lowercased() == value
+        case .speed:
+            return purifier.mode?.lowercased() == "manual"
+                && (purifier.fanSetLevel ?? purifier.fanLevel) == level
+        }
+    }
+}
+
 public protocol WatchBridgeDelegate: AnyObject {
     func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge, requestID: String)
     func watchBridgeDidReceiveState(_ bridge: WatchBridge, json: Data)
     func watchBridgeDidReceiveEndpoint(_ bridge: WatchBridge, endpoint: String)
     func watchBridgeDidReceiveTerminalConfiguration(_ bridge: WatchBridge, configuration: WatchTerminalConfiguration)
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String)
+    func watchBridgeDidReceivePurifierCommand(_ bridge: WatchBridge, command: WatchPurifierCommand, requestID: String)
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult)
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError)
 }
@@ -36,6 +106,7 @@ public extension WatchBridgeDelegate {
     func watchBridgeDidReceiveEndpoint(_ bridge: WatchBridge, endpoint: String) {}
     func watchBridgeDidReceiveTerminalConfiguration(_ bridge: WatchBridge, configuration: WatchTerminalConfiguration) {}
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String) {}
+    func watchBridgeDidReceivePurifierCommand(_ bridge: WatchBridge, command: WatchPurifierCommand, requestID: String) {}
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult) {}
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError) {}
 }
@@ -144,6 +215,19 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         let payload = try? JSONEncoder().encode(PlugIntent(name: name, isOn: isOn))
         return send(
             WatchMessage(type: "plugCommand", requestID: requestID, payload: payload),
+            queueIfUnreachable: queueIfUnreachable
+        )
+    }
+
+    @discardableResult
+    public func sendPurifierCommand(
+        _ command: WatchPurifierCommand,
+        requestID: String = UUID().uuidString,
+        queueIfUnreachable: Bool = true
+    ) -> Bool {
+        guard command.isValid, let payload = try? JSONEncoder().encode(command) else { return false }
+        return send(
+            WatchMessage(type: "purifierCommand", requestID: requestID, payload: payload),
             queueIfUnreachable: queueIfUnreachable
         )
     }
@@ -378,6 +462,11 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
             guard let data = raw["payload"] as? Data,
                   let intent = try? JSONDecoder().decode(PlugIntent.self, from: data) else { return }
             delegate?.watchBridgeDidReceivePlugCommand(self, name: intent.name, isOn: intent.isOn, requestID: requestID)
+        case "purifierCommand":
+            guard let data = raw["payload"] as? Data,
+                  let command = try? JSONDecoder().decode(WatchPurifierCommand.self, from: data),
+                  command.isValid else { return }
+            delegate?.watchBridgeDidReceivePurifierCommand(self, command: command, requestID: requestID)
         case "terminalConfiguration":
             guard let data = raw["payload"] as? Data,
                   let configuration = try? JSONDecoder().decode(WatchTerminalConfiguration.self, from: data),
@@ -475,6 +564,12 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     public func sendPlugCommand(
         name: String,
         isOn: Bool,
+        requestID: String = UUID().uuidString,
+        queueIfUnreachable: Bool = true
+    ) -> Bool { false }
+    @discardableResult
+    public func sendPurifierCommand(
+        _ command: WatchPurifierCommand,
         requestID: String = UUID().uuidString,
         queueIfUnreachable: Bool = true
     ) -> Bool { false }

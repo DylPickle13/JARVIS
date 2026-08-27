@@ -190,12 +190,18 @@ class DaemonUnitTests(unittest.TestCase):
                 "ok": True,
                 "airPurifier": {
                     "command": ["/Users/example/private/purifier-cli"],
-                    "data": {"name": "Air Purifier", "mode": "auto", "cid": "private-cid"},
+                    "data": {
+                        "name": "Air Purifier",
+                        "mode": "sleep",
+                        "verification_pending": True,
+                        "cid": "private-cid",
+                    },
                 },
             },
         )
         encoded = json.dumps(purifier)
-        self.assertEqual(purifier["airPurifier"]["data"]["mode"], "auto")
+        self.assertEqual(purifier["airPurifier"]["data"]["mode"], "sleep")
+        self.assertTrue(purifier["airPurifier"]["data"]["verification_pending"])
         self.assertNotIn("private-cid", encoded)
         self.assertNotIn("/Users/", encoded)
 
@@ -227,25 +233,32 @@ class DaemonUnitTests(unittest.TestCase):
         with mock.patch.object(coordinator, "start"):
             self.assertTrue(
                 coordinator.apply_purifier_result(
-                    {"is_on": True, "mode": "auto", "verification_pending": True},
-                    {"isOn": False},
+                    {"is_on": True, "mode": "sleep", "verification_pending": True},
+                    {"mode": "auto"},
                 )
             )
             snapshot = coordinator.snapshot()
-            self.assertTrue(snapshot["subsystems"]["purifier"]["stale"])
+            pending = snapshot["subsystems"]["purifier"]
+            self.assertTrue(pending["stale"])
+            self.assertTrue(pending["verificationPending"])
+            self.assertEqual(pending["pendingCommand"], {"setting": "mode", "value": "auto"})
             revision = coordinator._records["purifier"]["revision"]
 
             old_future = jarvisd.concurrent.futures.Future()
-            old_future.set_result({"ok": True, "isOn": True, "mode": "auto"})
+            old_future.set_result({"ok": True, "isOn": True, "mode": "sleep"})
             coordinator._complete("purifier", old_future, revision)
-            self.assertTrue(coordinator.snapshot()["subsystems"]["purifier"]["stale"])
+            pending = coordinator.snapshot()["subsystems"]["purifier"]
+            self.assertTrue(pending["stale"])
+            self.assertTrue(pending["verificationPending"])
 
             verified_future = jarvisd.concurrent.futures.Future()
-            verified_future.set_result({"ok": True, "isOn": False, "mode": "manual"})
+            verified_future.set_result({"ok": True, "isOn": True, "mode": "auto"})
             coordinator._complete("purifier", verified_future, revision)
             verified = coordinator.snapshot()["subsystems"]["purifier"]
             self.assertFalse(verified["stale"])
-            self.assertFalse(verified["isOn"])
+            self.assertFalse(verified["verificationPending"])
+            self.assertNotIn("pendingCommand", verified)
+            self.assertEqual(verified["mode"], "auto")
 
         self.assertEqual(jarvisd._purifier_expectation({"setting": "mode", "value": "manual"}), {"mode": "manual"})
         self.assertEqual(jarvisd._purifier_expectation({"setting": "speed", "level": 2.0}), {"mode": "manual", "fanLevel": 2})

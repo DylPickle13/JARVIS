@@ -119,6 +119,7 @@ struct HomeView: View {
     private var connectionHeadline: String {
         switch app.connectionState {
         case .connected:
+            if purifierConfirmationIsPrimaryStatus { return "Online · confirming purifier" }
             return app.lastState?.stale == true ? "Connected · stale" : "Online · \(networkLabel)"
         case .connecting: return "Connecting"
         case .failed: return "Offline"
@@ -136,6 +137,7 @@ struct HomeView: View {
     }
 
     private var freshnessLabel: String {
+        if purifierConfirmationIsPrimaryStatus { return "Applying change" }
         if app.lastState?.stale == true { return "Needs refresh" }
         if app.connectionState == .connected, app.lastState != nil, app.lastState?.ageSeconds == nil {
             return "Status current"
@@ -148,6 +150,14 @@ struct HomeView: View {
         if host.hasPrefix("100.") || host.hasSuffix(".ts.net") { return "Tailscale" }
         if host.hasPrefix("192.168") || host.hasPrefix("10.") || host.hasPrefix("172.") { return "LAN" }
         return host
+    }
+
+    private var purifierConfirmationIsPrimaryStatus: Bool {
+        guard app.lastState?.subsystems?.purifier?.verificationPending == true,
+              let metadata = app.lastState?.subsystemsMeta else { return false }
+        return !metadata.contains { name, value in
+            name != "purifier" && name != "codexQuota" && value.stale == true
+        }
     }
 
     private var loadingCard: some View {
@@ -256,7 +266,8 @@ struct HomeView: View {
                 ? (purifier.mode ?? "auto")
                 : "auto"
             let fan = purifier.fanSetLevel ?? purifier.fanLevel
-            let busy = app.isOperationBusy("purifier")
+            let pending = purifier.verificationPending == true
+            let busy = app.isOperationBusy("purifier") || pending
             let stale = state.stale == true || purifier.stale == true
 
             MinimalCard {
@@ -292,7 +303,11 @@ struct HomeView: View {
                 }
             }
 
-            if stale { staleCaption("Air-purifier data is stale.") }
+            if pending {
+                purifierConfirmationCaption(purifier.pendingCommand)
+            } else if stale {
+                staleCaption("Air-purifier data is stale.")
+            }
         } else {
             VStack(alignment: .leading, spacing: 7) {
                 MinimalSectionHeader(title: "Air purifier", systemImage: "wind")
@@ -402,6 +417,28 @@ struct HomeView: View {
 
     private func purifierQualityProgress(_ value: Int?) -> CGFloat {
         CGFloat(AirQualityGauge.cleanlinessProgress(pm25: value))
+    }
+
+    private func purifierConfirmationCaption(_ command: PurifierPendingCommand?) -> some View {
+        Label(purifierConfirmationText(command), systemImage: "clock.arrow.circlepath")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(JarvisPalette.warning)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(purifierConfirmationText(command))
+    }
+
+    private func purifierConfirmationText(_ command: PurifierPendingCommand?) -> String {
+        guard let command else { return "Applying air-purifier change… Waiting for confirmation." }
+        switch command.setting {
+        case "mode":
+            return "Switching to \(command.value?.capitalized ?? "the selected mode")… Waiting for confirmation."
+        case "power":
+            return "Turning air purifier \(command.value ?? "on or off")… Waiting for confirmation."
+        case "speed":
+            return "Setting fan to \(command.level.map(String.init) ?? "the selected level")… Waiting for confirmation."
+        default:
+            return "Applying air-purifier change… Waiting for confirmation."
+        }
     }
 
     private func purifierFanSlider(

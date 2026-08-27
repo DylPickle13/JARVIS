@@ -352,6 +352,18 @@ grep -q 'private enum WatchDashboardPage: Hashable, CaseIterable' JARVISWatch/Vi
 [[ "$(sed -n '/private enum WatchDashboardPage/,/^}/p' JARVISWatch/Views/WatchDashboardContent.swift | grep -c '^    case ')" == "3" ]]
 grep -q '@State private var selectedPage: WatchDashboardPage = .terminal' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'pageDragGesture(previous: .terminal, next: .system)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'private func purifierPowerButton' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'private func purifierModeControl' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'private func purifierFanControl' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'WatchBridge.shared.sendPurifierCommand' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'watchBridgeDidReceivePurifierCommand' JARVIS/AppStateWatchBridge.swift
+grep -q 'public struct WatchPurifierCommand' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+grep -q 'public let verificationPending: Bool?' JARVISKit/Sources/JARVISKit/Models.swift
+grep -q 'public let pendingCommand: PurifierPendingCommand?' JARVISKit/Sources/JARVISKit/Models.swift
+grep -q 'purifierConfirmationCaption' JARVIS/Views/HomeView.swift
+grep -q 'purifierPendingSummary' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'data\["pendingCommand"\] = pending_command' jarvisd/jarvisd.py
+reject_match 'Air-purifier controls must stay in the existing System card, not add a Watch page' -Fq 'case purifier' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'System Watch pager must not reserve the removed clock strip' -Fq 'tabViewStyle(.verticalPage)' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch terminal must not require an Open button' -qs 'Open JARVIS' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch terminal must not use a navigation launcher' -qs 'NavigationLink' JARVISWatch/Views/WatchDashboardContent.swift

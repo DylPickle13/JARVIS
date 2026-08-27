@@ -83,6 +83,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     @Published var isViaPhone = false
     @Published var cachedAt: Date?
     @Published var busyPlug: String?
+    @Published var purifierBusy = false
     @Published var pendingRelay = false
     @Published private(set) var isRefreshing = false
 
@@ -134,6 +135,17 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             || isStale
             || lastState?.subsystems?.plugs?.stale == true
             || lastState?.subsystems?.plugs?.plugs?[name]?.stale == true
+    }
+
+    var isPurifierVerificationPending: Bool {
+        lastState?.subsystems?.purifier?.verificationPending == true
+    }
+
+    var isPurifierStateStale: Bool {
+        connectionState != .connected
+            || isStale
+            || lastState?.subsystems?.purifier?.ok != true
+            || lastState?.subsystems?.purifier?.stale == true
     }
 
     var shouldShowRetry: Bool {
@@ -422,6 +434,98 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         }
     }
 
+    func setPurifierPower(_ isOn: Bool) async {
+        await setPurifier(.power(isOn))
+    }
+
+    func setPurifierMode(_ mode: String) async {
+        guard let command = WatchPurifierCommand.mode(mode) else {
+            errorMessage = "That air-purifier mode is unavailable."
+            return
+        }
+        await setPurifier(command)
+    }
+
+    func setPurifierFan(_ level: Int) async {
+        guard let command = WatchPurifierCommand.speed(level) else {
+            errorMessage = "The air-purifier fan level must be between 1 and 4."
+            return
+        }
+        await setPurifier(command)
+    }
+
+    private func setPurifier(_ command: WatchPurifierCommand) async {
+        guard !purifierBusy else { return }
+        guard !isPurifierStateStale, let purifier = lastState?.subsystems?.purifier else {
+            errorMessage = isPurifierVerificationPending
+                ? "Waiting for the air purifier to confirm the previous change."
+                : "Air-purifier data is stale; waiting for an automatic refresh."
+            return
+        }
+        if command.matches(purifier) {
+            errorMessage = nil
+            return
+        }
+
+        purifierBusy = true
+        defer { purifierBusy = false }
+
+        if isViaPhone || store.endpointURL == nil {
+            guard WatchBridge.shared.isPhoneReachable else {
+                errorMessage = "The iPhone relay is unavailable."
+                return
+            }
+            let requestID = UUID().uuidString
+            pendingRelay = true
+            defer { pendingRelay = false }
+            guard WatchBridge.shared.sendPurifierCommand(command, requestID: requestID) else {
+                errorMessage = "Could not send the air-purifier command to the iPhone."
+                return
+            }
+            guard let response = await waitForRelayResponse(requestID) else {
+                errorMessage = "The iPhone relay timed out."
+                return
+            }
+            guard let result = response.result, result.ok else {
+                errorMessage = response.error ?? response.result?.error ?? "The relayed air-purifier command failed."
+                return
+            }
+            errorMessage = nil
+            WatchBridge.shared.requestState()
+            return
+        }
+
+        guard let endpoint = store.endpoint else {
+            errorMessage = "No endpoint available."
+            return
+        }
+        do {
+            let result = try await client.command(endpoint, action: "purifier-set", params: command.parameters)
+            guard result.ok else {
+                errorMessage = result.error ?? "Air-purifier command failed."
+                return
+            }
+            await refresh()
+            if result.purifierVerificationPending {
+                errorMessage = nil
+                return
+            }
+            guard !isPurifierStateStale,
+                  let confirmed = lastState?.subsystems?.purifier,
+                  command.matches(confirmed) else {
+                errorMessage = "The air-purifier result could not be confirmed."
+                return
+            }
+            errorMessage = nil
+        } catch let error as JarvisError {
+            errorMessage = error.errorDescription
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func waitForRelayResponse(_ requestID: String) async -> RelayResponse? {
         let deadline = Date().addingTimeInterval(30)
         while Date() < deadline {
@@ -464,6 +568,12 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     nonisolated func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String) {}
+
+    nonisolated func watchBridgeDidReceivePurifierCommand(
+        _ bridge: WatchBridge,
+        command: WatchPurifierCommand,
+        requestID: String
+    ) {}
 
     nonisolated func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult) {
         Task { @MainActor [weak self] in

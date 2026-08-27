@@ -245,6 +245,26 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(result.plug?.is_on, false)
     }
 
+    func testPurifierPendingVerificationDecodesAsProgressNotGenericStaleness() throws {
+        let commandResult = try JSONDecoder().decode(
+            CommandResult.self,
+            from: Data(
+                #"{"ok":true,"action":"purifier-set","airPurifier":{"ok":true,"data":{"mode":"sleep","verification_pending":true}}}"#.utf8
+            )
+        )
+        XCTAssertTrue(commandResult.purifierVerificationPending)
+
+        let snapshot = try JSONDecoder().decode(
+            StateSnapshot.self,
+            from: Data(
+                #"{"ok":true,"stale":true,"subsystems":{"purifier":{"ok":true,"stale":true,"verificationPending":true,"pendingCommand":{"setting":"mode","value":"auto"},"isOn":true,"mode":"sleep"}}}"#.utf8
+            )
+        )
+        XCTAssertEqual(snapshot.subsystems?.purifier?.verificationPending, true)
+        XCTAssertEqual(snapshot.subsystems?.purifier?.pendingCommand?.setting, "mode")
+        XCTAssertEqual(snapshot.subsystems?.purifier?.pendingCommand?.value, "auto")
+    }
+
     func testSnapshotStoreRoundTripsState() throws {
         let suite = "jarvis.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -331,6 +351,39 @@ final class JARVISKitTests: XCTestCase {
             from: JSONEncoder().encode(payload)
         )
         XCTAssertEqual(decoded, payload)
+    }
+
+    func testWatchPurifierCommandsAreClosedValidatedAndMatchConfirmedState() throws {
+        let purifier = try JSONDecoder().decode(
+            PurifierSubsystem.self,
+            from: Data(#"{"ok":true,"stale":false,"isOn":true,"mode":"manual","fanLevel":3}"#.utf8)
+        )
+        let power = WatchPurifierCommand.power(true)
+        let mode = try XCTUnwrap(WatchPurifierCommand.mode("MANUAL"))
+        let speed = try XCTUnwrap(WatchPurifierCommand.speed(3))
+
+        XCTAssertTrue(power.isValid)
+        XCTAssertTrue(mode.isValid)
+        XCTAssertTrue(speed.isValid)
+        XCTAssertTrue(power.matches(purifier))
+        XCTAssertTrue(mode.matches(purifier))
+        XCTAssertTrue(speed.matches(purifier))
+        XCTAssertEqual(power.parameters, ["setting": .string("power"), "value": .string("on")])
+        XCTAssertEqual(speed.parameters, ["setting": .string("speed"), "level": .number(3)])
+        XCTAssertNil(WatchPurifierCommand.mode("turbo"))
+        XCTAssertNil(WatchPurifierCommand.speed(5))
+
+        let decoded = try JSONDecoder().decode(
+            WatchPurifierCommand.self,
+            from: JSONEncoder().encode(speed)
+        )
+        XCTAssertEqual(decoded, speed)
+
+        let invalid = try JSONDecoder().decode(
+            WatchPurifierCommand.self,
+            from: Data(#"{"setting":"speed","level":5}"#.utf8)
+        )
+        XCTAssertFalse(invalid.isValid)
     }
 
     func testWatchTerminalProvisioningRoundTripsAndValidates() throws {

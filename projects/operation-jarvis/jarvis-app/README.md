@@ -191,7 +191,23 @@ promotion/replay channels and disables SwiftTerm momentum, bounce, and local pan
 Each vertical threshold now emits at most one immediate SGR wheel event to Pi's own
 viewport, restoring exact Pi-rendered rows and discrete movement. Wheel input is never
 queued, paced, retried, replayed, or retained across mouse-mode loss/disconnection; no
-snapshot, pane capture, tmux copy mode, or tmux/session mutation is used. Build 92 removes every
+snapshot, pane capture, tmux copy mode, or tmux/session mutation is used. Build 102 keeps
+the accepted Terminal → Plugs → System Watch order and makes the existing System-page
+air-purifier card interactive. Power, Auto/Manual/Sleep/Pet mode, and manual fan levels
+1–4 use a closed WatchConnectivity command schema, fail closed on stale state, suppress
+duplicate desired-state writes, and report success only after the phone or Watch confirms
+the requested purifier state. The read-only purifier widget remains isolated and unchanged.
+The exact audited `0.3.0 (102)` archive was installed and launched on the allowlisted
+iPhone and Apple Watch without issuing a purifier write. Physical testing confirmed a
+Sleep → Auto change after VeSync's expected propagation delay. Build 103 exposes that
+bounded verification state explicitly: iPhone shows **Switching to Auto… Waiting for
+confirmation**, Watch shows **Switching to Auto…**, both retain progress feedback and
+block duplicate writes, and the iPhone connection strip says **confirming purifier**
+instead of mislabeling an accepted change as generic stale data. A true timeout or
+unrelated stale subsystem still uses the existing fail-closed stale warning. The exact
+audited `0.3.0 (103)` archive was installed and launched on the allowlisted iPhone and
+Apple Watch after a status-only jarvisd restart; the purifier remained on in Auto mode.
+Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
 to JARVIS?”** question. The required free-form `String` is normalized and attempted
@@ -487,7 +503,7 @@ the app. The former `docs/*.md` files are consolidated below.
 - **watchOS app** — builds for Apple Watch Series 11 (46mm), uses real
   `WCSessionDelegate` reachability callbacks, refreshes immediately on
   activation and every 15 seconds while visible, preserves frontmost work while
-  Always On is inactive, cancels only on background, and supports direct/relay/cache plug controls. The normal refresh control is
+  Always On is inactive, cancels only on background, and supports direct/relay/cache plug controls plus power/mode/fan controls inside the existing System-page purifier card. The normal refresh control is
   gone; Retry appears only after failure. The app is embedded in the iPhone
   bundle under `Watch/`. The corrected
   parent registration plus developer Watch install produces

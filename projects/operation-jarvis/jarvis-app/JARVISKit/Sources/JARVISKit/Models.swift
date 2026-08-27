@@ -175,11 +175,19 @@ public extension StateSnapshot {
     }
 }
 
+public struct PurifierPendingCommand: Codable, Equatable, Sendable {
+    public let setting: String
+    public let value: String?
+    public let level: Int?
+}
+
 public struct PurifierSubsystem: Codable, Equatable, Sendable {
     public let ok: Bool?
     public let stale: Bool?
     public let refreshing: Bool?
     public let updatedAt: String?
+    public let verificationPending: Bool?
+    public let pendingCommand: PurifierPendingCommand?
     public let isOn: Bool?
     public let power: String?
     public let mode: String?
@@ -338,6 +346,11 @@ public struct CommandResult: Codable, Equatable, Sendable {
     public let plug: PlugCommandData?
     public let airPurifier: PurifierCommandData?
     public let summary: String?
+
+    public var purifierVerificationPending: Bool {
+        guard case .bool(let pending)? = airPurifier?.data?["verification_pending"] else { return false }
+        return pending
+    }
 
     public init(
         ok: Bool,
