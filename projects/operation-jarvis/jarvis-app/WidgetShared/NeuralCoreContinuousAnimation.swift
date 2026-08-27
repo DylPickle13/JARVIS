@@ -67,23 +67,34 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                 GeometryReader { geometry in
                     let extent = max(1, max(geometry.size.width, geometry.size.height))
 
-                    if layout == .watch {
-                        // Preserve the physically accepted Watch implementation:
-                        // 32 complete Cathedral views, each selected by its own
-                        // system timer mask. Phone archive optimizations must not
-                        // alter this watchOS rendering tree.
-                        ZStack {
+                    ZStack(alignment: .topLeading) {
+                        if layout == .watch {
+                            // Keep the complete-view wrapper that physically animates
+                            // on Watch. Every authored phase-driven layer remains in
+                            // each of the 48 nominal-24-FPS selector scenes.
+                            JARVISNeuralCoreArtwork(
+                                telemetry: telemetry,
+                                layout: layout,
+                                motionPhase: basePhase,
+                                allowsMotion: true,
+                                hidesAccessibility: true,
+                                layerSet: .staticBackground,
+                                includesWordmark: false
+                            )
+
                             ForEach(0..<layout.continuousFrameCount, id: \.self) { index in
                                 JARVISNeuralCoreArtwork(
                                     telemetry: telemetry,
                                     layout: layout,
                                     motionPhase: JARVISNeuralCoreMotion.continuousPhase(
-                                        basePhase: basePhase,
+                                        basePhase: JARVISNeuralCoreMotion.continuousSynchronizedBasePhase,
                                         frameIndex: index,
                                         frameCount: layout.continuousFrameCount
                                     ),
                                     allowsMotion: true,
-                                    hidesAccessibility: true
+                                    hidesAccessibility: true,
+                                    layerSet: .phaseArtwork,
+                                    includesWordmark: false
                                 )
                                 .mask {
                                     JARVISWidgetTimerFrameWindow(
@@ -97,22 +108,27 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                                     )
                                 }
                             }
-                        }
-                    } else {
-                        ZStack(alignment: .topLeading) {
-                            // The live phone path contains only its 60 timer-selected
-                            // phases: no unmasked Cathedral underlay and no opaque
-                            // per-frame background. This is the smallest archive and
-                            // memory shape available to the best-effort 30 FPS selector.
+                        } else {
+                            // Phone keeps all 60 authored phases at nominal 30 FPS.
+                            // Its lightweight wrapper and the common static halo avoid
+                            // redundant view work without changing any moving layer.
+                            JARVISNeuralCoreAnimationFrame(
+                                telemetry: telemetry,
+                                layout: layout,
+                                motionPhase: basePhase,
+                                layerSet: .staticBackground
+                            )
+
                             ForEach(0..<layout.continuousFrameCount, id: \.self) { index in
                                 JARVISNeuralCoreAnimationFrame(
                                     telemetry: telemetry,
                                     layout: layout,
                                     motionPhase: JARVISNeuralCoreMotion.continuousPhase(
-                                        basePhase: basePhase,
+                                        basePhase: JARVISNeuralCoreMotion.continuousSynchronizedBasePhase,
                                         frameIndex: index,
                                         frameCount: layout.continuousFrameCount
-                                    )
+                                    ),
+                                    layerSet: .phaseArtwork
                                 )
                                 .mask {
                                     JARVISWidgetTimerFrameWindow(
@@ -126,13 +142,12 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                                     )
                                 }
                             }
-
-                            // The phase-independent brand label is serialized once,
-                            // not once per frame. This preserves the always-visible
-                            // wordmark while staying under the 30 MB extension cap.
-                            JARVISNeuralCoreWordmark(layout: layout)
-                                .accessibilityHidden(true)
                         }
+
+                        // Both surfaces draw the phase-independent wordmark once at
+                        // the same final z-position as the complete artwork.
+                        JARVISNeuralCoreWordmark(layout: layout)
+                            .accessibilityHidden(true)
                     }
                 }
             } else {
@@ -155,12 +170,14 @@ private struct JARVISNeuralCoreAnimationFrame: View {
     let telemetry: JARVISNeuralCoreTelemetry
     let layout: JARVISNeuralCoreLayout
     let motionPhase: Double
+    let layerSet: JARVISNeuralCoreArtworkLayerSet
 
     var body: some View {
         JARVISNeuralCoreFrameArtwork(
             telemetry: telemetry,
             layout: layout,
-            motionPhase: motionPhase
+            motionPhase: motionPhase,
+            layerSet: layerSet
         )
     }
 }

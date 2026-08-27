@@ -285,7 +285,6 @@ public final class AppState: ObservableObject {
             let previousState = lastState
             let widgetsChanged = widgetReloadValue(previousState) != widgetReloadValue(snapshot)
             lastState = snapshot
-            updateJARVISSiriParametersIfNeeded(previous: previousState, current: snapshot)
             SnapshotStore().save(snapshot)
             if widgetsChanged { WidgetCenter.shared.reloadAllTimelines() }
             if let data = try? JSONEncoder().encode(snapshot) {

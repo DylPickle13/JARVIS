@@ -16,6 +16,9 @@ private struct JARVISWatchNeuralCoreWidgetView: View {
             basePhase: JARVISNeuralCoreMotion.phase(for: entry.date),
             allowsMotion: !entry.placeholder
         )
+            // A genuine WidgetKit timeline replacement receives a new identity,
+            // rebuilding timer selectors that the system previously suspended.
+            .id(entry.date.timeIntervalSinceReferenceDate)
             .widgetURL(JARVISWatchNeuralCoreWidget.terminalURL)
             .containerBackground(for: .widget) {
                 Color.clear

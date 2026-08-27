@@ -347,9 +347,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     private func acceptDirectState(_ state: StateSnapshot) {
-        let previousState = lastState
         lastState = state
-        updateJARVISSiriParametersIfNeeded(previous: previousState, current: state)
         snapshotStore.save(state)
         cachedAt = Date()
         isViaPhone = false
@@ -456,9 +454,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     nonisolated func watchBridgeDidReceiveState(_ bridge: WatchBridge, json: Data) {
         Task { @MainActor [weak self] in
             guard let self, let state = try? JSONDecoder().decode(StateSnapshot.self, from: json) else { return }
-            let previousState = self.lastState
             self.lastState = state
-            updateJARVISSiriParametersIfNeeded(previous: previousState, current: state)
             self.snapshotStore.save(state)
             self.cachedAt = Date()
             self.isViaPhone = true

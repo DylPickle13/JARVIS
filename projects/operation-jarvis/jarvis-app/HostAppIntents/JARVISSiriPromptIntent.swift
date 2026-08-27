@@ -11,48 +11,28 @@ struct SendPromptToJARVISIntent: AppIntent {
     static var openAppWhenRun: Bool { false }
     #endif
 
+    /// Siri resolves this required free-form value in a supported second turn.
+    /// The user's answer authorizes one immediate, non-retried submission.
     @Parameter(
         title: "Prompt",
         requestValueDialog: IntentDialog("What would you like me to send to JARVIS?")
     )
     var prompt: String
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        switch await JARVISSiriPromptRuntime.submit(prompt) {
-        case .sent:
-            JARVISSiriNavigation.requestTerminalPresentation()
-            let dialog = IntentDialog("Sent to JARVIS.")
-            #if os(iOS)
-            if #available(iOS 18.2, *) {
-                // OpenURLIntent accepts universal links, not this app's custom
-                // jarvis:// scheme. Chain to an OpenIntent instead so iOS
-                // foregrounds JARVIS and the persisted request selects Pi.
-                return .result(
-                    opensIntent: OpenJARVISTerminalIntent(target: .terminal),
-                    dialog: dialog
-                )
-            }
-            #endif
-            return .result(dialog: dialog)
-        case .empty:
-            return .result(dialog: IntentDialog("I didn’t hear a prompt."))
-        case .invalidControls:
-            return .result(dialog: IntentDialog("That prompt contains unsupported characters."))
-        case .tooLong:
-            return .result(dialog: IntentDialog("That prompt is too long for JARVIS."))
-        case .notProvisioned:
-            return .result(dialog: IntentDialog("Open JARVIS Settings and set up the terminal first."))
-        case .locked:
-            return .result(dialog: IntentDialog("Unlock this device and try again."))
-        case .offline:
-            return .result(dialog: IntentDialog("The JARVIS terminal is offline."))
-        case .identityMismatch:
-            return .result(dialog: IntentDialog("The JARVIS terminal identity could not be verified."))
-        case .rejected:
-            return .result(dialog: IntentDialog("JARVIS did not accept the prompt."))
-        case .unconfirmed:
-            return .result(dialog: IntentDialog("Send was not confirmed; check JARVIS."))
+    /// One normalized prompt and one Return are attempted exactly once. The
+    /// value question above is the only app-provided dialogue; completion and
+    /// failure results are deliberately silent.
+    func perform() async throws -> some IntentResult {
+        let outcome = await JARVISSiriPromptRuntime.submit(prompt)
+        guard outcome == .sent else { return .result() }
+
+        JARVISSiriNavigation.requestTerminalPresentation()
+        #if os(iOS)
+        if #available(iOS 18.2, *) {
+            return .result(opensIntent: OpenJARVISTerminalIntent(target: .terminal))
         }
+        #endif
+        return .result()
     }
 }
 

@@ -47,11 +47,14 @@ optional Metal component; install it once with
   spinner-free repeatable Backspace, Always On foreground lifecycle, on-view
   Codex refresh, shared sub-30% critical quota threshold, atomic Siri Return,
   and final-text-only authenticated Watch speech playback.
-  It also audits the third host-only bare “Hey JARVIS” prompt shortcut, requires
-  iPhone's success-only `OpenURLIntent` handoff, preserves Watch's foreground
-  behavior, verifies both hosts consume only a confirmed terminal request, and
-  ensures widgets do not contain the prompt intent. iOS and live integration
-  tests remain opt-in.
+  It also audits the sole host-only bare “Hey JARVIS” two-turn prompt shortcut,
+  iPhone's success-only hidden `OpenIntent` handoff, Watch foreground behavior,
+  complete removal of host Siri plug intents and greeting audio, and widget
+  isolation. The iPhone terminal contract additionally verifies the restored
+  fixed-step Pi viewport: native momentum/bounce is disabled, each threshold
+  emits at most one immediate SGR wheel event, and no event is queued, paced,
+  retried, replayed, or delivered after mouse mode/disconnection. iOS and live
+  integration tests remain opt-in.
 
 For initial companion registration under free provisioning:
 

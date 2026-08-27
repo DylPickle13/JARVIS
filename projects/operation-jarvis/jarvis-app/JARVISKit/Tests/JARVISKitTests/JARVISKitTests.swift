@@ -108,7 +108,7 @@ final class JARVISKitTests: XCTestCase {
 
     func testNeuralCoreContinuousFramesCoverOneNormalizedCycle() {
         XCTAssertEqual(JARVISNeuralCoreMotion.phoneContinuousFrameCount, 60)
-        XCTAssertEqual(JARVISNeuralCoreMotion.watchContinuousFrameCount, 32)
+        XCTAssertEqual(JARVISNeuralCoreMotion.watchContinuousFrameCount, 48)
         XCTAssertEqual(JARVISNeuralCoreMotion.continuousLoopDuration, 2)
         XCTAssertEqual(
             JARVISNeuralCoreMotion.continuousFrameDuration(
@@ -121,12 +121,30 @@ final class JARVISKitTests: XCTestCase {
             JARVISNeuralCoreMotion.continuousFrameDuration(
                 frameCount: JARVISNeuralCoreMotion.watchContinuousFrameCount
             ),
-            1.0 / 16.0,
+            1.0 / 24.0,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
             JARVISNeuralCoreMotion.continuousReferenceDate.timeIntervalSinceReferenceDate,
             0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreMotion.continuousSynchronizedBasePhase,
+            0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreMotion.continuousPhase(
+                basePhase: JARVISNeuralCoreMotion.continuousSynchronizedBasePhase,
+                frameIndex: 15,
+                frameCount: JARVISNeuralCoreMotion.phoneContinuousFrameCount
+            ),
+            JARVISNeuralCoreMotion.continuousPhase(
+                basePhase: JARVISNeuralCoreMotion.continuousSynchronizedBasePhase,
+                frameIndex: 12,
+                frameCount: JARVISNeuralCoreMotion.watchContinuousFrameCount
+            ),
             accuracy: 0.000_001
         )
 

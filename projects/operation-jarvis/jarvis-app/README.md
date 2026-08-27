@@ -178,7 +178,28 @@ metadata channel that samples only tmux `history_size`; it never captures pane t
 Each positive post-attach delta promotes the corresponding current SwiftTerm rows
 before the pending redraw is applied. A 150 ms fail-open bound preserves live output
 if metadata is unavailable. Terminal input, the persistent pane, tmux configuration,
-and the single native scrolling surface remain unchanged. Build 39 mirrors
+and the single native scrolling surface remain unchanged. Rejected build 93 added a
+separate read-only `/resume` transcript stream, but physical diagnostics proved that
+Pi command-palette expansion bypassed its exact input trigger; the ordinary metadata
+path consequently promoted 15,799 blank rows while no resume transaction armed.
+Build 94 keyed the transaction to Pi's generated session-start reason/generation (or
+the protected runtime's bounded recent-access proof), and physical testing confirmed
+that saved `/resume` history became scrollable. The reconstructed transcript did not
+match Pi's native presentation, however, so the owner rejected that visual result and
+requested the earlier fixed-step interaction. Build 95 removes the native-history
+promotion/replay channels and disables SwiftTerm momentum, bounce, and local pan.
+Each vertical threshold now emits at most one immediate SGR wheel event to Pi's own
+viewport, restoring exact Pi-rendered rows and discrete movement. Wheel input is never
+queued, paced, retried, replayed, or retained across mouse-mode loss/disconnection; no
+snapshot, pane capture, tmux copy mode, or tmux/session mutation is used. Build 92 removes every
+host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
+prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
+to JARVIS?”** question. The required free-form `String` is normalized and attempted
+once with one Return. The value question is the only app-provided dialogue; completion
+and failure results are silent. Host metadata contains no plug entities, plug queries,
+or turn-on/turn-off intents, while app and WidgetKit plug controls remain unchanged.
+The rejected greeting playback code and bundled JARVIS greeting WAV are absent from
+every target. Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
 assistant output, dividers, cursor inversion, and token/footer colors—rather
 than inferring Pi features. Codex quota accents now use a consistent electric-
@@ -448,6 +469,13 @@ the app. The former `docs/*.md` files are consolidated below.
   remembers the SSH host key; the password is kept in target-local Keychain.
   An isolated `jarvis-mobile` tmux server creates or attaches `jarvis-ios`, so
   Pi survives tab changes, app backgrounding, termination, and reconnection.
+  Build 87 introduced native local scrollback. Build 93's `/resume` trigger produced
+  blank promoted rows, and build 94 made saved history available but rendered a
+  reconstructed transcript that the owner rejected visually. Build 95 restores the
+  earlier fixed-step Pi-owned viewport: SwiftTerm's native pan/momentum/bounce is
+  disabled, and each drag threshold sends one immediate SGR wheel event so the rows
+  remain exactly Pi-rendered. Wheel events are never queued, paced, retried, replayed,
+  or retained after mouse-mode loss/disconnection.
   Build 37 retains build 36's Pi fullscreen TUI presentation,
   fixes wheel routing to the input cursor, limits tmux's fallback to one line,
   and hides the remote hardware cursor while retaining Pi's software cursor in
@@ -488,17 +516,14 @@ the app. The former `docs/*.md` files are consolidated below.
   retains the last good value on provider failure, and excludes quota failure
   from global hardware-state staleness. The Watch still uses an underscored
   status-bar modifier that requires physical regression after OS/Xcode updates.
-- **Siri plug control** — the iPhone and Watch hosts advertise exactly two
-  dynamic App Shortcuts. Their only phrases are “Hey JARVIS, turn on/off [the]
-  [plug]” plus parameterless “a plug” forms that ask which plug. Invoke the
-  complete phrase as “Hey Siri, hey JARVIS, turn on/off the [plug].” No “with
-  JARVIS”, “Use JARVIS”, or contact-directed “Tell JARVIS” fallback is
-  advertised. A target-local schema/catalogue signature republishes parameter
-  phrases after an upgrade even when cached plug IDs are unchanged. Runtime
-  entities are derived from the current daemon plug map. Writes require fresh
-  exact state, skip an already-satisfied request, use only `plug-on`/`plug-off`,
-  and confirm the result. Watch uses direct access first and an immediate
-  correlated iPhone relay second; it never queues a Siri write after timeout.
+- **Two-turn Siri prompt** — the iPhone and Watch hosts advertise exactly one
+  App Shortcut: “Hey JARVIS.” Siri then asks for the required free-form prompt.
+  Host metadata contains no Siri plug entities, queries, or on/off intents. The
+  answer is normalized to one logical line and submitted through the authenticated,
+  certificate-pinned terminal client as one immediate, non-retried request with
+  `appendReturn=true`. The question is the only app-provided dialogue; completion
+  and failure results are silent. No greeting playback intent or bundled JARVIS WAV
+  is present. App and WidgetKit plug controls remain available independently.
 - **M3 widget foundations** — each embedded WidgetKit extension publishes four
   focused widgets: Open JARVIS, configurable JARVIS Plug, JARVIS Plug Grid, and
   read-only Air Purifier. Plug controls use typed desired-state App Intents;

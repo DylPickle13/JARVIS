@@ -6,30 +6,47 @@ enum JARVISNeuralCoreLayout {
     case phone
     case watch
 
-    var radiusFactor: CGFloat { self == .watch ? 0.305 : 0.325 }
-    // Motion-study geometry was authored in device pixels. SwiftUI dimensions
-    // are points, so the 2x widget surfaces use half-scale stroke and dot sizes.
-    var lineScale: CGFloat { self == .watch ? 0.41 : 0.50 }
-    var detailScale: CGFloat { self == .watch ? 0.33 : 0.50 }
-    var latitudeCount: Int { self == .watch ? 7 : 11 }
-    var longitudeCount: Int { self == .watch ? 8 : 13 }
-    var filamentCount: Int { self == .watch ? 54 : 92 }
-    var particleCount: Int { self == .watch ? 42 : 78 }
-    var rayCount: Int { self == .watch ? 18 : 28 }
-    var columnCount: Int { self == .watch ? 7 : 11 }
+    /// Both widgets use one canonical Cathedral design. Only the surrounding
+    /// surface size and selector cadence differ between iPhone and Watch.
+    var radiusFactor: CGFloat { 0.325 }
+    var latitudeCount: Int { 11 }
+    var longitudeCount: Int { 13 }
+    var filamentCount: Int { 92 }
+    var particleCount: Int { 78 }
+    var rayCount: Int { 28 }
+    var columnCount: Int { 11 }
+
+    private var referenceRadius: CGFloat { 50 }
+
+    func visualScale(for radius: CGFloat) -> CGFloat {
+        radius / referenceRadius
+    }
+
+    func lineScale(for radius: CGFloat) -> CGFloat {
+        0.50 * visualScale(for: radius)
+    }
+
+    func detailScale(for radius: CGFloat) -> CGFloat {
+        0.50 * visualScale(for: radius)
+    }
+
     var continuousFrameCount: Int {
         self == .watch
             ? JARVISNeuralCoreMotion.watchContinuousFrameCount
             : JARVISNeuralCoreMotion.phoneContinuousFrameCount
     }
 
-    /// Curves are sampled only as finely as each physical surface can resolve.
-    /// Lower phone tessellation preserves every path, particle, filament, and
-    /// 30 FPS phase while keeping WidgetKit's serialized timeline below its
-    /// archive-size ceiling. Watch values remain unchanged.
-    func curveSegments(watch: Int, phone: Int) -> Int {
-        self == .watch ? watch : phone
+    /// Use the phone-authored curve quality on both surfaces so the Watch is a
+    /// uniform physical scaling of the same artwork rather than a reduced study.
+    func curveSegments(watch _: Int, phone: Int) -> Int {
+        phone
     }
+}
+
+enum JARVISNeuralCoreArtworkLayerSet {
+    case complete
+    case staticBackground
+    case phaseArtwork
 }
 
 /// One complete native-vector frame for the iPhone medium widget and Watch
@@ -41,19 +58,25 @@ struct JARVISNeuralCoreArtwork: View {
     let motionPhase: Double
     let allowsMotion: Bool
     let hidesAccessibility: Bool
+    let layerSet: JARVISNeuralCoreArtworkLayerSet
+    let includesWordmark: Bool
 
     init(
         telemetry: JARVISNeuralCoreTelemetry,
         layout: JARVISNeuralCoreLayout,
         motionPhase: Double,
         allowsMotion: Bool,
-        hidesAccessibility: Bool = false
+        hidesAccessibility: Bool = false,
+        layerSet: JARVISNeuralCoreArtworkLayerSet = .complete,
+        includesWordmark: Bool = true
     ) {
         self.telemetry = telemetry
         self.layout = layout
         self.motionPhase = motionPhase
         self.allowsMotion = allowsMotion
         self.hidesAccessibility = hidesAccessibility
+        self.layerSet = layerSet
+        self.includesWordmark = includesWordmark
     }
 
     @Environment(\.widgetRenderingMode) private var renderingMode
@@ -91,12 +114,15 @@ struct JARVISNeuralCoreArtwork: View {
                     layout: layout,
                     phase: phase,
                     palette: palette,
-                    motionEnabled: motionEnabled
+                    motionEnabled: motionEnabled,
+                    layerSet: layerSet
                 )
                 .contentTransition(.interpolate)
                 .widgetAccentable()
 
-                JARVISNeuralCoreWordmark(layout: layout)
+                if includesWordmark {
+                    JARVISNeuralCoreWordmark(layout: layout)
+                }
             }
             .clipped()
             .animation(
@@ -118,16 +144,14 @@ struct JARVISNeuralCoreArtwork: View {
     }
 }
 
-/// The wordmark is independent of telemetry and frame phase. Continuous widget
-/// artwork places one copy above every masked frame instead of archiving one in
-/// each frame, keeping the extension below WidgetKit's physical memory limit.
-/// A lightweight internal frame used only inside the timer-mask stack. The
-/// outer continuous artwork owns geometry, animation, transactions, and
-/// accessibility once instead of serializing those wrappers 60 times.
+/// A lightweight internal frame used by the phone timer-mask stack. The outer
+/// continuous artwork owns geometry, animation, transactions, accessibility,
+/// and its single wordmark instead of serializing those wrappers 60 times.
 struct JARVISNeuralCoreFrameArtwork: View {
     let telemetry: JARVISNeuralCoreTelemetry
     let layout: JARVISNeuralCoreLayout
     let motionPhase: Double
+    let layerSet: JARVISNeuralCoreArtworkLayerSet
 
     @Environment(\.widgetRenderingMode) private var renderingMode
 
@@ -141,7 +165,8 @@ struct JARVISNeuralCoreFrameArtwork: View {
             layout: layout,
             phase: CGFloat(motionPhase),
             palette: palette,
-            motionEnabled: true
+            motionEnabled: true,
+            layerSet: layerSet
         )
         .widgetAccentable(true)
         .clipped()
@@ -158,20 +183,28 @@ struct JARVISNeuralCoreWordmark: View {
     }
 
     var body: some View {
-        Text("JARVIS")
-            .font(.system(
-                size: layout == .watch ? 6.5 : 12,
-                weight: .bold,
-                design: .default
-            ))
-            .tracking(layout == .watch ? 0.85 : 1.5)
-            .foregroundStyle(palette.bright)
-            .padding(.leading, layout == .watch ? 9 : 15)
-            .padding(.top, layout == .watch ? 8 : 12.5)
-            .widgetAccentable()
-            // The brand label is public decoration, never telemetry.
-            // Keep it visible if WidgetKit redacts stale snapshots.
-            .unredacted()
+        GeometryReader { geometry in
+            let radius = min(
+                geometry.size.height * layout.radiusFactor,
+                geometry.size.width * 0.22
+            )
+            let scale = layout.visualScale(for: radius)
+
+            Text("JARVIS")
+                .font(.system(
+                    size: 12 * scale,
+                    weight: .bold,
+                    design: .default
+                ))
+                .tracking(1.5 * scale)
+                .foregroundStyle(palette.bright)
+                .padding(.leading, 15 * scale)
+                .padding(.top, 12.5 * scale)
+                .widgetAccentable()
+                // The brand label is public decoration, never telemetry.
+                // Keep it visible if WidgetKit redacts stale snapshots.
+                .unredacted()
+        }
     }
 }
 
@@ -240,23 +273,43 @@ private struct JARVISMonochromeCathedralCanvas: View {
     let phase: CGFloat
     let palette: JARVISMonochromeCathedralPalette
     let motionEnabled: Bool
+    let layerSet: JARVISNeuralCoreArtworkLayerSet
 
     var body: some View {
         Canvas { context, size in
             let center = CGPoint(x: size.width * 0.5, y: size.height * 0.5)
             let radius = min(size.height * layout.radiusFactor, size.width * 0.22)
 
-            drawHalo(context: &context, center: center, radius: radius)
-            drawCathedralArchitecture(context: &context, center: center, radius: radius)
-            drawWireframe(context: &context, center: center, radius: radius)
-            drawFilaments(context: &context, center: center, radius: radius)
-            drawColumns(context: &context, center: center, radius: radius)
-            drawRadialCrown(context: &context, center: center, radius: radius)
-            drawParticles(context: &context, center: center, radius: radius)
-            drawPlugAnchors(context: &context, center: center, radius: radius)
-            drawSegmentedQuotaRing(context: &context, center: center, radius: radius)
-            drawReactorDischarges(context: &context, center: center, radius: radius)
-            drawCore(context: &context, center: center, radius: radius)
+            switch layerSet {
+            case .complete:
+                drawHalo(context: &context, center: center, radius: radius)
+                drawCathedralArchitecture(context: &context, center: center, radius: radius)
+                drawWireframe(context: &context, center: center, radius: radius)
+                drawFilaments(context: &context, center: center, radius: radius)
+                drawColumns(context: &context, center: center, radius: radius)
+                drawRadialCrown(context: &context, center: center, radius: radius)
+                drawParticles(context: &context, center: center, radius: radius)
+                drawPlugAnchors(context: &context, center: center, radius: radius)
+                drawSegmentedQuotaRing(context: &context, center: center, radius: radius)
+                drawReactorDischarges(context: &context, center: center, radius: radius)
+                drawCore(context: &context, center: center, radius: radius)
+            case .staticBackground:
+                // The halo is phase-independent and originally rendered first.
+                // Hoisting exactly this layer preserves both pixels and ordering.
+                drawHalo(context: &context, center: center, radius: radius)
+            case .phaseArtwork:
+                // Preserve every phase-driven operation in its original order.
+                drawCathedralArchitecture(context: &context, center: center, radius: radius)
+                drawWireframe(context: &context, center: center, radius: radius)
+                drawFilaments(context: &context, center: center, radius: radius)
+                drawColumns(context: &context, center: center, radius: radius)
+                drawRadialCrown(context: &context, center: center, radius: radius)
+                drawParticles(context: &context, center: center, radius: radius)
+                drawPlugAnchors(context: &context, center: center, radius: radius)
+                drawSegmentedQuotaRing(context: &context, center: center, radius: radius)
+                drawReactorDischarges(context: &context, center: center, radius: radius)
+                drawCore(context: &context, center: center, radius: radius)
+            }
         }
     }
 
@@ -288,7 +341,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
         context.stroke(
             Path(ellipseIn: JARVISCathedralGeometry.circleRect(center: center, radius: radius * 1.02)),
             with: .color(palette.silver.opacity(0.20 * signalMultiplier)),
-            lineWidth: 1.6 * layout.lineScale
+            lineWidth: 1.6 * layout.lineScale(for: radius)
         )
     }
 
@@ -298,29 +351,28 @@ private struct JARVISMonochromeCathedralCanvas: View {
         radius: CGFloat
     ) {
         let wave = sin(phase * .pi * 4)
-        let primaryArch = JARVISCathedralGeometry.arcPoints(
+        let primaryArch = JARVISCathedralGeometry.arcPath(
             center: center,
             radius: radius * 1.54,
             start: .pi * (1.17 + wave * 0.012),
             end: .pi * (1.83 - wave * 0.012),
             segments: layout.curveSegments(watch: 34, phone: 36)
         )
-        if layout == .phone {
-            stroke(
-                primaryArch,
-                context: &context,
-                color: palette.bright.opacity(0.10 * signalMultiplier),
-                width: 4.2 * layout.lineScale + 4.5
-            )
-        }
+        stroke(
+            primaryArch,
+            context: &context,
+            color: palette.bright.opacity(0.10 * signalMultiplier),
+            width: 4.2 * layout.lineScale(for: radius)
+                + 4.5 * layout.visualScale(for: radius)
+        )
         stroke(
             primaryArch,
             context: &context,
             color: palette.bright.opacity(0.40 * signalMultiplier),
-            width: 4.2 * layout.lineScale
+            width: 4.2 * layout.lineScale(for: radius)
         )
         stroke(
-            JARVISCathedralGeometry.arcPoints(
+            JARVISCathedralGeometry.arcPath(
                 center: center,
                 radius: radius * 1.45,
                 start: .pi * (1.22 - wave * 0.010),
@@ -329,10 +381,10 @@ private struct JARVISMonochromeCathedralCanvas: View {
             ),
             context: &context,
             color: palette.silver.opacity(0.34 * signalMultiplier),
-            width: 2.1 * layout.lineScale
+            width: 2.1 * layout.lineScale(for: radius)
         )
         stroke(
-            JARVISCathedralGeometry.arcPoints(
+            JARVISCathedralGeometry.arcPath(
                 center: center,
                 radius: radius * 1.54,
                 start: .pi * 0.17,
@@ -341,11 +393,11 @@ private struct JARVISMonochromeCathedralCanvas: View {
             ),
             context: &context,
             color: palette.silver.opacity(0.24 * signalMultiplier),
-            width: 1.5 * layout.lineScale
+            width: 1.5 * layout.lineScale(for: radius)
         )
 
         stroke(
-            JARVISCathedralGeometry.rotatedEllipsePoints(
+            JARVISCathedralGeometry.rotatedEllipsePath(
                 center: center,
                 radiusX: radius * 1.56,
                 radiusY: radius * 0.18,
@@ -354,10 +406,10 @@ private struct JARVISMonochromeCathedralCanvas: View {
             ),
             context: &context,
             color: palette.silver.opacity(0.30 * signalMultiplier),
-            width: 0.85 * layout.lineScale
+            width: 0.85 * layout.lineScale(for: radius)
         )
         stroke(
-            JARVISCathedralGeometry.rotatedEllipsePoints(
+            JARVISCathedralGeometry.rotatedEllipsePath(
                 center: center,
                 radiusX: radius * 1.24,
                 radiusY: radius * 0.34,
@@ -366,10 +418,10 @@ private struct JARVISMonochromeCathedralCanvas: View {
             ),
             context: &context,
             color: palette.cool.opacity(0.20 * signalMultiplier),
-            width: 0.72 * layout.lineScale
+            width: 0.72 * layout.lineScale(for: radius)
         )
         stroke(
-            JARVISCathedralGeometry.rotatedEllipsePoints(
+            JARVISCathedralGeometry.rotatedEllipsePath(
                 center: center,
                 radiusX: radius * 1.18,
                 radiusY: radius * 0.31,
@@ -378,7 +430,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             ),
             context: &context,
             color: palette.silver.opacity(0.18 * signalMultiplier),
-            width: 0.65 * layout.lineScale
+            width: 0.65 * layout.lineScale(for: radius)
         )
     }
 
@@ -390,11 +442,17 @@ private struct JARVISMonochromeCathedralCanvas: View {
         for index in 0..<layout.latitudeCount {
             let normalized = CGFloat(index) / CGFloat(layout.latitudeCount - 1) * 2 - 1
             let y = center.y + normalized * radius * 0.82
-            let width = max(4, radius * sqrt(max(0, 1 - normalized * normalized)))
-            let height = max(2, radius * (0.055 + (1 - abs(normalized)) * 0.035))
+            let width = max(
+                4 * layout.visualScale(for: radius),
+                radius * sqrt(max(0, 1 - normalized * normalized))
+            )
+            let height = max(
+                2 * layout.visualScale(for: radius),
+                radius * (0.055 + (1 - abs(normalized)) * 0.035)
+            )
             let highlight = 0.5 + 0.5 * sin(phase * .pi * 4 - CGFloat(index) * 0.72)
             stroke(
-                JARVISCathedralGeometry.rotatedEllipsePoints(
+                JARVISCathedralGeometry.rotatedEllipsePath(
                     center: CGPoint(x: center.x, y: y),
                     radiusX: width,
                     radiusY: height,
@@ -403,7 +461,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 ),
                 context: &context,
                 color: palette.pale.opacity((0.12 + Double(highlight) * 0.15) * signalMultiplier),
-                width: (index == layout.latitudeCount / 2 ? 1.15 : 0.62) * layout.lineScale
+                width: (index == layout.latitudeCount / 2 ? 1.15 : 0.62) * layout.lineScale(for: radius)
             )
         }
 
@@ -411,7 +469,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             let angle = CGFloat(index) / CGFloat(layout.longitudeCount) * .pi
             let width = radius * (0.12 + 0.84 * abs(sin(angle + phase * 0.38)))
             stroke(
-                JARVISCathedralGeometry.rotatedEllipsePoints(
+                JARVISCathedralGeometry.rotatedEllipsePath(
                     center: center,
                     radiusX: width,
                     radiusY: radius,
@@ -420,7 +478,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 ),
                 context: &context,
                 color: palette.silver.opacity((0.11 + Double(JARVISCathedralGeometry.pseudo(index + 40)) * 0.15) * signalMultiplier),
-                width: (index % 4 == 0 ? 0.95 : 0.55) * layout.lineScale
+                width: (index % 4 == 0 ? 0.95 : 0.55) * layout.lineScale(for: radius)
             )
         }
     }
@@ -454,7 +512,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             let color = travel > 0.35
                 ? palette.bright
                 : (index % 3 == 0 ? palette.cool : palette.silver)
-            let width = (index % 11 == 0 ? 1.25 : 0.55) * layout.lineScale
+            let width = (index % 11 == 0 ? 1.25 : 0.55) * layout.lineScale(for: radius)
             let points = filament.sampledPoints(
                 count: layout.curveSegments(watch: 9, phone: 8)
             )
@@ -465,12 +523,12 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 stroke(Array(points[0...gapStart]), context: &context, color: color.opacity(opacity), width: width)
                 stroke(Array(points[gapEnd...]), context: &context, color: color.opacity(opacity), width: width)
             } else {
-                if layout == .phone && travel > 0.72 {
+                if travel > 0.72 {
                     stroke(
                         points,
                         context: &context,
                         color: palette.bright.opacity(0.10),
-                        width: width + 4
+                        width: width + 4 * layout.visualScale(for: radius)
                     )
                 }
                 stroke(points, context: &context, color: color.opacity(opacity), width: width)
@@ -490,9 +548,9 @@ private struct JARVISMonochromeCathedralCanvas: View {
             let firing = pow(max(0, sin(progress * .pi)), 2.2) * sessionActivity
             guard firing > 0.025 else { continue }
 
-            let trailCount = layout == .watch ? 3 : 5
+            let trailCount = 5
             for trailIndex in stride(from: trailCount, through: 0, by: -1) {
-                let delta = CGFloat(trailIndex) * (layout == .watch ? 0.050 : 0.038)
+                let delta = CGFloat(trailIndex) * 0.038
                 let pathProgress = forward ? headProgress - delta : headProgress + delta
                 guard pathProgress >= 0, pathProgress <= 1 else { continue }
                 let point = filament.point(at: pathProgress)
@@ -500,7 +558,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                     1 - CGFloat(trailIndex) / CGFloat(trailCount + 1),
                     2
                 )
-                let dotRadius = (trailIndex == 0 ? 1.75 : 0.85) * layout.detailScale
+                let dotRadius = (trailIndex == 0 ? 1.75 : 0.85) * layout.detailScale(for: radius)
 
                 if trailIndex == 0 {
                     context.fill(
@@ -525,7 +583,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 let target = forward ? filament.end : filament.start
                 let nodeRadius = (
                     1.4 + JARVISCathedralGeometry.pseudo(index + 2370) * 1.3
-                ) * layout.detailScale
+                ) * layout.detailScale(for: radius)
                 context.fill(
                     Path(ellipseIn: JARVISCathedralGeometry.circleRect(
                         center: target,
@@ -564,7 +622,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 ],
                 context: &context,
                 color: palette.bright.opacity(shimmer),
-                width: (index == layout.columnCount / 2 ? 1.15 : 0.62) * layout.lineScale
+                width: (index == layout.columnCount / 2 ? 1.15 : 0.62) * layout.lineScale(for: radius)
             )
         }
     }
@@ -579,7 +637,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             let unit = CGFloat(index) / CGFloat(layout.rayCount)
             let angle = unit * .pi * 2 + sin(phase * .pi * 4 + CGFloat(index) * 0.45) * 0.018
             let inner = radius * (0.83 + JARVISCathedralGeometry.pseudo(index + 2300) * 0.10)
-            let outer = radius * (1.08 + JARVISCathedralGeometry.pseudo(index + 2520) * (layout == .watch ? 0.26 : 0.38))
+            let outer = radius * (1.08 + JARVISCathedralGeometry.pseudo(index + 2520) * 0.38)
             let focus = telemetry.signalLost
                 ? 0
                 : exp(-pow(JARVISCathedralGeometry.circularDistance(unit, focusPhase) * 10, 2))
@@ -592,13 +650,13 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 x: center.x + cos(angle + 0.02) * outer,
                 y: center.y + sin(angle + 0.02) * outer * 0.90
             )
-            let lineWidth = (index % 5 == 0 ? 1.45 : 0.68) * layout.lineScale
-            if layout == .phone && focus > 0.55 {
+            let lineWidth = (index % 5 == 0 ? 1.45 : 0.68) * layout.lineScale(for: radius)
+            if focus > 0.55 {
                 stroke(
                     [start, end],
                     context: &context,
                     color: palette.bright.opacity(0.10),
-                    width: lineWidth + 4
+                    width: lineWidth + 4 * layout.visualScale(for: radius)
                 )
             }
             stroke(
@@ -608,7 +666,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 width: lineWidth
             )
             if index % 2 == 0 {
-                let dotRadius = (0.9 + JARVISCathedralGeometry.pseudo(index + 2880) * 2.2) * layout.detailScale
+                let dotRadius = (0.9 + JARVISCathedralGeometry.pseudo(index + 2880) * 2.2) * layout.detailScale(for: radius)
                 if focus > 0.48 {
                     context.fill(
                         Path(ellipseIn: JARVISCathedralGeometry.circleRect(
@@ -645,7 +703,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 : sin(phase * .pi * 6 + JARVISCathedralGeometry.pseudo(index + 3720) * .pi * 2)
             let distance = radius * (
                 0.98
-                    + JARVISCathedralGeometry.pseudo(index + 3950) * (layout == .watch ? 0.44 : 0.55)
+                    + JARVISCathedralGeometry.pseudo(index + 3950) * 0.55
                     + radialWave * 0.025
             )
             let point = CGPoint(
@@ -655,7 +713,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             let twinkle = telemetry.signalLost
                 ? 0.18
                 : (0.30 + pow(0.5 + 0.5 * sin(phase * .pi * 6 + JARVISCathedralGeometry.pseudo(index + 4200) * .pi * 2), 4) * 0.70) * energy
-            let particleRadius = (0.55 + JARVISCathedralGeometry.pseudo(index + 4400) * 2.35) * layout.detailScale
+            let particleRadius = (0.55 + JARVISCathedralGeometry.pseudo(index + 4400) * 2.35) * layout.detailScale(for: radius)
             if twinkle > 0.80 {
                 context.fill(
                     Path(ellipseIn: JARVISCathedralGeometry.circleRect(
@@ -701,8 +759,8 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 color = palette.veryDim
                 opacity = 0.34
             }
-            stroke([start, end], context: &context, color: color.opacity(opacity), width: 1.0 * layout.lineScale)
-            let nodeRadius = (state == .on ? 2.2 : 1.55) * layout.detailScale
+            stroke([start, end], context: &context, color: color.opacity(opacity), width: 1.0 * layout.lineScale(for: radius))
+            let nodeRadius = (state == .on ? 2.2 : 1.55) * layout.detailScale(for: radius)
             context.fill(
                 Path(ellipseIn: JARVISCathedralGeometry.circleRect(center: end, radius: nodeRadius)),
                 with: .color(color.opacity(opacity))
@@ -715,7 +773,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
         center: CGPoint,
         radius: CGFloat
     ) {
-        let segmentCount = layout == .watch ? 12 : 18
+        let segmentCount = 18
         let progress = telemetry.codexRemainingPercent.map {
             CGFloat(min(max($0 / 100, 0), 1))
         }
@@ -740,8 +798,8 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 ? 0.08
                 : (carriesQuota ? 0.22 : 0.10) + Double(runner) * 0.55
             let color = carriesQuota ? quotaColor : palette.silver
-            let lineWidth = (0.65 + runner * 1.3) * layout.lineScale
-            let points = JARVISCathedralGeometry.arcPoints(
+            let lineWidth = (0.65 + runner * 1.3) * layout.lineScale(for: radius)
+            let points = JARVISCathedralGeometry.arcPath(
                 center: center,
                 radius: radius * 1.07,
                 start: start,
@@ -749,12 +807,12 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 segments: layout.curveSegments(watch: 5, phone: 5)
             )
 
-            if layout == .phone && runner > 0.55 {
+            if runner > 0.55 {
                 stroke(
                     points,
                     context: &context,
                     color: color.opacity(0.10),
-                    width: lineWidth + 4
+                    width: lineWidth + 4 * layout.visualScale(for: radius)
                 )
             }
             stroke(
@@ -785,32 +843,31 @@ private struct JARVISMonochromeCathedralCanvas: View {
                     radius: dischargeRadius
                 )),
                 with: .color(palette.bright.opacity(Double(envelope) * 0.24)),
-                lineWidth: (1.25 - discharge * 0.55) * layout.lineScale
+                lineWidth: (1.25 - discharge * 0.55) * layout.lineScale(for: radius)
             )
         }
 
         let scannerEnd = -(phase * 720 - 12) * .pi / 180
         let scannerStart = scannerEnd - 34 * .pi / 180
-        let scanner = JARVISCathedralGeometry.arcPoints(
+        let scanner = JARVISCathedralGeometry.arcPath(
             center: center,
             radius: radius * 1.22,
             start: scannerStart,
             end: scannerEnd,
             segments: layout.curveSegments(watch: 10, phone: 10)
         )
-        if layout == .phone {
-            stroke(
-                scanner,
-                context: &context,
-                color: palette.bright.opacity(0.10),
-                width: 1.7 * layout.lineScale + 4
-            )
-        }
+        stroke(
+            scanner,
+            context: &context,
+            color: palette.bright.opacity(0.10),
+            width: 1.7 * layout.lineScale(for: radius)
+                + 4 * layout.visualScale(for: radius)
+        )
         stroke(
             scanner,
             context: &context,
             color: palette.bright.opacity(0.72),
-            width: 1.7 * layout.lineScale
+            width: 1.7 * layout.lineScale(for: radius)
         )
     }
 
@@ -841,7 +898,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
         context.stroke(
             Path(ellipseIn: JARVISCathedralGeometry.circleRect(center: center, radius: coreRadius)),
             with: .color(palette.bright.opacity(0.76 * strength)),
-            lineWidth: 1.8 * layout.lineScale
+            lineWidth: 1.8 * layout.lineScale(for: radius)
         )
         context.stroke(
             Path(ellipseIn: JARVISCathedralGeometry.circleRect(
@@ -849,7 +906,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 radius: coreRadius * 0.70
             )),
             with: .color(palette.pale.opacity(0.75 * strength)),
-            lineWidth: 1.0 * layout.lineScale
+            lineWidth: 1.0 * layout.lineScale(for: radius)
         )
         let nucleusEnergy = motionEnabled
             ? 0.72 + 0.20 * sin(spin * 3 - .pi / 2)
@@ -867,7 +924,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 radius: coreRadius * 0.31
             )),
             with: .color(palette.bright.opacity(0.94 * strength)),
-            lineWidth: 0.9 * layout.lineScale
+            lineWidth: 0.9 * layout.lineScale(for: radius)
         )
 
         let coreSpin = motionEnabled ? phase * .pi * 4 : CGFloat.zero
@@ -879,8 +936,9 @@ private struct JARVISMonochromeCathedralCanvas: View {
             endDegrees: 112,
             rotation: coreSpin,
             color: palette.bright.opacity(0.90 * strength),
-            width: 2.1 * layout.lineScale,
-            glow: layout == .phone
+            width: 2.1 * layout.lineScale(for: radius),
+            glow: true,
+            glowExpansion: 4.5 * layout.visualScale(for: radius)
         )
         drawCoreArc(
             context: &context,
@@ -890,8 +948,9 @@ private struct JARVISMonochromeCathedralCanvas: View {
             endDegrees: 237,
             rotation: coreSpin,
             color: palette.dim.opacity(0.72 * strength),
-            width: 1.6 * layout.lineScale,
-            glow: false
+            width: 1.6 * layout.lineScale(for: radius),
+            glow: false,
+            glowExpansion: 0
         )
         drawCoreArc(
             context: &context,
@@ -901,8 +960,9 @@ private struct JARVISMonochromeCathedralCanvas: View {
             endDegrees: 344,
             rotation: coreSpin,
             color: palette.pale.opacity(0.76 * strength),
-            width: 1.6 * layout.lineScale,
-            glow: false
+            width: 1.6 * layout.lineScale(for: radius),
+            glow: false,
+            glowExpansion: 0
         )
     }
 
@@ -915,12 +975,13 @@ private struct JARVISMonochromeCathedralCanvas: View {
         rotation: CGFloat,
         color: Color,
         width: CGFloat,
-        glow: Bool
+        glow: Bool,
+        glowExpansion: CGFloat
     ) {
         // Convert the AppKit motion-study angles into SwiftUI's y-down space.
         let start = -endDegrees * .pi / 180 + rotation
         let end = -startDegrees * .pi / 180 + rotation
-        let points = JARVISCathedralGeometry.arcPoints(
+        let points = JARVISCathedralGeometry.arcPath(
             center: center,
             radius: radius,
             start: start,
@@ -928,7 +989,12 @@ private struct JARVISMonochromeCathedralCanvas: View {
             segments: layout.curveSegments(watch: 12, phone: 12)
         )
         if glow {
-            stroke(points, context: &context, color: palette.bright.opacity(0.10), width: width + 4.5)
+            stroke(
+                points,
+                context: &context,
+                color: palette.bright.opacity(0.10),
+                width: width + glowExpansion
+            )
         }
         stroke(points, context: &context, color: color, width: width)
     }
@@ -942,6 +1008,19 @@ private struct JARVISMonochromeCathedralCanvas: View {
         case 36...55: return 0.66
         default: return 0.50
         }
+    }
+
+    private func stroke(
+        _ path: Path,
+        context: inout GraphicsContext,
+        color: Color,
+        width: CGFloat
+    ) {
+        context.stroke(
+            path,
+            with: .color(color),
+            style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+        )
     }
 
     private func stroke(
@@ -986,7 +1065,18 @@ private struct JARVISCathedralFilament {
 }
 
 private enum JARVISCathedralGeometry {
+    /// Every authored seed is phase-independent. Compute each deterministic
+    /// value once per extension process instead of repeating thousands of sine
+    /// operations while WidgetKit constructs the frame stack.
+    private static let pseudoCache: [CGFloat] = (0..<4_608).map { seed in
+        let value = sin(Double(seed) * 12.9898 + 78.233) * 43_758.5453
+        return CGFloat(value - floor(value))
+    }
+
     static func pseudo(_ seed: Int) -> CGFloat {
+        if pseudoCache.indices.contains(seed) {
+            return pseudoCache[seed]
+        }
         let value = sin(Double(seed) * 12.9898 + 78.233) * 43_758.5453
         return CGFloat(value - floor(value))
     }
@@ -1039,38 +1129,54 @@ private enum JARVISCathedralGeometry {
         return JARVISCathedralFilament(start: start, control: control, end: end)
     }
 
-    static func rotatedEllipsePoints(
+    static func rotatedEllipsePath(
         center: CGPoint,
         radiusX: CGFloat,
         radiusY: CGFloat,
         rotation: CGFloat,
         segments: Int
-    ) -> [CGPoint] {
-        (0...segments).map { index in
+    ) -> Path {
+        let cosine = cos(rotation)
+        let sine = sin(rotation)
+        var path = Path()
+        for index in 0...segments {
             let angle = CGFloat(index) / CGFloat(segments) * .pi * 2
             let x = cos(angle) * radiusX
             let y = sin(angle) * radiusY
-            return CGPoint(
-                x: center.x + x * cos(rotation) - y * sin(rotation),
-                y: center.y + x * sin(rotation) + y * cos(rotation)
+            let point = CGPoint(
+                x: center.x + x * cosine - y * sine,
+                y: center.y + x * sine + y * cosine
             )
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
         }
+        return path
     }
 
-    static func arcPoints(
+    static func arcPath(
         center: CGPoint,
         radius: CGFloat,
         start: CGFloat,
         end: CGFloat,
         segments: Int
-    ) -> [CGPoint] {
-        (0...segments).map { index in
+    ) -> Path {
+        var path = Path()
+        for index in 0...segments {
             let progress = CGFloat(index) / CGFloat(segments)
             let angle = start + (end - start) * progress
-            return CGPoint(
+            let point = CGPoint(
                 x: center.x + cos(angle) * radius,
                 y: center.y + sin(angle) * radius
             )
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
         }
+        return path
     }
 }

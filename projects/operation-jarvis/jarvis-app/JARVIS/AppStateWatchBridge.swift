@@ -23,9 +23,7 @@ extension AppState: WatchBridgeDelegate {
     public nonisolated func watchBridgeDidReceiveState(_ bridge: WatchBridge, json: Data) {
         Task { @MainActor [weak self] in
             guard let self, let state = try? JSONDecoder().decode(StateSnapshot.self, from: json) else { return }
-            let previousState = self.lastState
             self.lastState = state
-            updateJARVISSiriParametersIfNeeded(previous: previousState, current: state)
             SnapshotStore().save(state)
         }
     }
