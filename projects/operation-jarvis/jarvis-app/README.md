@@ -218,6 +218,11 @@ installation, and final verification/relaunch. Completed, active, pending, and
 failed steps remain explicit after relaunch; all four embedded profiles show their
 own validity, elapsed progress stays bounded, and jarvisd exposes only an allowlisted
 failed-step identifier rather than logs, device identifiers, or local paths.
+Build 106 reduces only the iPhone Neural Core selector from 60 to 48 complete
+procedural scenes per two-second loop (30 FPS to 24 FPS), eliminating 12 scenes
+and 24 system timer-mask views from each live widget composition. The canonical
+artwork, telemetry, two-second choreography, full luminance, and Watch cadence
+remain unchanged.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

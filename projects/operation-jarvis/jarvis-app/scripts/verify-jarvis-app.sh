@@ -493,7 +493,7 @@ reject_match 'Neural Core must not use private clock-hand animation effects' -Rq
 reject_match 'Neural Core must not embed animated media or Metal rendering' -RqsE 'VideoPlayer|AVPlayer|\.gif|\.apng|MTKView|import Metal' JARVISWidget JARVISWatchWidget WidgetShared
 grep -q 'Text(date, style: .timer)' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'CTFontManagerRegisterFontsForURL' WidgetShared/NeuralCoreContinuousAnimation.swift
-grep -q 'phoneContinuousFrameCount = 60' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
+grep -q 'phoneContinuousFrameCount = 48' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'watchContinuousFrameCount = 48' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'continuousSynchronizedBasePhase: Double = 0' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 [[ "$(grep -c 'basePhase: JARVISNeuralCoreMotion.continuousSynchronizedBasePhase' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "2" ]]

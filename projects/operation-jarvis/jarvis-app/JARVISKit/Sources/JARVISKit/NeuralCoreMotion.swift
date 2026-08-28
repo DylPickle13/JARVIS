@@ -9,14 +9,13 @@ public enum JARVISNeuralCoreMotion {
     public static let transitionDuration: TimeInterval = 1.8
     public static let staticPhase: Double = 0.18
 
-    /// The system-updated timer-text workaround uses a platform-specific stack:
-    /// sixty scenes on iPhone (30 FPS) and forty-eight complete motion phases on
-    /// Watch (24 FPS) over the same two-second loop. Both surfaces use the same
-    /// normalized artwork and synchronized phase origin, while rendering only
+    /// The system-updated timer-text workaround uses forty-eight scenes on both
+    /// iPhone and Watch (24 FPS) over the same two-second loop. Both surfaces use
+    /// the same normalized artwork and synchronized phase origin, while rendering only
     /// the phase-independent halo and wordmark once around their selector stack.
     /// It never asks WidgetKit for extra timeline entries or keeps either
     /// extension process alive.
-    public static let phoneContinuousFrameCount = 60
+    public static let phoneContinuousFrameCount = 48
     public static let watchContinuousFrameCount = 48
     public static let continuousLoopDuration: TimeInterval = 2
     public static let continuousReferenceDate = Date(timeIntervalSinceReferenceDate: 0)

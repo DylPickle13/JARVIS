@@ -109,7 +109,7 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                                 }
                             }
                         } else {
-                            // Phone keeps all 60 authored phases at nominal 30 FPS.
+                            // Phone keeps 48 authored phases at nominal 24 FPS.
                             // Its lightweight wrapper and the common static halo avoid
                             // redundant view work without changing any moving layer.
                             JARVISNeuralCoreAnimationFrame(
