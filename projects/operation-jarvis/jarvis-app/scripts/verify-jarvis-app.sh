@@ -62,6 +62,7 @@ plutil -lint \
   JARVISWatchWidget/Info.plist \
   jarvisd/launchd/*.plist \
   terminald/launchd/*.plist
+python3 -m json.tool JARVIS/Assets.xcassets/AccentColor.colorset/Contents.json >/dev/null
 python3 -m json.tool JARVIS/Assets.xcassets/JARVISMark.imageset/Contents.json >/dev/null
 python3 -m json.tool JARVISWatch/Assets.xcassets/JARVISMark.imageset/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/Contents.json >/dev/null
@@ -70,6 +71,19 @@ python3 -m json.tool JARVISWatchWidget/Assets.xcassets/JARVISWidgetIconAccented.
 bash -n scripts/*.sh jarvisd/resurrector.sh ../scripts/install-discord-bot-launch-agent.sh
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVIS/Info.plist)" == "jarvis" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVISWatch/Info.plist)" == "jarvis" ]]
+shasum -a 256 -c config/protected-jarvis-icon-assets.sha256
+
+printf '%s\n' '== xhigh purple theme contract =='
+grep -q 'darkAccent = JARVISBrandRGB(red: 209, green: 131, blue: 232)' JARVISKit/Sources/JARVISKit/BrandTheme.swift
+grep -q 'lightAccent = JARVISBrandRGB(red: 139, green: 0, blue: 139)' JARVISKit/Sources/JARVISKit/BrandTheme.swift
+grep -q 'static let accent = Color(uiColor: UIColor' JARVIS/Views/Components.swift
+grep -q 'static let airQualityGood = Color(red: 0.20, green: 0.72, blue: 0.96)' JARVIS/Views/Components.swift
+grep -q 'static let airQualityGood = Color(red: 0.29, green: 0.82, blue: 1.0)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'background(WatchJarvisStyle.accent, in: RoundedRectangle' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'retired blue brand tokens remain in native app chrome' -RqsE 'JarvisPalette\.(cyan|electricBlue)|WatchJarvisStyle\.(cyan|electricBlue)|Color\.cyan' JARVIS JARVISWatch
+reject_match 'widget pending/launcher chrome must use the shared xhigh accent' -RqsE 'Color\.blue|foregroundStyle\(\.cyan\)' JARVISWidget JARVISWatchWidget
+grep -q 'JARVISWidgetTheme.accent' JARVISWidget/LauncherWidget.swift
+grep -q 'JARVISWidgetTheme.accent' JARVISWatchWidget/PlugGridWidget.swift
 
 printf '%s\n' '== native navigation contract =='
 [[ ! -e JARVIS/Views/EventsView.swift ]]

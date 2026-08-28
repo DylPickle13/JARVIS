@@ -1207,13 +1207,13 @@ struct WatchTerminalView: View {
             HStack(spacing: 5) {
                 Image(systemName: "terminal.fill")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Color.cyan)
+                    .foregroundStyle(WatchJarvisStyle.accent)
                     .accessibilityHidden(true)
                 terminalStatusIndicator
                 if scrollOffset > 0 {
                     Text("↑\(scrollOffset)")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color.cyan)
+                        .foregroundStyle(WatchJarvisStyle.accent)
                         .accessibilityLabel("Scrolled back \(scrollOffset) terminal rows")
                 }
                 Spacer(minLength: 0)
@@ -1231,7 +1231,7 @@ struct WatchTerminalView: View {
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(
                                     controller.isSpeechPlaying || controller.canSpeakLastResponse
-                                        ? Color.cyan
+                                        ? WatchJarvisStyle.accent
                                         : Color.secondary
                                 )
                         }
@@ -1325,7 +1325,7 @@ struct WatchTerminalView: View {
             } label: {
                 Text("/")
                     .font(.system(size: 15, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Color.cyan)
+                    .foregroundStyle(WatchJarvisStyle.accent)
                     .frame(width: 28, height: 35)
                     .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
@@ -1339,7 +1339,7 @@ struct WatchTerminalView: View {
             } label: {
                 Image(systemName: "delete.backward.fill")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color.cyan)
+                    .foregroundStyle(WatchJarvisStyle.accent)
                     .frame(width: 28, height: 35)
                     .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
@@ -1356,7 +1356,7 @@ struct WatchTerminalView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color.black)
                     .frame(width: 28, height: 35)
-                    .background(Color.cyan, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(WatchJarvisStyle.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(!normalInputIsEnabled)
@@ -1384,7 +1384,7 @@ struct WatchTerminalView: View {
         .foregroundStyle(emphasized ? Color.black : Color.primary)
         .frame(maxWidth: .infinity, minHeight: 35)
         .background(
-            emphasized ? Color.cyan : Color.white.opacity(0.09),
+            emphasized ? WatchJarvisStyle.accent : Color.white.opacity(0.09),
             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
         )
     }
@@ -1407,7 +1407,7 @@ struct WatchTerminalView: View {
         .background(Color.black.opacity(0.96), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.cyan.opacity(0.24), lineWidth: 1)
+                .stroke(WatchJarvisStyle.accent.opacity(0.24), lineWidth: 1)
         }
     }
 
@@ -1422,7 +1422,7 @@ struct WatchTerminalView: View {
             Text(title)
                 .font(.system(size: title.count > 2 ? 9 : 12, weight: .bold, design: .monospaced))
                 .frame(maxWidth: .infinity, minHeight: 28)
-                .background(selected ? Color.cyan.opacity(0.35) : Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+                .background(selected ? WatchJarvisStyle.accent.opacity(0.35) : Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
         .disabled(

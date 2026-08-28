@@ -237,6 +237,14 @@ The rectangular complication again contains only the accepted animated Cathedral
 with its original single Pi Terminal tap; no probe, side controls, external launch
 routes, Quick Actions sheet, or Now Playing surface remains. Build 107's iPhone
 Settings redesign and every unrelated Watch feature remain unchanged.
+Build 111 replaces JARVIS-owned blue interface chrome with Pi's official `xhigh`
+purple: exact `#D183E8` in dark mode and on Watch, plus Pi's accessible light
+variant `#8B008B` on iPhone. The theme covers native navigation, active controls,
+status accents, terminal controls, background glows, and widget pending accents
+while preserving semantic warning/error/live/air-quality colors and raw terminal
+ANSI output. Every JARVIS app, Watch, in-app mark, and widget icon remains
+byte-for-byte unchanged, and the restored Neural Core artwork and cadence remain
+untouched.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

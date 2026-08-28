@@ -56,7 +56,7 @@ private struct JARVISSelectedPlugView: View {
         let intent = SetPlugIntent(plug: plug.id, isOn: !isOn)
         let shortStatus = pending != nil ? "UPDATING" : (plug.stale ? "STALE" : (isOn ? "ON" : "OFF"))
         let status = pending != nil ? "Updating…" : (plug.stale ? "Status stale" : (isOn ? "On" : "Off"))
-        let statusColor = pending != nil ? Color.blue : (plug.stale ? Color.orange : Color.secondary)
+        let statusColor = pending != nil ? JARVISWidgetTheme.accent : (plug.stale ? Color.orange : Color.secondary)
         let actionHint = pending != nil
             ? "A plug command is in progress"
             : (disabled ? "Control unavailable until status refreshes" : "Sets the plug \(isOn ? "off" : "on")")
@@ -112,13 +112,13 @@ private struct JARVISSelectedPlugView: View {
                         .font(.caption.weight(.semibold))
                     Spacer()
                     Circle()
-                        .fill(pending != nil ? Color.blue : (plug.stale ? Color.orange : (isOn ? Color.green : Color.secondary)))
+                        .fill(pending != nil ? JARVISWidgetTheme.accent : (plug.stale ? Color.orange : (isOn ? Color.green : Color.secondary)))
                         .frame(width: 9, height: 9)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: pending != nil ? "hourglass" : (isOn ? "power.circle.fill" : "power.circle"))
                     .font(.system(size: 34, weight: .medium))
-                    .foregroundStyle(pending != nil ? Color.blue : (plug.stale ? Color.orange : (isOn ? Color.green : Color.secondary)))
+                    .foregroundStyle(pending != nil ? JARVISWidgetTheme.accent : (plug.stale ? Color.orange : (isOn ? Color.green : Color.secondary)))
                 Text(plug.name)
                     .font(.headline)
                     .lineLimit(2)

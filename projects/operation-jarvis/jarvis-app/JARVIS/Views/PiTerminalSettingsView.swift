@@ -18,7 +18,7 @@ struct PiTerminalSettingsView: View {
                     title: "Pi Terminal",
                     detail: piTerminal.settings.hasPassword ? "Configured" : "Setup required",
                     systemImage: "terminal.fill",
-                    color: piTerminal.settings.hasPassword ? JarvisPalette.cyan : JarvisPalette.warning
+                    color: piTerminal.settings.hasPassword ? JarvisPalette.accent : JarvisPalette.warning
                 )
             }
 

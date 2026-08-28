@@ -14,7 +14,7 @@ struct ConnectionBadge: View {
 
     private var color: Color {
         switch state {
-        case .connected: return JarvisPalette.cyan
+        case .connected: return JarvisPalette.accent
         case .failed: return .red
         case .connecting: return JarvisPalette.warning
         case .idle: return .secondary
@@ -135,8 +135,16 @@ struct MinimalSectionHeader: View {
 // MARK: - JARVIS visual system
 
 enum JarvisPalette {
-    static let cyan = Color(red: 0.20, green: 0.72, blue: 0.96)
-    static let electricBlue = Color(red: 0.28, green: 0.49, blue: 1.0)
+    static let accent = Color(uiColor: UIColor { traits in
+        UIColor(jarvisRGB: traits.userInterfaceStyle == .dark
+            ? JARVISBrandTheme.darkAccent
+            : JARVISBrandTheme.lightAccent)
+    })
+    static let onAccent = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? .black : .white
+    })
+    // Air quality is data, not branding. Preserve its accepted clean-air cyan.
+    static let airQualityGood = Color(red: 0.20, green: 0.72, blue: 0.96)
     static let critical = Color(red: 1.0, green: 0.22, blue: 0.28)
     static let warning = Color(red: 0.96, green: 0.58, blue: 0.16)
     static let surface = Color(.secondarySystemGroupedBackground).opacity(0.94)
@@ -145,11 +153,22 @@ enum JarvisPalette {
         LinearGradient(
             colors: [
                 Color(.systemGroupedBackground),
-                cyan.opacity(0.055),
+                accent.opacity(0.055),
                 Color(.systemGroupedBackground),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
+        )
+    }
+}
+
+private extension UIColor {
+    convenience init(jarvisRGB value: JARVISBrandRGB) {
+        self.init(
+            red: value.normalizedRed,
+            green: value.normalizedGreen,
+            blue: value.normalizedBlue,
+            alpha: 1
         )
     }
 }
@@ -169,7 +188,7 @@ struct JARVISMark: View {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [JarvisPalette.cyan.opacity(0.34), JarvisPalette.cyan.opacity(0.04)],
+                        colors: [JarvisPalette.accent.opacity(0.34), JarvisPalette.accent.opacity(0.04)],
                         center: .center,
                         startRadius: 2,
                         endRadius: size / 2

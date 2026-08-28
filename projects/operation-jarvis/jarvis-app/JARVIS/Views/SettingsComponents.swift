@@ -28,7 +28,7 @@ struct SettingsNavigationRow: View {
         HStack(spacing: 11) {
             Image(systemName: systemImage)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(JarvisPalette.cyan)
+                .foregroundStyle(JarvisPalette.accent)
                 .frame(width: 24)
             Text(title)
                 .font(.body)
@@ -91,7 +91,7 @@ enum SettingsPresentation {
 
     static func daemonColor(_ app: AppState) -> Color {
         switch app.connectionState {
-        case .connected: return JarvisPalette.cyan
+        case .connected: return JarvisPalette.accent
         case .connecting: return JarvisPalette.warning
         case .failed: return .red
         case .idle: return .secondary
@@ -132,7 +132,7 @@ enum SettingsPresentation {
         let remaining = expiration.timeIntervalSince(date)
         if remaining <= 0 { return .red }
         if remaining <= 2 * 86_400 { return JarvisPalette.warning }
-        return JarvisPalette.cyan
+        return JarvisPalette.accent
     }
 }
 

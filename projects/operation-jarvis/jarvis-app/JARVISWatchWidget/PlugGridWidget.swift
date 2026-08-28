@@ -72,7 +72,7 @@ private struct JARVISWatchPlugGridView: View {
         let pending = JARVISWidgetControlStore.shared.pendingCommand(for: item.id)
         let disabled = item.isOn == nil || item.stale || pending != nil
         let status = pending != nil ? "UPDATING" : (item.stale ? "STALE" : (isOn ? "ON" : "OFF"))
-        let color = pending != nil ? Color.blue : (item.stale ? Color.orange : (isOn ? Color.green : Color.secondary))
+        let color = pending != nil ? JARVISWidgetTheme.accent : (item.stale ? Color.orange : (isOn ? Color.green : Color.secondary))
         return Button(intent: SetPlugIntent(plug: item.id, isOn: !isOn)) {
             HStack(spacing: 4) {
                 Image(systemName: pending != nil ? "hourglass" : (isOn ? "power.circle.fill" : "power.circle"))

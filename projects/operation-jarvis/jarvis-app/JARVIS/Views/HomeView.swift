@@ -129,7 +129,7 @@ struct HomeView: View {
 
     private var connectionColor: Color {
         switch app.connectionState {
-        case .connected: return app.lastState?.stale == true ? JarvisPalette.warning : JarvisPalette.cyan
+        case .connected: return app.lastState?.stale == true ? JarvisPalette.warning : JarvisPalette.accent
         case .connecting: return JarvisPalette.warning
         case .failed: return .red
         case .idle: return .secondary
@@ -408,7 +408,7 @@ struct HomeView: View {
     private func purifierQualityColor(_ value: Int?) -> Color {
         guard let value else { return .secondary }
         switch value {
-        case ...12: return JarvisPalette.cyan
+        case ...12: return JarvisPalette.airQualityGood
         case ...35: return .green
         case ...55: return JarvisPalette.warning
         default: return .red
@@ -517,7 +517,7 @@ struct HomeView: View {
         HStack(spacing: 9) {
             Image(systemName: systemImage)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(color == .secondary ? JarvisPalette.cyan : color)
+                .foregroundStyle(color == .secondary ? JarvisPalette.accent : color)
                 .frame(width: 20)
             Text(title)
                 .font(.subheadline)
@@ -582,9 +582,9 @@ struct HomeView: View {
             HStack(spacing: 11) {
                 Image(systemName: "terminal.fill")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(JarvisPalette.cyan)
+                    .foregroundStyle(JarvisPalette.accent)
                     .frame(width: 34, height: 34)
-                    .background(JarvisPalette.cyan.opacity(0.11), in: Circle())
+                    .background(JarvisPalette.accent.opacity(0.11), in: Circle())
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Pi sessions").font(.subheadline.weight(.semibold))
                     Text("\(active) active").font(.caption).foregroundStyle(.secondary)
@@ -593,7 +593,7 @@ struct HomeView: View {
                 Text("\(active)")
                     .font(.title3.weight(.bold))
                     .monospacedDigit()
-                    .foregroundStyle(JarvisPalette.cyan)
+                    .foregroundStyle(JarvisPalette.accent)
             }
         }
         .accessibilityElement(children: .combine)
@@ -703,7 +703,7 @@ struct HomeView: View {
     private func codexQuotaColor(_ remaining: Double) -> Color {
         CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)
             ? JarvisPalette.critical
-            : JarvisPalette.electricBlue
+            : JarvisPalette.accent
     }
 
     private func codexPlanLabel(_ plan: String?) -> String {
@@ -1082,18 +1082,18 @@ struct PlugCard: View {
         .background(tileFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isOn == true ? JarvisPalette.cyan.opacity(0.28) : Color.primary.opacity(0.055), lineWidth: 0.75)
+                .stroke(isOn == true ? JarvisPalette.accent.opacity(0.28) : Color.primary.opacity(0.055), lineWidth: 0.75)
         }
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var iconColor: Color {
-        isOn == true ? JarvisPalette.cyan : .secondary
+        isOn == true ? JarvisPalette.accent : .secondary
     }
 
     private var statusColor: Color {
         if isBusy { return JarvisPalette.warning }
-        if isOn == true { return JarvisPalette.cyan }
+        if isOn == true { return JarvisPalette.accent }
         return .secondary
     }
 
@@ -1106,7 +1106,7 @@ struct PlugCard: View {
         if isOn == true {
             return AnyShapeStyle(
                 LinearGradient(
-                    colors: [JarvisPalette.cyan.opacity(0.11), JarvisPalette.surface],
+                    colors: [JarvisPalette.accent.opacity(0.11), JarvisPalette.surface],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )

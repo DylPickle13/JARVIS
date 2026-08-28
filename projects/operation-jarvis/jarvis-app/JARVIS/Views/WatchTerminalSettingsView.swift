@@ -14,7 +14,7 @@ struct WatchTerminalSettingsView: View {
                     title: "Watch Terminal",
                     detail: app.watchTerminalProvisioning.isProvisioned ? "Provisioned" : "Setup required",
                     systemImage: "applewatch",
-                    color: app.watchTerminalProvisioning.isProvisioned ? JarvisPalette.cyan : JarvisPalette.warning
+                    color: app.watchTerminalProvisioning.isProvisioned ? JarvisPalette.accent : JarvisPalette.warning
                 )
             }
 

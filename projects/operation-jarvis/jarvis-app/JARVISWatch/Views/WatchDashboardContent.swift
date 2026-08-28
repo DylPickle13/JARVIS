@@ -33,7 +33,7 @@ struct WatchDashboardContent: View {
 
             pageIndicator
         }
-        .tint(WatchJarvisStyle.cyan)
+        .tint(WatchJarvisStyle.accent)
         .animation(.easeInOut(duration: 0.16), value: selectedPage)
         .onAppear {
             #if DEBUG && targetEnvironment(simulator)
@@ -251,13 +251,13 @@ struct WatchDashboardContent: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill((isOn == true ? WatchJarvisStyle.cyan : Color.secondary).opacity(0.16))
+                    .fill((isOn == true ? WatchJarvisStyle.accent : Color.secondary).opacity(0.16))
                 if model.purifierBusy || model.isPurifierVerificationPending {
                     ProgressView().controlSize(.mini)
                 } else {
                     Image(systemName: "power")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(isOn == true ? WatchJarvisStyle.cyan : .secondary)
+                        .foregroundStyle(isOn == true ? WatchJarvisStyle.accent : .secondary)
                 }
             }
             .frame(width: 27, height: 27)
@@ -290,7 +290,7 @@ struct WatchDashboardContent: View {
                     .font(.system(size: 6, weight: .bold))
             }
             .font(.system(size: 7.5, weight: .bold))
-            .foregroundStyle(isOn == true ? WatchJarvisStyle.cyan : .secondary)
+            .foregroundStyle(isOn == true ? WatchJarvisStyle.accent : .secondary)
             .padding(.horizontal, 5)
             .frame(height: 21)
             .background(Color.white.opacity(0.07), in: Capsule())
@@ -330,7 +330,7 @@ struct WatchDashboardContent: View {
                     .font(.system(size: 6, weight: .bold))
             }
             .font(.system(size: 7.5, weight: .bold))
-            .foregroundStyle(mode == "manual" && isOn == true ? WatchJarvisStyle.cyan : .secondary)
+            .foregroundStyle(mode == "manual" && isOn == true ? WatchJarvisStyle.accent : .secondary)
             .padding(.horizontal, 5)
             .frame(height: 21)
             .background(Color.white.opacity(0.07), in: Capsule())
@@ -526,9 +526,9 @@ struct WatchDashboardContent: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: WatchJarvisStyle.plugSymbol(name))
-                    .foregroundStyle(state == true ? WatchJarvisStyle.cyan : .secondary)
+                    .foregroundStyle(state == true ? WatchJarvisStyle.accent : .secondary)
                     .frame(width: 30, height: 30)
-                    .background((state == true ? WatchJarvisStyle.cyan : Color.secondary).opacity(0.14), in: Circle())
+                    .background((state == true ? WatchJarvisStyle.accent : Color.secondary).opacity(0.14), in: Circle())
                 VStack(alignment: .leading) {
                     Text(WatchFormat.displayName(name)).font(.headline)
                     Text(busy ? "Updating" : (stale ? "Stale" : (state.map { $0 ? "On" : "Off" } ?? "Unavailable")))
@@ -550,7 +550,7 @@ struct WatchDashboardContent: View {
     private func pageHeader(_ title: String, symbol: String, trailing: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: symbol)
-                .foregroundStyle(WatchJarvisStyle.cyan)
+                .foregroundStyle(WatchJarvisStyle.accent)
             Text(title)
                 .font(.headline.weight(.bold))
             Spacer()
@@ -598,7 +598,7 @@ struct WatchDashboardContent: View {
     private func codexQuotaColor(_ remaining: Double) -> Color {
         CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)
             ? WatchJarvisStyle.critical
-            : WatchJarvisStyle.electricBlue
+            : WatchJarvisStyle.accent
     }
 
     private func codexPlanLabel(_ plan: String?) -> String {
@@ -679,7 +679,7 @@ struct WatchDashboardContent: View {
     private func airQualityColor(_ value: Int?) -> Color {
         guard let value else { return .secondary }
         switch value {
-        case ...12: return WatchJarvisStyle.cyan
+        case ...12: return WatchJarvisStyle.airQualityGood
         case ...35: return .green
         case ...55: return WatchJarvisStyle.warning
         default: return .red
@@ -716,7 +716,7 @@ private struct WatchPlugTile: View {
                 Circle()
                     .fill(statusColor)
                     .frame(width: 7, height: 7)
-                    .shadow(color: isOn == true ? WatchJarvisStyle.cyan.opacity(0.7) : .clear, radius: 4)
+                    .shadow(color: isOn == true ? WatchJarvisStyle.accent.opacity(0.7) : .clear, radius: 4)
             }
 
             Text(WatchJarvisStyle.shortPlugName(name))
@@ -733,20 +733,20 @@ private struct WatchPlugTile: View {
         .background(tileFill, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(isOn == true ? WatchJarvisStyle.cyan.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 0.8)
+                .stroke(isOn == true ? WatchJarvisStyle.accent.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 0.8)
         }
         .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 
     private var iconColor: Color {
         if isStale { return WatchJarvisStyle.warning }
-        return isOn == true ? WatchJarvisStyle.cyan : .secondary
+        return isOn == true ? WatchJarvisStyle.accent : .secondary
     }
 
     private var statusColor: Color {
         if isBusy { return WatchJarvisStyle.warning }
         if isStale { return WatchJarvisStyle.warning }
-        return isOn == true ? WatchJarvisStyle.cyan : Color.secondary.opacity(0.55)
+        return isOn == true ? WatchJarvisStyle.accent : Color.secondary.opacity(0.55)
     }
 
     private var stateLabel: String {
@@ -759,7 +759,7 @@ private struct WatchPlugTile: View {
         if isOn == true {
             return AnyShapeStyle(
                 LinearGradient(
-                    colors: [WatchJarvisStyle.cyan.opacity(0.20), WatchJarvisStyle.surface],
+                    colors: [WatchJarvisStyle.accent.opacity(0.20), WatchJarvisStyle.surface],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -770,13 +770,18 @@ private struct WatchPlugTile: View {
 }
 
 enum WatchJarvisStyle {
-    static let cyan = Color(red: 0.29, green: 0.82, blue: 1.0)
-    static let electricBlue = Color(red: 0.28, green: 0.49, blue: 1.0)
+    static let accent = Color(
+        red: JARVISBrandTheme.darkAccent.normalizedRed,
+        green: JARVISBrandTheme.darkAccent.normalizedGreen,
+        blue: JARVISBrandTheme.darkAccent.normalizedBlue
+    )
+    // Air quality is data, not branding. Preserve its accepted clean-air cyan.
+    static let airQualityGood = Color(red: 0.29, green: 0.82, blue: 1.0)
     static let critical = Color(red: 1.0, green: 0.25, blue: 0.30)
     static let warning = Color(red: 1.0, green: 0.67, blue: 0.24)
     static let surface = Color.white.opacity(0.075)
     static let background = LinearGradient(
-        colors: [Color.black, Color(red: 0.01, green: 0.08, blue: 0.12), Color.black],
+        colors: [Color.black, accent.opacity(0.14), Color.black],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )

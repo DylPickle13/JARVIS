@@ -68,14 +68,14 @@ struct PiTerminalView: View {
                 Spacer()
                 Button("Connect") { terminal.retry() }
                     .buttonStyle(.borderedProminent)
-                    .tint(.cyan)
-                    .foregroundStyle(.black)
+                    .tint(JarvisPalette.accent)
+                    .foregroundStyle(JarvisPalette.onAccent)
                     .padding(.bottom, 18)
             }
         case .connecting:
             VStack {
                 HStack(spacing: 8) {
-                    ProgressView().tint(.cyan)
+                    ProgressView().tint(JarvisPalette.accent)
                     Text("Connecting to Pi…")
                         .font(.caption.weight(.semibold))
                 }
@@ -92,7 +92,7 @@ struct PiTerminalView: View {
             VStack(spacing: 14) {
                 Image(systemName: "terminal.fill")
                     .font(.title)
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(JarvisPalette.accent)
                 Text("Pi disconnected")
                     .font(.headline)
                 Text(message)
@@ -107,8 +107,8 @@ struct PiTerminalView: View {
                     .buttonStyle(.bordered)
                     Button("Reconnect") { terminal.retry() }
                         .buttonStyle(.borderedProminent)
-                        .tint(.cyan)
-                        .foregroundStyle(.black)
+                        .tint(JarvisPalette.accent)
+                        .foregroundStyle(JarvisPalette.onAccent)
                 }
             }
             .padding(22)
@@ -124,7 +124,7 @@ struct PiTerminalView: View {
                 Spacer(minLength: 24)
                 Image(systemName: "terminal.fill")
                     .font(.system(size: 48, weight: .semibold))
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(JarvisPalette.accent)
                     .accessibilityHidden(true)
                 VStack(spacing: 6) {
                     Text("Pi Terminal")
@@ -164,8 +164,8 @@ struct PiTerminalView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.cyan)
-                .foregroundStyle(.black)
+                .tint(JarvisPalette.accent)
+                .foregroundStyle(JarvisPalette.onAccent)
                 .disabled(hostDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && fallbackHost == nil)
 
                 if editingLogin, configurationReady {
@@ -216,10 +216,10 @@ private struct PiTerminalKeyBar: View {
                     controller.toggleControlLatch()
                 } label: {
                     Text("Ctrl")
-                        .foregroundStyle(controller.isControlLatched ? .black : .primary)
+                        .foregroundStyle(controller.isControlLatched ? JarvisPalette.onAccent : .primary)
                         .padding(.horizontal, 10)
                         .frame(minWidth: 44, minHeight: 34)
-                        .background(controller.isControlLatched ? Color.cyan : Color.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
+                        .background(controller.isControlLatched ? JarvisPalette.accent : Color.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
                 }
                 .accessibilityLabel("Control modifier")
                 key("Tab", label: "Tab", bytes: [0x09])
@@ -239,7 +239,7 @@ private struct PiTerminalKeyBar: View {
             } label: {
                 Image(systemName: controller.isTerminalFocused ? "keyboard.chevron.compact.down" : "keyboard")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(controller.isTerminalFocused ? Color.cyan : Color.primary)
+                    .foregroundStyle(controller.isTerminalFocused ? JarvisPalette.accent : Color.primary)
                     .frame(width: 52, height: 46)
                     .contentShape(Rectangle())
             }

@@ -90,7 +90,7 @@ private struct JARVISWatchSelectedPlugView: View {
                         Text(plug.name).font(.headline).lineLimit(1)
                         Text(status)
                             .font(.caption2)
-                            .foregroundStyle(pending != nil ? Color.blue : (plug.stale ? Color.orange : Color.secondary))
+                            .foregroundStyle(pending != nil ? JARVISWidgetTheme.accent : (plug.stale ? Color.orange : Color.secondary))
                     }
                     Spacer(minLength: 0)
                 }

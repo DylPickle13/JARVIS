@@ -50,7 +50,7 @@ private struct JARVISLauncherView: View {
                     HStack {
                         Image(systemName: "sparkles")
                             .font(.title2.weight(.semibold))
-                            .foregroundStyle(.cyan)
+                            .foregroundStyle(JARVISWidgetTheme.accent)
                         Spacer()
                         Image(systemName: "arrow.up.forward.app")
                             .font(.caption.weight(.semibold))

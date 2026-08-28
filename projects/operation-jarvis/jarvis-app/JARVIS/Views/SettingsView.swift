@@ -33,7 +33,7 @@ struct SettingsView: View {
                                 title: "Pi Terminal",
                                 systemImage: "terminal.fill",
                                 value: piTerminal.settings.hasPassword ? "Configured" : "Setup required",
-                                color: piTerminal.settings.hasPassword ? JarvisPalette.cyan : JarvisPalette.warning
+                                color: piTerminal.settings.hasPassword ? JarvisPalette.accent : JarvisPalette.warning
                             )
                         }
                         .buttonStyle(.plain)
@@ -47,7 +47,7 @@ struct SettingsView: View {
                                 title: "Watch Terminal",
                                 systemImage: "applewatch",
                                 value: app.watchTerminalProvisioning.isProvisioned ? "Provisioned" : "Setup required",
-                                color: app.watchTerminalProvisioning.isProvisioned ? JarvisPalette.cyan : JarvisPalette.warning
+                                color: app.watchTerminalProvisioning.isProvisioned ? JarvisPalette.accent : JarvisPalette.warning
                             )
                         }
                         .buttonStyle(.plain)

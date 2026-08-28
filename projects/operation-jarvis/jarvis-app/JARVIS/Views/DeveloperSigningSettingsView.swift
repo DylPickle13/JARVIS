@@ -38,7 +38,7 @@ struct DeveloperSigningSettingsView: View {
                                 .font(.caption.monospacedDigit().weight(.semibold))
                                 .foregroundStyle(
                                     validProfileCount(at: context.date) == 4
-                                        ? JarvisPalette.cyan
+                                        ? JarvisPalette.accent
                                         : Color.red
                                 )
                         }
@@ -218,7 +218,7 @@ struct DeveloperSigningSettingsView: View {
         return HStack(spacing: 12) {
             Image(systemName: signingProfileIcon(bundleIdentifier))
                 .frame(width: 26)
-                .foregroundStyle(valid ? JarvisPalette.cyan : Color.red)
+                .foregroundStyle(valid ? JarvisPalette.accent : Color.red)
             VStack(alignment: .leading, spacing: 2) {
                 Text(signingProfileName(bundleIdentifier))
                     .font(.subheadline.weight(.semibold))
@@ -232,7 +232,7 @@ struct DeveloperSigningSettingsView: View {
             }
             Spacer(minLength: 8)
             Image(systemName: valid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .foregroundStyle(valid ? JarvisPalette.cyan : Color.red)
+                .foregroundStyle(valid ? JarvisPalette.accent : Color.red)
                 .accessibilityLabel(valid ? "Valid" : "Missing or expired")
         }
         .padding(.vertical, 7)
@@ -303,10 +303,10 @@ struct DeveloperSigningSettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 ZStack {
-                    Circle().fill(JarvisPalette.cyan.opacity(0.14))
+                    Circle().fill(JarvisPalette.accent.opacity(0.14))
                     Image(systemName: "checkmark")
                         .font(.headline.weight(.bold))
-                        .foregroundStyle(JarvisPalette.cyan)
+                        .foregroundStyle(JarvisPalette.accent)
                 }
                 .frame(width: 40, height: 40)
 
@@ -367,7 +367,7 @@ struct DeveloperSigningSettingsView: View {
 
                 if !isLast {
                     Rectangle()
-                        .fill(state == .completed ? JarvisPalette.cyan.opacity(0.65) : Color.secondary.opacity(0.2))
+                        .fill(state == .completed ? JarvisPalette.accent.opacity(0.65) : Color.secondary.opacity(0.2))
                         .frame(width: 2, height: 28)
                 }
             }
@@ -375,7 +375,7 @@ struct DeveloperSigningSettingsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(signingStepTitle(step))
                     .font(.subheadline.weight(state == .current || state == .failed ? .bold : .semibold))
-                    .foregroundStyle(state == .failed ? Color.red : state == .current ? JarvisPalette.cyan : Color.primary)
+                    .foregroundStyle(state == .failed ? Color.red : state == .current ? JarvisPalette.accent : Color.primary)
                 Text(signingStepDetail(step))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -396,9 +396,9 @@ struct DeveloperSigningSettingsView: View {
         HStack(alignment: .top, spacing: 12) {
             Text(String(number))
                 .font(.caption.monospacedDigit().weight(.bold))
-                .foregroundStyle(JarvisPalette.cyan)
+                .foregroundStyle(JarvisPalette.accent)
                 .frame(width: 26, height: 26)
-                .background(JarvisPalette.cyan.opacity(0.12), in: Circle())
+                .background(JarvisPalette.accent.opacity(0.12), in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(signingStepTitle(step))
@@ -420,10 +420,10 @@ struct DeveloperSigningSettingsView: View {
             systemImage: verified ? "checkmark.circle.fill" : systemImage
         )
         .font(.caption.weight(.semibold))
-        .foregroundStyle(verified ? JarvisPalette.cyan : Color.secondary)
+        .foregroundStyle(verified ? JarvisPalette.accent : Color.secondary)
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background((verified ? JarvisPalette.cyan : Color.secondary).opacity(0.1), in: Capsule())
+        .background((verified ? JarvisPalette.accent : Color.secondary).opacity(0.1), in: Capsule())
     }
 
     private func validProfileCount(at date: Date) -> Int {
@@ -453,13 +453,13 @@ struct DeveloperSigningSettingsView: View {
 
     private func signingProgressColor(_ status: SigningRenewalStatus) -> Color {
         if status.phase == "failed" { return .red }
-        if status.phase == "succeeded" { return JarvisPalette.cyan }
-        return status.running ? JarvisPalette.cyan : .secondary
+        if status.phase == "succeeded" { return JarvisPalette.accent }
+        return status.running ? JarvisPalette.accent : .secondary
     }
 
     private func signingStepColor(_ state: SigningRenewalStepState) -> Color {
         switch state {
-        case .completed, .current: return JarvisPalette.cyan
+        case .completed, .current: return JarvisPalette.accent
         case .failed: return .red
         case .pending: return .secondary
         }
