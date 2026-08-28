@@ -347,7 +347,12 @@ rm -rf "$PAYLOAD_ROOT"
 
 write_status "installingIPhone" true true "Installing the renewed build on iPhone…"
 if ! ideviceinstaller -u "$IPHONE_UDID" -n -w upgrade "$IPA_PATH"; then
-  fail_public "The renewed archive is valid, but iPhone installation failed. Keep the iPhone unlocked and try again."
+  # The exact allowlisted phone may be attached by cable, in which case
+  # libimobiledevice deliberately rejects its network-only selector. Retry the
+  # same physical UDID without changing the artifact or selecting another device.
+  if ! ideviceinstaller -u "$IPHONE_UDID" -w upgrade "$IPA_PATH"; then
+    fail_public "The renewed archive is valid, but iPhone installation failed. Keep the iPhone unlocked and try again."
+  fi
 fi
 IPHONE_INSTALLED=true
 write_status "installingWatch" true true "Installing the same renewed build on Apple Watch…"
