@@ -469,6 +469,7 @@ reject_match 'terminal input path must never toggle a plug implicitly' -RqsF 'pl
 printf '%s\n' '== widget source contract =='
 reject_match 'legacy iPhone widget kind is still present' -RqsF 'let kind = "JARVISPlugWidget"' JARVISWidget
 reject_match 'legacy Watch widget kind is still present' -RqsF 'let kind = "JARVISWatchWidget"' JARVISWatchWidget
+reject_match 'failed Watch launcher experiment must remain fully removed' -RqsE 'ExternalLaunchProbe|NeuralLauncher|WatchWidgetRoute|WatchExternalLaunchRoute|WatchWidgetDestinationViews|quick-actions|now-playing|NowPlayingView' JARVISWatch JARVISWatchWidget JARVISKit/Sources JARVISKit/Tests
 for kind in \
   JARVISNeuralCoreWidget.v1 \
   JARVISLauncherWidget.v1 \
@@ -482,30 +483,13 @@ for kind in \
   JARVISWatchLauncherWidget.v2 \
   JARVISWatchSelectedPlugWidget.v1 \
   JARVISWatchPlugGridWidget.v1 \
-  JARVISWatchPurifierWidget.v1 \
-  JARVISWatchNeuralLauncherWidget.v1; do
+  JARVISWatchPurifierWidget.v1; do
   grep -Rqs "let kind = \"$kind\"" JARVISWatchWidget || { echo "missing watch widget kind: $kind" >&2; exit 1; }
 done
 reject_match 'iPhone purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWidget/PurifierWidget.swift
 reject_match 'Watch purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWatchWidget/PurifierWidget.swift
 grep -q 'JARVISNeuralCoreWidget()' JARVISWidget/JARVISWidgetBundle.swift
 grep -q 'JARVISWatchNeuralCoreWidget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift
-grep -q 'JARVISWatchNeuralLauncherWidget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift
-[[ ! -e JARVISWatchWidget/ExternalLaunchProbeWidget.swift ]]
-grep -q 'JARVISNeuralCoreContinuousArtwork(' JARVISWatchWidget/NeuralLauncherWidget.swift
-grep -q 'Link(destination: JARVISWatchWidgetRoute.quickActionsURL)' JARVISWatchWidget/NeuralLauncherWidget.swift
-grep -q 'Link(destination: JARVISWatchWidgetRoute.nowPlayingURL)' JARVISWatchWidget/NeuralLauncherWidget.swift
-grep -q '.widgetURL(JARVISWatchNeuralCoreWidget.terminalURL)' JARVISWatchWidget/NeuralLauncherWidget.swift
-grep -q 'JARVISWatchShortcutsGlyph' JARVISWatchWidget/NeuralLauncherWidget.swift
-grep -q 'JARVISWatchSpotifyGlyph' JARVISWatchWidget/NeuralLauncherWidget.swift
-grep -q 'NowPlayingView()' JARVISWatch/Views/WatchWidgetDestinationViews.swift
-grep -q 'Button(intent: SendPromptToJARVISIntent())' JARVISWatch/Views/WatchWidgetDestinationViews.swift
-grep -q 'incomingURL.path.isEmpty' JARVISKit/Sources/JARVISKit/WatchWidgetRoute.swift
-grep -q 'incomingURL.query == nil' JARVISKit/Sources/JARVISKit/WatchWidgetRoute.swift
-grep -q 'incomingURL.fragment == nil' JARVISKit/Sources/JARVISKit/WatchWidgetRoute.swift
-reject_match 'composite Watch routes must not accept caller-controlled destinations' -E 'URL\(string:.*incoming|destination.*query|queryItems' JARVISKit/Sources/JARVISKit/WatchWidgetRoute.swift
-grep -q 'testCompositeWidgetRoutesRejectArgumentsAndUnknownTargets' JARVISKit/Tests/JARVISKitTests/WatchWidgetRouteTests.swift
-reject_match 'final Watch launcher must not retain failed external launch schemes' -RqsE 'shortcuts://|spotify://|open.spotify.com|icloud.com/shortcuts|OpenURLIntent' JARVISWatch JARVISWatchWidget JARVISKit/Sources
 grep -q 'supportedFamilies(\[.systemMedium\])' JARVISWidget/NeuralCoreWidget.swift
 grep -q 'supportedFamilies(\[.accessoryRectangular\])' JARVISWatchWidget/NeuralCoreWidget.swift
 grep -q 'Color.clear' JARVISWatchWidget/NeuralCoreWidget.swift
@@ -778,8 +762,7 @@ for kind in \
   JARVISWatchLauncherWidget.v2 \
   JARVISWatchSelectedPlugWidget.v1 \
   JARVISWatchPlugGridWidget.v1 \
-  JARVISWatchPurifierWidget.v1 \
-  JARVISWatchNeuralLauncherWidget.v1; do
+  JARVISWatchPurifierWidget.v1; do
   grep -aFq "$kind" "$WATCH_WIDGET_BINARY" || { echo "built watch widget missing kind: $kind" >&2; exit 1; }
 done
 

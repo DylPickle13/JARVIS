@@ -9,6 +9,5 @@ struct JARVISWatchWidgetBundle: WidgetBundle {
         JARVISWatchSelectedPlugWidget()
         JARVISWatchPlugGridWidget()
         JARVISWatchPurifierWidget()
-        JARVISWatchNeuralLauncherWidget()
     }
 }

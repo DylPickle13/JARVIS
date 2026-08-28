@@ -231,19 +231,12 @@ controls remain available in focused sections with destructive confirmation.
 Developer Signing keeps all four profile details and the complete seven-step
 explanation in disclosures, expands operational progress only while running or
 failed, and summarizes a completed renewal in one compact verified result.
-Build 108 adds a temporary, isolated Watch link-probe complication for physical
-validation of Shortcuts and Spotify launch routes. The accepted Neural Core
-widget remains unchanged and available throughout the probe. The probe tests
-custom URLs, universal links, OpenURLIntent, and two fixed argument-free JARVIS
-trampolines; it forwards no caller-supplied URL, path, query, or action.
-Physical Build 108 testing proved that watchOS routes every supported external
-link back to the owning JARVIS app, ignores both OpenURLIntent controls, and
-rejects the Spotify web trampoline. Build 109 therefore replaces the probe with
-a single JARVIS Neural Launcher complication: the unchanged 48-frame Neural
-Core remains full-size beneath two side controls, the left opens fixed JARVIS
-Shortcuts, the centre keeps opening Pi Terminal, and the right presents Apple's
-public NowPlayingView for the current Spotify session. The original Neural Core
-widget remains separately available for immediate rollback.
+Build 110 fully removes the unsuccessful Build 108–109 Watch launcher experiment
+and restores the exact pre-experiment Watch Neural Core source and widget bundle.
+The rectangular complication again contains only the accepted animated Cathedral
+with its original single Pi Terminal tap; no probe, side controls, external launch
+routes, Quick Actions sheet, or Now Playing surface remains. Build 107's iPhone
+Settings redesign and every unrelated Watch feature remain unchanged.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
