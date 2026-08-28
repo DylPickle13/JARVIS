@@ -475,6 +475,52 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(WatchTerminalLayout.wrapTerminalLine("   ", displayColumns: 2), [""])
     }
 
+    func testSigningRenewalProgressOrdersAllSevenSteps() {
+        let status = SigningRenewalStatus(
+            ok: true,
+            available: true,
+            phase: "auditing",
+            running: true
+        )
+
+        XCTAssertEqual(SigningRenewalStep.allCases.count, 7)
+        XCTAssertEqual(status.activeStep, .auditing)
+        XCTAssertEqual(status.completedStepCount, 3)
+        XCTAssertEqual(status.displayedStepNumber, 4)
+        XCTAssertEqual(status.state(for: .preparing), .completed)
+        XCTAssertEqual(status.state(for: .auditing), .current)
+        XCTAssertEqual(status.state(for: .installingIPhone), .pending)
+    }
+
+    func testSigningRenewalFailureRetainsExactFailedStep() {
+        let status = SigningRenewalStatus(
+            ok: false,
+            available: true,
+            phase: "failed",
+            running: false,
+            failedPhase: "installingWatch"
+        )
+
+        XCTAssertEqual(status.activeStep, .installingWatch)
+        XCTAssertEqual(status.displayedStepNumber, 6)
+        XCTAssertEqual(status.state(for: .installingIPhone), .completed)
+        XCTAssertEqual(status.state(for: .installingWatch), .failed)
+        XCTAssertEqual(status.state(for: .verifying), .pending)
+    }
+
+    func testSigningRenewalSuccessCompletesEveryStep() {
+        let status = SigningRenewalStatus(
+            ok: true,
+            available: true,
+            phase: "succeeded",
+            running: false
+        )
+
+        XCTAssertEqual(status.completedStepCount, 7)
+        XCTAssertEqual(status.displayedStepNumber, 7)
+        XCTAssertTrue(SigningRenewalStep.allCases.allSatisfy { status.state(for: $0) == .completed })
+    }
+
     func testCommandRequestEncodesDesiredPlugState() throws {
         let request = CommandRequest(action: "plug-on", params: ["plug": .string("family-room-light")])
         let data = try JSONEncoder().encode(request)

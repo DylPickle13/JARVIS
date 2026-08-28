@@ -536,6 +536,36 @@ class SigningRenewalUnitTests(unittest.TestCase):
         self.assertEqual(status["phase"], "building")
         self.assertNotIn("/Users/", status["message"])
         self.assertNotIn("pid", status)
+        self.assertIsNone(status["failedPhase"])
+
+    def test_signing_status_exposes_only_a_fixed_failed_step(self):
+        with mock.patch.object(jarvisd, "SIGNING_RENEWAL_SCRIPT", MODULE_PATH):
+            failed = jarvisd._signing_renewal_status({
+                "ok": False,
+                "phase": "failed",
+                "failedPhase": "installingWatch",
+                "running": False,
+            })
+            rejected = jarvisd._signing_renewal_status({
+                "ok": False,
+                "phase": "failed",
+                "failedPhase": "/Users/private/arbitrary-step",
+                "running": False,
+            })
+        self.assertEqual(failed["failedPhase"], "installingWatch")
+        self.assertIsNone(rejected["failedPhase"])
+
+    def test_interrupted_signing_status_retains_the_active_step(self):
+        with mock.patch.object(jarvisd, "SIGNING_RENEWAL_SCRIPT", MODULE_PATH):
+            status = jarvisd._signing_renewal_status({
+                "ok": True,
+                "phase": "verifying",
+                "running": True,
+                "pid": 2_147_483_647,
+            })
+        self.assertFalse(status["running"])
+        self.assertEqual(status["phase"], "failed")
+        self.assertEqual(status["failedPhase"], "verifying")
 
     def test_signing_start_runs_only_the_fixed_script_without_arguments(self):
         with tempfile.TemporaryDirectory() as directory:

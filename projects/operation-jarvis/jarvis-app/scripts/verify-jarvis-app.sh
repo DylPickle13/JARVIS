@@ -99,6 +99,11 @@ grep -q '\[str(SIGNING_RENEWAL_SCRIPT)\]' jarvisd/jarvisd.py
 [[ -x scripts/renew-free-signing.sh ]]
 grep -q 'refs/heads/main' scripts/renew-free-signing.sh
 grep -q 'PROFILE_REFRESH_COMPLETE' scripts/renew-free-signing.sh
+grep -q 'SigningRenewalStep.allCases' JARVIS/Views/SettingsView.swift
+grep -q 'case verifying' JARVISKit/Sources/JARVISKit/Models.swift
+grep -q 'write_status "verifying"' scripts/renew-free-signing.sh
+grep -q '"failedPhase": failed_phase or None' scripts/renew-free-signing.sh
+grep -q 'SIGNING_RENEWAL_STEPS' jarvisd/jarvisd.py
 grep -q 'iPhone renewal succeeded, but Watch installation failed' scripts/renew-free-signing.sh
 reject_match 'signing renewal endpoint must not accept shell commands or client arguments' -E 'shell=True|SIGNING_RENEWAL_SCRIPT.*payload|renew-free-signing.sh.*\$@' jarvisd/jarvisd.py scripts/renew-free-signing.sh
 reject_match 'legacy oversized iPhone status hero remains' -RqsE 'private var statusHeader|private var settingsHero|Native control plane' JARVIS/Views

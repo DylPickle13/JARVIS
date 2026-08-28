@@ -162,10 +162,11 @@ SIGNING_RENEWAL_LOG_DIR = Path(
     )
 ).expanduser().resolve()
 SIGNING_RENEWAL_START_LOCK = threading.Lock()
-SIGNING_RENEWAL_PHASES = {
-    "idle", "queued", "preparing", "provisioning", "building", "auditing",
-    "installingIPhone", "installingWatch", "succeeded", "failed",
+SIGNING_RENEWAL_STEPS = {
+    "preparing", "provisioning", "building", "auditing",
+    "installingIPhone", "installingWatch", "verifying",
 }
+SIGNING_RENEWAL_PHASES = SIGNING_RENEWAL_STEPS | {"idle", "queued", "succeeded", "failed"}
 
 STATE_TIMEOUT = float(os.environ.get("JARVISD_STATE_TIMEOUT", "10"))
 # Native HTTP requests are bounded to 30 seconds. Keep VeSync write
@@ -938,12 +939,17 @@ def _signing_renewal_status(payload: dict | None = None) -> dict:
     if phase not in SIGNING_RENEWAL_PHASES:
         phase = "idle"
     running = raw.get("running") is True and _signing_renewal_pid_is_running(raw)
+    failed_phase = raw.get("failedPhase")
+    if failed_phase not in SIGNING_RENEWAL_STEPS:
+        failed_phase = None
     message = raw.get("message")
     if not isinstance(message, str):
         message = "Ready to renew JARVIS signing." if available else "Signing renewal is unavailable on this Mac."
     message = " ".join(message.split())[:300]
     message = re.sub(r"(/Users/[^\s,;]+|/private/[^\s,;]+|/tmp/[^\s,;]+)", "<local-path>", message)
     if raw.get("running") is True and not running:
+        if phase in SIGNING_RENEWAL_STEPS:
+            failed_phase = phase
         phase = "failed"
         message = "The previous signing renewal was interrupted."
     result = {
@@ -954,6 +960,7 @@ def _signing_renewal_status(payload: dict | None = None) -> dict:
         "message": message,
         "iPhoneInstalled": raw.get("iPhoneInstalled") is True,
         "watchInstalled": raw.get("watchInstalled") is True,
+        "failedPhase": failed_phase,
     }
     for key in ("startedAt", "updatedAt", "completedAt", "expiresAt"):
         value = raw.get(key)

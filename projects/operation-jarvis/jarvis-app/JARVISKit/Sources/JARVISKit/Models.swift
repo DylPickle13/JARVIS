@@ -24,6 +24,23 @@ public struct HealthResponse: Codable, Equatable, Sendable {
 
 // MARK: - Developer signing renewal
 
+public enum SigningRenewalStep: String, CaseIterable, Sendable {
+    case preparing
+    case provisioning
+    case building
+    case auditing
+    case installingIPhone
+    case installingWatch
+    case verifying
+}
+
+public enum SigningRenewalStepState: Equatable, Sendable {
+    case completed
+    case current
+    case pending
+    case failed
+}
+
 public struct SigningRenewalStatus: Codable, Equatable, Sendable {
     public let ok: Bool
     public let available: Bool
@@ -36,6 +53,7 @@ public struct SigningRenewalStatus: Codable, Equatable, Sendable {
     public let expiresAt: String?
     public let iPhoneInstalled: Bool?
     public let watchInstalled: Bool?
+    public let failedPhase: String?
 
     public init(
         ok: Bool,
@@ -48,7 +66,8 @@ public struct SigningRenewalStatus: Codable, Equatable, Sendable {
         completedAt: String? = nil,
         expiresAt: String? = nil,
         iPhoneInstalled: Bool? = nil,
-        watchInstalled: Bool? = nil
+        watchInstalled: Bool? = nil,
+        failedPhase: String? = nil
     ) {
         self.ok = ok
         self.available = available
@@ -61,11 +80,48 @@ public struct SigningRenewalStatus: Codable, Equatable, Sendable {
         self.expiresAt = expiresAt
         self.iPhoneInstalled = iPhoneInstalled
         self.watchInstalled = watchInstalled
+        self.failedPhase = failedPhase
     }
 
-    public var expirationDate: Date? {
-        guard let expiresAt else { return nil }
-        return ISO8601DateFormatter().date(from: expiresAt)
+    public var expirationDate: Date? { date(from: expiresAt) }
+    public var startedDate: Date? { date(from: startedAt) }
+    public var updatedDate: Date? { date(from: updatedAt) }
+    public var completedDate: Date? { date(from: completedAt) }
+
+    public var activeStep: SigningRenewalStep? {
+        if phase == "failed", let failedPhase {
+            return SigningRenewalStep(rawValue: failedPhase)
+        }
+        return SigningRenewalStep(rawValue: phase)
+    }
+
+    public var completedStepCount: Int {
+        if phase == "succeeded" { return SigningRenewalStep.allCases.count }
+        guard let activeStep,
+              let index = SigningRenewalStep.allCases.firstIndex(of: activeStep) else { return 0 }
+        return index
+    }
+
+    public var displayedStepNumber: Int? {
+        if phase == "succeeded" { return SigningRenewalStep.allCases.count }
+        guard let activeStep,
+              let index = SigningRenewalStep.allCases.firstIndex(of: activeStep) else { return nil }
+        return index + 1
+    }
+
+    public func state(for step: SigningRenewalStep) -> SigningRenewalStepState {
+        if phase == "succeeded" { return .completed }
+        guard let activeStep,
+              let activeIndex = SigningRenewalStep.allCases.firstIndex(of: activeStep),
+              let stepIndex = SigningRenewalStep.allCases.firstIndex(of: step) else { return .pending }
+        if stepIndex < activeIndex { return .completed }
+        if stepIndex > activeIndex { return .pending }
+        return phase == "failed" ? .failed : .current
+    }
+
+    private func date(from value: String?) -> Date? {
+        guard let value else { return nil }
+        return ISO8601DateFormatter().date(from: value)
     }
 }
 

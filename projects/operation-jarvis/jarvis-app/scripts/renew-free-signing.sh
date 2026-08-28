@@ -55,13 +55,17 @@ WATCH_INSTALLED=false
 EXPIRES_AT=""
 FAILED_STATUS_WRITTEN=0
 PROFILE_REFRESH_COMPLETE=0
+CURRENT_PHASE="preparing"
 WORKTREE=""
 RUN_DIR=""
 QUARANTINE=""
 
 write_status() {
-  local phase="$1" running="$2" ok="$3" message="$4"
-  python3 - "$STATUS_FILE" "$phase" "$running" "$ok" "$message" "$STARTED_AT" "$EXPIRES_AT" "$IPHONE_INSTALLED" "$WATCH_INSTALLED" "$$" <<'PY'
+  local phase="$1" running="$2" ok="$3" message="$4" failed_phase="${5:-}"
+  if [[ "$phase" != "failed" && "$phase" != "succeeded" ]]; then
+    CURRENT_PHASE="$phase"
+  fi
+  python3 - "$STATUS_FILE" "$phase" "$running" "$ok" "$message" "$STARTED_AT" "$EXPIRES_AT" "$IPHONE_INSTALLED" "$WATCH_INSTALLED" "$$" "$failed_phase" <<'PY'
 import datetime as dt
 import json
 import os
@@ -69,7 +73,7 @@ import sys
 from pathlib import Path
 
 (path_raw, phase, running_raw, ok_raw, message, started_at, expires_at,
- iphone_raw, watch_raw, pid_raw) = sys.argv[1:]
+ iphone_raw, watch_raw, pid_raw, failed_phase) = sys.argv[1:]
 path = Path(path_raw)
 now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 running = running_raw == "true"
@@ -84,6 +88,7 @@ payload = {
     "expiresAt": expires_at or None,
     "iPhoneInstalled": iphone_raw == "true",
     "watchInstalled": watch_raw == "true",
+    "failedPhase": failed_phase or None,
     # Used only by jarvisd to suppress a duplicate process after a daemon restart.
     # jarvisd never includes this private implementation field in its response.
     "pid": int(pid_raw),
@@ -122,7 +127,7 @@ cleanup() {
   fi
   rm -rf "$LOCK_DIR"
   if [[ "$rc" -ne 0 && "$FAILED_STATUS_WRITTEN" -eq 0 ]]; then
-    write_status "failed" false false "Renewal failed. Open JARVIS and try again after checking Xcode and device connectivity." || true
+    write_status "failed" false false "Renewal failed. Open JARVIS and try again after checking Xcode and device connectivity." "$CURRENT_PHASE" || true
   fi
   exit "$rc"
 }
@@ -131,7 +136,7 @@ trap 'exit $?' ERR
 
 fail_public() {
   FAILED_STATUS_WRITTEN=1
-  write_status "failed" false false "$1"
+  write_status "failed" false false "$1" "$CURRENT_PHASE"
   echo "$1" >&2
   exit 1
 }
@@ -359,6 +364,7 @@ if ! xcrun devicectl device install app --device "$WATCH_COREDEVICE_ID" "$WATCH_
 fi
 WATCH_INSTALLED=true
 
+write_status "verifying" true true "Verifying installed builds and relaunching JARVIS…"
 iphone_inventory="$RUN_DIR/iphone-inventory.json"
 watch_inventory="$RUN_DIR/watch-inventory.json"
 xcrun devicectl device info apps --device "$IPHONE_COREDEVICE_ID" --bundle-id com.operation-jarvis.jarvis --json-output "$iphone_inventory" --timeout 60 >/dev/null

@@ -212,6 +212,12 @@ countdown and an explicit **Renew for 7 Days** confirmation. Its authenticated j
 endpoint starts only the fixed argument-free renewal script; the Mac obtains and audits
 all four Personal Team profiles, builds clean `main`, and upgrades only the private
 allowlisted iPhone and Watch while exposing bounded progress back to the app.
+Build 105 turns that status into a seven-step visual timeline: device checks,
+four-profile creation, clean build, archive audit, iPhone installation, Watch
+installation, and final verification/relaunch. Completed, active, pending, and
+failed steps remain explicit after relaunch; all four embedded profiles show their
+own validity, elapsed progress stays bounded, and jarvisd exposes only an allowlisted
+failed-step identifier rather than logs, device identifiers, or local paths.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

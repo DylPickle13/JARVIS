@@ -19,8 +19,10 @@ optional Metal component; install it once with
   Xcode for four fresh Personal Team profiles, archives clean `main` in an
   isolated worktree, audits team/device/profile/signature/hierarchy rules, and
   installs the exact archived host through Apple's paired CoreDevice tunnel and
-  then the exact nested Watch app on only the configured devices. Progress
-  is written atomically to `status.json`; a duplicate run is locked out. The
+  then the exact nested Watch app on only the configured devices. Its fixed
+  seven-step progress includes a final installed-build verification/relaunch
+  phase and retains only the allowlisted phase that failed. Progress is written
+  atomically to `status.json`; a duplicate run is locked out. The
   script never uninstalls, unpairs, reboots, or accepts a client command/path.
 - `patch-watch-embedding.sh` — keeps XcodeGen's `Embed Watch Content` phase at
   `JARVIS.app/Watch/` (`dstSubfolderSpec = 16`), the Xcode 26 layout accepted by

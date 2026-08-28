@@ -419,26 +419,23 @@ struct SettingsView: View {
 
     private var developerSigningDetail: some View {
         Form {
-            Section("Current profiles") {
+            Section("Signing status") {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    signingOverview(at: context.date)
+                }
+            }
+
+            Section("Signed components") {
                 TimelineView(.periodic(from: .now, by: 60)) { context in
-                    if let expiration = localSigningStatus.earliestExpiration {
-                        LabeledContent("Time remaining", value: signingCountdown(to: expiration, at: context.date))
-                            .foregroundStyle(signingColor(at: context.date))
-                        LabeledContent("Earliest expiration") {
-                            Text(expiration.formatted(date: .abbreviated, time: .shortened))
-                                .multilineTextAlignment(.trailing)
+                    VStack(spacing: 0) {
+                        ForEach(Array(LocalSigningStatus.expectedBundleIdentifiers.enumerated()), id: \.offset) { index, bundleIdentifier in
+                            signingProfileRow(bundleIdentifier: bundleIdentifier, at: context.date)
+                            if index < LocalSigningStatus.expectedBundleIdentifiers.count - 1 {
+                                Divider().padding(.leading, 38)
+                            }
                         }
-                    } else {
-                        LabeledContent("Expiration", value: "Unavailable")
-                            .foregroundStyle(JarvisPalette.warning)
                     }
                 }
-                LabeledContent(
-                    "Components",
-                    value: localSigningStatus.hasAllExpectedProfiles
-                        ? "iPhone + Watch · 4 of 4"
-                        : "\(localSigningStatus.profiles.count) of 4 found"
-                )
             }
 
             Section {
@@ -473,43 +470,47 @@ struct SettingsView: View {
             } header: {
                 Text("Mac renewal")
             } footer: {
-                Text("The Mac creates fresh Personal Team profiles, audits one build, and reinstalls that exact build on only your allowlisted iPhone and Apple Watch.")
+                Text("The Mac requests four fresh Personal Team profiles, builds clean approved source, audits one exact archive, and installs only that archive on your allowlisted iPhone and Apple Watch.")
             }
 
             if let status = app.signingRenewalStatus {
-                Section("Last renewal") {
-                    LabeledContent("Status", value: signingPhaseTitle)
-                    if let message = status.message {
-                        Text(message)
-                            .font(.callout)
-                            .foregroundStyle(status.ok ? Color.secondary : Color.red)
+                Section("Renewal progress") {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        signingProgressSummary(status, at: context.date)
                     }
-                    if let expiration = status.expirationDate {
-                        LabeledContent("Renewed until") {
-                            Text(expiration.formatted(date: .abbreviated, time: .shortened))
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(SigningRenewalStep.allCases.enumerated()), id: \.offset) { index, step in
+                            signingStepRow(
+                                step,
+                                status: status,
+                                isLast: index == SigningRenewalStep.allCases.count - 1
+                            )
                         }
-                    }
-                    if status.iPhoneInstalled == true || status.watchInstalled == true {
-                        LabeledContent("iPhone", value: status.iPhoneInstalled == true ? "Installed" : "Not confirmed")
-                        LabeledContent("Apple Watch", value: status.watchInstalled == true ? "Installed" : "Not confirmed")
                     }
                 }
             }
 
             if let error = app.signingRenewalErrorMessage {
-                Section("Error") {
-                    Text(error).foregroundStyle(.red)
+                Section("Connection error") {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
                 }
             }
         }
-        .compactSettingsForm(title: "Developer signing")
+        .compactSettingsForm(title: "Developer Signing")
         .onAppear { localSigningStatus = .current() }
+        .onChange(of: app.signingRenewalStatus?.phase) { _, phase in
+            if phase == "succeeded" {
+                localSigningStatus = .current()
+            }
+        }
         .task(id: app.signingRenewalStatus?.running) {
             if app.signingRenewalStatus == nil {
                 await app.fetchSigningRenewalStatus()
             }
             while !Task.isCancelled, app.signingRenewalStatus?.running == true {
-                try? await Task.sleep(for: .seconds(3))
+                try? await Task.sleep(for: .seconds(2))
                 guard !Task.isCancelled else { return }
                 await app.fetchSigningRenewalStatus()
             }
@@ -520,7 +521,7 @@ struct SettingsView: View {
                 Task { _ = await app.startSigningRenewal() }
             }
         } message: {
-            Text("Keep this iPhone and Apple Watch nearby and unlocked. JARVIS may briefly close while the renewed build is installed; the Mac will continue the operation.")
+            Text("Keep this iPhone and Apple Watch nearby and unlocked. The seven steps will continue on the Mac if JARVIS briefly closes while the renewed iPhone build is installed.")
         }
     }
 
@@ -529,13 +530,288 @@ struct SettingsView: View {
         case "queued": return "Starting…"
         case "preparing": return "Checking devices…"
         case "provisioning": return "Creating profiles…"
-        case "building": return "Building…"
-        case "auditing": return "Auditing…"
+        case "building": return "Building JARVIS…"
+        case "auditing": return "Auditing archive…"
         case "installingIPhone": return "Installing iPhone…"
         case "installingWatch": return "Installing Watch…"
-        case "succeeded": return "Renewed"
-        case "failed": return "Failed"
-        default: return "Ready"
+        case "verifying": return "Verifying and relaunching…"
+        case "succeeded": return "Renewal complete"
+        case "failed": return "Renewal failed"
+        default: return "Ready to renew"
+        }
+    }
+
+    private func signingOverview(at date: Date) -> some View {
+        let expiration = localSigningStatus.earliestExpiration
+        let active = localSigningStatus.hasAllExpectedProfiles && (expiration ?? .distantPast) > date
+        let color = active ? signingColor(at: date) : Color.red
+        let windowProgress = min(1, max(0, (expiration?.timeIntervalSince(date) ?? 0) / (7 * 86_400)))
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(color.opacity(0.14))
+                    Image(systemName: active ? "checkmark.seal.fill" : "exclamationmark.shield.fill")
+                        .font(.title2)
+                        .foregroundStyle(color)
+                }
+                .frame(width: 48, height: 48)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(active ? "Signing active" : "Signing attention required")
+                        .font(.headline)
+                    Text(expiration.map { signingCountdown(to: $0, at: date) } ?? "Profile expiration unavailable")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(color)
+                }
+                Spacer(minLength: 8)
+                Text("\(localSigningStatus.profiles.count)/4")
+                    .font(.title3.monospacedDigit().weight(.bold))
+                    .foregroundStyle(color)
+            }
+
+            ProgressView(value: windowProgress)
+                .tint(color)
+
+            HStack {
+                Text("Seven-day signing window")
+                Spacer()
+                if let expiration {
+                    Text("Until \(expiration.formatted(date: .abbreviated, time: .shortened))")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func signingProfileRow(bundleIdentifier: String, at date: Date) -> some View {
+        let profile = localSigningStatus.profiles.first { $0.bundleIdentifier == bundleIdentifier }
+        let valid = (profile?.expirationDate ?? .distantPast) > date
+
+        return HStack(spacing: 12) {
+            Image(systemName: signingProfileIcon(bundleIdentifier))
+                .frame(width: 26)
+                .foregroundStyle(valid ? JarvisPalette.cyan : Color.red)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(signingProfileName(bundleIdentifier))
+                    .font(.subheadline.weight(.semibold))
+                Text(profile.map { "Valid until \($0.expirationDate.formatted(date: .abbreviated, time: .shortened))" } ?? "Embedded profile missing")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: valid ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(valid ? JarvisPalette.cyan : Color.red)
+                .accessibilityLabel(valid ? "Valid" : "Missing or expired")
+        }
+        .padding(.vertical, 7)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func signingProgressSummary(_ status: SigningRenewalStatus, at date: Date) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(signingProgressColor(status).opacity(0.14))
+                    if status.running {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: status.phase == "succeeded" ? "checkmark" : status.phase == "failed" ? "xmark" : "clock")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(signingProgressColor(status))
+                    }
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(signingPhaseTitle)
+                        .font(.headline)
+                    if let stepNumber = status.displayedStepNumber {
+                        Text("Step \(stepNumber) of \(SigningRenewalStep.allCases.count)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(signingProgressColor(status))
+                    } else if status.phase == "queued" {
+                        Text("Preparing seven-step renewal")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if let elapsed = signingElapsed(status, at: date) {
+                    Text(elapsed)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            HStack(spacing: 4) {
+                ForEach(SigningRenewalStep.allCases, id: \.rawValue) { step in
+                    Capsule()
+                        .fill(signingStepColor(status.state(for: step)))
+                        .frame(height: 5)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: status.phase)
+
+            if let message = status.message {
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(status.phase == "failed" ? Color.red : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let expiration = status.expirationDate {
+                LabeledContent("Renewed until") {
+                    Text(expiration.formatted(date: .abbreviated, time: .shortened))
+                        .multilineTextAlignment(.trailing)
+                }
+                .font(.subheadline)
+            }
+
+            if status.iPhoneInstalled == true || status.watchInstalled == true || status.phase == "succeeded" {
+                HStack(spacing: 8) {
+                    signingDeviceBadge("iPhone", systemImage: "iphone", verified: status.iPhoneInstalled == true)
+                    signingDeviceBadge("Watch", systemImage: "applewatch", verified: status.watchInstalled == true)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func signingStepRow(
+        _ step: SigningRenewalStep,
+        status: SigningRenewalStatus,
+        isLast: Bool
+    ) -> some View {
+        let state = status.state(for: step)
+
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 0) {
+                ZStack {
+                    Circle()
+                        .fill(signingStepColor(state).opacity(state == .pending ? 0.18 : 0.15))
+                        .overlay(Circle().stroke(signingStepColor(state), lineWidth: state == .pending ? 1 : 1.5))
+                    switch state {
+                    case .completed:
+                        Image(systemName: "checkmark").font(.caption.weight(.bold))
+                    case .current:
+                        ProgressView().controlSize(.mini).scaleEffect(0.72)
+                    case .failed:
+                        Image(systemName: "xmark").font(.caption.weight(.bold))
+                    case .pending:
+                        Image(systemName: "circle.fill").font(.system(size: 5))
+                    }
+                }
+                .foregroundStyle(signingStepColor(state))
+                .frame(width: 28, height: 28)
+
+                if !isLast {
+                    Rectangle()
+                        .fill(state == .completed ? JarvisPalette.cyan.opacity(0.65) : Color.secondary.opacity(0.2))
+                        .frame(width: 2, height: 28)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(signingStepTitle(step))
+                    .font(.subheadline.weight(state == .current || state == .failed ? .bold : .semibold))
+                    .foregroundStyle(state == .failed ? Color.red : state == .current ? JarvisPalette.cyan : Color.primary)
+                Text(signingStepDetail(step))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.bottom, isLast ? 1 : 9)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(signingStepStateLabel(state))
+    }
+
+    private func signingDeviceBadge(_ title: String, systemImage: String, verified: Bool) -> some View {
+        Label("\(title) \(verified ? "verified" : "not confirmed")", systemImage: verified ? "checkmark.circle.fill" : systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(verified ? JarvisPalette.cyan : Color.secondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background((verified ? JarvisPalette.cyan : Color.secondary).opacity(0.1), in: Capsule())
+    }
+
+    private func signingProgressColor(_ status: SigningRenewalStatus) -> Color {
+        if status.phase == "failed" { return .red }
+        if status.phase == "succeeded" { return JarvisPalette.cyan }
+        return status.running ? JarvisPalette.cyan : .secondary
+    }
+
+    private func signingStepColor(_ state: SigningRenewalStepState) -> Color {
+        switch state {
+        case .completed, .current: return JarvisPalette.cyan
+        case .failed: return .red
+        case .pending: return .secondary
+        }
+    }
+
+    private func signingElapsed(_ status: SigningRenewalStatus, at date: Date) -> String? {
+        guard let start = status.startedDate else { return nil }
+        let end = status.completedDate ?? date
+        let seconds = max(0, Int(end.timeIntervalSince(start)))
+        if seconds < 60 { return "\(seconds)s" }
+        return "\(seconds / 60)m \(seconds % 60)s"
+    }
+
+    private func signingProfileName(_ bundleIdentifier: String) -> String {
+        switch bundleIdentifier {
+        case "com.operation-jarvis.jarvis": return "iPhone app"
+        case "com.operation-jarvis.jarvis.widget": return "iPhone widget"
+        case "com.operation-jarvis.jarvis.watchkitapp": return "Watch app"
+        case "com.operation-jarvis.jarvis.watchkitapp.widget": return "Watch widget"
+        default: return "Unknown component"
+        }
+    }
+
+    private func signingProfileIcon(_ bundleIdentifier: String) -> String {
+        switch bundleIdentifier {
+        case "com.operation-jarvis.jarvis": return "iphone"
+        case "com.operation-jarvis.jarvis.widget": return "square.grid.2x2.fill"
+        case "com.operation-jarvis.jarvis.watchkitapp": return "applewatch"
+        default: return "rectangle.stack.fill"
+        }
+    }
+
+    private func signingStepTitle(_ step: SigningRenewalStep) -> String {
+        switch step {
+        case .preparing: return "Check Mac and paired devices"
+        case .provisioning: return "Create four signing profiles"
+        case .building: return "Build approved JARVIS source"
+        case .auditing: return "Audit the exact archive"
+        case .installingIPhone: return "Install iPhone and widget"
+        case .installingWatch: return "Install Watch and widget"
+        case .verifying: return "Verify and relaunch"
+        }
+    }
+
+    private func signingStepDetail(_ step: SigningRenewalStep) -> String {
+        switch step {
+        case .preparing: return "Confirm the private allowlist, pairing, Developer Mode, and CoreDevice tunnels."
+        case .provisioning: return "Request fresh Personal Team profiles from Apple for all four components."
+        case .building: return "Compile clean approved main in an isolated worktree."
+        case .auditing: return "Check profiles, devices, bundle IDs, entitlements, hierarchy, and signatures."
+        case .installingIPhone: return "Install only the audited iPhone host and embedded widget through CoreDevice."
+        case .installingWatch: return "Install the matching nested Watch app and widget, with one bounded tunnel retry."
+        case .verifying: return "Confirm installed build numbers, expiration, and successful launch on both devices."
+        }
+    }
+
+    private func signingStepStateLabel(_ state: SigningRenewalStepState) -> String {
+        switch state {
+        case .completed: return "Completed"
+        case .current: return "In progress"
+        case .pending: return "Pending"
+        case .failed: return "Failed"
         }
     }
 
