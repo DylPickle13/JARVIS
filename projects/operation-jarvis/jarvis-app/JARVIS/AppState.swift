@@ -66,6 +66,10 @@ public final class AppState: ObservableObject {
     @Published public var scheduledJobsLoading = false
     @Published public var scheduledJobsErrorMessage: String?
 
+    @Published public var signingRenewalStatus: SigningRenewalStatus?
+    @Published public var signingRenewalLoading = false
+    @Published public var signingRenewalErrorMessage: String?
+
     @Published public var endpointDraft: String
     @Published public private(set) var busyOperations: Set<String> = []
     @Published public private(set) var activeSection: AppSection = .home
@@ -636,6 +640,52 @@ public final class AppState: ObservableObject {
             return false
         } catch {
             operationErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    // MARK: - Developer signing
+
+    public func fetchSigningRenewalStatus() async {
+        guard let endpoint = activeEndpoint else {
+            signingRenewalErrorMessage = "Connect to the JARVIS daemon first."
+            return
+        }
+        signingRenewalLoading = true
+        defer { signingRenewalLoading = false }
+        do {
+            signingRenewalStatus = try await client.signingRenewalStatus(endpoint)
+            signingRenewalErrorMessage = nil
+        } catch is CancellationError {
+            return
+        } catch let error as JarvisError {
+            signingRenewalErrorMessage = error.errorDescription
+        } catch {
+            signingRenewalErrorMessage = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    public func startSigningRenewal() async -> Bool {
+        guard !signingRenewalLoading else { return false }
+        guard let endpoint = activeEndpoint else {
+            signingRenewalErrorMessage = "Connect to the JARVIS daemon first."
+            return false
+        }
+        signingRenewalLoading = true
+        defer { signingRenewalLoading = false }
+        do {
+            let status = try await client.startSigningRenewal(endpoint)
+            signingRenewalStatus = status
+            signingRenewalErrorMessage = nil
+            return status.running
+        } catch is CancellationError {
+            return false
+        } catch let error as JarvisError {
+            signingRenewalErrorMessage = error.errorDescription
+            return false
+        } catch {
+            signingRenewalErrorMessage = error.localizedDescription
             return false
         }
     }

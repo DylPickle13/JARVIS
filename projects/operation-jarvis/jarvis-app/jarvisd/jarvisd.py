@@ -146,6 +146,26 @@ TAILSCALE_APP_CLI = Path(
 LAUNCH_AGENTS_DIR = Path(
     os.environ.get("JARVISD_LAUNCH_AGENTS_DIR", str(Path.home() / "Library/LaunchAgents"))
 ).expanduser().resolve()
+SIGNING_RENEWAL_SCRIPT = Path(
+    os.environ.get("JARVISD_SIGNING_RENEWAL_SCRIPT", str(JARVISD_DIR.parent / "scripts" / "renew-free-signing.sh"))
+).expanduser().resolve()
+SIGNING_RENEWAL_STATUS_FILE = Path(
+    os.environ.get(
+        "JARVISD_SIGNING_RENEWAL_STATUS_FILE",
+        str(Path.home() / "Library/Application Support/JARVIS/signing-renewal/status.json"),
+    )
+).expanduser().resolve()
+SIGNING_RENEWAL_LOG_DIR = Path(
+    os.environ.get(
+        "JARVISD_SIGNING_RENEWAL_LOG_DIR",
+        str(Path.home() / "Library/Application Support/JARVIS/signing-renewal/logs"),
+    )
+).expanduser().resolve()
+SIGNING_RENEWAL_START_LOCK = threading.Lock()
+SIGNING_RENEWAL_PHASES = {
+    "idle", "queued", "preparing", "provisioning", "building", "auditing",
+    "installingIPhone", "installingWatch", "succeeded", "failed",
+}
 
 STATE_TIMEOUT = float(os.environ.get("JARVISD_STATE_TIMEOUT", "10"))
 # Native HTTP requests are bounded to 30 seconds. Keep VeSync write
@@ -890,6 +910,104 @@ def _scheduled_jobs() -> dict:
         return _public_scheduled_jobs(json.loads(stdout))
     except Exception:  # noqa: BLE001
         return _scheduled_jobs_unavailable()
+
+
+def _read_signing_renewal_status() -> dict:
+    try:
+        payload = json.loads(SIGNING_RENEWAL_STATUS_FILE.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def _signing_renewal_pid_is_running(payload: dict) -> bool:
+    pid = payload.get("pid")
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _signing_renewal_status(payload: dict | None = None) -> dict:
+    raw = payload if isinstance(payload, dict) else _read_signing_renewal_status()
+    available = SIGNING_RENEWAL_SCRIPT.is_file() and os.access(SIGNING_RENEWAL_SCRIPT, os.X_OK)
+    phase = raw.get("phase")
+    if phase not in SIGNING_RENEWAL_PHASES:
+        phase = "idle"
+    running = raw.get("running") is True and _signing_renewal_pid_is_running(raw)
+    message = raw.get("message")
+    if not isinstance(message, str):
+        message = "Ready to renew JARVIS signing." if available else "Signing renewal is unavailable on this Mac."
+    message = " ".join(message.split())[:300]
+    message = re.sub(r"(/Users/[^\s,;]+|/private/[^\s,;]+|/tmp/[^\s,;]+)", "<local-path>", message)
+    if raw.get("running") is True and not running:
+        phase = "failed"
+        message = "The previous signing renewal was interrupted."
+    result = {
+        "ok": raw.get("ok") is not False and available,
+        "available": available,
+        "phase": phase,
+        "running": running,
+        "message": message,
+        "iPhoneInstalled": raw.get("iPhoneInstalled") is True,
+        "watchInstalled": raw.get("watchInstalled") is True,
+    }
+    for key in ("startedAt", "updatedAt", "completedAt", "expiresAt"):
+        value = raw.get(key)
+        result[key] = value[:64] if isinstance(value, str) else None
+    return result
+
+
+def _start_signing_renewal() -> tuple[bool, dict]:
+    with SIGNING_RENEWAL_START_LOCK:
+        current = _read_signing_renewal_status()
+        if current.get("running") is True and _signing_renewal_pid_is_running(current):
+            result = _signing_renewal_status(current)
+            result["ok"] = False
+            result["message"] = "A signing renewal is already running."
+            return False, result
+        if not SIGNING_RENEWAL_SCRIPT.is_file() or not os.access(SIGNING_RENEWAL_SCRIPT, os.X_OK):
+            return False, _signing_renewal_status({
+                "ok": False,
+                "phase": "failed",
+                "message": "Signing renewal is unavailable on this Mac.",
+            })
+        try:
+            SIGNING_RENEWAL_LOG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+            log_path = SIGNING_RENEWAL_LOG_DIR / "trigger.log"
+            with log_path.open("a", encoding="utf-8") as log:
+                process = subprocess.Popen(
+                    [str(SIGNING_RENEWAL_SCRIPT)],
+                    cwd=str(SIGNING_RENEWAL_SCRIPT.parent.parent),
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    close_fds=True,
+                )
+        except OSError:
+            return False, _signing_renewal_status({
+                "ok": False,
+                "phase": "failed",
+                "message": "The Mac could not start the signing renewal.",
+            })
+        now = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+        return True, {
+            "ok": True,
+            "available": True,
+            "phase": "queued",
+            "running": True,
+            "message": "Signing renewal started on the Mac.",
+            "startedAt": now,
+            "updatedAt": now,
+            "completedAt": None,
+            "expiresAt": None,
+            "iPhoneInstalled": False,
+            "watchInstalled": False,
+        }
 
 
 def _bounded_number(value: Any, minimum: float, maximum: float) -> float | None:
@@ -1756,6 +1874,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, _scheduled_jobs())
             return
+        if path == "/api/v1/signing/status":
+            if not self._auth_or_respond():
+                return
+            self._send(200, _signing_renewal_status())
+            return
         if path.startswith("/api/v1/services/"):
             if not self._auth_or_respond():
                 return
@@ -1781,6 +1904,17 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(400, {"ok": False, "error": str(exc)})
                 return
             self._send(200, {"ok": True, "seq": event["seq"]})
+            return
+        if path == "/api/v1/signing/renew":
+            if not self._auth_or_respond():
+                return
+            raw_length = self.headers.get("Content-Length")
+            if raw_length not in (None, "0"):
+                self.close_connection = True
+                self._send(400, {"ok": False, "error": "signing renewal does not accept a request body"})
+                return
+            started, result = _start_signing_renewal()
+            self._send(202 if started else 409, result)
             return
         if path == "/api/v1/command":
             if not self._auth_or_respond():

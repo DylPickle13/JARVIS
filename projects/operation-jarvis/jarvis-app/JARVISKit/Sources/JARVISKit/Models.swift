@@ -22,6 +22,53 @@ public struct HealthResponse: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - Developer signing renewal
+
+public struct SigningRenewalStatus: Codable, Equatable, Sendable {
+    public let ok: Bool
+    public let available: Bool
+    public let phase: String
+    public let running: Bool
+    public let message: String?
+    public let startedAt: String?
+    public let updatedAt: String?
+    public let completedAt: String?
+    public let expiresAt: String?
+    public let iPhoneInstalled: Bool?
+    public let watchInstalled: Bool?
+
+    public init(
+        ok: Bool,
+        available: Bool,
+        phase: String,
+        running: Bool,
+        message: String? = nil,
+        startedAt: String? = nil,
+        updatedAt: String? = nil,
+        completedAt: String? = nil,
+        expiresAt: String? = nil,
+        iPhoneInstalled: Bool? = nil,
+        watchInstalled: Bool? = nil
+    ) {
+        self.ok = ok
+        self.available = available
+        self.phase = phase
+        self.running = running
+        self.message = message
+        self.startedAt = startedAt
+        self.updatedAt = updatedAt
+        self.completedAt = completedAt
+        self.expiresAt = expiresAt
+        self.iPhoneInstalled = iPhoneInstalled
+        self.watchInstalled = watchInstalled
+    }
+
+    public var expirationDate: Date? {
+        guard let expiresAt else { return nil }
+        return ISO8601DateFormatter().date(from: expiresAt)
+    }
+}
+
 // MARK: - State snapshot
 
 public struct StateSnapshot: Codable, Equatable, Sendable {

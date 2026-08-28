@@ -5,6 +5,58 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testProvisioningStatusUsesEarliestOfAllFourEmbeddedProfiles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let relativePaths = [
+            "embedded.mobileprovision",
+            "PlugIns/JARVISWidget.appex/embedded.mobileprovision",
+            "Watch/JARVISWatch.app/embedded.mobileprovision",
+            "Watch/JARVISWatch.app/PlugIns/JARVISWatchWidget.appex/embedded.mobileprovision",
+        ]
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        for (index, bundleIdentifier) in LocalSigningStatus.expectedBundleIdentifiers.enumerated() {
+            let destination = root.appendingPathComponent(relativePaths[index])
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let payload: [String: Any] = [
+                "UUID": "profile-\(index)",
+                "ExpirationDate": base.addingTimeInterval(Double(index) * 3_600),
+                "Entitlements": ["application-identifier": "5GB5BU49Q8.\(bundleIdentifier)"],
+            ]
+            let plist = try PropertyListSerialization.data(fromPropertyList: payload, format: .xml, options: 0)
+            var wrapped = Data("signed-prefix".utf8)
+            wrapped.append(plist)
+            wrapped.append(Data("signed-suffix".utf8))
+            try wrapped.write(to: destination)
+        }
+
+        let status = LocalSigningStatus.current(bundleURL: root)
+
+        XCTAssertTrue(status.hasAllExpectedProfiles)
+        XCTAssertEqual(status.profiles.count, 4)
+        XCTAssertEqual(status.earliestExpiration, base)
+    }
+
+    func testSigningRenewalStatusAndStartUseDedicatedAPI() async {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+
+        await app.fetchSigningRenewalStatus()
+        let started = await app.startSigningRenewal()
+
+        XCTAssertEqual(api.signingStatusCalls, 1)
+        XCTAssertEqual(api.signingStartCalls, 1)
+        XCTAssertTrue(started)
+        XCTAssertEqual(app.signingRenewalStatus?.phase, "queued")
+        XCTAssertNil(app.signingRenewalErrorMessage)
+    }
+
     func testRefreshConnectsHealthFirstAndLoadsState() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
@@ -449,6 +501,8 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var healthCalls = 0
     var servicesCalls = 0
     var scheduledJobsCalls = 0
+    var signingStatusCalls = 0
+    var signingStartCalls = 0
     private var purifierIsOn = false
     private var purifierMode = "auto"
     private var purifierFan = 2
@@ -534,6 +588,16 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
 
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult {
         try! JSONDecoder().decode(ServiceActionResult.self, from: Data(#"{"ok":true,"service":"test","action":"status"}"#.utf8))
+    }
+
+    func signingRenewalStatus(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus {
+        signingStatusCalls += 1
+        return SigningRenewalStatus(ok: true, available: true, phase: "idle", running: false)
+    }
+
+    func startSigningRenewal(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus {
+        signingStartCalls += 1
+        return SigningRenewalStatus(ok: true, available: true, phase: "queued", running: true)
     }
 
     func discover(_ candidates: [URL], timeout: TimeInterval) async -> URL? { candidates.first }

@@ -520,6 +520,42 @@ class DaemonUnitTests(unittest.TestCase):
         self.assertNotIn("not-json", json.dumps(failed))
 
 
+class SigningRenewalUnitTests(unittest.TestCase):
+    def test_signing_status_is_bounded_sanitized_and_hides_pid(self):
+        payload = {
+            "ok": True,
+            "phase": "building",
+            "running": True,
+            "message": "Building /Users/private/source now",
+            "expiresAt": "2026-09-03T03:00:00Z",
+            "pid": os.getpid(),
+        }
+        with mock.patch.object(jarvisd, "SIGNING_RENEWAL_SCRIPT", MODULE_PATH):
+            status = jarvisd._signing_renewal_status(payload)
+        self.assertTrue(status["running"])
+        self.assertEqual(status["phase"], "building")
+        self.assertNotIn("/Users/", status["message"])
+        self.assertNotIn("pid", status)
+
+    def test_signing_start_runs_only_the_fixed_script_without_arguments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / "scripts" / "renew-free-signing.sh"
+            script.parent.mkdir()
+            script.write_text("#!/bin/sh\n", encoding="utf-8")
+            script.chmod(0o700)
+            process = mock.Mock(pid=1234)
+            with mock.patch.object(jarvisd, "SIGNING_RENEWAL_SCRIPT", script), \
+                 mock.patch.object(jarvisd, "SIGNING_RENEWAL_STATUS_FILE", root / "missing.json"), \
+                 mock.patch.object(jarvisd, "SIGNING_RENEWAL_LOG_DIR", root / "logs"), \
+                 mock.patch.object(jarvisd.subprocess, "Popen", return_value=process) as popen:
+                started, result = jarvisd._start_signing_renewal()
+            self.assertTrue(started)
+            self.assertTrue(result["running"])
+            self.assertEqual(popen.call_args.args[0], [str(script)])
+            self.assertNotIn("shell", popen.call_args.kwargs)
+
+
 class HTTPTests(unittest.TestCase):
     def setUp(self):
         self.old = {
@@ -597,6 +633,39 @@ class HTTPTests(unittest.TestCase):
             status, _, _ = self.request("GET", "/api/v1/state?refresh=codexQuota")
         self.assertEqual(status, 401)
         unauthenticated.assert_not_called()
+
+    def test_signing_endpoints_require_auth_and_expose_only_fixed_action(self):
+        public_status = {
+            "ok": True,
+            "available": True,
+            "phase": "idle",
+            "running": False,
+            "message": "Ready.",
+        }
+        status, _, _ = self.request("GET", "/api/v1/signing/status")
+        self.assertEqual(status, 401)
+        with mock.patch.object(jarvisd, "_signing_renewal_status", return_value=public_status):
+            status, _, body = self.request("GET", "/api/v1/signing/status", token="api-secret")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["phase"], "idle")
+
+        queued = public_status | {"phase": "queued", "running": True}
+        with mock.patch.object(jarvisd, "_start_signing_renewal", return_value=(True, queued)) as start:
+            status, _, body = self.request("POST", "/api/v1/signing/renew", token="api-secret")
+        self.assertEqual(status, 202)
+        self.assertTrue(json.loads(body)["running"])
+        start.assert_called_once_with()
+
+        with mock.patch.object(jarvisd, "_start_signing_renewal") as rejected:
+            status, _, body = self.request(
+                "POST",
+                "/api/v1/signing/renew",
+                {"command": "arbitrary"},
+                token="api-secret",
+            )
+        self.assertEqual(status, 400)
+        self.assertIn("does not accept", body.decode())
+        rejected.assert_not_called()
 
     def test_scheduled_jobs_endpoint_returns_sanitized_contract(self):
         response = {

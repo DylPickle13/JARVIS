@@ -202,5 +202,13 @@ private final class PlugCommandFakeAPI: JarvisAPI, @unchecked Sendable {
         )
     }
 
+    func signingRenewalStatus(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus {
+        SigningRenewalStatus(ok: true, available: true, phase: "idle", running: false)
+    }
+
+    func startSigningRenewal(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus {
+        SigningRenewalStatus(ok: true, available: true, phase: "queued", running: true)
+    }
+
     func discover(_ candidates: [URL], timeout: TimeInterval) async -> URL? { candidates.first }
 }

@@ -53,6 +53,8 @@ public protocol JarvisAPI: Sendable {
     func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse
     func scheduledJobs(_ endpoint: JarvisEndpoint) async throws -> ScheduledJobsResponse
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult
+    func signingRenewalStatus(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus
+    func startSigningRenewal(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus
     func discover(_ candidates: [URL], timeout: TimeInterval) async -> URL?
 }
 
@@ -198,6 +200,14 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .jarvisPathSegment) ?? name
         let body = try JSONSerialization.data(withJSONObject: ["action": action])
         return try await perform(endpoint, "/api/v1/services/\(encodedName)", method: "POST", body: body, as: ServiceActionResult.self)
+    }
+
+    public func signingRenewalStatus(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus {
+        try await perform(endpoint, "/api/v1/signing/status", as: SigningRenewalStatus.self)
+    }
+
+    public func startSigningRenewal(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus {
+        try await perform(endpoint, "/api/v1/signing/renew", method: "POST", as: SigningRenewalStatus.self)
     }
 }
 

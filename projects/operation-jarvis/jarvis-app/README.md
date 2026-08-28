@@ -207,6 +207,11 @@ instead of mislabeling an accepted change as generic stale data. A true timeout 
 unrelated stale subsystem still uses the existing fail-closed stale warning. The exact
 audited `0.3.0 (103)` archive was installed and launched on the allowlisted iPhone and
 Apple Watch after a status-only jarvisd restart; the purifier remained on in Auto mode.
+Build 104 adds iPhone **Settings → Developer Signing** with an earliest-profile expiry
+countdown and an explicit **Renew for 7 Days** confirmation. Its authenticated jarvisd
+endpoint starts only the fixed argument-free renewal script; the Mac obtains and audits
+all four Personal Team profiles, builds clean `main`, and upgrades only the private
+allowlisted iPhone and Watch while exposing bounded progress back to the app.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
@@ -439,8 +444,11 @@ the app. The former `docs/*.md` files are consolidated below.
 ## Devices & distribution
 
 - iPhone 11 (iOS 26) + Apple Watch Series 11 46 mm (watchOS 26).
-- Free Apple ID (no $99 yet): 7-day provisioning expiry, refreshed with
-  `scripts/redeploy-jarvis-app.sh` (added in M0).
+- Free Apple ID (no $99 yet): 7-day provisioning expiry. Build 104 exposes the
+  earliest iPhone/Watch component expiry and a user-confirmed Mac-side renewal
+  under **Settings → Developer Signing**; `scripts/renew-free-signing.sh` is its
+  fixed allowlisted action. `scripts/redeploy-jarvis-app.sh` remains available
+  for iPhone-only development.
 - Simulator validation is restricted to exactly one iPhone 11 and one Apple
   Watch Series 11 (46mm) device; physical devices remain the release gate.
 

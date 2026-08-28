@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var sshSaved = false
     @State private var watchTerminalSetupCode = ""
     @State private var watchTerminalSent = false
+    @State private var localSigningStatus = LocalSigningStatus.current()
+    @State private var showSigningRenewalConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -56,6 +58,22 @@ struct SettingsView: View {
                                 value: app.watchTerminalProvisioning.isProvisioned ? "Provisioned" : "Setup required",
                                 color: app.watchTerminalProvisioning.isProvisioned ? JarvisPalette.cyan : JarvisPalette.warning
                             )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    settingsGroup(title: "Developer") {
+                        NavigationLink {
+                            developerSigningDetail
+                        } label: {
+                            TimelineView(.periodic(from: .now, by: 60)) { context in
+                                settingsRow(
+                                    title: "Developer signing",
+                                    systemImage: "checkmark.seal",
+                                    value: signingSummary(at: context.date),
+                                    color: signingColor(at: context.date)
+                                )
+                            }
                         }
                         .buttonStyle(.plain)
                     }
@@ -108,7 +126,10 @@ struct SettingsView: View {
             .scrollIndicators(.hidden)
             .background(JarvisBackdrop())
             .navigationTitle("Settings")
-            .onAppear { loadPiTerminalSettings() }
+            .onAppear {
+                loadPiTerminalSettings()
+                localSigningStatus = .current()
+            }
         }
     }
 
@@ -392,6 +413,153 @@ struct SettingsView: View {
             }
         }
         .compactSettingsForm(title: "Apple Watch")
+    }
+
+    // MARK: - Developer signing
+
+    private var developerSigningDetail: some View {
+        Form {
+            Section("Current profiles") {
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    if let expiration = localSigningStatus.earliestExpiration {
+                        LabeledContent("Time remaining", value: signingCountdown(to: expiration, at: context.date))
+                            .foregroundStyle(signingColor(at: context.date))
+                        LabeledContent("Earliest expiration") {
+                            Text(expiration.formatted(date: .abbreviated, time: .shortened))
+                                .multilineTextAlignment(.trailing)
+                        }
+                    } else {
+                        LabeledContent("Expiration", value: "Unavailable")
+                            .foregroundStyle(JarvisPalette.warning)
+                    }
+                }
+                LabeledContent(
+                    "Components",
+                    value: localSigningStatus.hasAllExpectedProfiles
+                        ? "iPhone + Watch · 4 of 4"
+                        : "\(localSigningStatus.profiles.count) of 4 found"
+                )
+            }
+
+            Section {
+                Button {
+                    showSigningRenewalConfirmation = true
+                } label: {
+                    HStack {
+                        Spacer()
+                        if app.signingRenewalLoading || app.signingRenewalStatus?.running == true {
+                            ProgressView().frame(width: 20)
+                            Text(signingPhaseTitle)
+                        } else {
+                            Label("Renew for 7 Days", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        Spacer()
+                    }
+                }
+                .disabled(
+                    app.connectionState != .connected
+                        || app.signingRenewalLoading
+                        || app.signingRenewalStatus?.running == true
+                        || app.signingRenewalStatus?.available != true
+                )
+
+                Button {
+                    Task { await app.fetchSigningRenewalStatus() }
+                } label: {
+                    Label("Refresh renewal status", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(app.signingRenewalLoading)
+            } header: {
+                Text("Mac renewal")
+            } footer: {
+                Text("The Mac creates fresh Personal Team profiles, audits one build, and reinstalls that exact build on only your allowlisted iPhone and Apple Watch.")
+            }
+
+            if let status = app.signingRenewalStatus {
+                Section("Last renewal") {
+                    LabeledContent("Status", value: signingPhaseTitle)
+                    if let message = status.message {
+                        Text(message)
+                            .font(.callout)
+                            .foregroundStyle(status.ok ? Color.secondary : Color.red)
+                    }
+                    if let expiration = status.expirationDate {
+                        LabeledContent("Renewed until") {
+                            Text(expiration.formatted(date: .abbreviated, time: .shortened))
+                        }
+                    }
+                    if status.iPhoneInstalled == true || status.watchInstalled == true {
+                        LabeledContent("iPhone", value: status.iPhoneInstalled == true ? "Installed" : "Not confirmed")
+                        LabeledContent("Apple Watch", value: status.watchInstalled == true ? "Installed" : "Not confirmed")
+                    }
+                }
+            }
+
+            if let error = app.signingRenewalErrorMessage {
+                Section("Error") {
+                    Text(error).foregroundStyle(.red)
+                }
+            }
+        }
+        .compactSettingsForm(title: "Developer signing")
+        .onAppear { localSigningStatus = .current() }
+        .task(id: app.signingRenewalStatus?.running) {
+            if app.signingRenewalStatus == nil {
+                await app.fetchSigningRenewalStatus()
+            }
+            while !Task.isCancelled, app.signingRenewalStatus?.running == true {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                await app.fetchSigningRenewalStatus()
+            }
+        }
+        .alert("Renew JARVIS signing?", isPresented: $showSigningRenewalConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Renew for 7 Days") {
+                Task { _ = await app.startSigningRenewal() }
+            }
+        } message: {
+            Text("Keep this iPhone and Apple Watch nearby and unlocked. JARVIS may briefly close while the renewed build is installed; the Mac will continue the operation.")
+        }
+    }
+
+    private var signingPhaseTitle: String {
+        switch app.signingRenewalStatus?.phase {
+        case "queued": return "Starting…"
+        case "preparing": return "Checking devices…"
+        case "provisioning": return "Creating profiles…"
+        case "building": return "Building…"
+        case "auditing": return "Auditing…"
+        case "installingIPhone": return "Installing iPhone…"
+        case "installingWatch": return "Installing Watch…"
+        case "succeeded": return "Renewed"
+        case "failed": return "Failed"
+        default: return "Ready"
+        }
+    }
+
+    private func signingSummary(at date: Date) -> String {
+        guard let expiration = localSigningStatus.earliestExpiration else { return "Unavailable" }
+        return signingCountdown(to: expiration, at: date)
+    }
+
+    private func signingCountdown(to expiration: Date, at date: Date) -> String {
+        let seconds = Int(expiration.timeIntervalSince(date))
+        guard seconds > 0 else { return "Expired" }
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        if days > 0 { return "\(days)d \(hours)h remaining" }
+        let minutes = max(1, (seconds % 3_600) / 60)
+        return "\(hours)h \(minutes)m remaining"
+    }
+
+    private func signingColor(at date: Date) -> Color {
+        guard let expiration = localSigningStatus.earliestExpiration else { return JarvisPalette.warning }
+        let remaining = expiration.timeIntervalSince(date)
+        if remaining <= 0 { return .red }
+        if remaining <= 2 * 86_400 { return JarvisPalette.warning }
+        return JarvisPalette.cyan
     }
 
     // MARK: - Diagnostics and About

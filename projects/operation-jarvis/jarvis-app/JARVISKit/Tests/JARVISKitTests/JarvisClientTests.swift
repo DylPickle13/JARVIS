@@ -107,6 +107,27 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertTrue(result.ok)
     }
 
+    func testSigningRenewalUsesDedicatedBodylessAuthenticatedEndpoints() async throws {
+        var requests: [URLRequest] = []
+        MockURLProtocol.handler = { request in
+            requests.append(request)
+            return MockURLProtocol.response(
+                request,
+                status: request.httpMethod == "POST" ? 202 : 200,
+                body: #"{"ok":true,"available":true,"phase":"queued","running":true,"message":"Started."}"#
+            )
+        }
+
+        _ = try await client.signingRenewalStatus(endpoint)
+        let started = try await client.startSigningRenewal(endpoint)
+
+        XCTAssertEqual(requests.map { $0.url?.path }, ["/api/v1/signing/status", "/api/v1/signing/renew"])
+        XCTAssertEqual(requests.map(\.httpMethod), ["GET", "POST"])
+        XCTAssertNil(requests[1].httpBody)
+        XCTAssertEqual(requests[1].value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+        XCTAssertTrue(started.running)
+    }
+
     func testDiscoveryUsesEarlyLowerPrioritySuccessAfterHigherPriorityFails() async {
         let higher = URL(string: "http://higher.test:8790")!
         let lower = URL(string: "http://lower.test:8790")!

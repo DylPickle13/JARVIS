@@ -89,6 +89,18 @@ grep -q 'private func settingsGroup<Content: View>' JARVIS/Views/SettingsView.sw
 grep -q 'private var diagnosticsDetail' JARVIS/Views/SettingsView.swift
 grep -q 'private var piTerminalDetail' JARVIS/Views/SettingsView.swift
 grep -q 'private var watchTerminalDetail' JARVIS/Views/SettingsView.swift
+grep -q 'private var developerSigningDetail' JARVIS/Views/SettingsView.swift
+grep -q 'Renew for 7 Days' JARVIS/Views/SettingsView.swift
+grep -q 'LocalSigningStatus.current' JARVIS/Views/SettingsView.swift
+grep -q '"/api/v1/signing/status"' JARVISKit/Sources/JARVISKit/JarvisClient.swift
+grep -q '"/api/v1/signing/renew"' JARVISKit/Sources/JARVISKit/JarvisClient.swift
+grep -q 'signing renewal does not accept a request body' jarvisd/jarvisd.py
+grep -q '\[str(SIGNING_RENEWAL_SCRIPT)\]' jarvisd/jarvisd.py
+[[ -x scripts/renew-free-signing.sh ]]
+grep -q 'refs/heads/main' scripts/renew-free-signing.sh
+grep -q 'PROFILE_REFRESH_COMPLETE' scripts/renew-free-signing.sh
+grep -q 'iPhone renewal succeeded, but Watch installation failed' scripts/renew-free-signing.sh
+reject_match 'signing renewal endpoint must not accept shell commands or client arguments' -E 'shell=True|SIGNING_RENEWAL_SCRIPT.*payload|renew-free-signing.sh.*\$@' jarvisd/jarvisd.py scripts/renew-free-signing.sh
 reject_match 'legacy oversized iPhone status hero remains' -RqsE 'private var statusHeader|private var settingsHero|Native control plane' JARVIS/Views
 reject_match 'legacy expanded Home service groups remain' -qsE 'runtimeServicesExpanded|scheduledJobsExpanded|DisclosureGroup' JARVIS/Views/HomeView.swift
 reject_match 'Pi and Codex summaries must remain directly visible on Home' -qsE 'codexDetail|navigationTitle\("Codex usage"\)' JARVIS/Views/HomeView.swift
