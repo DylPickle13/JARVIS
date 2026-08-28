@@ -12,14 +12,17 @@
 		0270B90D3D4F52F5A77FE14E /* WidgetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40C659E6D5CAA095003D8887 /* WidgetSupport.swift */; };
 		0A666BCB6A0896655C0ACE28 /* JARVISTerminalConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325AC9EE99D5B5BA85A84D73 /* JARVISTerminalConfigurationStore.swift */; };
 		1D5E7CC1DB8E703A3D114F61 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8068A9EC5CBE6A47B603710 /* JARVISKit */; };
+		1DC8B19B903AE4B1F55DDA99 /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */; };
 		21E9789B6D7FDCFD43AD0B35 /* WidgetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */; };
 		2392D67F2D4A760498DF32EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ED67C789A071ACDEA4FD69FC /* Assets.xcassets */; };
 		26D143A1482F252A0D5C3892 /* JARVISWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1B144126B4647E06FE7EED06 /* JARVISWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2C39CF58603D08048BA65D1A /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFAD68F450FB6F9BE8C17A8 /* LauncherWidget.swift */; };
 		2DD281718165D457D750A2CC /* NeuralCoreArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197A46DD464AA704E3FB32E9 /* NeuralCoreArtwork.swift */; };
 		2DD3D8F93DACBDBEFC94B1E1 /* NeuralCoreWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 535E6788F7CEA7378CB167A8 /* NeuralCoreWidget.swift */; };
+		320AA268217C4ADD510AE5B5 /* PiTerminalSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 137E1FF7B884864E7A46CE7B /* PiTerminalSettingsView.swift */; };
 		357F018439F498E3E4F7CE50 /* NeuralCoreContinuousAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5136B3B670CA19BFD429B9D /* NeuralCoreContinuousAnimation.swift */; };
 		36A69B470B414FB117BBFF90 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3ABAE6AF34972138CF478F09 /* JARVISKit */; };
+		401A7D4BAE710D8F8E5F0013 /* ConnectionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05CEF9EA2E1CBE04169AAE3 /* ConnectionSettingsView.swift */; };
 		42EC3171702509A4088C16D9 /* FillRect-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = 8AC50929D8C075ED60E109B1 /* FillRect-Regular.otf */; };
 		4531362D9F95607130CA5155 /* PiTerminalController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31627FF42650862FB0296B9C /* PiTerminalController.swift */; };
 		47D15BD4F3FC45BED8969D74 /* WatchTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02220D93FADA230BF50A667D /* WatchTerminalView.swift */; };
@@ -30,12 +33,14 @@
 		513C03156788F045E10B6DC3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F511B3C48F0433661629C5AB /* PrivacyInfo.xcprivacy */; };
 		52D863AFDF79688CA2CF1042 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 1F4C583917FA03DBF11F4A10 /* NIOSSH */; };
 		5346D2FDEE84631A3FD82800 /* JARVISWidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB663313210EC6BDA6EBB3 /* JARVISWidgetIntents.swift */; };
+		576BB6C417A8A28E379D2A45 /* WatchTerminalSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */; };
 		5EC0D4F5DD8E98A6BD59C4D1 /* JARVISWidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB663313210EC6BDA6EBB3 /* JARVISWidgetIntents.swift */; };
 		5EE603D6F7625CB12B142116 /* PurifierWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B980A60932E185CB6D8AD60A /* PurifierWidget.swift */; };
 		68C3DE29B22B446350ACB4EB /* NeuralCoreArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197A46DD464AA704E3FB32E9 /* NeuralCoreArtwork.swift */; };
 		6FCDC3A9DF9D130AC887781E /* NeuralCoreContinuousAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5136B3B670CA19BFD429B9D /* NeuralCoreContinuousAnimation.swift */; };
 		7FF1402EAA20A6F5449F1343 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 3F999A05470F31BD318BB18E /* SwiftTerm */; };
 		838B2889933E6283DED2D163 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 266A9071FEC39AB8EC4067A2 /* Assets.xcassets */; };
+		8C6D2EF20D60D5C1F69E964C /* DeveloperSigningSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53C1087DDDA6246634A9DA3 /* DeveloperSigningSettingsView.swift */; };
 		8E6BE9F9B34D9B7BC922C127 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = 301E6348CB2E3FD4E2A1BD9D /* JARVISKit */; };
 		9133343133C13A0DA96CDEF2 /* JARVISApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A275952024515DF0771793A /* JARVISApp.swift */; };
 		968430E16AEDD8FACCCA4A90 /* JARVISSiriShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1B9D6B42D835D03F42F78A /* JARVISSiriShortcuts.swift */; };
@@ -139,6 +144,7 @@
 /* Begin PBXFileReference section */
 		02220D93FADA230BF50A667D /* WatchTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTerminalView.swift; sourceTree = "<group>"; };
 		07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
+		137E1FF7B884864E7A46CE7B /* PiTerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalSettingsView.swift; sourceTree = "<group>"; };
 		1548C41F74BB5F0E3EF25885 /* JARVISWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWidgetBundle.swift; sourceTree = "<group>"; };
 		197A46DD464AA704E3FB32E9 /* NeuralCoreArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreArtwork.swift; sourceTree = "<group>"; };
 		1B144126B4647E06FE7EED06 /* JARVISWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = JARVISWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -168,14 +174,18 @@
 		96FAF133194F2E675B54A1CD /* JARVISWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JARVISWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		99FB663313210EC6BDA6EBB3 /* JARVISWidgetIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWidgetIntents.swift; sourceTree = "<group>"; };
 		9A275952024515DF0771793A /* JARVISApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISApp.swift; sourceTree = "<group>"; };
+		9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsComponents.swift; sourceTree = "<group>"; };
+		9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTerminalSettingsView.swift; sourceTree = "<group>"; };
 		9CDED70C520590C29476EBEF /* PiTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalView.swift; sourceTree = "<group>"; };
 		A25639C5046D8136A8AEBE3F /* SelectedPlugWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedPlugWidget.swift; sourceTree = "<group>"; };
 		A5136B3B670CA19BFD429B9D /* NeuralCoreContinuousAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreContinuousAnimation.swift; sourceTree = "<group>"; };
 		B20440B35638B5FF94AF10A0 /* WatchTerminalProvisioningSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTerminalProvisioningSettings.swift; sourceTree = "<group>"; };
 		B9214CFDAA410B86B33071C7 /* JARVISKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = JARVISKit; path = JARVISKit; sourceTree = SOURCE_ROOT; };
 		B980A60932E185CB6D8AD60A /* PurifierWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurifierWidget.swift; sourceTree = "<group>"; };
+		C05CEF9EA2E1CBE04169AAE3 /* ConnectionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSettingsView.swift; sourceTree = "<group>"; };
 		C0CD22FC05E2E9D489FE3A76 /* PiTerminalSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalSettings.swift; sourceTree = "<group>"; };
 		C2FE2FCABFFCEEADC0022C58 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		C53C1087DDDA6246634A9DA3 /* DeveloperSigningSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperSigningSettingsView.swift; sourceTree = "<group>"; };
 		C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSupport.swift; sourceTree = "<group>"; };
 		C8EE4AA968540A49D2DD562B /* SelectedPlugWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedPlugWidget.swift; sourceTree = "<group>"; };
 		DB1B9D6B42D835D03F42F78A /* JARVISSiriShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISSiriShortcuts.swift; sourceTree = "<group>"; };
@@ -263,8 +273,13 @@
 			isa = PBXGroup;
 			children = (
 				FD52E36404CFBA273498ACD2 /* Components.swift */,
+				C05CEF9EA2E1CBE04169AAE3 /* ConnectionSettingsView.swift */,
+				C53C1087DDDA6246634A9DA3 /* DeveloperSigningSettingsView.swift */,
 				6BD318AB3793295E0031F850 /* HomeView.swift */,
+				137E1FF7B884864E7A46CE7B /* PiTerminalSettingsView.swift */,
+				9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */,
 				888D11D79E21EC5437B45339 /* SettingsView.swift */,
+				9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -630,6 +645,8 @@
 				EE6EDA808F77C51AC4D53B6A /* AppState.swift in Sources */,
 				EEE4CC5EB02DFF6C33B54B6D /* AppStateWatchBridge.swift in Sources */,
 				D8ABD891AB536358B3617BD4 /* Components.swift in Sources */,
+				401A7D4BAE710D8F8E5F0013 /* ConnectionSettingsView.swift in Sources */,
+				8C6D2EF20D60D5C1F69E964C /* DeveloperSigningSettingsView.swift in Sources */,
 				DD7391FF9563157D2965AEEE /* HomeView.swift in Sources */,
 				9133343133C13A0DA96CDEF2 /* JARVISApp.swift in Sources */,
 				EF1CB94BDED2CA7AA9FAECD9 /* JARVISSiriPromptIntent.swift in Sources */,
@@ -638,10 +655,13 @@
 				E51BAC21CD90FE23E49E721D /* PiSSHTransport.swift in Sources */,
 				4531362D9F95607130CA5155 /* PiTerminalController.swift in Sources */,
 				9F7750E53DFD346691617377 /* PiTerminalSettings.swift in Sources */,
+				320AA268217C4ADD510AE5B5 /* PiTerminalSettingsView.swift in Sources */,
 				0238BFAC7D9D67865051829A /* PiTerminalView.swift in Sources */,
 				B357D02541C826207B390685 /* ProvisioningProfileStatus.swift in Sources */,
+				1DC8B19B903AE4B1F55DDA99 /* SettingsComponents.swift in Sources */,
 				D250A7189D6C70AD54591AFE /* SettingsView.swift in Sources */,
 				00A8A57CB85F3DEEC79B83AF /* WatchTerminalProvisioningSettings.swift in Sources */,
+				576BB6C417A8A28E379D2A45 /* WatchTerminalSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -833,7 +853,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -935,7 +955,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 106;
+				CURRENT_PROJECT_VERSION = 107;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

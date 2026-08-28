@@ -5,6 +5,26 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testStreamlinedSettingsSigningSummaryUsesBoundedDayAndHourPrecision() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        XCTAssertEqual(
+            SettingsPresentation.signingCountdown(
+                to: now.addingTimeInterval(2 * 86_400 + 3 * 3_600),
+                at: now
+            ),
+            "2d 3h remaining"
+        )
+        XCTAssertEqual(
+            SettingsPresentation.signingCountdown(
+                to: now.addingTimeInterval(5 * 3_600 + 7 * 60),
+                at: now
+            ),
+            "5h 7m remaining"
+        )
+        XCTAssertEqual(SettingsPresentation.signingCountdown(to: now, at: now), "Expired")
+    }
+
     func testProvisioningStatusUsesEarliestOfAllFourEmbeddedProfiles() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

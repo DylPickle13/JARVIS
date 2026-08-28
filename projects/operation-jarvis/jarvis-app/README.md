@@ -223,6 +223,14 @@ procedural scenes per two-second loop (30 FPS to 24 FPS), eliminating 12 scenes
 and 24 system timer-mask views from each live widget composition. The canonical
 artwork, telemetry, two-second choreography, full luminance, and Watch cadence
 remain unchanged.
+Build 107 streamlines iPhone Settings into four destinations: Connection, Pi
+Terminal, Watch Terminal, and Developer Signing. Connection absorbs diagnostics
+behind Technical Details, the app version moves to the root footer, redundant
+About and Diagnostics destinations are removed, and terminal security/recovery
+controls remain available in focused sections with destructive confirmation.
+Developer Signing keeps all four profile details and the complete seven-step
+explanation in disclosures, expands operational progress only while running or
+failed, and summarizes a completed renewal in one compact verified result.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

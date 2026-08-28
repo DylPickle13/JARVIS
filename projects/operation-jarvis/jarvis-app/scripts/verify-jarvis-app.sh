@@ -85,13 +85,23 @@ reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case even
 printf '%s\n' '== compact iPhone dashboard contract =='
 grep -q 'private var compactConnectionStrip' JARVIS/Views/HomeView.swift
 grep -q 'MinimalSectionHeader(title: "System"' JARVIS/Views/HomeView.swift
-grep -q 'private func settingsGroup<Content: View>' JARVIS/Views/SettingsView.swift
-grep -q 'private var diagnosticsDetail' JARVIS/Views/SettingsView.swift
-grep -q 'private var piTerminalDetail' JARVIS/Views/SettingsView.swift
-grep -q 'private var watchTerminalDetail' JARVIS/Views/SettingsView.swift
-grep -q 'private var developerSigningDetail' JARVIS/Views/SettingsView.swift
-grep -q 'Renew for 7 Days' JARVIS/Views/SettingsView.swift
-grep -q 'LocalSigningStatus.current' JARVIS/Views/SettingsView.swift
+grep -q 'SettingsGroup(title: "Configuration")' JARVIS/Views/SettingsView.swift
+grep -q 'SettingsGroup(title: "Maintenance")' JARVIS/Views/SettingsView.swift
+[[ "$(grep -c 'NavigationLink {' JARVIS/Views/SettingsView.swift)" == "4" ]]
+grep -q 'ConnectionSettingsView()' JARVIS/Views/SettingsView.swift
+grep -q 'PiTerminalSettingsView()' JARVIS/Views/SettingsView.swift
+grep -q 'WatchTerminalSettingsView()' JARVIS/Views/SettingsView.swift
+grep -q 'DeveloperSigningSettingsView()' JARVIS/Views/SettingsView.swift
+grep -Fq 'JARVIS \(SettingsPresentation.appVersion)' JARVIS/Views/SettingsView.swift
+grep -q 'DisclosureGroup("Technical Details"' JARVIS/Views/ConnectionSettingsView.swift
+grep -q 'Forget Trusted SSH Host' JARVIS/Views/PiTerminalSettingsView.swift
+grep -q 'navigationTitle(title)' JARVIS/Views/SettingsComponents.swift
+grep -q 'Renew for 7 Days' JARVIS/Views/DeveloperSigningSettingsView.swift
+grep -q 'LocalSigningStatus.current' JARVIS/Views/DeveloperSigningSettingsView.swift
+grep -q 'How Renewal Works · 7 Steps' JARVIS/Views/DeveloperSigningSettingsView.swift
+grep -q 'SigningRenewalStep.allCases' JARVIS/Views/DeveloperSigningSettingsView.swift
+reject_match 'streamlined Settings must not restore separate Diagnostics or About destinations' -RqsE 'diagnosticsDetail|aboutDetail|About JARVIS' JARVIS/Views
+reject_match 'streamlined Settings must not retain monolithic detail properties' -RqsE 'piTerminalDetail|watchTerminalDetail|developerSigningDetail' JARVIS/Views
 grep -q '"/api/v1/signing/status"' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 grep -q '"/api/v1/signing/renew"' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 grep -q 'signing renewal does not accept a request body' jarvisd/jarvisd.py
@@ -99,7 +109,6 @@ grep -q '\[str(SIGNING_RENEWAL_SCRIPT)\]' jarvisd/jarvisd.py
 [[ -x scripts/renew-free-signing.sh ]]
 grep -q 'refs/heads/main' scripts/renew-free-signing.sh
 grep -q 'PROFILE_REFRESH_COMPLETE' scripts/renew-free-signing.sh
-grep -q 'SigningRenewalStep.allCases' JARVIS/Views/SettingsView.swift
 grep -q 'case verifying' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'write_status "verifying"' scripts/renew-free-signing.sh
 grep -q '"failedPhase": failed_phase or None' scripts/renew-free-signing.sh
