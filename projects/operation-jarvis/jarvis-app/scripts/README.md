@@ -18,7 +18,8 @@ optional Metal component; install it once with
   `$HOME/Library/Application Support/JARVIS/signing-renewal/config.env`, asks
   Xcode for four fresh Personal Team profiles, archives clean `main` in an
   isolated worktree, audits team/device/profile/signature/hierarchy rules, and
-  installs that exact archive on only the configured iPhone and Watch. Progress
+  installs the exact archived host through Apple's paired CoreDevice tunnel and
+  then the exact nested Watch app on only the configured devices. Progress
   is written atomically to `status.json`; a duplicate run is locked out. The
   script never uninstalls, unpairs, reboots, or accepts a client command/path.
 - `patch-watch-embedding.sh` — keeps XcodeGen's `Embed Watch Content` phase at

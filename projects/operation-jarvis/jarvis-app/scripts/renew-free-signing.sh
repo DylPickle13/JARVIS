@@ -156,7 +156,6 @@ source "$CONFIG_FILE"
 identity_count="$(security find-identity -v -p codesigning 2>/dev/null | grep -cE '^[[:space:]]*[0-9]+\)' || true)"
 [[ "$identity_count" -ge 1 ]] || fail_public "No Apple Development signing identity is available in the Mac keychain."
 command -v xcodebuild >/dev/null || fail_public "Xcode command-line tools are unavailable."
-command -v ideviceinstaller >/dev/null || fail_public "ideviceinstaller is unavailable on the Mac."
 
 iphone_details="$(xcrun devicectl device info details --device "$IPHONE_COREDEVICE_ID" --timeout 60 2>/dev/null)" \
   || fail_public "The allowlisted iPhone is unavailable. Keep it unlocked and connected to the Mac."
@@ -178,7 +177,6 @@ chmod 700 "$RUN_DIR"
 BUILD_LOG="$RUN_DIR/archive.log"
 AUDIT_JSON="$RUN_DIR/audit.json"
 ARCHIVE_PATH="$RUN_DIR/JARVIS.xcarchive"
-IPA_PATH="$RUN_DIR/JARVIS.ipa"
 OLD_UUIDS="$RUN_DIR/old-profile-uuids.txt"
 : >"$OLD_UUIDS"
 
@@ -336,30 +334,13 @@ PROFILE_REFRESH_COMPLETE=1
 restore_profiles
 QUARANTINE=""
 
-PAYLOAD_ROOT="$RUN_DIR/package"
-mkdir -p "$PAYLOAD_ROOT/Payload"
-/usr/bin/ditto "$APP_PATH" "$PAYLOAD_ROOT/Payload/JARVIS.app"
-(
-  cd "$PAYLOAD_ROOT"
-  /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload "$IPA_PATH"
-)
-rm -rf "$PAYLOAD_ROOT"
-
 write_status "installingIPhone" true true "Installing the renewed build on iPhone…"
-if ! ideviceinstaller -u "$IPHONE_UDID" -n -w upgrade "$IPA_PATH"; then
-  # The exact allowlisted phone may be attached by cable, in which case
-  # libimobiledevice deliberately rejects its network-only selector. Retry the
-  # same physical UDID without changing the artifact or selecting another device.
-  if ! ideviceinstaller -u "$IPHONE_UDID" -w upgrade "$IPA_PATH"; then
-    fail_public "The renewed archive is valid, but iPhone installation failed. Keep the iPhone unlocked and try again."
-  fi
-fi
-# Register the same audited bundle through Xcode's developer service as well.
-# The IPA upgrade preserves the parent companion registration; this second,
-# no-rebuild install establishes the trusted developer-install disposition used
-# by iOS for a freshly issued Personal Team profile.
+# CoreDevice is Apple's paired developer-install path and remains reachable over
+# Xcode's network tunnel when libimobiledevice is not. The Watch is installed
+# directly from the same parent archive immediately afterward, so CoreDevice's
+# host-only transfer cannot leave the companion on a different artifact.
 if ! xcrun devicectl device install app --device "$IPHONE_COREDEVICE_ID" "$APP_PATH" --timeout 120; then
-  fail_public "The iPhone received the archive, but Xcode could not register it as a trusted developer install."
+  fail_public "The renewed archive is valid, but iPhone installation failed. Keep the iPhone unlocked and try again."
 fi
 IPHONE_INSTALLED=true
 write_status "installingWatch" true true "Installing the same renewed build on Apple Watch…"
