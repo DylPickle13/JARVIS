@@ -354,6 +354,13 @@ if ! ideviceinstaller -u "$IPHONE_UDID" -n -w upgrade "$IPA_PATH"; then
     fail_public "The renewed archive is valid, but iPhone installation failed. Keep the iPhone unlocked and try again."
   fi
 fi
+# Register the same audited bundle through Xcode's developer service as well.
+# The IPA upgrade preserves the parent companion registration; this second,
+# no-rebuild install establishes the trusted developer-install disposition used
+# by iOS for a freshly issued Personal Team profile.
+if ! xcrun devicectl device install app --device "$IPHONE_COREDEVICE_ID" "$APP_PATH" --timeout 120; then
+  fail_public "The iPhone received the archive, but Xcode could not register it as a trusted developer install."
+fi
 IPHONE_INSTALLED=true
 write_status "installingWatch" true true "Installing the same renewed build on Apple Watch…"
 WATCH_APP_PATH="$APP_PATH/Watch/JARVISWatch.app"
@@ -386,9 +393,10 @@ for path in sys.argv[1:3]:
         raise SystemExit(f"installed build mismatch: expected {expected}, got {actual}")
 PY
 
-# Installation is authoritative; launch is best effort because either device may
-# lock while the exact signed product is being transferred.
-xcrun devicectl device process launch --device "$IPHONE_COREDEVICE_ID" com.operation-jarvis.jarvis --timeout 60 >/dev/null 2>&1 || true
+if ! xcrun devicectl device process launch --device "$IPHONE_COREDEVICE_ID" com.operation-jarvis.jarvis --timeout 60 >/dev/null 2>&1; then
+  fail_public "JARVIS was installed, but iPhone requires Developer App trust before it can launch."
+fi
+# Watch installation remains authoritative if the display locks before launch.
 xcrun devicectl device process launch --device "$WATCH_COREDEVICE_ID" com.operation-jarvis.jarvis.watchkitapp --timeout 60 >/dev/null 2>&1 || true
 
 write_status "succeeded" false true "JARVIS was renewed on iPhone and Apple Watch."
