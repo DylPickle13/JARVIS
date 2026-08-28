@@ -4,9 +4,9 @@ import JARVISKit
 
 struct WatchConnectView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.openURL) private var openURL
     @StateObject private var model = WatchConnectModel()
     @State private var siriTerminalRequestSequence = 0
+    @State private var widgetDestination: JARVISWatchWidgetDestination?
 
     var body: some View {
         // TimelineView gives frontmost Always On snapshots a supported periodic
@@ -38,12 +38,16 @@ struct WatchConnectView: View {
         }
         .onOpenURL { url in
             if JARVISSiriNavigation.isTerminalURL(url) {
-                siriTerminalRequestSequence += 1
-            } else if let destination = JARVISWatchExternalLaunchRoute.destination(for: url) {
-                // This probe forwards only two fixed, argument-free routes.
-                // watchOS remains authoritative over whether another app opens.
-                openURL(destination)
+                presentTerminal()
+            } else if let destination = JARVISWatchWidgetRoute.destination(for: url) {
+                widgetDestination = destination
             }
+        }
+        .sheet(item: $widgetDestination) { destination in
+            JARVISWatchWidgetDestinationSheet(
+                destination: destination,
+                openTerminal: presentTerminal
+            )
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -77,6 +81,11 @@ struct WatchConnectView: View {
 
     private func openSiriTerminalIfRequested() {
         guard JARVISSiriNavigation.consumeTerminalPresentationRequest() else { return }
+        presentTerminal()
+    }
+
+    private func presentTerminal() {
+        widgetDestination = nil
         siriTerminalRequestSequence += 1
     }
 }

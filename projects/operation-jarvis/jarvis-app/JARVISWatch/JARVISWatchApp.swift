@@ -13,7 +13,7 @@ struct JARVISWatchApp: App {
         // Rebuild the Watch Neural Core's system-owned timer selectors after a
         // host launch. WidgetKit still decides when to honor the reload.
         WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchNeuralCoreWidget.v1")
-        WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchExternalLaunchProbeWidget.v1")
+        WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchNeuralLauncherWidget.v1")
     }
 
     var body: some Scene {
