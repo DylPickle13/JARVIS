@@ -231,6 +231,11 @@ controls remain available in focused sections with destructive confirmation.
 Developer Signing keeps all four profile details and the complete seven-step
 explanation in disclosures, expands operational progress only while running or
 failed, and summarizes a completed renewal in one compact verified result.
+Build 108 adds a temporary, isolated Watch link-probe complication for physical
+validation of Shortcuts and Spotify launch routes. The accepted Neural Core
+widget remains unchanged and available throughout the probe. The probe tests
+custom URLs, universal links, OpenURLIntent, and two fixed argument-free JARVIS
+trampolines; it forwards no caller-supplied URL, path, query, or action.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

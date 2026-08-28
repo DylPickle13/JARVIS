@@ -4,6 +4,7 @@ import JARVISKit
 
 struct WatchConnectView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
     @StateObject private var model = WatchConnectModel()
     @State private var siriTerminalRequestSequence = 0
 
@@ -36,8 +37,13 @@ struct WatchConnectView: View {
             openSiriTerminalIfRequested()
         }
         .onOpenURL { url in
-            guard JARVISSiriNavigation.isTerminalURL(url) else { return }
-            siriTerminalRequestSequence += 1
+            if JARVISSiriNavigation.isTerminalURL(url) {
+                siriTerminalRequestSequence += 1
+            } else if let destination = JARVISWatchExternalLaunchRoute.destination(for: url) {
+                // This probe forwards only two fixed, argument-free routes.
+                // watchOS remains authoritative over whether another app opens.
+                openURL(destination)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {

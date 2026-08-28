@@ -482,13 +482,26 @@ for kind in \
   JARVISWatchLauncherWidget.v2 \
   JARVISWatchSelectedPlugWidget.v1 \
   JARVISWatchPlugGridWidget.v1 \
-  JARVISWatchPurifierWidget.v1; do
+  JARVISWatchPurifierWidget.v1 \
+  JARVISWatchExternalLaunchProbeWidget.v1; do
   grep -Rqs "let kind = \"$kind\"" JARVISWatchWidget || { echo "missing watch widget kind: $kind" >&2; exit 1; }
 done
 reject_match 'iPhone purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWidget/PurifierWidget.swift
 reject_match 'Watch purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWatchWidget/PurifierWidget.swift
 grep -q 'JARVISNeuralCoreWidget()' JARVISWidget/JARVISWidgetBundle.swift
 grep -q 'JARVISWatchNeuralCoreWidget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift
+grep -q 'JARVISWatchExternalLaunchProbeWidget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift
+grep -q 'URL(string: "shortcuts://")' JARVISWatchWidget/ExternalLaunchProbeWidget.swift
+grep -q 'URL(string: "https://www.icloud.com/shortcuts/")' JARVISWatchWidget/ExternalLaunchProbeWidget.swift
+grep -q 'URL(string: "spotify://")' JARVISWatchWidget/ExternalLaunchProbeWidget.swift
+grep -q 'URL(string: "https://open.spotify.com/")' JARVISWatchWidget/ExternalLaunchProbeWidget.swift
+grep -q 'OpenURLIntent(universalURL)' JARVISWatchWidget/ExternalLaunchProbeWidget.swift
+[[ "$(grep -c 'Link(destination:' JARVISWatchWidget/ExternalLaunchProbeWidget.swift)" == "3" ]]
+grep -q 'incomingURL.path.isEmpty' JARVISKit/Sources/JARVISKit/WatchExternalLaunchRoute.swift
+grep -q 'incomingURL.query == nil' JARVISKit/Sources/JARVISKit/WatchExternalLaunchRoute.swift
+grep -q 'incomingURL.fragment == nil' JARVISKit/Sources/JARVISKit/WatchExternalLaunchRoute.swift
+reject_match 'Watch launch trampoline must not forward caller-controlled destinations' -E 'URL\(string:.*incoming|destination.*query|queryItems' JARVISKit/Sources/JARVISKit/WatchExternalLaunchRoute.swift
+grep -q 'testExternalLaunchRoutesRejectPathsQueriesFragmentsAndUnknownTargets' JARVISKit/Tests/JARVISKitTests/WatchExternalLaunchRouteTests.swift
 grep -q 'supportedFamilies(\[.systemMedium\])' JARVISWidget/NeuralCoreWidget.swift
 grep -q 'supportedFamilies(\[.accessoryRectangular\])' JARVISWatchWidget/NeuralCoreWidget.swift
 grep -q 'Color.clear' JARVISWatchWidget/NeuralCoreWidget.swift
@@ -761,7 +774,8 @@ for kind in \
   JARVISWatchLauncherWidget.v2 \
   JARVISWatchSelectedPlugWidget.v1 \
   JARVISWatchPlugGridWidget.v1 \
-  JARVISWatchPurifierWidget.v1; do
+  JARVISWatchPurifierWidget.v1 \
+  JARVISWatchExternalLaunchProbeWidget.v1; do
   grep -aFq "$kind" "$WATCH_WIDGET_BINARY" || { echo "built watch widget missing kind: $kind" >&2; exit 1; }
 done
 
