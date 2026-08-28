@@ -159,8 +159,13 @@ command -v xcodebuild >/dev/null || fail_public "Xcode command-line tools are un
 
 iphone_details="$(xcrun devicectl device info details --device "$IPHONE_COREDEVICE_ID" --timeout 60 2>/dev/null)" \
   || fail_public "The allowlisted iPhone is unavailable. Keep it unlocked and connected to the Mac."
-watch_details="$(xcrun devicectl device info details --device "$WATCH_COREDEVICE_ID" --timeout 60 2>/dev/null)" \
-  || fail_public "The allowlisted Apple Watch is unavailable. Keep it unlocked and near the iPhone."
+watch_details="$(xcrun devicectl device info details --device "$WATCH_COREDEVICE_ID" --timeout 60 2>/dev/null || true)"
+if ! grep -Fq "tunnelState: connected" <<<"$watch_details"; then
+  write_status "preparing" true true "Waiting once for the Apple Watch developer tunnel…"
+  sleep 5
+  watch_details="$(xcrun devicectl device info details --device "$WATCH_COREDEVICE_ID" --timeout 60 2>/dev/null || true)"
+fi
+[[ -n "$watch_details" ]] || fail_public "The allowlisted Apple Watch is unavailable. Keep it unlocked and near the iPhone."
 grep -Fq "udid: $IPHONE_UDID" <<<"$iphone_details" || fail_public "The connected iPhone does not match the private allowlist."
 grep -Fq "deviceType: iPhone" <<<"$iphone_details" || fail_public "The allowlisted iPhone selector did not resolve to an iPhone."
 grep -Fq "pairingState: paired" <<<"$iphone_details" || fail_public "The allowlisted iPhone is not paired with this Mac."
@@ -346,7 +351,11 @@ IPHONE_INSTALLED=true
 write_status "installingWatch" true true "Installing the same renewed build on Apple Watch…"
 WATCH_APP_PATH="$APP_PATH/Watch/JARVISWatch.app"
 if ! xcrun devicectl device install app --device "$WATCH_COREDEVICE_ID" "$WATCH_APP_PATH" --timeout 120; then
-  fail_public "iPhone renewal succeeded, but Watch installation failed. Keep the Watch unlocked and try again."
+  write_status "installingWatch" true true "Retrying the Apple Watch developer tunnel once…"
+  sleep 5
+  if ! xcrun devicectl device install app --device "$WATCH_COREDEVICE_ID" "$WATCH_APP_PATH" --timeout 120; then
+    fail_public "iPhone renewal succeeded, but Watch installation failed. Keep the Watch unlocked and try again."
+  fi
 fi
 WATCH_INSTALLED=true
 
