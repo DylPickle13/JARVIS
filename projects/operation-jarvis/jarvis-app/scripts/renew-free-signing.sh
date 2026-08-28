@@ -294,7 +294,8 @@ for label, product, bundle_id in products:
         raise SystemExit(f"profile for {label} was not freshly created")
     if expiration < minimum_expiration:
         raise SystemExit(f"profile for {label} has less than six days remaining")
-    if "com.apple.security.application-groups" in entitlements:
+    app_groups = entitlements.get("com.apple.security.application-groups")
+    if app_groups:
         raise SystemExit(f"App Groups unexpectedly enabled for {label}")
     executable = product / str(info.get("CFBundleExecutable"))
     records.append({
