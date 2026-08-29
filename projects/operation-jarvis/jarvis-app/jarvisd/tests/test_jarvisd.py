@@ -61,6 +61,8 @@ class DaemonUnitTests(unittest.TestCase):
         self.assertNotIn("weather", coordinator.DEFAULT_INTERVALS)
         self.assertIn("codexQuota", coordinator.collectors)
         self.assertEqual(coordinator.DEFAULT_INTERVALS["codexQuota"], 60.0)
+        self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["plugs"], 120.0)
+        self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["codexQuota"], 900.0)
 
     def test_codex_quota_failure_does_not_stale_critical_state(self):
         coordinator = jarvisd.StateCoordinator(
@@ -329,6 +331,148 @@ class DaemonUnitTests(unittest.TestCase):
         finally:
             jarvisd.AUTH_MODE, jarvisd.API_TOKEN, jarvisd.EVENT_TOKEN = old_mode, old_api, old_event
             jarvisd.TRUSTED_CIDRS_RAW = old_cidrs
+
+    def test_state_coordinator_uses_active_idle_and_pending_intervals(self):
+        clock = [100.0]
+        coordinator = jarvisd.StateCoordinator(
+            collectors={"plugs": lambda: {"ok": True}},
+            intervals={"plugs": 10},
+            idle_intervals={"plugs": 120},
+            active_lease_seconds=5,
+            now=lambda: clock[0],
+        )
+
+        with coordinator._lock:
+            self.assertEqual(coordinator._interval_locked("plugs", clock[0]), 10)
+            clock[0] = 106.0
+            self.assertEqual(coordinator._interval_locked("plugs", clock[0]), 120)
+            coordinator._records["plugs"]["pending"] = {"expected": {}}
+            self.assertEqual(coordinator._interval_locked("plugs", clock[0]), 10)
+
+    def test_idle_activation_refreshes_old_controls_before_returning(self):
+        now = time.time
+        calls = {"plugs": 0, "purifier": 0}
+
+        def collect(name):
+            calls[name] += 1
+            return {"ok": True, "source": name}
+
+        coordinator = jarvisd.StateCoordinator(
+            collectors={
+                "plugs": lambda: collect("plugs"),
+                "purifier": lambda: collect("purifier"),
+            },
+            intervals={"plugs": 10, "purifier": 45},
+            idle_intervals={"plugs": 120, "purifier": 180},
+            active_lease_seconds=5,
+            activation_wait_seconds=1,
+            now=now,
+        )
+        old = now() - 300
+        for record in coordinator._records.values():
+            record.update({
+                "data": {"ok": True, "source": "old"},
+                "lastGoodAt": old,
+                "updatedAt": "2026-08-28T00:00:00Z",
+                "stale": False,
+                "nextDue": now() + 300,
+            })
+        coordinator._active_until = 0
+        try:
+            coordinator.activate_client()
+            snapshot = coordinator.snapshot()
+            self.assertEqual(calls, {"plugs": 1, "purifier": 1})
+            self.assertEqual(snapshot["subsystems"]["plugs"]["source"], "plugs")
+            self.assertEqual(snapshot["subsystems"]["purifier"]["source"], "purifier")
+            self.assertFalse(snapshot["subsystems"]["plugs"]["stale"])
+            self.assertFalse(snapshot["subsystems"]["purifier"]["stale"])
+        finally:
+            coordinator.stop()
+
+    def test_idle_activation_failure_keeps_last_good_control_state_stale(self):
+        coordinator = jarvisd.StateCoordinator(
+            collectors={"plugs": lambda: {"ok": False, "error": "offline"}},
+            intervals={"plugs": 10},
+            idle_intervals={"plugs": 120},
+            active_lease_seconds=5,
+            activation_wait_seconds=1,
+        )
+        coordinator._records["plugs"].update({
+            "data": {"ok": True, "value": "last-good"},
+            "lastGoodAt": time.time() - 300,
+            "updatedAt": "2026-08-28T00:00:00Z",
+            "stale": False,
+            "nextDue": time.time() + 300,
+        })
+        coordinator._active_until = 0
+        try:
+            coordinator.activate_client()
+            state = coordinator.snapshot()["subsystems"]["plugs"]
+            self.assertEqual(state["value"], "last-good")
+            self.assertTrue(state["stale"])
+            self.assertEqual(state["lastError"], "offline")
+        finally:
+            coordinator.stop()
+
+    def test_idle_activation_timeout_returns_old_control_state_as_stale(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_collector():
+            started.set()
+            release.wait(1)
+            return {"ok": True, "value": "fresh"}
+
+        coordinator = jarvisd.StateCoordinator(
+            collectors={"plugs": slow_collector},
+            intervals={"plugs": 10},
+            idle_intervals={"plugs": 120},
+            active_lease_seconds=5,
+            activation_wait_seconds=0.05,
+        )
+        coordinator._records["plugs"].update({
+            "data": {"ok": True, "value": "old"},
+            "lastGoodAt": time.time() - 300,
+            "updatedAt": "2026-08-28T00:00:00Z",
+            "stale": False,
+            "nextDue": time.time() + 300,
+        })
+        coordinator._active_until = 0
+        try:
+            started_at = time.monotonic()
+            coordinator.activate_client()
+            elapsed = time.monotonic() - started_at
+            state = coordinator.snapshot()["subsystems"]["plugs"]
+            self.assertLess(elapsed, 0.3)
+            self.assertTrue(started.is_set())
+            self.assertEqual(state["value"], "old")
+            self.assertTrue(state["stale"])
+            self.assertTrue(state["refreshing"])
+        finally:
+            release.set()
+            coordinator.stop()
+
+    def test_request_refresh_wakes_event_driven_scheduler_immediately(self):
+        collected = threading.Event()
+        coordinator = jarvisd.StateCoordinator(
+            collectors={"test": lambda: collected.set() or {"ok": True}},
+            intervals={"test": 60},
+        )
+        coordinator._records["test"]["nextDue"] = time.time() + 60
+        try:
+            coordinator.start()
+            time.sleep(0.05)
+            self.assertFalse(collected.is_set())
+            coordinator.request_refresh("test")
+            self.assertTrue(collected.wait(1))
+        finally:
+            coordinator.stop()
+
+    def test_collect_state_renews_client_activity(self):
+        snapshot = {"ok": True}
+        with mock.patch.object(jarvisd.STATE_COORDINATOR, "snapshot", return_value=snapshot) as read:
+            self.assertEqual(jarvisd.collect_state(), snapshot)
+        read.assert_called_once_with(client_active=True)
 
     def test_state_coordinator_is_single_flight_and_preserves_last_good(self):
         started = threading.Event()

@@ -1123,11 +1123,25 @@ class StateCoordinator:
         "network": 60.0,
         "codexQuota": 60.0,
     }
+    DEFAULT_IDLE_INTERVALS = {
+        "pi": 60.0,
+        "plugs": 120.0,
+        "services": 300.0,
+        "purifier": 180.0,
+        "network": 600.0,
+        "codexQuota": 900.0,
+    }
+    CONTROL_SUBSYSTEMS = frozenset({"plugs", "purifier"})
+    DEFAULT_ACTIVE_LEASE_SECONDS = 45.0
+    DEFAULT_ACTIVATION_WAIT_SECONDS = 3.0
 
     def __init__(
         self,
         collectors: dict[str, Callable[[], dict]] | None = None,
         intervals: dict[str, float] | None = None,
+        idle_intervals: dict[str, float] | None = None,
+        active_lease_seconds: float = DEFAULT_ACTIVE_LEASE_SECONDS,
+        activation_wait_seconds: float = DEFAULT_ACTIVATION_WAIT_SECONDS,
         now: Callable[[], float] = time.time,
     ):
         self.collectors = collectors or {
@@ -1139,8 +1153,12 @@ class StateCoordinator:
             "codexQuota": _codex_quota,
         }
         self.intervals = {**self.DEFAULT_INTERVALS, **(intervals or {})}
+        self.idle_intervals = {**self.DEFAULT_IDLE_INTERVALS, **(idle_intervals or {})}
+        self.active_lease_seconds = max(1.0, float(active_lease_seconds))
+        self.activation_wait_seconds = max(0.0, float(activation_wait_seconds))
         self._now = now
         self._lock = threading.RLock()
+        self._condition = threading.Condition(self._lock)
         self._records: dict[str, dict[str, Any]] = {
             name: {
                 "data": None,
@@ -1151,6 +1169,7 @@ class StateCoordinator:
                 "refreshing": False,
                 "nextDue": 0.0,
                 "revision": 0,
+                "completionCount": 0,
                 "pending": None,
             }
             for name in self.collectors
@@ -1159,9 +1178,12 @@ class StateCoordinator:
         self._scheduler: threading.Thread | None = None
         self._stop = threading.Event()
         self._started = False
+        # Populate a newly launched daemon at active cadence before allowing it
+        # to settle into idle mode when no client ever requests state.
+        self._active_until = self._now() + self.active_lease_seconds
 
     def start(self) -> None:
-        with self._lock:
+        with self._condition:
             if self._started:
                 return
             self._started = True
@@ -1169,9 +1191,10 @@ class StateCoordinator:
             self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max(2, len(self.collectors)))
             self._scheduler = threading.Thread(target=self._run_scheduler, name="jarvisd-state", daemon=True)
             self._scheduler.start()
+            self._condition.notify_all()
 
     def stop(self) -> None:
-        with self._lock:
+        with self._condition:
             if not self._started:
                 return
             self._stop.set()
@@ -1180,15 +1203,74 @@ class StateCoordinator:
             self._started = False
             self._executor = None
             self._scheduler = None
+            self._condition.notify_all()
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=True)
         if scheduler is not None:
             scheduler.join(timeout=0.5)
 
+    def _is_active_locked(self, now: float) -> bool:
+        if now < self._active_until:
+            return True
+        return any(isinstance(record.get("pending"), dict) for record in self._records.values())
+
+    def _interval_locked(self, name: str, now: float) -> float:
+        source = self.intervals if self._is_active_locked(now) else self.idle_intervals
+        fallback = self.intervals.get(name, 30.0)
+        return max(0.5, float(source.get(name, fallback)))
+
+    def activate_client(self, wait_timeout: float | None = None) -> None:
+        """Renew active cadence and refresh stale control state before use.
+
+        A transition from idle marks over-age plug/purifier data stale before
+        waking collectors. The caller waits only for one bounded completion per
+        stale control subsystem; timeout or collection failure remains visibly
+        stale and therefore cannot authorize a native control write.
+        """
+        now = self._now()
+        targets: dict[str, int] = {}
+        with self._condition:
+            was_active = self._is_active_locked(now)
+            self._active_until = max(self._active_until, now + self.active_lease_seconds)
+            if not was_active:
+                for name, record in self._records.items():
+                    record["nextDue"] = 0.0
+                    if name not in self.CONTROL_SUBSYSTEMS:
+                        continue
+                    last_good = record.get("lastGoodAt")
+                    maximum_age = max(0.5, float(self.intervals.get(name, 30.0)))
+                    age = None if last_good is None else max(0.0, now - float(last_good))
+                    if record.get("data") is None or record.get("stale") or age is None or age > maximum_age:
+                        record["stale"] = True
+                        targets[name] = int(record.get("completionCount", 0))
+            self._condition.notify_all()
+        self.start()
+
+        timeout = self.activation_wait_seconds if wait_timeout is None else max(0.0, float(wait_timeout))
+        if not targets or timeout <= 0:
+            return
+        deadline = time.monotonic() + timeout
+        with self._condition:
+            while True:
+                pending = [
+                    name
+                    for name, baseline in targets.items()
+                    if int(self._records[name].get("completionCount", 0)) <= baseline
+                ]
+                if not pending:
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return
+                self._condition.wait(timeout=remaining)
+
     def request_refresh(self, name: str) -> None:
-        with self._lock:
+        now = self._now()
+        with self._condition:
             if name in self._records:
                 self._records[name]["nextDue"] = 0.0
+            self._active_until = max(self._active_until, now + self.active_lease_seconds)
+            self._condition.notify_all()
         self.start()
 
     def _apply_authoritative_locked(self, name: str, data: dict) -> None:
@@ -1210,7 +1292,7 @@ class StateCoordinator:
         is_on = plug.get("is_on")
         if not isinstance(name, str) or not name or not isinstance(is_on, bool):
             return False
-        with self._lock:
+        with self._condition:
             record = self._records.get("plugs")
             if record is None:
                 return False
@@ -1229,6 +1311,7 @@ class StateCoordinator:
                 "plugs": plugs,
             })
             self._apply_authoritative_locked("plugs", data)
+            self._condition.notify_all()
         self.start()
         return True
 
@@ -1236,7 +1319,7 @@ class StateCoordinator:
         if not isinstance(data, dict):
             return False
         state = _purifier_state(data)
-        with self._lock:
+        with self._condition:
             record = self._records.get("purifier")
             if record is None:
                 return False
@@ -1257,22 +1340,41 @@ class StateCoordinator:
             else:
                 record["pending"] = None
                 self._apply_authoritative_locked("purifier", state)
+            self._condition.notify_all()
         self.start()
         return True
 
     def _run_scheduler(self) -> None:
-        while not self._stop.is_set():
-            now = self._now()
-            with self._lock:
+        while True:
+            with self._condition:
+                if self._stop.is_set():
+                    return
+                now = self._now()
                 executor = self._executor
-                if executor is not None:
-                    for name, record in self._records.items():
-                        if not record["refreshing"] and now >= record["nextDue"]:
-                            record["refreshing"] = True
-                            revision = record["revision"]
-                            future = executor.submit(self._collect_one, name)
-                            future.add_done_callback(lambda f, n=name, r=revision: self._complete(n, f, r))
-            self._stop.wait(0.25)
+                if executor is None:
+                    return
+                for name, record in self._records.items():
+                    if not record["refreshing"] and now >= record["nextDue"]:
+                        record["refreshing"] = True
+                        revision = record["revision"]
+                        future = executor.submit(self._collect_one, name)
+                        future.add_done_callback(lambda f, n=name, r=revision: self._complete(n, f, r))
+
+                due_times = [
+                    float(record["nextDue"])
+                    for record in self._records.values()
+                    if not record["refreshing"]
+                ]
+                if not due_times:
+                    self._condition.wait()
+                    continue
+                wait_seconds = max(0.0, min(due_times) - self._now())
+                if wait_seconds <= 0:
+                    # A zero-due item can remain only when its submission raced
+                    # a callback. Yield on the condition rather than spinning.
+                    self._condition.wait(timeout=0.01)
+                else:
+                    self._condition.wait(timeout=wait_seconds)
 
     def _collect_one(self, name: str) -> dict:
         try:
@@ -1286,14 +1388,16 @@ class StateCoordinator:
         except Exception as exc:  # noqa: BLE001
             result = {"ok": False, "error": _safe_error(exc)}
         now = self._now()
-        with self._lock:
+        with self._condition:
             record = self._records[name]
             record["refreshing"] = False
+            record["completionCount"] += 1
             if revision != record["revision"]:
                 # A command supplied newer authoritative data while this
                 # collection was in flight. Discard the old read and collect
                 # again rather than reverting the UI to pre-command state.
                 record["nextDue"] = 0.0
+                self._condition.notify_all()
                 return
             pending = record.get("pending")
             if (
@@ -1311,6 +1415,7 @@ class StateCoordinator:
                     record["error"] = None
                     record["stale"] = True
                     record["nextDue"] = now + 3.0
+                    self._condition.notify_all()
                     return
                 else:
                     record["data"] = copy.deepcopy(result)
@@ -1318,9 +1423,10 @@ class StateCoordinator:
                     record["error"] = "purifier write verification is still pending"
                     record["stale"] = True
                     record["pending"] = None
-                    record["nextDue"] = now + max(0.5, float(self.intervals.get(name, 30.0)))
+                    record["nextDue"] = now + self._interval_locked(name, now)
+                    self._condition.notify_all()
                     return
-            record["nextDue"] = now + max(0.5, float(self.intervals.get(name, 30.0)))
+            record["nextDue"] = now + self._interval_locked(name, now)
             if isinstance(result, dict) and result.get("ok") is True:
                 record["data"] = copy.deepcopy(result)
                 record["updatedAt"] = _iso_now()
@@ -1330,9 +1436,13 @@ class StateCoordinator:
             else:
                 record["error"] = _safe_error(result.get("error") if isinstance(result, dict) else result)
                 record["stale"] = True
+            self._condition.notify_all()
 
-    def snapshot(self) -> dict:
-        self.start()
+    def snapshot(self, client_active: bool = False, wait_timeout: float | None = None) -> dict:
+        if client_active:
+            self.activate_client(wait_timeout=wait_timeout)
+        else:
+            self.start()
         with self._lock:
             records = copy.deepcopy(self._records)
         subsystems: dict[str, dict] = {}
@@ -1410,8 +1520,8 @@ STATE_COORDINATOR = StateCoordinator()
 
 
 def collect_state() -> dict:
-    """Compatibility wrapper; returns the fast cached composition."""
-    return STATE_COORDINATOR.snapshot()
+    """Return state after renewing the bounded foreground-client lease."""
+    return STATE_COORDINATOR.snapshot(client_active=True)
 
 
 def _iso_now() -> str:

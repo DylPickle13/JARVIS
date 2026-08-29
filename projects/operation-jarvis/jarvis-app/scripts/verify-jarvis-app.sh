@@ -30,6 +30,16 @@ python3 -m py_compile \
   ../voice/discord_voice.py \
   ../../../.pi/discord-cron/runner.py
 
+printf '%s\n' '== activity-aware jarvisd collector contract =='
+grep -q 'DEFAULT_ACTIVE_LEASE_SECONDS = 45.0' jarvisd/jarvisd.py
+grep -q 'DEFAULT_ACTIVATION_WAIT_SECONDS = 3.0' jarvisd/jarvisd.py
+grep -q 'DEFAULT_IDLE_INTERVALS = {' jarvisd/jarvisd.py
+grep -q 'self._condition = threading.Condition(self._lock)' jarvisd/jarvisd.py
+grep -q 'def activate_client(self, wait_timeout:' jarvisd/jarvisd.py
+grep -q 'return STATE_COORDINATOR.snapshot(client_active=True)' jarvisd/jarvisd.py
+grep -q 'record\["stale"\] = True' jarvisd/jarvisd.py
+reject_match 'fixed 250-millisecond jarvisd scheduler polling was restored' -Fq 'self._stop.wait(0.25)' jarvisd/jarvisd.py
+
 printf '%s\n' '== semantic Watch speech selection =='
 node --experimental-strip-types --input-type=module <<'NODE'
 import { selectWatchTerminalSpeech } from '../../../.pi/extensions/47-watch-terminal-speech.ts';

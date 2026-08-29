@@ -260,7 +260,15 @@ capture loop with one shared, lazy sampler. Metadata and the bounded ANSI grid n
 come from one batched read-only tmux invocation per sample; concurrent long polls
 share that result, confirmed input wakes the sampler immediately, and sampling stops
 after the bounded active-request lease expires. No attach, resize, copy-mode, or
-additional terminal input is introduced.
+additional terminal input is introduced. The subsequent jarvisd optimization
+replaces its 250-millisecond scheduler spin with deadline-based condition waits and
+uses the existing 15-second state requests as a 45-second active-client lease.
+Active collector cadence is unchanged; after the lease expires, bounded idle
+intervals reduce plug, purifier, service, Pi, network, and quota work. Returning
+from idle marks over-age plug/purifier data stale, triggers immediate collection,
+and waits up to three seconds for one completion before returning; timeout or
+failure remains stale and cannot authorize a control. Pending purifier verification
+and command-triggered refreshes retain active cadence.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
