@@ -175,6 +175,9 @@ grep -q 'exactVersion: 0.15.0' project.yml
 grep -q 'exactVersion: 2.101.3' project.yml
 grep -q 'import SwiftTerm' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'import NIOSSH' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'TerminalView, @MainActor TerminalViewDelegate, UIGestureRecognizerDelegate' JARVIS/Terminal/PiSSHTransport.swift
+reject_match 'SwiftTerm delegate isolation must not be suppressed or made unsafe' -qE '@preconcurrency TerminalViewDelegate|nonisolated\(unsafe\).*TerminalViewDelegate' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'queueing, reordering, or weakening the byte-exact terminal path.' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'defaultFontSize: CGFloat = 18' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'zoomSchemaDefaultsKey = "jarvis.pi-terminal.zoom-schema"' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'savedZoomSchema >= currentZoomSchema' JARVIS/Terminal/PiSSHTransport.swift

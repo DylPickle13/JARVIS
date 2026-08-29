@@ -321,8 +321,12 @@ row's tile surface to consume it through the bottom edge. Build 122 restores
 WidgetKit's explicit `@Sendable` snapshot and timeline completion contracts on
 both platforms, removing their Swift 6 task-transfer diagnostics without changing
 network refresh, cached fallback, entries, timeline policy, or widget cadence.
-Native status, guarded controls, page order, polling, and semantic colors remain
-unchanged. Build 92 removes every
+Build 123 isolates the pinned SwiftTerm `TerminalViewDelegate` conformance to
+UIKit's main actor. Its callbacks remain synchronous, so terminal bytes and PTY
+resizes are neither queued nor reordered, while unexpected off-main delegate use
+can no longer silently race UI, clipboard, link, or feedback state. Native status,
+guarded controls, page order, polling, and semantic colors remain unchanged.
+Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
 to JARVIS?”** question. The required free-form `String` is normalized and attempted

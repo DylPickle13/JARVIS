@@ -561,7 +561,10 @@ final class PiTerminalKeyboardResponder: UITextView {
     }
 }
 
-final class PiTerminalHostView: TerminalView, TerminalViewDelegate, UIGestureRecognizerDelegate {
+// SwiftTerm's delegate predates actor annotations. Isolating this conformance
+// keeps every synchronous UI/input callback on UIKit's main actor without
+// queueing, reordering, or weakening the byte-exact terminal path.
+final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, UIGestureRecognizerDelegate {
     var stateChanged: ((PiTerminalConnectionStatus) -> Void)?
     var hostTrustRequested: ((PiPendingHostTrust) -> Void)?
     var controlLatchChanged: ((Bool) -> Void)?
