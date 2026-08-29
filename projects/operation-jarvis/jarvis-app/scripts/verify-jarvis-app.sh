@@ -77,6 +77,16 @@ if (!selected || selected.text !== 'Final answer, sir.' || selected.responseID.l
 if (selectWatchTerminalSpeech([], 'session') !== undefined) throw new Error('empty session speech must be unavailable');
 NODE
 
+printf '%s\n' '== bounded Watch speech storage contract =='
+grep -q 'public final class WatchTerminalSpeechFileStore' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'public static let maximumAudioBytes = 20 \* 1024 \* 1024' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'public static let transientFilePrefix = "jarvis-watch-speech-"' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'public static let preparedFileName = "jarvis-watch-last-response.wav"' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'values.isSymbolicLink != true' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'speechFileStore.removeOrphanedDownloads()' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'speechFileStore.restorePreparedSpeech()' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'speechFileStore.discardPreparedSpeech()' JARVISWatch/Views/WatchTerminalView.swift
+
 printf '%s\n' '== plist, icon, and shell syntax =='
 plutil -lint \
   JARVIS/Info.plist \
@@ -309,10 +319,10 @@ grep -q 'if !preserveSpeechPlayback && !preservePreparedSpeech { stopSpeech() }'
 grep -q 'failureAge < 12' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'public enum WatchTerminalSpeechRetryPolicy' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'preferredBaseURL: preferredRoute' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'private static let preparedSpeechResponseIDKey' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'appendingPathComponent("jarvis-watch-last-response", isDirectory: false)' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'values.isExcludedFromBackup = true' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'try? fileManager.removeItem(at: destination)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'public static let defaultResponseIDKey = "jarvis.watch-terminal.prepared-speech-response-id"' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'public static let preparedFileName = "jarvis-watch-last-response.wav"' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'values.isExcludedFromBackup = true' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'try? fileManager.removeItem(at: destination)' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'guard let speech = frame?.speech else { return true }' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'private func trace(_ event: String)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'self.speech_synthesis_events: Dict\[str, threading.Event\]' terminald/jarvis_terminald.py

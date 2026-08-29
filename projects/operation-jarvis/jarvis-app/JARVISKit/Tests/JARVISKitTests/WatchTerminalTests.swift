@@ -214,6 +214,72 @@ final class WatchTerminalTests: XCTestCase {
         XCTAssertEqual(WatchTerminalSpeechRetryPolicy.delaySeconds(afterFailure: 20), 12)
     }
 
+    func testSpeechFileStoreRemovesOnlyStrictRegularOrphanDownloads() throws {
+        try withSpeechFileStore { store, _, _, temporaryDirectory, _ in
+            let orphan = temporaryDirectory
+                .appendingPathComponent("jarvis-watch-speech-\(UUID().uuidString).wav")
+            let unrelated = temporaryDirectory.appendingPathComponent("jarvis-watch-speech-not-a-uuid.wav")
+            let target = temporaryDirectory.appendingPathComponent("target.wav")
+            let symlink = temporaryDirectory
+                .appendingPathComponent("jarvis-watch-speech-\(UUID().uuidString).wav")
+            let nestedDirectory = temporaryDirectory.appendingPathComponent("nested", isDirectory: true)
+            let nested = nestedDirectory
+                .appendingPathComponent("jarvis-watch-speech-\(UUID().uuidString).wav")
+            try fixtureWAV().write(to: orphan)
+            try fixtureWAV().write(to: unrelated)
+            try fixtureWAV().write(to: target)
+            try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: target)
+            try FileManager.default.createDirectory(at: nestedDirectory, withIntermediateDirectories: true)
+            try fixtureWAV().write(to: nested)
+
+            XCTAssertEqual(store.removeOrphanedDownloads(), 1)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: symlink.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: nested.path))
+        }
+    }
+
+    func testSpeechFileStoreClearsInvalidCacheFileAndMetadataTogether() throws {
+        try withSpeechFileStore { store, defaults, cacheDirectory, _, responseIDKey in
+            let responseID = String(repeating: "a", count: 64)
+            let prepared = try XCTUnwrap(store.preparedFileURL)
+            try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            defaults.set(responseID, forKey: responseIDKey)
+            try Data("not-wave-audio".utf8).write(to: prepared)
+
+            XCTAssertNil(store.restorePreparedSpeech())
+            XCTAssertNil(defaults.string(forKey: responseIDKey))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: prepared.path))
+
+            try fixtureWAV().write(to: prepared)
+            XCTAssertNil(store.restorePreparedSpeech())
+            XCTAssertFalse(FileManager.default.fileExists(atPath: prepared.path))
+        }
+    }
+
+    func testSpeechFileStoreRetainsExactlyOneValidatedPreparedResponse() throws {
+        try withSpeechFileStore { store, defaults, _, temporaryDirectory, responseIDKey in
+            let responseID = String(repeating: "b", count: 64)
+            let source = temporaryDirectory
+                .appendingPathComponent("jarvis-watch-speech-\(UUID().uuidString).wav")
+            try fixtureWAV().write(to: source)
+
+            let retainedURL = try store.retainPreparedSpeech(from: source, responseID: responseID)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: retainedURL.path))
+            XCTAssertEqual(defaults.string(forKey: responseIDKey), responseID)
+            XCTAssertEqual(
+                store.restorePreparedSpeech(),
+                PreparedWatchTerminalSpeech(responseID: responseID, fileURL: retainedURL)
+            )
+
+            store.discardPreparedSpeech()
+            XCTAssertFalse(FileManager.default.fileExists(atPath: retainedURL.path))
+            XCTAssertNil(defaults.string(forKey: responseIDKey))
+        }
+    }
+
     func testSharedClientSeedsOnlyAnAllowlistedPreferredRoute() {
         let configuration = WatchTerminalConfiguration(
             endpoint: "https://192.168.21.215:8792",
@@ -335,6 +401,44 @@ final class WatchTerminalTests: XCTestCase {
             XCTAssertEqual(error as? WatchTerminalClientError, .submissionUnconfirmed)
         }
         XCTAssertEqual(postCount.snapshot(), 1)
+    }
+
+    private func withSpeechFileStore(
+        _ body: (
+            WatchTerminalSpeechFileStore,
+            UserDefaults,
+            URL,
+            URL,
+            String
+        ) throws -> Void
+    ) throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jarvis-speech-store-tests-\(UUID().uuidString)", isDirectory: true)
+        let cacheDirectory = root.appendingPathComponent("cache", isDirectory: true)
+        let temporaryDirectory = root.appendingPathComponent("tmp", isDirectory: true)
+        let suite = "jarvis.speech-store-tests.\(UUID().uuidString)"
+        let responseIDKey = "prepared-response"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let store = WatchTerminalSpeechFileStore(
+            defaults: defaults,
+            cacheDirectory: cacheDirectory,
+            temporaryDirectory: temporaryDirectory,
+            responseIDKey: responseIDKey
+        )
+        try body(store, defaults, cacheDirectory, temporaryDirectory, responseIDKey)
+    }
+
+    private func fixtureWAV() -> Data {
+        var data = Data("RIFF".utf8)
+        data.append(contentsOf: [20, 0, 0, 0])
+        data.append(Data("WAVE".utf8))
+        data.append(Data(repeating: 0, count: 16))
+        return data
     }
 
     private func fixtureClient() -> WatchTerminalClient {

@@ -133,6 +133,144 @@ public enum WatchTerminalSpeechRetryPolicy {
     }
 }
 
+public struct PreparedWatchTerminalSpeech: Equatable, Sendable {
+    public let responseID: String
+    public let fileURL: URL
+
+    public init(responseID: String, fileURL: URL) {
+        self.responseID = responseID
+        self.fileURL = fileURL
+    }
+}
+
+/// Owns the Watch's one retained response WAV and cleans up interrupted
+/// UUID-named downloads without touching unrelated temporary files.
+public final class WatchTerminalSpeechFileStore {
+    public static let maximumAudioBytes = 20 * 1024 * 1024
+    public static let transientFilePrefix = "jarvis-watch-speech-"
+    public static let preparedFileName = "jarvis-watch-last-response.wav"
+    public static let defaultResponseIDKey = "jarvis.watch-terminal.prepared-speech-response-id"
+
+    private let fileManager: FileManager
+    private let defaults: UserDefaults
+    private let cacheDirectory: URL?
+    private let temporaryDirectory: URL
+    private let responseIDKey: String
+
+    public init(
+        fileManager: FileManager = .default,
+        defaults: UserDefaults = .standard,
+        cacheDirectory: URL? = nil,
+        temporaryDirectory: URL? = nil,
+        responseIDKey: String = WatchTerminalSpeechFileStore.defaultResponseIDKey
+    ) {
+        self.fileManager = fileManager
+        self.defaults = defaults
+        self.cacheDirectory = cacheDirectory
+            ?? fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
+        self.temporaryDirectory = temporaryDirectory ?? fileManager.temporaryDirectory
+        self.responseIDKey = responseIDKey
+    }
+
+    public var preparedFileURL: URL? {
+        cacheDirectory?.appendingPathComponent(Self.preparedFileName, isDirectory: false)
+    }
+
+    @discardableResult
+    public func removeOrphanedDownloads() -> Int {
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: temporaryDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+        ) else { return 0 }
+        var removed = 0
+        for fileURL in files where Self.isTransientSpeechFileName(fileURL.lastPathComponent) {
+            guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+                  values.isRegularFile == true,
+                  values.isSymbolicLink != true else { continue }
+            do {
+                try fileManager.removeItem(at: fileURL)
+                removed += 1
+            } catch {
+                continue
+            }
+        }
+        return removed
+    }
+
+    public func restorePreparedSpeech() -> PreparedWatchTerminalSpeech? {
+        guard let responseID = defaults.string(forKey: responseIDKey),
+              Self.isValidResponseID(responseID),
+              let fileURL = preparedFileURL,
+              isValidAudioFile(fileURL) else {
+            discardPreparedSpeech()
+            return nil
+        }
+        return PreparedWatchTerminalSpeech(responseID: responseID, fileURL: fileURL)
+    }
+
+    public func retainPreparedSpeech(from sourceURL: URL, responseID: String) throws -> URL {
+        guard Self.isValidResponseID(responseID),
+              isValidAudioFile(sourceURL),
+              let destination = preparedFileURL else {
+            throw WatchTerminalClientError.invalidAudio
+        }
+        try fileManager.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        defaults.removeObject(forKey: responseIDKey)
+        if sourceURL.standardizedFileURL != destination.standardizedFileURL {
+            try? fileManager.removeItem(at: destination)
+            do {
+                try fileManager.moveItem(at: sourceURL, to: destination)
+            } catch {
+                try? fileManager.removeItem(at: destination)
+                throw error
+            }
+        }
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableDestination = destination
+        try? mutableDestination.setResourceValues(values)
+        defaults.set(responseID, forKey: responseIDKey)
+        return destination
+    }
+
+    public func discardPreparedSpeech() {
+        if let preparedFileURL { try? fileManager.removeItem(at: preparedFileURL) }
+        defaults.removeObject(forKey: responseIDKey)
+    }
+
+    private static func isTransientSpeechFileName(_ name: String) -> Bool {
+        guard name.hasPrefix(transientFilePrefix), name.hasSuffix(".wav") else { return false }
+        let start = name.index(name.startIndex, offsetBy: transientFilePrefix.count)
+        let end = name.index(name.endIndex, offsetBy: -4)
+        let identifier = String(name[start..<end])
+        return identifier.count == 36 && UUID(uuidString: identifier) != nil
+    }
+
+    private static func isValidResponseID(_ responseID: String) -> Bool {
+        responseID.count == 64 && responseID.allSatisfy(\.isHexDigit)
+    }
+
+    private func isValidAudioFile(_ fileURL: URL) -> Bool {
+        guard let values = try? fileURL.resourceValues(
+            forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+        ),
+        values.isRegularFile == true,
+        values.isSymbolicLink != true,
+        let size = values.fileSize,
+        size > 12,
+        size <= Self.maximumAudioBytes,
+        let handle = try? FileHandle(forReadingFrom: fileURL) else { return false }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount: 12), header.count == 12 else { return false }
+        return String(data: header.prefix(4), encoding: .ascii) == "RIFF"
+            && String(data: header.suffix(4), encoding: .ascii) == "WAVE"
+    }
+}
+
 private final class WatchTerminalPinnedSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     private let expectedFingerprint: String
     private let lock = NSLock()
@@ -406,7 +544,9 @@ public final class WatchTerminalClient: @unchecked Sendable {
             throw WatchTerminalClientError.invalidAudio
         }
         let values = try temporaryURL.resourceValues(forKeys: [.fileSizeKey])
-        guard let fileSize = values.fileSize, fileSize > 12, fileSize <= 20 * 1024 * 1024 else {
+        guard let fileSize = values.fileSize,
+              fileSize > 12,
+              fileSize <= WatchTerminalSpeechFileStore.maximumAudioBytes else {
             throw WatchTerminalClientError.invalidAudio
         }
         let handle = try FileHandle(forReadingFrom: temporaryURL)
@@ -419,7 +559,9 @@ public final class WatchTerminalClient: @unchecked Sendable {
         }
 
         let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("jarvis-watch-speech-\(UUID().uuidString)")
+            .appendingPathComponent(
+                "\(WatchTerminalSpeechFileStore.transientFilePrefix)\(UUID().uuidString)"
+            )
             .appendingPathExtension("wav")
         try FileManager.default.moveItem(at: temporaryURL, to: destination)
         return destination

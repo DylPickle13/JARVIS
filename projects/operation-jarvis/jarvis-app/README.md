@@ -294,7 +294,15 @@ is capped at 4,096 characters. Repetitive successful plain `GET /health` and
 plus a suppressed-count summary. Non-success responses, writes, service/signing
 actions, explicit state-refresh queries, and connection failures remain fully
 logged. The size, backup-count, and sampling-interval limits are locally
-configurable through clamped `JARVISD_LOG_*` environment values.
+configurable through clamped `JARVISD_LOG_*` environment values. Build 117
+bounds Watch speech storage across process termination: startup removes only
+regular top-level temporary files whose names exactly match
+`jarvis-watch-speech-<UUID>.wav`, leaving unrelated files, symlinks, and nested
+content untouched. The single backup-excluded `jarvis-watch-last-response.wav`
+cache remains available across wrist-down/app switching, while a missing,
+malformed, oversized, symlinked, or metadata-orphaned cache now clears both the
+file and response identifier together. Playback, retries, certificate pinning,
+and terminal routing are unchanged.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

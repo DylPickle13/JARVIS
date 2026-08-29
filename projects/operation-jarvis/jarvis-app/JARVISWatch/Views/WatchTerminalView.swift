@@ -73,6 +73,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     @Published var controlLatched = false
 
     private let settings = WatchTerminalSettings()
+    private let speechFileStore = WatchTerminalSpeechFileStore()
     private var client: WatchTerminalClient?
     private var pollTask: Task<Void, Never>?
     private var wakeRecoveryTask: Task<Void, Never>?
@@ -99,7 +100,6 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     private var pollFailureStartedAt: Date?
     private let logger = Logger(subsystem: "com.operation-jarvis.jarvis.watchkitapp", category: "terminal")
 
-    private static let preparedSpeechResponseIDKey = "jarvis.watch-terminal.prepared-speech-response-id"
     private static let preferredRouteKey = "jarvis.watch-terminal.preferred-route"
 
     override init() {
@@ -111,7 +111,8 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         }
         #endif
         status = settings.configuration == nil ? .notConfigured : .offline
-        if let retained = Self.retainedPreparedSpeech() {
+        speechFileStore.removeOrphanedDownloads()
+        if let retained = speechFileStore.restorePreparedSpeech() {
             speechResponseID = retained.responseID
             speechFileURL = retained.fileURL
         }
@@ -296,53 +297,16 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         }
     }
 
-    private static var preparedSpeechFileURL: URL? {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("jarvis-watch-last-response", isDirectory: false)
-            .appendingPathExtension("wav")
-    }
-
-    private static func retainedPreparedSpeech() -> (responseID: String, fileURL: URL)? {
-        guard let responseID = UserDefaults.standard.string(forKey: preparedSpeechResponseIDKey),
-              responseID.count == 64, responseID.allSatisfy(\.isHexDigit),
-              let fileURL = preparedSpeechFileURL,
-              let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-              values.isRegularFile == true,
-              let size = values.fileSize, size > 12, size <= 20 * 1024 * 1024,
-              let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
-        defer { try? handle.close() }
-        guard let header = try? handle.read(upToCount: 12),
-              header.count == 12,
-              String(data: header.prefix(4), encoding: .ascii) == "RIFF",
-              String(data: header.suffix(4), encoding: .ascii) == "WAVE" else { return nil }
-        return (responseID, fileURL)
-    }
-
     private func retainPreparedSpeech(from sourceURL: URL, responseID: String) throws -> URL {
-        guard let destination = Self.preparedSpeechFileURL else {
-            throw WatchTerminalClientError.invalidAudio
-        }
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(
-            at: destination.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try? fileManager.removeItem(at: destination)
-        try fileManager.moveItem(at: sourceURL, to: destination)
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        var mutableDestination = destination
-        try? mutableDestination.setResourceValues(values)
-        UserDefaults.standard.set(responseID, forKey: Self.preparedSpeechResponseIDKey)
-        return destination
+        try speechFileStore.retainPreparedSpeech(from: sourceURL, responseID: responseID)
     }
 
     private func discardPreparedSpeech() {
-        if let speechFileURL { try? FileManager.default.removeItem(at: speechFileURL) }
-        if let retainedURL = Self.preparedSpeechFileURL, retainedURL != speechFileURL {
-            try? FileManager.default.removeItem(at: retainedURL)
+        if let speechFileURL,
+           speechFileURL.standardizedFileURL != speechFileStore.preparedFileURL?.standardizedFileURL {
+            try? FileManager.default.removeItem(at: speechFileURL)
         }
-        UserDefaults.standard.removeObject(forKey: Self.preparedSpeechResponseIDKey)
+        speechFileStore.discardPreparedSpeech()
         speechFileURL = nil
         speechResponseID = nil
     }
