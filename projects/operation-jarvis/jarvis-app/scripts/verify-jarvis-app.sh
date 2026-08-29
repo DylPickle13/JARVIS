@@ -412,7 +412,7 @@ grep -q 'pageDragGesture(previous: .terminal, next: .system)' JARVISWatch/Views/
 grep -q 'private func purifierPowerButton' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func purifierModeControl' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func purifierFanControl' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'WatchBridge.shared.sendPurifierCommand' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'WatchBridge.shared.requestPurifierCommand' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'watchBridgeDidReceivePurifierCommand' JARVIS/AppStateWatchBridge.swift
 grep -q 'public struct WatchPurifierCommand' JARVISKit/Sources/JARVISKit/WatchBridge.swift
 grep -q 'public let verificationPending: Bool?' JARVISKit/Sources/JARVISKit/Models.swift
@@ -497,7 +497,15 @@ grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest()' JARVISWatch/
 grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVIS/JARVISApp.swift
 grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'static var isDiscoverable: Bool { false }' SharedAppIntents/JARVISWidgetIntents.swift
-grep -q 'queueIfUnreachable: false' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+grep -q 'WatchBridge.shared.requestPlugCommand' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'WatchBridge.shared.requestPurifierCommand' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'public static let maximumDeliveryAge: TimeInterval = 25' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+grep -q 'validateCommandDelivery(raw, requestID: requestID)' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+grep -q 'failure(.confirmationUnavailable)' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+grep -q 'Never retry an' JARVISWatch/Views/WatchConnectView.swift
+reject_match 'interactive Watch relay writes must never use durable queued delivery' -Fq 'transferUserInfo' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+reject_match 'Watch relay must not expose queued command delivery switches' -Fq 'queueIfUnreachable' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+reject_match 'Watch relay UI must not poll a side-channel response dictionary' -E 'waitForRelayResponse|relayResponses|RelayResponse' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'allowsWatchRelayFallback' JARVISKit/Sources/JARVISKit/PlugCommandExecutor.swift
 reject_match 'terminal input path must never toggle a plug implicitly' -RqsF 'plug-toggle' HostAppIntents JARVISKit/Sources/JARVISKit/PlugCatalog.swift JARVISKit/Sources/JARVISKit/PlugCommandExecutor.swift
 

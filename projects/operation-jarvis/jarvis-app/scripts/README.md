@@ -63,8 +63,10 @@ optional Metal component; install it once with
   and final-text-only authenticated Watch speech playback.
   It also audits the sole host-only bare “Hey JARVIS” two-turn prompt shortcut,
   iPhone's success-only hidden `OpenIntent` handoff, Watch foreground behavior,
-  complete removal of host Siri plug intents and greeting audio, and widget
-  isolation. The iPhone terminal contract additionally verifies the restored
+  complete removal of host Siri plug intents and greeting audio, immediate-only
+  correlated Watch plug/purifier relay writes, bounded command-envelope age,
+  removal of queued WatchConnectivity command delivery and response polling, and
+  widget isolation. The iPhone terminal contract additionally verifies the restored
   fixed-step Pi viewport: native momentum/bounce is disabled, each threshold
   emits at most one immediate SGR wheel event, and no event is queued, paced,
   retried, replayed, or delivered after mouse mode/disconnection. iOS and live

@@ -268,7 +268,14 @@ intervals reduce plug, purifier, service, Pi, network, and quota work. Returning
 from idle marks over-age plug/purifier data stale, triggers immediate collection,
 and waits up to three seconds for one completion before returning; timeout or
 failure remains stale and cannot authorize a control. Pending purifier verification
-and command-triggered refreshes retain active cadence.
+and command-triggered refreshes retain active cadence. Build 114 makes every
+interactive Watch-to-iPhone plug and purifier relay immediate-only: correlated
+continuations replace the 100-millisecond response-dictionary polling loop, neither
+commands nor replies use durable `transferUserInfo`, and an ambiguous delivery or
+response timeout is never retried. The Watch requests authoritative state instead.
+The iPhone also rejects missing, malformed, future-dated, or more-than-25-second-old
+command envelopes, protecting mixed-version rollout from commands queued by an older
+Watch build. Read-only latest-value application context remains unchanged.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
@@ -2064,8 +2071,12 @@ The versioned Watch message envelope contains `version`, `type`, `requestID`,
 `sentAt`, and a typed payload. Message types cover endpoint context, state,
 state request, desired-state plug command, command result, and command error.
 The iPhone keeps a bounded in-flight/result cache keyed by request ID so a
-repeated relay request executes once. The Watch remains pending until a result,
-error, or timeout instead of inferring success from a later snapshot.
+repeated relay request executes once. Interactive plug/purifier messages and their
+correlated replies use only immediate `sendMessage` delivery and are never queued
+for later execution. The iPhone rejects command timestamps outside the bounded
+25-second delivery window. The Watch remains pending until a result, error, or
+timeout; an ambiguous delivery is never retried and instead requests authoritative
+state.
 
 The iPhone sends the latest endpoint and state through application context.
 The Watch refreshes immediately whenever it becomes active and every 15 seconds

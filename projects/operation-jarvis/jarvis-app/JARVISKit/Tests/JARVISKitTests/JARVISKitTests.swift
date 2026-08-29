@@ -353,6 +353,45 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(decoded, payload)
     }
 
+    func testWatchRelayCommandDeliveryRejectsExpiredMalformedAndFutureMessages() {
+        let sent = Date(timeIntervalSince1970: 2_000)
+        let timestamp = ISO8601DateFormatter().string(from: sent)
+
+        XCTAssertTrue(WatchRelayCommandPolicy.isFresh(sentAt: timestamp, now: sent))
+        XCTAssertTrue(
+            WatchRelayCommandPolicy.isFresh(
+                sentAt: timestamp,
+                now: sent.addingTimeInterval(WatchRelayCommandPolicy.maximumDeliveryAge)
+            )
+        )
+        XCTAssertFalse(
+            WatchRelayCommandPolicy.isFresh(
+                sentAt: timestamp,
+                now: sent.addingTimeInterval(WatchRelayCommandPolicy.maximumDeliveryAge + 0.001)
+            )
+        )
+        XCTAssertTrue(
+            WatchRelayCommandPolicy.isFresh(
+                sentAt: timestamp,
+                now: sent.addingTimeInterval(-WatchRelayCommandPolicy.maximumFutureClockSkew)
+            )
+        )
+        XCTAssertFalse(
+            WatchRelayCommandPolicy.isFresh(
+                sentAt: timestamp,
+                now: sent.addingTimeInterval(-WatchRelayCommandPolicy.maximumFutureClockSkew - 0.001)
+            )
+        )
+        XCTAssertFalse(WatchRelayCommandPolicy.isFresh(sentAt: nil, now: sent))
+        XCTAssertFalse(WatchRelayCommandPolicy.isFresh(sentAt: "not-a-date", now: sent))
+    }
+
+    func testWatchRelayCommandDeliveryAcceptsFractionalISO8601Timestamp() {
+        let sentAt = "2026-08-29T12:34:56.250Z"
+        let now = ISO8601DateFormatter().date(from: "2026-08-29T12:35:00Z")!
+        XCTAssertTrue(WatchRelayCommandPolicy.isFresh(sentAt: sentAt, now: now))
+    }
+
     func testWatchPurifierCommandsAreClosedValidatedAndMatchConfirmedState() throws {
         let purifier = try JSONDecoder().decode(
             PurifierSubsystem.self,

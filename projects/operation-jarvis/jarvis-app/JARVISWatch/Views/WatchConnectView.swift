@@ -87,12 +87,6 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     @Published var pendingRelay = false
     @Published private(set) var isRefreshing = false
 
-    private struct RelayResponse {
-        let result: CommandResult?
-        let error: String?
-    }
-
-    private var relayResponses: [String: RelayResponse] = [:]
     private let forceEndpointForTesting: Bool
     private let activeRefreshInterval: Duration
     private var debugRelaySmokeDidRun = false
@@ -395,21 +389,11 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
                 errorMessage = "The iPhone relay is unavailable."
                 return
             }
-            let requestID = UUID().uuidString
             pendingRelay = true
             defer { pendingRelay = false }
-            guard WatchBridge.shared.sendPlugCommand(name: name, isOn: isOn, requestID: requestID) else {
-                errorMessage = "Could not send the command to the iPhone."
-                return
-            }
-            guard let response = await waitForRelayResponse(requestID) else {
-                errorMessage = "The iPhone relay timed out."
-                return
-            }
-            guard let result = response.result, result.ok else {
-                errorMessage = response.error ?? response.result?.error ?? "The relayed plug command failed."
-                return
-            }
+            let response = await WatchBridge.shared.requestPlugCommand(name: name, isOn: isOn)
+            guard !Task.isCancelled,
+                  acceptRelayResult(response, failureMessage: "The relayed plug command failed.") else { return }
             errorMessage = nil
             WatchBridge.shared.requestState()
             return
@@ -473,21 +457,11 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
                 errorMessage = "The iPhone relay is unavailable."
                 return
             }
-            let requestID = UUID().uuidString
             pendingRelay = true
             defer { pendingRelay = false }
-            guard WatchBridge.shared.sendPurifierCommand(command, requestID: requestID) else {
-                errorMessage = "Could not send the air-purifier command to the iPhone."
-                return
-            }
-            guard let response = await waitForRelayResponse(requestID) else {
-                errorMessage = "The iPhone relay timed out."
-                return
-            }
-            guard let result = response.result, result.ok else {
-                errorMessage = response.error ?? response.result?.error ?? "The relayed air-purifier command failed."
-                return
-            }
+            let response = await WatchBridge.shared.requestPurifierCommand(command)
+            guard !Task.isCancelled,
+                  acceptRelayResult(response, failureMessage: "The relayed air-purifier command failed.") else { return }
             errorMessage = nil
             WatchBridge.shared.requestState()
             return
@@ -524,14 +498,30 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         }
     }
 
-    private func waitForRelayResponse(_ requestID: String) async -> RelayResponse? {
-        let deadline = Date().addingTimeInterval(30)
-        while Date() < deadline {
-            if let response = relayResponses.removeValue(forKey: requestID) { return response }
-            if Task.isCancelled { return nil }
-            try? await Task.sleep(for: .milliseconds(100))
+    private func acceptRelayResult(
+        _ response: Result<CommandResult, WatchRelayFailure>,
+        failureMessage: String
+    ) -> Bool {
+        switch response {
+        case .success(let result):
+            guard result.ok else {
+                errorMessage = result.error ?? failureMessage
+                return false
+            }
+            return true
+        case .failure(.unavailable):
+            errorMessage = "The iPhone relay is unavailable."
+        case .failure(.confirmationUnavailable), .failure(.timedOut):
+            // Delivery may have raced with peer execution. Never retry an
+            // ambiguous write; request authoritative state instead.
+            errorMessage = "The iPhone relay result could not be confirmed; refreshing status."
+            WatchBridge.shared.requestState()
+        case .failure(.cancelled):
+            break
+        case .failure(.rejected(let message)):
+            errorMessage = message
         }
-        return relayResponses.removeValue(forKey: requestID)
+        return false
     }
 
     nonisolated func watchBridgeDidReceiveStateRequest(_ bridge: WatchBridge, requestID: String) {}
@@ -573,17 +563,6 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         requestID: String
     ) {}
 
-    nonisolated func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult) {
-        Task { @MainActor [weak self] in
-            self?.relayResponses[requestID] = RelayResponse(result: result, error: nil)
-        }
-    }
-
-    nonisolated func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError) {
-        Task { @MainActor [weak self] in
-            self?.relayResponses[requestID] = RelayResponse(result: nil, error: error.message)
-        }
-    }
 }
 
 enum WatchFormat {

@@ -21,6 +21,27 @@ public struct WatchMessage: Codable, Equatable, Sendable {
     }
 }
 
+/// Delivery-time guard for interactive Watch writes. The limit is deliberately
+/// shorter than the Watch's 30-second response timeout, so a command queued by
+/// an older app build cannot first reach the iPhone after its UI has timed out.
+public enum WatchRelayCommandPolicy {
+    public static let maximumDeliveryAge: TimeInterval = 25
+    public static let maximumFutureClockSkew: TimeInterval = 5
+
+    public static func isFresh(sentAt: String?, now: Date = Date()) -> Bool {
+        guard let sentAt, let date = parseTimestamp(sentAt) else { return false }
+        let age = now.timeIntervalSince(date)
+        return age >= -maximumFutureClockSkew && age <= maximumDeliveryAge
+    }
+
+    private static func parseTimestamp(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) { return date }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value)
+    }
+}
+
 public enum WatchPurifierSetting: String, Codable, Equatable, Sendable {
     case power
     case mode
@@ -113,6 +134,7 @@ public extension WatchBridgeDelegate {
 
 public enum WatchRelayFailure: LocalizedError, Equatable, Sendable {
     case unavailable
+    case confirmationUnavailable
     case timedOut
     case cancelled
     case rejected(String)
@@ -120,7 +142,8 @@ public enum WatchRelayFailure: LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .unavailable: return "The iPhone relay is unavailable."
-        case .timedOut: return "The iPhone relay timed out."
+        case .confirmationUnavailable: return "The iPhone relay result could not be confirmed."
+        case .timedOut: return "The iPhone relay timed out before its result was confirmed."
         case .cancelled: return "The iPhone relay was cancelled."
         case .rejected(let message): return message
         }
@@ -205,41 +228,40 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         send(WatchMessage(type: "state", requestID: requestID, payload: json))
     }
 
-    @discardableResult
-    public func sendPlugCommand(
-        name: String,
-        isOn: Bool,
-        requestID: String = UUID().uuidString,
-        queueIfUnreachable: Bool = true
-    ) -> Bool {
-        let payload = try? JSONEncoder().encode(PlugIntent(name: name, isOn: isOn))
-        return send(
-            WatchMessage(type: "plugCommand", requestID: requestID, payload: payload),
-            queueIfUnreachable: queueIfUnreachable
-        )
-    }
-
-    @discardableResult
-    public func sendPurifierCommand(
-        _ command: WatchPurifierCommand,
-        requestID: String = UUID().uuidString,
-        queueIfUnreachable: Bool = true
-    ) -> Bool {
-        guard command.isValid, let payload = try? JSONEncoder().encode(command) else { return false }
-        return send(
-            WatchMessage(type: "purifierCommand", requestID: requestID, payload: payload),
-            queueIfUnreachable: queueIfUnreachable
-        )
-    }
-
-    /// A correlated, immediate-only request used by Siri. It never queues a
-    /// command for later execution after the spoken interaction has failed.
+    /// Correlated interactive plug write. It uses only immediate WCSession
+    /// delivery and never leaves a command queued after the interaction ends.
     public func requestPlugCommand(
         name: String,
         isOn: Bool,
         timeout: Duration = .seconds(30)
     ) async -> Result<CommandResult, WatchRelayFailure> {
+        guard !name.isEmpty,
+              let payload = try? JSONEncoder().encode(PlugIntent(name: name, isOn: isOn)) else {
+            return .failure(.rejected("The plug command was invalid."))
+        }
+        return await requestCommand(type: "plugCommand", payload: payload, timeout: timeout)
+    }
+
+    /// Correlated interactive purifier write with the same immediate-only
+    /// delivery and exactly-once continuation behavior as plug commands.
+    public func requestPurifierCommand(
+        _ command: WatchPurifierCommand,
+        timeout: Duration = .seconds(30)
+    ) async -> Result<CommandResult, WatchRelayFailure> {
+        guard command.isValid,
+              let payload = try? JSONEncoder().encode(command) else {
+            return .failure(.rejected("The air-purifier command was invalid."))
+        }
+        return await requestCommand(type: "purifierCommand", payload: payload, timeout: timeout)
+    }
+
+    private func requestCommand(
+        type: String,
+        payload: Data,
+        timeout: Duration
+    ) async -> Result<CommandResult, WatchRelayFailure> {
         let requestID = UUID().uuidString
+        let message = WatchMessage(type: type, requestID: requestID, payload: payload)
         return await withTaskCancellationHandler(operation: {
             await withCheckedContinuation { continuation in
                 lock.lock()
@@ -249,12 +271,9 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
                     completeCommandRequest(requestID, with: .failure(.cancelled))
                     return
                 }
-                guard sendPlugCommand(
-                    name: name,
-                    isOn: isOn,
-                    requestID: requestID,
-                    queueIfUnreachable: false
-                ) else {
+                guard send(message, onDeliveryFailure: { [weak self] in
+                    self?.completeCommandRequest(requestID, with: .failure(.confirmationUnavailable))
+                }) else {
                     completeCommandRequest(requestID, with: .failure(.unavailable))
                     return
                 }
@@ -299,13 +318,13 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     @discardableResult
     public func sendCommandResult(requestID: String, result: CommandResult) -> Bool {
         let payload = try? JSONEncoder().encode(result)
-        return send(WatchMessage(type: "commandResult", requestID: requestID, payload: payload), queueIfUnreachable: true)
+        return send(WatchMessage(type: "commandResult", requestID: requestID, payload: payload))
     }
 
     @discardableResult
     public func sendCommandError(requestID: String, message: String) -> Bool {
         let payload = try? JSONEncoder().encode(WatchCommandError(message: message))
-        return send(WatchMessage(type: "commandError", requestID: requestID, payload: payload), queueIfUnreachable: true)
+        return send(WatchMessage(type: "commandError", requestID: requestID, payload: payload))
     }
 
     public func updateApplicationContext(stateJSON: Data?, endpoint: String? = nil) {
@@ -351,8 +370,14 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     }
 
     @discardableResult
-    private func send(_ message: WatchMessage, queueIfUnreachable: Bool = false) -> Bool {
-        guard let session, session.activationState == .activated else { return false }
+    private func send(
+        _ message: WatchMessage,
+        onDeliveryFailure: (() -> Void)? = nil
+    ) -> Bool {
+        guard let session, session.activationState == .activated, session.isReachable else {
+            trace("not reachable type=\(message.type)")
+            return false
+        }
         var dictionary: [String: Any] = [
             "version": message.version,
             "type": message.type,
@@ -360,29 +385,16 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
             "sentAt": message.sentAt,
         ]
         if let payload = message.payload { dictionary["payload"] = payload }
-        trace("send type=\(message.type) activation=\(session.activationState.rawValue) reachable=\(session.isReachable)")
-        if session.isReachable {
-            session.sendMessage(dictionary, replyHandler: { [weak self] reply in
-                self?.trace("ack type=\(message.type)")
-                self?.handle(reply)
-            }) { [weak self] error in
-                self?.trace("send failed type=\(message.type) error=\(error.localizedDescription)")
-                // Reachability can change between the check and delivery.
-                // Queue the exact same request ID so the phone's bounded
-                // deduplication cache makes this reliable without double writes.
-                if queueIfUnreachable {
-                    session.transferUserInfo(dictionary)
-                    self?.trace("queued fallback type=\(message.type)")
-                }
-            }
-            return true
+        trace("send type=\(message.type) activation=\(session.activationState.rawValue) reachable=true")
+        session.sendMessage(dictionary, replyHandler: { [weak self] reply in
+            self?.trace("ack type=\(message.type)")
+            self?.handle(reply)
+        }) { [weak self] error in
+            self?.trace("send failed type=\(message.type) error=\(error.localizedDescription)")
+            // A delivery callback can race with peer execution, so callers must
+            // treat this as unconfirmed and must never retry the write.
+            onDeliveryFailure?()
         }
-        guard queueIfUnreachable else {
-            trace("not reachable type=\(message.type)")
-            return false
-        }
-        session.transferUserInfo(dictionary)
-        trace("queued type=\(message.type)")
         return true
     }
 
@@ -459,11 +471,13 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
                 delegate?.watchBridgeDidReceiveCommandError(self, requestID: requestID, error: error)
             }
         case "plugCommand":
-            guard let data = raw["payload"] as? Data,
+            guard validateCommandDelivery(raw, requestID: requestID),
+                  let data = raw["payload"] as? Data,
                   let intent = try? JSONDecoder().decode(PlugIntent.self, from: data) else { return }
             delegate?.watchBridgeDidReceivePlugCommand(self, name: intent.name, isOn: intent.isOn, requestID: requestID)
         case "purifierCommand":
-            guard let data = raw["payload"] as? Data,
+            guard validateCommandDelivery(raw, requestID: requestID),
+                  let data = raw["payload"] as? Data,
                   let command = try? JSONDecoder().decode(WatchPurifierCommand.self, from: data),
                   command.isValid else { return }
             delegate?.watchBridgeDidReceivePurifierCommand(self, command: command, requestID: requestID)
@@ -475,6 +489,20 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         default:
             break
         }
+    }
+
+    private func validateCommandDelivery(_ raw: [String: Any], requestID: String) -> Bool {
+        guard WatchRelayCommandPolicy.isFresh(sentAt: raw["sentAt"] as? String) else {
+            trace("rejected expired command request=\(requestID)")
+            if !requestID.isEmpty {
+                sendCommandError(
+                    requestID: requestID,
+                    message: "This Watch command expired before it reached the iPhone."
+                )
+            }
+            return false
+        }
+        return true
     }
 }
 
@@ -560,22 +588,13 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     public func start() {}
     public func requestState() {}
     public func sendState(json: Data, requestID: String = UUID().uuidString) {}
-    @discardableResult
-    public func sendPlugCommand(
-        name: String,
-        isOn: Bool,
-        requestID: String = UUID().uuidString,
-        queueIfUnreachable: Bool = true
-    ) -> Bool { false }
-    @discardableResult
-    public func sendPurifierCommand(
-        _ command: WatchPurifierCommand,
-        requestID: String = UUID().uuidString,
-        queueIfUnreachable: Bool = true
-    ) -> Bool { false }
     public func requestPlugCommand(
         name: String,
         isOn: Bool,
+        timeout: Duration = .seconds(30)
+    ) async -> Result<CommandResult, WatchRelayFailure> { .failure(.unavailable) }
+    public func requestPurifierCommand(
+        _ command: WatchPurifierCommand,
         timeout: Duration = .seconds(30)
     ) async -> Result<CommandResult, WatchRelayFailure> { .failure(.unavailable) }
     public func requestStateData(timeout: Duration = .seconds(15)) async -> Result<Data, WatchRelayFailure> {
