@@ -326,6 +326,11 @@ UIKit's main actor. Its callbacks remain synchronous, so terminal bytes and PTY
 resizes are neither queued nor reordered, while unexpected off-main delegate use
 can no longer silently race UI, clipboard, link, or feedback state. Native status,
 guarded controls, page order, polling, and semantic colors remain unchanged.
+Build 124 configures SSH child-channel half-closure synchronously inside NIOSSH's
+child event-loop initializer before pipeline activation. This removes the
+`ChannelHandlerContext` capture from the `@Sendable` future callback while
+preserving half-closure, setup ordering, and fail-closed channel initialization;
+no unsafe isolation, task hop, queue, or terminal transport behavior was added.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

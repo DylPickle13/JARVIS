@@ -233,12 +233,6 @@ private final class PiSSHSessionHandler: ChannelInboundHandler, @unchecked Senda
         self.onEnded = onEnded
     }
 
-    func handlerAdded(context: ChannelHandlerContext) {
-        context.channel.setOption(ChannelOptions.allowRemoteHalfClosure, value: true).whenFailure { error in
-            context.fireErrorCaught(error)
-        }
-    }
-
     func channelActive(context: ChannelHandlerContext) {
         let pty = SSHChannelRequestEvent.PseudoTerminalRequest(
             wantReply: false,
@@ -448,6 +442,14 @@ private final class PiSSHConnection: @unchecked Sendable {
                     return channel.eventLoop.makeFailedFuture(PiSSHError.invalidChannelType)
                 }
                 return childChannel.eventLoop.makeCompletedFuture {
+                    // NIOSSH invokes this initializer on the child channel's event loop,
+                    // and SSHChildChannel explicitly supports synchronous options. Set
+                    // half-closure before pipeline activation so no @Sendable future
+                    // callback captures its event-loop-bound ChannelHandlerContext.
+                    guard let synchronousOptions = childChannel.syncOptions else {
+                        throw PiSSHError.invalidChannelType
+                    }
+                    try synchronousOptions.setOption(.allowRemoteHalfClosure, value: true)
                     let sync = childChannel.pipeline.syncOperations
                     try sync.addHandler(
                         PiSSHSessionHandler(

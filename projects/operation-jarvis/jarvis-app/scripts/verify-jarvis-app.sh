@@ -175,6 +175,9 @@ grep -q 'exactVersion: 0.15.0' project.yml
 grep -q 'exactVersion: 2.101.3' project.yml
 grep -q 'import SwiftTerm' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'import NIOSSH' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'guard let synchronousOptions = childChannel.syncOptions' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'try synchronousOptions.setOption(.allowRemoteHalfClosure, value: true)' JARVIS/Terminal/PiSSHTransport.swift
+reject_match 'SSH child option setup must stay synchronously event-loop-confined' -qE 'func handlerAdded\(context: ChannelHandlerContext\)|allowRemoteHalfClosure.*whenFailure|assumeIsolated\(\)' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'TerminalView, @MainActor TerminalViewDelegate, UIGestureRecognizerDelegate' JARVIS/Terminal/PiSSHTransport.swift
 reject_match 'SwiftTerm delegate isolation must not be suppressed or made unsafe' -qE '@preconcurrency TerminalViewDelegate|nonisolated\(unsafe\).*TerminalViewDelegate' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'queueing, reordering, or weakening the byte-exact terminal path.' JARVIS/Terminal/PiSSHTransport.swift
