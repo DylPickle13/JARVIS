@@ -137,9 +137,15 @@ struct WatchDashboardContent: View {
             if availablePlugNames.isEmpty {
                 unavailablePanel("Plug status unavailable", symbol: "powerplug")
             } else {
-                LazyVGrid(columns: gridColumns, spacing: 7) {
-                    ForEach(availablePlugNames, id: \.self) { name in
-                        plugButton(name)
+                GeometryReader { geometry in
+                    let rowCount = max(1, (availablePlugNames.count + gridColumns.count - 1) / gridColumns.count)
+                    let rowSpacing = CGFloat(rowCount - 1) * 7
+                    let tileHeight = max(72, (geometry.size.height - rowSpacing) / CGFloat(rowCount))
+
+                    LazyVGrid(columns: gridColumns, spacing: 7) {
+                        ForEach(availablePlugNames, id: \.self) { name in
+                            plugButton(name, minimumHeight: tileHeight)
+                        }
                     }
                 }
             }
@@ -148,7 +154,7 @@ struct WatchDashboardContent: View {
         .padding(.vertical, 7)
     }
 
-    private func plugButton(_ name: String) -> some View {
+    private func plugButton(_ name: String, minimumHeight: CGFloat) -> some View {
         let state = model.lastState?.subsystems?.plugs?.plugs?[name]?.isOn
         let stale = model.isPlugStateStale(name)
         let busy = model.busyPlug == name
@@ -156,7 +162,13 @@ struct WatchDashboardContent: View {
             guard let state else { return }
             Task { await model.setPlug(name, isOn: !state) }
         } label: {
-            WatchPlugTile(name: name, isOn: state, isBusy: busy, isStale: stale)
+            WatchPlugTile(
+                name: name,
+                isOn: state,
+                isBusy: busy,
+                isStale: stale,
+                minimumHeight: minimumHeight
+            )
         }
         .buttonStyle(.plain)
         .disabled(state == nil || stale || model.busyPlug != nil)
@@ -682,6 +694,7 @@ private struct WatchPlugTile: View {
     let isOn: Bool?
     let isBusy: Bool
     let isStale: Bool
+    let minimumHeight: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -715,7 +728,7 @@ private struct WatchPlugTile: View {
                 .foregroundStyle(isStale ? WatchJarvisStyle.warning : iconColor)
         }
         .padding(8)
-        .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .leading)
         .background(tileFill, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 15, style: .continuous)

@@ -434,6 +434,10 @@ grep -q 'private enum WatchDashboardPage: Hashable, CaseIterable' JARVISWatch/Vi
 grep -q '@State private var selectedPage: WatchDashboardPage = .terminal' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'pageDragGesture(previous: .terminal, next: .system)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'The shorter Plugs grid must not collapse the page before the bottom edge.' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'GeometryReader { geometry in' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'let tileHeight = max(72, (geometry.size.height - rowSpacing) / CGFloat(rowCount))' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'plugButton(name, minimumHeight: tileHeight)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'minHeight: minimumHeight' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func pageHeader(_ title: String, symbol: String)' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch Plugs/System top-right header summaries must remain removed' -RqsE 'plugSummary|codexQuotaHeader|pageHeader\([^)]*trailing:' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func purifierPowerButton' JARVISWatch/Views/WatchDashboardContent.swift
