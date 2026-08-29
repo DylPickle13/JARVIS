@@ -1,4 +1,3 @@
-import AppIntents
 import SwiftUI
 import WidgetKit
 import JARVISKit
@@ -37,56 +36,6 @@ struct JARVISWatchStateProvider: TimelineProvider {
                 )
             )
         }
-    }
-}
-
-struct JARVISWatchSelectedPlugEntry: TimelineEntry {
-    let date: Date
-    let cached: CachedState?
-    let plugID: String?
-    let placeholder: Bool
-}
-
-struct JARVISWatchSelectedPlugProvider: AppIntentTimelineProvider {
-    typealias Intent = SelectJARVISPlugIntent
-    typealias Entry = JARVISWatchSelectedPlugEntry
-
-    func recommendations() -> [AppIntentRecommendation<SelectJARVISPlugIntent>] {
-        // watchOS renders every recommendation as a separate gallery preset.
-        // Publish one default instance; the AppEnum remains editable after the
-        // widget is added, so this is one configurable widget rather than four.
-        let intent = SelectJARVISPlugIntent()
-        intent.plug = .lamp
-        return [AppIntentRecommendation(intent: intent, description: "Choose one JARVIS plug")]
-    }
-
-    func placeholder(in context: Context) -> JARVISWatchSelectedPlugEntry {
-        JARVISWatchSelectedPlugEntry(date: Date(), cached: nil, plugID: "lamp", placeholder: true)
-    }
-
-    func snapshot(for configuration: SelectJARVISPlugIntent, in context: Context) async -> JARVISWatchSelectedPlugEntry {
-        JARVISWatchSelectedPlugEntry(
-            date: Date(),
-            cached: JARVISWidgetStateLoader.cachedState(),
-            plugID: configuration.plug?.rawValue,
-            placeholder: context.isPreview
-        )
-    }
-
-    func timeline(for configuration: SelectJARVISPlugIntent, in context: Context) async -> Timeline<JARVISWatchSelectedPlugEntry> {
-        let now = Date()
-        let cached = await JARVISWidgetStateLoader.refreshedState()
-        return Timeline(
-            entries: [
-                JARVISWatchSelectedPlugEntry(
-                    date: now,
-                    cached: cached,
-                    plugID: configuration.plug?.rawValue,
-                    placeholder: false
-                )
-            ],
-            policy: .after(now.addingTimeInterval(JARVISWidgetStateLoader.timelineRefreshInterval))
-        )
     }
 }
 

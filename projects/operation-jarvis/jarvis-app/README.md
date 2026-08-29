@@ -275,14 +275,20 @@ commands nor replies use durable `transferUserInfo`, and an ambiguous delivery o
 response timeout is never retried. The Watch requests authoritative state instead.
 The iPhone also rejects missing, malformed, future-dated, or more-than-25-second-old
 command envelopes, protecting mixed-version rollout from commands queued by an older
-Watch build. Read-only latest-value application context remains unchanged.
+Watch build. Read-only latest-value application context remains unchanged. Build 115
+removes both plug-widget kinds from the iPhone and Watch extensions, along with their
+widget-only App Intents, configurable providers, command feedback store, and retired
+source files. Plug control remains fully available inside both native apps. Each
+extension now publishes exactly Neural Core, Open JARVIS, and read-only Air Purifier;
+no remaining widget can issue a hardware write.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
 to JARVIS?”** question. The required free-form `String` is normalized and attempted
 once with one Return. The value question is the only app-provided dialogue; completion
 and failure results are silent. Host metadata contains no plug entities, plug queries,
-or turn-on/turn-off intents, while app and WidgetKit plug controls remain unchanged.
+or turn-on/turn-off intents. Native app plug controls remain unchanged; Build 115
+later removes the two widget-only plug-control kinds.
 The rejected greeting playback code and bundled JARVIS greeting WAV are absent from
 every target. Build 39 mirrors
 tmux's exact ANSI-styled grid—including Pi thinking, tool-call backgrounds,
@@ -477,8 +483,8 @@ hardware/status/service API control plane. The iPhone JARVIS tab uses a separate
 SSH terminal data plane; the Watch reaches that same tmux pane through the
 independent token- and certificate-protected `jarvis-terminald` HTTPS bridge.
 APNs push + Live Activities are out (free Apple ID can't do
-APNs); oMLX is out of app scope entirely. The widget catalogue is Open JARVIS,
-JARVIS Plug, JARVIS Plug Grid, and read-only Air Purifier.
+APNs); oMLX is out of app scope entirely. The widget catalogue is Neural Core,
+Open JARVIS, and read-only Air Purifier.
 
 **Everything lives in this folder** — the Swift app targets, shared
 `JARVISKit` package, `jarvisd`, and `jarvis-terminald` are all under
@@ -494,9 +500,9 @@ the app. The former `docs/*.md` files are consolidated below.
 
 - **In:** smart plugs, air purifier, status and telemetry (Pi session count,
   network, uptime, Discord bot, room audio, scheduler, and scheduled jobs),
-  service start/stop/restart (room-audio server), launcher,
-  configurable plug, plug-grid, and purifier-status widgets on iPhone and Watch,
-  Siri/Shortcuts via App Intents, the iPhone SSH-backed Pi terminal, and the
+  service start/stop/restart (room-audio server), Neural Core, launcher, and
+  read-only purifier-status widgets on iPhone and Watch, Siri/Shortcuts via App
+  Intents, the iPhone SSH-backed Pi terminal, and the
   foreground-only Watch view of that same persistent terminal over the private
   HTTPS bridge, with LAN and Tailscale remote access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
@@ -611,12 +617,12 @@ the app. The former `docs/*.md` files are consolidated below.
   certificate-pinned terminal client as one immediate, non-retried request with
   `appendReturn=true`. The question is the only app-provided dialogue; completion
   and failure results are silent. No greeting playback intent or bundled JARVIS WAV
-  is present. App and WidgetKit plug controls remain available independently.
-- **M3 widget foundations** — each embedded WidgetKit extension publishes four
-  focused widgets: Open JARVIS, configurable JARVIS Plug, JARVIS Plug Grid, and
-  read-only Air Purifier. Plug controls use typed desired-state App Intents;
-  stale/unknown state blocks writes. Fifteen-minute timelines share a short
-  single-flight direct-daemon refresh. The Personal Team profile cannot provide
+  is present. Plug control remains available inside the iPhone and Watch apps.
+- **M3 widget foundations** — each embedded WidgetKit extension publishes three
+  focused, non-control widgets: Neural Core, Open JARVIS, and read-only Air
+  Purifier. The former selected-plug and plug-grid widgets and their App Intents
+  are removed. Fifteen-minute state timelines share a short single-flight
+  direct-daemon refresh. The Personal Team profile cannot provide
   App Groups or shared widget credentials, so widgets do not claim shared
   cache/token or phone-relay support. Signed physical gallery and representative
   command validation pass; stale/offline and remaining accessory-family rows are
@@ -676,9 +682,8 @@ jarvis-app/
 │   ├── JARVISWatchApp.swift
 │   ├── Info.plist              #   ATS exception
 │   └── Views/WatchConnectView.swift
-├── SharedAppIntents/           # compiled into all four host/extension targets
-├── JARVISWidget/               # four iOS WidgetKit widgets
-└── JARVISWatchWidget/          # four watchOS widgets/complications
+├── JARVISWidget/               # three non-control iOS WidgetKit widgets
+└── JARVISWatchWidget/          # three non-control watchOS widgets/complications
 ```
 
 ## Backend dependency
@@ -1623,14 +1628,15 @@ A target-local schema/catalogue signature now calls
 or phrase-schema upgrade even when the pre-upgrade cached plug IDs are unchanged;
 it also republishes after add/remove/rename. The catalogue is seeded before the
 notification, and a 15-second single-flight coordinator coalesces App Intents'
-parameter-query burst. Existing widget configuration choices remain separate.
+parameter-query burst. At that historical checkpoint, widget configuration
+choices remained separate; Build 115 removes those plug-widget choices entirely.
 
 Every intent obtains fresh state and validates the exact daemon identifier before
 writing. Already-satisfied requests return without a POST. Other writes use only
 `plug-on` or `plug-off`, and Siri reports success only after the command response
 or a follow-up authoritative read confirms the desired state. Stale, unknown,
-removed, rejected, and unconfirmed requests fail closed. The raw widget
-`SetPlugIntent` is explicitly non-discoverable. Watch execution tries direct
+removed, rejected, and unconfirmed requests fail closed. The then-present raw
+widget `SetPlugIntent` was non-discoverable and is removed in Build 115. Watch execution tries direct
 `jarvisd` first and then a fresh, immediate-only, correlated iPhone relay. Siri
 writes are never queued for execution after a spoken timeout.
 
@@ -1866,8 +1872,8 @@ iPhone app / iPhone widgets / Watch app / Watch widgets
 - Sanitized, dynamic, read-only scheduled-job inventory.
 - Direct Watch operation on LAN, iPhone relay when direct access fails, and
   cached stale fallback.
-- Open JARVIS, configurable JARVIS Plug, JARVIS Plug Grid, and read-only Air
-  Purifier widgets on iPhone and Watch.
+- Neural Core, Open JARVIS, and read-only Air Purifier widgets on iPhone and
+  Watch; plug control remains inside the apps.
 - Typed App Intents and `jarvis://home`, `jarvis://pi`, and
   `jarvis://settings` deep linking.
 - iPhone-only authentic Pi TUI over SSH with persistent tmux reattachment.
@@ -1931,8 +1937,7 @@ jarvis-app/
 ├── JARVIS/                     # iOS host app; Terminal/ owns SwiftTerm + SSH
 ├── JARVISWidget/               # iOS WidgetKit extension
 ├── JARVISWatch/                # watchOS host app
-├── JARVISWatchWidget/          # watchOS WidgetKit extension
-└── SharedAppIntents/           # compiled into all host/extension targets
+└── JARVISWatchWidget/          # watchOS WidgetKit extension
 ```
 
 Regenerate the project through XcodeGen and retain the post-generation Watch
@@ -2121,45 +2126,36 @@ published.
 
 ## 6. Widget catalogue and safety contract
 
-Each platform publishes exactly four current widget kinds. The legacy JARVIS
-Plugs and JARVIS First Plug kinds are removed.
+Each platform publishes exactly three current widget kinds. All selected-plug,
+plug-grid, and legacy plug widget kinds are removed; plug control remains inside
+the native apps.
 
 ### iPhone families
 
 | Widget | Families | Behavior |
 |---|---|---|
+| Neural Core | system medium | Read-only synchronized artwork and cached telemetry; opens JARVIS Home. |
 | Open JARVIS | system small; accessory circular, rectangular, inline | Static `jarvis://home` launcher. |
-| JARVIS Plug | system small; accessory circular, rectangular, inline | Configurable approved plug with explicit ON/OFF/STALE state. |
-| JARVIS Plug Grid | system medium and large | Separate desired-state controls; medium shows up to four and large up to eight. |
 | Air Purifier | system small/medium; accessory circular, rectangular, inline | Read-only PM2.5, quality, power, mode, fan, filter, and stale status as space permits. |
 
 ### Watch families
 
 | Widget | Families | Behavior |
 |---|---|---|
+| Neural Core | accessory rectangular | Read-only synchronized artwork and cached telemetry; opens the terminal. |
 | Open JARVIS | accessory circular, corner, rectangular, inline | Opens the Watch app; full-colour canonical art except inline system fallback. |
-| JARVIS Plug | accessory circular, corner, rectangular, inline | One configurable approved plug. |
-| JARVIS Plug Grid | accessory rectangular | All four approved plugs in a compact 2×2 layout. |
 | Air Purifier | accessory circular, corner, rectangular, inline | Read-only glanceable status. |
-
-Approved plug choices are Family Room Light, Lamp, Pedalboard, and TV. The Watch
-gallery publishes one default selected-plug recommendation; editing that widget
-exposes all four choices.
 
 ### Data and interaction rules
 
 - Launcher timelines use `.never`; state timelines request refresh about every
   15 minutes, subject to WidgetKit scheduling.
 - State becomes stale after 15 minutes or when `jarvisd` marks it stale.
-- Stale or unknown plug controls are disabled.
-- Only concurrent timeline reads are coalesced. A completed pre-command result
-  is never replayed after a write.
-- A plug command shows Updating, disables the control, applies confirmed state
-  to the extension-local cache, and selectively reloads plug timelines.
-- Repeated requests for the same desired state are suppressed for ten seconds.
-- Every plug action is explicit `plug-on`/`plug-off`; no widget uses inversion.
-- Purifier widgets have no intent or button.
-- Non-button areas deep-link to JARVIS Home.
+- Only concurrent timeline reads are coalesced; completed attempts are not
+  retained as a process-level refresh cache.
+- No remaining widget contains an App Intent button or hardware-write path.
+- Purifier widgets remain read-only.
+- Widget links retain their documented Home, Watch-app, or terminal destination.
 
 Personal Team provisioning cannot provide App Groups or shared cross-target
 Keychain access. Each extension therefore keeps target-local state and directly
@@ -2597,7 +2593,7 @@ approved clean reinstall becomes necessary; never alter pairing records.
 | Watch app direct | One representative current-state command | Pending, correlated result, and refreshed state. |
 | Watch app relay | Disable direct path and repeat guarded command | iPhone relay returns one result; duplicate request executes once. |
 | Watch app offline | Remove direct and relay | Cached state is stale and writes fail/block honestly. |
-| Widgets | Force stale/unknown/offline | Controls disable; purifier remains read-only. |
+| Widgets | Inspect both galleries after Build 115 | Only Neural Core, Open JARVIS, and read-only Air Purifier remain; no plug widget or control appears. |
 | iPhone networking | Wi-Fi/cellular switch and Local Network deny/re-enable | Automatic recovery and truthful path/error state. |
 | Events | Inspect after targeted actions | User actions appear once; collector noise is absent. |
 | Disposable service UI | One reversible approved smoke | Correct status, confirmation, action, and event. |

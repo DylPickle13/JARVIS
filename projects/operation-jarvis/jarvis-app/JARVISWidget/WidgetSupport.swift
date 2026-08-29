@@ -1,4 +1,3 @@
-import AppIntents
 import SwiftUI
 import WidgetKit
 import JARVISKit
@@ -37,55 +36,6 @@ struct JARVISStateProvider: TimelineProvider {
                 )
             )
         }
-    }
-}
-
-struct JARVISSelectedPlugEntry: TimelineEntry {
-    let date: Date
-    let cached: CachedState?
-    let plugID: String?
-    let placeholder: Bool
-}
-
-struct JARVISSelectedPlugProvider: AppIntentTimelineProvider {
-    typealias Intent = SelectJARVISPlugIntent
-    typealias Entry = JARVISSelectedPlugEntry
-
-    func recommendations() -> [AppIntentRecommendation<SelectJARVISPlugIntent>] {
-        JARVISPlugChoice.allCases.map { choice in
-            let intent = SelectJARVISPlugIntent()
-            intent.plug = choice
-            return AppIntentRecommendation(intent: intent, description: choice.widgetDisplayName)
-        }
-    }
-
-    func placeholder(in context: Context) -> JARVISSelectedPlugEntry {
-        JARVISSelectedPlugEntry(date: Date(), cached: nil, plugID: "lamp", placeholder: true)
-    }
-
-    func snapshot(for configuration: SelectJARVISPlugIntent, in context: Context) async -> JARVISSelectedPlugEntry {
-        JARVISSelectedPlugEntry(
-            date: Date(),
-            cached: JARVISWidgetStateLoader.cachedState(),
-            plugID: configuration.plug?.rawValue,
-            placeholder: context.isPreview
-        )
-    }
-
-    func timeline(for configuration: SelectJARVISPlugIntent, in context: Context) async -> Timeline<JARVISSelectedPlugEntry> {
-        let now = Date()
-        let cached = await JARVISWidgetStateLoader.refreshedState()
-        return Timeline(
-            entries: [
-                JARVISSelectedPlugEntry(
-                    date: now,
-                    cached: cached,
-                    plugID: configuration.plug?.rawValue,
-                    placeholder: false
-                )
-            ],
-            policy: .after(now.addingTimeInterval(JARVISWidgetStateLoader.timelineRefreshInterval))
-        )
     }
 }
 

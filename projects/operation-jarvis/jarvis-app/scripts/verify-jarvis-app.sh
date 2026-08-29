@@ -95,7 +95,7 @@ grep -q 'background(WatchJarvisStyle.accent, in: RoundedRectangle' JARVISWatch/V
 reject_match 'retired blue brand tokens remain in native app chrome' -RqsE 'JarvisPalette\.(cyan|electricBlue)|WatchJarvisStyle\.(cyan|electricBlue)|Color\.cyan' JARVIS JARVISWatch
 reject_match 'widget pending/launcher chrome must use the shared xhigh accent' -RqsE 'Color\.blue|foregroundStyle\(\.cyan\)' JARVISWidget JARVISWatchWidget
 grep -q 'JARVISWidgetTheme.accent' JARVISWidget/LauncherWidget.swift
-grep -q 'JARVISWidgetTheme.accent' JARVISWatchWidget/PlugGridWidget.swift
+grep -q '.widgetAccentable()' JARVISWatchWidget/LauncherWidget.swift
 
 printf '%s\n' '== native navigation contract =='
 [[ ! -e JARVIS/Views/EventsView.swift ]]
@@ -496,7 +496,7 @@ grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest()' JARVIS/JARVI
 grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest()' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVIS/JARVISApp.swift
 grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVISWatch/Views/WatchConnectView.swift
-grep -q 'static var isDiscoverable: Bool { false }' SharedAppIntents/JARVISWidgetIntents.swift
+[[ ! -d SharedAppIntents ]]
 grep -q 'WatchBridge.shared.requestPlugCommand' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'WatchBridge.shared.requestPurifierCommand' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'public static let maximumDeliveryAge: TimeInterval = 25' JARVISKit/Sources/JARVISKit/WatchBridge.swift
@@ -510,27 +510,28 @@ grep -q 'allowsWatchRelayFallback' JARVISKit/Sources/JARVISKit/PlugCommandExecut
 reject_match 'terminal input path must never toggle a plug implicitly' -RqsF 'plug-toggle' HostAppIntents JARVISKit/Sources/JARVISKit/PlugCatalog.swift JARVISKit/Sources/JARVISKit/PlugCommandExecutor.swift
 
 printf '%s\n' '== widget source contract =='
-reject_match 'legacy iPhone widget kind is still present' -RqsF 'let kind = "JARVISPlugWidget"' JARVISWidget
-reject_match 'legacy Watch widget kind is still present' -RqsF 'let kind = "JARVISWatchWidget"' JARVISWatchWidget
 reject_match 'failed Watch launcher experiment must remain fully removed' -RqsE 'ExternalLaunchProbe|NeuralLauncher|WatchWidgetRoute|WatchExternalLaunchRoute|WatchWidgetDestinationViews|quick-actions|now-playing|NowPlayingView' JARVISWatch JARVISWatchWidget JARVISKit/Sources JARVISKit/Tests
+[[ ! -d SharedAppIntents ]]
+[[ ! -e JARVISWidget/SelectedPlugWidget.swift ]]
+[[ ! -e JARVISWidget/PlugGridWidget.swift ]]
+[[ ! -e JARVISWatchWidget/SelectedPlugWidget.swift ]]
+[[ ! -e JARVISWatchWidget/PlugGridWidget.swift ]]
+reject_match 'retired plug widget code or kinds remain' -RqsE 'SetPlugIntent|SelectJARVISPlugIntent|JARVISPlugChoice|JARVISWidgetControlStore|JARVISPendingPlugCommand|JARVISWidgetCommandDisposition|JARVIS(Watch)?SelectedPlugWidget|JARVIS(Watch)?PlugGridWidget' JARVISWidget JARVISWatchWidget JARVISKit/Sources project.yml
 for kind in \
   JARVISNeuralCoreWidget.v1 \
   JARVISLauncherWidget.v1 \
-  JARVISSelectedPlugWidget.v1 \
-  JARVISPlugGridWidget.v1 \
   JARVISPurifierWidget.v1; do
   grep -Rqs "let kind = \"$kind\"" JARVISWidget || { echo "missing iOS widget kind: $kind" >&2; exit 1; }
 done
 for kind in \
   JARVISWatchNeuralCoreWidget.v1 \
   JARVISWatchLauncherWidget.v2 \
-  JARVISWatchSelectedPlugWidget.v1 \
-  JARVISWatchPlugGridWidget.v1 \
   JARVISWatchPurifierWidget.v1; do
   grep -Rqs "let kind = \"$kind\"" JARVISWatchWidget || { echo "missing watch widget kind: $kind" >&2; exit 1; }
 done
-reject_match 'iPhone purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWidget/PurifierWidget.swift
-reject_match 'Watch purifier widget must remain read-only' -qsF 'Button(intent:' JARVISWatchWidget/PurifierWidget.swift
+[[ "$(grep -c 'Widget()' JARVISWidget/JARVISWidgetBundle.swift)" == "3" ]]
+[[ "$(grep -c 'Widget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift)" == "3" ]]
+reject_match 'all remaining widgets must stay non-interactive' -RqsF 'Button(intent:' JARVISWidget JARVISWatchWidget
 grep -q 'JARVISNeuralCoreWidget()' JARVISWidget/JARVISWidgetBundle.swift
 grep -q 'JARVISWatchNeuralCoreWidget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift
 grep -q 'supportedFamilies(\[.systemMedium\])' JARVISWidget/NeuralCoreWidget.swift
@@ -643,14 +644,9 @@ grep -q '.unredacted()' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'JARVISNeuralCoreMotion.transitionDuration' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'accessibilityReduceMotion' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'isLuminanceReduced' WidgetShared/NeuralCoreArtwork.swift
-grep -q 'applyConfirmedPlugState' SharedAppIntents/JARVISWidgetIntents.swift
-grep -q 'JARVISWidgetControlStore.shared' SharedAppIntents/JARVISWidgetIntents.swift
-grep -q 'reloadTimelines(ofKind:' SharedAppIntents/JARVISWidgetIntents.swift
-grep -q 'pendingCommand(for:' JARVISWidget/SelectedPlugWidget.swift
-grep -q 'pendingCommand(for:' JARVISWatchWidget/SelectedPlugWidget.swift
-[[ "$(grep -c 'AppIntentRecommendation(intent:' JARVISWatchWidget/WidgetSupport.swift)" == "1" ]]
-grep -q 'JARVISPlugChoice.allCases.compactMap' JARVISWatchWidget/PlugGridWidget.swift
-reject_match 'Watch plug grid must not truncate its inventory' -qsF 'prefix(2)' JARVISWatchWidget/PlugGridWidget.swift
+reject_match 'widget state loader must not retain retired plug interaction state' -qsE 'applyConfirmedPlugState|plugNames\(|JARVISWidgetControlStore|pending-plug-commands|completed-plug-commands' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
+reject_match 'iPhone widget support must not retain configurable plug providers' -qsE 'AppIntent|SelectedPlug|PlugChoice' JARVISWidget/WidgetSupport.swift
+reject_match 'Watch widget support must not retain configurable plug providers' -qsE 'AppIntent|SelectedPlug|PlugChoice' JARVISWatchWidget/WidgetSupport.swift
 grep -q 'Image("JARVISWidgetIcon", bundle: .main)' JARVISWatchWidget/LauncherWidget.swift
 grep -q 'Image("JARVISWidgetIconAccented", bundle: .main)' JARVISWatchWidget/LauncherWidget.swift
 grep -q '@Environment(\\.widgetRenderingMode)' JARVISWatchWidget/LauncherWidget.swift
@@ -747,13 +743,16 @@ python3 - \
   "$EMBEDDED_WATCH/Metadata.appintents/extract.actionsdata" <<'PY'
 import json
 import sys
+from pathlib import Path
 for path in sys.argv[1:3]:
-    with open(path, encoding="utf-8") as handle:
+    metadata = Path(path)
+    if not metadata.exists():
+        continue
+    with metadata.open(encoding="utf-8") as handle:
         payload = json.load(handle)
-    actions = payload.get("actions", {})
-    assert "SelectJARVISPlugIntent" in actions, path
-    assert "SetPlugIntent" in actions, path
-    assert "SendPromptToJARVISIntent" not in actions, path
+    assert payload.get("actions", {}) == {}, path
+    assert payload.get("entities", {}) == {}, path
+    assert payload.get("queries", {}) == {}, path
 
 for path in sys.argv[3:]:
     with open(path, encoding="utf-8") as handle:
@@ -795,18 +794,22 @@ WATCH_WIDGET_BINARY="$WATCH_WIDGET/JARVISWatchWidget"
 for kind in \
   JARVISNeuralCoreWidget.v1 \
   JARVISLauncherWidget.v1 \
-  JARVISSelectedPlugWidget.v1 \
-  JARVISPlugGridWidget.v1 \
   JARVISPurifierWidget.v1; do
   grep -aFq "$kind" "$PHONE_WIDGET_BINARY" || { echo "built iOS widget missing kind: $kind" >&2; exit 1; }
 done
 for kind in \
   JARVISWatchNeuralCoreWidget.v1 \
   JARVISWatchLauncherWidget.v2 \
-  JARVISWatchSelectedPlugWidget.v1 \
-  JARVISWatchPlugGridWidget.v1 \
   JARVISWatchPurifierWidget.v1; do
   grep -aFq "$kind" "$WATCH_WIDGET_BINARY" || { echo "built watch widget missing kind: $kind" >&2; exit 1; }
+done
+for retired_kind in \
+  JARVISPlugWidget JARVISSelectedPlugWidget.v1 JARVISPlugGridWidget.v1 \
+  JARVISWatchSelectedPlugWidget.v1 JARVISWatchPlugGridWidget.v1; do
+  if grep -aFq "$retired_kind" "$PHONE_WIDGET_BINARY" || grep -aFq "$retired_kind" "$WATCH_WIDGET_BINARY"; then
+    echo "built widget still contains retired plug kind: $retired_kind" >&2
+    exit 1
+  fi
 done
 
 if [[ "${JARVIS_RUN_IOS_TESTS:-0}" == "1" ]]; then

@@ -276,7 +276,7 @@ final class JARVISKitTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
     }
 
-    func testWidgetStateHelpersSortPlugsAndFailClosedWhenStale() throws {
+    func testWidgetStateHelperFailsClosedWhenStale() throws {
         let state = try JSONDecoder().decode(
             StateSnapshot.self,
             from: Data(#"{"ok":true,"subsystems":{"plugs":{"ok":true,"plugs":{"tv":{"ok":true,"isOn":false},"lamp":{"ok":true,"isOn":true}}}}}"#.utf8)
@@ -284,7 +284,6 @@ final class JARVISKitTests: XCTestCase {
         let savedAt = Date(timeIntervalSince1970: 1_000)
         let cached = CachedState(state: state, savedAt: savedAt)
 
-        XCTAssertEqual(JARVISWidgetStateLoader.plugNames(from: cached), ["lamp", "tv"])
         XCTAssertFalse(JARVISWidgetStateLoader.isStale(cached, now: savedAt.addingTimeInterval(60)))
         XCTAssertTrue(
             JARVISWidgetStateLoader.isStale(
@@ -295,7 +294,7 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertTrue(JARVISWidgetStateLoader.isStale(nil))
     }
 
-    func testConfirmedPlugStateUpdatesWidgetCacheImmediately() throws {
+    func testConfirmedPlugStateUpdatesSnapshotCacheImmediately() throws {
         let suite = "jarvis.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         let store = SnapshotStore(suiteName: suite)
@@ -315,32 +314,6 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(updated.state.subsystems?.plugs?.onCount, 2)
         XCTAssertEqual(updated.state.summary?.plugsOn, 2)
         XCTAssertEqual(updated.savedAt.timeIntervalSince1970, 200, accuracy: 0.01)
-        defaults.removePersistentDomain(forName: suite)
-    }
-
-    func testWidgetControlStoreShowsPendingAndSuppressesDuplicateDesiredState() {
-        let suite = "jarvis.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        let controls = JARVISWidgetControlStore(suiteName: suite)
-        let start = Date(timeIntervalSince1970: 1_000)
-
-        XCTAssertEqual(controls.begin(name: "lamp", isOn: true, now: start), .execute)
-        XCTAssertEqual(controls.pendingCommand(for: "lamp", now: start)?.isOn, true)
-        XCTAssertEqual(controls.begin(name: "lamp", isOn: true, now: start.addingTimeInterval(1)), .alreadyPending)
-
-        controls.complete(name: "lamp", isOn: true, succeeded: true, now: start.addingTimeInterval(2))
-        XCTAssertNil(controls.pendingCommand(for: "lamp", now: start.addingTimeInterval(2)))
-        XCTAssertEqual(
-            controls.begin(name: "lamp", isOn: true, now: start.addingTimeInterval(3)),
-            .recentlyCompleted
-        )
-        XCTAssertEqual(controls.begin(name: "lamp", isOn: false, now: start.addingTimeInterval(3)), .execute)
-        controls.complete(name: "lamp", isOn: false, succeeded: false, now: start.addingTimeInterval(4))
-        XCTAssertEqual(
-            controls.begin(name: "lamp", isOn: true, now: start.addingTimeInterval(13)),
-            .execute
-        )
-        controls.clear()
         defaults.removePersistentDomain(forName: suite)
     }
 
