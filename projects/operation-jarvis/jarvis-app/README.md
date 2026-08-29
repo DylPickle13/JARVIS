@@ -336,6 +336,18 @@ channel event-loop initializer and hands it directly to that connection's SSH
 handler. Credentials remain local values, each connection retains one password
 offer, and no delegate crosses an `@Sendable` boundary. The complete iOS build
 now compiles with strict concurrency enabled without warnings or errors.
+Build 126 applies a behavior-preserving Watch efficiency pass. Endpoint and
+terminal-route defaults now write only when their normalized values change;
+widgets try their saved authenticated route before bounded discovery fallback;
+the Watch dashboard caches its first successful Keychain token read per model
+lifetime without caching a locked/unavailable result; and terminal rendering
+reuses a bounded three-entry exact ANSI parse cache while suppressing unchanged
+frame, status, error, and empty-history publications. The
+static launcher requests one WidgetKit reload per installed build, while Neural
+Core launch recovery remains unchanged. Quota timestamps now use an immutable
+value-semantic parser. Polling and Always-On cadence, terminal byte/input order,
+speech preparation, stale-state semantics, Neural Core motion, and guarded
+hardware controls are unchanged.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

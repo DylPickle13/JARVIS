@@ -38,7 +38,9 @@ public final class EndpointStore: @unchecked Sendable {
             }
             // Invalid input never replaces a previously trusted endpoint.
             guard let normalized = JarvisEndpointURLPolicy.parse(trimmed) else { return }
-            defaults.set(normalized.absoluteString, forKey: urlKey)
+            let normalizedValue = normalized.absoluteString
+            guard defaults.string(forKey: urlKey) != normalizedValue else { return }
+            defaults.set(normalizedValue, forKey: urlKey)
         }
     }
 

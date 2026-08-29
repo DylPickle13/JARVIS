@@ -16,6 +16,8 @@ struct WatchDashboardContent: View {
     @State private var showsPurifierModeChoices = false
     @State private var showsPurifierFanChoices = false
 
+    private static let iso8601 = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+
     private let plugOrder = ["family-room-light", "lamp", "pedalboard", "tv"]
     private let gridColumns = [
         GridItem(.flexible(), spacing: 7),
@@ -607,7 +609,7 @@ struct WatchDashboardContent: View {
     private func codexResetLabel(_ window: CodexQuotaWindow?) -> String {
         let seconds: Int?
         if let resetAt = window?.resetAt,
-           let date = ISO8601DateFormatter().date(from: resetAt) {
+           let date = try? Self.iso8601.parse(resetAt) {
             seconds = max(0, Int(date.timeIntervalSinceNow))
         } else {
             seconds = window?.resetAfterSeconds

@@ -89,6 +89,16 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
 
     private let forceEndpointForTesting: Bool
     private let activeRefreshInterval: Duration
+    // No live Watch flow mutates the jarvisd token. Cache the first successful
+    // Keychain read for this model lifetime, but never cache an unavailable or
+    // empty read so a process started while locked can recover after unlock.
+    private var cachedAuthenticationToken: String?
+    private var authenticationToken: String {
+        if let cachedAuthenticationToken { return cachedAuthenticationToken }
+        guard let token = store.token, !token.isEmpty else { return "" }
+        cachedAuthenticationToken = token
+        return token
+    }
     private var debugRelaySmokeDidRun = false
     private var appIsForeground = false
     private var refreshGeneration = 0
@@ -297,7 +307,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             let resolved = try await client.resolveState(
                 preferredEndpoint: preferredEndpoint,
                 candidates: candidates,
-                token: store.token ?? "",
+                token: authenticationToken,
                 discoveryTimeout: 3
             )
             guard !Task.isCancelled else { return }
@@ -317,7 +327,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     private func performCodexQuotaViewRefresh() async {
         if connectionState != .connected || store.endpointURL == nil { await refresh() }
         guard !Task.isCancelled, appIsForeground, let url = store.endpointURL else { return }
-        let endpoint = JarvisEndpoint(baseURL: url, token: store.token ?? "")
+        let endpoint = JarvisEndpoint(baseURL: url, token: authenticationToken)
         let previousUpdatedAt = lastState?.subsystems?.codexQuota?.updatedAt
 
         do {

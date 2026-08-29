@@ -21,14 +21,20 @@ public enum JARVISWidgetStateLoader {
         let cached = store.load()
         let endpointStore = EndpointStore(defaults: JARVISSharedStore.defaults)
         let client = JarvisClient()
-        let candidates = JarvisEndpoints.candidates(override: endpointStore.endpointURL)
-        guard let endpointURL = await client.discover(candidates, timeout: 3) else { return cached }
-        endpointStore.endpointURLString = endpointURL.absoluteString
+        let preferredEndpoint = endpointStore.endpointURL
+        let candidates = JarvisEndpoints.candidates(override: preferredEndpoint)
         do {
-            let state = try await client.state(
-                JarvisEndpoint(baseURL: endpointURL, token: endpointStore.token ?? "")
+            // A successful authenticated state read is stronger than a separate
+            // health probe. Reuse the saved route first, and retain the existing
+            // bounded discovery path only as recovery when that route fails.
+            let resolved = try await client.resolveState(
+                preferredEndpoint: preferredEndpoint,
+                candidates: candidates,
+                token: endpointStore.token ?? "",
+                discoveryTimeout: 3
             )
-            return CachedState(state: state)
+            endpointStore.endpointURLString = resolved.endpointURL.absoluteString
+            return CachedState(state: resolved.state)
         } catch {
             return cached
         }

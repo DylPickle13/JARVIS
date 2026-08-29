@@ -98,9 +98,16 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     private var speechRetryAttempt = 0
     private var speechInterruptionResumeTime: TimeInterval?
     private var pollFailureStartedAt: Date?
+    private var lastPersistedPreferredRoute: String?
+    private struct ANSIParseCacheEntry {
+        let lines: [String]
+        let spans: [[WatchTerminalANSISpan]]
+    }
+    private var ansiParseCache: [ANSIParseCacheEntry] = []
     private let logger = Logger(subsystem: "com.operation-jarvis.jarvis.watchkitapp", category: "terminal")
 
     private static let preferredRouteKey = "jarvis.watch-terminal.preferred-route"
+    private static let ansiParseCacheLimit = 3
 
     override init() {
         #if DEBUG && targetEnvironment(simulator)
@@ -111,6 +118,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         }
         #endif
         status = settings.configuration == nil ? .notConfigured : .offline
+        lastPersistedPreferredRoute = UserDefaults.standard.string(forKey: Self.preferredRouteKey)
         speechFileStore.removeOrphanedDownloads()
         if let retained = speechFileStore.restorePreparedSpeech() {
             speechResponseID = retained.responseID
@@ -347,7 +355,27 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
 
     private func rememberPreferredRoute(_ route: URL?) {
         guard let route else { return }
-        UserDefaults.standard.set(route.absoluteString, forKey: Self.preferredRouteKey)
+        let value = route.absoluteString
+        guard lastPersistedPreferredRoute != value else { return }
+        UserDefaults.standard.set(value, forKey: Self.preferredRouteKey)
+        lastPersistedPreferredRoute = value
+    }
+
+    /// Parsing ANSI rows is pure but comparatively expensive on Watch. Retain a
+    /// tiny exact-input LRU so periodic redraws and unrelated UI changes reuse
+    /// identical spans without changing bytes, styles, wrapping, or row order.
+    func parsedANSILines(_ lines: [String]) -> [[WatchTerminalANSISpan]] {
+        if let index = ansiParseCache.firstIndex(where: { $0.lines == lines }) {
+            let entry = ansiParseCache.remove(at: index)
+            ansiParseCache.append(entry)
+            return entry.spans
+        }
+        let entry = ANSIParseCacheEntry(lines: lines, spans: WatchTerminalANSIParser.parse(lines: lines))
+        if ansiParseCache.count >= Self.ansiParseCacheLimit {
+            ansiParseCache.removeFirst()
+        }
+        ansiParseCache.append(entry)
+        return entry.spans
     }
 
     private func trace(_ event: String) {
@@ -686,17 +714,19 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
                     let next = try await client.frame(after: sequence)
                     guard !Task.isCancelled else { return }
                     let recoveredRoute = !self.isConnectionConfirmed
+                    let frameChanged = self.frame != next
                     if let previous = self.frame,
                        (!previous.paneID.isEmpty && previous.paneID != next.paneID
-                        || next.historySize < previous.historySize) {
+                        || next.historySize < previous.historySize),
+                       !self.historyPages.isEmpty {
                         self.historyPages.removeAll()
                     }
-                    self.frame = next
-                    self.isConnectionConfirmed = true
+                    if frameChanged { self.frame = next }
+                    if !self.isConnectionConfirmed { self.isConnectionConfirmed = true }
                     self.pollFailureStartedAt = nil
                     self.rememberPreferredRoute(client.selectedBaseURL)
                     let nextResponseID = next.speech?.available == true ? next.speech?.responseID : nil
-                    if let nextResponseID {
+                    if frameChanged || recoveredRoute, let nextResponseID {
                         if self.failedSpeechResponseID != nil,
                            self.failedSpeechResponseID != nextResponseID {
                             self.failedSpeechResponseID = nil
@@ -713,7 +743,8 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
                             self.speechRetryAttempt = 0
                         }
                     }
-                    if next.speech?.generating == true
+                    if frameChanged,
+                       next.speech?.generating == true
                         || (nextResponseID != nil
                             && self.speechResponseID != nil
                             && nextResponseID != self.speechResponseID) {
@@ -727,8 +758,8 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
                     self.successfulPollCount += 1
                     self.wakeRecoveryTask?.cancel()
                     self.wakeRecoveryTask = nil
-                    self.status = .live
-                    self.errorMessage = nil
+                    if self.status != .live { self.status = .live }
+                    if self.errorMessage != nil { self.errorMessage = nil }
                     self.prepareSpeechIfNeeded()
                 } catch is CancellationError {
                     return
@@ -983,7 +1014,7 @@ struct WatchTerminalView: View {
         )
         let outputColumns = max(1, frame.columns)
 
-        let allLocalStyles = WatchTerminalANSIParser.parse(lines: frame.ansiLines)
+        let allLocalStyles = controller.parsedANSILines(frame.ansiLines)
         let editorRange = frame.liveEditorRange
         let editorFontSize = outputFontSize
         let editorLineHeight = outputLineHeight
@@ -1020,7 +1051,7 @@ struct WatchTerminalView: View {
         let sourceANSI = localANSI ?? pageANSI ?? []
         let wrappedOutput = Array(
             WatchTerminalANSIParser.wrapped(
-                lines: WatchTerminalANSIParser.parse(lines: sourceANSI),
+                lines: controller.parsedANSILines(sourceANSI),
                 displayColumns: outputColumns
             ).suffix(maximumVisualLines)
         )

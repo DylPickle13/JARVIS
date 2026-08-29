@@ -361,7 +361,11 @@ grep -q 'through: 0' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'isContinuous: false' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalCrownHistory.scrollOffset' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Crown live edge must not use rebound-prone incremental history' -Fq 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'WatchTerminalANSIParser.parse(lines: frame.ansiLines)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'WatchTerminalANSIParser.parse(lines: lines)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'controller.parsedANSILines(frame.ansiLines)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'controller.parsedANSILines(sourceANSI)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'private static let ansiParseCacheLimit = 3' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'if ansiParseCache.count >= Self.ansiParseCacheLimit' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalANSIParser.wrapped(' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalLayout.mirrorFontSize(' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'let outputColumns = max(1, frame.columns)' JARVISWatch/Views/WatchTerminalView.swift
@@ -485,6 +489,9 @@ grep -q 'Date.ISO8601FormatStyle(includingFractionalSeconds: true)' JARVIS/Views
 grep -q 'try? iso8601.parse(s)' JARVIS/Views/Components.swift
 reject_match 'shared mutable iPhone ISO-8601 formatter remains' -Fq 'ISO8601DateFormatter' JARVIS/Views/Components.swift
 grep -q 'testISO8601ParsingSupportsPlainAndFractionalTimestampsWithoutSharedMutableFormatter' JARVISTests/AppStateTests.swift
+grep -q 'Date.ISO8601FormatStyle(includingFractionalSeconds: true)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'try? Self.iso8601.parse(resetAt)' JARVISWatch/Views/WatchDashboardContent.swift
+reject_match 'shared mutable Watch ISO-8601 formatter remains' -Fq 'ISO8601DateFormatter' JARVISWatch/Views/WatchDashboardContent.swift
 for support in JARVISWidget/WidgetSupport.swift JARVISWatchWidget/WidgetSupport.swift; do
   [[ "$(grep -c '@escaping @Sendable' "$support")" == "2" ]]
   reject_match 'WidgetKit completion callback lost its Sendable contract' -qE 'completion: @escaping \(' "$support"
@@ -498,6 +505,7 @@ grep -q 'components.password == nil' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q 'components.query == nil' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q 'components.fragment == nil' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q 'JarvisEndpointURLPolicy.parse(trimmed)' JARVISKit/Sources/JARVISKit/EndpointStore.swift
+grep -q 'guard defaults.string(forKey: urlKey) != normalizedValue else { return }' JARVISKit/Sources/JARVISKit/EndpointStore.swift
 grep -q 'JarvisEndpointURLPolicy.parse(string)' JARVIS/AppState.swift
 grep -q 'JarvisEndpointURLPolicy.parse(endpoint)' JARVIS/AppStateWatchBridge.swift
 grep -q 'JarvisEndpointURLPolicy.parse(endpoint)' JARVISWatch/Views/WatchConnectView.swift
@@ -519,6 +527,17 @@ reject_match 'retired Tailscale node address is still present' -RqsF '100.96.55.
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVIS/AppState.swift
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'client.resolveState(' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'private var cachedAuthenticationToken: String?' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'if let cachedAuthenticationToken { return cachedAuthenticationToken }' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'guard let token = store.token, !token.isEmpty else { return "" }' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'cachedAuthenticationToken = token' JARVISWatch/Views/WatchConnectView.swift
+[[ "$(grep -c 'store.token' JARVISWatch/Views/WatchConnectView.swift)" == "1" ]]
+grep -q 'let frameChanged = self.frame != next' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'if frameChanged { self.frame = next }' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'if self.status != .live { self.status = .live }' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'if self.errorMessage != nil { self.errorMessage = nil }' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'guard lastPersistedPreferredRoute != value else { return }' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'self.prepareSpeechIfNeeded()' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'if let normalizedPreferred {' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 grep -q 'usedDiscovery: false' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 reject_match 'Watch refresh still issues a redundant post-discovery health request' -Fq '_ = try await client.health(endpoint)' JARVISWatch/Views/WatchConnectView.swift
@@ -726,6 +745,9 @@ grep -q '.unredacted()' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'JARVISNeuralCoreMotion.transitionDuration' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'accessibilityReduceMotion' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'isLuminanceReduced' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'client.resolveState(' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
+grep -q 'preferredEndpoint: preferredEndpoint' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
+reject_match 'widget refresh must not rediscover before trying its saved authenticated route' -qsF 'client.discover(' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
 reject_match 'widget state loader must not retain retired plug interaction state' -qsE 'applyConfirmedPlugState|plugNames\(|JARVISWidgetControlStore|pending-plug-commands|completed-plug-commands' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
 reject_match 'iPhone widget support must not retain configurable plug providers' -qsE 'AppIntent|SelectedPlug|PlugChoice' JARVISWidget/WidgetSupport.swift
 reject_match 'Watch widget support must not retain configurable plug providers' -qsE 'AppIntent|SelectedPlug|PlugChoice' JARVISWatchWidget/WidgetSupport.swift
@@ -735,6 +757,9 @@ grep -q '@Environment(\\.widgetRenderingMode)' JARVISWatchWidget/LauncherWidget.
 grep -q 'GeometryReader' JARVISWatchWidget/LauncherWidget.swift
 grep -q 'let kind = "JARVISWatchLauncherWidget.v2"' JARVISWatchWidget/LauncherWidget.swift
 grep -q 'reloadTimelines(ofKind: "JARVISWatchLauncherWidget.v2")' JARVISWatch/JARVISWatchApp.swift
+grep -q 'WatchLauncherWidgetReloadPolicy.reloadAfterUpgradeIfNeeded()' JARVISWatch/JARVISWatchApp.swift
+grep -q 'jarvis.watch-launcher-widget.last-reload-build' JARVISWatch/JARVISWatchApp.swift
+grep -q 'guard defaults.string(forKey: lastRequestedBuildKey) != build else { return }' JARVISWatch/JARVISWatchApp.swift
 [[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/JARVISWidgetIcon@2x.png ]]
 [[ -s JARVISWatchWidget/Assets.xcassets/JARVISWidgetIconAccented.imageset/JARVISWidgetIconAccented@2x.png ]]
 grep -Rqs 'Image("JARVISMark")' JARVIS/Views
