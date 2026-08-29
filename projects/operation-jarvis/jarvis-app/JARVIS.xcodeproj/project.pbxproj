@@ -31,7 +31,6 @@
 		513C03156788F045E10B6DC3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F511B3C48F0433661629C5AB /* PrivacyInfo.xcprivacy */; };
 		52D863AFDF79688CA2CF1042 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 1F4C583917FA03DBF11F4A10 /* NIOSSH */; };
 		576BB6C417A8A28E379D2A45 /* WatchTerminalSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */; };
-		5EE603D6F7625CB12B142116 /* PurifierWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B980A60932E185CB6D8AD60A /* PurifierWidget.swift */; };
 		68C3DE29B22B446350ACB4EB /* NeuralCoreArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197A46DD464AA704E3FB32E9 /* NeuralCoreArtwork.swift */; };
 		6FCDC3A9DF9D130AC887781E /* NeuralCoreContinuousAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5136B3B670CA19BFD429B9D /* NeuralCoreContinuousAnimation.swift */; };
 		753E3AEBE1235D4E32BE5F2A /* JARVISWidgetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E32755A9AB7BFF1E2C07B9 /* JARVISWidgetTheme.swift */; };
@@ -59,7 +58,6 @@
 		DBCECDA10C8DE309C8833B44 /* JARVISWidgetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E32755A9AB7BFF1E2C07B9 /* JARVISWidgetTheme.swift */; };
 		DD7391FF9563157D2965AEEE /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD318AB3793295E0031F850 /* HomeView.swift */; };
 		E51BAC21CD90FE23E49E721D /* PiSSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28C023257637E052A6CBCF4A /* PiSSHTransport.swift */; };
-		E5AAA0DC13C49ACA8EA42A52 /* PurifierWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C43A1847102863C0207DE14 /* PurifierWidget.swift */; };
 		EE6EDA808F77C51AC4D53B6A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FE2FCABFFCEEADC0022C58 /* AppState.swift */; };
 		EEE4CC5EB02DFF6C33B54B6D /* AppStateWatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B3A49AB08F03AB80167B37B /* AppStateWatchBridge.swift */; };
 		EEF5AF3EBBE8F552CDBE8AD7 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = BA99DC927D3AD3324FD8A12D /* NIOPosix */; };
@@ -162,7 +160,6 @@
 		6DF549C08E0899CD48EC8294 /* LauncherWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherWidget.swift; sourceTree = "<group>"; };
 		6FFAD68F450FB6F9BE8C17A8 /* LauncherWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherWidget.swift; sourceTree = "<group>"; };
 		771620AD2CA9D898AE768103 /* WatchDashboardContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDashboardContent.swift; sourceTree = "<group>"; };
-		7C43A1847102863C0207DE14 /* PurifierWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurifierWidget.swift; sourceTree = "<group>"; };
 		888D11D79E21EC5437B45339 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		8AC50929D8C075ED60E109B1 /* FillRect-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FillRect-Regular.otf"; sourceTree = "<group>"; };
 		8C187EFE35D060320CD74856 /* NeuralCoreWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreWidget.swift; sourceTree = "<group>"; };
@@ -175,7 +172,6 @@
 		B20440B35638B5FF94AF10A0 /* WatchTerminalProvisioningSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTerminalProvisioningSettings.swift; sourceTree = "<group>"; };
 		B3E32755A9AB7BFF1E2C07B9 /* JARVISWidgetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWidgetTheme.swift; sourceTree = "<group>"; };
 		B9214CFDAA410B86B33071C7 /* JARVISKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = JARVISKit; path = JARVISKit; sourceTree = SOURCE_ROOT; };
-		B980A60932E185CB6D8AD60A /* PurifierWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurifierWidget.swift; sourceTree = "<group>"; };
 		C05CEF9EA2E1CBE04169AAE3 /* ConnectionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSettingsView.swift; sourceTree = "<group>"; };
 		C0CD22FC05E2E9D489FE3A76 /* PiTerminalSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalSettings.swift; sourceTree = "<group>"; };
 		C2FE2FCABFFCEEADC0022C58 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -253,7 +249,6 @@
 				1548C41F74BB5F0E3EF25885 /* JARVISWidgetBundle.swift */,
 				6FFAD68F450FB6F9BE8C17A8 /* LauncherWidget.swift */,
 				535E6788F7CEA7378CB167A8 /* NeuralCoreWidget.swift */,
-				7C43A1847102863C0207DE14 /* PurifierWidget.swift */,
 				40C659E6D5CAA095003D8887 /* WidgetSupport.swift */,
 			);
 			path = JARVISWidget;
@@ -347,7 +342,6 @@
 				29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */,
 				6DF549C08E0899CD48EC8294 /* LauncherWidget.swift */,
 				8C187EFE35D060320CD74856 /* NeuralCoreWidget.swift */,
-				B980A60932E185CB6D8AD60A /* PurifierWidget.swift */,
 				C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */,
 			);
 			path = JARVISWatchWidget;
@@ -594,7 +588,6 @@
 				2DD281718165D457D750A2CC /* NeuralCoreArtwork.swift in Sources */,
 				357F018439F498E3E4F7CE50 /* NeuralCoreContinuousAnimation.swift in Sources */,
 				2DD3D8F93DACBDBEFC94B1E1 /* NeuralCoreWidget.swift in Sources */,
-				E5AAA0DC13C49ACA8EA42A52 /* PurifierWidget.swift in Sources */,
 				0270B90D3D4F52F5A77FE14E /* WidgetSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -609,7 +602,6 @@
 				68C3DE29B22B446350ACB4EB /* NeuralCoreArtwork.swift in Sources */,
 				6FCDC3A9DF9D130AC887781E /* NeuralCoreContinuousAnimation.swift in Sources */,
 				C7E9D77697E658A1BB7F6391 /* NeuralCoreWidget.swift in Sources */,
-				5EE603D6F7625CB12B142116 /* PurifierWidget.swift in Sources */,
 				21E9789B6D7FDCFD43AD0B35 /* WidgetSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -829,7 +821,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 117;
+				CURRENT_PROJECT_VERSION = 118;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -931,7 +923,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 117;
+				CURRENT_PROJECT_VERSION = 118;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

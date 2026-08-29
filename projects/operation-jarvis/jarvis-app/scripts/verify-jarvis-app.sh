@@ -547,21 +547,21 @@ reject_match 'failed Watch launcher experiment must remain fully removed' -RqsE 
 [[ ! -e JARVISWidget/PlugGridWidget.swift ]]
 [[ ! -e JARVISWatchWidget/SelectedPlugWidget.swift ]]
 [[ ! -e JARVISWatchWidget/PlugGridWidget.swift ]]
-reject_match 'retired plug widget code or kinds remain' -RqsE 'SetPlugIntent|SelectJARVISPlugIntent|JARVISPlugChoice|JARVISWidgetControlStore|JARVISPendingPlugCommand|JARVISWidgetCommandDisposition|JARVIS(Watch)?SelectedPlugWidget|JARVIS(Watch)?PlugGridWidget' JARVISWidget JARVISWatchWidget JARVISKit/Sources project.yml
+[[ ! -e JARVISWidget/PurifierWidget.swift ]]
+[[ ! -e JARVISWatchWidget/PurifierWidget.swift ]]
+reject_match 'retired plug or purifier widget code or kinds remain' -RqsE 'SetPlugIntent|SelectJARVISPlugIntent|JARVISPlugChoice|JARVISWidgetControlStore|JARVISPendingPlugCommand|JARVISWidgetCommandDisposition|JARVIS(Watch)?SelectedPlugWidget|JARVIS(Watch)?PlugGridWidget|JARVISPurifierWidget|JARVISWatchPurifierWidget|PurifierWidget\.swift' JARVISWidget JARVISWatchWidget JARVISKit/Sources project.yml JARVIS.xcodeproj/project.pbxproj
 for kind in \
   JARVISNeuralCoreWidget.v1 \
-  JARVISLauncherWidget.v1 \
-  JARVISPurifierWidget.v1; do
+  JARVISLauncherWidget.v1; do
   grep -Rqs "let kind = \"$kind\"" JARVISWidget || { echo "missing iOS widget kind: $kind" >&2; exit 1; }
 done
 for kind in \
   JARVISWatchNeuralCoreWidget.v1 \
-  JARVISWatchLauncherWidget.v2 \
-  JARVISWatchPurifierWidget.v1; do
+  JARVISWatchLauncherWidget.v2; do
   grep -Rqs "let kind = \"$kind\"" JARVISWatchWidget || { echo "missing watch widget kind: $kind" >&2; exit 1; }
 done
-[[ "$(grep -c 'Widget()' JARVISWidget/JARVISWidgetBundle.swift)" == "3" ]]
-[[ "$(grep -c 'Widget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift)" == "3" ]]
+[[ "$(grep -c 'Widget()' JARVISWidget/JARVISWidgetBundle.swift)" == "2" ]]
+[[ "$(grep -c 'Widget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift)" == "2" ]]
 reject_match 'all remaining widgets must stay non-interactive' -RqsF 'Button(intent:' JARVISWidget JARVISWatchWidget
 grep -q 'JARVISNeuralCoreWidget()' JARVISWidget/JARVISWidgetBundle.swift
 grep -q 'JARVISWatchNeuralCoreWidget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift
@@ -824,21 +824,20 @@ WATCH_WIDGET_BINARY="$WATCH_WIDGET/JARVISWatchWidget"
 [[ -f "$WATCH_WIDGET/JARVISWatchWidget.debug.dylib" ]] && WATCH_WIDGET_BINARY="$WATCH_WIDGET/JARVISWatchWidget.debug.dylib"
 for kind in \
   JARVISNeuralCoreWidget.v1 \
-  JARVISLauncherWidget.v1 \
-  JARVISPurifierWidget.v1; do
+  JARVISLauncherWidget.v1; do
   grep -aFq "$kind" "$PHONE_WIDGET_BINARY" || { echo "built iOS widget missing kind: $kind" >&2; exit 1; }
 done
 for kind in \
   JARVISWatchNeuralCoreWidget.v1 \
-  JARVISWatchLauncherWidget.v2 \
-  JARVISWatchPurifierWidget.v1; do
+  JARVISWatchLauncherWidget.v2; do
   grep -aFq "$kind" "$WATCH_WIDGET_BINARY" || { echo "built watch widget missing kind: $kind" >&2; exit 1; }
 done
 for retired_kind in \
   JARVISPlugWidget JARVISSelectedPlugWidget.v1 JARVISPlugGridWidget.v1 \
-  JARVISWatchSelectedPlugWidget.v1 JARVISWatchPlugGridWidget.v1; do
+  JARVISWatchSelectedPlugWidget.v1 JARVISWatchPlugGridWidget.v1 \
+  JARVISPurifierWidget.v1 JARVISWatchPurifierWidget.v1; do
   if grep -aFq "$retired_kind" "$PHONE_WIDGET_BINARY" || grep -aFq "$retired_kind" "$WATCH_WIDGET_BINARY"; then
-    echo "built widget still contains retired plug kind: $retired_kind" >&2
+    echo "built widget still contains retired kind: $retired_kind" >&2
     exit 1
   fi
 done

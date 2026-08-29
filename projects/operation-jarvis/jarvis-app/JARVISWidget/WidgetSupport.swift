@@ -39,34 +39,6 @@ struct JARVISStateProvider: TimelineProvider {
     }
 }
 
-enum JARVISWidgetFormat {
-    static func displayName(_ raw: String) -> String {
-        raw.replacingOccurrences(of: "-", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
-            .split(separator: " ")
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-            .joined(separator: " ")
-    }
-
-    static func purifierQuality(pm25: Int?) -> (label: String, color: Color) {
-        guard let pm25 else { return ("Unavailable", .secondary) }
-        switch pm25 {
-        case ...12: return ("Good", .green)
-        case 13...35: return ("Moderate", .yellow)
-        case 36...55: return ("Sensitive", .orange)
-        default: return ("Unhealthy", .red)
-        }
-    }
-
-    static func purifierStatus(_ purifier: PurifierSubsystem) -> String {
-        guard let isOn = purifier.isOn else { return "Status unavailable" }
-        guard isOn else { return "Off" }
-        let mode = (purifier.mode ?? "On").capitalized
-        if let fan = purifier.fanSetLevel ?? purifier.fanLevel { return "\(mode) · Fan \(fan)" }
-        return mode
-    }
-}
-
 extension View {
     func jarvisWidgetBackground() -> some View {
         containerBackground(.fill.tertiary, for: .widget)

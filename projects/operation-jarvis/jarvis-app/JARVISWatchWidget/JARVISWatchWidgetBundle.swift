@@ -6,6 +6,5 @@ struct JARVISWatchWidgetBundle: WidgetBundle {
     var body: some Widget {
         JARVISWatchNeuralCoreWidget()
         JARVISWatchLauncherWidget()
-        JARVISWatchPurifierWidget()
     }
 }

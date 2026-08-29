@@ -196,7 +196,7 @@ the accepted Terminal → Plugs → System Watch order and makes the existing Sy
 air-purifier card interactive. Power, Auto/Manual/Sleep/Pet mode, and manual fan levels
 1–4 use a closed WatchConnectivity command schema, fail closed on stale state, suppress
 duplicate desired-state writes, and report success only after the phone or Watch confirms
-the requested purifier state. The read-only purifier widget remains isolated and unchanged.
+the requested purifier state. At that stage, the read-only purifier widget remained isolated.
 The exact audited `0.3.0 (102)` archive was installed and launched on the allowlisted
 iPhone and Apple Watch without issuing a purifier write. Physical testing confirmed a
 Sleep → Auto change after VeSync's expected propagation delay. Build 103 exposes that
@@ -278,9 +278,9 @@ command envelopes, protecting mixed-version rollout from commands queued by an o
 Watch build. Read-only latest-value application context remains unchanged. Build 115
 removes both plug-widget kinds from the iPhone and Watch extensions, along with their
 widget-only App Intents, configurable providers, command feedback store, and retired
-source files. Plug control remains fully available inside both native apps. Each
-extension now publishes exactly Neural Core, Open JARVIS, and read-only Air Purifier;
-no remaining widget can issue a hardware write. Build 116 removes duplicate Watch
+source files. Plug control remains fully available inside both native apps. At that
+stage, each extension published Neural Core, Open JARVIS, and read-only Air Purifier;
+no widget could issue a hardware write. Build 116 removes duplicate Watch
 state publication: routine iPhone snapshots now use only coalesced latest-value
 application context, while immediate `sendMessage` state delivery is reserved for
 explicit request-ID replies. Both hosts reject exact duplicates and older generated
@@ -302,7 +302,10 @@ content untouched. The single backup-excluded `jarvis-watch-last-response.wav`
 cache remains available across wrist-down/app switching, while a missing,
 malformed, oversized, symlinked, or metadata-orphaned cache now clears both the
 file and response identifier together. Playback, retries, certificate pinning,
-and terminal routing are unchanged.
+and terminal routing are unchanged. Build 118 removes both read-only Air Purifier
+widget kinds and their widget-only presentation source from iPhone and Watch.
+Each extension now publishes exactly Neural Core and Open JARVIS. Native iPhone
+and Watch purifier status and guarded controls remain unchanged.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
@@ -505,8 +508,8 @@ hardware/status/service API control plane. The iPhone JARVIS tab uses a separate
 SSH terminal data plane; the Watch reaches that same tmux pane through the
 independent token- and certificate-protected `jarvis-terminald` HTTPS bridge.
 APNs push + Live Activities are out (free Apple ID can't do
-APNs); oMLX is out of app scope entirely. The widget catalogue is Neural Core,
-Open JARVIS, and read-only Air Purifier.
+APNs); oMLX is out of app scope entirely. The widget catalogue is Neural Core
+and Open JARVIS.
 
 **Everything lives in this folder** — the Swift app targets, shared
 `JARVISKit` package, `jarvisd`, and `jarvis-terminald` are all under
@@ -1894,8 +1897,8 @@ iPhone app / iPhone widgets / Watch app / Watch widgets
 - Sanitized, dynamic, read-only scheduled-job inventory.
 - Direct Watch operation on LAN, iPhone relay when direct access fails, and
   cached stale fallback.
-- Neural Core, Open JARVIS, and read-only Air Purifier widgets on iPhone and
-  Watch; plug control remains inside the apps.
+- Neural Core and Open JARVIS widgets on iPhone and Watch; plug and purifier
+  control remains inside the apps.
 - Typed App Intents and `jarvis://home`, `jarvis://pi`, and
   `jarvis://settings` deep linking.
 - iPhone-only authentic Pi TUI over SSH with persistent tmux reattachment.
@@ -1911,8 +1914,7 @@ iPhone app / iPhone widgets / Watch app / Watch widgets
 - APNs, Live Activities, and TestFlight while using free provisioning.
 - Discord-bot/scheduler mutations and scheduled-job add/remove/edit/setup in the
   current read-only rollout.
-- Service, scheduled-job, or purifier controls in widgets; purifier widgets are
-  always read-only.
+- Service, scheduled-job, plug, or purifier widgets and widget controls.
 
 Cast, room audio, Discord voice, Pi telemetry, smart plugs, purifier tooling,
 and other Operation JARVIS subsystems continue to exist outside the native app.
@@ -2148,9 +2150,9 @@ published.
 
 ## 6. Widget catalogue and safety contract
 
-Each platform publishes exactly three current widget kinds. All selected-plug,
-plug-grid, and legacy plug widget kinds are removed; plug control remains inside
-the native apps.
+Each platform publishes exactly two current widget kinds. All plug and purifier
+widget kinds are removed; plug and purifier status/control remain inside the
+native apps.
 
 ### iPhone families
 
@@ -2158,7 +2160,6 @@ the native apps.
 |---|---|---|
 | Neural Core | system medium | Read-only synchronized artwork and cached telemetry; opens JARVIS Home. |
 | Open JARVIS | system small; accessory circular, rectangular, inline | Static `jarvis://home` launcher. |
-| Air Purifier | system small/medium; accessory circular, rectangular, inline | Read-only PM2.5, quality, power, mode, fan, filter, and stale status as space permits. |
 
 ### Watch families
 
@@ -2166,17 +2167,15 @@ the native apps.
 |---|---|---|
 | Neural Core | accessory rectangular | Read-only synchronized artwork and cached telemetry; opens the terminal. |
 | Open JARVIS | accessory circular, corner, rectangular, inline | Opens the Watch app; full-colour canonical art except inline system fallback. |
-| Air Purifier | accessory circular, corner, rectangular, inline | Read-only glanceable status. |
 
 ### Data and interaction rules
 
-- Launcher timelines use `.never`; state timelines request refresh about every
-  15 minutes, subject to WidgetKit scheduling.
+- Launcher timelines use `.never`; Neural Core timelines request refresh about
+  every 15 minutes, subject to WidgetKit scheduling.
 - State becomes stale after 15 minutes or when `jarvisd` marks it stale.
 - Only concurrent timeline reads are coalesced; completed attempts are not
   retained as a process-level refresh cache.
 - No remaining widget contains an App Intent button or hardware-write path.
-- Purifier widgets remain read-only.
 - Widget links retain their documented Home, Watch-app, or terminal destination.
 
 Personal Team provisioning cannot provide App Groups or shared cross-target
@@ -2615,7 +2614,7 @@ approved clean reinstall becomes necessary; never alter pairing records.
 | Watch app direct | One representative current-state command | Pending, correlated result, and refreshed state. |
 | Watch app relay | Disable direct path and repeat guarded command | iPhone relay returns one result; duplicate request executes once. |
 | Watch app offline | Remove direct and relay | Cached state is stale and writes fail/block honestly. |
-| Widgets | Inspect both galleries after Build 115 | Only Neural Core, Open JARVIS, and read-only Air Purifier remain; no plug widget or control appears. |
+| Widgets | Inspect both galleries after Build 118 | Only Neural Core and Open JARVIS remain; no plug, purifier, or hardware-control widget appears. |
 | iPhone networking | Wi-Fi/cellular switch and Local Network deny/re-enable | Automatic recovery and truthful path/error state. |
 | Events | Inspect after targeted actions | User actions appear once; collector noise is absent. |
 | Disposable service UI | One reversible approved smoke | Correct status, confirmation, action, and event. |
