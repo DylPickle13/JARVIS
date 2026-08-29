@@ -428,6 +428,10 @@ reject_match 'retired Tailscale node address is still present' -RqsF '100.96.55.
   JARVIS JARVISWatch JARVISWidget JARVISWatchWidget JARVISKit/Sources jarvisd
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVIS/AppState.swift
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'client.resolveState(' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'if let preferredEndpoint {' JARVISKit/Sources/JARVISKit/JarvisClient.swift
+grep -q 'usedDiscovery: false' JARVISKit/Sources/JARVISKit/JarvisClient.swift
+reject_match 'Watch refresh still issues a redundant post-discovery health request' -Fq '_ = try await client.health(endpoint)' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'sceneDidBecomeActive' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'TimelineView(.periodic(from: .now, by: 15))' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'model.sceneDidEnterAlwaysOn()' JARVISWatch/Views/WatchConnectView.swift

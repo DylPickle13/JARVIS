@@ -292,25 +292,23 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         if connectionState != .connected { connectionState = .connecting }
         errorMessage = nil
 
+        let preferredEndpoint = store.endpointURL
         let candidates: [URL]
-        if forceEndpointForTesting, let endpoint = store.endpointURL {
-            candidates = [endpoint]
+        if forceEndpointForTesting, let preferredEndpoint {
+            candidates = [preferredEndpoint]
         } else {
-            candidates = JarvisEndpoints.candidates(override: store.endpointURL)
+            candidates = JarvisEndpoints.candidates(override: preferredEndpoint)
         }
-        guard let discovered = await client.discover(candidates, timeout: 3) else {
-            guard !Task.isCancelled else { return }
-            useRelayOrCache()
-            return
-        }
-        guard !Task.isCancelled else { return }
-        store.endpointURLString = discovered.absoluteString
         do {
-            let endpoint = JarvisEndpoint(baseURL: discovered, token: store.token ?? "")
-            _ = try await client.health(endpoint)
-            let state = try await client.state(endpoint)
+            let resolved = try await client.resolveState(
+                preferredEndpoint: preferredEndpoint,
+                candidates: candidates,
+                token: store.token ?? "",
+                discoveryTimeout: 3
+            )
             guard !Task.isCancelled else { return }
-            acceptDirectState(state)
+            store.endpointURLString = resolved.endpointURL.absoluteString
+            acceptDirectState(resolved.state)
         } catch is CancellationError {
             return
         } catch let error as JarvisError {

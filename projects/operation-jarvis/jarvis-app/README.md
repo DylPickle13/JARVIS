@@ -249,6 +249,11 @@ and quality text use `xhigh` purple on iPhone and Watch, while the iPhone power
 toggle, mode picker—including the tappable **Auto** label—and manual fan slider
 explicitly inherit the adaptive purple accent. Green/yellow/red air-quality
 severity, stale warnings, failures, and pending-confirmation colors remain semantic.
+Build 113 reduces Watch dashboard network work without changing its accepted
+15-second active/Always-On cadence: each ordinary refresh first requests state
+from the last known-good endpoint, and only runs bounded health discovery after
+that route fails. Discovery recovery proceeds directly to state without a second
+redundant health request; relay/cache fallback and stale-state behavior are unchanged.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

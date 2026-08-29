@@ -128,6 +128,93 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertTrue(started.running)
     }
 
+    func testResolveStateUsesPreferredEndpointWithoutDiscovery() async throws {
+        let preferred = URL(string: "http://preferred.test:8790")!
+        let probes = ProbeCounter()
+        let client = JarvisClient(session: session) { _, _ in
+            await probes.increment()
+            return true
+        }
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.host, preferred.host)
+            XCTAssertEqual(request.url?.path, "/api/v1/state")
+            XCTAssertEqual(request.timeoutInterval, 1, accuracy: 0.01)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            return MockURLProtocol.response(request, status: 200, body: #"{"ok":true}"#)
+        }
+
+        let result = try await client.resolveState(
+            preferredEndpoint: preferred,
+            candidates: [preferred, URL(string: "http://fallback.test:8790")!],
+            token: "secret",
+            discoveryTimeout: 1
+        )
+        let probeCount = await probes.value
+
+        XCTAssertEqual(result.endpointURL, preferred)
+        XCTAssertFalse(result.usedDiscovery)
+        XCTAssertTrue(result.state.ok)
+        XCTAssertEqual(probeCount, 0)
+    }
+
+    func testResolveStateDiscoversOnlyAfterPreferredEndpointFails() async throws {
+        let preferred = URL(string: "http://preferred.test:8790")!
+        let fallback = URL(string: "http://fallback.test:8790")!
+        let requests = RequestRecorder()
+        let probes = ProbeRecorder()
+        let client = JarvisClient(session: session) { candidate, _ in
+            await probes.record(candidate)
+            return candidate == fallback
+        }
+        MockURLProtocol.handler = { request in
+            requests.record(request)
+            XCTAssertEqual(request.url?.path, "/api/v1/state")
+            if request.url?.host == preferred.host {
+                return MockURLProtocol.response(request, status: 503, body: #"{"ok":false}"#)
+            }
+            return MockURLProtocol.response(request, status: 200, body: #"{"ok":true}"#)
+        }
+
+        let result = try await client.resolveState(
+            preferredEndpoint: preferred,
+            candidates: [preferred, fallback],
+            token: "secret",
+            discoveryTimeout: 1
+        )
+        let probedURLs = await probes.values
+
+        XCTAssertEqual(result.endpointURL, fallback)
+        XCTAssertTrue(result.usedDiscovery)
+        XCTAssertEqual(requests.hosts, [preferred.host!, fallback.host!])
+        XCTAssertEqual(probedURLs, [fallback])
+    }
+
+    func testResolveStatePreservesPreferredFailureWhenNoAlternateResponds() async throws {
+        let preferred = URL(string: "http://preferred.test:8790")!
+        let probes = ProbeCounter()
+        let client = JarvisClient(session: session) { _, _ in
+            await probes.increment()
+            return false
+        }
+        MockURLProtocol.handler = { request in
+            MockURLProtocol.response(request, status: 503, body: #"{"ok":false}"#)
+        }
+
+        do {
+            _ = try await client.resolveState(
+                preferredEndpoint: preferred,
+                candidates: [preferred],
+                token: "secret",
+                discoveryTimeout: 1
+            )
+            XCTFail("expected preferred endpoint failure")
+        } catch let JarvisError.http(status, _) {
+            XCTAssertEqual(status, 503)
+        }
+        let probeCount = await probes.value
+        XCTAssertEqual(probeCount, 0)
+    }
+
     func testDiscoveryUsesEarlyLowerPrioritySuccessAfterHigherPriorityFails() async {
         let higher = URL(string: "http://higher.test:8790")!
         let lower = URL(string: "http://lower.test:8790")!
@@ -210,6 +297,24 @@ final class JarvisClientTests: XCTestCase {
 private actor ProbeCounter {
     private(set) var value = 0
     func increment() { value += 1 }
+}
+
+private actor ProbeRecorder {
+    private(set) var values: [URL] = []
+    func record(_ value: URL) { values.append(value) }
+}
+
+private final class RequestRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var requests: [URLRequest] = []
+
+    var hosts: [String] {
+        lock.withLock { requests.compactMap { $0.url?.host } }
+    }
+
+    func record(_ request: URLRequest) {
+        lock.withLock { requests.append(request) }
+    }
 }
 
 private final class MockURLProtocol: URLProtocol {

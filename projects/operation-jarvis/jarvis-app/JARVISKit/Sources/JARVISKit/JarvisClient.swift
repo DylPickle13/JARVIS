@@ -42,6 +42,21 @@ public struct JarvisEndpoint: Equatable, Sendable {
     }
 }
 
+/// A state snapshot paired with the endpoint that actually served it. Watch
+/// clients persist this URL so ordinary refreshes can bypass endpoint
+/// discovery until the known-good route fails.
+public struct ResolvedJarvisState: Equatable, Sendable {
+    public let endpointURL: URL
+    public let state: StateSnapshot
+    public let usedDiscovery: Bool
+
+    public init(endpointURL: URL, state: StateSnapshot, usedDiscovery: Bool) {
+        self.endpointURL = endpointURL
+        self.state = state
+        self.usedDiscovery = usedDiscovery
+    }
+}
+
 /// The boundary consumed by AppState, widgets, and the watch relay. Keeping
 /// it separate from URLSession makes lifecycle and stale-state behavior
 /// testable without a live daemon.
@@ -102,9 +117,11 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         _ path: String,
         method: String = "GET",
         body: Data? = nil,
+        requestTimeout: TimeInterval? = nil,
         as type: T.Type
     ) async throws -> T {
         var request = try makeRequest(endpoint, path, method: method)
+        if let requestTimeout { request.timeoutInterval = max(0.2, requestTimeout) }
         request.httpBody = body
         let data: Data
         let response: URLResponse
@@ -153,6 +170,59 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         }, onCancel: {
             coordinator.cancel()
         })
+    }
+
+    /// Fetch state directly from the last known-good endpoint. Discovery is a
+    /// bounded recovery path, not part of every refresh. The discovery probe
+    /// already validates `/health`, so a successful recovery proceeds straight
+    /// to `/api/v1/state` without issuing a redundant second health request.
+    public func resolveState(
+        preferredEndpoint: URL?,
+        candidates: [URL],
+        token: String,
+        discoveryTimeout: TimeInterval = 3.0
+    ) async throws -> ResolvedJarvisState {
+        var preferredFailure: JarvisError?
+
+        if let preferredEndpoint {
+            do {
+                let endpoint = JarvisEndpoint(baseURL: preferredEndpoint, token: token)
+                let state = try await perform(
+                    endpoint,
+                    "/api/v1/state",
+                    requestTimeout: discoveryTimeout,
+                    as: StateSnapshot.self
+                )
+                return ResolvedJarvisState(
+                    endpointURL: preferredEndpoint,
+                    state: state,
+                    usedDiscovery: false
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as JarvisError {
+                preferredFailure = error
+            } catch {
+                preferredFailure = .transport(error.localizedDescription)
+            }
+        }
+
+        guard !Task.isCancelled else { throw CancellationError() }
+        // A failed state read is stronger evidence than a health probe, so do
+        // not immediately re-probe the same route. If no alternate succeeds,
+        // the stored route remains intact and the next scheduled refresh can
+        // try it again.
+        let recoveryCandidates = candidates.filter { $0 != preferredEndpoint }
+        guard let discovered = await discover(recoveryCandidates, timeout: discoveryTimeout) else {
+            guard !Task.isCancelled else { throw CancellationError() }
+            throw preferredFailure ?? JarvisError.transport("No JARVIS endpoint responded.")
+        }
+        let state = try await state(JarvisEndpoint(baseURL: discovered, token: token))
+        return ResolvedJarvisState(
+            endpointURL: discovered,
+            state: state,
+            usedDiscovery: true
+        )
     }
 
     // MARK: - Endpoints
