@@ -503,6 +503,13 @@ grep -q 'public static let maximumDeliveryAge: TimeInterval = 25' JARVISKit/Sour
 grep -q 'validateCommandDelivery(raw, requestID: requestID)' JARVISKit/Sources/JARVISKit/WatchBridge.swift
 grep -q 'failure(.confirmationUnavailable)' JARVISKit/Sources/JARVISKit/WatchBridge.swift
 grep -q 'Never retry an' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'public enum WatchStatePublicationPolicy' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+grep -q 'public func sendState(json: Data, requestID: String)' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+reject_match 'immediate Watch state publication must require explicit request correlation' -Fq 'sendState(json: Data, requestID: String =' JARVISKit/Sources/JARVISKit/WatchBridge.swift
+grep -q 'WatchStatePublicationPolicy.shouldAccept(state, over: self.lastState)' JARVISWatch/Views/WatchConnectView.swift
+reject_match 'routine iPhone state refresh must not send an immediate duplicate to Watch' -Fq 'WatchBridge.shared.sendState' JARVIS/AppState.swift
+[[ "$(grep -c 'bridge.sendState(json: data, requestID: requestID)' JARVIS/AppStateWatchBridge.swift)" == "1" ]]
+reject_match 'explicit Watch state reply must not republish the same application context' -Fq 'bridge.updateApplicationContext' JARVIS/AppStateWatchBridge.swift
 reject_match 'interactive Watch relay writes must never use durable queued delivery' -Fq 'transferUserInfo' JARVISKit/Sources/JARVISKit/WatchBridge.swift
 reject_match 'Watch relay must not expose queued command delivery switches' -Fq 'queueIfUnreachable' JARVISKit/Sources/JARVISKit/WatchBridge.swift
 reject_match 'Watch relay UI must not poll a side-channel response dictionary' -E 'waitForRelayResponse|relayResponses|RelayResponse' JARVISWatch/Views/WatchConnectView.swift

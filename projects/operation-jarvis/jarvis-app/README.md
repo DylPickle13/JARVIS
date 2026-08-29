@@ -280,7 +280,13 @@ removes both plug-widget kinds from the iPhone and Watch extensions, along with 
 widget-only App Intents, configurable providers, command feedback store, and retired
 source files. Plug control remains fully available inside both native apps. Each
 extension now publishes exactly Neural Core, Open JARVIS, and read-only Air Purifier;
-no remaining widget can issue a hardware write.
+no remaining widget can issue a hardware write. Build 116 removes duplicate Watch
+state publication: routine iPhone snapshots now use only coalesced latest-value
+application context, while immediate `sendMessage` state delivery is reserved for
+explicit request-ID replies. Both hosts reject exact duplicates and older generated
+snapshots; the Watch therefore cannot let delayed application context overwrite a
+newer direct response or refresh an old cache timestamp. Untimestamped legacy
+snapshots remain compatible when no timestamped state would be displaced.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

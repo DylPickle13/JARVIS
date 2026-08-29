@@ -127,7 +127,8 @@ public final class AppState: ObservableObject {
         WatchBridge.shared.delegate = self
         WatchBridge.shared.start()
         if let snapshot = lastState, let data = try? JSONEncoder().encode(snapshot) {
-            WatchBridge.shared.sendState(json: data)
+            // Ordinary publication is latest-value only. Immediate state messages
+            // are reserved for an explicit Watch request with its request ID.
             WatchBridge.shared.updateApplicationContext(stateJSON: data, endpoint: currentEndpoint?.absoluteString)
         }
         if let terminalConfiguration = watchTerminalProvisioning.configuration {
@@ -292,7 +293,8 @@ public final class AppState: ObservableObject {
             SnapshotStore().save(snapshot)
             if widgetsChanged { WidgetCenter.shared.reloadAllTimelines() }
             if let data = try? JSONEncoder().encode(snapshot) {
-                WatchBridge.shared.sendState(json: data)
+                // Application context coalesces routine snapshots and remains
+                // available when the Watch was not immediately reachable.
                 WatchBridge.shared.updateApplicationContext(stateJSON: data, endpoint: currentEndpoint?.absoluteString)
             }
             stateErrorMessage = nil

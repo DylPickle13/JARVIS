@@ -15,14 +15,17 @@ extension AppState: WatchBridgeDelegate {
                   self.stateErrorMessage == nil,
                   let state = self.lastState,
                   let data = try? JSONEncoder().encode(state) else { return }
+            // This correlated reply is the only immediate state publication.
+            // performFetchState already updated latest-value application context.
             bridge.sendState(json: data, requestID: requestID)
-            bridge.updateApplicationContext(stateJSON: data, endpoint: self.currentEndpoint?.absoluteString)
         }
     }
 
     public nonisolated func watchBridgeDidReceiveState(_ bridge: WatchBridge, json: Data) {
         Task { @MainActor [weak self] in
-            guard let self, let state = try? JSONDecoder().decode(StateSnapshot.self, from: json) else { return }
+            guard let self,
+                  let state = try? JSONDecoder().decode(StateSnapshot.self, from: json),
+                  WatchStatePublicationPolicy.shouldAccept(state, over: self.lastState) else { return }
             self.lastState = state
             SnapshotStore().save(state)
         }

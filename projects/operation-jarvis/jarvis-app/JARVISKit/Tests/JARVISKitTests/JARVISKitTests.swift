@@ -365,6 +365,39 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertTrue(WatchRelayCommandPolicy.isFresh(sentAt: sentAt, now: now))
     }
 
+    func testWatchStatePublicationAcceptsOnlyNewerTimestampedSnapshots() {
+        let current = StateSnapshot(
+            ok: true,
+            generatedAt: "2026-08-29T12:34:56.100Z",
+            summary: Summary(plugsOn: 1, plugsTotal: 2, purifierOn: true, pm25: 3, piActive: 1)
+        )
+        let older = StateSnapshot(ok: true, generatedAt: "2026-08-29T12:34:55Z")
+        let sameGenerationChanged = StateSnapshot(ok: false, generatedAt: "2026-08-29T12:34:56.100Z")
+        let newer = StateSnapshot(ok: true, generatedAt: "2026-08-29T12:34:56.250Z")
+
+        XCTAssertFalse(WatchStatePublicationPolicy.shouldAccept(current, over: current))
+        XCTAssertFalse(WatchStatePublicationPolicy.shouldAccept(older, over: current))
+        XCTAssertFalse(WatchStatePublicationPolicy.shouldAccept(sameGenerationChanged, over: current))
+        XCTAssertTrue(WatchStatePublicationPolicy.shouldAccept(newer, over: current))
+    }
+
+    func testWatchStatePublicationFailsClosedWhenOnlyIncomingTimestampIsMalformed() {
+        let timestamped = StateSnapshot(ok: true, generatedAt: "2026-08-29T12:34:56Z")
+        let malformed = StateSnapshot(ok: false, generatedAt: "not-a-date")
+
+        XCTAssertFalse(WatchStatePublicationPolicy.shouldAccept(malformed, over: timestamped))
+        XCTAssertTrue(WatchStatePublicationPolicy.shouldAccept(timestamped, over: malformed))
+        XCTAssertTrue(WatchStatePublicationPolicy.shouldAccept(timestamped, over: nil))
+    }
+
+    func testWatchStatePublicationRetainsLegacyUntimestampedCompatibility() {
+        let current = StateSnapshot(ok: true)
+        let changed = StateSnapshot(ok: false)
+
+        XCTAssertFalse(WatchStatePublicationPolicy.shouldAccept(current, over: current))
+        XCTAssertTrue(WatchStatePublicationPolicy.shouldAccept(changed, over: current))
+    }
+
     func testWatchPurifierCommandsAreClosedValidatedAndMatchConfirmedState() throws {
         let purifier = try JSONDecoder().decode(
             PurifierSubsystem.self,

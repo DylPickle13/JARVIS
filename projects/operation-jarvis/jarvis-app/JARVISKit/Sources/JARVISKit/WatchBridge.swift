@@ -42,6 +42,39 @@ public enum WatchRelayCommandPolicy {
     }
 }
 
+/// Orders state arriving over WatchConnectivity so a delayed latest-value
+/// context cannot replace a newer direct or relayed snapshot. Equal generations
+/// are duplicates even if they arrived through different WCSession transports.
+public enum WatchStatePublicationPolicy {
+    public static func shouldAccept(_ candidate: StateSnapshot, over current: StateSnapshot?) -> Bool {
+        guard let current else { return true }
+        if candidate == current { return false }
+
+        let candidateDate = parseTimestamp(candidate.generatedAt)
+        let currentDate = parseTimestamp(current.generatedAt)
+        switch (candidateDate, currentDate) {
+        case let (.some(candidateDate), .some(currentDate)):
+            return candidateDate > currentDate
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        case (.none, .none):
+            // Retain compatibility with legacy snapshots that had no generation
+            // timestamp. Exact duplicates were already rejected above.
+            return true
+        }
+    }
+
+    private static func parseTimestamp(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) { return date }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value)
+    }
+}
+
 public enum WatchPurifierSetting: String, Codable, Equatable, Sendable {
     case power
     case mode
@@ -224,7 +257,7 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         send(WatchMessage(type: "stateRequest"))
     }
 
-    public func sendState(json: Data, requestID: String = UUID().uuidString) {
+    public func sendState(json: Data, requestID: String) {
         send(WatchMessage(type: "state", requestID: requestID, payload: json))
     }
 
@@ -587,7 +620,7 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     public private(set) var isActivationNeeded = true
     public func start() {}
     public func requestState() {}
-    public func sendState(json: Data, requestID: String = UUID().uuidString) {}
+    public func sendState(json: Data, requestID: String) {}
     public func requestPlugCommand(
         name: String,
         isOn: Bool,
