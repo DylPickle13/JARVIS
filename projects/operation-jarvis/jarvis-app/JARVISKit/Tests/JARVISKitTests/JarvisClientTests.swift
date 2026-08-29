@@ -39,6 +39,24 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertEqual(result.version, "test")
     }
 
+    func testUnsupportedEndpointFailsBeforeTokenBearingTransport() async throws {
+        MockURLProtocol.handler = { request in
+            XCTFail("unsupported endpoint reached transport: \(request)")
+            return MockURLProtocol.response(request, status: 500, body: #"{"ok":false}"#)
+        }
+        let unsupported = JarvisEndpoint(
+            baseURL: URL(string: "ftp://untrusted.test:8790")!,
+            token: "must-not-be-sent"
+        )
+
+        do {
+            _ = try await client.health(unsupported)
+            XCTFail("expected bad URL")
+        } catch let JarvisError.badURL(value) {
+            XCTAssertEqual(value, "ftp://untrusted.test:8790")
+        }
+    }
+
     func testCodexQuotaRefreshUsesAuthenticatedReadOnlyStateQuery() async throws {
         MockURLProtocol.handler = { request in
             XCTAssertEqual(request.httpMethod, "GET")
@@ -213,6 +231,22 @@ final class JarvisClientTests: XCTestCase {
         }
         let probeCount = await probes.value
         XCTAssertEqual(probeCount, 0)
+    }
+
+    func testDiscoveryNeverProbesUnsupportedEndpoints() async {
+        let unsupported = URL(string: "ftp://untrusted.test:8790")!
+        let approved = URL(string: "http://approved.test:8790")!
+        let probes = ProbeRecorder()
+        let client = JarvisClient(session: session) { candidate, _ in
+            await probes.record(candidate)
+            return true
+        }
+
+        let result = await client.discover([unsupported, approved], timeout: 1)
+        let probedURLs = await probes.values
+
+        XCTAssertEqual(result, approved)
+        XCTAssertEqual(probedURLs, [approved])
     }
 
     func testDiscoveryUsesEarlyLowerPrioritySuccessAfterHigherPriorityFails() async {

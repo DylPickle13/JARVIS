@@ -305,7 +305,12 @@ file and response identifier together. Playback, retries, certificate pinning,
 and terminal routing are unchanged. Build 118 removes both read-only Air Purifier
 widget kinds and their widget-only presentation source from iPhone and Watch.
 Each extension now publishes exactly Neural Core and Open JARVIS. Native iPhone
-and Watch purifier status and guarded controls remain unchanged.
+and Watch purifier status and guarded controls remain unchanged. Build 119 adds
+one shared fail-closed jarvisd endpoint policy across iPhone input, persistence,
+Watch synchronization, discovery, and final request construction. Existing LAN
+and Tailscale HTTP endpoints plus HTTPS remain supported and normalized; missing
+hosts, invalid ports, credentials, non-root paths, queries, fragments, and every
+other explicit scheme are rejected before a token-bearing request can be built.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

@@ -33,7 +33,7 @@ extension AppState: WatchBridgeDelegate {
 
     public nonisolated func watchBridgeDidReceiveEndpoint(_ bridge: WatchBridge, endpoint: String) {
         Task { @MainActor [weak self] in
-            guard let self, let url = URL(string: endpoint), url.scheme != nil, url.host != nil else { return }
+            guard let self, let url = JarvisEndpointURLPolicy.parse(endpoint) else { return }
             self.store.endpointURLString = url.absoluteString
             self.endpointDraft = url.absoluteString
         }

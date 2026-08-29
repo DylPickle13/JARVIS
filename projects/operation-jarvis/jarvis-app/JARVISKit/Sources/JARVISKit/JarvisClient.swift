@@ -95,10 +95,20 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
     // MARK: - Request plumbing
 
     private func makeRequest(_ endpoint: JarvisEndpoint, _ path: String, method: String = "GET") throws -> URLRequest {
-        let base = endpoint.baseURL.absoluteString.hasSuffix("/")
-            ? String(endpoint.baseURL.absoluteString.dropLast())
-            : endpoint.baseURL.absoluteString
-        guard let url = URL(string: base + path), url.scheme != nil, url.host != nil else {
+        guard let baseURL = JarvisEndpointURLPolicy.normalize(endpoint.baseURL),
+              let requestComponents = URLComponents(string: path),
+              requestComponents.scheme == nil,
+              requestComponents.host == nil,
+              requestComponents.user == nil,
+              requestComponents.password == nil,
+              requestComponents.fragment == nil,
+              requestComponents.percentEncodedPath.hasPrefix("/"),
+              var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            throw JarvisError.badURL(endpoint.baseURL.absoluteString)
+        }
+        components.percentEncodedPath = requestComponents.percentEncodedPath
+        components.percentEncodedQuery = requestComponents.percentEncodedQuery
+        guard let url = components.url else {
             throw JarvisError.badURL(endpoint.baseURL.absoluteString)
         }
         var request = URLRequest(url: url)
@@ -159,7 +169,11 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
     /// Tailscale timeout.
     public func discover(_ candidates: [URL], timeout: TimeInterval = 3.0) async -> URL? {
         var seen = Set<URL>()
-        let unique = candidates.filter { seen.insert($0).inserted }
+        let unique = candidates.compactMap { candidate -> URL? in
+            guard let normalized = JarvisEndpointURLPolicy.normalize(candidate),
+                  seen.insert(normalized).inserted else { return nil }
+            return normalized
+        }
         guard !unique.isEmpty else { return nil }
         if Task.isCancelled { return nil }
         let coordinator = DiscoveryCoordinator(candidates: unique, probe: discoveryProbe)
@@ -182,11 +196,14 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         token: String,
         discoveryTimeout: TimeInterval = 3.0
     ) async throws -> ResolvedJarvisState {
-        var preferredFailure: JarvisError?
+        let normalizedPreferred = preferredEndpoint.flatMap(JarvisEndpointURLPolicy.normalize)
+        var preferredFailure: JarvisError? = preferredEndpoint != nil && normalizedPreferred == nil
+            ? .badURL(preferredEndpoint?.absoluteString ?? "")
+            : nil
 
-        if let preferredEndpoint {
+        if let normalizedPreferred {
             do {
-                let endpoint = JarvisEndpoint(baseURL: preferredEndpoint, token: token)
+                let endpoint = JarvisEndpoint(baseURL: normalizedPreferred, token: token)
                 let state = try await perform(
                     endpoint,
                     "/api/v1/state",
@@ -194,7 +211,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
                     as: StateSnapshot.self
                 )
                 return ResolvedJarvisState(
-                    endpointURL: preferredEndpoint,
+                    endpointURL: normalizedPreferred,
                     state: state,
                     usedDiscovery: false
                 )
@@ -212,7 +229,9 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         // not immediately re-probe the same route. If no alternate succeeds,
         // the stored route remains intact and the next scheduled refresh can
         // try it again.
-        let recoveryCandidates = candidates.filter { $0 != preferredEndpoint }
+        let recoveryCandidates = candidates.filter {
+            JarvisEndpointURLPolicy.normalize($0) != normalizedPreferred
+        }
         guard let discovered = await discover(recoveryCandidates, timeout: discoveryTimeout) else {
             guard !Task.isCancelled else { throw CancellationError() }
             throw preferredFailure ?? JarvisError.transport("No JARVIS endpoint responded.")
@@ -378,6 +397,7 @@ private final class DiscoveryCoordinator: @unchecked Sendable {
 
 private extension JarvisClient {
     static func probeHealth(_ base: URL, timeout: TimeInterval) async -> Bool {
+        guard let base = JarvisEndpointURLPolicy.normalize(base) else { return false }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = timeout
         configuration.timeoutIntervalForResource = timeout

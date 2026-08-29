@@ -27,21 +27,24 @@ public final class EndpointStore: @unchecked Sendable {
         get { defaults.string(forKey: urlKey) }
         set {
             lock.lock(); defer { lock.unlock() }
-            if let newValue, !newValue.isEmpty {
-                defaults.set(newValue, forKey: urlKey)
-            } else {
+            guard let newValue else {
                 defaults.removeObject(forKey: urlKey)
+                return
             }
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                defaults.removeObject(forKey: urlKey)
+                return
+            }
+            // Invalid input never replaces a previously trusted endpoint.
+            guard let normalized = JarvisEndpointURLPolicy.parse(trimmed) else { return }
+            defaults.set(normalized.absoluteString, forKey: urlKey)
         }
     }
 
     public var endpointURL: URL? {
-        guard let s = endpointURLString, !s.isEmpty else { return nil }
-        var string = s
-        if !string.hasPrefix("http://") && !string.hasPrefix("https://") {
-            string = "http://" + string
-        }
-        return URL(string: string)
+        guard let value = endpointURLString else { return nil }
+        return JarvisEndpointURLPolicy.parse(value)
     }
 
     // MARK: - Token (secret, Keychain)

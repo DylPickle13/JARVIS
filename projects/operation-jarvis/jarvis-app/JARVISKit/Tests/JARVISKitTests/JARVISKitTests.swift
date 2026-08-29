@@ -235,6 +235,59 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertEqual(candidates[2].host, "100.87.28.34")
     }
 
+    func testEndpointURLPolicyNormalizesApprovedHTTPAndHTTPSRoots() throws {
+        XCTAssertEqual(
+            JarvisEndpointURLPolicy.parse(" 192.168.21.215:8790 ")?.absoluteString,
+            "http://192.168.21.215:8790"
+        )
+        XCTAssertEqual(
+            JarvisEndpointURLPolicy.parse("HTTPS://Example.COM:8790/")?.absoluteString,
+            "https://example.com:8790"
+        )
+        XCTAssertEqual(
+            JarvisEndpointURLPolicy.parse("[::1]:8790")?.absoluteString,
+            "http://[::1]:8790"
+        )
+        XCTAssertTrue(JarvisEndpoints.defaults.allSatisfy { JarvisEndpointURLPolicy.parse($0) != nil })
+    }
+
+    func testEndpointURLPolicyRejectsUnsupportedOrAmbiguousAuthorities() {
+        let rejected = [
+            "ftp://jarvis.test:8790",
+            "ftp:8790",
+            "file:///tmp/jarvis.sock",
+            "https://user:password@jarvis.test:8790",
+            "https://jarvis.test:8790/api",
+            "https://jarvis.test:8790?token=leak",
+            "https://jarvis.test:8790#fragment",
+            "https://:8790",
+            "https://jarvis.test:",
+            "https://jarvis.test:0",
+            "https://jarvis.test:65536",
+            "https://jarvis.test:not-a-port",
+        ]
+        for value in rejected {
+            XCTAssertNil(JarvisEndpointURLPolicy.parse(value), value)
+        }
+    }
+
+    func testEndpointStorePersistsOnlyNormalizedValidEndpoints() {
+        let suite = "jarvis.endpoint-policy.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = EndpointStore(defaults: defaults)
+
+        store.endpointURLString = " HTTPS://Example.COM:8790/ "
+        XCTAssertEqual(store.endpointURLString, "https://example.com:8790")
+        XCTAssertEqual(store.endpointURL?.absoluteString, "https://example.com:8790")
+
+        store.endpointURLString = "ftp://untrusted.test:8790"
+        XCTAssertEqual(store.endpointURLString, "https://example.com:8790")
+
+        defaults.set("file:///tmp/legacy", forKey: "jarvis.endpoint.url")
+        XCTAssertNil(store.endpointURL)
+    }
+
     func testDecodeCommandResultPlug() throws {
         let json = """
         {"ok": true, "action": "plug-status",

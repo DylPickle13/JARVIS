@@ -758,8 +758,6 @@ public final class AppState: ObservableObject {
     }
 
     private func endpointURL(from string: String) -> URL? {
-        var value = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !value.hasPrefix("http://") && !value.hasPrefix("https://") { value = "http://" + value }
-        return URL(string: value)
+        JarvisEndpointURLPolicy.parse(string)
     }
 }

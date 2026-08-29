@@ -454,6 +454,21 @@ reject_match 'Watch terminal must not use a navigation launcher' -qs 'Navigation
 reject_match 'Watch terminal must not open SSH directly' -RqsE 'import NIOSSH|import NIOPosix|import SwiftTerm' JARVISWatch
 reject_match 'terminal bridge must remain separate from jarvisd' -RqsF 'terminal/frame' jarvisd
 
+printf '%s\n' '== fail-closed endpoint URL contract =='
+grep -q 'public enum JarvisEndpointURLPolicy' JARVISKit/Sources/JARVISKit/Endpoints.swift
+grep -q 'private static let allowedSchemes: Set<String> = \["http", "https"\]' JARVISKit/Sources/JARVISKit/Endpoints.swift
+grep -q 'components.user == nil' JARVISKit/Sources/JARVISKit/Endpoints.swift
+grep -q 'components.password == nil' JARVISKit/Sources/JARVISKit/Endpoints.swift
+grep -q 'components.query == nil' JARVISKit/Sources/JARVISKit/Endpoints.swift
+grep -q 'components.fragment == nil' JARVISKit/Sources/JARVISKit/Endpoints.swift
+grep -q 'JarvisEndpointURLPolicy.parse(trimmed)' JARVISKit/Sources/JARVISKit/EndpointStore.swift
+grep -q 'JarvisEndpointURLPolicy.parse(string)' JARVIS/AppState.swift
+grep -q 'JarvisEndpointURLPolicy.parse(endpoint)' JARVIS/AppStateWatchBridge.swift
+grep -q 'JarvisEndpointURLPolicy.parse(endpoint)' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'JarvisEndpointURLPolicy.normalize(endpoint.baseURL)' JARVISKit/Sources/JARVISKit/JarvisClient.swift
+grep -q 'JarvisEndpointURLPolicy.normalize(candidate)' JARVISKit/Sources/JARVISKit/JarvisClient.swift
+reject_match 'endpoint bridges must not restore permissive scheme-and-host-only checks' -RqsF 'url.scheme != nil, url.host != nil' JARVIS JARVISWatch
+
 printf '%s\n' '== native refresh and Tailscale contract =='
 grep -q 'activeInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
@@ -468,7 +483,7 @@ reject_match 'retired Tailscale node address is still present' -RqsF '100.96.55.
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVIS/AppState.swift
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'client.resolveState(' JARVISWatch/Views/WatchConnectView.swift
-grep -q 'if let preferredEndpoint {' JARVISKit/Sources/JARVISKit/JarvisClient.swift
+grep -q 'if let normalizedPreferred {' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 grep -q 'usedDiscovery: false' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 reject_match 'Watch refresh still issues a redundant post-discovery health request' -Fq '_ = try await client.health(endpoint)' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'sceneDidBecomeActive' JARVISWatch/Views/WatchConnectView.swift
