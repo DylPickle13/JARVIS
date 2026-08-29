@@ -203,12 +203,21 @@ class TerminalService:
         self.speech_dir = speech_dir or SPEECH_DIR
         self.room_speech_client = room_speech_client or RoomSpeechClient()
         self.lock = threading.Lock()
+        self.frame_condition = threading.Condition(self.lock)
         self.speech_synthesis_lock = threading.Lock()
         self.speech_synthesis_events: Dict[str, threading.Event] = {}
         self.sequence = 0
         self.last_digest: Optional[str] = None
         self.last_frame: Optional[Dict[str, Any]] = None
         self.processed_request_ids: Dict[str, float] = {}
+        self.frame_poll_interval = POLL_INTERVAL_SECONDS
+        self.long_poll_seconds = LONG_POLL_SECONDS
+        self.capture_attempt = 0
+        self.last_capture_error: Optional[TerminalError] = None
+        self.sampler_active_until = 0.0
+        self.next_sample_at = 0.0
+        self.sampler_thread: Optional[threading.Thread] = None
+        self.sampler_stopping = False
 
     @staticmethod
     def tmux_arguments(*arguments: str) -> List[str]:
@@ -222,6 +231,60 @@ class TerminalService:
         )
         if result.returncode != 0:
             raise TerminalError("The persistent JARVIS session could not be created.")
+
+    def _activate_sampler_locked(self, active_until: float, force_sample: bool = False) -> None:
+        if self.sampler_stopping:
+            raise TerminalError("The terminal frame sampler is stopping.")
+        self.sampler_active_until = max(self.sampler_active_until, active_until)
+        if force_sample:
+            self.next_sample_at = 0.0
+        if self.sampler_thread is None:
+            self.next_sample_at = 0.0
+            thread = threading.Thread(
+                target=self._sampler_loop,
+                name="jarvis-terminal-frame-sampler",
+                daemon=True,
+            )
+            self.sampler_thread = thread
+            thread.start()
+        self.frame_condition.notify_all()
+
+    def _sampler_loop(self) -> None:
+        current_thread = threading.current_thread()
+        try:
+            while True:
+                with self.frame_condition:
+                    now = time.monotonic()
+                    if self.sampler_stopping or now >= self.sampler_active_until:
+                        return
+                    wait_seconds = min(
+                        max(0.0, self.next_sample_at - now),
+                        max(0.0, self.sampler_active_until - now),
+                    )
+                    if wait_seconds > 0:
+                        self.frame_condition.wait(timeout=wait_seconds)
+                        continue
+                    try:
+                        self._capture_locked()
+                        self.last_capture_error = None
+                    except (TerminalError, OSError, subprocess.SubprocessError) as error:
+                        self.last_capture_error = TerminalError(str(error) or "Terminal capture failed.")
+                    self.capture_attempt += 1
+                    self.next_sample_at = time.monotonic() + self.frame_poll_interval
+                    self.frame_condition.notify_all()
+        finally:
+            with self.frame_condition:
+                if self.sampler_thread is current_thread:
+                    self.sampler_thread = None
+                self.frame_condition.notify_all()
+
+    def close(self) -> None:
+        with self.frame_condition:
+            self.sampler_stopping = True
+            thread = self.sampler_thread
+            self.frame_condition.notify_all()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2)
 
     def _read_speech_marker(
         self,
@@ -407,16 +470,35 @@ class TerminalService:
                 "#{session_created}",
             ]
         )
-        metadata = self.runner.run(
-            self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, metadata_format),
-            check=False,
+        # One tmux client invocation emits both metadata and the exact ANSI
+        # grid. tmux clamps an over-deep negative history start to the oldest
+        # retained row, preserving the former bounded-tail semantics without a
+        # preliminary process solely to calculate that start.
+        capture_arguments = self.tmux_arguments(
+            "display-message",
+            "-p",
+            "-t",
+            TMUX_TARGET,
+            metadata_format,
+            ";",
+            "capture-pane",
+            "-p",
+            "-e",
+            "-N",
+            "-S",
+            str(-MAX_SCROLLBACK_ROWS),
+            "-t",
+            TMUX_TARGET,
         )
-        if metadata.returncode != 0:
+        combined = self.runner.run(capture_arguments, check=False)
+        if combined.returncode != 0:
             self.ensure_session()
-            metadata = self.runner.run(
-                self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, metadata_format)
-            )
-        values = metadata.stdout.decode("utf-8", errors="replace").strip().split("\t")
+            combined = self.runner.run(capture_arguments)
+        decoded = combined.stdout.decode("utf-8", errors="replace")
+        metadata_line, separator, captured = decoded.partition("\n")
+        if not separator:
+            raise TerminalError("The JARVIS pane capture was invalid.")
+        values = metadata_line.split("\t")
         if len(values) != 12 or values[7] == "1" or not values[9].startswith("%"):
             raise TerminalError("The persistent JARVIS pane is unavailable.")
         try:
@@ -436,19 +518,6 @@ class TerminalService:
         # here; they remain ordinary terminal cells captured verbatim. A bounded
         # tail of tmux history lets the Watch Crown move a local, read-only
         # viewport without injecting unreliable mouse sequences into Pi.
-        history_start = -min(max(0, history), MAX_SCROLLBACK_ROWS)
-        captured = self.runner.run(
-            self.tmux_arguments(
-                "capture-pane",
-                "-p",
-                "-e",
-                "-N",
-                "-S",
-                str(history_start),
-                "-t",
-                TMUX_TARGET,
-            )
-        ).stdout.decode("utf-8", errors="replace")
         if captured.endswith("\n"):
             captured = captured[:-1]
         ansi_lines = captured.split("\n") if captured else []
@@ -493,13 +562,27 @@ class TerminalService:
         return dict(self.last_frame)
 
     def frame_after(self, after: int) -> Dict[str, Any]:
-        deadline = time.monotonic() + LONG_POLL_SECONDS
-        while True:
-            with self.lock:
-                frame = self._capture_locked()
-            if frame["sequence"] > after or time.monotonic() >= deadline:
-                return frame
-            time.sleep(POLL_INTERVAL_SECONDS)
+        deadline = time.monotonic() + self.long_poll_seconds
+        with self.frame_condition:
+            starting_attempt = self.capture_attempt
+            force_sample = self.last_frame is None or self.last_capture_error is not None
+            self._activate_sampler_locked(
+                deadline + self.frame_poll_interval,
+                force_sample=force_sample,
+            )
+            while True:
+                if self.last_frame is not None and self.last_frame["sequence"] > after:
+                    return dict(self.last_frame)
+                if self.capture_attempt > starting_attempt and self.last_capture_error is not None:
+                    raise TerminalError(str(self.last_capture_error))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    if self.last_frame is not None:
+                        return dict(self.last_frame)
+                    if self.last_capture_error is not None:
+                        raise TerminalError(str(self.last_capture_error))
+                    raise TerminalError("The terminal frame capture timed out.")
+                self.frame_condition.wait(timeout=remaining)
 
     def history_page(self, start: int, limit: int) -> Dict[str, Any]:
         """Capture one bounded, read-only page from the full tmux history.
@@ -649,6 +732,11 @@ class TerminalService:
             # within the daemon lifetime and is acknowledged as delivered.
             self.processed_request_ids[request_id] = time.monotonic()
             self._refresh_attached_clients_locked()
+            # If a Watch frame request is active, sample immediately after the
+            # confirmed write instead of waiting for the ordinary cadence.
+            if self.sampler_thread is not None:
+                self.next_sample_at = 0.0
+                self.frame_condition.notify_all()
             if len(self.processed_request_ids) > 100:
                 oldest = sorted(self.processed_request_ids.items(), key=lambda item: item[1])[:25]
                 for key, _ in oldest:
@@ -669,6 +757,10 @@ class TerminalHTTPServer(ThreadingHTTPServer):
         self.service = service
         self.token = token
         self.trusted_cidrs = trusted_cidrs
+
+    def server_close(self) -> None:
+        self.service.close()
+        super().server_close()
 
 
 class TerminalRequestHandler(BaseHTTPRequestHandler):

@@ -216,6 +216,11 @@ grep -q 'ssl.PROTOCOL_TLS_SERVER' terminald/jarvis_terminald.py
 grep -q 'hmac.compare_digest' terminald/jarvis_terminald.py
 grep -q 'MAX_INPUT_BYTES = 4096' terminald/jarvis_terminald.py
 grep -q 'capture-pane' terminald/jarvis_terminald.py
+grep -q 'self.frame_condition = threading.Condition(self.lock)' terminald/jarvis_terminald.py
+grep -q 'def _sampler_loop(self)' terminald/jarvis_terminald.py
+grep -q 'capture_arguments = self.tmux_arguments(' terminald/jarvis_terminald.py
+grep -q 'self.next_sample_at = 0.0' terminald/jarvis_terminald.py
+reject_match 'per-request terminal capture polling was restored' -Fq 'time.sleep(POLL_INTERVAL_SECONDS)' terminald/jarvis_terminald.py
 grep -q 'MAX_HISTORY_PAGE_ROWS = 256' terminald/jarvis_terminald.py
 grep -q 'def history_page(self, start: int, limit: int)' terminald/jarvis_terminald.py
 grep -q '"/v1/terminal/history"' terminald/jarvis_terminald.py

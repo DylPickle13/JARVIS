@@ -254,6 +254,13 @@ Build 113 reduces Watch dashboard network work without changing its accepted
 from the last known-good endpoint, and only runs bounded health discovery after
 that route fails. Discovery recovery proceeds directly to state without a second
 redundant health request; relay/cache fallback and stale-state behavior are unchanged.
+The subsequent terminald optimization preserves the accepted 100-millisecond frame
+cadence and complete legacy/ANSI response schema while replacing each HTTP handler's
+capture loop with one shared, lazy sampler. Metadata and the bounded ANSI grid now
+come from one batched read-only tmux invocation per sample; concurrent long polls
+share that result, confirmed input wakes the sampler immediately, and sampling stops
+after the bounded active-request lease expires. No attach, resize, copy-mode, or
+additional terminal input is introduced.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

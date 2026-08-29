@@ -42,7 +42,10 @@ optional Metal component; install it once with
   response-ID-matched `/v1/terminal/speech` relay: terminald reads only the
   current PID/tmux-bound extension marker, sends its private final text to the
   loopback room-audio Piper endpoint, and returns the WAV without exposing text
-  in terminal frames. It does not infer Pi concepts from ANSI, accept arbitrary
+  in terminal frames. Its lazy shared frame sampler preserves the 100-millisecond
+  cadence while batching metadata and ANSI capture into one read-only tmux
+  invocation; concurrent long polls share samples, and confirmed input triggers
+  an immediate refresh. It does not infer Pi concepts from ANSI, accept arbitrary
   speech text, control hardware, or route through `jarvisd`.
 - `jarvis-terminal-provisioning.sh` — prints the private, certificate-pinned
   setup code that is pasted once into iPhone Settings and transferred to the

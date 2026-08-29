@@ -33,7 +33,7 @@ class FakeRunner:
         if "list-clients" in arguments:
             return subprocess.CompletedProcess(arguments, 0, b"/dev/ttys001\n/dev/ttys002\n", b"")
         if "display-message" in arguments:
-            format_string = arguments[-1]
+            format_string = next((value for value in arguments if "#{" in value), "")
             if "#{pane_width}" in format_string:
                 stdout = "48\t28\t2\t6\t0\t1\t4\t0\t{}\t{}\t{}\t{}\n".format(
                     self.pane_pid,
@@ -50,6 +50,8 @@ class FakeRunner:
                     self.tmux_server_pid,
                     self.session_created_at,
                 ).encode()
+            if "capture-pane" in arguments:
+                stdout += self.capture
             return subprocess.CompletedProcess(arguments, 0, stdout, b"")
         if "capture-pane" in arguments:
             return subprocess.CompletedProcess(arguments, 0, self.capture, b"")
@@ -67,12 +69,19 @@ class FakeRoomSpeechClient:
 
 
 class TerminalServiceTests(unittest.TestCase):
+    def frame_service(self, runner, **kwargs):
+        service = terminald.TerminalService(runner, **kwargs)
+        service.frame_poll_interval = 0.01
+        service.long_poll_seconds = 0.05
+        self.addCleanup(service.close)
+        return service
+
     def test_frame_capture_is_stable_until_content_changes(self):
         runner = FakeRunner()
-        service = terminald.TerminalService(runner)
+        service = self.frame_service(runner)
 
         first = service.frame_after(0)
-        second = service.frame_after(0)
+        second = service.frame_after(first["sequence"])
         self.assertEqual(first["sequence"], 1)
         self.assertEqual(second["sequence"], 1)
         self.assertEqual(first["columns"], 48)
@@ -84,19 +93,80 @@ class TerminalServiceTests(unittest.TestCase):
         self.assertEqual(first["ansiLines"], first["lines"])
         self.assertEqual(first["screenStart"], 0)
         capture_call = next(call[0] for call in runner.calls if "capture-pane" in call[0])
+        self.assertIn("display-message", capture_call)
         self.assertIn("-e", capture_call)
         self.assertIn("-N", capture_call)
-        self.assertEqual(capture_call[capture_call.index("-S") + 1], "-4")
+        self.assertEqual(
+            capture_call[capture_call.index("-S") + 1],
+            str(-terminald.MAX_SCROLLBACK_ROWS),
+        )
 
         runner.capture = ("UPDATED\n" + ("\n" * 27)).encode()
-        third = service.frame_after(0)
+        third = service.frame_after(first["sequence"])
         self.assertEqual(third["sequence"], 2)
         self.assertEqual(third["lines"][0], "UPDATED")
+        frame_calls = [call[0] for call in runner.calls if "capture-pane" in call[0]]
+        self.assertTrue(all("display-message" in call for call in frame_calls))
+
+    def test_concurrent_long_polls_share_one_sampler_and_stop_when_idle(self):
+        runner = FakeRunner()
+        service = self.frame_service(runner)
+        service.frame_poll_interval = 0.02
+        service.long_poll_seconds = 0.07
+        first = service.frame_after(0)
+        time.sleep(0.11)
+        captures_before = len([call for call in runner.calls if "capture-pane" in call[0]])
+        results = []
+
+        def poll():
+            results.append(service.frame_after(first["sequence"]))
+
+        threads = [threading.Thread(target=poll) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=1)
+
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(frame["sequence"] == first["sequence"] for frame in results))
+        captures_after = len([call for call in runner.calls if "capture-pane" in call[0]])
+        self.assertGreaterEqual(captures_after - captures_before, 2)
+        self.assertLessEqual(captures_after - captures_before, 5)
+
+        time.sleep(0.12)
+        idle_count = len([call for call in runner.calls if "capture-pane" in call[0]])
+        time.sleep(0.06)
+        self.assertEqual(
+            len([call for call in runner.calls if "capture-pane" in call[0]]),
+            idle_count,
+        )
+
+    def test_confirmed_input_wakes_active_sampler_immediately(self):
+        runner = FakeRunner()
+        service = self.frame_service(runner)
+        service.frame_poll_interval = 1.0
+        service.long_poll_seconds = 0.5
+        first = service.frame_after(0)
+        result = []
+
+        thread = threading.Thread(
+            target=lambda: result.append(service.frame_after(first["sequence"])),
+        )
+        thread.start()
+        time.sleep(0.05)
+        runner.capture = ("AFTER INPUT\n" + ("\n" * 27)).encode()
+        service.send_input("sampler-wake", b"x", append_return=False)
+        thread.join(timeout=0.4)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(result[0]["sequence"], first["sequence"] + 1)
+        self.assertEqual(result[0]["lines"][0], "AFTER INPUT")
 
     def test_history_pages_cover_full_tmux_history_in_bounded_exact_ansi_ranges(self):
         runner = FakeRunner()
         runner.capture = b"old-0\n\x1b[1mold-1\x1b[0m\nold-2\n"
-        service = terminald.TerminalService(runner)
+        service = self.frame_service(runner)
 
         page = service.history_page(start=1, limit=3)
 
@@ -118,14 +188,14 @@ class TerminalServiceTests(unittest.TestCase):
     def test_frame_preserves_ansi_styles_and_strips_only_sgr_for_plain_lines(self):
         runner = FakeRunner()
         runner.capture = ("\x1b[3m\x1b[38;2;128;128;128mThinking\x1b[0m\n" + ("\n" * 27)).encode()
-        frame = terminald.TerminalService(runner).frame_after(0)
+        frame = self.frame_service(runner).frame_after(0)
         self.assertEqual(frame["lines"][0], "Thinking")
         self.assertEqual(frame["ansiLines"][0], "\x1b[3m\x1b[38;2;128;128;128mThinking\x1b[0m")
 
     def test_live_lines_remain_build_38_compatible_while_capture_adds_history(self):
         runner = FakeRunner()
         runner.capture = ("history-0\nhistory-1\nhistory-2\nhistory-3\n" + "screen\n" + ("\n" * 27)).encode()
-        frame = terminald.TerminalService(runner).frame_after(0)
+        frame = self.frame_service(runner).frame_after(0)
         self.assertEqual(frame["screenStart"], 4)
         self.assertEqual(len(frame["lines"]), 28)
         self.assertEqual(frame["lines"][0], "screen")
@@ -154,7 +224,7 @@ class TerminalServiceTests(unittest.TestCase):
                 encoding="utf-8",
             )
             marker.chmod(0o600)
-            service = terminald.TerminalService(runner, speech_dir=speech_dir)
+            service = self.frame_service(runner, speech_dir=speech_dir)
 
             frame = service.frame_after(0)
 
