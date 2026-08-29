@@ -286,7 +286,15 @@ application context, while immediate `sendMessage` state delivery is reserved fo
 explicit request-ID replies. Both hosts reject exact duplicates and older generated
 snapshots; the Watch therefore cannot let delayed application context overwrite a
 newer direct response or refresh an old cache timestamp. Untimestamped legacy
-snapshots remain compatible when no timestamped state would be displaced.
+snapshots remain compatible when no timestamped state would be displaced. The
+following jarvisd hardening moves daemon stderr into an owner-only rotating log:
+the active file is one MiB with three backups by default, and every emitted line
+is capped at 4,096 characters. Repetitive successful plain `GET /health` and
+`GET /api/v1/state` records are coalesced per client into a once-per-minute sample
+plus a suppressed-count summary. Non-success responses, writes, service/signing
+actions, explicit state-refresh queries, and connection failures remain fully
+logged. The size, backup-count, and sampling-interval limits are locally
+configurable through clamped `JARVISD_LOG_*` environment values.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

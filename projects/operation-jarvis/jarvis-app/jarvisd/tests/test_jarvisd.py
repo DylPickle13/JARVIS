@@ -28,6 +28,65 @@ class FakeRequest:
 
 
 class DaemonUnitTests(unittest.TestCase):
+    def test_bounded_log_writer_rotates_and_keeps_private_permissions(self):
+        with tempfile.TemporaryDirectory() as raw:
+            log_path = Path(raw) / "private" / "jarvisd.log"
+            writer = jarvisd.BoundedLogWriter(log_path, max_bytes=256, backup_count=2)
+            try:
+                for index in range(40):
+                    writer.write(f"entry-{index:02d}-" + ("x" * 32) + "\n")
+                writer.flush()
+            finally:
+                writer.close()
+
+            logs = sorted(log_path.parent.glob("jarvisd.log*"))
+            self.assertGreater(len(logs), 1)
+            self.assertLessEqual(len(logs), 3)
+            self.assertEqual(log_path.parent.stat().st_mode & 0o777, 0o700)
+            for path in logs:
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                self.assertLessEqual(path.stat().st_size, 256)
+            self.assertIn("entry-39", log_path.read_text(encoding="utf-8"))
+
+    def test_routine_request_log_gate_reports_suppressed_count(self):
+        now = [100.0]
+        gate = jarvisd.RoutineRequestLogGate(10, clock=lambda: now[0])
+
+        self.assertEqual(gate.record("127.0.0.1", "/health"), (True, 0))
+        self.assertEqual(gate.record("127.0.0.1", "/health"), (False, 0))
+        self.assertEqual(gate.record("127.0.0.1", "/health"), (False, 0))
+        now[0] += 10
+        self.assertEqual(gate.record("127.0.0.1", "/health"), (True, 2))
+
+    def test_request_logging_coalesces_only_plain_successful_reads(self):
+        handler = object.__new__(jarvisd.Handler)
+        handler.command = "GET"
+        handler.path = "/health"
+        handler.requestline = "GET /health HTTP/1.1"
+        handler.client_address = ("127.0.0.1", 1234)
+        messages = []
+        handler.log_message = lambda fmt, *args: messages.append(fmt % args)
+        gate = jarvisd.RoutineRequestLogGate(60, clock=lambda: 100.0)
+
+        with mock.patch.object(jarvisd, "ROUTINE_REQUEST_LOG_GATE", gate):
+            handler.log_request(200)
+            handler.log_request(200)
+            self.assertEqual(len(messages), 1)
+
+            handler.path = "/api/v1/state?refresh=codexQuota"
+            handler.requestline = "GET /api/v1/state?refresh=codexQuota HTTP/1.1"
+            handler.log_request(200)
+            self.assertEqual(len(messages), 2)
+
+            handler.path = "/health"
+            handler.requestline = "GET /health HTTP/1.1"
+            handler.log_request(401)
+            self.assertEqual(len(messages), 3)
+
+            handler.command = "POST"
+            handler.log_request(200)
+            self.assertEqual(len(messages), 4)
+
     def test_command_allowlist_rejects_non_string_and_shell_content(self):
         with self.assertRaises(jarvisd.CommandError):
             jarvisd.build_command(["status"], {})

@@ -31,6 +31,8 @@ import hmac
 import http.client
 import ipaddress
 import json
+import logging
+from logging.handlers import RotatingFileHandler
 import os
 import re
 import signal
@@ -118,6 +120,17 @@ ALLOWED_ORIGINS = {
 MAX_JSON_BODY_BYTES = int(os.environ.get("JARVISD_MAX_JSON_BODY_BYTES", str(64 * 1024)))
 SERVICES_FILE = Path(os.environ.get("JARVISD_SERVICES_FILE", str(JARVISD_DIR / "services.json")))
 EVENTS_FILE = Path(os.environ.get("JARVISD_EVENTS_FILE", str(JARVISD_DIR / "logs" / "events.jsonl")))
+LOG_FILE = Path(os.environ.get("JARVISD_LOG_FILE", str(JARVISD_DIR / "logs" / "jarvisd.log"))).expanduser()
+LOG_MAX_BYTES = min(
+    16 * 1024 * 1024,
+    max(64 * 1024, int(os.environ.get("JARVISD_LOG_MAX_BYTES", str(1024 * 1024)))),
+)
+LOG_BACKUP_COUNT = min(10, max(1, int(os.environ.get("JARVISD_LOG_BACKUP_COUNT", "3"))))
+ROUTINE_REQUEST_LOG_INTERVAL = min(
+    600.0,
+    max(10.0, float(os.environ.get("JARVISD_ROUTINE_REQUEST_LOG_INTERVAL", "60"))),
+)
+MAX_LOG_LINE_CHARS = 4096
 DISCORD_CRON_RUNNER = Path(
     os.environ.get("JARVISD_DISCORD_CRON_RUNNER", str(JARVIS_ROOT / ".pi" / "discord-cron" / "runner.py"))
 ).expanduser().resolve()
@@ -202,6 +215,121 @@ def validate_config() -> None:
         raise RuntimeError("JARVISD_AUTH_MODE=token requires JARVIS_API_TOKEN")
     if AUTH_MODE == "trusted-network" and not _trusted_networks():
         raise RuntimeError("trusted-network mode requires at least one trusted CIDR")
+
+
+# --------------------------------------------------------------------------- #
+# Bounded operational logging
+# --------------------------------------------------------------------------- #
+
+
+class _PrivateRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler that keeps every active/backup log owner-only."""
+
+    def _open(self):
+        stream = super()._open()
+        os.chmod(self.baseFilename, 0o600)
+        return stream
+
+    def handleError(self, _record):  # noqa: N802
+        # Logging must never recurse through redirected stderr or stop jarvisd
+        # when the disk is temporarily unavailable.
+        return
+
+
+class BoundedLogWriter:
+    """Small stderr-compatible writer backed by bounded rotating files."""
+
+    encoding = "utf-8"
+    errors = "replace"
+
+    def __init__(self, path: Path, *, max_bytes: int, backup_count: int):
+        self.path = path.expanduser()
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(self.path.parent, 0o700)
+        self._handler = _PrivateRotatingFileHandler(
+            self.path,
+            mode="a",
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding="utf-8",
+            delay=False,
+        )
+        self._handler.setFormatter(logging.Formatter("%(message)s"))
+        self._logger = logging.Logger(f"jarvisd.bounded.{id(self)}", level=logging.INFO)
+        self._logger.propagate = False
+        self._logger.addHandler(self._handler)
+
+    def write(self, value: str) -> int:
+        if not value:
+            return 0
+        for line in value.rstrip("\n").splitlines():
+            if not line:
+                continue
+            if len(line) > MAX_LOG_LINE_CHARS:
+                line = line[: MAX_LOG_LINE_CHARS - 1] + "…"
+            self._logger.info("%s", line)
+        return len(value)
+
+    def flush(self) -> None:
+        self._handler.flush()
+
+    def close(self) -> None:
+        self._handler.close()
+        self._logger.handlers.clear()
+
+    def isatty(self) -> bool:
+        return False
+
+
+class RoutineRequestLogGate:
+    """Coalesce repetitive successful read logs while retaining a count."""
+
+    def __init__(
+        self,
+        interval: float,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        max_entries: int = 128,
+    ):
+        self.interval = interval
+        self.clock = clock
+        self.max_entries = max(1, max_entries)
+        self._lock = threading.Lock()
+        self._entries: dict[tuple[str, str], tuple[float, int]] = {}
+
+    def record(self, client: str, path: str) -> tuple[bool, int]:
+        now = self.clock()
+        key = (client, path)
+        with self._lock:
+            previous = self._entries.get(key)
+            if previous is None:
+                if len(self._entries) >= self.max_entries:
+                    oldest = min(self._entries, key=lambda item: self._entries[item][0])
+                    self._entries.pop(oldest, None)
+                self._entries[key] = (now, 0)
+                return True, 0
+            last_logged, suppressed = previous
+            if now - last_logged >= self.interval:
+                self._entries[key] = (now, 0)
+                return True, suppressed
+            self._entries[key] = (last_logged, suppressed + 1)
+            return False, 0
+
+
+ROUTINE_REQUEST_LOG_PATHS = {"/health", "/api/v1/state"}
+ROUTINE_REQUEST_LOG_GATE = RoutineRequestLogGate(ROUTINE_REQUEST_LOG_INTERVAL)
+
+
+def configure_bounded_stderr() -> BoundedLogWriter | None:
+    """Move daemon stderr to private bounded rotation without risking startup."""
+    original = sys.stderr
+    try:
+        writer = BoundedLogWriter(LOG_FILE, max_bytes=LOG_MAX_BYTES, backup_count=LOG_BACKUP_COUNT)
+    except Exception as exc:  # noqa: BLE001
+        original.write(f"[jarvisd] bounded logging unavailable: {exc}\n")
+        return None
+    sys.stderr = writer
+    return writer
 
 
 # --------------------------------------------------------------------------- #
@@ -1823,6 +1951,28 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self.log_message("client closed the connection")
 
+    def log_request(self, code="-", size="-"):
+        status = code.value if hasattr(code, "value") else code
+        parsed = urllib.parse.urlsplit(self.path)
+        normalized_path = parsed.path.rstrip("/") or "/"
+        ip = self.client_address[0] if self.client_address else "?"
+        if (
+            self.command == "GET"
+            and status == 200
+            and not parsed.query
+            and normalized_path in ROUTINE_REQUEST_LOG_PATHS
+        ):
+            emit, suppressed = ROUTINE_REQUEST_LOG_GATE.record(ip, normalized_path)
+            if not emit:
+                return
+            if suppressed:
+                self.log_message(
+                    "coalesced %d successful GET %s requests",
+                    suppressed,
+                    normalized_path,
+                )
+        super().log_request(code, size)
+
     def log_message(self, fmt, *args):  # noqa: A002
         ts = time.strftime("%H:%M:%S")
         ip = self.client_address[0] if self.client_address else "?"
@@ -2091,6 +2241,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> int:
     validate_config()
+    log_writer = configure_bounded_stderr()
     STATE_COORDINATOR.start()
     if AUTH_MODE == "trusted-network":
         sys.stderr.write(f"[jarvisd] trusted-network mode; CIDRs={TRUSTED_CIDRS_RAW}\n")
@@ -2106,6 +2257,8 @@ def main() -> int:
     finally:
         server.server_close()
         STATE_COORDINATOR.stop()
+        if log_writer is not None:
+            log_writer.flush()
     return 0
 
 

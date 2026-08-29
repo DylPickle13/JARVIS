@@ -40,6 +40,20 @@ grep -q 'return STATE_COORDINATOR.snapshot(client_active=True)' jarvisd/jarvisd.
 grep -q 'record\["stale"\] = True' jarvisd/jarvisd.py
 reject_match 'fixed 250-millisecond jarvisd scheduler polling was restored' -Fq 'self._stop.wait(0.25)' jarvisd/jarvisd.py
 
+printf '%s\n' '== bounded jarvisd logging contract =='
+grep -q 'from logging.handlers import RotatingFileHandler' jarvisd/jarvisd.py
+grep -q 'JARVISD_LOG_MAX_BYTES' jarvisd/jarvisd.py
+grep -q 'JARVISD_LOG_BACKUP_COUNT' jarvisd/jarvisd.py
+grep -q 'MAX_LOG_LINE_CHARS = 4096' jarvisd/jarvisd.py
+grep -q 'class RoutineRequestLogGate' jarvisd/jarvisd.py
+grep -q 'ROUTINE_REQUEST_LOG_PATHS = {"/health", "/api/v1/state"}' jarvisd/jarvisd.py
+grep -q 'and status == 200' jarvisd/jarvisd.py
+grep -q 'and not parsed.query' jarvisd/jarvisd.py
+grep -q 'log_writer = configure_bounded_stderr()' jarvisd/jarvisd.py
+grep -q '^JARVISD_LOG_MAX_BYTES=1048576$' ../../../.env.example
+grep -q '^JARVISD_LOG_BACKUP_COUNT=3$' ../../../.env.example
+grep -q '^JARVISD_ROUTINE_REQUEST_LOG_INTERVAL=60$' ../../../.env.example
+
 printf '%s\n' '== semantic Watch speech selection =='
 node --experimental-strip-types --input-type=module <<'NODE'
 import { selectWatchTerminalSpeech } from '../../../.pi/extensions/47-watch-terminal-speech.ts';
