@@ -331,6 +331,11 @@ child event-loop initializer before pipeline activation. This removes the
 `ChannelHandlerContext` capture from the `@Sendable` future callback while
 preserving half-closure, setup ordering, and fail-closed channel initialization;
 no unsafe isolation, task hop, queue, or terminal transport behavior was added.
+Build 125 creates NIOSSH's mutable one-shot `SimplePasswordDelegate` inside the
+channel event-loop initializer and hands it directly to that connection's SSH
+handler. Credentials remain local values, each connection retains one password
+offer, and no delegate crosses an `@Sendable` boundary. The complete iOS build
+now compiles with strict concurrency enabled without warnings or errors.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

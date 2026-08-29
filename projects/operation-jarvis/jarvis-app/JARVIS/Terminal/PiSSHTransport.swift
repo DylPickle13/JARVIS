@@ -321,10 +321,8 @@ private final class PiSSHConnection: @unchecked Sendable {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.group = group
 
-        let userAuth = SimplePasswordDelegate(
-            username: configuration.username,
-            password: configuration.password
-        )
+        let username = configuration.username
+        let password = configuration.password
         let serverAuth = PiHostKeyValidator(
             host: configuration.host,
             port: configuration.port,
@@ -335,6 +333,14 @@ private final class PiSSHConnection: @unchecked Sendable {
         let bootstrap = ClientBootstrap(group: group)
             .channelInitializer { channel in
                 channel.eventLoop.makeCompletedFuture {
+                    // SimplePasswordDelegate intentionally owns mutable one-shot
+                    // authentication state and is explicitly non-Sendable. Create it
+                    // on the channel event loop and hand it directly to NIOSSHHandler
+                    // so exactly this connection owns its single password offer.
+                    let userAuth = SimplePasswordDelegate(
+                        username: username,
+                        password: password
+                    )
                     let sshHandler = NIOSSHHandler(
                         role: .client(
                             .init(

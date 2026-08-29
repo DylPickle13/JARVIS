@@ -178,6 +178,19 @@ grep -q 'import NIOSSH' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'guard let synchronousOptions = childChannel.syncOptions' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'try synchronousOptions.setOption(.allowRemoteHalfClosure, value: true)' JARVIS/Terminal/PiSSHTransport.swift
 reject_match 'SSH child option setup must stay synchronously event-loop-confined' -qE 'func handlerAdded\(context: ChannelHandlerContext\)|allowRemoteHalfClosure.*whenFailure|assumeIsolated\(\)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'SimplePasswordDelegate intentionally owns mutable one-shot' JARVIS/Terminal/PiSSHTransport.swift
+reject_match 'one-shot SSH authentication must not use unsafe sendability or loop-bound escape hatches' -qE '@preconcurrency.*SimplePasswordDelegate|nonisolated\(unsafe\).*SimplePasswordDelegate|SimplePasswordDelegate.*@unchecked Sendable|NIOLoopBound.*userAuth' JARVIS/Terminal/PiSSHTransport.swift
+python3 - <<'PY'
+from pathlib import Path
+source = Path("JARVIS/Terminal/PiSSHTransport.swift").read_text()
+connect = source.index("    func connect() {")
+initializer = source.index("            .channelInitializer { channel in", connect)
+completed = source.index("                channel.eventLoop.makeCompletedFuture {", initializer)
+auth = source.index("                    let userAuth = SimplePasswordDelegate(", completed)
+handler = source.index("                    let sshHandler = NIOSSHHandler(", auth)
+assert source.find("let userAuth = SimplePasswordDelegate(", connect, initializer) == -1
+assert completed < auth < handler
+PY
 grep -q 'TerminalView, @MainActor TerminalViewDelegate, UIGestureRecognizerDelegate' JARVIS/Terminal/PiSSHTransport.swift
 reject_match 'SwiftTerm delegate isolation must not be suppressed or made unsafe' -qE '@preconcurrency TerminalViewDelegate|nonisolated\(unsafe\).*TerminalViewDelegate' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'queueing, reordering, or weakening the byte-exact terminal path.' JARVIS/Terminal/PiSSHTransport.swift
