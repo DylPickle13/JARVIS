@@ -5,6 +5,16 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testISO8601ParsingSupportsPlainAndFractionalTimestampsWithoutSharedMutableFormatter() throws {
+        let plain = try XCTUnwrap(JarvisFormat.parseISO8601("2026-08-29T12:34:56Z"))
+        let fractional = try XCTUnwrap(JarvisFormat.parseISO8601("2026-08-29T12:34:56.250Z"))
+        let offset = try XCTUnwrap(JarvisFormat.parseISO8601("2026-08-29T08:34:56-04:00"))
+
+        XCTAssertEqual(fractional.timeIntervalSince(plain), 0.25, accuracy: 0.000_001)
+        XCTAssertEqual(offset, plain)
+        XCTAssertNil(JarvisFormat.parseISO8601("not-an-iso8601-timestamp"))
+    }
+
     func testStreamlinedSettingsSigningSummaryUsesBoundedDayAndHourPrecision() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
 

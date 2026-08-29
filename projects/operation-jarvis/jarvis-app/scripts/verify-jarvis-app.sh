@@ -433,6 +433,9 @@ grep -q 'private enum WatchDashboardPage: Hashable, CaseIterable' JARVISWatch/Vi
 [[ "$(sed -n '/private enum WatchDashboardPage/,/^}/p' JARVISWatch/Views/WatchDashboardContent.swift | grep -c '^    case ')" == "3" ]]
 grep -q '@State private var selectedPage: WatchDashboardPage = .terminal' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'pageDragGesture(previous: .terminal, next: .system)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'The shorter Plugs grid must not collapse the page before the bottom edge.' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'private func pageHeader(_ title: String, symbol: String)' JARVISWatch/Views/WatchDashboardContent.swift
+reject_match 'Watch Plugs/System top-right header summaries must remain removed' -RqsE 'plugSummary|codexQuotaHeader|pageHeader\([^)]*trailing:' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func purifierPowerButton' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func purifierModeControl' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func purifierFanControl' JARVISWatch/Views/WatchDashboardContent.swift
@@ -453,6 +456,12 @@ reject_match 'Watch terminal must not use a navigation launcher' -qs 'Navigation
 [[ -x scripts/jarvis-terminal-provisioning.sh ]]
 reject_match 'Watch terminal must not open SSH directly' -RqsE 'import NIOSSH|import NIOPosix|import SwiftTerm' JARVISWatch
 reject_match 'terminal bridge must remain separate from jarvisd' -RqsF 'terminal/frame' jarvisd
+
+printf '%s\n' '== concurrency-safe native date formatting contract =='
+grep -q 'Date.ISO8601FormatStyle(includingFractionalSeconds: true)' JARVIS/Views/Components.swift
+grep -q 'try? iso8601.parse(s)' JARVIS/Views/Components.swift
+reject_match 'shared mutable iPhone ISO-8601 formatter remains' -Fq 'ISO8601DateFormatter' JARVIS/Views/Components.swift
+grep -q 'testISO8601ParsingSupportsPlainAndFractionalTimestampsWithoutSharedMutableFormatter' JARVISTests/AppStateTests.swift
 
 printf '%s\n' '== fail-closed endpoint URL contract =='
 grep -q 'public enum JarvisEndpointURLPolicy' JARVISKit/Sources/JARVISKit/Endpoints.swift

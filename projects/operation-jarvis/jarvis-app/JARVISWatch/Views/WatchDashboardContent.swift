@@ -33,6 +33,9 @@ struct WatchDashboardContent: View {
 
             pageIndicator
         }
+        // Keep the gradient sized to the full status-bar-free Watch canvas.
+        // The shorter Plugs grid must not collapse the page before the bottom edge.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tint(WatchJarvisStyle.accent)
         .animation(.easeInOut(duration: 0.16), value: selectedPage)
         .onAppear {
@@ -129,7 +132,7 @@ struct WatchDashboardContent: View {
 
     private var plugsPage: some View {
         VStack(alignment: .leading, spacing: 7) {
-            pageHeader("Plugs", symbol: "powerplug.fill", trailing: plugSummary)
+            pageHeader("Plugs", symbol: "powerplug.fill")
 
             if availablePlugNames.isEmpty {
                 unavailablePanel("Plug status unavailable", symbol: "powerplug")
@@ -166,7 +169,7 @@ struct WatchDashboardContent: View {
 
     private var systemPage: some View {
         VStack(spacing: 7) {
-            pageHeader("System", symbol: "waveform.path.ecg", trailing: codexQuotaHeader)
+            pageHeader("System", symbol: "waveform.path.ecg")
             purifierPanel
             codexQuotaPanel
 
@@ -482,7 +485,7 @@ struct WatchDashboardContent: View {
     private var accessibilityPlugsPage: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                pageHeader("Plugs", symbol: "powerplug.fill", trailing: plugSummary)
+                pageHeader("Plugs", symbol: "powerplug.fill")
                 if availablePlugNames.isEmpty {
                     unavailablePanel("Plug status unavailable", symbol: "powerplug")
                 } else {
@@ -499,7 +502,7 @@ struct WatchDashboardContent: View {
     private var accessibilitySystemPage: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                pageHeader("System", symbol: "waveform.path.ecg", trailing: codexQuotaHeader)
+                pageHeader("System", symbol: "waveform.path.ecg")
                 purifierPanel
                 codexQuotaPanel
                 if model.shouldShowRetry {
@@ -547,17 +550,13 @@ struct WatchDashboardContent: View {
 
     // MARK: - Helpers
 
-    private func pageHeader(_ title: String, symbol: String, trailing: String) -> some View {
+    private func pageHeader(_ title: String, symbol: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: symbol)
                 .foregroundStyle(WatchJarvisStyle.accent)
             Text(title)
                 .font(.headline.weight(.bold))
             Spacer()
-            Text(trailing)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
         }
     }
 
@@ -580,19 +579,6 @@ struct WatchDashboardContent: View {
         let keys = Set(model.lastState?.subsystems?.plugs?.plugs?.keys.map { $0 } ?? [])
         let preferred = plugOrder.filter(keys.contains)
         return preferred + keys.filter { !plugOrder.contains($0) }.sorted()
-    }
-
-    private var plugSummary: String {
-        guard let summary = model.lastState?.summary,
-              let on = summary.plugsOn, let total = summary.plugsTotal else { return "—" }
-        return "\(on)/\(total) on"
-    }
-
-    private var codexQuotaHeader: String {
-        guard let quota = model.lastState?.subsystems?.codexQuota,
-              quota.available == true,
-              let remaining = quota.weekly?.remainingPercent else { return "Codex —" }
-        return "\(Int(remaining.rounded()))% left"
     }
 
     private func codexQuotaColor(_ remaining: Double) -> Color {

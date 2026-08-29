@@ -311,6 +311,12 @@ Watch synchronization, discovery, and final request construction. Existing LAN
 and Tailscale HTTP endpoints plus HTTPS remain supported and normalized; missing
 hosts, invalid ports, credentials, non-root paths, queries, fragments, and every
 other explicit scheme are rejected before a token-bearing request can be built.
+Build 120 replaces iPhone event/quota parsing's shared mutable ISO-8601 formatter
+instances with one immutable value-semantic format strategy while preserving
+plain, fractional-second, and offset timestamps. It also forces the Watch
+Dashboard gradient to occupy the complete status-bar-free canvas on the shorter
+Plugs page and removes the Plugs/System top-right header summaries; native status,
+guarded controls, page order, polling, and semantic colors remain unchanged.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

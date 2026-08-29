@@ -233,12 +233,10 @@ struct StatusPill: View {
 // MARK: - Formatting helpers
 
 enum JarvisFormat {
-    private static let isoWithFractionalSeconds: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let isoPlain = ISO8601DateFormatter()
+    // ISO8601FormatStyle is a value-semantic Sendable parser. Keeping this
+    // immutable strategy avoids shared mutable reference-formatters across
+    // refresh, event, and view tasks under Swift 6 concurrency checks.
+    private static let iso8601 = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
 
     static func uptime(_ seconds: Double) -> String {
         let s = Int(seconds)
@@ -324,7 +322,6 @@ enum JarvisFormat {
 
     /// Parse an ISO-8601 timestamp (with or without fractional seconds).
     static func parseISO8601(_ s: String) -> Date? {
-        if let date = isoWithFractionalSeconds.date(from: s) { return date }
-        return isoPlain.date(from: s)
+        try? iso8601.parse(s)
     }
 }
