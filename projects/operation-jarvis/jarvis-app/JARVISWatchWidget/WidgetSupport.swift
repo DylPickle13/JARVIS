@@ -15,7 +15,7 @@ struct JARVISWatchStateProvider: TimelineProvider {
         JARVISWatchStateEntry(date: Date(), cached: nil, placeholder: true)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (JARVISWatchStateEntry) -> Void) {
+    func getSnapshot(in context: Context, completion: @escaping @Sendable (JARVISWatchStateEntry) -> Void) {
         completion(
             JARVISWatchStateEntry(
                 date: Date(),
@@ -25,7 +25,7 @@ struct JARVISWatchStateProvider: TimelineProvider {
         )
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<JARVISWatchStateEntry>) -> Void) {
+    func getTimeline(in context: Context, completion: @escaping @Sendable (Timeline<JARVISWatchStateEntry>) -> Void) {
         Task {
             let now = Date()
             let cached = await JARVISWidgetStateLoader.refreshedState()

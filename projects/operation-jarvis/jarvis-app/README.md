@@ -317,9 +317,12 @@ plain, fractional-second, and offset timestamps. It also makes the Watch
 Dashboard container occupy the complete status-bar-free canvas and removes the
 Plugs/System top-right header summaries. Build 121 corrects the remaining visible
 Plugs-page gap by measuring the space below that header and expanding every plug
-row's tile surface to consume it through the bottom edge. Native status, guarded
-controls, page order, polling, and semantic colors remain unchanged.
-Build 92 removes every
+row's tile surface to consume it through the bottom edge. Build 122 restores
+WidgetKit's explicit `@Sendable` snapshot and timeline completion contracts on
+both platforms, removing their Swift 6 task-transfer diagnostics without changing
+network refresh, cached fallback, entries, timeline policy, or widget cadence.
+Native status, guarded controls, page order, polling, and semantic colors remain
+unchanged. Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
 to JARVIS?”** question. The required free-form `String` is normalized and attempted

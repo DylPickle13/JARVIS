@@ -461,11 +461,15 @@ reject_match 'Watch terminal must not use a navigation launcher' -qs 'Navigation
 reject_match 'Watch terminal must not open SSH directly' -RqsE 'import NIOSSH|import NIOPosix|import SwiftTerm' JARVISWatch
 reject_match 'terminal bridge must remain separate from jarvisd' -RqsF 'terminal/frame' jarvisd
 
-printf '%s\n' '== concurrency-safe native date formatting contract =='
+printf '%s\n' '== concurrency-safe native formatting and WidgetKit contracts =='
 grep -q 'Date.ISO8601FormatStyle(includingFractionalSeconds: true)' JARVIS/Views/Components.swift
 grep -q 'try? iso8601.parse(s)' JARVIS/Views/Components.swift
 reject_match 'shared mutable iPhone ISO-8601 formatter remains' -Fq 'ISO8601DateFormatter' JARVIS/Views/Components.swift
 grep -q 'testISO8601ParsingSupportsPlainAndFractionalTimestampsWithoutSharedMutableFormatter' JARVISTests/AppStateTests.swift
+for support in JARVISWidget/WidgetSupport.swift JARVISWatchWidget/WidgetSupport.swift; do
+  [[ "$(grep -c '@escaping @Sendable' "$support")" == "2" ]]
+  reject_match 'WidgetKit completion callback lost its Sendable contract' -qE 'completion: @escaping \(' "$support"
+done
 
 printf '%s\n' '== fail-closed endpoint URL contract =='
 grep -q 'public enum JarvisEndpointURLPolicy' JARVISKit/Sources/JARVISKit/Endpoints.swift
