@@ -143,8 +143,6 @@ enum JarvisPalette {
     static let onAccent = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark ? .black : .white
     })
-    // Air quality is data, not branding. Preserve its accepted clean-air cyan.
-    static let airQualityGood = Color(red: 0.20, green: 0.72, blue: 0.96)
     static let critical = Color(red: 1.0, green: 0.22, blue: 0.28)
     static let warning = Color(red: 0.96, green: 0.58, blue: 0.16)
     static let surface = Color(.secondarySystemGroupedBackground).opacity(0.94)

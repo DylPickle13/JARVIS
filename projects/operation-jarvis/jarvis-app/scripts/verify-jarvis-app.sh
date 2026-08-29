@@ -77,8 +77,10 @@ printf '%s\n' '== xhigh purple theme contract =='
 grep -q 'darkAccent = JARVISBrandRGB(red: 209, green: 131, blue: 232)' JARVISKit/Sources/JARVISKit/BrandTheme.swift
 grep -q 'lightAccent = JARVISBrandRGB(red: 139, green: 0, blue: 139)' JARVISKit/Sources/JARVISKit/BrandTheme.swift
 grep -q 'static let accent = Color(uiColor: UIColor' JARVIS/Views/Components.swift
-grep -q 'static let airQualityGood = Color(red: 0.20, green: 0.72, blue: 0.96)' JARVIS/Views/Components.swift
-grep -q 'static let airQualityGood = Color(red: 0.29, green: 0.82, blue: 1.0)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'case ...12: return JarvisPalette.accent' JARVIS/Views/HomeView.swift
+grep -q 'case ...12: return WatchJarvisStyle.accent' JARVISWatch/Views/WatchDashboardContent.swift
+[[ "$(grep -c '\.tint(JarvisPalette\.accent)' JARVIS/Views/HomeView.swift)" -ge 3 ]]
+reject_match 'retired clean-air blue remains in native purifier chrome' -RqsE 'airQualityGood|clean-air cyan' JARVIS JARVISWatch
 grep -q 'background(WatchJarvisStyle.accent, in: RoundedRectangle' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'retired blue brand tokens remain in native app chrome' -RqsE 'JarvisPalette\.(cyan|electricBlue)|WatchJarvisStyle\.(cyan|electricBlue)|Color\.cyan' JARVIS JARVISWatch
 reject_match 'widget pending/launcher chrome must use the shared xhigh accent' -RqsE 'Color\.blue|foregroundStyle\(\.cyan\)' JARVISWidget JARVISWatchWidget

@@ -282,6 +282,7 @@ struct HomeView: View {
                         }
                         Toggle("Power", isOn: powerBinding)
                             .labelsHidden()
+                            .tint(JarvisPalette.accent)
                             .accessibilityLabel("Air purifier power")
                             .disabled(isOn == nil || stale || busy)
                     }
@@ -334,6 +335,7 @@ struct HomeView: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
+            .tint(JarvisPalette.accent)
             .disabled(isOn != true || stale || busy)
             .accessibilityLabel("Air purifier mode")
         }
@@ -408,7 +410,7 @@ struct HomeView: View {
     private func purifierQualityColor(_ value: Int?) -> Color {
         guard let value else { return .secondary }
         switch value {
-        case ...12: return JarvisPalette.airQualityGood
+        case ...12: return JarvisPalette.accent
         case ...35: return .green
         case ...55: return JarvisPalette.warning
         default: return .red
@@ -462,6 +464,7 @@ struct HomeView: View {
                 Task { await app.setPurifierFan(level) }
             }
         }
+        .tint(JarvisPalette.accent)
         .disabled(isOn != true || mode != "manual" || stale || busy)
     }
 

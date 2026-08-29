@@ -244,7 +244,11 @@ status accents, terminal controls, background glows, and widget pending accents
 while preserving semantic warning/error/live/air-quality colors and raw terminal
 ANSI output. Every JARVIS app, Watch, in-app mark, and widget icon remains
 byte-for-byte unchanged, and the restored Neural Core artwork and cadence remain
-untouched.
+untouched. Build 112 completes the purifier treatment: the clean/Excellent ring
+and quality text use `xhigh` purple on iPhone and Watch, while the iPhone power
+toggle, mode picker—including the tappable **Auto** label—and manual fan slider
+explicitly inherit the adaptive purple accent. Green/yellow/red air-quality
+severity, stale warnings, failures, and pending-confirmation colors remain semantic.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send

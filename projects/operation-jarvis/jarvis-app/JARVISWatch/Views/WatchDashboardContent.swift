@@ -679,7 +679,7 @@ struct WatchDashboardContent: View {
     private func airQualityColor(_ value: Int?) -> Color {
         guard let value else { return .secondary }
         switch value {
-        case ...12: return WatchJarvisStyle.airQualityGood
+        case ...12: return WatchJarvisStyle.accent
         case ...35: return .green
         case ...55: return WatchJarvisStyle.warning
         default: return .red
@@ -775,8 +775,6 @@ enum WatchJarvisStyle {
         green: JARVISBrandTheme.darkAccent.normalizedGreen,
         blue: JARVISBrandTheme.darkAccent.normalizedBlue
     )
-    // Air quality is data, not branding. Preserve its accepted clean-air cyan.
-    static let airQualityGood = Color(red: 0.29, green: 0.82, blue: 1.0)
     static let critical = Color(red: 1.0, green: 0.25, blue: 0.30)
     static let warning = Color(red: 1.0, green: 0.67, blue: 0.24)
     static let surface = Color.white.opacity(0.075)
