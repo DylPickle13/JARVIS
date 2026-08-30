@@ -22,13 +22,16 @@ xcodegen generate
 printf '%s\n' '== Python unit tests =='
 python3 -m unittest discover -s jarvisd/tests -v
 python3 -m unittest discover -s terminald/tests -v
+python3 -m unittest discover -s ../../../.pi/scheduler/tests -v
 python3 -m py_compile \
   jarvisd/jarvisd.py \
   terminald/jarvis_terminald.py \
   ../jarvis.py \
   ../raspberry-pi/room_audio/room_audio_server.py \
-  ../voice/discord_voice.py \
-  ../../../.pi/discord-cron/runner.py
+  ../voice/voice_pipeline.py \
+  ../../../pi_rpc.py \
+  ../../../.pi/scheduler/runner.py \
+  ../../../.pi/scheduler/apns_provider.py
 
 printf '%s\n' '== activity-aware jarvisd collector contract =='
 grep -q 'DEFAULT_ACTIVE_LEASE_SECONDS = 45.0' jarvisd/jarvisd.py
@@ -102,7 +105,7 @@ python3 -m json.tool JARVISWatch/Assets.xcassets/JARVISMark.imageset/Contents.js
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/JARVISWidgetIconAccented.imageset/Contents.json >/dev/null
-bash -n scripts/*.sh jarvisd/resurrector.sh ../scripts/install-discord-bot-launch-agent.sh
+bash -n scripts/*.sh jarvisd/resurrector.sh
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVIS/Info.plist)" == "jarvis" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVISWatch/Info.plist)" == "jarvis" ]]
 shasum -a 256 -c config/protected-jarvis-icon-assets.sha256
@@ -123,11 +126,19 @@ grep -q '.widgetAccentable()' JARVISWatchWidget/LauncherWidget.swift
 
 printf '%s\n' '== native navigation contract =='
 [[ ! -e JARVIS/Views/EventsView.swift ]]
-[[ "$(grep -c '\.tabItem' JARVIS/JARVISApp.swift)" == "3" ]]
+[[ "$(grep -c '\.tabItem' JARVIS/JARVISApp.swift)" == "4" ]]
 grep -q 'Label("Home"' JARVIS/JARVISApp.swift
 grep -q 'Label("JARVIS"' JARVIS/JARVISApp.swift
+grep -q 'Label("Jobs", systemImage: "calendar.badge.clock")' JARVIS/JARVISApp.swift
 reject_match 'Pi tab must be labeled JARVIS' -Fq 'Label("Pi"' JARVIS/JARVISApp.swift
 grep -q 'Label("Settings"' JARVIS/JARVISApp.swift
+grep -q 'JobsView(requestedResultSequence:' JARVIS/JARVISApp.swift
+grep -q '/api/v1/scheduled-job-results' jarvisd/jarvisd.py
+grep -q 'static let limit = 100' JARVIS/ScheduledJobResultCache.swift
+grep -q 'case jobs' JARVIS/AppState.swift
+grep -q 'await self.refreshJobs()' JARVIS/AppState.swift
+grep -q 'scheme == "http" || scheme == "https"' JARVIS/Views/JobsView.swift
+reject_match 'Jobs must remain read-only' -RqsE 'runServiceAction|runCommand|setPlug|setPurifier|retry' JARVIS/Views/JobsView.swift
 grep -q 'case pi' JARVIS/AppState.swift
 grep -q 'case "pi": selection = .pi' JARVIS/JARVISApp.swift
 reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case events|fetchEvents|lastEvents|eventsLoading' JARVIS
@@ -349,8 +360,8 @@ grep -q 'completion.wait(timeout=185)' terminald/jarvis_terminald.py
 grep -q 'os.replace(temporary_path, cache_path)' terminald/jarvis_terminald.py
 grep -q 'for stale_path in self.speech_dir.glob("\*.wav")' terminald/jarvis_terminald.py
 /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes:0' JARVISWatch/Info.plist | grep -qx 'audio'
-grep -q 'def _bounded_tts_chunks' ../voice/discord_voice.py
-grep -q 'cleaned_text = self._clean_text_for_tts(text)' ../voice/discord_voice.py
+grep -q 'def _bounded_tts_chunks' ../voice/voice_pipeline.py
+grep -q 'cleaned_text = self._clean_text_for_tts(text)' ../voice/voice_pipeline.py
 reject_match 'Watch terminal frame must never carry raw final response text' -RqsE 'responseText|speechText' JARVISKit/Sources/JARVISKit/WatchTerminal.swift terminald/jarvis_terminald.py
 reject_match 'Watch speech must not accept arbitrary client text' -Fq '"text"' < <(sed -n '/    def do_POST(self)/,/^def parse_cidrs/p' terminald/jarvis_terminald.py)
 reject_match 'Watch terminal must not fake a workout or unsupported extended-runtime category' -E 'WKExtendedRuntimeSession|HKWorkoutSession|isFrontmostTimeoutExtended' JARVISWatch/Views/WatchTerminalView.swift

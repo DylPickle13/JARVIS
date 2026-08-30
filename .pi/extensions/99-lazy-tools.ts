@@ -9,7 +9,6 @@ type CanonicalToolGroup =
   | "github"
   | "google"
   | "cron"
-  | "discord"
   | "browser"
   | "reaper";
 type ToolGroup = CanonicalToolGroup | "all";
@@ -39,8 +38,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   minecraft_jarvis: ["minecraft_jarvis"],
   github: ["github_cli"],
   google: ["google_workspace"],
-  cron: ["discord_cron"],
-  discord: ["discord_ping", "discord_send_file"],
+  cron: ["jarvis_cron"],
   reaper: ["reaper_ping", "reaper_lua"],
   browser: [
     "browser_status",
@@ -65,8 +63,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   github: "github_cli for guarded official GitHub CLI access using the configured local token",
   google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
-  cron: "discord_cron only: scheduled Pi/JARVIS jobs whose output posts to Discord",
-  discord: "discord_ping for immediate Discord pings/notifications and attachments; discord_send_file for current-channel uploads when available",
+  cron: "jarvis_cron for private scheduled Pi/JARVIS jobs and bounded local result history",
   reaper: "reaper_ping/reaper_lua for the live REAPER session on mac-mini-16 via inline Lua bridge",
   browser: "visible Chrome for rendered/interactive web: screenshots/clicks/typing/uploads/extract",
 };
@@ -113,7 +110,7 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Spotify actions include `cast-spotify-devices`, play/resume with `cast-spotify`, pause/next/previous/volume, queue read/add, seek, shuffle, and repeat. Use `device: \"tv\"`/`\"speakers\"` for configured aliases or an exact `spotifyDeviceName`; prefer names over changing IDs and never expose credentials.",
       "Smart-plug/light phrases such as 'turn on/off the light/lamp/pedalboard/tv plug' go directly to the dedicated local-only tool: `smart_plug({ action: \"status\"|\"on\"|\"off\"|\"toggle\", plug: \"<configured-plug-name>\" })`. Run `smart_plug({ action: \"list\" })` only if the alias is unclear, and summarize the resulting state after writes.",
       "Air-purifier actions use exactly two `jarvis` actions: `jarvis({ action: \"purifier-status\" })` for read-only status/filter/air-quality info, and `jarvis({ action: \"purifier-set\", setting: \"mode\", value: \"auto\" })` for writes. Supported settings: power, mode, speed, display, child-lock, light-detection, auto-preference, timer. VeSync writes may take more than a minute; wait for the tool result before issuing another purifier command.",
-      "For spoken output, keep text short and keep full details in Discord.",
+      "For spoken output, keep text short and keep full details in the current text response.",
     ],
   },
   minecraft_jarvis: {
@@ -135,30 +132,15 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
     ],
   },
   cron: {
-    skill: "scheduled-discord-jobs",
+    skill: "private scheduled jobs",
     lines: [
-      "Use `discord_cron` only for Pi/JARVIS scheduled jobs whose output posts to Discord, including questions like 'what cron jobs are running?', 'what scheduled jobs exist?', or 'is there a briefing cron job?'.",
-      "For existence checks by job name, call `discord_cron({ action: \"list\" })` and filter the returned jobs; do not grep the repository or inspect OS crontab unless the user explicitly asks for OS cron/launchd.",
-      "This is not an immediate notification tool or file-upload tool. For immediate Discord pings, notifications, or file delivery, load the `discord` group and use `discord_ping` or `discord_send_file` as appropriate.",
-      "Do not fall back to shell/system crontab inspection unless the user explicitly asks for OS-level cron/launchd jobs; these Discord-backed jobs are managed by `discord_cron`.",
-      "Do not start/restart the main JARVIS Discord bot unless the user explicitly asks.",
-      "Common actions: `status`, `list`, `add`, `remove`, `enable`, `disable`, `run`, `runs`, `output`, `setup`, `install_cron`, and `uninstall_cron`.",
-      "Adding a job requires `schedule` and `prompt`; schedules can be relative (`+5m`), interval-like (`5m interval`), cron, or ISO depending on the runner.",
-      "`run` starts a detached manual run and posts output to the job's Discord thread; inspect history with `runs` and a specific run with `output`.",
-      "Treat remove/disable/uninstall/setup changes as mutating operations: require clear user intent and summarize what changed.",
-    ],
-  },
-  discord: {
-    skill: "immediate Discord pings and file delivery",
-    lines: [
-      "Use `load_tools({ groups: [\"discord\"] })` before immediate Discord notifications or file delivery; then call the unlocked `discord_ping` or `discord_send_file` directly.",
-      "Use `discord_ping` when the user clearly asks to be pinged/notified on Discord, says 'ping me', or asks to send files/results to them by Discord; include `attachmentPath` or `attachmentPaths` when files are part of the request.",
-      "Use `discord_send_file` only to upload a verified local file to the current Discord channel when running inside a Discord session and the tool is available.",
-      "If the user asks 'ping me/send me these files', prefer `discord_ping` with attachments; do not require a current-channel context.",
-      "Use `discord_cron` only for scheduled or recurring jobs whose output posts to Discord.",
-      "Call `discord_ping` only after the requested goal or condition is verified complete. Keep messages concise and outcome-focused; do not send routine progress updates or speculative results.",
-      "Verify every requested attachment before sending. After browser or file work, do not notify until the specifically requested result is actually ready.",
-      "If `discord_send_file` is unavailable, do not substitute it for current-channel uploads; report the unavailable context unless a user-facing ping with attachments satisfies the request.",
+      "Use `jarvis_cron` for Pi/JARVIS scheduled jobs, including questions like 'what cron jobs are running?', 'what scheduled jobs exist?', or 'is there a briefing job?'.",
+      "For existence checks by job name, call `jarvis_cron({ action: \"list\" })` and filter the returned jobs; do not grep the repository or inspect OS crontab unless the user explicitly asks for OS cron/launchd.",
+      "The scheduler commits sanitized output-producing successes and every failure to bounded owner-only local history; silent successful checks remain silent.",
+      "Common actions: `status`, `list`, `add`, `remove`, `enable`, `disable`, `run`, `runs`, `output`, `install`, and `uninstall`.",
+      "Adding a job requires `schedule` and `prompt`; schedules can be relative (`+5m`), intervals (`5m`), cron, or ISO depending on the runner.",
+      "`run` starts one detached manual run; inspect retained history with `runs` and a specific result with `output`.",
+      "Treat remove/disable/install/uninstall changes as mutating operations: require clear user intent and summarize what changed.",
     ],
   },
   reaper: {
@@ -308,8 +290,7 @@ export default function lazyTools(pi: ExtensionAPI) {
     promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET,
     promptGuidelines: [
       "Call load_tools before any optional group listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
-      "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `discord_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
-      "Discord map: `discord_cron` manages scheduled jobs that post to Discord; the `discord` group exposes immediate Discord delivery tools: `discord_ping` for user pings/notifications including attachments, and `discord_send_file` for current-channel uploads only when that context/tool is available.",
+      "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `jarvis_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Web: `web_search`=discover (`provider: \"youtube\"` for YouTube), `fetch_content`=static, `get_search_content`=stored. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
       "After load_tools succeeds, use the exact unlocked tool and returned playbook. If a required tool is unavailable, say so; if a tool was listed as unlocked but is not callable, report schema refresh failure rather than substituting another tool.",
     ],

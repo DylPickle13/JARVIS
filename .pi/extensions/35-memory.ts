@@ -11,7 +11,7 @@ import { truncate } from "./lib/text";
 
 const ACTIONS = ["search", "remember", "update", "forget", "list", "status"] as const;
 const KINDS = ["preference", "fact", "lesson", "project", "workflow"] as const;
-const SCOPES = ["global", "project", "discord-channel"] as const;
+const SCOPES = ["global", "project"] as const;
 
 function runnerPath(cwd: string): string {
   return findAncestorFile(cwd, ".pi/memory/memory.py") ?? join(cwd, ".pi", "memory", "memory.py");
@@ -29,10 +29,6 @@ function pythonPath(cwd: string): string {
   const venvPython = join(root, ".venv", "bin", "python");
   if (existsSync(venvPython)) return venvPython;
   return "python3";
-}
-
-function discordChannelId(): string {
-  return process.env.JARVIS_DISCORD_CHANNEL_ID?.trim() || "";
 }
 
 function memoryLine(memory: any): string {
@@ -80,8 +76,6 @@ function buildArgs(params: any, ctxCwd: string): string[] {
     if (params.confidence !== undefined) args.push("--confidence", String(params.confidence));
     if (params.source) args.push("--source", params.source);
     args.push("--cwd", ctxCwd);
-    const channelId = discordChannelId();
-    if (channelId) args.push("--discord-channel-id", channelId);
   } else if (params.action === "update") {
     if (!params.id) throw new Error("memory update requires id");
     args.push("--id", params.id);

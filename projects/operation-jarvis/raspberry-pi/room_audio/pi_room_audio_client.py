@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Raspberry Pi room-audio client for Operation JARVIS.
 
-Supports both fixed-window diagnostics and the production Discord-style VAD
+Supports both fixed-window diagnostics and the production continuous VAD
 listener. The Pi captures room audio from the Anker PowerConf, reconnects the
 trusted Bluetooth speakerphone when needed, sends accepted utterances to the
 Mac-side room_audio_server.py, plays the immediate processing acknowledgement,
@@ -43,7 +43,7 @@ DEFAULT_PLAYBACK_DEVICE = os.environ.get("JARVIS_ROOM_AUDIO_PLAYBACK_DEVICE")
 DEFAULT_RECORD_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_RECORD_SECONDS", "5"))
 DEFAULT_RATE = int(os.environ.get("JARVIS_ROOM_AUDIO_RATE", "48000"))
 DEFAULT_ASYNC_ACK = os.environ.get("JARVIS_ROOM_AUDIO_ASYNC_ACK", "0").lower() not in {"0", "false", "no", "off", ""}
-# Keep these segmentation defaults aligned with ../../voice/discord_voice.py.
+# Keep these segmentation defaults aligned with the Mac room-audio pipeline.
 DEFAULT_VAD_RMS_THRESHOLD = int(os.environ.get("JARVIS_ROOM_AUDIO_VAD_RMS_THRESHOLD", "300"))
 DEFAULT_VAD_SILENCE_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_VAD_SILENCE_SECONDS", "1.0"))
 DEFAULT_VAD_MIN_UTTERANCE_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_VAD_MIN_UTTERANCE_SECONDS", "0.5"))
@@ -1056,7 +1056,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
     turn_controller = RoomAudioTurnController(args) if args.interrupt_while_busy else None
 
     print(
-        "starting Discord-style VAD listener: "
+        "starting continuous VAD listener: "
         f"device={args.device} rate={args.rate}Hz frame={frame_seconds * 1000:.0f}ms "
         f"threshold={args.vad_rms_threshold} silence={args.vad_silence_seconds:.2f}s "
         f"min={args.vad_min_utterance_seconds:.2f}s max={args.vad_max_utterance_seconds:.1f}s "
@@ -1309,7 +1309,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--playback-device", default=DEFAULT_PLAYBACK_DEVICE, help="ALSA playback device, useful when Bluetooth capture uses SCO and playback uses A2DP")
     parser.add_argument("--duration", type=float, default=DEFAULT_RECORD_SECONDS)
     parser.add_argument("--rate", type=int, default=DEFAULT_RATE)
-    parser.add_argument("--vad-loop", action="store_true", help="Use Discord-style continuous voice activity detection instead of fixed-length recording windows")
+    parser.add_argument("--vad-loop", action="store_true", help="Use continuous voice activity detection instead of fixed-length recording windows")
     parser.add_argument("--vad-rms-threshold", type=int, default=DEFAULT_VAD_RMS_THRESHOLD)
     parser.add_argument("--vad-silence-seconds", type=float, default=DEFAULT_VAD_SILENCE_SECONDS)
     parser.add_argument("--vad-min-utterance-seconds", type=float, default=DEFAULT_VAD_MIN_UTTERANCE_SECONDS)

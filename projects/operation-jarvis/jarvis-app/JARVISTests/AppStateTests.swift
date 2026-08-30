@@ -102,7 +102,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(app.isStateLoading)
     }
 
-    func testHomePollingRefreshesTogetherAndStopsOutsideHome() async throws {
+    func testHomePollingStopsOutsideHomeWhileJobsContinueAcrossActiveTabs() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
         let store = EndpointStore(defaults: defaults)
@@ -110,28 +110,35 @@ final class AppStateTests: XCTestCase {
         app.endpointDraft = "http://fake.jarvis:8790"
 
         app.sceneDidBecomeActive()
-        for _ in 0..<40 where api.stateCalls < 2 || api.servicesCalls < 2 || api.scheduledJobsCalls < 2 {
+        for _ in 0..<40 where api.stateCalls < 2 || api.servicesCalls < 2 || api.scheduledJobsCalls < 2 || api.scheduledJobResultsCalls < 2 {
             try await Task.sleep(for: .milliseconds(25))
         }
         XCTAssertGreaterThanOrEqual(api.stateCalls, 2)
         XCTAssertEqual(api.stateCalls, api.servicesCalls)
         XCTAssertEqual(api.stateCalls, api.scheduledJobsCalls)
+        XCTAssertEqual(api.stateCalls, api.scheduledJobResultsCalls)
 
         app.setActiveSection(.pi)
         try await Task.sleep(for: .milliseconds(50))
-        let piCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.healthCalls)
+        let piCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.scheduledJobResultsCalls, api.healthCalls)
         try await Task.sleep(for: .milliseconds(250))
         XCTAssertEqual(api.stateCalls, piCounts.0)
         XCTAssertEqual(api.servicesCalls, piCounts.1)
-        XCTAssertEqual(api.scheduledJobsCalls, piCounts.2)
-        XCTAssertEqual(api.healthCalls, piCounts.3)
+        XCTAssertGreaterThan(api.scheduledJobsCalls, piCounts.2)
+        XCTAssertGreaterThan(api.scheduledJobResultsCalls, piCounts.3)
+        XCTAssertEqual(api.scheduledJobsCalls, api.scheduledJobResultsCalls)
+        XCTAssertEqual(api.healthCalls, piCounts.4)
 
         app.setActiveSection(.settings)
+        try await Task.sleep(for: .milliseconds(50))
+        let settingsCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.scheduledJobResultsCalls, api.healthCalls)
         try await Task.sleep(for: .milliseconds(150))
-        XCTAssertEqual(api.stateCalls, piCounts.0)
-        XCTAssertEqual(api.servicesCalls, piCounts.1)
-        XCTAssertEqual(api.scheduledJobsCalls, piCounts.2)
-        XCTAssertEqual(api.healthCalls, piCounts.3)
+        XCTAssertEqual(api.stateCalls, settingsCounts.0)
+        XCTAssertEqual(api.servicesCalls, settingsCounts.1)
+        XCTAssertGreaterThan(api.scheduledJobsCalls, settingsCounts.2)
+        XCTAssertGreaterThan(api.scheduledJobResultsCalls, settingsCounts.3)
+        XCTAssertEqual(api.scheduledJobsCalls, api.scheduledJobResultsCalls)
+        XCTAssertEqual(api.healthCalls, settingsCounts.4)
 
         app.setActiveSection(.home)
         for _ in 0..<20 where api.stateCalls == piCounts.0 {
@@ -141,12 +148,13 @@ final class AppStateTests: XCTestCase {
 
         app.sceneWillResignActive()
         try await Task.sleep(for: .milliseconds(50))
-        let backgroundCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.healthCalls)
+        let backgroundCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.scheduledJobResultsCalls, api.healthCalls)
         try await Task.sleep(for: .milliseconds(250))
         XCTAssertEqual(api.stateCalls, backgroundCounts.0)
         XCTAssertEqual(api.servicesCalls, backgroundCounts.1)
         XCTAssertEqual(api.scheduledJobsCalls, backgroundCounts.2)
-        XCTAssertEqual(api.healthCalls, backgroundCounts.3)
+        XCTAssertEqual(api.scheduledJobResultsCalls, backgroundCounts.3)
+        XCTAssertEqual(api.healthCalls, backgroundCounts.4)
     }
 
     func testWatchStateRequestFetchesFreshStateBeforeReplying() async throws {
@@ -360,6 +368,74 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(uncertainOutcome, .unconfirmed)
     }
 
+    func testScheduledResultFirstSyncBaselinesThenTracksAndPersistsUnread() async throws {
+        let api = FakeAPI(scheduledJobResultSequence: 5)
+        let defaults = UserDefaults(suiteName: "jarvis.results.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jarvis-results-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let app = AppState(
+            store: store,
+            client: api,
+            preferences: defaults,
+            resultCacheURL: cacheURL
+        )
+        app.endpointDraft = "http://fake.jarvis:8790"
+
+        await app.refresh()
+
+        XCTAssertEqual(app.lastScheduledJobResults.map(\.sequence), [5])
+        XCTAssertEqual(app.unreadScheduledJobResultCount, 0)
+
+        api.scheduledJobResultSequence = 6
+        await app.fetchScheduledJobResults()
+
+        XCTAssertEqual(app.lastScheduledJobResults.map(\.sequence), [6, 5])
+        XCTAssertEqual(app.unreadScheduledJobResultCount, 1)
+        app.markScheduledJobResultsRead()
+        XCTAssertEqual(app.unreadScheduledJobResultCount, 0)
+
+        let restored = AppState(
+            store: store,
+            client: FakeAPI(),
+            preferences: defaults,
+            resultCacheURL: cacheURL
+        )
+        XCTAssertEqual(restored.lastScheduledJobResults.map(\.sequence), [6, 5])
+        XCTAssertEqual(restored.unreadScheduledJobResultCount, 0)
+    }
+
+    func testJobsPollingRefreshesJobsWithoutPollingHomeState() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.jobs-polling.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        let app = AppState(
+            store: store,
+            client: api,
+            activeRefreshInterval: .milliseconds(100),
+            preferences: defaults,
+            resultCacheURL: FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-jobs-polling-\(UUID().uuidString).json")
+        )
+        app.endpointDraft = "http://fake.jarvis:8790"
+        app.sceneDidBecomeActive()
+        for _ in 0..<40 where app.connectionState != .connected {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        app.setActiveSection(.jobs)
+        let stateCalls = api.stateCalls
+        let serviceCalls = api.servicesCalls
+        let initialJobCalls = api.scheduledJobsCalls
+        for _ in 0..<20 where api.scheduledJobsCalls == initialJobCalls {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertGreaterThan(api.scheduledJobsCalls, initialJobCalls)
+        XCTAssertGreaterThan(api.scheduledJobResultsCalls, 0)
+        XCTAssertEqual(api.stateCalls, stateCalls)
+        XCTAssertEqual(api.servicesCalls, serviceCalls)
+        app.sceneWillResignActive()
+    }
+
     func testScheduledJobsFailureDoesNotHideServiceStatus() async throws {
         let api = FakeAPI(scheduledJobsSucceeds: false)
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
@@ -525,12 +601,14 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     let commandSucceeds: Bool
     let commandDelay: Duration?
     let scheduledJobsSucceeds: Bool
+    var scheduledJobResultSequence: Int?
     var commands: [String] = []
     var commandParams: [[String: JSONValue]] = []
     var stateCalls = 0
     var healthCalls = 0
     var servicesCalls = 0
     var scheduledJobsCalls = 0
+    var scheduledJobResultsCalls = 0
     var signingStatusCalls = 0
     var signingStartCalls = 0
     private var purifierIsOn = false
@@ -549,11 +627,13 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     init(
         commandSucceeds: Bool = true,
         commandDelay: Duration? = nil,
-        scheduledJobsSucceeds: Bool = true
+        scheduledJobsSucceeds: Bool = true,
+        scheduledJobResultSequence: Int? = nil
     ) {
         self.commandSucceeds = commandSucceeds
         self.commandDelay = commandDelay
         self.scheduledJobsSucceeds = scheduledJobsSucceeds
+        self.scheduledJobResultSequence = scheduledJobResultSequence
     }
 
     func health(_ endpoint: JarvisEndpoint) async throws -> HealthResponse {
@@ -614,6 +694,23 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
             ScheduledJobsResponse.self,
             from: Data(#"{"ok":true,"summary":{"total":1,"enabled":1,"running":0,"errors":0},"jobs":[{"id":"job_demo","name":"demo","kind":"interval","schedule":"5m","enabled":true,"nextRunAt":null,"lastRunAt":null,"lastStatus":"success","runCount":1,"description":null}]}"#.utf8)
         )
+    }
+
+    func scheduledJobResults(
+        _ endpoint: JarvisEndpoint,
+        after: Int?,
+        limit: Int,
+        jobId: String?
+    ) async throws -> ScheduledJobResultsResponse {
+        scheduledJobResultsCalls += 1
+        let result: String
+        if let sequence = scheduledJobResultSequence, sequence > (after ?? 0) {
+            result = #"{"sequence":\#(sequence),"id":"run_\#(sequence)","jobId":"job_demo","jobName":"demo","status":"success","outputKind":"direct","startedAt":"2026-08-30T00:00:00Z","finishedAt":"2026-08-30T00:00:01Z","durationSeconds":1.0,"exitCode":0,"title":"demo completed","summary":"Ready","output":"Ready","error":null,"truncated":false}"#
+        } else {
+            result = ""
+        }
+        let body = #"{"ok":true,"results":[\#(result)],"hasMore":false,"nextAfter":\#(scheduledJobResultSequence ?? after ?? 0)}"#
+        return try! JSONDecoder().decode(ScheduledJobResultsResponse.self, from: Data(body.utf8))
     }
 
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult {

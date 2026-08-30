@@ -1,4 +1,4 @@
-"""Pi coding agent client with optional streaming support."""
+"""Neutral Pi coding-agent RPC client used by local JARVIS services."""
 
 from __future__ import annotations
 
@@ -22,29 +22,29 @@ DEFAULT_PI_CODING_AGENT_COMMAND = "pi"
 DEFAULT_PI_CODING_AGENT_ARGS = "-p"
 DEFAULT_PI_CODING_AGENT_CONTINUE_FLAG = "--continue"
 DEFAULT_PI_CODING_AGENT_RPC_TIMEOUT_SECONDS = 1800.0
-DEFAULT_DISCORD_PI_MODEL = "omlx-64/Qwen3.6-35B-A3B-4bit"
-DEFAULT_DISCORD_PI_THINKING = "high"
+DEFAULT_JARVIS_PI_MODEL = "omlx-64/Qwen3.6-35B-A3B-4bit"
+DEFAULT_JARVIS_PI_THINKING = "high"
 VALID_THINKING_LEVELS = {"off", "minimal", "low", "medium", "high", "xhigh"}
 PROJECT_ROOT = config.PROJECT_ROOT
 DOTENV_PATH = config.DOTENV_PATH
 DOTENV_VALUES = config.load_project_env(DOTENV_PATH)
-LOGGER = config.get_logger("jarvis.llm")
+LOGGER = config.get_logger("jarvis.pi_rpc")
 
 PI_CODING_AGENT_COMMAND = os.environ.get("PI_CODING_AGENT_COMMAND", "").strip() or DEFAULT_PI_CODING_AGENT_COMMAND
 PI_CODING_AGENT_ARGS = os.environ.get("PI_CODING_AGENT_ARGS", "").strip() or DEFAULT_PI_CODING_AGENT_ARGS
 PI_CODING_AGENT_PROMPT_FLAG = os.environ.get("PI_CODING_AGENT_PROMPT_FLAG", "").strip()
 PI_CODING_AGENT_WORKDIR = os.environ.get("PI_CODING_AGENT_WORKDIR", "").strip()
-DISCORD_PI_MODEL = os.environ.get("DISCORD_PI_MODEL", "").strip() or DEFAULT_DISCORD_PI_MODEL
+JARVIS_PI_MODEL = os.environ.get("JARVIS_PI_MODEL", "").strip() or DEFAULT_JARVIS_PI_MODEL
 
 
-def _normalize_thinking_level(raw_value: str | None, default: str = DEFAULT_DISCORD_PI_THINKING) -> str:
+def _normalize_thinking_level(raw_value: str | None, default: str = DEFAULT_JARVIS_PI_THINKING) -> str:
 	level = (raw_value or "").strip().lower()
 	if level in VALID_THINKING_LEVELS:
 		return level
 	return default
 
 
-DISCORD_PI_THINKING = _normalize_thinking_level(os.environ.get("DISCORD_PI_THINKING", ""))
+JARVIS_PI_THINKING = _normalize_thinking_level(os.environ.get("JARVIS_PI_THINKING", ""))
 
 
 def _parse_model_options(raw_value: str, current_model: str) -> tuple[str, ...]:
@@ -60,9 +60,9 @@ def _parse_model_options(raw_value: str, current_model: str) -> tuple[str, ...]:
 	return tuple(models)
 
 
-DISCORD_PI_MODEL_OPTIONS = _parse_model_options(
-	DOTENV_VALUES.get("DISCORD_PI_MODEL_OPTIONS", os.environ.get("DISCORD_PI_MODEL_OPTIONS", "")),
-	DISCORD_PI_MODEL,
+JARVIS_PI_MODEL_OPTIONS = _parse_model_options(
+	DOTENV_VALUES.get("JARVIS_PI_MODEL_OPTIONS", os.environ.get("JARVIS_PI_MODEL_OPTIONS", "")),
+	JARVIS_PI_MODEL,
 )
 
 
@@ -328,7 +328,7 @@ def _delete_saved_pi_session_file(session_file: str | Path) -> dict[str, Any]:
 
 
 def _strip_forced_rpc_args(command: list[str]) -> list[str]:
-	"""Remove flags that conflict with the Discord bot's required RPC/session settings."""
+	"""Remove flags that conflict with the JARVIS service's required RPC/session settings."""
 	flags_with_values = {"--model", "--provider", "--thinking", "--models"}
 	flag_prefixes = tuple(f"{flag}=" for flag in flags_with_values)
 	flags_without_values = {"--no-session"}
@@ -368,9 +368,9 @@ class PiRpcClient:
 		on_event: Callable[[dict[str, Any]], None] | None = None,
 		workdir: Path | None = None,
 		model: str | None = None,
-		discord_channel_id: str | None = None,
-		discord_channel_name: str | None = None,
-		discord_guild_id: str | None = None,
+		context_id: str | None = None,
+		context_name: str | None = None,
+		context_group_id: str | None = None,
 		thinking: str | None = None,
 		append_system_prompt: str | None = None,
 	) -> None:
@@ -382,12 +382,12 @@ class PiRpcClient:
 		"""
 		self.on_event = on_event
 		self.workdir = workdir
-		self.model = (model or DISCORD_PI_MODEL).strip() or DISCORD_PI_MODEL
-		self.thinking = _normalize_thinking_level(thinking, DISCORD_PI_THINKING)
+		self.model = (model or JARVIS_PI_MODEL).strip() or JARVIS_PI_MODEL
+		self.thinking = _normalize_thinking_level(thinking, JARVIS_PI_THINKING)
 		self.append_system_prompt = (append_system_prompt or "").strip()
-		self.discord_channel_id = (discord_channel_id or "").strip()
-		self.discord_channel_name = (discord_channel_name or "").strip()
-		self.discord_guild_id = (discord_guild_id or "").strip()
+		self.context_id = (context_id or "").strip()
+		self.context_name = (context_name or "").strip()
+		self.context_group_id = (context_group_id or "").strip()
 		self.process: subprocess.Popen[bytes] | None = None
 		self._read_thread: threading.Thread | None = None
 		self._stderr_thread: threading.Thread | None = None
@@ -401,7 +401,7 @@ class PiRpcClient:
 		if not command:
 			raise ValueError("PI_CODING_AGENT_COMMAND resolved to an empty command.")
 
-		# Discord requests must always use RPC sessions and the selected Discord
+		# JARVIS requests must always use RPC sessions and the selected JARVIS
 		# model regardless of the user's Pi defaults or conflicting flags
 		# accidentally included in PI_CODING_AGENT_COMMAND.
 		command = _strip_forced_rpc_args(command)
@@ -417,21 +417,21 @@ class PiRpcClient:
 			command.extend(["--append-system-prompt", self.append_system_prompt])
 		
 		env = os.environ.copy()
-		if self.discord_channel_id:
-			env["JARVIS_DISCORD_CONTEXT"] = "1"
-			env["JARVIS_DISCORD_CHANNEL_ID"] = self.discord_channel_id
-			if self.discord_channel_name:
-				env["JARVIS_DISCORD_CHANNEL_NAME"] = self.discord_channel_name
-			if self.discord_guild_id:
-				env["JARVIS_DISCORD_GUILD_ID"] = self.discord_guild_id
+		if self.context_id:
+			env["JARVIS_RPC_CONTEXT"] = "1"
+			env["JARVIS_RPC_CONTEXT_ID"] = self.context_id
+			if self.context_name:
+				env["JARVIS_RPC_CONTEXT_NAME"] = self.context_name
+			if self.context_group_id:
+				env["JARVIS_RPC_CONTEXT_GROUP_ID"] = self.context_group_id
 
 		try:
 			LOGGER.info(
-				"Starting Pi RPC client model=%s thinking=%s workdir=%s discord_channel_id=%s",
+				"Starting Pi RPC client model=%s thinking=%s workdir=%s context_id=%s",
 				self.model,
 				self.thinking,
 				self.workdir or Path.cwd(),
-				self.discord_channel_id or "-",
+				self.context_id or "-",
 			)
 			self.process = subprocess.Popen(
 				command,
@@ -460,50 +460,50 @@ class PiRpcClient:
 
 	def send_prompt(self, message: str, *, images: list[dict[str, str]] | None = None) -> None:
 		"""Send a prompt to the agent."""
-		cmd: dict[str, Any] = {"id": "discord-prompt", "type": "prompt", "message": message}
+		cmd: dict[str, Any] = {"id": "jarvis-prompt", "type": "prompt", "message": message}
 		if images:
 			cmd["images"] = images
 		self._send_command(cmd)
 
 	def send_steer(self, message: str, *, images: list[dict[str, str]] | None = None) -> None:
 		"""Queue a steering message for the active agent turn."""
-		cmd: dict[str, Any] = {"id": "discord-steer", "type": "steer", "message": message}
+		cmd: dict[str, Any] = {"id": "jarvis-steer", "type": "steer", "message": message}
 		if images:
 			cmd["images"] = images
 		self._send_command(cmd)
 
 	def send_new_session(self) -> None:
 		"""Start a fresh JARVIS session in the existing RPC process."""
-		self._send_command({"id": "discord-new-session", "type": "new_session"})
+		self._send_command({"id": "jarvis-new-session", "type": "new_session"})
 
 	def send_compact(self, *, custom_instructions: str | None = None) -> None:
 		"""Manually compact the current JARVIS session in the existing RPC process."""
-		cmd: dict[str, Any] = {"id": "discord-compact", "type": "compact"}
+		cmd: dict[str, Any] = {"id": "jarvis-compact", "type": "compact"}
 		if custom_instructions:
 			cmd["customInstructions"] = custom_instructions
 		self._send_command(cmd)
 
 	def send_get_session_stats(self) -> None:
 		"""Request current JARVIS session statistics from the existing RPC process."""
-		self._send_command({"id": "discord-get-session-stats", "type": "get_session_stats"})
+		self._send_command({"id": "jarvis-get-session-stats", "type": "get_session_stats"})
 
 	def send_get_state(self) -> None:
 		"""Request current JARVIS session state from the existing RPC process."""
-		self._send_command({"id": "discord-get-state", "type": "get_state"})
+		self._send_command({"id": "jarvis-get-state", "type": "get_state"})
 
 	def send_set_auto_compaction(self, *, enabled: bool = True) -> None:
 		"""Enable or disable Pi's automatic context compaction for this RPC session."""
-		self._send_command({"id": "discord-set-auto-compaction", "type": "set_auto_compaction", "enabled": enabled})
+		self._send_command({"id": "jarvis-set-auto-compaction", "type": "set_auto_compaction", "enabled": enabled})
 
 	def send_set_thinking_level(self, *, level: str) -> None:
 		"""Switch Pi's thinking level for the current RPC session."""
-		self._send_command({"id": "discord-set-thinking-level", "type": "set_thinking_level", "level": level})
+		self._send_command({"id": "jarvis-set-thinking-level", "type": "set_thinking_level", "level": level})
 
 	def send_set_model(self, *, provider: str, model_id: str) -> None:
 		"""Switch the active model without replacing the current Pi session."""
 		self._send_command(
 			{
-				"id": "discord-set-model",
+				"id": "jarvis-set-model",
 				"type": "set_model",
 				"provider": provider,
 				"modelId": model_id,
@@ -512,7 +512,7 @@ class PiRpcClient:
 
 	def send_abort(self) -> None:
 		"""Abort current agent operation."""
-		self._send_command({"id": "discord-abort", "type": "abort"})
+		self._send_command({"id": "jarvis-abort", "type": "abort"})
 
 	def _send_command(self, cmd: dict[str, Any]) -> None:
 		"""Send a JSON command to the agent."""
@@ -637,26 +637,26 @@ class PiRpcClient:
 
 
 class PiRpcSession:
-	"""Persistent Pi RPC conversation that can handle multiple Discord messages."""
+	"""Persistent Pi RPC conversation that can handle multiple local service prompts."""
 
 	def __init__(
 		self,
 		*,
 		workdir: Path | None = None,
 		model: str | None = None,
-		discord_channel_id: str | None = None,
-		discord_channel_name: str | None = None,
-		discord_guild_id: str | None = None,
+		context_id: str | None = None,
+		context_name: str | None = None,
+		context_group_id: str | None = None,
 		thinking: str | None = None,
 		append_system_prompt: str | None = None,
 	) -> None:
 		self.workdir = workdir if workdir is not None else _resolve_workdir()
-		self.model = (model or DISCORD_PI_MODEL).strip() or DISCORD_PI_MODEL
-		self.thinking = _normalize_thinking_level(thinking, DISCORD_PI_THINKING)
+		self.model = (model or JARVIS_PI_MODEL).strip() or JARVIS_PI_MODEL
+		self.thinking = _normalize_thinking_level(thinking, JARVIS_PI_THINKING)
 		self.append_system_prompt = (append_system_prompt or "").strip()
-		self.discord_channel_id = (discord_channel_id or "").strip()
-		self.discord_channel_name = (discord_channel_name or "").strip()
-		self.discord_guild_id = (discord_guild_id or "").strip()
+		self.context_id = (context_id or "").strip()
+		self.context_name = (context_name or "").strip()
+		self.context_group_id = (context_group_id or "").strip()
 		self._operation_lock = threading.Lock()
 		self._client: PiRpcClient | None = None
 		self._active_command = ""
@@ -679,9 +679,9 @@ class PiRpcSession:
 				"model": self.model,
 				"thinking": self.thinking,
 				"workdir": str(self.workdir) if self.workdir is not None else "",
-				"channelId": self.discord_channel_id,
-				"channelName": self.discord_channel_name,
-				"guildId": self.discord_guild_id,
+				"contextId": self.context_id,
+				"contextName": self.context_name,
+				"contextGroupId": self.context_group_id,
 				"startedAt": _now_iso(),
 			},
 		)
@@ -707,21 +707,21 @@ class PiRpcSession:
 			return None
 		return max(0.0, time.monotonic() - last_activity)
 
-	def set_discord_channel_context(
+	def set_context(
 		self,
 		*,
-		discord_channel_id: str | None = None,
-		discord_channel_name: str | None = None,
-		discord_guild_id: str | None = None,
+		context_id: str | None = None,
+		context_name: str | None = None,
+		context_group_id: str | None = None,
 	) -> None:
-		"""Attach the Discord channel context used by Pi tools inside this session."""
-		new_channel_id = (discord_channel_id or self.discord_channel_id or "").strip()
-		new_channel_name = (discord_channel_name or self.discord_channel_name or "").strip()
-		new_guild_id = (discord_guild_id or self.discord_guild_id or "").strip()
-		restart_needed = new_channel_id != self.discord_channel_id or new_guild_id != self.discord_guild_id
-		self.discord_channel_id = new_channel_id
-		self.discord_channel_name = new_channel_name
-		self.discord_guild_id = new_guild_id
+		"""Attach the local service context used by Pi tools inside this session."""
+		new_context_id = (context_id or self.context_id or "").strip()
+		new_context_name = (context_name or self.context_name or "").strip()
+		new_group_id = (context_group_id or self.context_group_id or "").strip()
+		restart_needed = new_context_id != self.context_id or new_group_id != self.context_group_id
+		self.context_id = new_context_id
+		self.context_name = new_context_name
+		self.context_group_id = new_group_id
 		if restart_needed and self._client is not None:
 			client = self._client
 			self._client = None
@@ -740,12 +740,12 @@ class PiRpcSession:
 			model=self.model,
 			thinking=self.thinking,
 			append_system_prompt=self.append_system_prompt,
-			discord_channel_id=self.discord_channel_id,
-			discord_channel_name=self.discord_channel_name,
-			discord_guild_id=self.discord_guild_id,
+			context_id=self.context_id,
+			context_name=self.context_name,
+			context_group_id=self.context_group_id,
 		)
 		self._client.start()
-		# Discord-managed Pi sessions should always keep automatic context
+		# JARVIS-managed Pi sessions should always keep automatic context
 		# compaction enabled, regardless of the user's interactive Pi defaults.
 		self._client.send_set_auto_compaction(enabled=True)
 		return self._client
@@ -778,7 +778,7 @@ class PiRpcSession:
 			try:
 				callback(event)
 			except Exception as exc:
-				self._active_errors.append(f"Discord stream callback failed: {exc}")
+				self._active_errors.append(f"Pi RPC stream callback failed: {exc}")
 				if done_event is not None:
 					done_event.set()
 				return
@@ -789,7 +789,7 @@ class PiRpcSession:
 				if event.get("willRetry", False):
 					# Pi may emit agent_end for a retryable failed model attempt, then
 					# continue the same prompt via auto-retry. Do not release the
-					# Discord channel lock or close the stream until the final agent_end.
+					# caller lock or close the stream until the final agent_end.
 					return
 
 				final_error = self._final_agent_error_from_event(event)
@@ -1146,7 +1146,7 @@ class PiRpcSession:
 
 		This intentionally does not acquire ``_operation_lock`` because the normal
 		``run_prompt`` path holds that lock until ``agent_end``. It is used by the
-		Discord bot to mimic Pi terminal steering: while an assistant turn is
+		JARVIS service to mimic Pi terminal steering: while an assistant turn is
 		streaming, new user input is sent to RPC as ``type=steer`` instead of being
 		rejected as a concurrent prompt.
 		"""
@@ -1338,8 +1338,8 @@ def run_pi_rpc_agent(
 			{
 				"active": True,
 				"command": "prompt",
-				"model": DISCORD_PI_MODEL,
-				"thinking": DISCORD_PI_THINKING,
+				"model": JARVIS_PI_MODEL,
+				"thinking": JARVIS_PI_THINKING,
 				"workdir": str(workdir) if workdir is not None else "",
 				"startedAt": _now_iso(),
 			},

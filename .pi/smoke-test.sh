@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Read-only local smoke test for JARVIS/Pi wiring.
-# This script deliberately avoids starting services, calling LLMs, posting to Discord,
+# This script deliberately avoids starting services, calling LLMs, sending external messages,
 # launching browsers, touching hardware, contacting oMLX/Google/Spotify/Cast,
 # or opening SQLite databases in ways that could create/migrate them.
 
@@ -175,7 +175,7 @@ elif command -v python3 >/dev/null 2>&1; then
 fi
 
 section "Safety policy"
-info "Read-only local checks only. This script will not start JARVIS, call an LLM, post to Discord, launch Chrome, touch Apple devices, control Cast/Spotify/Kasa, or contact oMLX/Google APIs."
+info "Read-only local checks only. This script will not start JARVIS, call an LLM, send external messages, launch Chrome, touch Apple devices, control Cast/Spotify/Kasa, or contact oMLX/Google APIs."
 info "SQLite status commands are intentionally not run here because some runners create/init databases on first connect."
 
 section "Repository files"
@@ -197,12 +197,12 @@ require_mode "project secrets" ".env" "600"
 require_mode "Pi settings" ".pi/settings.json" "600"
 require_mode "local system context" ".pi/APPEND_SYSTEM.md" "600"
 require_mode "SSH host allowlist" ".pi/ssh-hosts.json" "600"
-for directory in .pi/runtime .pi/memory .pi/discord-cron; do
+for directory in .pi/runtime .pi/memory .pi/scheduler; do
   require_mode "private directory" "$directory" "700"
 done
 while IFS= read -r path; do
   require_mode "private runtime file" "$path" "600"
-done < <(find .pi .pi/memory .pi/discord-cron -maxdepth 1 -type f \
+done < <(find .pi .pi/memory .pi/scheduler -maxdepth 1 -type f \
   \( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -name '*.sqlite-journal' \
      -o -name '*.sqlite.lock' -o -name 'deleted-sessions-*.json' \) -print 2>/dev/null)
 if [[ -d .pi/runtime/pi-web-access ]]; then
@@ -310,9 +310,7 @@ expected_extension_roots=(
   .pi/extensions/00-web-access-env.ts
   .pi/extensions/01-omlx-provider-setup-and-recovery.ts
   .pi/extensions/04-delete-current-session.ts
-  .pi/extensions/10-discord-cron.ts
-  .pi/extensions/15-discord-send-file.ts
-  .pi/extensions/16-discord-ping.ts
+  .pi/extensions/10-jarvis-cron.ts
   .pi/extensions/30-google-access.ts
   .pi/extensions/34-maps.ts
   .pi/extensions/35-memory.ts
@@ -473,9 +471,7 @@ for (const path of [
 }
 
 const optionalToolFiles = [
-  '.pi/extensions/10-discord-cron.ts',
-  '.pi/extensions/15-discord-send-file.ts',
-  '.pi/extensions/16-discord-ping.ts',
+  '.pi/extensions/10-jarvis-cron.ts',
   '.pi/extensions/30-google-access.ts',
   '.pi/extensions/35-memory.ts',
   '.pi/extensions/45-jarvis.ts',
@@ -498,27 +494,19 @@ fi
 section "CLI import/help checks"
 if [[ -n "$PYTHON_BIN" ]]; then
   run_check "Root Python direct dependency import check" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" - <<'PY'
-import audioop  # noqa: F401
-import davey  # noqa: F401
-import discord  # noqa: F401
-from discord.ext import voice_recv  # noqa: F401
 from huggingface_hub import hf_hub_download  # noqa: F401
-import nacl  # noqa: F401
-import numpy  # noqa: F401
-import onnxruntime  # noqa: F401
-import openwakeword  # noqa: F401
 from piper import PiperVoice, SynthesisConfig  # noqa: F401
 import requests  # noqa: F401
 print('root direct runtime imports ok')
 PY
   run_check "memory CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/memory/memory.py --help
-  run_check "discord-cron CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/discord-cron/runner.py --help
+  run_check "private scheduler CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/scheduler/runner.py --help
 fi
 run_check "Operation JARVIS CLI help" env PYTHONDONTWRITEBYTECODE=1 JARVIS_EMIT_EVENTS=0 projects/operation-jarvis/jarvis-cli --help
 
 section "Runtime data presence only"
 warn_file "memory DB present" ".pi/memory/memory.sqlite"
-warn_file "discord-cron DB present" ".pi/discord-cron/discord-cron.sqlite"
+warn_file "private scheduler DB present" ".pi/scheduler/scheduler.sqlite"
 pi_session_dir_name="--${PWD#/}--"
 pi_session_dir_name="${pi_session_dir_name//\//-}"
 warn_file "Pi sessions directory present" "$HOME/.pi/agent/sessions/$pi_session_dir_name"
@@ -550,7 +538,7 @@ def parse(path: Path):
 
 example = parse(Path('.env.example'))
 actual = parse(Path('.env'))
-required = ['DISCORD_BOT_TOKEN']
+required = ['JARVIS_PI_MODEL', 'JARVIS_SCHEDULER_TIMEOUT_SECONDS', 'JARVIS_VOICE_BASE_URL']
 missing_required = [key for key in required if not actual.get(key)]
 set_count = sum(1 for key in example if actual.get(key))
 print(f'.env.example keys: {len(example)}')
@@ -622,7 +610,7 @@ else
 fi
 
 section "Skipped by design"
-info "No Discord API calls, no discord_bot.py startup, no oMLX requests, no web/Google/YouTube calls, no Chrome launch, no phone/ADB commands, no Cast/Spotify/Kasa commands."
+info "No external-message API calls, no oMLX requests, no web/Google/YouTube calls, no Chrome launch, no phone/ADB commands, no Cast/Spotify/Kasa commands."
 info "For deeper subsystem testing, follow .pi/docs/REBUILD_FROM_SCRATCH.md and run only the specific checks you intend."
 
 section "Summary"

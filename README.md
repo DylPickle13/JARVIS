@@ -1,136 +1,113 @@
 # JARVIS
 
-JARVIS is a Discord-facing control layer for the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent) and a local “Operation JARVIS” room stack. The main bot process handles Discord text chat, live voice, attachments, and persistent Pi RPC sessions. The repository also provides scheduled jobs, durable memory, direct raw-session lookup, browser automation, Cast/Spotify media, smart plugs, the Levoit air purifier, room audio, and native iOS/watchOS control through `jarvisd`.
+JARVIS is a private local automation and control stack built around the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent). It combines persistent Pi RPC sessions, bounded scheduled-job history, durable memory, browser and Google tooling, Cast/Spotify media, smart plugs, a Levoit air purifier, Raspberry Pi room audio, and native iOS/watchOS clients through `jarvisd`.
 
-The repository is public by design, but it expects private local configuration. Secrets, device mappings, LAN hosts, SSH targets, runtime databases, generated media, and personal prompt overrides belong in ignored files such as `.env`, `.pi/APPEND_SYSTEM.md`, `.pi/ssh-hosts.json`, and Operation JARVIS hardware config files.
+## Architecture
 
-This root README is a map and quick-start guide. Detailed subsystem notes live in the linked project READMEs below.
+- **Pi** — local coding-agent UI, RPC process management, extensions, tools, and model selection.
+- **Private scheduler** — [`.pi/scheduler/runner.py`](.pi/scheduler/runner.py) executes four preserved jobs and stores sanitized output-producing successes plus every failure in an owner-only bounded SQLite database.
+- **Native Apple clients** — [`projects/operation-jarvis/jarvis-app/`](projects/operation-jarvis/jarvis-app/) provides Home, JARVIS terminal, Jobs, and Settings on iPhone plus guarded Watch controls and widgets.
+- **jarvisd** — authenticated read-only state/results APIs and closed, validated native hardware commands on port `8790`.
+- **terminald** — isolated mobile terminal relay on port `8792`, bound to the protected `jarvis-mobile` tmux session.
+- **Room audio** — Raspberry Pi microphone/speaker endpoint → oMLX Whisper → neutral Pi RPC → Piper speech through the Mac service on port `8791`.
+- **Operation JARVIS tools** — Cast, Spotify, local Kasa plugs, and VeSync/Levoit purifier control.
 
-## What’s Included
-
-- **Discord bot** — [`discord_bot.py`](discord_bot.py) runs a `discord.py` client for configured text channels and the `jarvis` voice channel text chat. It streams Pi output back into Discord, handles busy/cancel states, slash commands, attachments, voice-message transcription, and live voice integration.
-- **Pi RPC sessions** — [`llm.py`](llm.py) keeps persistent per-channel `pi --mode rpc` sessions with model/thinking controls, steering, cancellation, session deletion, manual compaction, and local session telemetry consumed by `jarvisd`.
-- **Inputs** — text prompts, saved file attachments, native image attachments, and Discord mobile voice messages transcribed through an OpenAI-compatible oMLX Whisper endpoint.
-- **Live voice** — [`projects/operation-jarvis/voice/`](projects/operation-jarvis/voice/) is loaded by the main bot: Discord PCM → openWakeWord → oMLX Whisper ASR → Pi RPC → Piper JARVIS TTS → Discord playback. Its central `voice_commands.py` policy also gives Discord and room audio the same busy-only exact bare-`stop` behavior.
-- **Pi extensions** — [`.pi/extensions/`](.pi/extensions/) provides web/search helpers, lazy tool loading, memory, Discord cron/ping/file upload tools, browser/Google/Maps/YouTube integrations, and Operation JARVIS tools.
-- **Operation JARVIS** — [`projects/operation-jarvis/`](projects/operation-jarvis/) contains the native iOS/watchOS app and `jarvisd` control plane, Codex/Copilot quota telemetry, Cast/Spotify media, TP-Link Kasa smart plugs, Levoit/VeSync air-purifier control, and Raspberry Pi room audio.
-- **Runtime data** — `.env`, attachments, generated media/data, SQLite indexes, logs, cron runs, and Pi runtime status files are ignored by git.
-
-## Public/Private Configuration Model
-
-Tracked files provide generic defaults and placeholders. Local deployments should copy [`.env.example`](.env.example)—the primary template for common deployment settings—to `.env` and fill in only local values there. Advanced subsystem settings may retain safe source defaults or be documented in the relevant project README. Private files intentionally ignored by git include:
-
-- `.env` and environment-specific `.env.*` files.
-- `.pi/APPEND_SYSTEM.md` for private assistant persona/location/device guidance.
-- `.pi/ssh-hosts.json` for trusted SSH host aliases.
-- `projects/operation-jarvis/smart-plug/plugs.json` for local plug aliases and IPs.
-- Runtime folders for attachments, media captures, SQLite indexes, logs, Pi sessions, and scheduled-job runs.
-
-## Repository Map
+## Repository map
 
 | Path | Purpose |
 |---|---|
-| [`discord_bot.py`](discord_bot.py) | Main Discord bot: text channels, slash commands, attachments, voice-message ASR, live voice wiring. |
-| [`llm.py`](llm.py) | Pi CLI/RPC process management and persistent Discord channel sessions. |
-| [`config.py`](config.py), [`api_backoff.py`](api_backoff.py) | Shared environment, logging, paths, and retry helpers. |
-| [`.env.example`](.env.example) | Primary tracked configuration template. Copy to `.env`; never commit secrets. |
-| [`.pi/docs/`](.pi/docs/) | Cold-rebuild and Pi extension/tool documentation. |
-| [`.pi/extensions/`](.pi/extensions/) | Project Pi extensions and lazy tool groups. |
-| [`.pi/memory/`](.pi/memory/) | SQLite-backed project memory runner. |
-| [`.pi/discord-cron/`](.pi/discord-cron/) | Independent scheduled Pi jobs that post results to Discord. |
-| [`projects/operation-jarvis/`](projects/operation-jarvis/) | Native Apple clients/`jarvisd`, provider quotas, voice, room audio, Cast/media, smart plugs, and purifier subsystems. |
-| `attachments/` | Runtime Discord attachment storage, created locally and ignored by git. |
+| [`pi_rpc.py`](pi_rpc.py) | Neutral Pi CLI/RPC process management and persistent local sessions. |
+| [`.pi/extensions/`](.pi/extensions/) | Project-local tools, lazy schemas, memory, scheduler, browser, Google, Maps, GitHub, SSH, REAPER, and Operation JARVIS integrations. |
+| [`.pi/scheduler/`](.pi/scheduler/) | Generic scheduler, bounded results, dormant fail-closed APNs provider scaffold, and tests. |
+| [`.pi/memory/`](.pi/memory/) | Explicit owner-only durable memory. |
+| [`projects/operation-jarvis/`](projects/operation-jarvis/) | Physical-world control, room audio, quotas, and native app. |
+| [`projects/operation-jarvis/voice/`](projects/operation-jarvis/voice/) | Transport-neutral ASR, response, normalization, streaming, interruption, and Piper pipeline. |
+| [`projects/operation-jarvis/jarvis-app/`](projects/operation-jarvis/jarvis-app/) | Native iPhone, Watch, widgets, JARVISKit, jarvisd, and terminald. |
 
-## Quick Start
-
-Requirements:
-
-- Python 3.13+; Python 3.13 is the tested/recommended runtime for the current voice dependency pins
-- Pi CLI on `PATH`
-- Discord bot token with Message Content and Voice States intents enabled
-- oMLX/OpenAI-compatible endpoints for voice ASR and local models as configured
-- `ffmpeg` for Discord voice playback
-- Node.js 20+ for Pi/browser extensions
+## Setup
 
 ```bash
 cd /path/to/JARVIS
-python3.13 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 cp .env.example .env
-# edit .env with local tokens, model endpoints, and device settings
-.pi/smoke-test.sh  # read-only/local; does not start services or touch hardware
-python discord_bot.py
+chmod 600 .env
+npm install --prefix .pi/extensions/lib
+npm install --prefix .pi/extensions/50-browser
 ```
 
-The root [`requirements.txt`](requirements.txt) intentionally lists direct dependencies for the main bot and its loaded live-voice module; pip resolves their transitive packages. Operation JARVIS Cast, smart-plug, and purifier components use the dedicated environments documented in the subsystem READMEs.
-
-Operation JARVIS local smoke check:
+Install Pi and project packages as documented in [`.pi/docs/REBUILD_FROM_SCRATCH.md`](.pi/docs/REBUILD_FROM_SCRATCH.md), then run the read-only smoke test:
 
 ```bash
-cd /path/to/JARVIS/projects/operation-jarvis
-./jarvis-cli --json status --no-cast
+.pi/smoke-test.sh
 ```
 
-## Configuration
+## Private scheduled jobs
 
-Common deployment configuration lives in `.env`; [`.env.example`](.env.example) is the tracked template. Advanced tuning knobs may use source defaults and are documented with their subsystem. Main groups:
+```bash
+# Read-only status/list
+.venv/bin/python .pi/scheduler/runner.py --json status
+.venv/bin/python .pi/scheduler/runner.py --json list
 
-- **Discord** — bot token, target channels, stream throttles, attachment caps, auto-thread members, voice-message ASR, and live voice channel.
-- **Pi/model** — Pi command, workdir, RPC timeout, default text model, voice model override, thinking level, and `/jarvis model` options.
-- **Voice/oMLX/TTS** — ASR endpoint/model, wake-word gates, Piper voice settings, TTS streaming, and idle session refresh.
-- **Native Apple/room hardware** — `JARVISD_*` daemon settings, Raspberry Pi room-audio tuning, Cast targets, smart-plug aliases, and purifier credentials.
-- **Remote SSH machines (private)** — configure explicit remote aliases in ignored `.pi/ssh-hosts.json` or `JARVIS_SSH_*` variables. Use normal coding tools for the local host; `ssh` supports captured commands and interactive PTY sessions on remotes. See [`.pi/docs/PI_EXTENSIONS.md`](.pi/docs/PI_EXTENSIONS.md).
-- **Tools** — Exa-backed web access, Google/YouTube APIs, memory, direct raw-session lookup, Discord cron/ping/file upload, and Kasa smart-plug credentials.
+# Install the one-minute launchd runner
+.venv/bin/python .pi/scheduler/runner.py --json install
+```
 
-## Discord Usage
+The database is `.pi/scheduler/scheduler.sqlite` with directory/file modes `0700/0600`. Retention is 500 results, each capped at 64 KiB. Successful checks with no output update health only. Output-producing successes and all failures appear in the native Jobs inbox. The native API never exposes prompts, models, command lines, credentials, or local paths.
 
-Slash commands are grouped under `/jarvis` in configured text channels and the configured voice channel text chat:
+Inside Pi, load the optional `cron` group and use `jarvis_cron` for scheduler management. The iPhone Jobs surface is intentionally read-only.
 
-- `/jarvis new` — start a fresh Pi session for the channel.
-- `/jarvis delete` — delete the current saved Pi session for the channel.
-- `/jarvis cancel` — abort active work in the channel.
-- `/jarvis model` — show model controls, quota refresh, and model-selection buttons.
-- `/jarvis thinking [level]` — show or change the channel thinking level.
-- `/jarvis compact [instructions]` — compact the current channel session.
-- `/jarvis restart` — safely restart the bot after checking for active work.
+## Native app
 
-Legacy `>` control commands are not registered.
+The app project is generated from `projects/operation-jarvis/jarvis-app/project.yml`:
 
-## Pi Tool Surface
+```bash
+cd projects/operation-jarvis/jarvis-app
+xcodegen generate
+./scripts/verify-jarvis-app.sh
+```
 
-Baseline tools include local coding/file helpers plus `ssh`, `web_search`, `fetch_content`, `get_search_content`, `minecraft_jarvis`, `maps`, `github_cli`, and `load_tools`. Optional groups are loaded on demand with `load_tools({ groups: [...] })`:
+Physical deployment uses the fixed private signing-renewal script and allowlisted devices. Do not rebuild between archive audit and installation. See the app [README](projects/operation-jarvis/jarvis-app/README.md) for deployment and safety contracts.
 
-`memory`, `code_docs`, `jarvis`, `google`, `cron`, `discord`, `sessions`, `browser`, `reaper`, or `all`.
+## Room audio
 
-`minecraft_jarvis` is already always on; its compatibility group remains accepted but does not need to be loaded.
+The Mac service uses:
 
-YouTube metadata/search uses the always-on `web_search` tool with `provider: "youtube"`; it is not a `load_tools` group.
+- [`pi_rpc.py`](pi_rpc.py) for neutral persistent Pi RPC;
+- [`voice_pipeline.py`](projects/operation-jarvis/voice/voice_pipeline.py) for oMLX ASR and Piper TTS;
+- [`room_audio_server.py`](projects/operation-jarvis/raspberry-pi/room_audio/room_audio_server.py) for the bounded LAN bridge.
 
-Use the Discord-specific tools for their narrow jobs: `discord_cron` for scheduled jobs, `discord_ping` for immediate user-facing pings/notifications and attachments, and `discord_send_file` only for verified local uploads to the current Discord channel.
+Read-only health:
 
-## Safety Notes
+```bash
+curl -fsS http://127.0.0.1:8791/health | python3 -m json.tool
+```
 
-- Keep `.env` and ignored hardware config files private.
-- Do not run duplicate Discord bot processes with the same token.
-- The provided smoke test is read-only/local and avoids hardware actions.
-- Tools that touch external services, browser sessions, SSH hosts, smart plugs, the air purifier, Cast devices, or Discord channels are intended to stay explicit and bounded.
+The Raspberry Pi capture/playback client and service installer remain under [`projects/operation-jarvis/raspberry-pi/room_audio/`](projects/operation-jarvis/raspberry-pi/room_audio/).
 
-## Deeper Docs
+## Pi tool loading
 
-- [Pi extensions and tool surface](.pi/docs/PI_EXTENSIONS.md)
-- [Rebuild JARVIS from scratch](.pi/docs/REBUILD_FROM_SCRATCH.md)
-- [Operation JARVIS overview](projects/operation-jarvis/README.md)
-- [Provider quota tracker](projects/operation-jarvis/quotas/README.md)
-- [Live Discord voice](projects/operation-jarvis/voice/README.md)
-- [Raspberry Pi endpoint](projects/operation-jarvis/raspberry-pi/README.md)
-- [Raspberry Pi room audio](projects/operation-jarvis/raspberry-pi/room_audio/README.md)
-- [Smart plugs](projects/operation-jarvis/smart-plug/README.md)
-- [Air purifier](projects/operation-jarvis/air-purifier/README.md)
+Always-on tools cover coding, SSH, web research/fetch, Maps, and `load_tools`. Optional groups include:
 
-Do not run the standalone voice bot with the same Discord token while the main bot is running; the main bot already owns the voice subsystem.
+`memory`, `code_docs`, `jarvis`, `minecraft_jarvis`, `github`, `google`, `cron`, `browser`, and `reaper`.
 
-## License
+Load only the group needed for the current task. Hardware operations remain explicit and bounded; scheduler and native Jobs reads are separate from hardware actions.
 
-This project is released under the [MIT License](LICENSE).
+## Security and runtime rules
+
+- Never commit `.env`, API credentials, device selectors, APNs keys, tokens, runtime databases, or private archives.
+- Keep `.env`, SQLite files, and sidecars mode `0600`; private runtime directories use `0700`.
+- The future APNs `.p8` key must live outside Git in an owner-only `0700/0600` location.
+- Do not expose JARVIS services publicly. Trusted LAN/Tailscale access and endpoint policy remain fail-closed.
+- Hardware writes require fresh authoritative state and are never queued, inferred, replayed, or retried after ambiguous delivery.
+- Do not disturb terminald or the protected `jarvis-mobile` tmux session while changing unrelated services.
+- Use exact audited archive products for physical Apple-device deployment.
+
+## Documentation
+
+- [Pi extensions](.pi/docs/PI_EXTENSIONS.md)
+- [Rebuild from scratch](.pi/docs/REBUILD_FROM_SCRATCH.md)
+- [Operation JARVIS](projects/operation-jarvis/README.md)
+- [Native app](projects/operation-jarvis/jarvis-app/README.md)
+- [Room audio](projects/operation-jarvis/raspberry-pi/room_audio/README.md)

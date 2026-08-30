@@ -1,14 +1,5 @@
 {
   "services": {
-    "discord-bot": {
-      "label": "com.operation-jarvis.discord-bot",
-      "plist": "~/Library/LaunchAgents/com.operation-jarvis.discord-bot.plist",
-      "displayName": "JARVIS Discord Bot",
-      "description": "Text, Pi RPC, and live Discord voice",
-      "sortOrder": 10,
-      "critical": true,
-      "allowedActions": []
-    },
     "room-audio-server": {
       "label": "com.operation-jarvis.room-audio-server",
       "plist": "~/Library/LaunchAgents/com.operation-jarvis.room-audio-server.plist",
@@ -18,11 +9,11 @@
       "critical": false,
       "allowedActions": ["start", "stop", "restart"]
     },
-    "discord-cron-scheduler": {
-      "label": "com.jarvis.pi-discord-cron",
-      "plist": "~/Library/LaunchAgents/com.jarvis.pi-discord-cron.plist",
+    "jobs-scheduler": {
+      "label": "com.jarvis.pi-scheduler",
+      "plist": "~/Library/LaunchAgents/com.jarvis.pi-scheduler.plist",
       "displayName": "Scheduled Jobs Runner",
-      "description": "Dispatches due Discord/Pi jobs every minute",
+      "description": "Runs due jobs into bounded private local history",
       "sortOrder": 30,
       "critical": true,
       "allowedActions": []

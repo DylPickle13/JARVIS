@@ -13,17 +13,16 @@ const PRIVATE_FILES = [
 	join(PROJECT_ROOT, ".pi", "settings.json"),
 	join(PROJECT_ROOT, ".pi", "APPEND_SYSTEM.md"),
 	join(PROJECT_ROOT, ".pi", "ssh-hosts.json"),
-	join(PROJECT_ROOT, ".pi", "discord-cron.json"),
-	join(PROJECT_ROOT, ".pi", "discord-cron.sqlite"),
-	join(PROJECT_ROOT, ".pi", "discord-cron.sqlite-wal"),
-	join(PROJECT_ROOT, ".pi", "discord-cron.sqlite-shm"),
-	join(PROJECT_ROOT, ".pi", "discord-cron.sqlite-journal"),
+	join(PROJECT_ROOT, ".pi", "scheduler", "scheduler.sqlite"),
+	join(PROJECT_ROOT, ".pi", "scheduler", "scheduler.sqlite-wal"),
+	join(PROJECT_ROOT, ".pi", "scheduler", "scheduler.sqlite-shm"),
+	join(PROJECT_ROOT, ".pi", "scheduler", "scheduler.sqlite-journal"),
 ];
 
 const PRIVATE_DIRS = [
 	join(PROJECT_ROOT, ".pi", "runtime"),
 	join(PROJECT_ROOT, ".pi", "memory"),
-	join(PROJECT_ROOT, ".pi", "discord-cron"),
+	join(PROJECT_ROOT, ".pi", "scheduler"),
 ];
 
 const PRIVATE_RUNTIME_FILE_RE = /(?:\.sqlite(?:-(?:wal|shm|journal))?|\.sqlite\.lock|^deleted-sessions-.*\.json)$/;

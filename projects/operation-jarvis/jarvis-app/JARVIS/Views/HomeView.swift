@@ -4,6 +4,11 @@ import JARVISKit
 
 struct HomeView: View {
     @EnvironmentObject var app: AppState
+    let onOpenJobs: () -> Void
+
+    init(onOpenJobs: @escaping () -> Void = {}) {
+        self.onOpenJobs = onOpenJobs
+    }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var fanLocal: Double = 2
     @State private var isDraggingFan = false
@@ -493,9 +498,7 @@ struct HomeView: View {
 
                 compactDivider
 
-                NavigationLink {
-                    scheduledJobsDetail
-                } label: {
+                Button(action: onOpenJobs) {
                     systemSummaryRow(
                         title: "Scheduled jobs",
                         systemImage: "calendar.badge.clock",
@@ -858,87 +861,6 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Scheduled-job detail
-
-    private var scheduledJobsDetail: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
-                if let error = app.scheduledJobsErrorMessage {
-                    statusErrorCard(title: "Scheduled jobs unavailable", message: error)
-                }
-                if !app.scheduledJobsLoaded {
-                    loadingStatusCard("Loading scheduled jobs…")
-                } else if app.lastScheduledJobs.isEmpty {
-                    Card { Text("No scheduled jobs configured.").foregroundStyle(.secondary) }
-                } else {
-                    ForEach(app.lastScheduledJobs) { job in
-                        scheduledJobCard(job)
-                    }
-                }
-            }
-            .padding(16)
-        }
-        .background(JarvisBackdrop())
-        .navigationTitle("Scheduled jobs")
-        .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await app.refreshHome() }
-    }
-
-    private func scheduledJobCard(_ job: ScheduledJob) -> some View {
-        let status = job.lastStatus ?? "never run"
-        return Card {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(alignment: .firstTextBaseline, spacing: 9) {
-                    Circle()
-                        .fill(job.enabled ? scheduledJobStatusColor(job.lastStatus) : Color.secondary)
-                        .frame(width: 9, height: 9)
-                    Text(JarvisFormat.displayName(job.name)).font(.headline)
-                    Spacer(minLength: 8)
-                    Text(job.enabled ? "Enabled" : "Disabled")
-                        .font(.subheadline)
-                        .foregroundStyle(job.enabled ? .green : .secondary)
-                }
-                Text(JarvisFormat.scheduleDescription(kind: job.kind, schedule: job.schedule))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                if let description = job.description, !description.isEmpty {
-                    Text(description).font(.caption).foregroundStyle(.secondary)
-                }
-                LabeledContent("Next", value: JarvisFormat.localDateTime(job.nextRunAt) ?? (job.enabled ? "Pending" : "Not scheduled"))
-                    .font(.caption)
-                HStack {
-                    Text("Last: \(status)").foregroundStyle(scheduledJobStatusColor(job.lastStatus))
-                    Spacer()
-                    if !JarvisFormat.relativeTime(job.lastRunAt).isEmpty {
-                        Text("\(JarvisFormat.relativeTime(job.lastRunAt)) ago")
-                    }
-                    Text("· \(job.runCount) runs")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(scheduledJobAccessibilityLabel(job))
-    }
-
-    private func scheduledJobStatusColor(_ status: String?) -> Color {
-        switch status {
-        case "success": return .green
-        case "error": return .red
-        case "running": return .orange
-        default: return .secondary
-        }
-    }
-
-    private func scheduledJobAccessibilityLabel(_ job: ScheduledJob) -> String {
-        let enabled = job.enabled ? "enabled" : "disabled"
-        let next = JarvisFormat.localDateTime(job.nextRunAt) ?? "not scheduled"
-        let last = job.lastStatus ?? "never run"
-        return "\(JarvisFormat.displayName(job.name)), \(enabled). \(JarvisFormat.scheduleDescription(kind: job.kind, schedule: job.schedule)). Next \(next). Last status \(last). \(job.runCount) runs."
-    }
-
     // MARK: - Detail helpers and actions
 
     private func loadingStatusCard(_ message: String) -> some View {
@@ -986,9 +908,7 @@ struct HomeView: View {
 
     private func serviceImpactMessage(name: String, displayName: String, action: String) -> String {
         switch name {
-        case "discord-bot":
-            return "This will \(action) the Discord bot and interrupt active text or voice responses."
-        case "discord-cron-scheduler":
+        case "jobs-scheduler":
             return "This will \(action) future scheduled-job dispatch. Work already running may continue."
         case "room-audio-server":
             return "This will \(action) \(displayName) and temporarily interrupt room voice access."

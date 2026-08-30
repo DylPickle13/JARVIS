@@ -40,7 +40,7 @@ def _find_operation_root(start: Path) -> Path:
 
 def _find_project_root(operation_root: Path) -> Path:
     for parent in operation_root.parents:
-        if (parent / "config.py").exists() and (parent / "llm.py").exists():
+        if (parent / "config.py").exists() and (parent / "pi_rpc.py").exists():
             return parent
     raise RuntimeError(f"Unable to locate JARVIS project root from {operation_root}")
 
@@ -58,8 +58,8 @@ import config  # noqa: E402
 
 config.load_project_env(PROJECT_ROOT / ".env")
 
-import llm  # noqa: E402
-import discord_voice  # noqa: E402
+import pi_rpc  # noqa: E402
+import voice_pipeline  # noqa: E402
 from voice_commands import STOP_COMMAND, parse_voice_interrupt_command  # noqa: E402
 
 LOGGER = config.get_logger("operation_jarvis.room_audio")
@@ -76,16 +76,16 @@ ASYNC_JOB_TTL_SECONDS = config.get_int_env("JARVIS_ROOM_AUDIO_ASYNC_JOB_TTL_SECO
 ASYNC_POLL_AFTER_SECONDS = config.get_float_env("JARVIS_ROOM_AUDIO_ASYNC_POLL_AFTER_SECONDS", 0.25, minimum=0.05)
 ROOM_AUDIO_PI_IDLE_NEW_SESSION_SECONDS = config.get_float_env(
     "JARVIS_ROOM_AUDIO_PI_IDLE_NEW_SESSION_SECONDS",
-    config.get_float_env("DISCORD_VOICE_PI_IDLE_NEW_SESSION_SECONDS", 15 * 60.0, minimum=0.0),
+    config.get_float_env("JARVIS_VOICE_PI_IDLE_NEW_SESSION_SECONDS", 15 * 60.0, minimum=0.0),
     minimum=0.0,
 )
 PROCESSING_ACK_ENABLED = config.get_str_env(
     "JARVIS_ROOM_AUDIO_PROCESSING_ACK_ENABLED",
-    config.get_str_env("DISCORD_VOICE_PROCESSING_ACK_ENABLED", "1"),
+    config.get_str_env("JARVIS_VOICE_PROCESSING_ACK_ENABLED", "1"),
 ).lower() not in {"0", "false", "no", "off", ""}
 PROCESSING_ACK_TEXT = config.get_str_env(
     "JARVIS_ROOM_AUDIO_PROCESSING_ACK_TEXT",
-    config.get_str_env("DISCORD_VOICE_PROCESSING_ACK_TEXT", "Generating your response, sir."),
+    config.get_str_env("JARVIS_VOICE_PROCESSING_ACK_TEXT", "Generating your response, sir."),
 ).strip()
 ROOM_GREETING_ENABLED = config.get_str_env("JARVIS_ROOM_AUDIO_GREETING_ENABLED", "1").lower() not in {"0", "false", "no", "off", ""}
 ROOM_GREETING_TEXT = config.get_str_env("JARVIS_ROOM_AUDIO_GREETING_TEXT", "").strip()
@@ -97,7 +97,7 @@ ROOM_GREETING_LOCK = threading.Lock()
 WAKE_WORDS = tuple(
     dict.fromkeys(
         word.strip()
-        for word in re.split(r"[,;|]", config.get_str_env("JARVIS_ROOM_AUDIO_WAKE_WORD", config.get_str_env("DISCORD_VOICE_WAKE_WORD", "jarvis,arvis,charvis,travis,darvish,charmavis")))
+        for word in re.split(r"[,;|]", config.get_str_env("JARVIS_ROOM_AUDIO_WAKE_WORD", config.get_str_env("JARVIS_VOICE_WAKE_WORD", "jarvis,arvis,charvis,travis,darvish,charmavis")))
         if word.strip()
     )
 )
@@ -145,9 +145,9 @@ def select_room_greeting() -> str:
     if ROOM_GREETING_TEXT:
         return ROOM_GREETING_TEXT
 
-    now_func = getattr(discord_voice, "_voice_local_now", None)
-    parse_func = getattr(discord_voice, "_parse_voice_greeting_timestamp", None)
-    format_func = getattr(discord_voice, "_format_contextual_join_greeting", None)
+    now_func = getattr(voice_pipeline, "voice_local_now", None)
+    parse_func = getattr(voice_pipeline, "parse_voice_greeting_timestamp", None)
+    format_func = getattr(voice_pipeline, "format_contextual_greeting", None)
     if not (callable(now_func) and callable(parse_func) and callable(format_func)):
         return "JARVIS online. At your service, sir."
 
@@ -167,14 +167,14 @@ def load_room_append_system_prompt() -> str:
         (
             "You are currently speaking through the Raspberry Pi room audio endpoint. "
             "The microphone and speaker are in the room, so answer naturally and briefly. "
-            "Do not mention Discord unless asked."
+            "Keep responses suitable for spoken room audio."
         ),
     ]
     return "\n\n".join(part for part in parts if part)
 
 
 def normalize_wake_words(transcript: str) -> str:
-    normalizer = getattr(discord_voice, "_normalize_voice_transcript_wake_words", None)
+    normalizer = getattr(voice_pipeline, "normalize_voice_transcript_wake_words", None)
     if callable(normalizer):
         return str(normalizer(transcript)).strip()
     return transcript.strip()
@@ -246,20 +246,20 @@ class RoomAudioBridge:
     def __init__(self) -> None:
         model = config.get_str_env(
             "JARVIS_ROOM_AUDIO_PI_MODEL",
-            config.get_str_env("DISCORD_VOICE_PI_MODEL", config.get_str_env("DISCORD_PI_MODEL", "")),
+            config.get_str_env("JARVIS_PI_MODEL", ""),
         )
-        thinking = config.get_str_env("JARVIS_ROOM_AUDIO_PI_THINKING", llm.DISCORD_PI_THINKING)
-        self._session = llm.PiRpcSession(
+        thinking = config.get_str_env("JARVIS_ROOM_AUDIO_PI_THINKING", pi_rpc.JARVIS_PI_THINKING)
+        self._session = pi_rpc.PiRpcSession(
             model=model,
             thinking=thinking,
             append_system_prompt=load_room_append_system_prompt(),
-            discord_channel_id=DEFAULT_CHANNEL_ID,
-            discord_channel_name=DEFAULT_CHANNEL_NAME,
+            context_id=DEFAULT_CHANNEL_ID,
+            context_name=DEFAULT_CHANNEL_NAME,
         )
         # The server returns a single final WAV to the Pi client, so do not stream
-        # TTS chunks here. Discord voice still owns the streaming path.
-        pipeline_config = discord_voice.VoicePipelineConfig(stream_tts=False)
-        self._pipeline = discord_voice.OmlxVoicePipeline(pipeline_config, response_callback=self._run_pi_response)
+        # TTS chunks here. The room endpoint returns one final combined WAV.
+        pipeline_config = voice_pipeline.VoicePipelineConfig(stream_tts=False)
+        self._pipeline = voice_pipeline.OmlxVoicePipeline(pipeline_config, response_callback=self._run_pi_response)
         self._lock = threading.Lock()
         self._active_pi_turn_lock = threading.Lock()
         self._active_pi_turn_id = ""
@@ -337,7 +337,7 @@ class RoomAudioBridge:
                 self._active_pi_turn_id = turn_id
             try:
                 raise_if_cancelled()
-                self._session.run_prompt(prompt, on_event=handle_event, timeout_seconds=llm.PI_CODING_AGENT_RPC_TIMEOUT_SECONDS)
+                self._session.run_prompt(prompt, on_event=handle_event, timeout_seconds=pi_rpc.PI_CODING_AGENT_RPC_TIMEOUT_SECONDS)
                 raise_if_cancelled()
             finally:
                 with self._active_pi_turn_lock:
@@ -526,7 +526,7 @@ class RoomAudioBridge:
                 cancel_event=cancel_event,
             )
             response.update({"turnId": turn_id, "status": "done"})
-        except (RoomAudioTurnCancelled, llm.PiRpcCancelledError):
+        except (RoomAudioTurnCancelled, pi_rpc.PiRpcCancelledError):
             LOGGER.info("Room audio turn cancelled: %s", turn_id)
             response = self._cancelled_turn_response(
                 turn_id,
@@ -963,7 +963,7 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
             else:
                 response = self.server.bridge.handle_wav(wav_path, require_wake_word=require_wake_word)
             self._send_json(response)
-        except discord_voice.VoicePipelineNoOutputError as exc:
+        except voice_pipeline.VoicePipelineNoOutputError as exc:
             if path == "/interrupt":
                 self._send_json(
                     {

@@ -1,7 +1,7 @@
 """Shared deterministic control policy for every Operation JARVIS voice adapter.
 
-Audio capture, VAD, and playback remain transport-specific (Discord and
-Raspberry Pi). Those adapters send busy-only candidates through Whisper, then
+Audio capture, VAD, and playback remain transport-specific to the Raspberry Pi
+room endpoint. The adapter sends busy-only candidates through Whisper, then
 use this module for the final control decision.
 """
 

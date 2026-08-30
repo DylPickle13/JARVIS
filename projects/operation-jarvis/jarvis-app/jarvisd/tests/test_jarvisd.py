@@ -627,10 +627,10 @@ class DaemonUnitTests(unittest.TestCase):
         old_events = jarvisd.EVENTS
         jarvisd.EVENTS = jarvisd.EventStore()
         spec_data = {
-            "discord-bot": {
-                "label": "com.operation-jarvis.discord-bot",
-                "displayName": "JARVIS Discord Bot",
-                "description": "Discord runtime",
+            "scheduled-jobs-runner": {
+                "label": "com.jarvis.pi-scheduler",
+                "displayName": "Scheduled Jobs Runner",
+                "description": "Private scheduler runtime",
                 "sortOrder": 10,
                 "critical": True,
                 "allowedActions": [],
@@ -643,7 +643,7 @@ class DaemonUnitTests(unittest.TestCase):
                      "_run_launchctl",
                      side_effect=AssertionError("disallowed action reached launchctl"),
                  ):
-                result = jarvisd._service_action("discord-bot", "restart")
+                result = jarvisd._service_action("scheduled-jobs-runner", "restart")
             self.assertFalse(result["ok"])
             self.assertIn("not allowed", result["error"])
             events = jarvisd.EVENTS.list()
@@ -651,8 +651,8 @@ class DaemonUnitTests(unittest.TestCase):
             self.assertEqual(events[0]["eventType"], "service.action")
 
             proc = mock.Mock(returncode=0, stdout="state = running\npid = 123\n", stderr="")
-            status = jarvisd._parse_launchctl_status("discord-bot", spec_data["discord-bot"], proc)
-            self.assertEqual(status["displayName"], "JARVIS Discord Bot")
+            status = jarvisd._parse_launchctl_status("scheduled-jobs-runner", spec_data["scheduled-jobs-runner"], proc)
+            self.assertEqual(status["displayName"], "Scheduled Jobs Runner")
             self.assertEqual(status["sortOrder"], 10)
             self.assertTrue(status["critical"])
             self.assertEqual(status["allowedActions"], [])
@@ -677,7 +677,7 @@ class DaemonUnitTests(unittest.TestCase):
                 "description": "Daily search from /Users/example/private/source.md",
                 "prompt": "private prompt",
                 "model": "private model",
-                "discord_thread_id": "private-thread",
+                "privateDeliveryId": "private-delivery",
                 "path": "/Users/example/private",
             }],
         })
@@ -686,7 +686,7 @@ class DaemonUnitTests(unittest.TestCase):
         encoded = json.dumps(result)
         self.assertNotIn("private prompt", encoded)
         self.assertNotIn("private model", encoded)
-        self.assertNotIn("private-thread", encoded)
+        self.assertNotIn("private-delivery", encoded)
         self.assertNotIn("/Users/", encoded)
 
     def test_scheduled_jobs_runner_is_fixed_bounded_and_fail_closed(self):
@@ -706,7 +706,7 @@ class DaemonUnitTests(unittest.TestCase):
             }],
         }
         completed = mock.Mock(returncode=0, stdout=json.dumps(payload), stderr="private stderr")
-        with mock.patch.object(jarvisd, "DISCORD_CRON_RUNNER", Path(__file__)), \
+        with mock.patch.object(jarvisd, "SCHEDULER_RUNNER", Path(__file__)), \
              mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
             result = jarvisd._scheduled_jobs()
         self.assertTrue(result["ok"])
@@ -715,12 +715,70 @@ class DaemonUnitTests(unittest.TestCase):
         self.assertNotIn("private stderr", json.dumps(result))
 
         completed.stdout = "not-json"
-        with mock.patch.object(jarvisd, "DISCORD_CRON_RUNNER", Path(__file__)), \
+        with mock.patch.object(jarvisd, "SCHEDULER_RUNNER", Path(__file__)), \
              mock.patch.object(jarvisd.subprocess, "run", return_value=completed):
             failed = jarvisd._scheduled_jobs()
         self.assertFalse(failed["ok"])
         self.assertEqual(failed["jobs"], [])
         self.assertNotIn("not-json", json.dumps(failed))
+
+    def test_scheduled_job_results_are_bounded_sanitized_and_private(self):
+        payload = {
+            "ok": True,
+            "results": [{
+                "sequence": 7,
+                "id": "run_20260830T010000Z_abcd1234",
+                "jobId": "job_demo",
+                "jobName": "demo",
+                "status": "error",
+                "outputKind": "direct",
+                "startedAt": "2026-08-30T01:00:00Z",
+                "finishedAt": "2026-08-30T01:00:02Z",
+                "durationSeconds": 2.0,
+                "exitCode": 1,
+                "title": "demo failed",
+                "summary": "TOKEN=supersecret from /Users/example/private/file",
+                "output": "Bearer abcdefghijklmnop; see /tmp/private-output and https://example.com/result",
+                "error": '{"api_key":"private-key-value"}',
+                "truncated": False,
+                "prompt": "private prompt",
+                "model": "private model",
+            }],
+            "hasMore": False,
+            "nextAfter": 7,
+        }
+        result = jarvisd._public_scheduled_job_results(payload, requested_limit=10)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["nextAfter"], 7)
+        encoded = json.dumps(result)
+        self.assertNotIn("private prompt", encoded)
+        self.assertNotIn("private model", encoded)
+        self.assertNotIn("/Users/", encoded)
+        self.assertNotIn("/tmp/", encoded)
+        self.assertNotIn("supersecret", encoded)
+        self.assertNotIn("abcdefghijklmnop", encoded)
+        self.assertNotIn("private-key-value", encoded)
+        self.assertIn("[REDACTED]", encoded)
+        self.assertIn("https://example.com/result", encoded)
+
+        payload["results"][0]["output"] = "a" * jarvisd.MAX_SCHEDULED_JOB_RESULT_BYTES
+        payload["results"][0]["error"] = "b"
+        with self.assertRaisesRegex(ValueError, "aggregate byte limit"):
+            jarvisd._public_scheduled_job_results(payload, requested_limit=10)
+
+    def test_scheduled_job_result_runner_uses_only_bounded_fixed_arguments(self):
+        payload = {"ok": True, "results": [], "hasMore": False, "nextAfter": 12}
+        completed = mock.Mock(returncode=0, stdout=json.dumps(payload), stderr="private stderr")
+        with mock.patch.object(jarvisd, "SCHEDULER_RUNNER", Path(__file__)), \
+             mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
+            result = jarvisd._scheduled_job_results(after=12, limit=25, job_id="job_demo")
+        self.assertTrue(result["ok"])
+        argv = run.call_args.args[0]
+        self.assertEqual(
+            argv[-7:],
+            ["list-results-public", "--limit", "25", "--after", "12", "--job-id", "job_demo"],
+        )
+        self.assertNotIn("private stderr", json.dumps(result))
 
 
 class SigningRenewalUnitTests(unittest.TestCase):
@@ -842,6 +900,8 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status, 401)
         status, _, _ = self.request("GET", "/api/v1/scheduled-jobs")
         self.assertEqual(status, 401)
+        status, _, _ = self.request("GET", "/api/v1/scheduled-job-results")
+        self.assertEqual(status, 401)
         status, _, _ = self.request("GET", "/api/v1/services", token="write-secret")
         self.assertEqual(status, 401)
         status, _, _ = self.request("POST", "/api/jarvis/events", {"source": "test"}, token="write-secret")
@@ -922,6 +982,35 @@ class HTTPTests(unittest.TestCase):
             status, _, body = self.request("GET", "/api/v1/scheduled-jobs", token="api-secret")
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["jobs"][0]["id"], "job_demo")
+
+    def test_scheduled_job_results_endpoint_validates_cursor_limit_and_job(self):
+        response = {
+            "ok": True,
+            "generatedAt": "2026-08-30T00:00:00Z",
+            "results": [],
+            "hasMore": False,
+            "nextAfter": 9,
+        }
+        with mock.patch.object(jarvisd, "_scheduled_job_results", return_value=response) as results:
+            status, _, body = self.request(
+                "GET",
+                "/api/v1/scheduled-job-results?after=9&limit=25&jobId=job_demo",
+                token="api-secret",
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["nextAfter"], 9)
+        results.assert_called_once_with(after=9, limit=25, job_id="job_demo")
+
+        for path in (
+            "/api/v1/scheduled-job-results?after=-1",
+            "/api/v1/scheduled-job-results?limit=0",
+            "/api/v1/scheduled-job-results?limit=101",
+            "/api/v1/scheduled-job-results?jobId=../../private",
+            "/api/v1/scheduled-job-results?after=not-a-number",
+        ):
+            with self.subTest(path=path):
+                status, _, _ = self.request("GET", path, token="api-secret")
+                self.assertEqual(status, 400)
 
     def test_unsupported_methods_return_json_405(self):
         status, headers, body = self.request("PUT", "/api/v1/state")

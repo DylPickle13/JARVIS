@@ -12,7 +12,7 @@ Architecture:
 PowerConf mic/speaker on Raspberry Pi
   -> Pi client continuously captures audio
   -> Pi-side openWakeWord gate filters non-JARVIS speech locally
-  -> Discord-style RMS/VAD segments speech with preroll + silence end detection
+  -> transport-neutral RMS/VAD segments speech with preroll + silence end detection
   -> Mac room-audio server only receives locally wake-accepted utterances
   -> oMLX Whisper ASR
   -> Mac server trusts the Pi-side wake gate and responds to the transcription
@@ -63,12 +63,12 @@ Optional environment variables:
 
 - `JARVIS_ROOM_AUDIO_HOST` / `JARVIS_ROOM_AUDIO_PORT`
 - `JARVIS_ROOM_AUDIO_TOKEN` — if set, clients must send `x-jarvis-room-token`
-- `JARVIS_ROOM_AUDIO_PI_MODEL` — defaults to `DISCORD_VOICE_PI_MODEL`, then `DISCORD_PI_MODEL`
-- `JARVIS_ROOM_AUDIO_PI_THINKING` — defaults to `DISCORD_PI_THINKING`; current JARVIS voice/room-audio setting is `high`.
+- `JARVIS_ROOM_AUDIO_PI_MODEL` — defaults to `JARVIS_PI_MODEL`
+- `JARVIS_ROOM_AUDIO_PI_THINKING` — defaults to `JARVIS_PI_THINKING`; current room-audio setting is `high`.
 - `JARVIS_ROOM_AUDIO_WAKE_WORD` — legacy transcript-wake setting; room audio no longer uses it to reject turns after Pi-side openWakeWord has accepted them.
 - `JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS` — code default `450`; current `.env` uses `1000` for Bluetooth/A2DP first-syllable protection. If the acknowledgement ever clips again, raise this to about `1300`–`1500`.
-- `JARVIS_ROOM_AUDIO_PROCESSING_ACK_ENABLED` — defaults to `DISCORD_VOICE_PROCESSING_ACK_ENABLED`; when enabled, accepted turns can immediately play the acknowledgement.
-- `JARVIS_ROOM_AUDIO_PROCESSING_ACK_TEXT` — defaults to `DISCORD_VOICE_PROCESSING_ACK_TEXT` / `Generating your response, sir.`
+- `JARVIS_ROOM_AUDIO_PROCESSING_ACK_ENABLED` — defaults to `JARVIS_VOICE_PROCESSING_ACK_ENABLED`; when enabled, accepted turns can immediately play the acknowledgement.
+- `JARVIS_ROOM_AUDIO_PROCESSING_ACK_TEXT` — defaults to `JARVIS_VOICE_PROCESSING_ACK_TEXT` / `Generating your response, sir.`
 - `JARVIS_ROOM_AUDIO_ASYNC_JOB_TTL_SECONDS` — default `900`; retention window for async final-answer jobs.
 - `JARVIS_ROOM_AUDIO_INTERRUPT_WHILE_BUSY` — enables USB full-duplex bare-`stop` interruption while JARVIS is generating or speaking; the installed USB service enables it.
 - `JARVIS_ROOM_AUDIO_INTERRUPT_VAD_SILENCE_SECONDS` — default `0.45`; busy-mode silence before a possible stop command is finalized.
@@ -81,10 +81,10 @@ Optional environment variables:
 - `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_THRESHOLD` — defaults to `0.75` in the installed Pi service; raise it to reduce false wakes, lower it to reduce missed wakes.
 - `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ARM_SECONDS` — defaults to `8.0`; after a wake hit, the current/next VAD utterance may pass through.
 - `JARVIS_ROOM_AUDIO_TRUST_LOCAL_WAKE_WORD` — retained for older deployments; the current Mac room-audio server always trusts Pi-side openWakeWord and does not perform a transcript wake-word re-check.
-- `JARVIS_ROOM_AUDIO_VAD_SILENCE_SECONDS` — defaults to `1.0`, matching Discord voice; room-audio waits this long after voice ends before finalizing an utterance.
-- `JARVIS_ROOM_AUDIO_VAD_MIN_UTTERANCE_SECONDS` — defaults to `0.5`, matching Discord voice; shorter clips are dropped before ASR.
+- `JARVIS_ROOM_AUDIO_VAD_SILENCE_SECONDS` — defaults to `1.0`; room audio waits this long after voice ends before finalizing an utterance.
+- `JARVIS_ROOM_AUDIO_VAD_MIN_UTTERANCE_SECONDS` — defaults to `0.5`; shorter clips are dropped before ASR.
 - `JARVIS_ROOM_AUDIO_GREETING_ENABLED` — defaults to `1`; enables `/greeting`; the current Pi service plays it on startup only, not on reconnect.
-- `JARVIS_ROOM_AUDIO_GREETING_TEXT` — optional fixed greeting override. If unset, the room endpoint uses the same contextual style as Discord voice greetings.
+- `JARVIS_ROOM_AUDIO_GREETING_TEXT` — optional fixed greeting override. If unset, the room endpoint uses its contextual local greeting style.
 - `JARVIS_ROOM_AUDIO_GREETING_TIMEOUT_SECONDS` — Pi-client timeout for optional greeting audio before listening anyway; default `30`.
 - `JARVIS_ROOM_AUDIO_GREETING_STATE_PATH` — optional reconnect history path; defaults to `projects/operation-jarvis/data/room_audio_greeting_state.json`.
 
@@ -133,7 +133,7 @@ While the acknowledgement, generation, or final answer is active, say only:
 stop
 ```
 
-Bare `stop` is ignored while JARVIS is idle. The first release intentionally accepts only the exact normalized word `stop`; longer phrases such as `don't stop` are rejected. The room-audio backend imports the transport-neutral policy from `projects/operation-jarvis/voice/voice_commands.py`, which is also used by Discord voice. Interrupt handling preserves cancellation during active playback while preventing idle requests from invoking ASR or cancellation.
+Bare `stop` is ignored while JARVIS is idle. The first release intentionally accepts only the exact normalized word `stop`; longer phrases such as `don't stop` are rejected. The room-audio backend imports the transport-neutral policy from `projects/operation-jarvis/voice/voice_commands.py`. Interrupt handling preserves cancellation during active playback while preventing idle requests from invoking ASR or cancellation.
 
 The local wake-word dependency is required for the current listener. The service installer creates `/home/pi/jarvis-room-audio/.venv` and installs `openwakeword` there by default. If rebuilding manually, rerun:
 
@@ -178,4 +178,4 @@ ssh -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes pi@<private-lan-ip> \
 
 ## Notes
 
-The VAD mode mirrors the Discord voice-call approach: continuous PCM input, RMS voice gate, preroll, minimum voiced duration, silence-based utterance finalization, and max-duration cutoff. With `--local-wake-word`, the same PCM stream is resampled to 16 kHz and fed to openWakeWord in 80 ms chunks; idle utterances that never trigger the local `hey_jarvis` model are discarded without a network request. While a USB turn is busy, short VAD clips bypass only that wake gate and go to the local Mac Whisper endpoint for exact `stop` matching. Once a normal locally wake-accepted utterance reaches the Mac, the server responds to whatever Whisper transcribes rather than checking for wake-word aliases again. Raspberry Pi hardware notes live in [`../README.md`](../README.md), with detailed hardware notes in [`../docs/audio-hardware.md`](../docs/audio-hardware.md).
+The VAD mode uses a continuous local voice approach: continuous PCM input, RMS voice gate, preroll, minimum voiced duration, silence-based utterance finalization, and max-duration cutoff. With `--local-wake-word`, the same PCM stream is resampled to 16 kHz and fed to openWakeWord in 80 ms chunks; idle utterances that never trigger the local `hey_jarvis` model are discarded without a network request. While a USB turn is busy, short VAD clips bypass only that wake gate and go to the local Mac Whisper endpoint for exact `stop` matching. Once a normal locally wake-accepted utterance reaches the Mac, the server responds to whatever Whisper transcribes rather than checking for wake-word aliases again. Raspberry Pi hardware notes live in [`../README.md`](../README.md), with detailed hardware notes in [`../docs/audio-hardware.md`](../docs/audio-hardware.md).

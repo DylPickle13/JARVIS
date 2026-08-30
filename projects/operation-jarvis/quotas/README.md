@@ -2,7 +2,7 @@
 
 Operation JARVIS quota and model-availability subsystem for Pi providers backed by OpenAI Codex and GitHub Copilot.
 
-The checker reads Pi's saved OAuth credentials, refreshes tokens when needed, queries provider quota/model endpoints, and can save the latest result for other JARVIS surfaces such as the Discord `>config` panel.
+The checker reads Pi's saved OAuth credentials, refreshes tokens when needed, queries provider quota/model endpoints, and can save the latest result for local Pi and native JARVIS surfaces.
 
 ## Project files
 
@@ -238,21 +238,21 @@ Provider payloads mirror upstream responses where practical, so downstream consu
 - Required-model misses make `ok=false` and return exit code `2`.
 - Probe failures may consume quota and are reported under `probes`; avoid probes for routine dashboard refreshes.
 
-## Discord config/model panel
+## Local consumers
 
-The Discord `/jarvis model` configuration panel reads:
+Pi and jarvisd read the bounded saved snapshot at:
 
 ```text
 projects/operation-jarvis/quotas/data/latest.json
 ```
 
-Its **Check quota** button runs:
+Refresh it explicitly with:
 
 ```bash
 python3 projects/operation-jarvis/quotas/quotas.py check --json --save
 ```
 
-Then the config embed is updated with the refreshed values. If this is scheduled later, document the cron name and cadence here; currently the README only records the on-demand Discord panel path.
+Native clients receive only the sanitized read-only jarvisd projection.
 
 ## Security notes
 

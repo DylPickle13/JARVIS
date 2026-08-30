@@ -131,8 +131,8 @@ ROUTINE_REQUEST_LOG_INTERVAL = min(
     max(10.0, float(os.environ.get("JARVISD_ROUTINE_REQUEST_LOG_INTERVAL", "60"))),
 )
 MAX_LOG_LINE_CHARS = 4096
-DISCORD_CRON_RUNNER = Path(
-    os.environ.get("JARVISD_DISCORD_CRON_RUNNER", str(JARVIS_ROOT / ".pi" / "discord-cron" / "runner.py"))
+SCHEDULER_RUNNER = Path(
+    os.environ.get("JARVISD_SCHEDULER_RUNNER", str(JARVIS_ROOT / ".pi" / "scheduler" / "runner.py"))
 ).expanduser().resolve()
 SCHEDULED_JOBS_TIMEOUT = min(15.0, max(1.0, float(os.environ.get("JARVISD_SCHEDULED_JOBS_TIMEOUT", "5"))))
 MAX_SCHEDULED_JOBS = min(500, max(1, int(os.environ.get("JARVISD_MAX_SCHEDULED_JOBS", "100"))))
@@ -140,6 +140,22 @@ MAX_SCHEDULED_JOBS_OUTPUT_BYTES = min(
     1024 * 1024,
     max(4096, int(os.environ.get("JARVISD_MAX_SCHEDULED_JOBS_OUTPUT_BYTES", str(256 * 1024)))),
 )
+MAX_SCHEDULED_JOB_RESULTS = min(100, max(1, int(os.environ.get("JARVISD_MAX_SCHEDULED_JOB_RESULTS", "100"))))
+MAX_SCHEDULED_JOB_RESULT_BYTES = 64 * 1024
+MAX_SCHEDULED_JOB_RESULTS_OUTPUT_BYTES = min(
+    8 * 1024 * 1024,
+    max(64 * 1024, int(os.environ.get("JARVISD_MAX_SCHEDULED_JOB_RESULTS_OUTPUT_BYTES", str(7 * 1024 * 1024)))),
+)
+SCHEDULED_RESULT_SECRET_KEY_RE = re.compile(
+    r"(?i)(?:token|secret|password|api_?key|authorization|cookie|sp_dc|sp_key)"
+)
+SCHEDULED_RESULT_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(token|secret|password|api[_ -]?key|authorization)\b\s*([=:])\s*([^\s,;]+)"
+)
+SCHEDULED_RESULT_JSON_SECRET_RE = re.compile(
+    r'''(?i)(["'](?:token|secret|password|api[_ -]?key|authorization)["']\s*:\s*["'])(.*?)(["'])'''
+)
+SCHEDULED_RESULT_BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+\-/]+=*")
 CODEX_QUOTAS_SCRIPT = Path(
     os.environ.get(
         "JARVISD_CODEX_QUOTAS_SCRIPT",
@@ -996,6 +1012,9 @@ def _public_scheduled_jobs(payload: Any) -> dict:
                 "<local-path>",
                 description,
             )
+        consecutive_errors = raw.get("consecutiveErrors", 0)
+        if isinstance(consecutive_errors, bool) or not isinstance(consecutive_errors, int) or consecutive_errors < 0:
+            raise ValueError("scheduled-job consecutive error count is invalid")
         jobs.append({
             "id": job_id,
             "name": name,
@@ -1007,6 +1026,10 @@ def _public_scheduled_jobs(payload: Any) -> dict:
             "lastStatus": last_status,
             "runCount": min(run_count, 2_147_483_647),
             "description": description,
+            "lastSilentSuccessAt": _scheduled_job_string(raw.get("lastSilentSuccessAt"), limit=64, optional=True),
+            "lastOutputAt": _scheduled_job_string(raw.get("lastOutputAt"), limit=64, optional=True),
+            "lastErrorAt": _scheduled_job_string(raw.get("lastErrorAt"), limit=64, optional=True),
+            "consecutiveErrors": min(consecutive_errors, 2_147_483_647),
         })
         seen_ids.add(job_id or "")
     return {
@@ -1023,11 +1046,11 @@ def _public_scheduled_jobs(payload: Any) -> dict:
 
 
 def _scheduled_jobs() -> dict:
-    if not DISCORD_CRON_RUNNER.is_file():
+    if not SCHEDULER_RUNNER.is_file():
         return _scheduled_jobs_unavailable()
     try:
         proc = subprocess.run(
-            [sys.executable, str(DISCORD_CRON_RUNNER), "--json", "list-public"],
+            [sys.executable, str(SCHEDULER_RUNNER), "--json", "list-public"],
             cwd=str(JARVIS_ROOT),
             capture_output=True,
             text=True,
@@ -1039,6 +1062,142 @@ def _scheduled_jobs() -> dict:
         return _public_scheduled_jobs(json.loads(stdout))
     except Exception:  # noqa: BLE001
         return _scheduled_jobs_unavailable()
+
+
+def _scheduled_job_results_unavailable() -> dict:
+    return {
+        "ok": False,
+        "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "results": [],
+        "hasMore": False,
+        "nextAfter": 0,
+        "error": "Scheduled-job results are unavailable.",
+    }
+
+
+def _scheduled_result_text(value: Any, *, maximum_bytes: int, optional: bool = False) -> str | None:
+    if value is None and optional:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("scheduled-job result field must be a string")
+    clean = value.replace("\r\n", "\n").replace("\r", "\n")
+    clean = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", clean)
+    for key, secret in os.environ.items():
+        if SCHEDULED_RESULT_SECRET_KEY_RE.search(key) and len(secret) >= 8 and secret in clean:
+            clean = clean.replace(secret, "[REDACTED]")
+    clean = SCHEDULED_RESULT_BEARER_RE.sub("Bearer [REDACTED]", clean)
+    clean = SCHEDULED_RESULT_JSON_SECRET_RE.sub(
+        lambda match: f"{match.group(1)}[REDACTED]{match.group(3)}",
+        clean,
+    )
+    clean = SCHEDULED_RESULT_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]",
+        clean,
+    )
+    clean = re.sub(r"(/Users/[^\s,;:'\"<>]+|/private/[^\s,;:'\"<>]+|/tmp/[^\s,;:'\"<>]+)", "<local-path>", clean)
+    if len(clean.encode("utf-8")) > maximum_bytes:
+        raise ValueError("scheduled-job result field exceeds its byte limit")
+    if not clean and not optional:
+        raise ValueError("scheduled-job result field cannot be empty")
+    return clean or None
+
+
+def _public_scheduled_job_results(payload: Any, *, requested_limit: int) -> dict:
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        raise ValueError("scheduled-job runner returned invalid results")
+    raw_results = payload.get("results")
+    if not isinstance(raw_results, list) or len(raw_results) > requested_limit:
+        raise ValueError("scheduled-job result list is invalid")
+    results: list[dict] = []
+    seen_sequences: set[int] = set()
+    seen_ids: set[str] = set()
+    for raw in raw_results:
+        if not isinstance(raw, dict):
+            raise ValueError("scheduled-job result entry is invalid")
+        sequence = raw.get("sequence")
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence <= 0 or sequence in seen_sequences:
+            raise ValueError("scheduled-job result sequence is invalid")
+        result_id = _scheduled_job_string(raw.get("id"), limit=128)
+        job_id = _scheduled_job_string(raw.get("jobId"), limit=128)
+        if not re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", result_id or "") or result_id in seen_ids:
+            raise ValueError("scheduled-job result id is invalid")
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", job_id or ""):
+            raise ValueError("scheduled-job result job id is invalid")
+        status = _scheduled_job_string(raw.get("status"), limit=16)
+        output_kind = _scheduled_job_string(raw.get("outputKind"), limit=16)
+        if status not in {"success", "error"} or output_kind not in {"direct", "pi", "scheduler"}:
+            raise ValueError("scheduled-job result status is invalid")
+        duration = raw.get("durationSeconds")
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)) or duration < 0 or duration > 7 * 24 * 60 * 60:
+            raise ValueError("scheduled-job result duration is invalid")
+        exit_code = raw.get("exitCode")
+        if exit_code is not None and (isinstance(exit_code, bool) or not isinstance(exit_code, int)):
+            raise ValueError("scheduled-job result exit code is invalid")
+        truncated = raw.get("truncated")
+        if not isinstance(truncated, bool):
+            raise ValueError("scheduled-job result truncation state is invalid")
+        result = {
+            "sequence": sequence,
+            "id": result_id,
+            "jobId": job_id,
+            "jobName": _scheduled_result_text(raw.get("jobName"), maximum_bytes=240),
+            "status": status,
+            "outputKind": output_kind,
+            "startedAt": _scheduled_job_string(raw.get("startedAt"), limit=64),
+            "finishedAt": _scheduled_job_string(raw.get("finishedAt"), limit=64),
+            "durationSeconds": round(float(duration), 3),
+            "exitCode": exit_code,
+            "title": _scheduled_result_text(raw.get("title"), maximum_bytes=320),
+            "summary": _scheduled_result_text(raw.get("summary"), maximum_bytes=2048),
+            "output": _scheduled_result_text(raw.get("output"), maximum_bytes=MAX_SCHEDULED_JOB_RESULT_BYTES, optional=True),
+            "error": _scheduled_result_text(raw.get("error"), maximum_bytes=16 * 1024, optional=True),
+            "truncated": truncated,
+        }
+        retained_text_bytes = sum(
+            len(str(result[field] or "").encode("utf-8")) for field in ("output", "error")
+        )
+        if retained_text_bytes > MAX_SCHEDULED_JOB_RESULT_BYTES:
+            raise ValueError("scheduled-job result exceeds its aggregate byte limit")
+        results.append(result)
+        seen_sequences.add(sequence)
+        seen_ids.add(result_id or "")
+    has_more = payload.get("hasMore")
+    next_after = payload.get("nextAfter")
+    if not isinstance(has_more, bool):
+        raise ValueError("scheduled-job result continuation state is invalid")
+    if isinstance(next_after, bool) or not isinstance(next_after, int) or next_after < 0:
+        raise ValueError("scheduled-job result cursor is invalid")
+    return {
+        "ok": True,
+        "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "results": results,
+        "hasMore": has_more,
+        "nextAfter": next_after,
+    }
+
+
+def _scheduled_job_results(*, after: int | None, limit: int, job_id: str | None) -> dict:
+    if not SCHEDULER_RUNNER.is_file():
+        return _scheduled_job_results_unavailable()
+    command = [sys.executable, str(SCHEDULER_RUNNER), "--json", "list-results-public", "--limit", str(limit)]
+    if after is not None:
+        command.extend(["--after", str(after)])
+    if job_id is not None:
+        command.extend(["--job-id", job_id])
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=str(JARVIS_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=SCHEDULED_JOBS_TIMEOUT,
+        )
+        stdout = proc.stdout or ""
+        if proc.returncode != 0 or len(stdout.encode("utf-8")) > MAX_SCHEDULED_JOB_RESULTS_OUTPUT_BYTES:
+            return _scheduled_job_results_unavailable()
+        return _public_scheduled_job_results(json.loads(stdout), requested_limit=limit)
+    except Exception:  # noqa: BLE001
+        return _scheduled_job_results_unavailable()
 
 
 def _read_signing_renewal_status() -> dict:
@@ -2140,6 +2299,29 @@ class Handler(BaseHTTPRequestHandler):
             if not self._auth_or_respond():
                 return
             self._send(200, _scheduled_jobs())
+            return
+        if path == "/api/v1/scheduled-job-results":
+            if not self._auth_or_respond():
+                return
+            raw_after = query.get("after", [None])[0]
+            raw_limit = query.get("limit", ["50"])[0]
+            raw_job_id = query.get("jobId", [None])[0]
+            try:
+                after = int(raw_after) if raw_after is not None else None
+                limit = int(raw_limit)
+            except (TypeError, ValueError):
+                self._send(400, {"ok": False, "error": "after/limit must be integers"})
+                return
+            if after is not None and (after < 0 or after > 9_223_372_036_854_775_807):
+                self._send(400, {"ok": False, "error": "after is out of range"})
+                return
+            if limit < 1 or limit > MAX_SCHEDULED_JOB_RESULTS:
+                self._send(400, {"ok": False, "error": f"limit must be between 1 and {MAX_SCHEDULED_JOB_RESULTS}"})
+                return
+            if raw_job_id is not None and not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", raw_job_id):
+                self._send(400, {"ok": False, "error": "jobId is invalid"})
+                return
+            self._send(200, _scheduled_job_results(after=after, limit=limit, job_id=raw_job_id))
             return
         if path == "/api/v1/signing/status":
             if not self._auth_or_respond():

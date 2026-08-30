@@ -20,20 +20,17 @@ const ACTIONS = [
   "run_due",
   "runs",
   "output",
-  "setup_discord",
-  "install_cron",
-  "uninstall_cron",
-  "setup",
+  "install",
+  "uninstall",
   "status",
 ] as const;
 
-function projectRoot(cwd: string): string {
-  const runner = findAncestorFile(cwd, ".pi/discord-cron/runner.py") ?? join(cwd, ".pi", "discord-cron", "runner.py");
-  return dirname(dirname(dirname(runner)));
+function runnerPath(cwd: string): string {
+  return findAncestorFile(cwd, ".pi/scheduler/runner.py") ?? join(cwd, ".pi", "scheduler", "runner.py");
 }
 
-function runnerPath(cwd: string): string {
-  return findAncestorFile(cwd, ".pi/discord-cron/runner.py") ?? join(cwd, ".pi", "discord-cron", "runner.py");
+function projectRoot(cwd: string): string {
+  return dirname(dirname(dirname(runnerPath(cwd))));
 }
 
 function pythonPath(cwd: string): string {
@@ -41,22 +38,21 @@ function pythonPath(cwd: string): string {
   const env = parseDotEnv(findAncestorFile(cwd, ".env"));
   if (env.PI_PYTHON) return resolve(root, env.PI_PYTHON);
   const venvPython = join(root, ".venv", "bin", "python");
-  if (existsSync(venvPython)) return venvPython;
-  return "python3";
+  return existsSync(venvPython) ? venvPython : "python3";
 }
 
-function actionToCommand(action: string): string {
+function commandName(action: string): string {
   return action.replace(/_/g, "-");
 }
 
-function textFromResult(result: any): string {
+function resultText(result: any): string {
   if (!result) return "No output";
   if (result.message) return String(result.message);
   if (result.error) return `Error: ${result.error}`;
   return JSON.stringify(result, null, 2);
 }
 
-function startDetachedRunner(cwd: string, args: string[]): number | undefined {
+function startDetached(cwd: string, args: string[]): number | undefined {
   const child = spawn(pythonPath(cwd), args, {
     cwd: projectRoot(cwd),
     detached: true,
@@ -67,40 +63,29 @@ function startDetachedRunner(cwd: string, args: string[]): number | undefined {
   return child.pid;
 }
 
-function manualRunStartedMessage(jobId: string, pid: number | undefined): string {
-  return `Started manual Discord cron run for **${jobId}**${pid ? ` (pid ${pid})` : ""}. Output will be posted to that job's Discord thread when it finishes.`;
-}
-
-export default function registerDiscordCron(pi: ExtensionAPI) {
+export default function registerJarvisCron(pi: ExtensionAPI) {
   pi.registerTool({
-    name: "discord_cron",
-    label: "Discord Cron",
-    description:
-      "Manage Pi/JARVIS scheduled jobs whose output is posted to Discord. Use this for scheduled jobs only; use the discord group for immediate pings, notifications, or file delivery.",
+    name: "jarvis_cron",
+    label: "JARVIS Jobs",
+    description: "Manage private Pi/JARVIS scheduled jobs and their bounded local result history.",
     parameters: Type.Object({
       action: StringEnum(ACTIONS, { description: "Operation." }),
       name: Type.Optional(Type.String({ description: "Job name." })),
       schedule: Type.Optional(Type.String({ description: "+5m, ISO, 5m interval, or cron." })),
       prompt: Type.Optional(Type.String({ description: "Job prompt." })),
       jobId: Type.Optional(Type.String({ description: "Job id/name." })),
-      runId: Type.Optional(Type.String({ description: "Run id/suffix." })),
+      runId: Type.Optional(Type.String({ description: "Result id." })),
       kind: Type.Optional(StringEnum(["once", "interval", "cron"] as const, { description: "Schedule kind." })),
       model: Type.Optional(Type.String({ description: "Pi model." })),
       description: Type.Optional(Type.String({ description: "Job note." })),
-      guildId: Type.Optional(Type.String({ description: "Discord guild id." })),
-      channelName: Type.Optional(Type.String({ description: "Discord channel." })),
-      recreateChannel: Type.Optional(Type.Boolean({ description: "Recreate output channel." })),
-      limit: Type.Optional(Type.Number({ description: "List limit." })),
+      limit: Type.Optional(Type.Number({ description: "Bounded result count." })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const runner = runnerPath(ctx.cwd);
-      if (!existsSync(runner)) {
-        throw new Error(`Discord cron runner not found: ${runner}`);
-      }
-
-      const args = [runner, "--json", actionToCommand(params.action)];
+      if (!existsSync(runner)) throw new Error(`JARVIS scheduler not found: ${runner}`);
+      const args = [runner, "--json", commandName(params.action)];
       if (params.action === "add") {
-        if (!params.schedule || !params.prompt) throw new Error("discord_cron add requires schedule and prompt");
+        if (!params.schedule || !params.prompt) throw new Error("jarvis_cron add requires schedule and prompt");
         if (params.name) args.push("--name", params.name);
         args.push("--schedule", params.schedule, "--prompt", params.prompt);
         if (params.kind) args.push("--kind", params.kind);
@@ -115,59 +100,40 @@ export default function registerDiscordCron(pi: ExtensionAPI) {
       } else if (params.action === "runs") {
         if (params.jobId) args.push("--job-id", params.jobId);
         if (params.limit) args.push("--limit", String(params.limit));
-      } else if (params.action === "setup" || params.action === "setup_discord") {
-        if (params.guildId) args.push("--guild-id", params.guildId);
-        if (params.channelName) args.push("--channel-name", params.channelName);
-        if (params.recreateChannel) args.push("--recreate-channel");
       }
-
       if (params.action === "run") {
-        const pid = startDetachedRunner(ctx.cwd, args);
-        const message = manualRunStartedMessage(params.jobId!, pid);
-        return {
-          content: [{ type: "text", text: message }],
-          details: { ok: true, message, detached: true, pid, jobId: params.jobId },
-        };
+        const pid = startDetached(ctx.cwd, args);
+        const message = `Started manual JARVIS job run for **${params.jobId}**${pid ? ` (pid ${pid})` : ""}. The result will be retained locally.`;
+        return { content: [{ type: "text", text: message }], details: { ok: true, message, detached: true, pid } };
       }
-
       const result = await pi.exec(pythonPath(ctx.cwd), args, { signal, timeout: 30_000 });
       const raw = result.stdout.trim() || result.stderr.trim();
       let parsed: any;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        parsed = { ok: result.code === 0, message: raw, stderr: result.stderr };
-      }
-      if (result.code !== 0 || parsed?.ok === false) {
-        throw new Error(parsed?.error || result.stderr || raw || "discord_cron command failed");
-      }
-      return {
-        content: [{ type: "text", text: truncate(textFromResult(parsed)) }],
-        details: parsed,
-      };
+      try { parsed = JSON.parse(raw); } catch { parsed = { ok: result.code === 0, message: raw }; }
+      if (result.code !== 0 || parsed?.ok === false) throw new Error(parsed?.error || result.stderr || raw || "JARVIS scheduler command failed");
+      return { content: [{ type: "text", text: truncate(resultText(parsed)) }], details: parsed };
     },
     renderCall(args, theme) {
-      return new Text(`${theme.fg("toolTitle", "discord_cron")} ${theme.fg("accent", args.action ?? "")}`, 0, 0);
+      return new Text(`${theme.fg("toolTitle", "jarvis_cron")} ${theme.fg("accent", args.action ?? "")}`, 0, 0);
     },
     renderResult(result, _options, theme) {
-      const text = result.details?.ok === false ? theme.fg("error", textFromResult(result.details)) : theme.fg("success", textFromResult(result.details));
-      return new Text(truncate(text, 4000), 0, 0);
+      const color = result.details?.ok === false ? "error" : "success";
+      return new Text(truncate(theme.fg(color, resultText(result.details)), 4000), 0, 0);
     },
   });
 
-  pi.registerCommand("discord-cron", {
-    description: "Manage Pi/JARVIS scheduled cron jobs posted to Discord. With no args, show status.",
+  pi.registerCommand("jarvis-cron", {
+    description: "Manage private Pi/JARVIS scheduled jobs. With no args, show status.",
     handler: async (args, ctx) => {
       const runner = runnerPath(ctx.cwd);
-      const py = pythonPath(ctx.cwd);
       const parts = args.trim() ? args.trim().split(/\s+/) : ["status"];
       const commandIndex = parts[0] === "--json" ? 1 : 0;
       if (parts[commandIndex] === "run" && parts[commandIndex + 1]) {
-        const pid = startDetachedRunner(ctx.cwd, [runner, ...parts]);
-        ctx.ui.notify(manualRunStartedMessage(parts[commandIndex + 1], pid), "info");
+        const pid = startDetached(ctx.cwd, [runner, ...parts]);
+        ctx.ui.notify(`Started local job run${pid ? ` (pid ${pid})` : ""}.`, "info");
         return;
       }
-      const result = await pi.exec(py, [runner, ...parts], { timeout: 30_000 });
+      const result = await pi.exec(pythonPath(ctx.cwd), [runner, ...parts], { timeout: 30_000 });
       const output = result.stdout.trim() || result.stderr.trim();
       ctx.ui.notify(output.slice(0, 4000) || "No output", result.code === 0 ? "info" : "error");
     },

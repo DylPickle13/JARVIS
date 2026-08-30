@@ -10,8 +10,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 
 - `lib/env.ts` — `.env` discovery/parsing and env lookup helpers.
 - `lib/path.ts` — safe user path normalization helpers.
-- `lib/text.ts` — truncation and byte/message formatting helpers.
-- `lib/discord.ts` — Discord filename and multipart request helpers.
+- `lib/text.ts` — bounded text truncation helper.
 - `lib/ssh-pty.ts` — local `node-pty` wrapper and headless xterm screen used for bidirectional SSH terminal sessions. Runtime dependencies are declared in `lib/package.json`.
 
 ## Extension roots covered by smoke test
@@ -20,9 +19,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `00-web-access-env.ts` — project-scoped `pi-web-access` bootstrap plus JARVIS web/search policy; never mutates or consumes global `~/.pi/web-search.json`.
 - `01-omlx-provider-setup-and-recovery.ts` — non-blocking local oMLX provider registration plus prompt-too-long/prefill-memory recovery. Startup uses static seeds or the private last-known context-window cache at `.pi/runtime/omlx-context-windows.json`; live oMLX discovery refreshes the provider registry and cache after `session_start`, and the provider's native `refreshModels` callback reads the active server values whenever Pi refreshes `/model`. Unreachable providers silently retain their cached models and retry on the next refresh.
 - `04-delete-current-session.ts` — current-session cleanup command.
-- `10-discord-cron.ts` — scheduled Discord-backed Pi jobs.
-- `15-discord-send-file.ts` — current-channel Discord file upload helper.
-- `16-discord-ping.ts` — immediate Discord notifications and attachments.
+- `10-jarvis-cron.ts` — private scheduled Pi jobs and bounded local result history.
 - `30-google-access.ts` — Google Workspace tool.
 - `34-maps.ts` — Google Maps places/geocode/routes natural-language tool.
 - `35-memory.ts` — explicit durable project-local memory; no prompt-time auto-recall or system-prompt mutation.
@@ -58,8 +55,7 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `minecraft_jarvis` | `minecraft_jarvis` |
 | `github` | `github_cli` |
 | `google` | `google_workspace` |
-| `cron` | `discord_cron` |
-| `discord` | `discord_ping`, `discord_send_file` |
+| `cron` | `jarvis_cron` |
 | `reaper` | `reaper_ping`, `reaper_lua` |
 | `browser` | `browser_status`, `browser_open`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_upload`, `browser_key`, `browser_scroll`, `browser_wait`, `browser_extract`, `browser_tabs`, `browser_close` |
 
@@ -81,7 +77,7 @@ The always-on `ssh` tool requires an explicit configured remote host and pins it
 
 - Captured command: `ssh({ host: "mac-mini-16", command: "hostname" })`.
 - Local Pi TUI terminal: `ssh({ host: "mac-mini-16", command: "vim file.txt", pty: true })`.
-- Discord/RPC terminal: start with `ssh({ action: "start", host: "mac-mini-16", command: "vim file.txt" })`, then use its `sessionId`.
+- RPC terminal: start with `ssh({ action: "start", host: "mac-mini-16", command: "vim file.txt" })`, then use its `sessionId`.
 - Send a line with `action: "input"`, `input: "text"`, and `key: "ENTER"`. Named keys include arrows, Escape, Backspace, Ctrl-C, Ctrl-D, Ctrl-Z, and Ctrl-L.
 - `action: "read"` returns the current rendered terminal screen (so full-screen editors and TUIs remain intelligible) and consumes pending transcript output by default; pass `consume: false` to retain pending output.
 - `action: "list"` lists active/exited sessions in the current Pi process.
@@ -105,4 +101,4 @@ pi list
 .pi/smoke-test.sh
 ```
 
-The smoke test checks package presence, command availability, extension roots, browser package install state, CLI help paths, env key names, runtime-data presence, and doc links. It deliberately does not start Chrome, call oMLX/Google/Discord/web APIs, touch phone/ADB, or control Cast/Spotify/Kasa.
+The smoke test checks package presence, command availability, extension roots, browser package install state, CLI help paths, env key names, runtime-data presence, and doc links. It deliberately does not start Chrome, call oMLX/Google/web APIs, touch phone/ADB, or control Cast/Spotify/Kasa.

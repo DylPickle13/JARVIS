@@ -54,6 +54,7 @@ private struct RootTabView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var piTerminal: PiTerminalController
     @State private var selection: AppSection = .home
+    @State private var requestedJobResultSequence: Int?
 
     init() {
         let args = CommandLine.arguments
@@ -65,13 +66,18 @@ private struct RootTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            HomeView()
+            HomeView(onOpenJobs: { selection = .jobs })
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(AppSection.home)
 
             PiTerminalView()
                 .tabItem { Label("JARVIS", systemImage: "terminal.fill") }
                 .tag(AppSection.pi)
+
+            JobsView(requestedResultSequence: $requestedJobResultSequence)
+                .tabItem { Label("Jobs", systemImage: "calendar.badge.clock") }
+                .badge(app.unreadScheduledJobResultCount)
+                .tag(AppSection.jobs)
 
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
@@ -95,6 +101,13 @@ private struct RootTabView: View {
             switch url.host?.lowercased() {
             case "settings": selection = .settings
             case "pi": selection = .pi
+            case "jobs":
+                selection = .jobs
+                let components = url.pathComponents.filter { $0 != "/" }
+                if components.count == 2, components[0].lowercased() == "result",
+                   let sequence = Int(components[1]), sequence > 0 {
+                    requestedJobResultSequence = sequence
+                }
             default: selection = .home
             }
         }

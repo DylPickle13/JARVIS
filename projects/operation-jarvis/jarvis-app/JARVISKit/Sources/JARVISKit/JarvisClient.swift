@@ -67,6 +67,12 @@ public protocol JarvisAPI: Sendable {
     func events(_ endpoint: JarvisEndpoint, since: Int?, limit: Int) async throws -> EventsResponse
     func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse
     func scheduledJobs(_ endpoint: JarvisEndpoint) async throws -> ScheduledJobsResponse
+    func scheduledJobResults(
+        _ endpoint: JarvisEndpoint,
+        after: Int?,
+        limit: Int,
+        jobId: String?
+    ) async throws -> ScheduledJobResultsResponse
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult
     func signingRenewalStatus(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus
     func startSigningRenewal(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus
@@ -283,6 +289,22 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
 
     public func scheduledJobs(_ endpoint: JarvisEndpoint) async throws -> ScheduledJobsResponse {
         try await perform(endpoint, "/api/v1/scheduled-jobs", as: ScheduledJobsResponse.self)
+    }
+
+    public func scheduledJobResults(
+        _ endpoint: JarvisEndpoint,
+        after: Int? = nil,
+        limit: Int = 50,
+        jobId: String? = nil
+    ) async throws -> ScheduledJobResultsResponse {
+        var components = URLComponents()
+        components.path = "/api/v1/scheduled-job-results"
+        var queryItems = [URLQueryItem(name: "limit", value: String(min(max(limit, 1), 100)))]
+        if let after { queryItems.append(URLQueryItem(name: "after", value: String(max(0, after)))) }
+        if let jobId, !jobId.isEmpty { queryItems.append(URLQueryItem(name: "jobId", value: jobId)) }
+        components.queryItems = queryItems
+        guard let path = components.string else { throw JarvisError.badURL("scheduled-job-results") }
+        return try await perform(endpoint, path, as: ScheduledJobResultsResponse.self)
     }
 
     public func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult {

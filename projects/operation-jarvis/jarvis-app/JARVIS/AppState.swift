@@ -7,6 +7,7 @@ import JARVISKit
 public enum AppSection: String, Sendable {
     case home
     case pi
+    case jobs
     case settings
 }
 
@@ -66,6 +67,12 @@ public final class AppState: ObservableObject {
     @Published public var scheduledJobsLoading = false
     @Published public var scheduledJobsErrorMessage: String?
 
+    @Published public var lastScheduledJobResults: [ScheduledJobResult] = []
+    @Published public var scheduledJobResultsLoaded = false
+    @Published public var scheduledJobResultsLoading = false
+    @Published public var scheduledJobResultsErrorMessage: String?
+    @Published public private(set) var lastReadScheduledJobResultSequence = 0
+
     @Published public var signingRenewalStatus: SigningRenewalStatus?
     @Published public var signingRenewalLoading = false
     @Published public var signingRenewalErrorMessage: String?
@@ -78,6 +85,10 @@ public final class AppState: ObservableObject {
     private var networkAvailable = true
     private var retryAllowed = true
     private let activeRefreshInterval: Duration
+    private let resultCache: ScheduledJobResultCache
+    private let preferences: UserDefaults
+    private let resultBaselineKey = "jarvis.jobs.result-baseline-established.v1"
+    private let lastReadResultKey = "jarvis.jobs.last-read-sequence.v1"
     private var refreshTask: Task<Void, Never>?
     private var connectionLoopTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
@@ -91,14 +102,21 @@ public final class AppState: ObservableObject {
     public init(
         store: EndpointStore? = nil,
         client: any JarvisAPI = JarvisClient(),
-        activeRefreshInterval: Duration = JARVISRefreshPolicy.activeInterval
+        activeRefreshInterval: Duration = JARVISRefreshPolicy.activeInterval,
+        preferences: UserDefaults = .standard,
+        resultCacheURL: URL? = nil
     ) {
         let resolvedStore = store ?? EndpointStore(defaults: JARVISSharedStore.defaults)
         self.store = resolvedStore
         self.client = client
         self.watchTerminalProvisioning = WatchTerminalProvisioningSettings()
         self.activeRefreshInterval = activeRefreshInterval
+        self.preferences = preferences
+        self.resultCache = ScheduledJobResultCache(fileURL: resultCacheURL)
         self.endpointDraft = resolvedStore.endpointURLString ?? ""
+        self.lastScheduledJobResults = self.resultCache.load()
+        self.scheduledJobResultsLoaded = !self.lastScheduledJobResults.isEmpty
+        self.lastReadScheduledJobResultSequence = max(0, preferences.integer(forKey: lastReadResultKey))
         seedFromLaunchArgumentsIfPresent()
         self.endpointDraft = resolvedStore.endpointURLString ?? ""
     }
@@ -162,7 +180,7 @@ public final class AppState: ObservableObject {
     public func setActiveSection(_ section: AppSection) {
         guard activeSection != section else { return }
         activeSection = section
-        restartPolling(refreshImmediately: section == .home)
+        restartPolling(refreshImmediately: section == .home || section == .jobs)
     }
 
     private func startPathMonitorIfNeeded() {
@@ -243,7 +261,11 @@ public final class AppState: ObservableObject {
             lastHealth = try await client.health(endpoint)
             connectionState = .connected
             errorMessage = nil
-            await refreshHomeResources(refreshHealth: false)
+            if activeSection == .home {
+                await refreshHomeResources(refreshHealth: false)
+            } else {
+                await refreshJobs()
+            }
             restartPolling(refreshImmediately: false)
         } catch let error as JarvisError {
             connectionState = .failed
@@ -606,6 +628,69 @@ public final class AppState: ObservableObject {
         }
     }
 
+    public var unreadScheduledJobResultCount: Int {
+        lastScheduledJobResults.filter { $0.sequence > lastReadScheduledJobResultSequence }.count
+    }
+
+    public func scheduledJobResult(sequence: Int) -> ScheduledJobResult? {
+        lastScheduledJobResults.first { $0.sequence == sequence }
+    }
+
+    public func markScheduledJobResultsRead() {
+        guard let newest = lastScheduledJobResults.map(\.sequence).max(),
+              newest > lastReadScheduledJobResultSequence else { return }
+        lastReadScheduledJobResultSequence = newest
+        preferences.set(newest, forKey: lastReadResultKey)
+        preferences.set(true, forKey: resultBaselineKey)
+    }
+
+    public func fetchScheduledJobResults(after explicitCursor: Int? = nil) async {
+        guard let endpoint = activeEndpoint, !scheduledJobResultsLoading else { return }
+        scheduledJobResultsLoading = true
+        defer { scheduledJobResultsLoading = false }
+        let currentNewest = lastScheduledJobResults.map(\.sequence).max()
+        let cursor = explicitCursor ?? currentNewest
+        do {
+            let response = try await client.scheduledJobResults(
+                endpoint,
+                after: cursor,
+                limit: ScheduledJobResultCache.limit,
+                jobId: nil
+            )
+            scheduledJobResultsLoaded = true
+            guard response.ok else {
+                scheduledJobResultsErrorMessage = response.error ?? "Scheduled-job results are unavailable."
+                return
+            }
+            lastScheduledJobResults = ScheduledJobResultCache.merging(
+                cached: lastScheduledJobResults,
+                incoming: response.results
+            )
+            resultCache.save(lastScheduledJobResults)
+            if !preferences.bool(forKey: resultBaselineKey) {
+                let baseline = lastScheduledJobResults.map(\.sequence).max() ?? 0
+                lastReadScheduledJobResultSequence = baseline
+                preferences.set(baseline, forKey: lastReadResultKey)
+                preferences.set(true, forKey: resultBaselineKey)
+            }
+            scheduledJobResultsErrorMessage = nil
+        } catch let error as JarvisError {
+            scheduledJobResultsLoaded = true
+            scheduledJobResultsErrorMessage = error.errorDescription
+        } catch is CancellationError {
+            return
+        } catch {
+            scheduledJobResultsLoaded = true
+            scheduledJobResultsErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func fetchScheduledJobResult(sequence: Int) async {
+        guard sequence > 0 else { return }
+        if scheduledJobResult(sequence: sequence) != nil { return }
+        await fetchScheduledJobResults(after: sequence - 1)
+    }
+
     public func fetchHealth() async {
         guard let endpoint = activeEndpoint else { return }
         do {
@@ -698,37 +783,53 @@ public final class AppState: ObservableObject {
         await refreshHomeResources(refreshHealth: true)
     }
 
+    public func refreshJobs() async {
+        async let jobs: Void = fetchScheduledJobs()
+        async let results: Void = fetchScheduledJobResults()
+        _ = await (jobs, results)
+    }
+
     private func refreshHomeResources(refreshHealth: Bool) async {
         async let state: Void = fetchState()
         async let services: Void = fetchServices()
         async let jobs: Void = fetchScheduledJobs()
+        async let results: Void = fetchScheduledJobResults()
         if refreshHealth {
             async let health: Void = fetchHealth()
-            _ = await (state, services, jobs, health)
+            _ = await (state, services, jobs, results, health)
         } else {
-            _ = await (state, services, jobs)
+            _ = await (state, services, jobs, results)
         }
     }
 
     private func restartPolling(refreshImmediately: Bool) {
         pollingTask?.cancel()
         pollingTask = nil
-        guard appIsActive, connectionState == .connected, activeSection == .home else { return }
+        guard appIsActive, connectionState == .connected else { return }
         pollingTask = Task { @MainActor [weak self] in
             guard let self else { return }
             if refreshImmediately {
-                await self.refreshHome()
+                if self.activeSection == .home {
+                    await self.refreshHome()
+                } else {
+                    await self.refreshJobs()
+                }
             }
-            while !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
-                  self.activeSection == .home {
+            while !Task.isCancelled, self.appIsActive, self.connectionState == .connected {
                 do {
                     try await Task.sleep(for: self.activeRefreshInterval)
                 } catch {
                     return
                 }
-                guard !Task.isCancelled, self.appIsActive, self.connectionState == .connected,
-                      self.activeSection == .home else { return }
-                await self.refreshHome()
+                guard !Task.isCancelled, self.appIsActive, self.connectionState == .connected else { return }
+                if self.activeSection == .home {
+                    await self.refreshHome()
+                } else {
+                    // Jobs remain current while any app tab is active. Terminal,
+                    // Settings, hardware state, and service polling remain idle
+                    // outside Home.
+                    await self.refreshJobs()
+                }
             }
         }
     }
@@ -749,6 +850,8 @@ public final class AppState: ObservableObject {
         servicesLoaded = false
         scheduledJobsLoaded = false
         scheduledJobsErrorMessage = nil
+        scheduledJobResultsLoading = false
+        scheduledJobResultsErrorMessage = nil
         connectionState = .idle
         errorMessage = nil
         stateErrorMessage = nil

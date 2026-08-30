@@ -664,7 +664,7 @@ export default function registerJarvis(pi: ExtensionAPI) {
     parameters: Type.Object({
       action: StringEnum(ACTIONS, { description: "Choose one exact action. Use help for a safe machine-readable guide. Common: status, speak, cast-status, cast-spotify, plug-status, plug-on, plug-off, purifier-status, purifier-set." }),
       device: Type.Optional(StringEnum(DEVICES, { description: "Cast target alias: tv or speakers. Defaults to tv for media/status and speakers for speech/volume/mute/Spotify. Configure the underlying local device names privately." })),
-      text: Type.Optional(Type.String({ description: "Required for action=speak. Short text to speak aloud; keep detailed answers in Discord." })),
+      text: Type.Optional(Type.String({ description: "Required for action=speak. Short text to speak aloud; keep detailed answers in the current text response." })),
       query: Type.Optional(Type.String({ description: "Required for cast-youtube. For cast-spotify, this is a Spotify search query (or URI/URL text). For cast-spotify-queue-add, this is the track/episode search query." })),
       url: Type.Optional(Type.String({ description: "Required for cast-play-url. Direct media URL." })),
       contentType: Type.Optional(Type.String({ description: "cast-play-url MIME type; default video/mp4." })),

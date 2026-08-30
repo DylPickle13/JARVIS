@@ -116,6 +116,28 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertEqual(result.jobs.first?.runCount, 4)
     }
 
+    func testScheduledJobResultsEncodeBoundedCursorAndDecodeResult() async throws {
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/scheduled-job-results")
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            XCTAssertEqual(query.first(where: { $0.name == "after" })?.value, "8")
+            XCTAssertEqual(query.first(where: { $0.name == "limit" })?.value, "100")
+            XCTAssertEqual(query.first(where: { $0.name == "jobId" })?.value, "job demo")
+            return MockURLProtocol.response(
+                request,
+                status: 200,
+                body: #"{"ok":true,"generatedAt":"2026-08-30T00:00:00Z","results":[{"sequence":9,"id":"run_9","jobId":"job_demo","jobName":"demo","status":"success","outputKind":"direct","startedAt":"2026-08-30T00:00:00Z","finishedAt":"2026-08-30T00:00:01Z","durationSeconds":1.0,"exitCode":0,"title":"demo completed","summary":"Ready","output":"Ready","error":null,"truncated":false}],"hasMore":false,"nextAfter":9}"#
+            )
+        }
+
+        let response = try await client.scheduledJobResults(endpoint, after: 8, limit: 500, jobId: "job demo")
+
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.nextAfter, 9)
+        XCTAssertEqual(response.results.first?.sequence, 9)
+        XCTAssertEqual(response.results.first?.output, "Ready")
+    }
+
     func testServiceNameIsPathEncoded() async throws {
         MockURLProtocol.handler = { request in
             XCTAssertTrue(request.url?.absoluteString.hasSuffix("/api/v1/services/room%20audio") == true)

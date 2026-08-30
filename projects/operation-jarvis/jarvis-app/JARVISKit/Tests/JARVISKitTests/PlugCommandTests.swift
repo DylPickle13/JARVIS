@@ -191,6 +191,18 @@ private final class PlugCommandFakeAPI: JarvisAPI, @unchecked Sendable {
         )
     }
 
+    func scheduledJobResults(
+        _ endpoint: JarvisEndpoint,
+        after: Int?,
+        limit: Int,
+        jobId: String?
+    ) async throws -> ScheduledJobResultsResponse {
+        try JSONDecoder().decode(
+            ScheduledJobResultsResponse.self,
+            from: Data(#"{"ok":true,"results":[],"hasMore":false,"nextAfter":0}"#.utf8)
+        )
+    }
+
     func serviceAction(
         _ endpoint: JarvisEndpoint,
         name: String,

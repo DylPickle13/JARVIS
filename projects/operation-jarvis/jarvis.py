@@ -2,7 +2,7 @@
 """Unified Operation JARVIS adapter.
 
 This is the single local adapter for the focused Operation JARVIS scope:
-Discord + Google Cast + smart plugs + air purifier.
+native/local interfaces + Google Cast + smart plugs + air purifier.
 
 It controls Cast speech/media output, local Kasa smart plugs, and the
 VeSync/Levoit air purifier. Native Apple-client state and commands use
@@ -378,7 +378,7 @@ def start_file_server(directory: Path, bind_host: str, port: int) -> http.server
 
 def speech_text_from_output(text: str, max_chars: int) -> str:
     text = strip_ansi(text)
-    text = re.sub(r"```.*?```", " I included a code block in Discord. ", text, flags=re.DOTALL)
+    text = re.sub(r"```.*?```", " I included a code block in the text response. ", text, flags=re.DOTALL)
     text = re.sub(r"`([^`]+)`", r"\1", text)
     text = re.sub(r"https?://\S+", " link ", text)
     cleaned_lines = []
@@ -397,7 +397,7 @@ def speech_text_from_output(text: str, max_chars: int) -> str:
         truncated = text[:max_chars].rsplit(".", 1)[0].strip()
         if len(truncated) < max_chars * 0.5:
             truncated = text[:max_chars].rsplit(" ", 1)[0].strip()
-        text = (truncated or text[:max_chars].strip()) + ". The full answer is in Discord."
+        text = (truncated or text[:max_chars].strip()) + ". The full answer is in the text response."
     return text
 
 
@@ -582,7 +582,7 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
         "guide": {
             "tool": "jarvis",
             "availability": "optional provider-visible tool group; load with load_tools({groups:[\"jarvis\"]})",
-            "scope": "Discord interface/log + Google Cast speech/media + Spotify Connect playback/control + local Kasa smart-plug control + VeSync/Levoit air purifier control",
+            "scope": "Native/local interface + Google Cast speech/media + Spotify Connect playback/control + local Kasa smart-plug control + VeSync/Levoit air purifier control",
             "defaults": {
                 "speechDevice": DEFAULT_SPEAK_DEVICE,
                 "mediaDevice": DEFAULT_MEDIA_DEVICE,
@@ -670,7 +670,7 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
                 "plug-save-discovery": {"required": [], "notes": "Overwrites smart-plug/plugs.json with discovered devices."},
             },
             "safetyRules": [
-                "Keep spoken output short; keep full details in Discord.",
+                "Keep spoken output short; keep full details in the current text response.",
             ],
         },
     }

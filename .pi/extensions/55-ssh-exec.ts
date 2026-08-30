@@ -680,7 +680,7 @@ async function executeAttachedSsh(
   signal?: AbortSignal,
 ): Promise<{ exitCode: number | null; killed: boolean; signal?: string }> {
   if (ctx.mode !== "tui") {
-    throw new Error("pty:true requires local Pi TUI mode. In Discord/RPC use action:'start', then action:'input' and action:'read'.");
+    throw new Error("pty:true requires local Pi TUI mode. In RPC mode use action:'start', then action:'input' and action:'read'.");
   }
 
   return ctx.ui.custom((tui, _theme, _keybindings, done) => {

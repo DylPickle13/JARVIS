@@ -21,9 +21,9 @@ from typing import Any, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = PROJECT_ROOT / ".pi" / "memory" / "memory.sqlite"
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 KINDS = {"preference", "fact", "lesson", "project", "workflow"}
-SCOPES = {"global", "project", "discord-channel"}
+SCOPES = {"global", "project"}
 MAX_TEXT_CHARS = 8000
 PRIVATE_FILE_MODE = 0o600
 PRIVATE_DIR_MODE = 0o700
@@ -134,7 +134,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             confidence REAL NOT NULL DEFAULT 0.95,
             source TEXT NOT NULL DEFAULT 'user',
             cwd TEXT,
-            discord_channel_id TEXT,
+            context_id TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             last_used_at TEXT,
@@ -159,6 +159,29 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_memories_deleted_at ON memories(deleted_at);
         """
     )
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(memories)")}
+    if "context_id" not in columns:
+        legacy_context_columns = sorted(name for name in columns if name.endswith("_channel_id"))
+        if len(legacy_context_columns) > 1:
+            raise MemoryError("memory schema has multiple ambiguous legacy context columns")
+        if legacy_context_columns:
+            legacy_name = legacy_context_columns[0].replace('"', '""')
+            conn.execute(f'ALTER TABLE memories RENAME COLUMN "{legacy_name}" TO context_id')
+        else:
+            conn.execute("ALTER TABLE memories ADD COLUMN context_id TEXT")
+
+    normalized = conn.execute(
+        "UPDATE memories SET scope='project' WHERE scope NOT IN ('global', 'project')"
+    ).rowcount
+    if normalized:
+        conn.execute("DELETE FROM memories_fts")
+        conn.execute(
+            """
+            INSERT INTO memories_fts(id, kind, text, tags, scope)
+            SELECT id, kind, text, tags, scope FROM memories WHERE deleted_at IS NULL
+            """
+        )
+
     conn.execute(
         "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -351,7 +374,7 @@ def command_remember(conn: sqlite3.Connection, args: argparse.Namespace) -> dict
         "confidence": confidence,
         "source": (args.source or "user").strip() or "user",
         "cwd": args.cwd or None,
-        "discord_channel_id": args.discord_channel_id or None,
+        "context_id": args.context_id or None,
         "created_at": now,
         "updated_at": now,
         "last_used_at": None,
@@ -360,7 +383,7 @@ def command_remember(conn: sqlite3.Connection, args: argparse.Namespace) -> dict
     with conn:
         conn.execute(
             """
-            INSERT INTO memories(id, kind, text, tags, scope, confidence, source, cwd, discord_channel_id, created_at, updated_at, last_used_at, deleted_at)
+            INSERT INTO memories(id, kind, text, tags, scope, confidence, source, cwd, context_id, created_at, updated_at, last_used_at, deleted_at)
             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -372,7 +395,7 @@ def command_remember(conn: sqlite3.Connection, args: argparse.Namespace) -> dict
                 memory["confidence"],
                 memory["source"],
                 memory["cwd"],
-                memory["discord_channel_id"],
+                memory["context_id"],
                 memory["created_at"],
                 memory["updated_at"],
                 memory["last_used_at"],
@@ -541,7 +564,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_remember.add_argument("--confidence", type=float, default=0.95)
     p_remember.add_argument("--source", default="user")
     p_remember.add_argument("--cwd")
-    p_remember.add_argument("--discord-channel-id")
+    p_remember.add_argument("--context-id")
     p_remember.set_defaults(func=command_remember)
 
     p_update = sub.add_parser("update", help="update a memory")

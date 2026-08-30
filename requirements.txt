@@ -1,16 +1,7 @@
-# Direct Python dependencies for the root Discord/Pi runtime.
-# Transitive dependencies are resolved by pip; this file is not a pip-freeze lock.
-# Python 3.13 is the tested runtime and is required by audioop-lts 0.2.2.
+# Direct Python dependencies for the root local Pi/room-audio runtime.
+# Transitive dependencies are resolved by pip; this is not a pip-freeze lock.
 
-audioop-lts==0.2.2
 beautifulsoup4==4.14.3
-davey==0.1.5
-discord-ext-voice-recv==0.5.2a179
-discord.py==2.7.1
 huggingface_hub==1.14.0
-numpy==2.4.4
-onnxruntime==1.26.0
-openwakeword==0.5.1
 piper-tts==1.4.2
-PyNaCl==1.5.0
 requests==2.33.1

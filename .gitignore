@@ -29,12 +29,7 @@
 /.pi/packages/*/benchmarks/
 /.pi/packages/*/notes/
 /.pi/packages/*/tmp/
-/.pi/discord-cron/discord-cron.sqlite*
-/.pi/discord-cron.sqlite*
-/.pi/discord-cron.json
-/.pi/discord-cron-runs/
-/.pi/discord-cron-runner.log
-/.pi/discord_bot.lock
+/.pi/scheduler/scheduler.sqlite*
 /.pi/memory/*.sqlite*
 /.pi/scheduled-sessions/
 /.pi/location/

@@ -540,6 +540,10 @@ public struct ScheduledJob: Codable, Equatable, Identifiable, Sendable {
     public let lastStatus: String?
     public let runCount: Int
     public let description: String?
+    public let lastSilentSuccessAt: String?
+    public let lastOutputAt: String?
+    public let lastErrorAt: String?
+    public let consecutiveErrors: Int?
 }
 
 public struct ScheduledJobsResponse: Codable, Equatable, Sendable {
@@ -547,6 +551,33 @@ public struct ScheduledJobsResponse: Codable, Equatable, Sendable {
     public let generatedAt: String?
     public let summary: ScheduledJobsSummary
     public let jobs: [ScheduledJob]
+    public let error: String?
+}
+
+public struct ScheduledJobResult: Codable, Equatable, Identifiable, Sendable {
+    public let sequence: Int
+    public let id: String
+    public let jobId: String
+    public let jobName: String
+    public let status: String
+    public let outputKind: String
+    public let startedAt: String
+    public let finishedAt: String
+    public let durationSeconds: Double
+    public let exitCode: Int?
+    public let title: String
+    public let summary: String
+    public let output: String?
+    public let error: String?
+    public let truncated: Bool
+}
+
+public struct ScheduledJobResultsResponse: Codable, Equatable, Sendable {
+    public let ok: Bool
+    public let generatedAt: String?
+    public let results: [ScheduledJobResult]
+    public let hasMore: Bool
+    public let nextAfter: Int
     public let error: String?
 }
 

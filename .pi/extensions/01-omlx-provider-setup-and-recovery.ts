@@ -47,7 +47,7 @@ type ResolvedProvider = {
 const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 	{
 		provider: "omlx",
-		baseUrlEnvKeys: ["OMLX_BASE_URL", "DISCORD_VOICE_BASE_URL"],
+		baseUrlEnvKeys: ["OMLX_BASE_URL", "JARVIS_VOICE_BASE_URL"],
 		defaultBaseUrl: "http://127.0.0.1:8000/v1",
 		compat: {
 			supportsDeveloperRole: false,
@@ -765,7 +765,7 @@ export default function registerOmlxProviderSetupAndRecovery(pi: ExtensionAPI) {
 	registerOmlxEmergencyOverflowCompaction(pi);
 
 	const dotenvValues = loadDotEnvValues();
-	const apiKey = firstNonEmptyEnv(["OMLX_API_KEY", "DISCORD_VOICE_API_KEY"], dotenvValues) || "local";
+	const apiKey = firstNonEmptyEnv(["OMLX_API_KEY", "JARVIS_VOICE_API_KEY"], dotenvValues) || "local";
 	const cache = loadContextWindowCache();
 	const resolved: ResolvedProvider[] = OMLX_PROVIDER_SEEDS.map((seed) => {
 		const baseUrl = normalizeBaseUrl(firstNonEmptyEnv(seed.baseUrlEnvKeys, dotenvValues) || seed.defaultBaseUrl);

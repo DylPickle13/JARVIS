@@ -210,7 +210,7 @@ After the SSH schema trim and safe-bundle trim, a fresh baseline capture showed 
 - Full provider payload: `8,545` chars
 - Rough static prompt/tool baseline: about `~2.1k` token-ish by chars/4
 
-The tool surface now keeps `maps`, `ssh`, and web/fetch tools always on while Minecraft bot control, GitHub CLI access, browser, Discord, Google, and session tools are lazy groups. Rerun Method B after prompt-slimming changes to capture a fresh exact component breakdown.
+The tool surface now keeps `maps`, `ssh`, and web/fetch tools always on while Minecraft bot control, GitHub CLI access, browser, Google, and session tools are lazy groups. Rerun Method B after prompt-slimming changes to capture a fresh exact component breakdown.
 
 Previous pre-slimming captures were roughly:
 

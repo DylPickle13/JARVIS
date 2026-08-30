@@ -4,15 +4,14 @@ Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
 surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier,
 status/telemetry, service control), over LAN or Tailscale.
 
-**Status:** **M2.1 implementation complete; dashboard removal complete; physical M3 regression gate pending** —
-M0–M2 were verified on the iPhone 11; `jarvisd` now has explicit
-trusted-network/token auth modes, bounded HTTP input, background single-flight
-state caching, reversible LaunchAgent controls, bounded event persistence, and
-daemon regression tests. The iOS app owns one scene-aware connection/polling
-coordinator with idempotent desired-state writes and honest stale/unavailable
-UI. Build `0.3.0 (44)` is installed on the allowlisted iPhone 11 from the
-exact audited IPA; the Watch remains on build 42 because its build-44 CoreDevice
-tunnel was unavailable and no destructive recovery was attempted. Build 37 retains
+**Status:** Build `0.3.0 (126)` remains the exact audited physical deployment
+on the allowlisted iPhone and Watch. Build `0.3.0 (127)` is the push-free source
+candidate for the private scheduler retirement and native read-only Jobs inbox;
+it must pass archive/product audits and exact-artifact physical deployment before
+replacing Build 126. `jarvisd` retains explicit trusted-network/token auth,
+bounded APIs, single-flight state caching, guarded controls, and bounded event
+persistence. The app retains one scene-aware connection/polling coordinator,
+idempotent desired-state writes, and honest stale/unavailable UI. Build 37 retains
 build 36's fixed-editor fullscreen
 Pi renderer, one-line wheel behavior, cursor correction, full-screen Watch
 shell, 11-point readable transcript, 9-point pannable Raw grid, pinned input
@@ -348,6 +347,15 @@ Core launch recovery remains unchanged. Quota timestamps now use an immutable
 value-semantic parser. Polling and Always-On cadence, terminal byte/input order,
 speech preparation, stale-state semantics, Neural Core motion, and guarded
 hardware controls are unchanged.
+Build 127 retires the former external chat transport and moves all four schedules
+to the owner-only generic scheduler. The iPhone adds a fourth **Jobs** tab with a
+bounded protected result cache, unread baseline, safe result deep links, and
+read-only Inbox/Schedules views. Jobs refreshes every 15 seconds while the app is
+active; Home-only hardware/service polling remains confined to Home. `jarvisd`
+exposes only sanitized bounded job/result projections. A dormant fail-closed
+Watch-only APNs provider and pure route parser remain inactive and push-free
+until paid enrollment; no notification prompt, registration, token collection,
+entitlement, outbox enqueue, or Apple request is active.
 Build 92 removes every
 host Siri plug shortcut and restores the supported shared iPhone/Watch two-turn
 prompt: say **“Hey JARVIS”**, then answer Siri's **“What would you like me to send
@@ -409,9 +417,7 @@ iPhone Siri handoff, which remains the physical acceptance gate. The three-slot 
 Stack launcher artwork now passes physical review. Physical consoles
 reached `reachable=true` and acknowledged repeated iPhone-to-Watch state
 delivery. Cellular/Tailscale cold launch and relaunch also pass. Build 9 removed
-weather, reordered Home, and removed the System tab. Build 10 adds read-only
-Discord bot and scheduler status plus a sanitized dynamic scheduled-job
-inventory. Build 11 replaced the widget catalogue; all four widgets appeared in
+weather, reordered Home, and removed the System tab. Build 10 added read-only legacy service status plus a sanitized dynamic scheduled-job inventory. Build 11 replaced the widget catalogue; all four widgets appeared in
 the signed physical iPhone gallery and the launcher deep link passed. That gate
 exposed a completed-result cache bug after a plug interaction. Build 12 removes
 that stale replay, applies confirmed command state immediately, renders pending
@@ -566,17 +572,17 @@ the app. The former `docs/*.md` files are consolidated below.
 ## Scope (v5, approved)
 
 - **In:** smart plugs, air purifier, status and telemetry (Pi session count,
-  network, uptime, Discord bot, room audio, scheduler, and scheduled jobs),
-  service start/stop/restart (room-audio server), Neural Core, launcher, and
+  network, uptime, room audio, scheduler, and scheduled jobs), service
+  start/stop/restart (room-audio server), Neural Core, launcher, and
   read-only purifier-status widgets on iPhone and Watch, Siri/Shortcuts via App
   Intents, the iPhone SSH-backed Pi terminal, and the
   foreground-only Watch view of that same persistent terminal over the private
   HTTPS bridge, with LAN and Tailscale remote access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
-  word, Raspberry Pi room endpoint, Discord bot/scheduler process mutation and
-  scheduled-job mutation in the read-only first release, **APNs push
-  + Live Activities** (paid-account only), **oMLX** (nothing), room-display
-  HUD, phone-voice PWA.
+  word, Raspberry Pi room endpoint, scheduler process mutation and scheduled-
+  job mutation in the read-only first release, active **APNs push + Live
+  Activities** (paid-account only), **oMLX** (nothing), room-display HUD, and
+  phone-voice PWA.
 
 ## Devices & distribution
 
@@ -606,14 +612,14 @@ the app. The former `docs/*.md` files are consolidated below.
   `/api/v1/command` (allowlisted, rejects cast), `/api/jarvis/events` ingest,
   `/api/v1/events`, `/api/v1/services` (server-allowlisted lifecycle actions),
   and `/api/v1/scheduled-jobs` (sanitized read-only inventory).
-- **iOS app — navigation** — 3-tab shell (Home / JARVIS / Settings). Home shows:
-  connection header (LAN vs Tailscale + IP), Pi session
-  count, a **2-column plug grid**, then the **air purifier** (power switch +
+- **iOS app — navigation** — 4-tab shell (Home / JARVIS / Jobs / Settings).
+  Home shows the connection header (LAN vs Tailscale + IP), Pi session count, a
+  **2-column plug grid**, then the **air purifier** (power switch +
   Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
-  external data collection are removed. At the bottom, Home lists the Discord
-  bot, room-audio server, scheduler, dynamic scheduled jobs, and protected
-  `jarvisd` information. Only server-allowlisted service actions are rendered;
-  the new Discord and scheduler cards are read-only. Plug controls send
+  external data collection are removed. Home lists room audio, the scheduler,
+  and protected `jarvisd` information. Jobs provides a bounded, durable,
+  read-only Inbox and Schedules view. Only server-allowlisted service actions
+  are rendered; the scheduler card is read-only. Plug controls send
   desired-state `plug-on`/`plug-off`
   commands, serialize per resource, and show busy/error/unavailable states.
 - **Event audit backend** — the bounded `/api/v1/events` API and single
@@ -716,7 +722,8 @@ jarvis-app/
 ├── README.md                   # this file
 ├── project.yml                 # xcodegen spec (regenerates JARVIS.xcodeproj)
 ├── JARVIS.xcodeproj            # generated (do not hand-edit)
-├── docs/third-party/           # retained third-party license text
+├── docs/
+│   └── third-party/            # retained third-party license text
 ├── scripts/
 │   └── redeploy-jarvis-app.sh  # one-command device build + install
 ├── jarvisd/                    # Python hardware/status/service daemon (port 8790)
@@ -782,17 +789,17 @@ The Markdown documents formerly stored under `docs/` are preserved below in full
 
 # JARVIS native Apple app — unified documentation
 
-**Last updated:** 2026-08-23 EDT
+**Last updated:** 2026-08-30 EDT
 
 **Applies to:** Xcode 26, iOS 26, watchOS 26, XcodeGen 2.46, Personal Team/free provisioning
 
 **App root:** `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app`
 
-**Current release:** `0.3.0 (40)`
+**Current physical release:** `0.3.0 (126)`
 
-**Current signed deployment candidate:** `0.3.0 (41)`
+**Current source candidate:** `0.3.0 (127)`; archive and physical acceptance pending
 
-**Physical installation:** iPhone `0.3.0 (40)` and Apple Watch `0.3.0 (40)` on Dylan's allowlisted devices, installed from the exact audited artifacts
+**Physical installation:** iPhone `0.3.0 (126)` and Apple Watch `0.3.0 (126)` on Dylan's allowlisted devices, installed from the exact audited archive products
 
 **Implemented feature record:** [Siri conversational prompt-to-Pi](#siri-conversational-prompt-to-pi-plan)
 
@@ -818,13 +825,12 @@ never deploy to a device outside Dylan's allowlist.
 - The deprecated Node/PWA dashboard, LaunchAgent, APIs, PWA, and TCP `8787`
   listener are fully removed.
 - Weather and Open-Meteo are removed from the daemon and native contract.
-- iPhone navigation is Home, JARVIS, and Settings. Build 18's Events removal and
-  backend audit retention remain unchanged.
-- Home order is Pi sessions, plugs, air purifier, then services/scheduled jobs
-  and protected `jarvisd` information.
-- Discord bot, room audio, scheduler, and sanitized scheduled-job telemetry are
-  integrated. Bot and scheduler cards are read-only; room-audio actions remain
-  server-allowlisted.
+- iPhone navigation is Home, JARVIS, Jobs, and Settings. Build 18's Events
+  removal and backend audit retention remain unchanged.
+- Home order is Pi sessions, plugs, air purifier, then services and protected
+  `jarvisd` information; scheduled-job history and schedules live in Jobs.
+- Room audio, scheduler, and sanitized scheduled-job telemetry are integrated.
+  The scheduler card is read-only; room-audio actions remain server-allowlisted.
 - Desired-state plug commands, authoritative cache revisions, stale-state UI,
   per-resource busy locks, and duplicate-write protection are implemented.
 - The corrected Xcode 26 Watch companion hierarchy, `Watch/` embedding, signing,
@@ -1935,7 +1941,7 @@ iPhone app / iPhone widgets / Watch app / Watch widgets
 - Idempotent plug control and guarded purifier controls in the main app.
 - Bounded backend event ingestion and audit storage; no native event-feed UI.
 - Server-allowlisted room-audio lifecycle control.
-- Read-only Discord-bot and scheduler status.
+- Read-only scheduler status.
 - Sanitized, dynamic, read-only scheduled-job inventory.
 - Direct Watch operation on LAN, iPhone relay when direct access fails, and
   cached stale fallback.
@@ -1954,12 +1960,12 @@ iPhone app / iPhone widgets / Watch app / Watch widgets
 - Cast, Spotify, camera, in-app voice/wake word, Raspberry Pi room control, and
   oMLX.
 - APNs, Live Activities, and TestFlight while using free provisioning.
-- Discord-bot/scheduler mutations and scheduled-job add/remove/edit/setup in the
-  current read-only rollout.
+- Scheduler mutations and scheduled-job add/remove/edit/setup in the current
+  read-only rollout.
 - Service, scheduled-job, plug, or purifier widgets and widget controls.
 
-Cast, room audio, Discord voice, Pi telemetry, smart plugs, purifier tooling,
-and other Operation JARVIS subsystems continue to exist outside the native app.
+Cast, room audio, Pi telemetry, smart plugs, purifier tooling, and other
+Operation JARVIS subsystems continue to exist outside the native app.
 The historically named `~/.ssh/jarvis_dashboard_host` key is shared active
 infrastructure and must not be deleted as dashboard cleanup.
 
@@ -2090,24 +2096,21 @@ resurrector are never controllable through this registry.
 
 Current Home runtime order:
 
-1. JARVIS Discord Bot — read-only.
-2. Room Audio Server — existing allowlisted lifecycle controls.
-3. Scheduled Jobs Runner — read-only.
-4. Dynamic scheduled-job inventory.
-5. Protected `jarvisd` status card.
+1. Room Audio Server — existing allowlisted lifecycle controls.
+2. Scheduled Jobs Runner — read-only.
+3. Protected `jarvisd` status card.
 
-Scheduled jobs remain canonical `.pi/discord-cron/runner.py` records, not fake
-LaunchAgents. `list-public` output is sanitized again at the daemon boundary.
-The app may receive only bounded fields such as ID, name, description, schedule,
-enabled state, next/last run, last status, and run count. Prompts, model names,
-Discord identifiers, paths, environment values, command lines, database details,
-and raw output must never reach the native response.
+Scheduled jobs remain canonical `.pi/scheduler/runner.py` records, not fake
+LaunchAgents. Public output is sanitized again at the daemon boundary. The app
+may receive only bounded fields such as ID, name, description, schedule, enabled
+state, next/last run, last status, run count, and retained result summaries.
+Prompts, model names, context identifiers, paths, environment values, command
+lines, database details, and unsanitized output must never reach the native
+response.
 
-Any future bot, scheduler, or job mutation requires a separate warning, explicit
+Any future scheduler or job mutation requires a separate warning, explicit
 authorization, a fixed backend allowlist, confirmation UI, duplicate protection,
-and an audit event. Do not stop the Discord bot while the controlling
-conversation depends on it, and do not stop the scheduler across an understood
-due boundary.
+and an audit event. Do not stop the scheduler across an understood due boundary.
 
 ---
 
@@ -2696,7 +2699,7 @@ All commits remain local unless Dylan separately requests a push.
 | M2.1 | Added explicit auth modes, bounded HTTP/event storage, cached single-flight state, reversible services, lifecycle-aware polling, honest stale UI, deterministic deployment, tests, and real WCSession callbacks. |
 | Build 8 | Corrected packaging/reliability baseline, companion registration, physical state delivery, and cellular/Tailscale validation. |
 | Build 9 | Removed weather/Open-Meteo, reordered Home, removed System tab. |
-| Build 10 | Added read-only Discord bot/scheduler and sanitized dynamic scheduled jobs. |
+| Build 10 | Added read-only legacy service/scheduler status and sanitized dynamic scheduled jobs. |
 | Build 11 | Replaced legacy widgets with the four-type iPhone/Watch catalogue. |
 | Build 12 | Removed completed-result replay, applied confirmed widget state, added Updating feedback and ten-second duplicate suppression. |
 | Build 13 | Published one editable Watch plug recommendation and complete all-four 2×2 grid; physical widget tests passed. |
@@ -2904,7 +2907,6 @@ Neural-firing revision 2 motion-study artifacts:
 - `/tmp/JARVIS-monochrome-cathedral-neural-firing-iphone.mp4`
 - `/tmp/JARVIS-monochrome-cathedral-neural-firing-watch.mp4`
 - `/tmp/JARVIS-monochrome-cathedral-full-luminance-static.png`
-- [Discord delivery](https://discord.com/channels/1474183230541529260/1505957511704871114/1541283895012622397)
 
 ### Gate 1 — renderer replacement (complete)
 
