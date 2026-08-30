@@ -2,6 +2,8 @@
 
 Status: **planned only — not implemented**
 
+The combined execution sequence, keyboard-avoidance prerequisite, transaction model, and release gates are defined in [`iphone-terminal-keyboard-and-attach-implementation-plan.md`](iphone-terminal-keyboard-and-attach-implementation-plan.md).
+
 This document describes the deferred iPhone integration for the project-local Pi `/attach` extension. The desktop/local extension and SSH client bridge may ship independently. No JARVIS app source, Xcode project, `jarvisd`, or `jarvis-terminald` change is part of the current implementation.
 
 ## Product contract
