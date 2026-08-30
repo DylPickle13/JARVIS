@@ -109,7 +109,8 @@ def _delete_temporary_paths(paths: list[Path]) -> None:
 
 
 DEFAULT_VOICE_BASE_URL = "http://127.0.0.1:8000/v1"
-DEFAULT_VOICE_ASR_BACKEND = "omlx"
+DEFAULT_VOICE_ASR_BACKEND = "apple-speech"
+DEFAULT_VOICE_INTERRUPT_ASR_BACKEND = "apple-dictation"
 DEFAULT_VOICE_ASR_MODEL = "mlx-community/whisper-large-v3-turbo-asr-4bit"
 DEFAULT_VOICE_APPLE_ASR_HELPER = str(
     Path(__file__).resolve().parent / "apple_asr" / ".build" / "release" / "jarvis-apple-asr"
@@ -286,7 +287,12 @@ class VoicePipelineConfig:
     api_key: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_API_KEY", config.get_str_env("OMLX_API_KEY", "")))
     asr_backend: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_ASR_BACKEND", DEFAULT_VOICE_ASR_BACKEND))
     asr_fallback_backend: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_ASR_FALLBACK_BACKEND", ""))
-    interrupt_asr_backend: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_INTERRUPT_ASR_BACKEND", ""))
+    interrupt_asr_backend: str = field(
+        default_factory=lambda: config.get_str_env(
+            "JARVIS_VOICE_INTERRUPT_ASR_BACKEND",
+            DEFAULT_VOICE_INTERRUPT_ASR_BACKEND,
+        )
+    )
     interrupt_asr_fallback_backend: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_INTERRUPT_ASR_FALLBACK_BACKEND", ""))
     asr_model: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_ASR_MODEL", DEFAULT_VOICE_ASR_MODEL))
     asr_language: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_ASR_LANGUAGE", "en"))

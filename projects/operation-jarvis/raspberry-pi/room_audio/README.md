@@ -14,8 +14,8 @@ PowerConf mic/speaker on Raspberry Pi
   -> Pi-side openWakeWord gate filters non-JARVIS speech locally
   -> transport-neutral RMS/VAD segments speech with preroll + silence end detection
   -> Mac room-audio server only receives locally wake-accepted utterances
-  -> Apple SpeechTranscriber turn ASR (on-device) with oMLX Whisper failure fallback
-  -> Apple DictationTranscriber busy-only stop ASR (on-device) with oMLX fallback
+  -> Apple SpeechTranscriber turn ASR (on-device)
+  -> Apple DictationTranscriber busy-only stop ASR (on-device)
   -> Mac server trusts the Pi-side wake gate and responds to the transcription
   -> immediate processing acknowledgement while USB capture remains active
   -> Pi RPC JARVIS session
@@ -78,8 +78,8 @@ Optional environment variables:
 - `JARVIS_ROOM_AUDIO_PI_MODEL` — defaults to `JARVIS_PI_MODEL`
 - `JARVIS_ROOM_AUDIO_PI_THINKING` — defaults to `JARVIS_PI_THINKING`; current room-audio setting is `high`.
 - `JARVIS_ROOM_AUDIO_ASR_BACKEND` — room-turn ASR override; current deployment uses `apple-speech`.
-- `JARVIS_ROOM_AUDIO_ASR_FALLBACK_BACKEND` — current deployment uses `omlx` for Apple helper failures or empty output.
-- `JARVIS_ROOM_AUDIO_INTERRUPT_ASR_BACKEND` / `JARVIS_ROOM_AUDIO_INTERRUPT_ASR_FALLBACK_BACKEND` — busy-only control-path override; current deployment uses `apple-dictation` with `omlx` failure/empty-output fallback.
+- `JARVIS_ROOM_AUDIO_ASR_FALLBACK_BACKEND` — optional fallback override; blank in the current Apple-only deployment.
+- `JARVIS_ROOM_AUDIO_INTERRUPT_ASR_BACKEND` / `JARVIS_ROOM_AUDIO_INTERRUPT_ASR_FALLBACK_BACKEND` — busy-only control-path overrides; the current deployment uses `apple-dictation` with no fallback.
 - `JARVIS_VOICE_APPLE_ASR_HELPER`, `JARVIS_VOICE_APPLE_ASR_LOCALE`, `JARVIS_VOICE_APPLE_ASR_TIMEOUT_SECONDS`, `JARVIS_VOICE_APPLE_ASR_CONTEXTUAL_STRINGS` — native helper path, locale, timeout, and up to 100 short hints. See [`../../voice/README.md`](../../voice/README.md).
 - `JARVIS_ROOM_AUDIO_WAKE_WORD` — legacy transcript-wake setting; room audio no longer uses it to reject turns after Pi-side openWakeWord has accepted them.
 - `JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS` — code default `450`; current `.env` uses `1000` for Bluetooth/A2DP first-syllable protection. If the acknowledgement ever clips again, raise this to about `1300`–`1500`.

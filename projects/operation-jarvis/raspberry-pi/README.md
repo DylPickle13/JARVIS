@@ -90,8 +90,8 @@ Current deployed shape:
 PowerConf USB mic/speaker
   -> Raspberry Pi VAD + local openWakeWord listener
   -> Mac room-audio server
-  -> Apple SpeechTranscriber turn ASR with oMLX fallback
-  -> Apple DictationTranscriber busy-only stop ASR with oMLX fallback
+  -> Apple SpeechTranscriber turn ASR
+  -> Apple DictationTranscriber busy-only stop ASR
   -> immediate acknowledgement audio
   -> Pi RPC JARVIS response
   -> Piper TTS

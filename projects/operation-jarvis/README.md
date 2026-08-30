@@ -6,7 +6,7 @@ Operation JARVIS is the physical-world and native-client layer of the local JARV
 
 1. **jarvisd** — authenticated native API on port `8790` for health, state, services, scheduled jobs/results, and closed hardware commands.
 2. **terminald** — isolated mobile terminal relay on port `8792` for the protected `jarvis-mobile` tmux session.
-3. **Room audio** — Raspberry Pi microphone/speaker client with Mac-side Apple SpeechTranscriber turn ASR, Apple DictationTranscriber busy-only `stop` ASR, oMLX failure fallback, neutral Pi RPC, and Piper speech on port `8791`.
+3. **Room audio** — Raspberry Pi microphone/speaker client with Mac-side Apple SpeechTranscriber turn ASR, Apple DictationTranscriber busy-only `stop` ASR, neutral Pi RPC, and Piper speech on port `8791`.
 4. **Native Apple app** — iPhone, Watch, and two widgets per platform.
 5. **Smart plugs** — local TP-Link Kasa control through a closed plug catalogue.
 6. **Air purifier** — VeSync/Levoit Vital 200S-P status and guarded writes.

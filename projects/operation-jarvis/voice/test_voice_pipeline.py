@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 VOICE_DIR = Path(__file__).resolve().parent
 if str(VOICE_DIR) not in sys.path:
@@ -76,6 +78,23 @@ It'll be cloudy but mild — no rain expected. Dress in layers tonight.
 
 
 class ASRRoutingTests(unittest.TestCase):
+    def test_code_defaults_are_apple_only(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            pipeline = voice_pipeline.VoicePipeline(
+                voice_pipeline.VoicePipelineConfig(),
+                response_callback=lambda *_args: "unused",
+            )
+
+        self.assertEqual(pipeline._asr_backend, "apple-speech")
+        self.assertEqual(pipeline._asr_fallback_backend, "")
+        self.assertEqual(pipeline._interrupt_asr_backend, "apple-dictation")
+        self.assertEqual(pipeline._interrupt_asr_fallback_backend, "")
+        self.assertEqual(
+            pipeline.configured_asr_backends,
+            ("apple-speech", "apple-dictation"),
+        )
+        self.assertEqual(pipeline.configured_models, ())
+
     def make_wav(self) -> Path:
         handle = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         path = Path(handle.name)

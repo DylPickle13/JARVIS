@@ -1,8 +1,8 @@
 """Shared deterministic control policy for every Operation JARVIS voice adapter.
 
 Audio capture, VAD, and playback remain transport-specific to the Raspberry Pi
-room endpoint. The adapter sends busy-only candidates through Whisper, then
-use this module for the final control decision.
+room endpoint. The adapter sends busy-only candidates through Apple Dictation,
+then uses this module for the final control decision.
 """
 
 from __future__ import annotations

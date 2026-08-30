@@ -25,7 +25,7 @@ Raspberry Pi wake-accepted WAV
   → bounded WAV response
 ```
 
-The current room rollout uses Apple `SpeechTranscriber` for ordinary turns and Apple `DictationTranscriber` with short-form/far-field hints for the busy-only `stop` path. Each route retains oMLX Whisper as its failure/empty-output fallback. Only an exact normalized `stop` cancels generation/playback; idle speech and longer phrases do not invoke cancellation.
+The current room deployment uses Apple `SpeechTranscriber` for ordinary turns and Apple `DictationTranscriber` with short-form/far-field hints for the busy-only `stop` path. Both routes are Apple-only, with no ASR fallback and no installed oMLX Whisper model. Only an exact normalized `stop` cancels generation/playback; idle speech and longer phrases do not invoke cancellation.
 
 Apple Speech reads the completed WAV already captured by the Pi; it does not capture the Mac microphone. Apple’s `en-CA` Speech and Dictation assets are installed and the locale is reserved before deployment; inference remains on-device. The Pi’s 48 kHz mono signed-16-bit WAV format is accepted directly.
 
@@ -49,12 +49,12 @@ The Swift source is committed; `.build/` and its compiled binary are local gener
 
 Canonical variables use the `JARVIS_VOICE_*` prefix:
 
-- `JARVIS_VOICE_ASR_BACKEND` — `omlx` (code default), `apple-speech`, or `apple-dictation`.
-- `JARVIS_VOICE_ASR_FALLBACK_BACKEND` — optional fallback used on backend failure or empty output.
-- `JARVIS_VOICE_INTERRUPT_ASR_BACKEND` / `JARVIS_VOICE_INTERRUPT_ASR_FALLBACK_BACKEND` — optional control-path overrides.
+- `JARVIS_VOICE_ASR_BACKEND` — `apple-speech` (code default), `apple-dictation`, or opt-in `omlx`.
+- `JARVIS_VOICE_ASR_FALLBACK_BACKEND` — optional fallback used on backend failure or empty output; blank by default.
+- `JARVIS_VOICE_INTERRUPT_ASR_BACKEND` / `JARVIS_VOICE_INTERRUPT_ASR_FALLBACK_BACKEND` — control-path settings; defaults are `apple-dictation` with no fallback.
 - `JARVIS_VOICE_APPLE_ASR_HELPER`, `JARVIS_VOICE_APPLE_ASR_LOCALE`, `JARVIS_VOICE_APPLE_ASR_TIMEOUT_SECONDS`.
 - `JARVIS_VOICE_APPLE_ASR_CONTEXTUAL_STRINGS` — comma/semicolon/pipe/newline-separated short recognition hints, capped at 100.
-- `JARVIS_VOICE_BASE_URL`, `JARVIS_VOICE_API_KEY`, `JARVIS_VOICE_ASR_MODEL`, `JARVIS_VOICE_ASR_LANGUAGE` — oMLX primary/fallback settings.
+- `JARVIS_VOICE_BASE_URL`, `JARVIS_VOICE_API_KEY`, `JARVIS_VOICE_ASR_MODEL`, `JARVIS_VOICE_ASR_LANGUAGE` — used only when explicitly opting into the oMLX ASR backend.
 - `JARVIS_VOICE_LLM_MODEL`, `JARVIS_VOICE_LLM_MAX_TOKENS`, `JARVIS_VOICE_LLM_TEMPERATURE`, `JARVIS_VOICE_LLM_TOP_P`.
 - `JARVIS_VOICE_TTS_BACKEND=piper` and the `JARVIS_VOICE_TTS_PIPER_*` voice controls.
 - `JARVIS_VOICE_ASR_TIMEOUT_SECONDS`, `JARVIS_VOICE_LLM_TIMEOUT_SECONDS`, `JARVIS_VOICE_TTS_TIMEOUT_SECONDS`, `JARVIS_VOICE_MODEL_LOAD_TIMEOUT_SECONDS`.
