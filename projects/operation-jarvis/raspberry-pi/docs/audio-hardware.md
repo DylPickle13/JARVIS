@@ -12,7 +12,7 @@ The active room endpoint uses the Anker PowerConf over USB at 48 kHz. The recove
 | Speaker | USB ALSA, `plughw:CARD=PowerConf,DEV=0` |
 | Listener | `jarvis-room-audio.service` running `/home/pi/jarvis-room-audio-client.py --vad-loop --interrupt-while-busy` |
 
-The boot-time listener keeps USB capture running while the processing acknowledgement and final response play. Idle commands still require local `hey_jarvis`; while a turn is busy, short speech clips are sent to the Mac-side Whisper ASR and only an exact `stop` transcript cancels generation/playback. Bluetooth BlueALSA SCO/A2DP remains a fallback transport, but it cannot support barge-in because the PowerConf does not reliably hold SCO capture and A2DP playback simultaneously.
+The boot-time listener keeps USB capture running while the processing acknowledgement and final response play. Idle commands still require local `hey_jarvis`; while a turn is busy, short speech clips are sent to on-device Apple DictationTranscriber with oMLX failure/empty-output fallback, and only an exact normalized `stop` transcript cancels generation/playback. Ordinary turns use on-device Apple SpeechTranscriber with the same oMLX fallback. Bluetooth BlueALSA SCO/A2DP remains a fallback transport, but it cannot support barge-in because the PowerConf does not reliably hold SCO capture and A2DP playback simultaneously.
 
 See [`../room_audio/README.md`](../room_audio/README.md) for the current server and listener commands.
 

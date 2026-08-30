@@ -24,6 +24,7 @@ __pycache__/
 *.pyc
 *.egg-info/
 build/
+.build/
 dist/
 
 .DS_Store

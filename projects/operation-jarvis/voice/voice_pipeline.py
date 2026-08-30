@@ -24,6 +24,7 @@ from piper import PiperVoice, SynthesisConfig
 import requests
 
 import config
+import asr_backends
 
 LOGGER = config.get_logger("operation_jarvis.voice.pipeline")
 
@@ -108,7 +109,15 @@ def _delete_temporary_paths(paths: list[Path]) -> None:
 
 
 DEFAULT_VOICE_BASE_URL = "http://127.0.0.1:8000/v1"
+DEFAULT_VOICE_ASR_BACKEND = "omlx"
 DEFAULT_VOICE_ASR_MODEL = "mlx-community/whisper-large-v3-turbo-asr-4bit"
+DEFAULT_VOICE_APPLE_ASR_HELPER = str(
+    Path(__file__).resolve().parent / "apple_asr" / ".build" / "release" / "jarvis-apple-asr"
+)
+DEFAULT_VOICE_APPLE_ASR_CONTEXTUAL_STRINGS = (
+    "Jarvis,stop,Pickering,PowerConf,oMLX,family room light,family room TV,"
+    "family room speakers,Air Purifier"
+)
 DEFAULT_VOICE_LLM_MODEL = "Qwen3.5-9B-6bit"
 DEFAULT_VOICE_TTS_BACKEND = "piper"
 DEFAULT_VOICE_TTS_PIPER_REPO_ID = "jgkawell/jarvis"
@@ -240,6 +249,17 @@ def _env_bool(name: str, default: bool) -> bool:
     return config.get_str_env(name, raw_default).lower() not in {"0", "false", "no", "off"}
 
 
+def _env_string_tuple(name: str, default: str = "") -> tuple[str, ...]:
+    raw = config.get_str_env(name, default, strip=False)
+    return tuple(
+        dict.fromkeys(
+            value.strip()
+            for value in re.split(r"[,;|\n]", raw)
+            if value.strip()
+        )
+    )[:100]
+
+
 def _json_or_text(response: requests.Response) -> object:
     try:
         return response.json()
@@ -264,8 +284,21 @@ VoiceSteeringCallback = Callable[[object | None, str], bool]
 class VoicePipelineConfig:
     base_url: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_BASE_URL", DEFAULT_VOICE_BASE_URL).rstrip("/"))
     api_key: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_API_KEY", config.get_str_env("OMLX_API_KEY", "")))
+    asr_backend: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_ASR_BACKEND", DEFAULT_VOICE_ASR_BACKEND))
+    asr_fallback_backend: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_ASR_FALLBACK_BACKEND", ""))
+    interrupt_asr_backend: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_INTERRUPT_ASR_BACKEND", ""))
+    interrupt_asr_fallback_backend: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_INTERRUPT_ASR_FALLBACK_BACKEND", ""))
     asr_model: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_ASR_MODEL", DEFAULT_VOICE_ASR_MODEL))
     asr_language: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_ASR_LANGUAGE", "en"))
+    apple_asr_helper_path: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_APPLE_ASR_HELPER", DEFAULT_VOICE_APPLE_ASR_HELPER))
+    apple_asr_locale: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_APPLE_ASR_LOCALE", "en-CA"))
+    apple_asr_timeout_seconds: float = field(default_factory=lambda: config.get_float_env("JARVIS_VOICE_APPLE_ASR_TIMEOUT_SECONDS", 15.0, minimum=1.0))
+    apple_asr_contextual_strings: tuple[str, ...] = field(
+        default_factory=lambda: _env_string_tuple(
+            "JARVIS_VOICE_APPLE_ASR_CONTEXTUAL_STRINGS",
+            DEFAULT_VOICE_APPLE_ASR_CONTEXTUAL_STRINGS,
+        )
+    )
     llm_model: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_LLM_MODEL", DEFAULT_VOICE_LLM_MODEL))
     llm_max_tokens: int = field(default_factory=lambda: config.get_int_env("JARVIS_VOICE_LLM_MAX_TOKENS", 120, minimum=16))
     llm_temperature: float = field(default_factory=lambda: config.get_float_env("JARVIS_VOICE_LLM_TEMPERATURE", 0.4, minimum=0.0))
@@ -316,8 +349,8 @@ class VoicePipelineResult:
         return sum(_audio_duration_seconds(path) for path in self.audio_paths)
 
 
-class OmlxVoicePipeline:
-    """Speech-to-text and chat via oMLX, with configurable local or oMLX text-to-speech."""
+class VoicePipeline:
+    """Pluggable ASR, optional oMLX chat, and configurable local/oMLX TTS."""
 
     def __init__(
         self,
@@ -336,17 +369,124 @@ class OmlxVoicePipeline:
         self._piper_voice: PiperVoice | None = None
         self._piper_voice_key: tuple[str, str] | None = None
         self._piper_lock = threading.RLock()
+        self._asr_status_lock = threading.Lock()
+        self._asr_status_cached_at = 0.0
+        self._asr_status_cache: dict[str, Any] = {}
+
+        try:
+            self._asr_backend = asr_backends.normalize_asr_backend(self.config.asr_backend)
+            self._asr_fallback_backend = asr_backends.normalize_asr_backend(
+                self.config.asr_fallback_backend,
+                allow_empty=True,
+            )
+            raw_interrupt_backend = str(self.config.interrupt_asr_backend or "").strip()
+            self._interrupt_asr_backend = (
+                asr_backends.normalize_asr_backend(raw_interrupt_backend, allow_empty=True)
+                or self._asr_backend
+            )
+            raw_interrupt_fallback = str(self.config.interrupt_asr_fallback_backend or "").strip()
+            self._interrupt_asr_fallback_backend = asr_backends.normalize_asr_backend(
+                raw_interrupt_fallback,
+                allow_empty=True,
+            )
+            if not raw_interrupt_backend and not raw_interrupt_fallback:
+                self._interrupt_asr_fallback_backend = self._asr_fallback_backend
+        except ValueError as exc:
+            raise VoicePipelineError(str(exc)) from exc
+
+        if self._asr_fallback_backend == self._asr_backend:
+            self._asr_fallback_backend = ""
+        if self._interrupt_asr_fallback_backend == self._interrupt_asr_backend:
+            self._interrupt_asr_fallback_backend = ""
+
+        apple_settings = {
+            "helper_path": Path(self.config.apple_asr_helper_path),
+            "locale": self.config.apple_asr_locale,
+            "timeout_seconds": self.config.apple_asr_timeout_seconds,
+            "contextual_strings": self.config.apple_asr_contextual_strings,
+        }
+        self._asr_backends: dict[str, asr_backends.ASRBackend] = {
+            "omlx": asr_backends.CallbackASRBackend("omlx", self._transcribe_omlx),
+            "apple-speech": asr_backends.AppleSpeechASRBackend(
+                asr_backends.AppleSpeechASRSettings(engine="speech", **apple_settings)
+            ),
+            "apple-dictation": asr_backends.AppleSpeechASRBackend(
+                asr_backends.AppleSpeechASRSettings(engine="dictation", **apple_settings)
+            ),
+        }
+
+    @property
+    def configured_asr_backends(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                backend
+                for backend in (
+                    self._asr_backend,
+                    self._asr_fallback_backend,
+                    self._interrupt_asr_backend,
+                    self._interrupt_asr_fallback_backend,
+                )
+                if backend
+            )
+        )
 
     @property
     def configured_models(self) -> tuple[str, ...]:
-        models = [self.config.asr_model]
+        models: list[str] = []
+        if "omlx" in self.configured_asr_backends:
+            models.append(self.config.asr_model)
         if self.response_callback is None:
             models.append(self.config.llm_model)
-        return tuple(models)
+        return tuple(dict.fromkeys(model for model in models if model))
 
     @property
     def streams_tts_while_llm_generates(self) -> bool:
         return self.config.stream_tts and self.config.tts_backend == "piper"
+
+    def asr_status(self) -> dict[str, Any]:
+        with self._asr_status_lock:
+            now = time.monotonic()
+            if self._asr_status_cache and now - self._asr_status_cached_at < 30.0:
+                return dict(self._asr_status_cache)
+            status: dict[str, Any] = {
+                "backend": self._asr_backend,
+                "fallbackBackend": self._asr_fallback_backend,
+                "interruptBackend": self._interrupt_asr_backend,
+                "interruptFallbackBackend": self._interrupt_asr_fallback_backend,
+            }
+            try:
+                primary_status = self._asr_backends[self._asr_backend].status()
+                status.update(primary_status)
+            except Exception:
+                LOGGER.debug("Failed to query primary ASR status", exc_info=True)
+                primary_status = {
+                    "ok": False,
+                    "backend": self._asr_backend,
+                    "available": False,
+                    "error": f"{self._asr_backend} unavailable",
+                }
+                status.update(primary_status)
+
+            if self._interrupt_asr_backend == self._asr_backend:
+                interrupt_status = dict(primary_status)
+            else:
+                try:
+                    interrupt_status = self._asr_backends[self._interrupt_asr_backend].status()
+                except Exception:
+                    LOGGER.debug("Failed to query interrupt ASR status", exc_info=True)
+                    interrupt_status = {
+                        "ok": False,
+                        "backend": self._interrupt_asr_backend,
+                        "available": False,
+                        "error": f"{self._interrupt_asr_backend} unavailable",
+                    }
+            status["interrupt"] = {
+                "fallbackBackend": self._interrupt_asr_fallback_backend,
+                **interrupt_status,
+            }
+            self._asr_status_cache = dict(status)
+            self._asr_status_cached_at = now
+            return status
 
     def cancel_active_response(self) -> bool:
         """Close an active direct-oMLX streaming response used by the standalone runner."""
@@ -360,9 +500,44 @@ class OmlxVoicePipeline:
             LOGGER.debug("Failed to close active direct-oMLX voice response", exc_info=True)
         return True
 
+    def _warm_apple_asr_backends(self) -> None:
+        routes = (
+            (self._asr_backend, self._asr_fallback_backend),
+            (self._interrupt_asr_backend, self._interrupt_asr_fallback_backend),
+        )
+        for backend_name in self.configured_asr_backends:
+            if not backend_name.startswith("apple-"):
+                continue
+            try:
+                status = self._asr_backends[backend_name].warm_up()
+                LOGGER.info("Apple ASR ready: %s", status)
+            except Exception as exc:
+                required = any(primary == backend_name and not fallback for primary, fallback in routes)
+                if required:
+                    raise VoicePipelineError(f"Required {backend_name} ASR backend is unavailable: {exc}") from exc
+                LOGGER.warning("Optional %s ASR backend is unavailable; configured fallback remains active: %s", backend_name, exc)
+
     def warm_up(self) -> None:
-        """Validate the configured ASR/LLM stack and selected TTS backend before the first call."""
+        """Validate configured ASR/LLM stages and the selected TTS backend."""
         self._validate_tts_backend()
+        self._warm_apple_asr_backends()
+        LOGGER.info(
+            "Voice pipeline: asr=%s fallback=%s interrupt_asr=%s interrupt_fallback=%s "
+            "response_backend=%s llm=%s tts_backend=%s tts_voice=%s",
+            self._asr_backend,
+            self._asr_fallback_backend or "none",
+            self._interrupt_asr_backend,
+            self._interrupt_asr_fallback_backend or "none",
+            "pi_rpc" if self.response_callback is not None else "omlx_chat",
+            self.config.llm_model if self.response_callback is None else "n/a",
+            self.config.tts_backend,
+            f"{self.config.tts_piper_repo_id}:{self.config.tts_piper_quality}",
+        )
+
+        configured_models = self.configured_models
+        if not configured_models:
+            return
+
         models_url = f"{self.config.base_url}/models"
         response = self._request("GET", models_url, stage="models", headers=self._headers(), timeout=20)
         try:
@@ -378,24 +553,15 @@ class OmlxVoicePipeline:
         }
         missing = [
             model
-            for model in self.configured_models
+            for model in configured_models
             if model and model not in available and model.rsplit("/", 1)[-1] not in available
         ]
-        LOGGER.info(
-            "Voice pipeline models: asr=%s response_backend=%s llm=%s tts_backend=%s tts_voice=%s missing=%s",
-            self.config.asr_model,
-            "pi_rpc" if self.response_callback is not None else "omlx_chat",
-            self.config.llm_model if self.response_callback is None else "n/a",
-            self.config.tts_backend,
-            f"{self.config.tts_piper_repo_id}:{self.config.tts_piper_quality}",
-            missing or "none",
-        )
         if missing and self.config.require_configured_models:
             raise VoicePipelineError(
                 "Configured oMLX voice model(s) are not installed/visible: " + ", ".join(missing)
             )
 
-        load_targets = [model for model in dict.fromkeys(self.configured_models) if model and model not in missing]
+        load_targets = [model for model in configured_models if model not in missing]
         if load_targets:
             LOGGER.info("Preloading oMLX voice models concurrently: %s", load_targets)
             loaded: dict[str, str] = {}
@@ -440,18 +606,64 @@ class OmlxVoicePipeline:
             raise VoicePipelineNoOutputError("Text contained no playable speech.")
         return audio_paths
 
-    def transcribe_audio(self, input_wav_path: Path) -> tuple[str, float, float]:
-        """Transcribe an input WAV and return transcript, input seconds, and ASR seconds."""
+    def _asr_route(self, purpose: str) -> tuple[str, str]:
+        if purpose == "turn":
+            return self._asr_backend, self._asr_fallback_backend
+        if purpose == "interrupt":
+            return self._interrupt_asr_backend, self._interrupt_asr_fallback_backend
+        raise ValueError(f"Unsupported ASR purpose: {purpose!r}")
+
+    def _transcribe_with_backend(self, backend_name: str, input_wav_path: Path) -> str:
+        backend = self._asr_backends.get(backend_name)
+        if backend is None:
+            raise VoicePipelineError(f"ASR backend is not initialized: {backend_name}")
+        transcript = " ".join(backend.transcribe(input_wav_path).split()).strip()
+        if not transcript:
+            raise VoicePipelineNoOutputError(f"{backend_name} ASR produced no transcript.")
+        return transcript
+
+    def transcribe_audio(self, input_wav_path: Path, *, purpose: str = "turn") -> tuple[str, float, float]:
+        """Transcribe a WAV and return transcript, input duration, and ASR duration."""
         input_seconds = _audio_duration_seconds(input_wav_path)
+        primary, fallback = self._asr_route(purpose)
+        attempted: list[str] = []
         asr_started_at = time.monotonic()
         try:
-            transcript = self._transcribe(input_wav_path)
+            attempted.append(primary)
+            try:
+                transcript = self._transcribe_with_backend(primary, input_wav_path)
+                used_backend = primary
+            except Exception as primary_error:
+                if not fallback:
+                    if isinstance(primary_error, VoicePipelineError):
+                        raise
+                    raise VoicePipelineError(f"{primary} ASR failed: {primary_error}") from primary_error
+                LOGGER.warning(
+                    "Primary %s ASR failed for %s (%s); trying fallback %s",
+                    primary,
+                    purpose,
+                    primary_error,
+                    fallback,
+                )
+                attempted.append(fallback)
+                try:
+                    transcript = self._transcribe_with_backend(fallback, input_wav_path)
+                    used_backend = fallback
+                except Exception as fallback_error:
+                    raise VoicePipelineError(
+                        f"ASR primary {primary} failed ({primary_error}); fallback {fallback} failed ({fallback_error})"
+                    ) from fallback_error
         finally:
-            if self.config.unload_between_stages:
+            if self.config.unload_between_stages and "omlx" in attempted:
                 self._unload_model(self.config.asr_model)
         asr_seconds = time.monotonic() - asr_started_at
-        if not transcript:
-            raise VoicePipelineNoOutputError("ASR produced no transcript.")
+        LOGGER.info(
+            "Voice ASR: purpose=%s backend=%s input=%.2fs elapsed=%.2fs",
+            purpose,
+            used_backend,
+            input_seconds,
+            asr_seconds,
+        )
         return transcript, input_seconds, asr_seconds
 
     def synthesize_turn(
@@ -682,7 +894,7 @@ class OmlxVoicePipeline:
             except Exception:
                 LOGGER.debug("Best-effort oMLX model unload failed for %s", candidate, exc_info=True)
 
-    def _transcribe(self, audio_path: Path) -> str:
+    def _transcribe_omlx(self, audio_path: Path) -> str:
         url = f"{self.config.base_url}/audio/transcriptions"
         form: dict[str, str] = {
             "model": self.config.asr_model,
@@ -1338,6 +1550,11 @@ class OmlxVoicePipeline:
         text = text.replace("**", "").replace("__", "")
         text = re.sub(r"\s+", " ", text).strip()
         return _dedupe_repeated_reply_text(text)
+
+
+
+# Backward-compatible name for callers that imported the original oMLX-specific class.
+OmlxVoicePipeline = VoicePipeline
 
 
 def _audio_duration_seconds(path: Path) -> float:

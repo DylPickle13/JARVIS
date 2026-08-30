@@ -13,15 +13,17 @@ import room_audio_server
 
 
 class _FailIfTranscribedPipeline:
-    def transcribe_audio(self, _path: Path) -> tuple[str, float, float]:
+    def transcribe_audio(self, _path: Path, *, purpose: str = "turn") -> tuple[str, float, float]:
         raise AssertionError("idle turns must not be sent to ASR for interruption")
 
 
 class _TranscriptPipeline:
     def __init__(self, transcript: str) -> None:
         self.transcript = transcript
+        self.purposes: list[str] = []
 
-    def transcribe_audio(self, _path: Path) -> tuple[str, float, float]:
+    def transcribe_audio(self, _path: Path, *, purpose: str = "turn") -> tuple[str, float, float]:
+        self.purposes.append(purpose)
         return self.transcript, 0.6, 0.01
 
 
@@ -158,10 +160,12 @@ class TurnCancellationTests(unittest.TestCase):
     def test_interrupt_endpoint_stops_completed_server_job_during_client_playback(self) -> None:
         bridge, cancel_event, session = self.make_bridge(active=False)
         bridge._jobs["12345678"]["pending"] = False
-        bridge._pipeline = _TranscriptPipeline("Stop!")
+        pipeline = _TranscriptPipeline("Stop!")
+        bridge._pipeline = pipeline
 
         response = bridge.handle_interrupt_wav("12345678", Path("unused.wav"), client_busy=True)
 
+        self.assertEqual(pipeline.purposes, ["interrupt"])
         self.assertTrue(response["recognized"])
         self.assertEqual(response["status"], "cancelled")
         self.assertTrue(cancel_event.is_set())

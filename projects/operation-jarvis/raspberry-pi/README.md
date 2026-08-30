@@ -87,30 +87,27 @@ The active room-audio endpoint is documented in [`room_audio/README.md`](./room_
 Current deployed shape:
 
 ```text
-PowerConf Bluetooth mic/speaker
-  -> Raspberry Pi VAD listener
+PowerConf USB mic/speaker
+  -> Raspberry Pi VAD + local openWakeWord listener
   -> Mac room-audio server
-  -> oMLX Whisper ASR
-  -> wake-word gate
+  -> Apple SpeechTranscriber turn ASR with oMLX fallback
+  -> Apple DictationTranscriber busy-only stop ASR with oMLX fallback
   -> immediate acknowledgement audio
   -> Pi RPC JARVIS response
   -> Piper TTS
-  -> high-quality A2DP playback
+  -> full-duplex USB playback
 ```
 
 Important current details:
 
-- Bluetooth device: Anker PowerConf `<bluetooth-device-mac>`.
-- Capture: BlueALSA SCO/HFP at `8000 Hz`.
-- Playback: BlueALSA A2DP for higher-quality JARVIS voice.
+- Capture/playback: Anker PowerConf USB ALSA at 48 kHz (`plughw:CARD=PowerConf,DEV=0`).
 - Persistent listener service: `jarvis-room-audio.service`.
-- The service reconnects the trusted PowerConf by MAC, restores SCO mixer volume to `100%`, and restarts automatically after Pi reboot or client failure.
-- The client releases SCO capture around A2DP playback, then restores/drains the mic while waiting for the async final answer.
-- BlueALSA is configured with `--keep-alive=1` to reduce Bluetooth profile-switch delay.
-- `JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS=1000` prevents clipped first syllables on A2DP wake-up.
-- Startup/reconnect greetings are served by `GET /greeting` on the Mac room-audio server and played through the PowerConf once capture is healthy.
+- USB capture remains active during acknowledgement, generation, and playback so bare-`stop` barge-in works.
+- The service restarts automatically after Pi reboot or client failure.
+- Bluetooth BlueALSA SCO/A2DP remains an installer fallback, but it cannot provide reliable simultaneous capture/playback.
+- Startup greetings are served by `GET /greeting` on the Mac room-audio server and played once capture is healthy.
 
-USB remains the best long-term simultaneous mic+speaker option, but this Pi/PowerConf pairing has shown USB `over-current change` instability without a powered hub. Use a powered hub for a future wired configuration.
+Use a good powered USB hub if electrical instability returns.
 
 ## Pi-side client deployment
 

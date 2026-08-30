@@ -6,7 +6,7 @@ Operation JARVIS is the physical-world and native-client layer of the local JARV
 
 1. **jarvisd** — authenticated native API on port `8790` for health, state, services, scheduled jobs/results, and closed hardware commands.
 2. **terminald** — isolated mobile terminal relay on port `8792` for the protected `jarvis-mobile` tmux session.
-3. **Room audio** — Raspberry Pi microphone/speaker client with Mac-side oMLX ASR, neutral Pi RPC, and Piper speech on port `8791`.
+3. **Room audio** — Raspberry Pi microphone/speaker client with Mac-side Apple SpeechTranscriber turn ASR, Apple DictationTranscriber busy-only `stop` ASR, oMLX failure fallback, neutral Pi RPC, and Piper speech on port `8791`.
 4. **Native Apple app** — iPhone, Watch, and two widgets per platform.
 5. **Smart plugs** — local TP-Link Kasa control through a closed plug catalogue.
 6. **Air purifier** — VeSync/Levoit Vital 200S-P status and guarded writes.
@@ -74,7 +74,7 @@ cd /path/to/JARVIS
 
 ## Room audio
 
-The Mac service in [`raspberry-pi/room_audio/room_audio_server.py`](raspberry-pi/room_audio/room_audio_server.py) imports the transport-neutral [`voice/voice_pipeline.py`](voice/voice_pipeline.py) and root `pi_rpc.py` modules. The Pi client owns USB capture, VAD, local wake detection, Bluetooth playback, and exact busy-only `stop` interruption.
+The Mac service in [`raspberry-pi/room_audio/room_audio_server.py`](raspberry-pi/room_audio/room_audio_server.py) imports the transport-neutral [`voice/voice_pipeline.py`](voice/voice_pipeline.py), native [`voice/apple_asr/`](voice/apple_asr/) helper, and root `pi_rpc.py` modules. The Pi client owns USB capture, VAD, local wake detection, playback, and exact busy-only `stop` interruption.
 
 The room service does not own the protected mobile tmux session. Restart it only as an announced controlled step, then validate `GET /health` before continuing.
 
@@ -82,6 +82,7 @@ The room service does not own the protected mobile tmux session. Restart it only
 
 ```bash
 # Python tests that do not touch hardware
+PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_asr_backends.py
 PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_pi_rpc.py
 PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_voice_pipeline.py
 PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python raspberry-pi/room_audio/test_room_audio_interrupt.py

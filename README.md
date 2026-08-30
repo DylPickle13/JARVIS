@@ -9,7 +9,7 @@ JARVIS is a private local automation and control stack built around the [Pi codi
 - **Native Apple clients** — [`projects/operation-jarvis/jarvis-app/`](projects/operation-jarvis/jarvis-app/) provides Home, JARVIS terminal, Jobs, and Settings on iPhone plus guarded Watch controls and widgets.
 - **jarvisd** — authenticated read-only state/results APIs and closed, validated native hardware commands on port `8790`.
 - **terminald** — isolated mobile terminal relay on port `8792`, bound to the protected `jarvis-mobile` tmux session.
-- **Room audio** — Raspberry Pi microphone/speaker endpoint → oMLX Whisper → neutral Pi RPC → Piper speech through the Mac service on port `8791`.
+- **Room audio** — Raspberry Pi microphone/speaker endpoint → on-device Apple SpeechTranscriber for turns and DictationTranscriber for busy-only `stop`, both with oMLX fallback → neutral Pi RPC → Piper speech through the Mac service on port `8791`.
 - **Operation JARVIS tools** — Cast, Spotify, local Kasa plugs, and VeSync/Levoit purifier control.
 
 ## Repository map
@@ -75,7 +75,7 @@ Physical deployment uses the fixed private signing-renewal script and allowliste
 The Mac service uses:
 
 - [`pi_rpc.py`](pi_rpc.py) for neutral persistent Pi RPC;
-- [`voice_pipeline.py`](projects/operation-jarvis/voice/voice_pipeline.py) for oMLX ASR and Piper TTS;
+- [`voice_pipeline.py`](projects/operation-jarvis/voice/voice_pipeline.py) and [`asr_backends.py`](projects/operation-jarvis/voice/asr_backends.py) for pluggable Apple/oMLX ASR and Piper TTS;
 - [`room_audio_server.py`](projects/operation-jarvis/raspberry-pi/room_audio/room_audio_server.py) for the bounded LAN bridge.
 
 Read-only health:

@@ -2,7 +2,7 @@
 """LAN room-audio bridge for Operation JARVIS.
 
 Mac-side service:
-  Raspberry Pi PowerConf WAV -> oMLX Whisper ASR -> Pi RPC JARVIS -> Piper TTS WAV.
+  Raspberry Pi PowerConf WAV -> pluggable Apple/oMLX ASR -> Pi RPC JARVIS -> Piper TTS WAV.
 
 The Raspberry Pi client records/plays audio locally, asks this server for startup
 or reconnect greeting audio, and posts VAD/fixed-length turns here. This keeps the
@@ -24,6 +24,7 @@ import threading
 import time
 import uuid
 import wave
+from dataclasses import replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -257,9 +258,27 @@ class RoomAudioBridge:
             context_name=DEFAULT_CHANNEL_NAME,
         )
         # The server returns a single final WAV to the Pi client, so do not stream
-        # TTS chunks here. The room endpoint returns one final combined WAV.
+        # TTS chunks here. Room-specific ASR routing selects Apple Speech for
+        # turns and Apple Dictation for interruption without changing other
+        # consumers of the neutral voice pipeline.
         pipeline_config = voice_pipeline.VoicePipelineConfig(stream_tts=False)
-        self._pipeline = voice_pipeline.OmlxVoicePipeline(pipeline_config, response_callback=self._run_pi_response)
+        pipeline_config = replace(
+            pipeline_config,
+            asr_backend=config.get_str_env("JARVIS_ROOM_AUDIO_ASR_BACKEND", pipeline_config.asr_backend),
+            asr_fallback_backend=config.get_str_env(
+                "JARVIS_ROOM_AUDIO_ASR_FALLBACK_BACKEND",
+                config.get_str_env("JARVIS_ROOM_AUDIO_ASR_FALLBACK", pipeline_config.asr_fallback_backend),
+            ),
+            interrupt_asr_backend=config.get_str_env(
+                "JARVIS_ROOM_AUDIO_INTERRUPT_ASR_BACKEND",
+                pipeline_config.interrupt_asr_backend,
+            ),
+            interrupt_asr_fallback_backend=config.get_str_env(
+                "JARVIS_ROOM_AUDIO_INTERRUPT_ASR_FALLBACK_BACKEND",
+                pipeline_config.interrupt_asr_fallback_backend,
+            ),
+        )
+        self._pipeline = voice_pipeline.VoicePipeline(pipeline_config, response_callback=self._run_pi_response)
         self._lock = threading.Lock()
         self._active_pi_turn_lock = threading.Lock()
         self._active_pi_turn_id = ""
@@ -277,6 +296,10 @@ class RoomAudioBridge:
     @property
     def thinking(self) -> str:
         return self._thinking
+
+    @property
+    def asr_status(self) -> dict[str, Any]:
+        return self._pipeline.asr_status()
 
     def warm_up(self) -> None:
         self._pipeline.warm_up()
@@ -688,7 +711,7 @@ class RoomAudioBridge:
                 "reason": "voice adapter is not busy",
             }
 
-        transcript, input_seconds, asr_seconds = self._pipeline.transcribe_audio(wav_path)
+        transcript, input_seconds, asr_seconds = self._pipeline.transcribe_audio(wav_path, purpose="interrupt")
         command = parse_interrupt_command(transcript, busy=client_busy)
         cancellation = self.cancel_turn(turn_id) if command == STOP_COMMAND else None
         return {
@@ -865,6 +888,7 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 "transcriptWakeCheckEnabled": False,
                 "model": self.server.bridge.model,
                 "thinking": self.server.bridge.thinking,
+                "asr": self.server.bridge.asr_status,
                 "ttsLeadingSilenceMs": DEFAULT_TTS_LEADING_SILENCE_MS,
                 "processingAckEnabled": PROCESSING_ACK_ENABLED,
                 "processingAckText": PROCESSING_ACK_TEXT if PROCESSING_ACK_ENABLED else "",
