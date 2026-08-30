@@ -567,7 +567,7 @@ and Open JARVIS.
 
 This README is the single architecture, security, packaging, deployment, widget,
 physical-validation, recovery, release, and implementation-plan reference for
-the app. The former `docs/*.md` files are consolidated below.
+the app. The former `docs/*.md` files are consolidated below. The JARVIS app side of the Pi attachment work is intentionally deferred and tracked separately in [`docs/pi-attach-integration-plan.md`](docs/pi-attach-integration-plan.md); no app implementation accompanies that plan yet.
 
 ## Scope (v5, approved)
 
@@ -723,6 +723,7 @@ jarvis-app/
 ├── project.yml                 # xcodegen spec (regenerates JARVIS.xcodeproj)
 ├── JARVIS.xcodeproj            # generated (do not hand-edit)
 ├── docs/
+│   ├── pi-attach-integration-plan.md # deferred iPhone attachment plan only
 │   └── third-party/            # retained third-party license text
 ├── scripts/
 │   └── redeploy-jarvis-app.sh  # one-command device build + install

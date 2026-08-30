@@ -11,6 +11,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `lib/env.ts` — `.env` discovery/parsing and env lookup helpers.
 - `lib/path.ts` — safe user path normalization helpers.
 - `lib/text.ts` — bounded text truncation helper.
+- `lib/attach/` — private attachment storage, image preparation, native-picker invocation, and temporary SSH picker-bridge transport used by the single `/attach` command.
 - `lib/ssh-pty.ts` — local `node-pty` wrapper and headless xterm screen used for bidirectional SSH terminal sessions. Runtime dependencies are declared in `lib/package.json`.
 
 ## Extension roots covered by smoke test
@@ -19,6 +20,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `00-web-access-env.ts` — project-scoped `pi-web-access` bootstrap plus JARVIS web/search policy; never mutates or consumes global `~/.pi/web-search.json`.
 - `01-omlx-provider-setup-and-recovery.ts` — non-blocking local oMLX provider registration plus prompt-too-long/prefill-memory recovery. Startup uses static seeds or the private last-known context-window cache at `.pi/runtime/omlx-context-windows.json`; live oMLX discovery refreshes the provider registry and cache after `session_start`, and the provider's native `refreshModels` callback reads the active server values whenever Pi refreshes `/model`. Unreachable providers silently retain their cached models and retry on the next refresh.
 - `04-delete-current-session.ts` — current-session cleanup command.
+- `05-attach.ts` — the single parameterless `/attach` command: native macOS file selection and management, in-memory staging, and next-message image/path injection.
 - `10-jarvis-cron.ts` — private scheduled Pi jobs and bounded local result history.
 - `30-google-access.ts` — Google Workspace tool.
 - `34-maps.ts` — Google Maps places/geocode/routes natural-language tool.
@@ -71,6 +73,22 @@ The `jarvis` group includes Operation JARVIS actions for Cast/Spotify workflows,
 
 Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: load `minecraft_jarvis` before calling `minecraft_jarvis`, or load `github` before calling `github_cli`. Ordinary local `git` operations continue to use the baseline coding shell.
 
+## Native file attachments
+
+The project-local `05-attach.ts` extension registers exactly one parameterless command: `/attach`. It does not register aliases, subcommands, path arguments, or an LLM tool. The command opens one native AppKit attachment dialog; its multi-select file panel and staged-file list handle adding, removing, replacing, or clearing files without terminal management menus. Clicking **Done** applies the reconciled selection, while cancelling or closing the dialog preserves the prior queue. The next ordinary interactive prompt atomically consumes the staged set.
+
+Selected files are copied directly into the ignored private `attachments/` directory with owner-only modes and readable collision suffixes such as `photo-2.png`. The staged queue exists only in the live Pi process: no manifests, per-session directories, or other attachment metadata are written. Restarting Pi clears any unsent queue while leaving its copied files in place. Defaults are 10 files, 50 MiB per file, and 100 MiB total; bounded `PI_ATTACH_MAX_FILES`, `PI_ATTACH_MAX_FILE_BYTES`, and `PI_ATTACH_MAX_TOTAL_BYTES` environment overrides are available. Images supported by the active model are normalized through Pi's image pipeline and included as native image blocks; every attachment is also represented by its flat local path and bounded prompt metadata. Non-image files remain local for `read`, the PDF extension, or other explicit tools. Consumed files are retained because later session turns may refer to those paths; files explicitly removed before submission are deleted.
+
+Direct local use invokes `.pi/scripts/pi-attach-picker`, which compiles the checked-in AppKit helper into ignored mode-`0700` runtime storage on first use. Plain SSH cannot ask the client computer to open a dialog. For attachment-enabled SSH, connect from the client checkout with:
+
+```bash
+.pi/scripts/jarvis-pi-ssh [ssh options] <host>
+```
+
+The launcher starts a temporary client-loopback bridge and creates a random, token-protected reverse Unix-socket forwarding inside SSH. A versioned picker protocol returns retained staged IDs plus newly selected files, so remove/clear/cancel behavior is identical locally and over SSH; only new file bytes cross the encrypted connection. No browser, public listener, cloud intermediary, persistent daemon, or globally installed Pi extension is used. A plain SSH session fails closed with reconnection guidance rather than opening a dialog on the remote Mac.
+
+The JARVIS app side is deliberately deferred; its paperclip/Photos/Files and one-shot SSH upload design is documented in [`projects/operation-jarvis/jarvis-app/docs/pi-attach-integration-plan.md`](../../projects/operation-jarvis/jarvis-app/docs/pi-attach-integration-plan.md).
+
 ## SSH execution and interactive terminals
 
 The always-on `ssh` tool requires an explicit configured remote host and pins its identity, user, and allowed working directories. Use coding tools—not SSH—for mac-mini-64.
@@ -98,6 +116,7 @@ Use:
 ```bash
 cd /path/to/JARVIS
 pi list
+node --test .pi/scripts/tests/pi-attach-*.test.mjs .pi/scripts/tests/jarvis-pi-ssh.test.mjs
 .pi/smoke-test.sh
 ```
 

@@ -24,6 +24,7 @@ Back up or be prepared to recreate:
 | Browser profile | `~/.pi/agent/browser-profile` or `PI_BROWSER_PROFILE_DIR` | Optional | Preserves visible-browser cookies/session state. Do not commit. |
 | Google Workspace OAuth | external `gws` token/config store | If Workspace tools are used | Run `gws auth ...` if not restored. |
 | Operation data artifacts | `projects/operation-jarvis/data/*` | Optional | Runtime state (greeting history, logs); ignored by git. |
+| Pi attachment copies | `attachments/*` | Optional but needed for old attachment paths | Private files selected through `/attach`; ignored by git. The live staged queue is intentionally not persisted. |
 
 ## 1. Install system prerequisites
 
@@ -34,6 +35,8 @@ On the Mac host:
 brew install node python@3.13 ffmpeg git trash poppler
 xcode-select --install  # if Apple command-line developer tools are not already installed
 ```
+
+The project-local `/attach` picker uses `/usr/bin/swiftc` plus AppKit and compiles its private helper on first use. The attachment-enabled SSH launcher also requires OpenSSH stream-local forwarding on both Macs.
 
 Also install/configure as needed:
 
@@ -85,7 +88,7 @@ Customize these ignored local files before starting Pi:
 
 If private backups exist, restore them instead of copying the templates, then run `chmod 600` on the four local files and `chmod 700` on the private directories shown above. Do not commit the resulting local files. The templates are deliberately safe and cannot reproduce private host addresses, usernames, key locations, device aliases, or personal preferences without customization.
 
-`.pi/extensions/00-private-permissions.ts` reapplies these owner-only modes whenever Pi starts. The memory and scheduler runners also enforce mode `0600` on their SQLite databases and sidecars, with mode `0700` on their default data directories.
+`.pi/extensions/00-private-permissions.ts` reapplies these owner-only modes whenever Pi starts, including mode `0700` on `attachments/` and mode `0600` on loose attachment files. The memory and scheduler runners also enforce mode `0600` on their SQLite databases and sidecars, with mode `0700` on their default data directories.
 
 Minimum root `.env` for basic local Pi operation:
 
@@ -146,7 +149,7 @@ cd /path/to/JARVIS/.pi/extensions/50-browser
 npm install
 ```
 
-Shared extension runtime dependencies (currently `node-pty` for interactive SSH terminals):
+Shared extension runtime dependencies (currently `node-pty` for interactive SSH terminals; `/attach` itself uses only Node built-ins and Pi's image utilities):
 
 ```bash
 cd /path/to/JARVIS/.pi/extensions/lib
@@ -264,6 +267,19 @@ A simple Pi session should show baseline tools plus `load_tools`. Inside Pi, che
 /lazy-tools
 /load-tools memory,sessions,browser
 /reset-tools
+```
+
+The project also exposes exactly one parameterless attachment command:
+
+```text
+/attach
+```
+
+On a directly operated Mac this opens the native picker. From another Mac, start the SSH shell from a JARVIS checkout with `.pi/scripts/jarvis-pi-ssh <host>` before launching Pi; plain SSH intentionally cannot open a dialog on the client computer. Selected files are stored directly under ignored `attachments/` with owner-only modes; the staged queue is memory-only and resets when Pi exits. Run its non-GUI tests without opening a picker:
+
+```bash
+node --test .pi/scripts/tests/pi-attach-*.test.mjs .pi/scripts/tests/jarvis-pi-ssh.test.mjs
+/usr/bin/swiftc -typecheck -framework AppKit .pi/scripts/pi-attach-picker.swift
 ```
 
 ## 9. Recreate private scheduled jobs

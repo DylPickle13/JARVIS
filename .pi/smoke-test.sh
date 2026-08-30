@@ -197,7 +197,7 @@ require_mode "project secrets" ".env" "600"
 require_mode "Pi settings" ".pi/settings.json" "600"
 require_mode "local system context" ".pi/APPEND_SYSTEM.md" "600"
 require_mode "SSH host allowlist" ".pi/ssh-hosts.json" "600"
-for directory in .pi/runtime .pi/memory .pi/scheduler; do
+for directory in .pi/runtime .pi/memory .pi/scheduler attachments; do
   require_mode "private directory" "$directory" "700"
 done
 while IFS= read -r path; do
@@ -205,6 +205,9 @@ while IFS= read -r path; do
 done < <(find .pi .pi/memory .pi/scheduler -maxdepth 1 -type f \
   \( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -name '*.sqlite-journal' \
      -o -name '*.sqlite.lock' -o -name 'deleted-sessions-*.json' \) -print 2>/dev/null)
+while IFS= read -r path; do
+  require_mode "loose attachment file" "$path" "600"
+done < <(find attachments -mindepth 1 -maxdepth 1 -type f -print 2>/dev/null)
 if [[ -d .pi/runtime/pi-web-access ]]; then
   require_mode "scoped web-access directory" ".pi/runtime/pi-web-access" "700"
 fi
@@ -216,6 +219,7 @@ section "Core commands"
 require_command "pi"
 require_command "node"
 require_command "npm"
+require_command "swiftc"
 require_command "ffmpeg"
 warn_command "pdftotext"
 warn_command "trash"
@@ -310,6 +314,7 @@ expected_extension_roots=(
   .pi/extensions/00-web-access-env.ts
   .pi/extensions/01-omlx-provider-setup-and-recovery.ts
   .pi/extensions/04-delete-current-session.ts
+  .pi/extensions/05-attach.ts
   .pi/extensions/10-jarvis-cron.ts
   .pi/extensions/30-google-access.ts
   .pi/extensions/34-maps.ts
@@ -338,13 +343,28 @@ expected_extension_files=(
   .pi/extensions/50-browser/package-lock.json
   .pi/extensions/50-browser/package.json
   .pi/extensions/50-browser/tools.ts
+  .pi/extensions/lib/attach/core.ts
+  .pi/extensions/lib/attach/images.ts
+  .pi/extensions/lib/attach/transport.ts
   .pi/extensions/lib/package-lock.json
   .pi/extensions/lib/package.json
   .pi/extensions/lib/ssh-pty.ts
+  .pi/scripts/jarvis-pi-ssh
+  .pi/scripts/pi-attach-bridge.mjs
+  .pi/scripts/pi-attach-picker
+  .pi/scripts/pi-attach-picker.swift
+  .pi/scripts/tests/jarvis-pi-ssh.test.mjs
+  .pi/scripts/tests/pi-attach-bridge.test.mjs
+  .pi/scripts/tests/pi-attach-core.test.mjs
+  .pi/scripts/tests/pi-attach-transport.test.mjs
+  projects/operation-jarvis/jarvis-app/docs/pi-attach-integration-plan.md
 )
 for path in "${expected_extension_files[@]}"; do
   require_file "extension source" "$path"
 done
+require_executable "native attachment picker launcher" ".pi/scripts/pi-attach-picker"
+require_executable "temporary SSH attachment bridge" ".pi/scripts/pi-attach-bridge.mjs"
+require_executable "attachment-enabled SSH launcher" ".pi/scripts/jarvis-pi-ssh"
 
 expected_extension_roots_sorted="$(printf '%s\n' "${expected_extension_roots[@]}" | sort)"
 actual_extension_roots_sorted="$(find .pi/extensions -maxdepth 1 \( \( -type f -name '*.ts' \) -o -type d \) ! -path .pi/extensions ! -name lib | sort)"
@@ -490,6 +510,18 @@ for (const path of optionalToolFiles) {
 console.log(`canonical lazy groups (${toolGroups.length}): ${toolGroups.join(', ')}, all; additive deferred loading enabled; cache-prefix hooks audited`);
 NODE
 fi
+
+section "Native attachment extension checks"
+if command -v node >/dev/null 2>&1; then
+  run_check "flat attachment storage and one-command contract tests" node --test .pi/scripts/tests/pi-attach-core.test.mjs
+  run_check "temporary attachment bridge tests" node --test .pi/scripts/tests/pi-attach-bridge.test.mjs
+  run_check "SSH Unix-socket attachment transport tests" node --test .pi/scripts/tests/pi-attach-transport.test.mjs
+  run_check "attachment-enabled SSH launcher tests" node --test .pi/scripts/tests/jarvis-pi-ssh.test.mjs
+fi
+if command -v swiftc >/dev/null 2>&1; then
+  run_check "native attachment picker typecheck" swiftc -typecheck -framework AppKit .pi/scripts/pi-attach-picker.swift
+fi
+run_check "native attachment shell launchers parse" zsh -n .pi/scripts/pi-attach-picker .pi/scripts/jarvis-pi-ssh
 
 section "CLI import/help checks"
 if [[ -n "$PYTHON_BIN" ]]; then

@@ -1,0 +1,103 @@
+#!/bin/zsh
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BRIDGE="$SCRIPT_DIR/pi-attach-bridge.mjs"
+PICKER="$SCRIPT_DIR/pi-attach-picker"
+SSH_BIN="${PI_ATTACH_SSH_BIN:-/usr/bin/ssh}"
+NODE_BIN="${PI_ATTACH_NODE_BIN:-$(command -v node || true)}"
+
+usage() {
+  cat <<'EOF'
+Usage: jarvis-pi-ssh [ssh options] <host>
+
+Open an interactive SSH shell with the private client-side /attach picker bridge.
+Run Pi from the JARVIS project on the remote host, then use the single /attach command.
+EOF
+}
+
+if (( $# == 0 )); then
+  usage >&2
+  exit 2
+fi
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  usage
+  exit 0
+fi
+if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+  print -u2 "jarvis-pi-ssh requires Node.js on the client computer."
+  exit 1
+fi
+if [[ ! -x "$SSH_BIN" ]]; then
+  print -u2 "SSH executable not found: $SSH_BIN"
+  exit 1
+fi
+if [[ ! -f "$BRIDGE" || ! -x "$PICKER" ]]; then
+  print -u2 "Pi attachment bridge files are missing beside jarvis-pi-ssh."
+  exit 1
+fi
+
+TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/jarvis-pi-ssh.XXXXXX")"
+chmod 700 "$TEMP_DIR"
+DESCRIPTOR="$TEMP_DIR/bridge.json"
+BRIDGE_LOG="$TEMP_DIR/bridge.log"
+BRIDGE_PID=""
+
+cleanup() {
+  local exit_code=$?
+  trap - EXIT INT TERM HUP
+  if [[ -n "$BRIDGE_PID" ]] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
+    kill "$BRIDGE_PID" 2>/dev/null || true
+    wait "$BRIDGE_PID" 2>/dev/null || true
+  fi
+  rm -rf "$TEMP_DIR"
+  exit "$exit_code"
+}
+trap cleanup EXIT INT TERM HUP
+
+"$NODE_BIN" "$BRIDGE" --descriptor "$DESCRIPTOR" --picker "$PICKER" >"$BRIDGE_LOG" 2>&1 &
+BRIDGE_PID=$!
+
+attempts=0
+while [[ ! -s "$DESCRIPTOR" ]]; do
+  if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
+    print -u2 "The local Pi attachment bridge failed to start."
+    [[ -s "$BRIDGE_LOG" ]] && tail -20 "$BRIDGE_LOG" >&2
+    exit 1
+  fi
+  attempts=$((attempts + 1))
+  if (( attempts > 100 )); then
+    print -u2 "Timed out starting the local Pi attachment bridge."
+    exit 1
+  fi
+  sleep 0.05
+done
+
+read -r LOCAL_PORT BRIDGE_TOKEN <<EOF
+$("$NODE_BIN" -e '
+const fs = require("fs");
+const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+if (!Number.isInteger(value.port) || value.port < 1 || value.port > 65535 || !/^[0-9a-f]{64}$/.test(value.token || "")) process.exit(2);
+process.stdout.write(`${value.port} ${value.token}`);
+' "$DESCRIPTOR")
+EOF
+
+SOCKET_SUFFIX="${BRIDGE_TOKEN[1,20]}"
+REMOTE_SOCKET="/tmp/pi-attach-${UID}-${SOCKET_SUFFIX}.sock"
+REMOTE_COMMAND="export PI_ATTACH_BRIDGE_SOCKET='$REMOTE_SOCKET'; export PI_ATTACH_BRIDGE_TOKEN='$BRIDGE_TOKEN'; \"\${SHELL:-/bin/zsh}\" -l; exit_code=\$?; rm -f '$REMOTE_SOCKET'; exit \$exit_code"
+
+set +e
+"$SSH_BIN" \
+  -tt \
+  -o ExitOnForwardFailure=yes \
+  -o StreamLocalBindUnlink=yes \
+  -o StreamLocalBindMask=0177 \
+  -R "$REMOTE_SOCKET:127.0.0.1:$LOCAL_PORT" \
+  "$@" \
+  "$REMOTE_COMMAND"
+ssh_status=$?
+set -e
+
+# Keep a command after ssh so zsh cannot replace this wrapper process with the
+# SSH executable; the EXIT trap must always stop the temporary local bridge.
+exit "$ssh_status"

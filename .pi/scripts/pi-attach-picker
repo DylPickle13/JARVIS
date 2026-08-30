@@ -1,0 +1,50 @@
+#!/bin/zsh
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SOURCE="$SCRIPT_DIR/pi-attach-picker.swift"
+RUNTIME_DIR="${PI_ATTACH_PICKER_RUNTIME_DIR:-$PROJECT_ROOT/.pi/runtime/pi-attach-picker}"
+BINARY="$RUNTIME_DIR/pi-attach-picker"
+LOCK_DIR="$RUNTIME_DIR/build.lock"
+
+mkdir -p "$RUNTIME_DIR"
+chmod 700 "$RUNTIME_DIR"
+
+build_picker() {
+  local temporary="$RUNTIME_DIR/.pi-attach-picker.$$.tmp"
+  /usr/bin/swiftc -O -framework AppKit "$SOURCE" -o "$temporary"
+  chmod 700 "$temporary"
+  mv -f "$temporary" "$BINARY"
+}
+
+if [[ ! -x "$BINARY" || "$SOURCE" -nt "$BINARY" ]]; then
+  attempts=0
+  owns_lock=0
+  while (( owns_lock == 0 )); do
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+      owns_lock=1
+      break
+    fi
+    if [[ -x "$BINARY" && "$SOURCE" -ot "$BINARY" ]]; then
+      break
+    fi
+    attempts=$((attempts + 1))
+    if (( attempts > 300 )); then
+      print -u2 "Timed out waiting to build the native Pi attachment picker."
+      exit 1
+    fi
+    sleep 0.1
+  done
+
+  if (( owns_lock == 1 )); then
+    trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM HUP
+    if [[ ! -x "$BINARY" || "$SOURCE" -nt "$BINARY" ]]; then
+      build_picker
+    fi
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+    trap - EXIT INT TERM HUP
+  fi
+fi
+
+exec "$BINARY" "$@"

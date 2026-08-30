@@ -17,7 +17,7 @@ JARVIS is a private local automation and control stack built around the [Pi codi
 | Path | Purpose |
 |---|---|
 | [`pi_rpc.py`](pi_rpc.py) | Neutral Pi CLI/RPC process management and persistent local sessions. |
-| [`.pi/extensions/`](.pi/extensions/) | Project-local tools, lazy schemas, memory, scheduler, browser, Google, Maps, GitHub, SSH, REAPER, and Operation JARVIS integrations. |
+| [`.pi/extensions/`](.pi/extensions/) | Project-local tools, lazy schemas, native attachment picker, memory, scheduler, browser, Google, Maps, GitHub, SSH, REAPER, and Operation JARVIS integrations. |
 | [`.pi/scheduler/`](.pi/scheduler/) | Generic scheduler, bounded results, dormant fail-closed APNs provider scaffold, and tests. |
 | [`.pi/memory/`](.pi/memory/) | Explicit owner-only durable memory. |
 | [`projects/operation-jarvis/`](projects/operation-jarvis/) | Physical-world control, room audio, quotas, and native app. |
