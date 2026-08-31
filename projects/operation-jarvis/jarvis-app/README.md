@@ -15,15 +15,19 @@ queues, replays, retries, or synthesizes a byte. Checked-in `project.yml` intent
 remains Build 127 without `JARVIS_NATIVE_ATTACHMENTS`; candidate build numbers and
 the iPhone-only attachment flag remain owner-artifact-only.
 
-The Neural Core resilience candidate keeps both widget surfaces at 48 frames over
-the same two-second loop while separating decorative motion from telemetry
-freshness. Stale or unavailable telemetry remains fail-closed, but no longer
-freezes the Cathedral. Targeted host recovery is rate-limited across launch and
-foreground activation, Watch reduced-luminance transitions receive a fresh
-selector identity, and widget state refreshes have an eight-second outer deadline
-with content-free OSLog outcomes. Always-On, Reduce Motion, placeholder, and
-unavailable-font paths remain static. No process timer, private API, animated
-media, App Group, APNs, entitlement, or widget-interaction path is added.
+The Neural Core correction keeps both widget surfaces at 48 frames over the same
+two-second loop while separating the entire decorative composition—phase,
+density, firing energy, and authored luminance—from telemetry freshness. Physical
+Build 135 exposed an incomplete separation: Watch timer masks flickered over 48
+identical stale phases, while iPhone stale phases moved with a dimmed, reduced
+composition. The correction keeps stale or unavailable status values fail-closed
+and accessible as unknown without letting them collapse or dim decorative frames.
+Targeted host recovery remains rate-limited across launch and foreground
+activation, Watch reduced-luminance transitions retain a fresh selector identity,
+and widget state refreshes retain their eight-second outer deadline and
+content-free OSLog outcomes. Always-On, Reduce Motion, placeholder, and
+unavailable-font paths remain static. No cadence, process timer, private API,
+animated media, App Group, APNs, entitlement, or widget-interaction path is added.
 
 The three-conversation design fixes Slot 1 to `jarvis-ios`, adds only
 `jarvis-ios-2` and `jarvis-ios-3`, remembers selection independently on iPhone and
@@ -2804,15 +2808,16 @@ References:
 
 The production design retains only the `JARVIS` wordmark. There are no visible metric labels, status sentences, or explanatory text.
 
-The cathedral remains state-reactive through geometry rather than copy:
+The original implementation made the cathedral state-reactive through geometry
+rather than copy. The current resilience correction reclassifies filament firing,
+radial density, particles, reactor discharge, and core luminance as decoration so
+connectivity loss cannot freeze or dim them. Typed status remains truthful:
 
-- Pi sessions control illuminated filament channels and radial density.
-- The four approved plugs control four architectural anchor nodes.
-- Codex remaining controls the outer orbital arc while preserving the strict critical threshold: below 30% is critical; exactly 30% is not critical.
-- PM2.5 controls central-core intensity.
-- Fresh connectivity permits the energized composition.
-- Missing or stale telemetry freezes, dims, and fractures the projection instead of inventing activity.
-- Gallery placeholders are the only state allowed to use illustrative values.
+- The four approved plugs control four architectural anchor nodes; unavailable states are unknown.
+- Codex remaining controls the outer orbital arc while preserving the strict critical threshold: below 30% is critical; exactly 30% is not critical; unavailable quota has no filled progress.
+- Pi session and PM2.5 values remain available to accessibility only when fresh.
+- Missing or stale telemetry is announced as signal lost and cannot claim a live status.
+- Gallery placeholders are the only state allowed to use illustrative status values.
 
 Accessibility continues to expose a useful spoken state even though the visual presentation contains no metric text.
 
@@ -2955,7 +2960,7 @@ Add date-driven continuous motion to an approved app destination without changin
 5. The foreground app version, if approved, animates smoothly while active.
 6. Watch Always On is static, legible, accent-aware, and not intentionally dimmed by JARVIS; system luminance treatment is accepted.
 7. Reduce Motion removes rotation, travel, and pulsing.
-8. Stale or unavailable telemetry cannot illuminate activity.
+8. Stale or unavailable telemetry cannot illuminate or announce a live status; telemetry-independent decorative motion may remain fully energized.
 9. Existing platform-specific deep links remain unchanged.
 10. No hardware control, daemon mutation, terminal input, or persistent pane restart is involved.
 

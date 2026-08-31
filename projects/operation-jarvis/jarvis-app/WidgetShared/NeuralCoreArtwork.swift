@@ -90,10 +90,11 @@ struct JARVISNeuralCoreArtwork: View {
     }
 
     private var motionEnabled: Bool {
-        allowsMotion
-            && !telemetry.signalLost
-            && !isLuminanceReduced
-            && !accessibilityReduceMotion
+        JARVISNeuralCoreArtworkMotionPolicy.isMotionEnabled(
+            allowsMotion: allowsMotion,
+            isLuminanceReduced: isLuminanceReduced,
+            accessibilityReduceMotion: accessibilityReduceMotion
+        )
     }
 
     private var renderedPhase: Double {
@@ -313,20 +314,10 @@ private struct JARVISMonochromeCathedralCanvas: View {
         }
     }
 
-    private var signalMultiplier: Double {
-        telemetry.signalLost ? 0.38 : 1
-    }
-
-    private var sessionEnergy: CGFloat {
-        CGFloat(telemetry.illuminatedSpokes) / 8
-    }
-
-    /// Preserve the approved study's neural density whenever Pi is active while
-    /// still scaling the firing field down—and fully off—with real session data.
-    private var sessionActivity: CGFloat {
-        guard !telemetry.signalLost, telemetry.illuminatedSpokes > 0 else { return 0 }
-        return min(1, 0.25 + sessionEnergy * 1.5)
-    }
+    /// Neural firing is decorative rather than a service-status claim. Keep its
+    /// authored energy at full strength while the typed telemetry projection
+    /// continues to expose unknown plug/quota/air values when freshness is lost.
+    private var decorativeEnergy: CGFloat { 1 }
 
     private func drawHalo(
         context: inout GraphicsContext,
@@ -336,11 +327,11 @@ private struct JARVISMonochromeCathedralCanvas: View {
         let haloRadius = radius * 1.08
         context.fill(
             Path(ellipseIn: JARVISCathedralGeometry.circleRect(center: center, radius: haloRadius)),
-            with: .color(palette.bright.opacity(telemetry.signalLost ? 0.008 : 0.018))
+            with: .color(palette.bright.opacity(0.018))
         )
         context.stroke(
             Path(ellipseIn: JARVISCathedralGeometry.circleRect(center: center, radius: radius * 1.02)),
-            with: .color(palette.silver.opacity(0.20 * signalMultiplier)),
+            with: .color(palette.silver.opacity(0.20)),
             lineWidth: 1.6 * layout.lineScale(for: radius)
         )
     }
@@ -361,14 +352,14 @@ private struct JARVISMonochromeCathedralCanvas: View {
         stroke(
             primaryArch,
             context: &context,
-            color: palette.bright.opacity(0.10 * signalMultiplier),
+            color: palette.bright.opacity(0.10),
             width: 4.2 * layout.lineScale(for: radius)
                 + 4.5 * layout.visualScale(for: radius)
         )
         stroke(
             primaryArch,
             context: &context,
-            color: palette.bright.opacity(0.40 * signalMultiplier),
+            color: palette.bright.opacity(0.40),
             width: 4.2 * layout.lineScale(for: radius)
         )
         stroke(
@@ -380,7 +371,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 segments: layout.curveSegments(watch: 30, phone: 34)
             ),
             context: &context,
-            color: palette.silver.opacity(0.34 * signalMultiplier),
+            color: palette.silver.opacity(0.34),
             width: 2.1 * layout.lineScale(for: radius)
         )
         stroke(
@@ -392,7 +383,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 segments: layout.curveSegments(watch: 34, phone: 36)
             ),
             context: &context,
-            color: palette.silver.opacity(0.24 * signalMultiplier),
+            color: palette.silver.opacity(0.24),
             width: 1.5 * layout.lineScale(for: radius)
         )
 
@@ -405,7 +396,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 segments: layout.curveSegments(watch: 46, phone: 44)
             ),
             context: &context,
-            color: palette.silver.opacity(0.30 * signalMultiplier),
+            color: palette.silver.opacity(0.30),
             width: 0.85 * layout.lineScale(for: radius)
         )
         stroke(
@@ -417,7 +408,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 segments: layout.curveSegments(watch: 38, phone: 40)
             ),
             context: &context,
-            color: palette.cool.opacity(0.20 * signalMultiplier),
+            color: palette.cool.opacity(0.20),
             width: 0.72 * layout.lineScale(for: radius)
         )
         stroke(
@@ -429,7 +420,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 segments: layout.curveSegments(watch: 38, phone: 40)
             ),
             context: &context,
-            color: palette.silver.opacity(0.18 * signalMultiplier),
+            color: palette.silver.opacity(0.18),
             width: 0.65 * layout.lineScale(for: radius)
         )
     }
@@ -460,7 +451,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                     segments: layout.curveSegments(watch: 24, phone: 26)
                 ),
                 context: &context,
-                color: palette.pale.opacity((0.12 + Double(highlight) * 0.15) * signalMultiplier),
+                color: palette.pale.opacity(0.12 + Double(highlight) * 0.15),
                 width: (index == layout.latitudeCount / 2 ? 1.15 : 0.62) * layout.lineScale(for: radius)
             )
         }
@@ -477,7 +468,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                     segments: layout.curveSegments(watch: 34, phone: 36)
                 ),
                 context: &context,
-                color: palette.silver.opacity((0.11 + Double(JARVISCathedralGeometry.pseudo(index + 40)) * 0.15) * signalMultiplier),
+                color: palette.silver.opacity(0.11 + Double(JARVISCathedralGeometry.pseudo(index + 40)) * 0.15),
                 width: (index % 4 == 0 ? 0.95 : 0.55) * layout.lineScale(for: radius)
             )
         }
@@ -491,24 +482,20 @@ private struct JARVISMonochromeCathedralCanvas: View {
         let spin = phase * .pi * 2
 
         for index in 0..<layout.filamentCount {
-            if telemetry.signalLost && index % 3 == 0 { continue }
-
             let filament = JARVISCathedralGeometry.filament(
                 index: index,
                 center: center,
                 radius: radius,
-                phase: telemetry.signalLost ? JARVISNeuralCoreMotion.staticPhase : Double(phase)
+                phase: Double(phase)
             )
             let rawTravel = pow(
                 max(0, cos(spin * 2 - JARVISCathedralGeometry.pseudo(index + 1720) * .pi * 2)),
                 10
             )
-            let travel = rawTravel * sessionActivity
-            let opacity = telemetry.signalLost
-                ? 0.075 + Double(JARVISCathedralGeometry.pseudo(index + 1880)) * 0.08
-                : 0.10
-                    + Double(JARVISCathedralGeometry.pseudo(index + 1880)) * 0.18
-                    + Double(travel) * 0.48
+            let travel = rawTravel * decorativeEnergy
+            let opacity = 0.10
+                + Double(JARVISCathedralGeometry.pseudo(index + 1880)) * 0.18
+                + Double(travel) * 0.48
             let color = travel > 0.35
                 ? palette.bright
                 : (index % 3 == 0 ? palette.cool : palette.silver)
@@ -517,26 +504,18 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 count: layout.curveSegments(watch: 9, phone: 8)
             )
 
-            if telemetry.signalLost {
-                let gapStart = max(2, points.count / 2 - 1)
-                let gapEnd = min(points.count - 2, gapStart + 2)
-                stroke(Array(points[0...gapStart]), context: &context, color: color.opacity(opacity), width: width)
-                stroke(Array(points[gapEnd...]), context: &context, color: color.opacity(opacity), width: width)
-            } else {
-                if travel > 0.72 {
-                    stroke(
-                        points,
-                        context: &context,
-                        color: palette.bright.opacity(0.10),
-                        width: width + 4 * layout.visualScale(for: radius)
-                    )
-                }
-                stroke(points, context: &context, color: color.opacity(opacity), width: width)
+            if travel > 0.72 {
+                stroke(
+                    points,
+                    context: &context,
+                    color: palette.bright.opacity(0.10),
+                    width: width + 4 * layout.visualScale(for: radius)
+                )
             }
+            stroke(points, context: &context, color: color.opacity(opacity), width: width)
 
-            guard sessionActivity > 0,
-                  index % 2 == 0,
-                  JARVISCathedralGeometry.pseudo(index + 2460) <= 0.40 + sessionActivity * 0.60
+            guard index % 2 == 0,
+                  JARVISCathedralGeometry.pseudo(index + 2460) <= 0.40 + decorativeEnergy * 0.60
             else { continue }
 
             let speed = CGFloat(2 + Int(JARVISCathedralGeometry.pseudo(index + 2010) * 4))
@@ -545,7 +524,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             )
             let forward = JARVISCathedralGeometry.pseudo(index + 2250) > 0.5
             let headProgress = forward ? progress : 1 - progress
-            let firing = pow(max(0, sin(progress * .pi)), 2.2) * sessionActivity
+            let firing = pow(max(0, sin(progress * .pi)), 2.2) * decorativeEnergy
             guard firing > 0.025 else { continue }
 
             let trailCount = 5
@@ -611,9 +590,8 @@ private struct JARVISMonochromeCathedralCanvas: View {
             let normalized = CGFloat(index) / CGFloat(layout.columnCount - 1) * 2 - 1
             let x = center.x + normalized * radius * 0.82
             let bow = sin((normalized + 1) * .pi / 2) * radius * 0.12
-            let shimmer = telemetry.signalLost
-                ? 0.10
-                : 0.20 + Double(pow(max(0, cos(phase * .pi * 4 - CGFloat(index) * 0.66)), 8)) * 0.30
+            let shimmer = 0.20
+                + Double(pow(max(0, cos(phase * .pi * 4 - CGFloat(index) * 0.66)), 8)) * 0.30
             stroke(
                 [
                     CGPoint(x: x, y: center.y - radius * 0.88),
@@ -638,10 +616,12 @@ private struct JARVISMonochromeCathedralCanvas: View {
             let angle = unit * .pi * 2 + sin(phase * .pi * 4 + CGFloat(index) * 0.45) * 0.018
             let inner = radius * (0.83 + JARVISCathedralGeometry.pseudo(index + 2300) * 0.10)
             let outer = radius * (1.08 + JARVISCathedralGeometry.pseudo(index + 2520) * 0.38)
-            let focus = telemetry.signalLost
-                ? 0
-                : exp(-pow(JARVISCathedralGeometry.circularDistance(unit, focusPhase) * 10, 2))
-            let opacity = (0.22 + Double(JARVISCathedralGeometry.pseudo(index + 2710)) * 0.24 + Double(focus) * 0.48) * signalMultiplier
+            let focus = exp(
+                -pow(JARVISCathedralGeometry.circularDistance(unit, focusPhase) * 10, 2)
+            )
+            let opacity = 0.22
+                + Double(JARVISCathedralGeometry.pseudo(index + 2710)) * 0.24
+                + Double(focus) * 0.48
             let start = CGPoint(
                 x: center.x + cos(angle) * inner,
                 y: center.y + sin(angle) * inner * 0.90
@@ -689,18 +669,17 @@ private struct JARVISMonochromeCathedralCanvas: View {
         center: CGPoint,
         radius: CGFloat
     ) {
-        let count = telemetry.signalLost ? layout.particleCount / 2 : layout.particleCount
-        let energy = telemetry.signalLost ? CGFloat(0.18) : max(0.25, sessionActivity)
-        for index in 0..<count {
+        for index in 0..<layout.particleCount {
             let baseAngle = JARVISCathedralGeometry.pseudo(index + 3100) * .pi * 2
             let direction: CGFloat = JARVISCathedralGeometry.pseudo(index + 3290) > 0.5 ? 1 : -1
             let orbit = index % 8 == 0
                 ? direction * phase * .pi * 2
                 : direction * sin(phase * .pi * 4 + JARVISCathedralGeometry.pseudo(index + 3500) * .pi * 2) * 0.11
-            let angle = baseAngle + (telemetry.signalLost ? 0 : orbit)
-            let radialWave = telemetry.signalLost
-                ? 0
-                : sin(phase * .pi * 6 + JARVISCathedralGeometry.pseudo(index + 3720) * .pi * 2)
+            let angle = baseAngle + orbit
+            let radialWave = sin(
+                phase * .pi * 6
+                    + JARVISCathedralGeometry.pseudo(index + 3720) * .pi * 2
+            )
             let distance = radius * (
                 0.98
                     + JARVISCathedralGeometry.pseudo(index + 3950) * 0.55
@@ -710,9 +689,17 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 x: center.x + cos(angle) * distance,
                 y: center.y + sin(angle) * distance * 0.86
             )
-            let twinkle = telemetry.signalLost
-                ? 0.18
-                : (0.30 + pow(0.5 + 0.5 * sin(phase * .pi * 6 + JARVISCathedralGeometry.pseudo(index + 4200) * .pi * 2), 4) * 0.70) * energy
+            let twinkle = (
+                0.30
+                    + pow(
+                        0.5
+                            + 0.5 * sin(
+                                phase * .pi * 6
+                                    + JARVISCathedralGeometry.pseudo(index + 4200) * .pi * 2
+                            ),
+                        4
+                    ) * 0.70
+            ) * decorativeEnergy
             let particleRadius = (0.55 + JARVISCathedralGeometry.pseudo(index + 4400) * 2.35) * layout.detailScale(for: radius)
             if twinkle > 0.80 {
                 context.fill(
@@ -725,7 +712,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             }
             context.fill(
                 Path(ellipseIn: JARVISCathedralGeometry.circleRect(center: point, radius: particleRadius)),
-                with: .color((index % 5 == 0 ? palette.bright : palette.pale).opacity(Double(twinkle) * 0.82 * signalMultiplier))
+                with: .color((index % 5 == 0 ? palette.bright : palette.pale).opacity(Double(twinkle) * 0.82))
             )
         }
     }
@@ -751,10 +738,10 @@ private struct JARVISMonochromeCathedralCanvas: View {
             switch state {
             case .on:
                 color = palette.bright
-                opacity = telemetry.signalLost ? 0.15 : 0.92
+                opacity = 0.92
             case .off:
                 color = palette.silver
-                opacity = telemetry.signalLost ? 0.12 : 0.46
+                opacity = 0.46
             case .unknown:
                 color = palette.veryDim
                 opacity = 0.34
@@ -791,12 +778,10 @@ private struct JARVISMonochromeCathedralCanvas: View {
             let end = -unit * .pi * 2 - offset
             let start = end - (.pi * 2 / CGFloat(segmentCount)) * 0.58
             let carriesQuota = progress.map { unit < $0 } ?? false
-            let runner = telemetry.signalLost || !carriesQuota
+            let runner = !carriesQuota
                 ? 0
                 : exp(-pow(JARVISCathedralGeometry.circularDistance(unit, runnerPhase) * 9, 2))
-            let opacity = telemetry.signalLost
-                ? 0.08
-                : (carriesQuota ? 0.22 : 0.10) + Double(runner) * 0.55
+            let opacity = (carriesQuota ? 0.22 : 0.10) + Double(runner) * 0.55
             let color = carriesQuota ? quotaColor : palette.silver
             let lineWidth = (0.65 + runner * 1.3) * layout.lineScale(for: radius)
             let points = JARVISCathedralGeometry.arcPath(
@@ -829,8 +814,6 @@ private struct JARVISMonochromeCathedralCanvas: View {
         center: CGPoint,
         radius: CGFloat
     ) {
-        guard !telemetry.signalLost, telemetry.illuminatedSpokes > 0 else { return }
-
         for waveIndex in 0..<3 {
             let discharge = JARVISCathedralGeometry.fraction(
                 phase * 3 + CGFloat(waveIndex) / 3
@@ -999,16 +982,10 @@ private struct JARVISMonochromeCathedralCanvas: View {
         stroke(points, context: &context, color: color, width: width)
     }
 
-    private var coreStrength: Double {
-        guard !telemetry.signalLost else { return 0.34 }
-        guard let pm25 = telemetry.pm25 else { return 0.58 }
-        switch pm25 {
-        case ...12: return 1.0
-        case 13...35: return 0.82
-        case 36...55: return 0.66
-        default: return 0.50
-        }
-    }
+    /// Core luminance is decorative and therefore remains at its authored full
+    /// strength. PM2.5 truth stays in the typed telemetry/accessibility surface;
+    /// missing data never masquerades as a live air-quality value.
+    private var coreStrength: Double { 1 }
 
     private func stroke(
         _ path: Path,

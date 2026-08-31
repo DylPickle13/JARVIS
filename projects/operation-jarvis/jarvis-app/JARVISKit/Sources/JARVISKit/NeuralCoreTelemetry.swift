@@ -7,8 +7,9 @@ public enum JARVISNeuralCorePlugState: Equatable, Sendable {
 }
 
 /// A bounded, presentation-ready projection of real cached JARVIS state.
-/// The artwork never invents activity: every illuminated spoke, node, and ring
-/// comes from a daemon snapshot (except WidgetKit's explicit gallery placeholder).
+/// Status values never invent activity: stale inputs become nil/unknown and the
+/// explicit WidgetKit gallery placeholder is the only illustrative state. The
+/// Cathedral's decorative motion and luminance are intentionally independent.
 public struct JARVISNeuralCoreTelemetry: Equatable, Sendable {
     public static let plugOrder = ["family-room-light", "lamp", "pedalboard", "tv"]
 

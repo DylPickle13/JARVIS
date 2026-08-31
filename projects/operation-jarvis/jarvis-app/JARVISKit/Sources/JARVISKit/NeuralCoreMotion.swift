@@ -41,6 +41,19 @@ public enum JARVISNeuralCoreWidgetReloadPolicy {
     }
 }
 
+/// Governs phase-driven decorative artwork inside each selected frame. Telemetry
+/// freshness is intentionally absent: unknown status remains fail-closed in the
+/// telemetry projection, but it cannot collapse every Watch frame to one phase.
+public enum JARVISNeuralCoreArtworkMotionPolicy {
+    public static func isMotionEnabled(
+        allowsMotion: Bool,
+        isLuminanceReduced: Bool,
+        accessibilityReduceMotion: Bool
+    ) -> Bool {
+        allowsMotion && !isLuminanceReduced && !accessibilityReduceMotion
+    }
+}
+
 /// Deterministic motion values for the native-vector Neural Core.
 ///
 /// WidgetKit animates only when it transitions between timeline entries. The

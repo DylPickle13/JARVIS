@@ -115,6 +115,51 @@ final class JARVISKitTests: XCTestCase {
         )
     }
 
+    func testNeuralCoreArtworkKeepsDistinctWatchPhasesWhenTelemetryIsUnavailable() {
+        let unavailableTelemetry = JARVISNeuralCoreTelemetry(cached: nil)
+        XCTAssertTrue(unavailableTelemetry.signalLost)
+        XCTAssertTrue(
+            JARVISNeuralCoreArtworkMotionPolicy.isMotionEnabled(
+                allowsMotion: true,
+                isLuminanceReduced: false,
+                accessibilityReduceMotion: false
+            )
+        )
+
+        let phases = (0..<JARVISNeuralCoreMotion.watchContinuousFrameCount).map {
+            JARVISNeuralCoreMotion.continuousPhase(
+                basePhase: JARVISNeuralCoreMotion.continuousSynchronizedBasePhase,
+                frameIndex: $0,
+                frameCount: JARVISNeuralCoreMotion.watchContinuousFrameCount
+            )
+        }
+        XCTAssertEqual(Set(phases).count, JARVISNeuralCoreMotion.watchContinuousFrameCount)
+    }
+
+    func testNeuralCoreArtworkMotionPreservesSystemGates() {
+        XCTAssertFalse(
+            JARVISNeuralCoreArtworkMotionPolicy.isMotionEnabled(
+                allowsMotion: false,
+                isLuminanceReduced: false,
+                accessibilityReduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            JARVISNeuralCoreArtworkMotionPolicy.isMotionEnabled(
+                allowsMotion: true,
+                isLuminanceReduced: true,
+                accessibilityReduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            JARVISNeuralCoreArtworkMotionPolicy.isMotionEnabled(
+                allowsMotion: true,
+                isLuminanceReduced: false,
+                accessibilityReduceMotion: true
+            )
+        )
+    }
+
     func testNeuralCoreContinuousMotionPreservesSystemAndFontGates() {
         XCTAssertEqual(
             JARVISNeuralCoreContinuousMotionPolicy.decision(

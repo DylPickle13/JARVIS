@@ -728,7 +728,14 @@ reject_match 'Neural Core must not embed animated media or Metal rendering' -Rqs
 grep -q 'Text(date, style: .timer)' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'CTFontManagerRegisterFontsForURL' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'JARVISNeuralCoreContinuousMotionPolicy.decision' WidgetShared/NeuralCoreContinuousAnimation.swift
-reject_match 'telemetry freshness must not disable decorative Neural Core motion' -qsF '&& !telemetry.signalLost' WidgetShared/NeuralCoreContinuousAnimation.swift
+reject_match 'telemetry freshness must not disable the outer Neural Core selector' -qsF '&& !telemetry.signalLost' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q 'JARVISNeuralCoreArtworkMotionPolicy.isMotionEnabled' WidgetShared/NeuralCoreArtwork.swift
+reject_match 'telemetry freshness must not collapse selected Watch frames to the static phase' -qsF '&& !telemetry.signalLost' WidgetShared/NeuralCoreArtwork.swift
+# The sole remaining signalLost reference is the truthful accessibility label;
+# decorative phase, density, energy, and luminance must not branch on freshness.
+[[ "$(grep -Fc 'telemetry.signalLost' WidgetShared/NeuralCoreArtwork.swift)" == "1" ]]
+grep -q 'private var decorativeEnergy: CGFloat { 1 }' WidgetShared/NeuralCoreArtwork.swift
+grep -q 'private var coreStrength: Double { 1 }' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'case luminanceReduced' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'case reduceMotion' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'case fontUnavailable' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
