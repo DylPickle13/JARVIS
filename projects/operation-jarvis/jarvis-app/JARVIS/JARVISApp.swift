@@ -1,6 +1,25 @@
 import Foundation
 import SwiftUI
 import WidgetKit
+import JARVISKit
+
+private enum PhoneNeuralCoreWidgetReloadCoordinator {
+    private static let lastRequestedAtKey = "jarvis.phone-neural-core-widget.last-reload-request-at"
+
+    static func reloadIfDue(
+        now: Date = Date(),
+        defaults: UserDefaults = .standard
+    ) {
+        let lastRequestedAt = defaults.object(forKey: lastRequestedAtKey) as? Date
+        guard JARVISNeuralCoreWidgetReloadPolicy.shouldRequestReload(
+            lastRequestedAt: lastRequestedAt,
+            now: now
+        ) else { return }
+
+        defaults.set(now, forKey: lastRequestedAtKey)
+        WidgetCenter.shared.reloadTimelines(ofKind: "JARVISNeuralCoreWidget.v1")
+    }
+}
 
 @main
 struct JARVISApp: App {
@@ -12,9 +31,9 @@ struct JARVISApp: App {
         let settings = PiTerminalSettings()
         _piTerminal = StateObject(wrappedValue: PiTerminalController(settings: settings))
         JARVISAppShortcuts.updateAppShortcutParameters()
-        // Rebuild the phone Neural Core's system-owned timer selectors after a
-        // host launch. WidgetKit still decides when to honor the reload.
-        WidgetCenter.shared.reloadTimelines(ofKind: "JARVISNeuralCoreWidget.v1")
+        // Request a targeted selector rebuild on launch. The same rate-limited
+        // coordinator also runs on every foreground activation.
+        PhoneNeuralCoreWidgetReloadCoordinator.reloadIfDue()
     }
 
     var body: some Scene {
@@ -31,6 +50,7 @@ struct JARVISApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active:
+                        PhoneNeuralCoreWidgetReloadCoordinator.reloadIfDue()
                         app.sceneDidBecomeActive()
                         piTerminal.sceneDidBecomeActive()
                     case .inactive:

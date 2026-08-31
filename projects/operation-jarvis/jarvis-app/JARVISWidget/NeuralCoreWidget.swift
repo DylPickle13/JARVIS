@@ -14,7 +14,8 @@ private struct JARVISNeuralCoreWidgetView: View {
             telemetry: telemetry,
             layout: .phone,
             basePhase: JARVISNeuralCoreMotion.phase(for: entry.date),
-            allowsMotion: !entry.placeholder
+            allowsMotion: !entry.placeholder,
+            selectorGeneration: entry.date.timeIntervalSinceReferenceDate
         )
             // A genuine WidgetKit timeline replacement receives a new identity,
             // rebuilding timer selectors that the system previously suspended.

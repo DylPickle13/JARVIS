@@ -101,6 +101,107 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertLessThanOrEqual(JARVISNeuralCoreMotion.transitionDuration, 2)
     }
 
+    func testNeuralCoreContinuousMotionDoesNotDependOnTelemetryFreshness() {
+        let unavailableTelemetry = JARVISNeuralCoreTelemetry(cached: nil)
+        XCTAssertTrue(unavailableTelemetry.signalLost)
+        XCTAssertEqual(
+            JARVISNeuralCoreContinuousMotionPolicy.decision(
+                allowsMotion: true,
+                isLuminanceReduced: false,
+                accessibilityReduceMotion: false,
+                fontAvailable: true
+            ),
+            .animate
+        )
+    }
+
+    func testNeuralCoreContinuousMotionPreservesSystemAndFontGates() {
+        XCTAssertEqual(
+            JARVISNeuralCoreContinuousMotionPolicy.decision(
+                allowsMotion: false,
+                isLuminanceReduced: false,
+                accessibilityReduceMotion: false,
+                fontAvailable: true
+            ),
+            .hostDisallowed
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreContinuousMotionPolicy.decision(
+                allowsMotion: true,
+                isLuminanceReduced: true,
+                accessibilityReduceMotion: false,
+                fontAvailable: true
+            ),
+            .luminanceReduced
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreContinuousMotionPolicy.decision(
+                allowsMotion: true,
+                isLuminanceReduced: false,
+                accessibilityReduceMotion: true,
+                fontAvailable: true
+            ),
+            .reduceMotion
+        )
+        XCTAssertEqual(
+            JARVISNeuralCoreContinuousMotionPolicy.decision(
+                allowsMotion: true,
+                isLuminanceReduced: false,
+                accessibilityReduceMotion: false,
+                fontAvailable: false
+            ),
+            .fontUnavailable
+        )
+    }
+
+    func testNeuralCoreWidgetReloadPolicyIsBoundedAndClockSafe() {
+        let now = Date(timeIntervalSinceReferenceDate: 10_000)
+        let interval = JARVISNeuralCoreWidgetReloadPolicy.minimumInterval
+        XCTAssertTrue(
+            JARVISNeuralCoreWidgetReloadPolicy.shouldRequestReload(
+                lastRequestedAt: nil,
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            JARVISNeuralCoreWidgetReloadPolicy.shouldRequestReload(
+                lastRequestedAt: now.addingTimeInterval(-(interval - 1)),
+                now: now
+            )
+        )
+        XCTAssertTrue(
+            JARVISNeuralCoreWidgetReloadPolicy.shouldRequestReload(
+                lastRequestedAt: now.addingTimeInterval(-interval),
+                now: now
+            )
+        )
+        XCTAssertTrue(
+            JARVISNeuralCoreWidgetReloadPolicy.shouldRequestReload(
+                lastRequestedAt: now.addingTimeInterval(1),
+                now: now
+            )
+        )
+    }
+
+    func testWidgetRefreshDeadlineReturnsCompletedOperation() async throws {
+        let value = try await JARVISWidgetRefreshDeadline.run(seconds: 1) {
+            "complete"
+        }
+        XCTAssertEqual(value, "complete")
+    }
+
+    func testWidgetRefreshDeadlineExpiresAndCancelsOperation() async {
+        do {
+            _ = try await JARVISWidgetRefreshDeadline.run(seconds: 0.05) {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                return "late"
+            }
+            XCTFail("Expected the widget refresh deadline to expire")
+        } catch {
+            XCTAssertEqual(error as? JARVISWidgetRefreshDeadlineError, .exceeded)
+        }
+    }
+
     func testNeuralCoreMotionNormalizesDatesBeforeReferenceEpoch() {
         let date = Date(timeIntervalSinceReferenceDate: -15 * 60)
         XCTAssertEqual(JARVISNeuralCoreMotion.phase(for: date), 0.75, accuracy: 0.000_001)

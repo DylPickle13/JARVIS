@@ -727,6 +727,11 @@ reject_match 'Neural Core must not use private clock-hand animation effects' -Rq
 reject_match 'Neural Core must not embed animated media or Metal rendering' -RqsE 'VideoPlayer|AVPlayer|\.gif|\.apng|MTKView|import Metal' JARVISWidget JARVISWatchWidget WidgetShared
 grep -q 'Text(date, style: .timer)' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'CTFontManagerRegisterFontsForURL' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q 'JARVISNeuralCoreContinuousMotionPolicy.decision' WidgetShared/NeuralCoreContinuousAnimation.swift
+reject_match 'telemetry freshness must not disable decorative Neural Core motion' -qsF '&& !telemetry.signalLost' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q 'case luminanceReduced' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
+grep -q 'case reduceMotion' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
+grep -q 'case fontUnavailable' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'phoneContinuousFrameCount = 48' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'watchContinuousFrameCount = 48' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'continuousSynchronizedBasePhase: Double = 0' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
@@ -734,6 +739,9 @@ grep -q 'continuousSynchronizedBasePhase: Double = 0' JARVISKit/Sources/JARVISKi
 grep -q 'JARVISWidgetTimerAnimationFont.register()' JARVISWidget/NeuralCoreWidget.swift
 grep -q '.id(entry.date.timeIntervalSinceReferenceDate)' JARVISWidget/NeuralCoreWidget.swift
 grep -q '.id(entry.date.timeIntervalSinceReferenceDate)' JARVISWatchWidget/NeuralCoreWidget.swift
+[[ "$(grep -Rcs 'selectorGeneration: entry.date.timeIntervalSinceReferenceDate' JARVISWidget/NeuralCoreWidget.swift JARVISWatchWidget/NeuralCoreWidget.swift | awk -F: '{sum += $2} END {print sum + 0}')" == "2" ]]
+grep -q 'JARVISNeuralCoreSelectorGeneration' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q 'telemetrySignalLost: telemetry.signalLost' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'ZStack(alignment: .topLeading)' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'ForEach(0..<layout.continuousFrameCount' WidgetShared/NeuralCoreContinuousAnimation.swift
 reject_match 'live Neural Core must not retain an unmasked frame-zero fallback' -qsF 'firstMaskedFrame' WidgetShared/NeuralCoreContinuousAnimation.swift
@@ -810,8 +818,14 @@ assert "layout == .watch" not in wordmark
 PY
 [[ "$(grep -c 'Text("JARVIS")' WidgetShared/NeuralCoreArtwork.swift)" == "1" ]]
 grep -q 'reloadTimelines(ofKind: "JARVISNeuralCoreWidget.v1")' JARVIS/JARVISApp.swift
+grep -q 'PhoneNeuralCoreWidgetReloadCoordinator.reloadIfDue()' JARVIS/JARVISApp.swift
+grep -q 'JARVISNeuralCoreWidgetReloadPolicy.shouldRequestReload' JARVIS/JARVISApp.swift
 grep -q 'JARVISWidgetTimerAnimationFont.register()' JARVISWatchWidget/NeuralCoreWidget.swift
 [[ "$(grep -c 'reloadTimelines(ofKind: "JARVISWatchNeuralCoreWidget.v1")' JARVISWatch/JARVISWatchApp.swift)" == "1" ]]
+grep -q 'WatchNeuralCoreWidgetReloadCoordinator.reloadIfDue()' JARVISWatch/JARVISWatchApp.swift
+grep -q 'JARVISNeuralCoreWidgetReloadPolicy.shouldRequestReload' JARVISWatch/JARVISWatchApp.swift
+grep -q 'timelineRefreshDeadline: TimeInterval = 8' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
+grep -q 'JARVISWidgetRefreshDeadline.run' JARVISKit/Sources/JARVISKit/WidgetSupport.swift
 reject_match 'Watch Neural Core recovery must stay targeted' -qsF 'reloadAllTimelines()' JARVISWatch/JARVISWatchApp.swift
 [[ "$(shasum -a 256 WidgetShared/FillRect-Regular.otf | awk '{print $1}')" == "7a41bc7e983b7e67f055fdb444fc3dd0d94fd3e288532295b7045b79b655a42a" ]]
 [[ -f docs/third-party/AnimationLimitBreaker-LICENSE.txt ]]

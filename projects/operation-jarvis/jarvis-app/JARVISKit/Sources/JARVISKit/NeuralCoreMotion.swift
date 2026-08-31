@@ -1,5 +1,46 @@
 import Foundation
 
+public enum JARVISNeuralCoreContinuousMotionDecision: String, Equatable, Hashable, Sendable {
+    case animate
+    case hostDisallowed
+    case luminanceReduced
+    case reduceMotion
+    case fontUnavailable
+}
+
+/// Keeps decorative motion independent from telemetry freshness. Status-driven
+/// artwork remains fail-closed when telemetry is stale; only the visual motion
+/// loop continues.
+public enum JARVISNeuralCoreContinuousMotionPolicy {
+    public static func decision(
+        allowsMotion: Bool,
+        isLuminanceReduced: Bool,
+        accessibilityReduceMotion: Bool,
+        fontAvailable: Bool
+    ) -> JARVISNeuralCoreContinuousMotionDecision {
+        guard allowsMotion else { return .hostDisallowed }
+        guard !isLuminanceReduced else { return .luminanceReduced }
+        guard !accessibilityReduceMotion else { return .reduceMotion }
+        guard fontAvailable else { return .fontUnavailable }
+        return .animate
+    }
+}
+
+/// Bounds host-app recovery requests without suppressing recovery forever after
+/// a backwards wall-clock adjustment.
+public enum JARVISNeuralCoreWidgetReloadPolicy {
+    public static let minimumInterval: TimeInterval = 10 * 60
+
+    public static func shouldRequestReload(
+        lastRequestedAt: Date?,
+        now: Date = Date()
+    ) -> Bool {
+        guard let lastRequestedAt else { return true }
+        let elapsed = now.timeIntervalSince(lastRequestedAt)
+        return elapsed < 0 || elapsed >= minimumInterval
+    }
+}
+
 /// Deterministic motion values for the native-vector Neural Core.
 ///
 /// WidgetKit animates only when it transitions between timeline entries. The

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Shared, target-local widget state loading. Personal Team builds cannot use
 /// an App Group, so each widget process keeps its own cache and discovers
@@ -6,7 +7,12 @@ import Foundation
 public enum JARVISWidgetStateLoader {
     public static let timelineRefreshInterval: TimeInterval = 15 * 60
     public static let staleAfter: TimeInterval = 15 * 60
+    public static let timelineRefreshDeadline: TimeInterval = 8
     private static let refreshCoordinator = JARVISWidgetRefreshCoordinator()
+    private static let logger = Logger(
+        subsystem: "com.operation-jarvis.jarvis.widgets",
+        category: "state-refresh"
+    )
 
     public static func cachedState() -> CachedState? {
         SnapshotStore().load()
@@ -27,15 +33,29 @@ public enum JARVISWidgetStateLoader {
             // A successful authenticated state read is stronger than a separate
             // health probe. Reuse the saved route first, and retain the existing
             // bounded discovery path only as recovery when that route fails.
-            let resolved = try await client.resolveState(
-                preferredEndpoint: preferredEndpoint,
-                candidates: candidates,
-                token: endpointStore.token ?? "",
-                discoveryTimeout: 3
-            )
+            let token = endpointStore.token ?? ""
+            let resolved = try await JARVISWidgetRefreshDeadline.run(
+                seconds: timelineRefreshDeadline
+            ) {
+                try await client.resolveState(
+                    preferredEndpoint: preferredEndpoint,
+                    candidates: candidates,
+                    token: token,
+                    discoveryTimeout: 3
+                )
+            }
             endpointStore.endpointURLString = resolved.endpointURL.absoluteString
+            logger.info("Widget state refresh source=network")
             return CachedState(state: resolved.state)
+        } catch JARVISWidgetRefreshDeadlineError.exceeded {
+            logger.info(
+                "Widget state refresh source=cache outcome=deadline age=\(cacheAgeBucket(cached), privacy: .public)"
+            )
+            return cached
         } catch {
+            logger.info(
+                "Widget state refresh source=cache outcome=failure age=\(cacheAgeBucket(cached), privacy: .public)"
+            )
             return cached
         }
     }
@@ -51,6 +71,46 @@ public enum JARVISWidgetStateLoader {
             || subsystemStale
             || itemStale
             || now.timeIntervalSince(cached.savedAt) > staleAfter
+    }
+
+    private static func cacheAgeBucket(_ cached: CachedState?, now: Date = Date()) -> String {
+        guard let cached else { return "missing" }
+        let age = max(0, now.timeIntervalSince(cached.savedAt))
+        if age <= staleAfter { return "fresh" }
+        if age <= 60 * 60 { return "stale-under-hour" }
+        return "stale-over-hour"
+    }
+}
+
+/// Applies a cancellation-aware outer boundary around endpoint recovery so a
+/// widget provider can always fall back to its existing target-local cache.
+enum JARVISWidgetRefreshDeadlineError: Error, Equatable, Sendable {
+    case exceeded
+}
+
+enum JARVISWidgetRefreshDeadline {
+    static func run<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let boundedSeconds = min(max(seconds, 0.05), 60)
+        let nanoseconds = UInt64(boundedSeconds * 1_000_000_000)
+
+        return try await withThrowingTaskGroup(of: T.self, returning: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: nanoseconds)
+                try Task.checkCancellation()
+                throw JARVISWidgetRefreshDeadlineError.exceeded
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else {
+                throw JARVISWidgetRefreshDeadlineError.exceeded
+            }
+            return result
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 import CoreText
 import Foundation
+import OSLog
 import SwiftUI
 import JARVISKit
 
@@ -9,6 +10,10 @@ enum JARVISWidgetTimerAnimationFont {
     static let postScriptName = "FillRect-Regular"
     static let resourceName = "FillRect-Regular"
     static let resourceExtension = "otf"
+    private static let logger = Logger(
+        subsystem: "com.operation-jarvis.jarvis.widgets",
+        category: "animation-font"
+    )
 
     @discardableResult
     static func register() -> Bool {
@@ -16,10 +21,12 @@ enum JARVISWidgetTimerAnimationFont {
             forResource: resourceName,
             withExtension: resourceExtension
         ) else {
+            logger.error("Timer animation font registration outcome=resource-missing")
             return false
         }
 
         if isAvailable {
+            logger.info("Timer animation font registration outcome=already-available")
             return true
         }
 
@@ -32,7 +39,12 @@ enum JARVISWidgetTimerAnimationFont {
         if let unmanagedError {
             _ = unmanagedError.takeRetainedValue()
         }
-        return registered || isAvailable
+        let available = registered || isAvailable
+        let outcome = available ? "available" : "unavailable"
+        logger.info(
+            "Timer animation font registration outcome=\(outcome, privacy: .public)"
+        )
+        return available
     }
 
     static var isAvailable: Bool {
@@ -49,21 +61,24 @@ struct JARVISNeuralCoreContinuousArtwork: View {
     let layout: JARVISNeuralCoreLayout
     let basePhase: Double
     let allowsMotion: Bool
+    let selectorGeneration: TimeInterval
 
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
-    private var usesContinuousFrames: Bool {
-        allowsMotion
-            && !telemetry.signalLost
-            && !isLuminanceReduced
-            && !accessibilityReduceMotion
-            && JARVISWidgetTimerAnimationFont.isAvailable
+    private var motionDecision: JARVISNeuralCoreContinuousMotionDecision {
+        JARVISNeuralCoreContinuousMotionPolicy.decision(
+            allowsMotion: allowsMotion,
+            isLuminanceReduced: isLuminanceReduced,
+            accessibilityReduceMotion: accessibilityReduceMotion,
+            fontAvailable: JARVISWidgetTimerAnimationFont.isAvailable
+        )
     }
 
     var body: some View {
+        let decision = motionDecision
         Group {
-            if usesContinuousFrames {
+            if decision == .animate {
                 GeometryReader { geometry in
                     let extent = max(1, max(geometry.size.width, geometry.size.height))
 
@@ -160,9 +175,55 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                 )
             }
         }
+        // A timeline replacement, reduced-luminance transition, Reduce Motion
+        // transition, or font-state change receives a distinct selector identity.
+        // Returning from Watch Always-On therefore reconstructs the live timer
+        // masks instead of reusing a suspended archived subtree.
+        .id(
+            JARVISNeuralCoreSelectorGeneration(
+                timelineGeneration: selectorGeneration,
+                decision: decision
+            )
+        )
+        .background {
+            JARVISNeuralCoreMotionDiagnostic(
+                layout: layout,
+                timelineGeneration: selectorGeneration,
+                decision: decision,
+                telemetrySignalLost: telemetry.signalLost
+            )
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(JARVISNeuralCoreAccessibility.label(for: telemetry))
         .accessibilityHint(JARVISNeuralCoreAccessibility.hint(for: layout))
+    }
+}
+
+private struct JARVISNeuralCoreSelectorGeneration: Hashable {
+    let timelineGeneration: TimeInterval
+    let decision: JARVISNeuralCoreContinuousMotionDecision
+}
+
+private struct JARVISNeuralCoreMotionDiagnostic: View {
+    private static let logger = Logger(
+        subsystem: "com.operation-jarvis.jarvis.widgets",
+        category: "motion-decision"
+    )
+
+    init(
+        layout: JARVISNeuralCoreLayout,
+        timelineGeneration: TimeInterval,
+        decision: JARVISNeuralCoreContinuousMotionDecision,
+        telemetrySignalLost: Bool
+    ) {
+        let surface = layout == .watch ? "watch" : "phone"
+        Self.logger.debug(
+            "Neural Core render surface=\(surface, privacy: .public) generation=\(Int(timelineGeneration), privacy: .public) decision=\(decision.rawValue, privacy: .public) telemetrySignalLost=\(telemetrySignalLost, privacy: .public)"
+        )
+    }
+
+    var body: some View {
+        EmptyView()
     }
 }
 

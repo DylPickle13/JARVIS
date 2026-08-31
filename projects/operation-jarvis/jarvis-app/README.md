@@ -15,6 +15,16 @@ queues, replays, retries, or synthesizes a byte. Checked-in `project.yml` intent
 remains Build 127 without `JARVIS_NATIVE_ATTACHMENTS`; candidate build numbers and
 the iPhone-only attachment flag remain owner-artifact-only.
 
+The Neural Core resilience candidate keeps both widget surfaces at 48 frames over
+the same two-second loop while separating decorative motion from telemetry
+freshness. Stale or unavailable telemetry remains fail-closed, but no longer
+freezes the Cathedral. Targeted host recovery is rate-limited across launch and
+foreground activation, Watch reduced-luminance transitions receive a fresh
+selector identity, and widget state refreshes have an eight-second outer deadline
+with content-free OSLog outcomes. Always-On, Reduce Motion, placeholder, and
+unavailable-font paths remain static. No process timer, private API, animated
+media, App Group, APNs, entitlement, or widget-interaction path is added.
+
 The three-conversation design fixes Slot 1 to `jarvis-ios`, adds only
 `jarvis-ios-2` and `jarvis-ios-3`, remembers selection independently on iPhone and
 Watch, routes Siri and iPhone attachments to the invoking/active device slot, and
