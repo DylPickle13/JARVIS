@@ -37,7 +37,7 @@ The room-audio server URL in the commands below remains `http://<private-lan-ip>
 
 ## Current hardware note
 
-The active room endpoint uses the PowerConf as a 48 kHz USB full-duplex capture/playback device (`plughw:CARD=PowerConf,DEV=0`). USB allows the listener to keep microphone capture active during the processing acknowledgement, generation, and final playback. The client therefore supports busy-only voice barge-in: normal idle turns still require the local `hey_jarvis` wake gate, but while JARVIS is busy a short utterance is sent to Apple DictationTranscriber and an exact normalized `stop` transcript cancels Pi generation, terminates local playback, and suppresses stale audio. oMLX Whisper remains the failure/empty-output fallback for both ordinary Apple Speech turns and Apple Dictation interruptions. Bluetooth SCO/A2DP remains an installer fallback but does not support barge-in because capture must be released for A2DP playback.
+The active room endpoint uses the PowerConf as a 48 kHz USB full-duplex capture/playback device (`plughw:CARD=PowerConf,DEV=0`). USB allows the listener to keep microphone capture active during the processing acknowledgement, generation, and final playback. The client therefore supports busy-only voice barge-in: normal idle turns still require the local `hey_jarvis` wake gate, but while JARVIS is busy a short utterance is sent to Apple DictationTranscriber and an exact normalized `stop` transcript cancels Pi generation, terminates local playback, and suppresses stale audio. Ordinary turns use Apple SpeechTranscriber; both deployed ASR routes are Apple-only with no fallback and no installed oMLX Whisper model. Bluetooth SCO/A2DP remains an installer fallback but does not support barge-in because capture must be released for A2DP playback.
 
 ## Start the Mac-side server
 
@@ -91,7 +91,7 @@ Optional environment variables:
 - `JARVIS_ROOM_AUDIO_INTERRUPT_VAD_MAX_UTTERANCE_SECONDS` — default `2.0`; maximum busy-mode clip sent to the configured control ASR.
 - `JARVIS_ROOM_AUDIO_BT_PROFILE_SETTLE_SECONDS` / `JARVIS_ROOM_AUDIO_BT_PLAYBACK_DRAIN_SECONDS` — Bluetooth fallback timings; both are zero in the current USB service.
 - `JARVIS_ROOM_AUDIO_VAD_RESTORE_CAPTURE_WHILE_WAITING` — legacy Bluetooth fallback behavior; disabled in the USB full-duplex service.
-- `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ENABLED` — Pi-client local wake-word gate; when enabled, ordinary speech is dropped on the Pi before the Mac/oMLX server sees it.
+- `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ENABLED` — Pi-client local wake-word gate; when enabled, ordinary speech is dropped on the Pi before the Mac room-audio server sees it.
 - `JARVIS_ROOM_AUDIO_OPENWAKEWORD_MODEL` — defaults to `hey_jarvis`; can also be a local `.tflite`/`.onnx` model path, or comma-separated models.
 - `JARVIS_ROOM_AUDIO_OPENWAKEWORD_NCPU` — defaults to `2`; CPU threads for openWakeWord preprocessing. On the Pi 3 this gives better real-time headroom than the upstream default of `1`.
 - `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_THRESHOLD` — defaults to `0.75` in the installed Pi service; raise it to reduce false wakes, lower it to reduce missed wakes.
@@ -186,7 +186,7 @@ ssh -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes pi@<private-lan-ip> \
 
 1. **No response at all:** check `jarvis-room-audio.service` status and tail the client log.
 2. **Service running but no wake:** confirm the log says `local wake word online`; temporarily run fixed-window diagnostics with `--no-wake-word`.
-3. **Wake detected but no answer:** inspect the Mac server `/health` `asr` object, confirm the Apple helper/model asset or oMLX fallback is available, and check Pi RPC/model configuration.
+3. **Wake detected but no answer:** inspect the Mac server `/health` `asr` object, confirm the configured Apple helper and locale asset are available, and check Pi RPC/model configuration.
 4. **`stop` is not heard while busy:** confirm the service uses USB, `--interrupt-while-busy`, and `--no-vad-release-capture-during-turn`; then inspect interrupt-candidate/control-ASR logs.
 5. **False stop:** confirm the control ASR returned exactly `stop`; check PowerConf echo cancellation and raise the VAD threshold if speaker leakage is opening clips.
 6. **False wakes:** raise `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_THRESHOLD` and enable score logging temporarily.
