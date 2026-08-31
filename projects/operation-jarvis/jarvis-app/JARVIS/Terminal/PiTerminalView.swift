@@ -1,3 +1,4 @@
+import JARVISKit
 import SwiftUI
 import SwiftTerm
 
@@ -43,6 +44,7 @@ struct PiTerminalView: View {
 
             if configurationReady, !editingLogin {
                 statusOverlay
+                sessionIndicator
             }
         }
         .onAppear {
@@ -76,6 +78,32 @@ struct PiTerminalView: View {
         )) {
             PiAttachmentPickerView(controller: terminal)
         }
+    }
+
+    private var sessionIndicator: some View {
+        VStack {
+            HStack(spacing: 5) {
+                ForEach(JARVISTerminalSlot.allCases, id: \.self) { slot in
+                    Capsule()
+                        .fill(slot == terminal.selectedSlot ? JarvisPalette.accent : Color.white.opacity(0.38))
+                        .frame(width: slot == terminal.selectedSlot ? 15 : 7, height: 4)
+                }
+                Text(terminal.selectedSlot.displayName)
+                    .font(.caption2.bold().monospacedDigit())
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(.black.opacity(0.72), in: Capsule())
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.top, 8)
+            .padding(.trailing, 9)
+            Spacer()
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Pi terminal session \(terminal.selectedSlot.displayName) of 3")
+        .accessibilityHint("Swipe left or right across the terminal to change session")
     }
 
     @ViewBuilder

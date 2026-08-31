@@ -110,15 +110,17 @@ enum JARVISSiriPromptOutcome: Equatable {
 
 enum JARVISSiriPromptRuntime {
     typealias ConfigurationLoader = () -> JARVISTerminalConfigurationLoadResult
-    typealias Delivery = (WatchTerminalConfiguration, WatchTerminalInput) async throws -> Void
+    typealias SlotLoader = () -> JARVISTerminalSlot
+    typealias Delivery = (WatchTerminalConfiguration, JARVISTerminalSlot, WatchTerminalInput) async throws -> Void
 
     static func submit(
         _ rawPrompt: String,
         configurationLoader: ConfigurationLoader = { JARVISTerminalConfigurationStore.load() },
-        delivery: Delivery = { configuration, input in
+        slotLoader: SlotLoader = { JARVISTerminalSlot.load() },
+        delivery: Delivery = { configuration, slot, input in
             let client = WatchTerminalClient(configuration: configuration)
             defer { client.close() }
-            _ = try await client.preflight()
+            _ = try await client.preflight(slot: slot)
             try await client.send(input)
         }
     ) async -> JARVISSiriPromptOutcome {
@@ -146,8 +148,15 @@ enum JARVISSiriPromptRuntime {
         }
 
         do {
-            let input = WatchTerminalInput(data: Data(normalized.utf8), appendReturn: true)
-            try await delivery(configuration, input)
+            // UserDefaults.standard is device-local: iPhone Siri follows the
+            // last iPhone slot while Watch Siri follows the last Watch slot.
+            let slot = slotLoader()
+            let input = WatchTerminalInput(
+                session: slot,
+                data: Data(normalized.utf8),
+                appendReturn: true
+            )
+            try await delivery(configuration, slot, input)
             return .sent
         } catch WatchTerminalClientError.certificateRejected {
             return .identityMismatch

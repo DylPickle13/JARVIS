@@ -359,19 +359,24 @@ final class AppStateTests: XCTestCase {
             certificateSHA256: String(repeating: "ab", count: 32)
         )
         var deliveredConfiguration: WatchTerminalConfiguration?
+        var deliveredSlot: JARVISTerminalSlot?
         var deliveredInput: WatchTerminalInput?
 
         let outcome = await JARVISSiriPromptRuntime.submit(
             "  inspect this\r\nonce  ",
             configurationLoader: { .configured(configuration) },
-            delivery: { value, input in
+            slotLoader: { .three },
+            delivery: { value, slot, input in
                 deliveredConfiguration = value
+                deliveredSlot = slot
                 deliveredInput = input
             }
         )
 
         XCTAssertEqual(outcome, .sent)
         XCTAssertEqual(deliveredConfiguration, configuration)
+        XCTAssertEqual(deliveredSlot, .three)
+        XCTAssertEqual(deliveredInput?.sessionID, 3)
         XCTAssertEqual(deliveredInput?.data, Data("inspect this once".utf8))
         XCTAssertEqual(deliveredInput?.appendReturn, true)
     }
@@ -416,7 +421,7 @@ final class AppStateTests: XCTestCase {
                 loadedConfiguration = true
                 return .missing
             },
-            delivery: { _, _ in attemptedDelivery = true }
+            delivery: { _, _, _ in attemptedDelivery = true }
         )
         XCTAssertEqual(emptyOutcome, .empty)
         XCTAssertFalse(loadedConfiguration)
@@ -430,7 +435,7 @@ final class AppStateTests: XCTestCase {
         let uncertainOutcome = await JARVISSiriPromptRuntime.submit(
             "send once",
             configurationLoader: { .configured(configuration) },
-            delivery: { _, _ in throw WatchTerminalClientError.submissionUnconfirmed }
+            delivery: { _, _, _ in throw WatchTerminalClientError.submissionUnconfirmed }
         )
         XCTAssertEqual(uncertainOutcome, .unconfirmed)
     }
@@ -528,6 +533,32 @@ final class AppStateTests: XCTestCase {
             "/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/scripts/jarvis-mobile-terminal.sh"
         )
         XCTAssertFalse(PiTerminalConfiguration.remoteCommand.contains("kill-session"))
+        XCTAssertEqual(
+            PiTerminalConfiguration.remoteCommand(for: .one),
+            PiTerminalConfiguration.remoteCommand + " --slot 1"
+        )
+        XCTAssertEqual(
+            PiTerminalConfiguration.remoteCommand(for: .three),
+            PiTerminalConfiguration.remoteCommand + " --slot 3"
+        )
+        XCTAssertEqual(
+            PiAttachmentProtocol.receiverCommand(for: .two),
+            PiAttachmentProtocol.receiverCommand + " --slot 2"
+        )
+    }
+
+    func testTerminalSlotSelectionIsBoundedAndDeviceLocal() throws {
+        let suite = "jarvis.terminal-slots.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .one)
+        JARVISTerminalSlot.three.persist(to: defaults)
+        XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .three)
+        XCTAssertNil(JARVISTerminalSlot.one.previous)
+        XCTAssertEqual(JARVISTerminalSlot.one.next, .two)
+        XCTAssertEqual(JARVISTerminalSlot.three.previous, .two)
+        XCTAssertNil(JARVISTerminalSlot.three.next)
     }
 
     func testPiTerminalMigratesLegacyZoomAndPreservesLaterPinchChanges() {

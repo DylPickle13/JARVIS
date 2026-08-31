@@ -5,6 +5,7 @@ import XCTest
 final class WatchTerminalTests: XCTestCase {
     override func tearDown() {
         TerminalURLProtocol.handler = nil
+        TerminalURLProtocol.terminalSessionHeader = "1"
         super.tearDown()
     }
 
@@ -106,6 +107,8 @@ final class WatchTerminalTests: XCTestCase {
         ) + Data((0...WatchTerminalHistoryPage.maximumRows).map { _ in "\"x\"" }.joined(separator: ",").utf8)
             + Data("]}".utf8)
         XCTAssertThrowsError(try JSONDecoder().decode(WatchTerminalHistoryPage.self, from: oversized))
+        let invalidSession = Data(#"{"sessionID":0,"paneID":"%7","historySize":1,"start":0,"lines":["x"]}"#.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(WatchTerminalHistoryPage.self, from: invalidSession))
     }
 
     func testCrownHistoryClampsTheLiveEdgeInsteadOfReboundingToOne() {
@@ -158,8 +161,12 @@ final class WatchTerminalTests: XCTestCase {
     func testLegacyFrameWithoutANSIFieldsStillDecodes() throws {
         let data = Data(#"{"sequence":1,"columns":2,"rows":2,"cursorColumn":0,"cursorRow":1,"alternateScreen":false,"mouseMode":false,"historySize":0,"lines":["a","b"]}"#.utf8)
         let frame = try JSONDecoder().decode(WatchTerminalFrame.self, from: data)
+        XCTAssertEqual(frame.sessionID, 1)
         XCTAssertEqual(frame.screenStart, 0)
         XCTAssertEqual(frame.ansiLines, frame.lines)
+
+        let invalid = Data(#"{"sessionID":4,"sequence":1,"columns":2,"rows":2,"cursorColumn":0,"cursorRow":1,"alternateScreen":false,"mouseMode":false,"historySize":0,"lines":["a","b"]}"#.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(WatchTerminalFrame.self, from: invalid))
     }
 
     func testSpeechMetadataDecodesAdditivelyWithoutExposingResponseText() throws {
@@ -312,7 +319,7 @@ final class WatchTerminalTests: XCTestCase {
             }
             let input = try JSONDecoder().decode(WatchTerminalInput.self, from: request.bodyData)
             postInputs.update { $0.append(input) }
-            return (200, Data(#"{"ok":true}"#.utf8))
+            return (200, Data("{\"ok\":true,\"requestID\":\"\(input.requestID)\",\"sessionID\":\(input.sessionID)}".utf8))
         }
         let client = fixtureClient()
         defer { client.close() }
@@ -322,13 +329,142 @@ final class WatchTerminalTests: XCTestCase {
 
         let captured = postInputs.snapshot()
         XCTAssertEqual(captured.count, 1)
+        XCTAssertEqual(captured[0].sessionID, 1)
         XCTAssertEqual(captured[0].data, Data("hello Pi".utf8))
         XCTAssertTrue(captured[0].appendReturn)
+    }
+
+    func testSharedClientRejectsInvalidInputAcknowledgementsWithoutRetry() async throws {
+        let postCount = LockedBox(0)
+        TerminalURLProtocol.handler = { request in
+            if request.httpMethod == "GET" {
+                return (200, try JSONEncoder().encode(self.fixtureFrame(session: .two)))
+            }
+            postCount.update { $0 += 1 }
+            let input = try JSONDecoder().decode(WatchTerminalInput.self, from: request.bodyData)
+            XCTAssertEqual(input.sessionID, 2)
+            return (200, Data("{\"ok\":true,\"requestID\":\"\(input.requestID)\",\"sessionID\":1}".utf8))
+        }
+        let client = fixtureClient()
+        defer { client.close() }
+        _ = try await client.preflight(slot: .two)
+
+        do {
+            try await client.send(WatchTerminalInput(session: .two, data: Data("once".utf8), appendReturn: true))
+            XCTFail("Expected a mismatched acknowledgement")
+        } catch {
+            XCTAssertEqual(error as? WatchTerminalClientError, .invalidResponse)
+        }
+        XCTAssertEqual(postCount.snapshot(), 1)
+
+        TerminalURLProtocol.handler = { request in
+            if request.httpMethod == "GET" {
+                return (200, try JSONEncoder().encode(self.fixtureFrame(session: .two)))
+            }
+            postCount.update { $0 += 1 }
+            let input = try JSONDecoder().decode(WatchTerminalInput.self, from: request.bodyData)
+            return (200, Data("{\"ok\":false,\"requestID\":\"\(input.requestID)\",\"sessionID\":2}".utf8))
+        }
+        let rejected = fixtureClient()
+        defer { rejected.close() }
+        _ = try await rejected.preflight(slot: .two)
+        do {
+            try await rejected.send(WatchTerminalInput(session: .two, data: Data("once".utf8), appendReturn: true))
+            XCTFail("Expected a negative acknowledgement to fail closed")
+        } catch {
+            XCTAssertEqual(error as? WatchTerminalClientError, .invalidResponse)
+        }
+        XCTAssertEqual(postCount.snapshot(), 2)
+
+        TerminalURLProtocol.handler = { request in
+            if request.httpMethod == "GET" {
+                return (200, try JSONEncoder().encode(self.fixtureFrame(session: .two)))
+            }
+            postCount.update { $0 += 1 }
+            let input = try JSONDecoder().decode(WatchTerminalInput.self, from: request.bodyData)
+            return (200, Data("{\"ok\":true,\"requestID\":\"\(input.requestID)\",\"sessionID\":2.0}".utf8))
+        }
+        let nonCanonical = fixtureClient()
+        defer { nonCanonical.close() }
+        _ = try await nonCanonical.preflight(slot: .two)
+        do {
+            try await nonCanonical.send(WatchTerminalInput(session: .two, data: Data("once".utf8), appendReturn: true))
+            XCTFail("Expected a non-canonical floating-point identity to fail closed")
+        } catch {
+            XCTAssertEqual(error as? WatchTerminalClientError, .invalidResponse)
+        }
+        XCTAssertEqual(postCount.snapshot(), 3)
+    }
+
+    func testSharedClientRoutesASelectedSlotAndRejectsMismatchedFrameIdentity() async throws {
+        let requestedURLs = LockedBox<[URL]>([])
+        TerminalURLProtocol.handler = { request in
+            requestedURLs.update { if let url = request.url { $0.append(url) } }
+            return (200, try JSONEncoder().encode(self.fixtureFrame(session: .three)))
+        }
+        let client = fixtureClient()
+        defer { client.close() }
+
+        let frame = try await client.preflight(slot: .three)
+        XCTAssertEqual(frame.sessionID, 3)
+        let firstURL = try XCTUnwrap(requestedURLs.snapshot().first)
+        let firstComponents = URLComponents(url: firstURL, resolvingAgainstBaseURL: false)
+        XCTAssertEqual(firstComponents?.path, "/v2/terminal/frame")
+        XCTAssertEqual(firstComponents?.queryItems?.first(where: { $0.name == "sessionID" })?.value, "3")
+
+        let mismatchedRequests = LockedBox(0)
+        TerminalURLProtocol.handler = { _ in
+            mismatchedRequests.update { $0 += 1 }
+            return (200, try JSONEncoder().encode(self.fixtureFrame(session: .one)))
+        }
+        let mismatched = fixtureClient()
+        defer { mismatched.close() }
+        do {
+            _ = try await mismatched.preflight(slot: .two)
+            XCTFail("Expected the frame identity mismatch to fail closed")
+        } catch {
+            XCTAssertEqual(error as? WatchTerminalClientError, .invalidResponse)
+        }
+        XCTAssertGreaterThanOrEqual(mismatchedRequests.snapshot(), 1)
+
+        let encodedSelectedFrame = try JSONEncoder().encode(fixtureFrame(session: .three))
+        let encodedSelectedFrameText = try XCTUnwrap(String(data: encodedSelectedFrame, encoding: .utf8))
+        let floatingIdentityText = encodedSelectedFrameText.replacingOccurrences(
+            of: "\"sessionID\":3",
+            with: "\"sessionID\":3.0"
+        )
+        XCTAssertNotEqual(floatingIdentityText, encodedSelectedFrameText)
+        TerminalURLProtocol.handler = { _ in (200, Data(floatingIdentityText.utf8)) }
+        let nonCanonical = fixtureClient()
+        defer { nonCanonical.close() }
+        do {
+            _ = try await nonCanonical.preflight(slot: .three)
+            XCTFail("Expected a non-canonical floating-point frame identity to fail closed")
+        } catch {
+            XCTAssertEqual(error as? WatchTerminalClientError, .invalidResponse)
+        }
+
+        let encodedLegacyFrame = try JSONEncoder().encode(fixtureFrame(session: .one))
+        var legacyFrameObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encodedLegacyFrame) as? [String: Any]
+        )
+        legacyFrameObject.removeValue(forKey: "sessionID")
+        let legacyFrameData = try JSONSerialization.data(withJSONObject: legacyFrameObject)
+        TerminalURLProtocol.handler = { _ in (200, legacyFrameData) }
+        let missingIdentity = fixtureClient()
+        defer { missingIdentity.close() }
+        do {
+            _ = try await missingIdentity.preflight(slot: .one)
+            XCTFail("Expected a v2 frame without an explicit identity to fail closed")
+        } catch {
+            XCTAssertEqual(error as? WatchTerminalClientError, .invalidResponse)
+        }
     }
 
     func testSharedClientFetchesOneBoundedReadOnlyHistoryPage() async throws {
         let requestedURL = LockedBox<URL?>(nil)
         let page = WatchTerminalHistoryPage(
+            session: .two,
             paneID: "%7",
             historySize: 100_000,
             start: 9_700,
@@ -343,25 +479,64 @@ final class WatchTerminalTests: XCTestCase {
         let client = fixtureClient()
         defer { client.close() }
 
-        let loaded = try await client.historyPage(start: 9_700, limit: 200)
+        let loaded = try await client.historyPage(start: 9_700, limit: 200, slot: .two)
 
         XCTAssertEqual(loaded, page)
         let components = URLComponents(url: try XCTUnwrap(requestedURL.snapshot()), resolvingAgainstBaseURL: false)
-        XCTAssertEqual(components?.path, "/v1/terminal/history")
+        XCTAssertEqual(components?.path, "/v2/terminal/history")
         XCTAssertEqual(components?.queryItems?.first(where: { $0.name == "start" })?.value, "9700")
         XCTAssertEqual(components?.queryItems?.first(where: { $0.name == "limit" })?.value, "200")
+        XCTAssertEqual(components?.queryItems?.first(where: { $0.name == "sessionID" })?.value, "2")
+
+        TerminalURLProtocol.handler = { _ in
+            (200, try JSONEncoder().encode(WatchTerminalHistoryPage(
+                session: .one,
+                paneID: "%1",
+                historySize: 0,
+                start: 0,
+                lines: []
+            )))
+        }
+        do {
+            _ = try await client.historyPage(start: 0, slot: .two)
+            XCTFail("Expected history from another session to be rejected")
+        } catch {
+            XCTAssertEqual(error as? WatchTerminalClientError, .invalidResponse)
+        }
+
+        let encodedLegacyPage = try JSONEncoder().encode(WatchTerminalHistoryPage(
+            session: .one,
+            paneID: "%1",
+            historySize: 0,
+            start: 0,
+            lines: []
+        ))
+        var legacyPageObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encodedLegacyPage) as? [String: Any]
+        )
+        legacyPageObject.removeValue(forKey: "sessionID")
+        let legacyPageData = try JSONSerialization.data(withJSONObject: legacyPageObject)
+        TerminalURLProtocol.handler = { _ in (200, legacyPageData) }
+        do {
+            _ = try await client.historyPage(start: 0, slot: .one)
+            XCTFail("Expected v2 history without an explicit identity to fail closed")
+        } catch {
+            XCTAssertEqual(error as? WatchTerminalClientError, .invalidResponse)
+        }
     }
 
     func testSharedClientDownloadsCurrentSpeechOnceWithoutSendingText() async throws {
         let responseID = String(repeating: "c", count: 64)
         let speechPosts = LockedBox(0)
+        TerminalURLProtocol.terminalSessionHeader = "2"
         TerminalURLProtocol.handler = { request in
             if request.httpMethod == "GET" {
-                return (200, try JSONEncoder().encode(self.fixtureFrame()))
+                return (200, try JSONEncoder().encode(self.fixtureFrame(session: .two)))
             }
-            XCTAssertEqual(request.url?.path, "/v1/terminal/speech")
-            let payload = try JSONSerialization.jsonObject(with: request.bodyData) as? [String: String]
-            XCTAssertEqual(payload, ["responseID": responseID])
+            XCTAssertEqual(request.url?.path, "/v2/terminal/speech")
+            let payload = try JSONSerialization.jsonObject(with: request.bodyData) as? [String: Any]
+            XCTAssertEqual(payload?["responseID"] as? String, responseID)
+            XCTAssertEqual(payload?["sessionID"] as? Int, 2)
             speechPosts.update { $0 += 1 }
             var wav = Data("RIFF".utf8)
             wav.append(contentsOf: [36, 0, 0, 0])
@@ -371,13 +546,22 @@ final class WatchTerminalTests: XCTestCase {
         }
         let client = fixtureClient()
         defer { client.close() }
-        _ = try await client.preflight()
+        _ = try await client.preflight(slot: .two)
 
-        let url = try await client.speechAudio(responseID: responseID)
+        let url = try await client.speechAudio(responseID: responseID, slot: .two)
         defer { try? FileManager.default.removeItem(at: url) }
 
         XCTAssertEqual(speechPosts.snapshot(), 1)
         XCTAssertEqual(try Data(contentsOf: url).prefix(4), Data("RIFF".utf8))
+
+        TerminalURLProtocol.terminalSessionHeader = "1"
+        do {
+            _ = try await client.speechAudio(responseID: responseID, slot: .two)
+            XCTFail("Expected speech from another session to be rejected")
+        } catch {
+            XCTAssertEqual(error as? WatchTerminalClientError, .invalidAudio)
+        }
+        XCTAssertEqual(speechPosts.snapshot(), 2)
     }
 
     func testSharedClientNeverRetriesAmbiguousPost() async throws {
@@ -455,8 +639,9 @@ final class WatchTerminalTests: XCTestCase {
         )
     }
 
-    private func fixtureFrame() -> WatchTerminalFrame {
+    private func fixtureFrame(session: JARVISTerminalSlot = .one) -> WatchTerminalFrame {
         WatchTerminalFrame(
+            session: session,
             sequence: 1,
             columns: 2,
             rows: 2,
@@ -472,6 +657,7 @@ final class WatchTerminalTests: XCTestCase {
 
 private final class TerminalURLProtocol: URLProtocol {
     static var handler: ((URLRequest) throws -> (Int, Data))?
+    static var terminalSessionHeader = "1"
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -487,7 +673,8 @@ private final class TerminalURLProtocol: URLProtocol {
                 headerFields: [
                     "Content-Type": request.url?.path.hasSuffix("/speech") == true
                         ? "audio/wav"
-                        : "application/json"
+                        : "application/json",
+                    "X-JARVIS-Terminal-Session": Self.terminalSessionHeader,
                 ]
             )!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

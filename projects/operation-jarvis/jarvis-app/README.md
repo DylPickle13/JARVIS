@@ -11,6 +11,15 @@ channels with safe inline links. The owner accepted the deployed Jobs presentati
 after exact-artifact installation. Checked-in `project.yml` intentionally remains
 Build 127 and keeps `JARVIS_NATIVE_ATTACHMENTS` disabled by default; Build 132's
 number and iPhone-only flag exist only in its owner-private audited artifact.
+
+A three-conversation Apple terminal candidate is being verified only in the
+isolated `feat/apple-multi-terminal-sessions` worktree. It fixes Slot 1 to
+`jarvis-ios`, adds only `jarvis-ios-2` and `jarvis-ios-3`, remembers selection
+independently on iPhone and Watch, routes Siri and iPhone attachments to the
+invoking/active device slot, and retains v1/no-session host compatibility as
+Slot 1. It has not been installed or activated against production; see the
+[canonical implementation contract](docs/README.md#three-fixed-mobile-pi-conversations).
+
 `jarvisd` retains explicit trusted-network/token auth,
 bounded APIs, single-flight state caching, guarded controls, and bounded event
 persistence. The app retains one scene-aware connection/polling coordinator,

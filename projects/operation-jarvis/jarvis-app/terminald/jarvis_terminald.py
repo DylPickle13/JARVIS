@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Authenticated HTTPS snapshot/input bridge for the Apple Watch terminal.
 
-This daemon is intentionally separate from jarvisd. It exposes only the existing
-jarvis-mobile/jarvis-ios tmux pane and has no hardware, service, scheduler, or
-JARVIS control-plane integration.
+This daemon is intentionally separate from jarvisd. It exposes only three fixed
+jarvis-mobile tmux sessions and has no hardware, service, scheduler, or JARVIS
+control-plane integration.
 """
 
 import argparse
@@ -32,8 +32,10 @@ APP_ROOT = Path(__file__).resolve().parent.parent
 BOOTSTRAP = APP_ROOT / "scripts" / "jarvis-mobile-terminal.sh"
 TMUX = "/opt/homebrew/bin/tmux"
 TMUX_SOCKET = "jarvis-mobile"
-TMUX_SESSION = "jarvis-ios"
-TMUX_TARGET = "jarvis-ios:"
+TMUX_SESSIONS = {1: "jarvis-ios", 2: "jarvis-ios-2", 3: "jarvis-ios-3"}
+# Slot 1 aliases remain patchable for the existing focused tests and v1 clients.
+TMUX_SESSION = TMUX_SESSIONS[1]
+TMUX_TARGET = "=" + TMUX_SESSION + ":"
 DEFAULT_PORT = 8792
 DEFAULT_CIDRS = "127.0.0.0/8,192.168.0.0/16,100.64.0.0/10"
 MAX_INPUT_BYTES = 4096
@@ -198,7 +200,13 @@ class TerminalService:
         runner: Optional[CommandRunner] = None,
         speech_dir: Optional[Path] = None,
         room_speech_client: Optional[RoomSpeechClient] = None,
+        session_id: int = 1,
     ) -> None:
+        if type(session_id) is not int or session_id not in TMUX_SESSIONS:
+            raise TerminalError("The terminal session identifier was invalid.")
+        self.session_id = session_id
+        self.tmux_session = TMUX_SESSION if session_id == 1 else TMUX_SESSIONS[session_id]
+        self.tmux_target = TMUX_TARGET if session_id == 1 else "=" + self.tmux_session + ":"
         self.runner = runner or CommandRunner()
         self.speech_dir = speech_dir or SPEECH_DIR
         self.room_speech_client = room_speech_client or RoomSpeechClient()
@@ -225,7 +233,7 @@ class TerminalService:
 
     def ensure_session(self) -> None:
         result = self.runner.run(
-            [str(BOOTSTRAP), "--ensure-only"],
+            [str(BOOTSTRAP), "--slot", str(self.session_id), "--ensure-only"],
             timeout=10,
             check=False,
         )
@@ -242,7 +250,7 @@ class TerminalService:
             self.next_sample_at = 0.0
             thread = threading.Thread(
                 target=self._sampler_loop,
-                name="jarvis-terminal-frame-sampler",
+                name="jarvis-terminal-frame-sampler-{}".format(self.session_id),
                 daemon=True,
             )
             self.sampler_thread = thread
@@ -343,13 +351,13 @@ class TerminalService:
             ["#{pane_pid}", "#{pane_id}", "#{pid}", "#{session_created}", "#{pane_dead}"]
         )
         result = self.runner.run(
-            self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, identity_format),
+            self.tmux_arguments("display-message", "-p", "-t", self.tmux_target, identity_format),
             check=False,
         )
         if result.returncode != 0:
             self.ensure_session()
             result = self.runner.run(
-                self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, identity_format)
+                self.tmux_arguments("display-message", "-p", "-t", self.tmux_target, identity_format)
             )
         values = result.stdout.decode("utf-8", errors="replace").strip().split("\t")
         if len(values) != 5 or values[4] == "1" or not values[1].startswith("%"):
@@ -360,7 +368,25 @@ class TerminalService:
             raise TerminalError("The JARVIS pane identity was invalid.") from error
 
     def _speech_cache_path(self, response_id: str) -> Path:
-        return self.speech_dir / "{}.wav".format(response_id)
+        return self.speech_dir / "{}-{}.wav".format(self.session_id, response_id)
+
+    def remove_legacy_speech_cache(self) -> None:
+        """Remove the retired unscoped Slot 1 WAV without following links."""
+        if self.session_id != 1:
+            return
+        try:
+            candidates = list(self.speech_dir.glob("*.wav"))
+        except OSError:
+            return
+        for path in candidates:
+            if re.fullmatch(r"[0-9a-f]{64}\.wav", path.name) is None:
+                continue
+            try:
+                metadata = path.lstat()
+                if stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.getuid():
+                    path.unlink()
+            except OSError:
+                pass
 
     def _read_cached_speech(self, response_id: str) -> Optional[bytes]:
         cache_path = self._speech_cache_path(response_id)
@@ -397,8 +423,9 @@ class TerminalService:
                 temporary_path.unlink()
             except FileNotFoundError:
                 pass
-        # Keep only the current response WAV. Marker JSON files remain untouched.
-        for stale_path in self.speech_dir.glob("*.wav"):
+        # Retain exactly one complete response per fixed mobile slot. Other
+        # slots' content-addressed WAVs are never removed by this service.
+        for stale_path in self.speech_dir.glob("{}-*.wav".format(self.session_id)):
             if stale_path != cache_path:
                 try:
                     stale_path.unlink()
@@ -478,7 +505,7 @@ class TerminalService:
             "display-message",
             "-p",
             "-t",
-            TMUX_TARGET,
+            self.tmux_target,
             metadata_format,
             ";",
             "capture-pane",
@@ -488,7 +515,7 @@ class TerminalService:
             "-S",
             str(-MAX_SCROLLBACK_ROWS),
             "-t",
-            TMUX_TARGET,
+            self.tmux_target,
         )
         combined = self.runner.run(capture_arguments, check=False)
         if combined.returncode != 0:
@@ -527,6 +554,7 @@ class TerminalService:
         screen_start = max(0, len(lines) - rows)
 
         content = {
+            "sessionID": self.session_id,
             "columns": columns,
             "rows": rows,
             "paneID": pane_id,
@@ -602,13 +630,13 @@ class TerminalService:
                 ["#{history_size}", "#{pane_dead}", "#{pane_id}"]
             )
             metadata = self.runner.run(
-                self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, metadata_format),
+                self.tmux_arguments("display-message", "-p", "-t", self.tmux_target, metadata_format),
                 check=False,
             )
             if metadata.returncode != 0:
                 self.ensure_session()
                 metadata = self.runner.run(
-                    self.tmux_arguments("display-message", "-p", "-t", TMUX_TARGET, metadata_format)
+                    self.tmux_arguments("display-message", "-p", "-t", self.tmux_target, metadata_format)
                 )
             values = metadata.stdout.decode("utf-8", errors="replace").strip().split("\t")
             if len(values) != 3 or values[1] == "1" or not values[2].startswith("%"):
@@ -622,6 +650,7 @@ class TerminalService:
             safe_end = min(history_size, safe_start + limit)
             if safe_start == safe_end:
                 return {
+                    "sessionID": self.session_id,
                     "paneID": pane_id,
                     "historySize": history_size,
                     "start": safe_start,
@@ -644,7 +673,7 @@ class TerminalService:
                     "-E",
                     str(capture_end),
                     "-t",
-                    TMUX_TARGET,
+                    self.tmux_target,
                 )
             ).stdout.decode("utf-8", errors="replace")
             if captured.endswith("\n"):
@@ -658,6 +687,7 @@ class TerminalService:
             elif len(ansi_lines) < expected:
                 ansi_lines.extend([""] * (expected - len(ansi_lines)))
             return {
+                "sessionID": self.session_id,
                 "paneID": pane_id,
                 "historySize": history_size,
                 "start": safe_start,
@@ -675,7 +705,7 @@ class TerminalService:
         """
         try:
             clients = self.runner.run(
-                self.tmux_arguments("list-clients", "-t", TMUX_SESSION, "-F", "#{client_name}"),
+                self.tmux_arguments("list-clients", "-t", "=" + self.tmux_session, "-F", "#{client_name}"),
                 check=False,
             )
             if clients.returncode != 0:
@@ -724,7 +754,7 @@ class TerminalService:
                         "-b",
                         buffer_name,
                         "-t",
-                        TMUX_TARGET,
+                        self.tmux_target,
                     )
                 )
             # Record successful delivery before the best-effort client redraw.
@@ -752,19 +782,38 @@ class TerminalHTTPServer(ThreadingHTTPServer):
         service: TerminalService,
         token: str,
         trusted_cidrs: Sequence[ipaddress._BaseNetwork],
+        services: Optional[Dict[int, TerminalService]] = None,
     ) -> None:
+        service_map = dict(services or {1: service})
+        if service_map.get(1) is not service:
+            raise TerminalError("Slot 1 must remain the legacy terminal service.")
+        if any(
+            type(session_id) is not int
+            or session_id not in TMUX_SESSIONS
+            or candidate.session_id != session_id
+            for session_id, candidate in service_map.items()
+        ):
+            raise TerminalError("The terminal service map was invalid.")
         super().__init__(address, TerminalRequestHandler)
-        self.service = service
+        self.service = service  # v1/test compatibility: always Slot 1.
+        self.services = service_map
         self.token = token
         self.trusted_cidrs = trusted_cidrs
 
+    def service_for(self, session_id: int) -> TerminalService:
+        service = self.services.get(session_id)
+        if service is None:
+            raise TerminalError("The requested terminal session is unavailable.")
+        return service
+
     def server_close(self) -> None:
-        self.service.close()
+        for service in set(self.services.values()):
+            service.close()
         super().server_close()
 
 
 class TerminalRequestHandler(BaseHTTPRequestHandler):
-    server_version = "JARVISTerminal/1"
+    server_version = "JARVISTerminal/2"
     protocol_version = "HTTP/1.1"
 
     @property
@@ -772,7 +821,8 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
         return self.server  # type: ignore[return-value]
 
     def log_message(self, format_string: str, *arguments: Any) -> None:
-        # Never log headers, request bodies, input text, or bearer credentials.
+        # Never log headers, request bodies, input text, bearer credentials, or
+        # the selected conversation beyond the ordinary bounded request path.
         message = "%s - %s\n" % (self.address_string(), format_string % arguments)
         self.server.stderr.write(message) if hasattr(self.server, "stderr") else None
 
@@ -806,13 +856,14 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
             # Wrist-down/background cancellation is expected during a long poll.
             self.close_connection = True
 
-    def _write_audio(self, payload: bytes) -> None:
+    def _write_audio(self, payload: bytes, session_id: int) -> None:
         try:
             self.send_response(HTTPStatus.OK.value)
             self.send_header("Content-Type", "audio/wav")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-JARVIS-Terminal-Session", str(session_id))
             self.end_headers()
             self.wfile.write(payload)
         except (BrokenPipeError, ConnectionResetError, ssl.SSLEOFError):
@@ -824,64 +875,122 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
         self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "Unauthorized."})
         return False
 
+    @staticmethod
+    def _v2_session_id(value: Any) -> int:
+        if isinstance(value, bool):
+            raise ValueError("The terminal session identifier was invalid.")
+        try:
+            session_id = int(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError("The terminal session identifier was invalid.") from error
+        if str(session_id) != str(value) or session_id not in TMUX_SESSIONS:
+            raise ValueError("The terminal session identifier was invalid.")
+        return session_id
+
+    def _v2_query_session(self, query: Dict[str, List[str]]) -> int:
+        values = query.get("sessionID", [])
+        if len(values) != 1:
+            raise ValueError("The terminal session identifier was required.")
+        return self._v2_session_id(values[0])
+
+    @staticmethod
+    def _v2_payload_session(value: Any) -> int:
+        # JSON request identities are canonical integers. Strings, booleans,
+        # and integral floating-point values must not select a conversation.
+        if type(value) is not int or value not in TMUX_SESSIONS:
+            raise ValueError("The terminal session identifier was invalid.")
+        return value
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/health":
             if not self._require_authorization():
                 return
-            self._write_json(HTTPStatus.OK, {"ok": True, "service": "jarvis-terminald", "version": 1})
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "service": "jarvis-terminald",
+                    "version": 2,
+                    "sessionIDs": sorted(self.terminal_server.services),
+                },
+            )
             return
-        if parsed.path not in {"/v1/terminal/frame", "/v1/terminal/history"}:
+        routes = {
+            "/v1/terminal/frame": (False, False),
+            "/v1/terminal/history": (False, True),
+            "/v2/terminal/frame": (True, False),
+            "/v2/terminal/history": (True, True),
+        }
+        route = routes.get(parsed.path)
+        if route is None:
             self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found."})
             return
         if not self._require_authorization():
             return
+        is_v2, is_history = route
         query = parse_qs(parsed.query)
         try:
-            if parsed.path == "/v1/terminal/history":
+            session_id = self._v2_query_session(query) if is_v2 else 1
+            service = self.terminal_server.service_for(session_id)
+            if is_history:
                 start = int(query.get("start", ["0"])[0])
                 limit = int(query.get("limit", [str(MAX_HISTORY_PAGE_ROWS)])[0])
-                page = self.terminal_server.service.history_page(start, limit)
-                self._write_json(HTTPStatus.OK, page)
+                self._write_json(HTTPStatus.OK, service.history_page(start, limit))
                 return
             after = max(0, int(query.get("after", ["0"])[0]))
-            frame = self.terminal_server.service.frame_after(after)
-            self._write_json(HTTPStatus.OK, frame)
-        except (ValueError, TerminalError, subprocess.SubprocessError) as error:
+            self._write_json(HTTPStatus.OK, service.frame_after(after))
+        except ValueError as error:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+        except (TerminalError, subprocess.SubprocessError) as error:
             self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": str(error)})
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path not in {"/v1/terminal/input", "/v1/terminal/speech"}:
+        routes = {
+            "/v1/terminal/input": (False, False),
+            "/v1/terminal/speech": (False, True),
+            "/v2/terminal/input": (True, False),
+            "/v2/terminal/speech": (True, True),
+        }
+        route = routes.get(parsed.path)
+        if route is None:
             self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found."})
             return
         if not self._require_authorization():
             return
+        is_v2, is_speech = route
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        maximum_length = MAX_SPEECH_REQUEST_BYTES if parsed.path == "/v1/terminal/speech" else MAX_BODY_BYTES
+        maximum_length = MAX_SPEECH_REQUEST_BYTES if is_speech else MAX_BODY_BYTES
         if length <= 0 or length > maximum_length:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid request size."})
             return
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            if parsed.path == "/v1/terminal/speech":
-                response_id = payload.get("responseID", "") if isinstance(payload, dict) else ""
+            if not isinstance(payload, dict):
+                raise ValueError("The terminal request was invalid.")
+            session_id = self._v2_payload_session(payload.get("sessionID")) if is_v2 else 1
+            service = self.terminal_server.service_for(session_id)
+            if is_speech:
+                response_id = payload.get("responseID", "")
                 if not isinstance(response_id, str):
-                    raise TerminalError("The Watch speech request was invalid.")
-                audio = self.terminal_server.service.synthesize_speech(response_id)
-                self._write_audio(audio)
+                    raise ValueError("The Watch speech request was invalid.")
+                self._write_audio(service.synthesize_speech(response_id), session_id)
                 return
             request_id = payload.get("requestID", "")
             encoded = payload.get("dataBase64", "")
             append_return = payload.get("appendReturn", False)
             if not isinstance(request_id, str) or not isinstance(encoded, str) or not isinstance(append_return, bool):
-                raise TerminalError("The terminal input request was invalid.")
+                raise ValueError("The terminal input request was invalid.")
             data = base64.b64decode(encoded, validate=True)
-            self.terminal_server.service.send_input(request_id, data, append_return)
-            self._write_json(HTTPStatus.OK, {"ok": True, "requestID": request_id})
+            service.send_input(request_id, data, append_return)
+            self._write_json(
+                HTTPStatus.OK,
+                {"ok": True, "requestID": request_id, "sessionID": session_id},
+            )
         except (ValueError, json.JSONDecodeError, TerminalError, subprocess.SubprocessError) as error:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
 
@@ -900,7 +1009,22 @@ def parse_cidrs(raw: str) -> List[ipaddress._BaseNetwork]:
 def run_server(host: str, port: int) -> None:
     token, cert_path, key_path = ensure_runtime_credentials()
     trusted_cidrs = parse_cidrs(os.environ.get("JARVIS_TERMINAL_TRUSTED_CIDRS", DEFAULT_CIDRS))
-    server = TerminalHTTPServer((host, port), TerminalService(), token, trusted_cidrs)
+    services = {
+        session_id: TerminalService(session_id=session_id)
+        for session_id in sorted(TMUX_SESSIONS)
+    }
+    # Eagerly create missing Slots 2 and 3 while Slot 1's surviving pane remains
+    # untouched. Each bootstrap is idempotent and never attaches or resizes.
+    for service in services.values():
+        service.ensure_session()
+    services[1].remove_legacy_speech_cache()
+    server = TerminalHTTPServer(
+        (host, port),
+        services[1],
+        token,
+        trusted_cidrs,
+        services=services,
+    )
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))

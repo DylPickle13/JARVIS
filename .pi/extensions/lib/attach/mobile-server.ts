@@ -52,6 +52,7 @@ export type MobileAttachmentServerOptions = {
   runtimeDirectory: string;
   environment?: NodeJS.ProcessEnv;
   processId?: number;
+  mobileSlot?: number;
   requireExactMobileTmux?: boolean;
   identityCheck?: (
     environment: NodeJS.ProcessEnv,
@@ -387,15 +388,27 @@ async function atomicDescriptor(
   }
 }
 
-export async function isExactMobileTmuxProcess(
+export type ExactMobileTmuxIdentity = {
+  slot: 1 | 2 | 3;
+  sessionName: string;
+  paneID: string;
+};
+
+const MOBILE_TMUX_SESSIONS = new Map<string, 1 | 2 | 3>([
+  ["jarvis-ios", 1],
+  ["jarvis-ios-2", 2],
+  ["jarvis-ios-3", 3],
+]);
+
+export async function exactMobileTmuxIdentity(
   environment: NodeJS.ProcessEnv = process.env,
   processId = process.pid,
-): Promise<boolean> {
+): Promise<ExactMobileTmuxIdentity | undefined> {
   const rawTmux = environment.TMUX?.trim() || "";
   const pane = environment.TMUX_PANE?.trim() || "";
-  if (!rawTmux || pane !== "%0") return false;
+  if (!rawTmux || !/^%[0-9]+$/.test(pane)) return undefined;
   const socketPath = rawTmux.split(",", 1)[0];
-  if (!socketPath || basename(socketPath) !== "jarvis-mobile") return false;
+  if (!socketPath || basename(socketPath) !== "jarvis-mobile") return undefined;
   try {
     const { stdout } = await execFileAsync(
       "/opt/homebrew/bin/tmux",
@@ -406,24 +419,38 @@ export async function isExactMobileTmuxProcess(
         "-p",
         "-t",
         pane,
-        "#{session_name}|#{pane_id}|#{pane_pid}",
+        "#{session_name}|#{window_index}|#{pane_index}|#{pane_id}|#{pane_pid}",
       ],
       { encoding: "utf8", timeout: 2_000, maxBuffer: 4_096 },
     );
-    const [sessionName, paneID, panePID] = stdout.trim().split("|");
-    return (
-      sessionName === "jarvis-ios" &&
-      paneID === "%0" &&
-      Number(panePID) === processId
-    );
+    const [sessionName, windowIndex, paneIndex, paneID, panePID] = stdout.trim().split("|");
+    const slot = MOBILE_TMUX_SESSIONS.get(sessionName);
+    if (
+      slot === undefined ||
+      windowIndex !== "0" ||
+      paneIndex !== "0" ||
+      paneID !== pane ||
+      (slot === 1 && paneID !== "%0") ||
+      Number(panePID) !== processId
+    ) return undefined;
+    return { slot, sessionName, paneID };
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+export async function isExactMobileTmuxProcess(
+  environment: NodeJS.ProcessEnv = process.env,
+  processId = process.pid,
+): Promise<boolean> {
+  return (await exactMobileTmuxIdentity(environment, processId)) !== undefined;
 }
 
 export class MobileAttachmentServer {
   readonly generation: string;
+  readonly slot: 1 | 2 | 3;
   readonly descriptorPath: string;
+  readonly legacyDescriptorPath?: string;
   readonly socketPath: string;
 
   private readonly server: Server;
@@ -439,13 +466,19 @@ export class MobileAttachmentServer {
     hooks: MobileAttachmentHooks,
     runtimeDirectory: string,
     processId: number,
+    slot: 1 | 2 | 3,
     operationTimeoutMs: number,
   ) {
     this.server = server;
     this.hooks = hooks;
     this.operationTimeoutMs = operationTimeoutMs;
     this.generation = randomBytes(16).toString("hex");
-    this.descriptorPath = join(runtimeDirectory, "pi-attach-mobile.json");
+    this.slot = slot;
+    this.descriptorPath = join(runtimeDirectory, `pi-attach-mobile-slot-${slot}.json`);
+    // Build 132's no-argument receiver remains a Slot 1 compatibility path.
+    this.legacyDescriptorPath = slot === 1
+      ? join(runtimeDirectory, "pi-attach-mobile.json")
+      : undefined;
     this.socketPath = join(
       runtimeDirectory,
       `pi-attach-mobile-${processId}-${this.generation.slice(0, 8)}.sock`,
@@ -458,10 +491,26 @@ export class MobileAttachmentServer {
   ): Promise<MobileAttachmentServer | undefined> {
     const environment = options.environment ?? process.env;
     const processId = options.processId ?? process.pid;
+    if (!Number.isSafeInteger(processId) || processId <= 1) {
+      throw new Error("The mobile attachment process identifier is invalid.");
+    }
     const requireIdentity = options.requireExactMobileTmux ?? true;
-    const identityCheck = options.identityCheck ?? isExactMobileTmuxProcess;
-    if (requireIdentity && !(await identityCheck(environment, processId))) {
-      return undefined;
+    const identity = await exactMobileTmuxIdentity(environment, processId);
+    if (requireIdentity) {
+      const identityCheck = options.identityCheck;
+      if (identityCheck) {
+        if (!(await identityCheck(environment, processId))) return undefined;
+      } else if (!identity) {
+        return undefined;
+      }
+    }
+    const rawSlot = options.mobileSlot ?? identity?.slot ?? 1;
+    if (!Number.isSafeInteger(rawSlot) || rawSlot < 1 || rawSlot > 3) {
+      throw new Error("The mobile attachment slot is invalid.");
+    }
+    const slot = rawSlot as 1 | 2 | 3;
+    if (identity && identity.slot !== slot) {
+      throw new Error("The mobile attachment slot did not match the protected tmux process.");
     }
 
     const runtimeDirectory = resolve(options.runtimeDirectory);
@@ -477,6 +526,7 @@ export class MobileAttachmentServer {
       hooks,
       runtimeDirectory,
       processId,
+      slot,
       operationTimeoutMs,
     );
     await rm(instance.socketPath, { force: true });
@@ -497,18 +547,27 @@ export class MobileAttachmentServer {
     });
     try {
       await chmod(instance.socketPath, ATTACHMENT_FILE_MODE);
-      await atomicDescriptor(instance.descriptorPath, {
+      const descriptor = {
         version: MOBILE_ATTACHMENT_PROTOCOL_VERSION,
+        sessionID: slot,
         generation: instance.generation,
         pid: processId,
         socketPath: instance.socketPath,
-      });
+      };
+      await atomicDescriptor(instance.descriptorPath, descriptor);
+      if (instance.legacyDescriptorPath) {
+        await atomicDescriptor(instance.legacyDescriptorPath, descriptor);
+      }
       return instance;
     } catch (error) {
       for (const socket of instance.sockets) socket.destroy();
       await new Promise<void>((resolvePromise) => {
         server.close(() => resolvePromise());
       }).catch(() => undefined);
+      await instance.removeOwnedDescriptor(instance.descriptorPath);
+      if (instance.legacyDescriptorPath) {
+        await instance.removeOwnedDescriptor(instance.legacyDescriptorPath);
+      }
       await rm(instance.socketPath, { force: true }).catch(() => undefined);
       throw error;
     }
@@ -677,6 +736,21 @@ export class MobileAttachmentServer {
     }
   }
 
+  private async removeOwnedDescriptor(path: string): Promise<void> {
+    try {
+      const descriptor = JSON.parse(await readFile(path, "utf8"));
+      if (
+        descriptor?.generation === this.generation &&
+        descriptor?.socketPath === this.socketPath &&
+        (descriptor?.sessionID === undefined || descriptor?.sessionID === this.slot)
+      ) {
+        await rm(path, { force: true });
+      }
+    } catch {
+      // A missing, malformed, or newer descriptor is not owned by this instance.
+    }
+  }
+
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
@@ -685,16 +759,9 @@ export class MobileAttachmentServer {
       this.server.close(() => resolvePromise());
     }).catch(() => undefined);
     await Promise.allSettled([...this.operations]);
-    try {
-      const descriptor = JSON.parse(await readFile(this.descriptorPath, "utf8"));
-      if (
-        descriptor?.generation === this.generation &&
-        descriptor?.socketPath === this.socketPath
-      ) {
-        await rm(this.descriptorPath, { force: true });
-      }
-    } catch {
-      // A missing, malformed, or newer descriptor is not owned by this instance.
+    await this.removeOwnedDescriptor(this.descriptorPath);
+    if (this.legacyDescriptorPath) {
+      await this.removeOwnedDescriptor(this.legacyDescriptorPath);
     }
     await rm(this.socketPath, { force: true }).catch(() => undefined);
   }

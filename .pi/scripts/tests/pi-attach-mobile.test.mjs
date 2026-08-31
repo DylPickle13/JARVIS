@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -93,6 +93,7 @@ async function fixture(options = {}) {
   const server = await mobile.MobileAttachmentServer.start(hooks, {
     runtimeDirectory,
     requireExactMobileTmux: false,
+    mobileSlot: options.mobileSlot,
     operationTimeoutMs: options.operationTimeoutMs ?? 5_000,
   });
   assert.ok(server);
@@ -106,6 +107,32 @@ function snapshotRequest() {
     requestID: randomUUID(),
   };
 }
+
+test("mobile server rejects non-allowlisted slot configuration before publishing", async () => {
+  const directory = await mkdtemp("/tmp/pia-invalid-slot-");
+  const runtimeDirectory = join(directory, ".pi", "runtime");
+  try {
+    await assert.rejects(
+      mobile.MobileAttachmentServer.start(
+        {
+          snapshot: async () => ({ revision: 0, limits: {}, staged: [] }),
+          prepare: async () => [],
+          commit: async () => ({ revision: 0, limits: {}, staged: [] }),
+          discard: async () => {},
+        },
+        {
+          runtimeDirectory,
+          requireExactMobileTmux: false,
+          mobileSlot: 4,
+        },
+      ),
+      /slot is invalid/i,
+    );
+    await assert.rejects(lstat(runtimeDirectory));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("mobile attachment socket snapshots, commits exact bytes, and resolves ambiguous status", async () => {
   const data = await fixture();
@@ -544,7 +571,7 @@ test("incomplete mobile operations time out without queue mutation", async () =>
   }
 });
 
-test("fixed no-argument receiver proxies one framed operation through the private descriptor", async () => {
+test("receiver keeps no-argument Slot 1 compatibility and rejects arbitrary arguments", async () => {
   const data = await fixture();
   const receiverRoot = dirname(dirname(data.runtimeDirectory));
   const scriptsDirectory = join(receiverRoot, ".pi", "scripts");
@@ -554,8 +581,16 @@ test("fixed no-argument receiver proxies one framed operation through the privat
   try {
     const descriptor = JSON.parse(await readFile(data.server.descriptorPath, "utf8"));
     assert.equal(descriptor.version, 1);
+    assert.equal(descriptor.sessionID, 1);
     assert.match(descriptor.generation, /^[0-9a-f]{32}$/i);
     assert.equal(dirname(resolve(descriptor.socketPath)), resolve(data.runtimeDirectory));
+    assert.ok(data.server.legacyDescriptorPath);
+    const legacyDescriptor = JSON.parse(await readFile(data.server.legacyDescriptorPath, "utf8"));
+    assert.deepEqual(legacyDescriptor, descriptor);
+
+    // A stale scoped descriptor must not block Build 132's bounded Slot 1
+    // compatibility path during rollback or process handoff.
+    await writeFile(data.server.descriptorPath, "{stale", { mode: 0o600 });
     const child = spawn(process.execPath, [copiedReceiver], {
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -577,39 +612,127 @@ test("fixed no-argument receiver proxies one framed operation through the privat
     rejected.stderr.on("data", (chunk) => rejectedError.push(Buffer.from(chunk)));
     const rejectedCode = await new Promise((resolvePromise) => rejected.once("exit", resolvePromise));
     assert.equal(rejectedCode, 1);
-    assert.match(Buffer.concat(rejectedError).toString("utf8"), /takes no arguments/i);
+    assert.match(Buffer.concat(rejectedError).toString("utf8"), /fixed session slot/i);
   } finally {
     await data.server.close();
     await rm(data.directory, { recursive: true, force: true });
   }
 });
 
-test("mobile identity gate accepts only a disposable exact jarvis-mobile pane", async () => {
+test("receiver routes Slot 2 only through its scoped descriptor", async () => {
+  const data = await fixture({ mobileSlot: 2 });
+  const receiverRoot = dirname(dirname(data.runtimeDirectory));
+  const scriptsDirectory = join(receiverRoot, ".pi", "scripts");
+  await mkdir(scriptsDirectory, { recursive: true });
+  const copiedReceiver = join(scriptsDirectory, "pi-attach-mobile-receiver.mjs");
+  await copyFile(join(projectRoot, ".pi", "scripts", "pi-attach-mobile-receiver.mjs"), copiedReceiver);
+  try {
+    const descriptor = JSON.parse(await readFile(data.server.descriptorPath, "utf8"));
+    assert.equal(descriptor.sessionID, 2);
+    assert.match(data.server.descriptorPath, /pi-attach-mobile-slot-2\.json$/);
+
+    const child = spawn(process.execPath, [copiedReceiver, "--slot", "2"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const stdout = [];
+    const stderr = [];
+    child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
+    child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
+    child.stdin.end(frame(snapshotRequest()));
+    const exitCode = await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+    assert.equal(exitCode, 0, Buffer.concat(stderr).toString("utf8"));
+    assert.equal(parseFrame(Buffer.concat(stdout)).ok, true);
+
+    const wrong = spawn(process.execPath, [copiedReceiver, "--slot", "3"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const wrongCode = await new Promise((resolvePromise) => wrong.once("exit", resolvePromise));
+    assert.equal(wrongCode, 1);
+  } finally {
+    await data.server.close();
+    await rm(data.directory, { recursive: true, force: true });
+  }
+});
+
+test("mobile identity gate accepts all three fixed jarvis-mobile sessions only", async () => {
   const directory = await mkdtemp("/tmp/pia-tmux-");
   const socketPath = join(directory, "jarvis-mobile");
   const tmux = "/opt/homebrew/bin/tmux";
   try {
+    const observed = [];
+    let slotOneProcess;
+    for (const [index, sessionName] of ["jarvis-ios", "jarvis-ios-2", "jarvis-ios-3"].entries()) {
+      execFileSync(tmux, [
+        "-S", socketPath, "new-session", "-d", "-s", sessionName, "sleep 30",
+      ]);
+      const identity = execFileSync(
+        tmux,
+        ["-S", socketPath, "display-message", "-p", "-t", `${sessionName}:`, "#{pane_id}|#{pane_pid}"],
+        { encoding: "utf8" },
+      ).trim();
+      const [paneID, panePID] = identity.split("|");
+      const environment = { TMUX: `${socketPath},1,0`, TMUX_PANE: paneID };
+      const exact = await mobile.exactMobileTmuxIdentity(environment, Number(panePID));
+      assert.equal(exact?.slot, index + 1);
+      assert.equal(exact?.sessionName, sessionName);
+      assert.equal(await mobile.isExactMobileTmuxProcess(environment, Number(panePID)), true);
+      assert.equal(await mobile.isExactMobileTmuxProcess(environment, Number(panePID) + 1), false);
+      if (index === 0) slotOneProcess = { environment, processId: Number(panePID) };
+      observed.push(paneID);
+    }
+    assert.equal(new Set(observed).size, 3);
+    await assert.rejects(
+      mobile.MobileAttachmentServer.start(
+        {
+          snapshot: async () => ({ revision: 0, limits: {}, staged: [] }),
+          prepare: async () => [],
+          commit: async () => ({ revision: 0, limits: {}, staged: [] }),
+          discard: async () => {},
+        },
+        {
+          runtimeDirectory: join(directory, "runtime"),
+          environment: slotOneProcess.environment,
+          processId: slotOneProcess.processId,
+          mobileSlot: 2,
+        },
+      ),
+      /did not match the protected tmux process/i,
+    );
+
     execFileSync(tmux, [
-      "-S",
-      socketPath,
-      "new-session",
-      "-d",
-      "-s",
-      "jarvis-ios",
-      "sleep 30",
+      "-S", socketPath, "new-session", "-d", "-s", "untrusted-mobile", "sleep 30",
     ]);
-    const identity = execFileSync(
+    const rejected = execFileSync(
       tmux,
-      ["-S", socketPath, "display-message", "-p", "-t", "%0", "#{pane_id}|#{pane_pid}"],
+      ["-S", socketPath, "display-message", "-p", "-t", "untrusted-mobile:", "#{pane_id}|#{pane_pid}"],
       { encoding: "utf8" },
-    ).trim();
-    const [paneID, panePID] = identity.split("|");
-    assert.equal(paneID, "%0");
-    const environment = { TMUX: `${socketPath},1,0`, TMUX_PANE: paneID };
-    assert.equal(await mobile.isExactMobileTmuxProcess(environment, Number(panePID)), true);
-    assert.equal(await mobile.isExactMobileTmuxProcess(environment, Number(panePID) + 1), false);
+    ).toString().trim().split("|");
     assert.equal(
-      await mobile.isExactMobileTmuxProcess({ ...environment, TMUX_PANE: "%1" }, Number(panePID)),
+      await mobile.isExactMobileTmuxProcess(
+        { TMUX: `${socketPath},1,0`, TMUX_PANE: rejected[0] },
+        Number(rejected[1]),
+      ),
+      false,
+    );
+
+    execFileSync(tmux, ["-S", socketPath, "kill-server"]);
+    execFileSync(tmux, [
+      "-S", socketPath, "new-session", "-d", "-s", "preexisting", "sleep 30",
+    ]);
+    execFileSync(tmux, [
+      "-S", socketPath, "new-session", "-d", "-s", "jarvis-ios", "sleep 30",
+    ]);
+    const replacedSlotOne = execFileSync(
+      tmux,
+      ["-S", socketPath, "display-message", "-p", "-t", "jarvis-ios:", "#{pane_id}|#{pane_pid}"],
+      { encoding: "utf8" },
+    ).trim().split("|");
+    assert.notEqual(replacedSlotOne[0], "%0");
+    assert.equal(
+      await mobile.isExactMobileTmuxProcess(
+        { TMUX: `${socketPath},1,0`, TMUX_PANE: replacedSlotOne[0] },
+        Number(replacedSlotOne[1]),
+      ),
       false,
     );
   } finally {

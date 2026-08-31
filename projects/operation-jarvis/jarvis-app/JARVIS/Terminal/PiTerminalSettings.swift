@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import JARVISKit
 import Security
 
 struct PiTerminalConfiguration: Equatable, Sendable {
@@ -11,6 +12,10 @@ struct PiTerminalConfiguration: Equatable, Sendable {
     static let defaultPort = 22
     static let defaultUsername = "dylanrapanan"
     static let remoteCommand = "/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/scripts/jarvis-mobile-terminal.sh"
+
+    static func remoteCommand(for slot: JARVISTerminalSlot) -> String {
+        "\(remoteCommand) --slot \(slot.rawValue)"
+    }
 }
 
 @MainActor

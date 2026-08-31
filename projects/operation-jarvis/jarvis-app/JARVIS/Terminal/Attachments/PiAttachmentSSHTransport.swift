@@ -262,6 +262,7 @@ final class PiSSHAttachmentSessionHandler: ChannelInboundHandler, @unchecked Sen
     typealias InboundIn = SSHChannelData
 
     private let request: PiAttachmentWireRequest
+    private let receiverCommand: String
     private let streamer: PiAttachmentOutboundStreamer
     private let resultBox: PiAttachmentResultBox
     private let operation: PiAttachmentSSHOperation
@@ -272,6 +273,7 @@ final class PiSSHAttachmentSessionHandler: ChannelInboundHandler, @unchecked Sen
 
     init(
         request: PiAttachmentWireRequest,
+        receiverCommand: String,
         requestFrame: Data,
         files: [PiAttachmentLocalFile],
         progress: @escaping @Sendable (Int64, Int64) -> Void,
@@ -279,6 +281,7 @@ final class PiSSHAttachmentSessionHandler: ChannelInboundHandler, @unchecked Sen
         operation: PiAttachmentSSHOperation
     ) {
         self.request = request
+        self.receiverCommand = receiverCommand
         self.resultBox = resultBox
         self.operation = operation
         self.streamer = PiAttachmentOutboundStreamer(
@@ -297,7 +300,7 @@ final class PiSSHAttachmentSessionHandler: ChannelInboundHandler, @unchecked Sen
         }
         context.triggerUserOutboundEvent(
             SSHChannelRequestEvent.ExecRequest(
-                command: PiAttachmentProtocol.receiverCommand,
+                command: receiverCommand,
                 wantReply: false
             ),
             promise: nil

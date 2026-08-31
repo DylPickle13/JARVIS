@@ -1,3 +1,4 @@
+import CoreFoundation
 import CryptoKit
 import Foundation
 import Security
@@ -380,11 +381,14 @@ public final class WatchTerminalClient: @unchecked Sendable {
     }
 
     @discardableResult
-    public func preflight() async throws -> WatchTerminalFrame {
-        try await frame(after: 0)
+    public func preflight(slot: JARVISTerminalSlot = .one) async throws -> WatchTerminalFrame {
+        try await frame(after: 0, slot: slot)
     }
 
-    public func frame(after sequence: Int) async throws -> WatchTerminalFrame {
+    public func frame(
+        after sequence: Int,
+        slot: JARVISTerminalSlot = .one
+    ) async throws -> WatchTerminalFrame {
         guard configuration.isValid, !candidateBaseURLs.isEmpty else {
             throw WatchTerminalClientError.notConfigured
         }
@@ -392,8 +396,11 @@ public final class WatchTerminalClient: @unchecked Sendable {
         for baseURL in orderedBaseURLs() {
             if Task.isCancelled { throw CancellationError() }
             do {
-                var components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/frame")
-                components.queryItems = [URLQueryItem(name: "after", value: String(max(0, sequence)))]
+                var components = try endpointComponents(baseURL: baseURL, path: "v2/terminal/frame")
+                components.queryItems = [
+                    URLQueryItem(name: "after", value: String(max(0, sequence))),
+                    URLQueryItem(name: "sessionID", value: String(slot.rawValue)),
+                ]
                 guard let url = components.url else { throw WatchTerminalClientError.notConfigured }
                 var request = URLRequest(url: url)
                 request.httpMethod = "GET"
@@ -403,7 +410,12 @@ public final class WatchTerminalClient: @unchecked Sendable {
                 try validate(response: response, data: data)
                 let frame: WatchTerminalFrame
                 do {
+                    let responseSessionID = try Self.canonicalSessionID(in: data)
                     frame = try JSONDecoder().decode(WatchTerminalFrame.self, from: data)
+                    guard responseSessionID == slot.rawValue,
+                          frame.sessionID == slot.rawValue else {
+                        throw WatchTerminalClientError.invalidResponse
+                    }
                 } catch {
                     observedInvalidResponse = true
                     continue
@@ -428,7 +440,11 @@ public final class WatchTerminalClient: @unchecked Sendable {
         throw WatchTerminalClientError.offline
     }
 
-    public func historyPage(start: Int, limit: Int = WatchTerminalHistoryPage.maximumRows) async throws -> WatchTerminalHistoryPage {
+    public func historyPage(
+        start: Int,
+        limit: Int = WatchTerminalHistoryPage.maximumRows,
+        slot: JARVISTerminalSlot = .one
+    ) async throws -> WatchTerminalHistoryPage {
         guard configuration.isValid, !candidateBaseURLs.isEmpty,
               start >= 0, limit > 0, limit <= WatchTerminalHistoryPage.maximumRows else {
             throw WatchTerminalClientError.invalidResponse
@@ -437,10 +453,11 @@ public final class WatchTerminalClient: @unchecked Sendable {
         for baseURL in orderedBaseURLs() {
             if Task.isCancelled { throw CancellationError() }
             do {
-                var components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/history")
+                var components = try endpointComponents(baseURL: baseURL, path: "v2/terminal/history")
                 components.queryItems = [
                     URLQueryItem(name: "start", value: String(start)),
                     URLQueryItem(name: "limit", value: String(limit)),
+                    URLQueryItem(name: "sessionID", value: String(slot.rawValue)),
                 ]
                 guard let url = components.url else { throw WatchTerminalClientError.notConfigured }
                 var request = URLRequest(url: url)
@@ -451,12 +468,17 @@ public final class WatchTerminalClient: @unchecked Sendable {
                 try validate(response: response, data: data)
                 let page: WatchTerminalHistoryPage
                 do {
+                    let responseSessionID = try Self.canonicalSessionID(in: data)
+                    guard responseSessionID == slot.rawValue else {
+                        throw WatchTerminalClientError.invalidResponse
+                    }
                     page = try JSONDecoder().decode(WatchTerminalHistoryPage.self, from: data)
                 } catch {
                     observedInvalidResponse = true
                     continue
                 }
-                guard page.start >= 0, page.lines.count <= limit else {
+                guard page.sessionID == slot.rawValue,
+                      page.start >= 0, page.lines.count <= limit else {
                     observedInvalidResponse = true
                     continue
                 }
@@ -482,7 +504,10 @@ public final class WatchTerminalClient: @unchecked Sendable {
 
     public func send(_ input: WatchTerminalInput) async throws {
         guard let baseURL = preferredBaseURL() else { throw WatchTerminalClientError.notConnected }
-        let components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/input")
+        guard JARVISTerminalSlot(rawValue: input.sessionID) != nil else {
+            throw WatchTerminalClientError.invalidResponse
+        }
+        let components = try endpointComponents(baseURL: baseURL, path: "v2/terminal/input")
         guard let url = components.url else { throw WatchTerminalClientError.notConfigured }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -493,6 +518,14 @@ public final class WatchTerminalClient: @unchecked Sendable {
         do {
             let (data, response) = try await session.data(for: request)
             try validate(response: response, data: data)
+            guard let acknowledgement = try? JSONDecoder().decode(TerminalInputAcknowledgement.self, from: data),
+                  let responseSessionID = try? Self.canonicalSessionID(in: data),
+                  acknowledgement.ok,
+                  acknowledgement.requestID == input.requestID,
+                  acknowledgement.sessionID == input.sessionID,
+                  responseSessionID == input.sessionID else {
+                throw WatchTerminalClientError.invalidResponse
+            }
         } catch let error as WatchTerminalClientError {
             throw error
         } catch is CancellationError {
@@ -507,19 +540,25 @@ public final class WatchTerminalClient: @unchecked Sendable {
         }
     }
 
-    public func speechAudio(responseID: String) async throws -> URL {
+    public func speechAudio(
+        responseID: String,
+        slot: JARVISTerminalSlot = .one
+    ) async throws -> URL {
         guard responseID.count == 64, responseID.allSatisfy(\.isHexDigit) else {
             throw WatchTerminalClientError.invalidResponse
         }
         guard let baseURL = preferredBaseURL() else { throw WatchTerminalClientError.notConnected }
-        let components = try endpointComponents(baseURL: baseURL, path: "v1/terminal/speech")
+        let components = try endpointComponents(baseURL: baseURL, path: "v2/terminal/speech")
         guard let url = components.url else { throw WatchTerminalClientError.notConfigured }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 180
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         authorize(&request)
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["responseID": responseID])
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "responseID": responseID,
+            "sessionID": slot.rawValue,
+        ])
 
         let temporaryURL: URL
         let response: URLResponse
@@ -540,7 +579,8 @@ public final class WatchTerminalClient: @unchecked Sendable {
             try validate(response: response, data: data)
             throw WatchTerminalClientError.invalidResponse
         }
-        guard http.value(forHTTPHeaderField: "Content-Type")?.lowercased().hasPrefix("audio/wav") == true else {
+        guard http.value(forHTTPHeaderField: "X-JARVIS-Terminal-Session") == String(slot.rawValue),
+              http.value(forHTTPHeaderField: "Content-Type")?.lowercased().hasPrefix("audio/wav") == true else {
             throw WatchTerminalClientError.invalidAudio
         }
         let values = try temporaryURL.resourceValues(forKeys: [.fileSizeKey])
@@ -565,6 +605,23 @@ public final class WatchTerminalClient: @unchecked Sendable {
             .appendingPathExtension("wav")
         try FileManager.default.moveItem(at: temporaryURL, to: destination)
         return destination
+    }
+
+    private static func canonicalSessionID(in data: Data) throws -> Int {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let number = object["sessionID"] as? NSNumber,
+              CFGetTypeID(number) == CFNumberGetTypeID(),
+              !CFNumberIsFloatType(number),
+              JARVISTerminalSlot(rawValue: number.intValue) != nil else {
+            throw WatchTerminalClientError.invalidResponse
+        }
+        return number.intValue
+    }
+
+    private struct TerminalInputAcknowledgement: Decodable {
+        let ok: Bool
+        let requestID: String
+        let sessionID: Int
     }
 
     private func preferredBaseURL() -> URL? {
@@ -678,6 +735,7 @@ public enum WatchTerminalCrownHistory {
 public struct WatchTerminalHistoryPage: Codable, Equatable, Sendable {
     public static let maximumRows = 256
 
+    public let sessionID: Int
     public let paneID: String
     public let historySize: Int
     public let start: Int
@@ -685,6 +743,7 @@ public struct WatchTerminalHistoryPage: Codable, Equatable, Sendable {
     public let ansiLines: [String]
 
     enum CodingKeys: String, CodingKey {
+        case sessionID
         case paneID
         case historySize
         case start
@@ -693,12 +752,14 @@ public struct WatchTerminalHistoryPage: Codable, Equatable, Sendable {
     }
 
     public init(
+        session: JARVISTerminalSlot = .one,
         paneID: String,
         historySize: Int,
         start: Int,
         lines: [String],
         ansiLines: [String]? = nil
     ) {
+        self.sessionID = session.rawValue
         self.paneID = paneID
         self.historySize = max(0, historySize)
         self.start = max(0, start)
@@ -709,11 +770,13 @@ public struct WatchTerminalHistoryPage: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID = try values.decodeIfPresent(Int.self, forKey: .sessionID) ?? JARVISTerminalSlot.one.rawValue
         paneID = try values.decode(String.self, forKey: .paneID)
         historySize = max(0, try values.decode(Int.self, forKey: .historySize))
         start = max(0, try values.decode(Int.self, forKey: .start))
         let decodedLines = try values.decode([String].self, forKey: .lines)
-        guard paneID.hasPrefix("%"), start <= historySize,
+        guard JARVISTerminalSlot(rawValue: sessionID) != nil,
+              paneID.hasPrefix("%"), start <= historySize,
               decodedLines.count <= Self.maximumRows,
               start + decodedLines.count <= historySize else {
             throw DecodingError.dataCorruptedError(
@@ -742,6 +805,7 @@ public struct WatchTerminalHistoryPage: Codable, Equatable, Sendable {
 }
 
 public struct WatchTerminalFrame: Codable, Equatable, Sendable {
+    public let sessionID: Int
     public let sequence: Int
     public let paneID: String
     public let columns: Int
@@ -757,6 +821,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
     public let ansiLines: [String]
 
     enum CodingKeys: String, CodingKey {
+        case sessionID
         case sequence
         case paneID
         case columns
@@ -775,6 +840,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
     }
 
     public init(
+        session: JARVISTerminalSlot = .one,
         sequence: Int,
         paneID: String = "",
         columns: Int,
@@ -789,6 +855,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
         lines: [String],
         ansiLines: [String]? = nil
     ) {
+        self.sessionID = session.rawValue
         self.sequence = sequence
         self.paneID = paneID
         self.columns = columns
@@ -806,6 +873,14 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID = try values.decodeIfPresent(Int.self, forKey: .sessionID) ?? JARVISTerminalSlot.one.rawValue
+        guard JARVISTerminalSlot(rawValue: sessionID) != nil else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .sessionID,
+                in: values,
+                debugDescription: "Terminal session identifier was invalid."
+            )
+        }
         sequence = try values.decode(Int.self, forKey: .sequence)
         paneID = try values.decodeIfPresent(String.self, forKey: .paneID) ?? ""
         columns = try values.decode(Int.self, forKey: .columns)
@@ -834,6 +909,7 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(sessionID, forKey: .sessionID)
         try values.encode(sequence, forKey: .sequence)
         try values.encode(paneID, forKey: .paneID)
         try values.encode(columns, forKey: .columns)
@@ -1362,11 +1438,18 @@ public enum WatchTerminalLayout {
 
 public struct WatchTerminalInput: Codable, Equatable, Sendable {
     public let requestID: String
+    public let sessionID: Int
     public let dataBase64: String
     public let appendReturn: Bool
 
-    public init(requestID: String = UUID().uuidString, data: Data, appendReturn: Bool) {
+    public init(
+        requestID: String = UUID().uuidString,
+        session: JARVISTerminalSlot = .one,
+        data: Data,
+        appendReturn: Bool
+    ) {
         self.requestID = requestID
+        self.sessionID = session.rawValue
         self.dataBase64 = data.base64EncodedString()
         self.appendReturn = appendReturn
     }

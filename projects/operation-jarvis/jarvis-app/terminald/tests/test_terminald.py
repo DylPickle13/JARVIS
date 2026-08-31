@@ -12,6 +12,7 @@ import threading
 import time
 import unittest
 from urllib import request as urllib_request
+from urllib.error import HTTPError
 import uuid
 from unittest import mock
 
@@ -68,6 +69,50 @@ class FakeRoomSpeechClient:
         return self.audio
 
 
+class FakeRouteService:
+    def __init__(self, session_id):
+        self.session_id = session_id
+        self.calls = []
+        self.closed = False
+
+    def frame_after(self, after):
+        self.calls.append(("frame", after))
+        return {
+            "sessionID": self.session_id,
+            "sequence": max(1, after + 1),
+            "paneID": "%{}".format(self.session_id),
+            "columns": 48,
+            "rows": 28,
+            "cursorColumn": 0,
+            "cursorRow": 0,
+            "alternateScreen": False,
+            "mouseMode": False,
+            "historySize": 0,
+            "lines": [""] * 28,
+        }
+
+    def history_page(self, start, limit):
+        self.calls.append(("history", start, limit))
+        return {
+            "sessionID": self.session_id,
+            "paneID": "%{}".format(self.session_id),
+            "historySize": 0,
+            "start": 0,
+            "lines": [],
+            "ansiLines": [],
+        }
+
+    def send_input(self, request_id, data, append_return):
+        self.calls.append(("input", request_id, data, append_return))
+
+    def synthesize_speech(self, response_id):
+        self.calls.append(("speech", response_id))
+        return b"RIFF\x04\x00\x00\x00WAVE"
+
+    def close(self):
+        self.closed = True
+
+
 class TerminalServiceTests(unittest.TestCase):
     def frame_service(self, runner, **kwargs):
         service = terminald.TerminalService(runner, **kwargs)
@@ -84,6 +129,7 @@ class TerminalServiceTests(unittest.TestCase):
         second = service.frame_after(first["sequence"])
         self.assertEqual(first["sequence"], 1)
         self.assertEqual(second["sequence"], 1)
+        self.assertEqual(first["sessionID"], 1)
         self.assertEqual(first["columns"], 48)
         self.assertEqual(first["rows"], 28)
         self.assertEqual(first["paneID"], runner.pane_id)
@@ -107,6 +153,48 @@ class TerminalServiceTests(unittest.TestCase):
         self.assertEqual(third["lines"][0], "UPDATED")
         frame_calls = [call[0] for call in runner.calls if "capture-pane" in call[0]]
         self.assertTrue(all("display-message" in call for call in frame_calls))
+
+    def test_fixed_slots_route_to_independent_tmux_targets_and_bootstraps(self):
+        runner = FakeRunner()
+        service = self.frame_service(runner, session_id=2)
+
+        frame = service.frame_after(0)
+        service.send_input("slot-two-input", b"two", append_return=True)
+        service.ensure_session()
+
+        self.assertEqual(frame["sessionID"], 2)
+        capture_call = next(call[0] for call in runner.calls if "capture-pane" in call[0])
+        self.assertEqual(capture_call[capture_call.index("-t") + 1], "=jarvis-ios-2:")
+        paste_call = next(call[0] for call in runner.calls if "paste-buffer" in call[0])
+        self.assertEqual(paste_call[paste_call.index("-t") + 1], "=jarvis-ios-2:")
+        bootstrap_call = next(call[0] for call in runner.calls if str(terminald.BOOTSTRAP) in call[0])
+        self.assertEqual(
+            bootstrap_call,
+            [str(terminald.BOOTSTRAP), "--slot", "2", "--ensure-only"],
+        )
+        with self.assertRaises(terminald.TerminalError):
+            terminald.TerminalService(runner, session_id=4)
+        with self.assertRaises(terminald.TerminalError):
+            terminald.TerminalService(runner, session_id=True)
+
+    def test_slot_frame_sequences_and_histories_are_independent(self):
+        first_runner = FakeRunner()
+        second_runner = FakeRunner()
+        first_runner.capture = ("ONE\n" + ("\n" * 27)).encode()
+        second_runner.capture = ("TWO\n" + ("\n" * 27)).encode()
+        first = self.frame_service(first_runner, session_id=1)
+        second = self.frame_service(second_runner, session_id=2)
+
+        first_frame = first.frame_after(0)
+        second_frame = second.frame_after(0)
+        first_runner.capture = ("ONE UPDATED\n" + ("\n" * 27)).encode()
+        updated = first.frame_after(first_frame["sequence"])
+
+        self.assertEqual(first_frame["sessionID"], 1)
+        self.assertEqual(second_frame["sessionID"], 2)
+        self.assertEqual(second_frame["sequence"], 1)
+        self.assertEqual(updated["sequence"], 2)
+        self.assertEqual(second.last_frame["lines"][0], "TWO")
 
     def test_concurrent_long_polls_share_one_sampler_and_stop_when_idle(self):
         runner = FakeRunner()
@@ -170,6 +258,7 @@ class TerminalServiceTests(unittest.TestCase):
 
         page = service.history_page(start=1, limit=3)
 
+        self.assertEqual(page["sessionID"], 1)
         self.assertEqual(page["paneID"], runner.pane_id)
         self.assertEqual(page["historySize"], 4)
         self.assertEqual(page["start"], 1)
@@ -267,7 +356,7 @@ class TerminalServiceTests(unittest.TestCase):
                 encoding="utf-8",
             )
             marker.chmod(0o600)
-            stale_cache_path = speech_dir / (("a" * 64) + ".wav")
+            stale_cache_path = speech_dir / ("1-" + ("a" * 64) + ".wav")
             stale_cache_path.write_bytes(speech_client.audio)
             stale_cache_path.chmod(0o600)
             service = terminald.TerminalService(
@@ -279,7 +368,7 @@ class TerminalServiceTests(unittest.TestCase):
             self.assertEqual(service.synthesize_speech("b" * 64), speech_client.audio)
             self.assertEqual(service.synthesize_speech("b" * 64), speech_client.audio)
             self.assertEqual(speech_client.texts, [final_text])
-            cache_path = speech_dir / (("b" * 64) + ".wav")
+            cache_path = speech_dir / ("1-" + ("b" * 64) + ".wav")
             self.assertEqual(cache_path.read_bytes(), speech_client.audio)
             self.assertEqual(cache_path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(list(speech_dir.glob("*.wav")), [cache_path])
@@ -287,6 +376,30 @@ class TerminalServiceTests(unittest.TestCase):
             with self.assertRaises(terminald.TerminalError):
                 service.synthesize_speech("c" * 64)
             self.assertEqual(speech_client.texts, [final_text])
+
+    def test_slot_scoped_speech_caches_are_independent_and_legacy_cache_is_removed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            speech_dir = Path(temporary)
+            legacy = speech_dir / (("a" * 64) + ".wav")
+            first = speech_dir / ("1-" + ("b" * 64) + ".wav")
+            second = speech_dir / ("2-" + ("c" * 64) + ".wav")
+            unrelated = speech_dir / "keep.wav"
+            for path in (legacy, first, second, unrelated):
+                path.write_bytes(b"RIFF\x04\x00\x00\x00WAVE")
+                path.chmod(0o600)
+
+            slot_one = terminald.TerminalService(FakeRunner(), speech_dir=speech_dir, session_id=1)
+            slot_two = terminald.TerminalService(FakeRunner(), speech_dir=speech_dir, session_id=2)
+            slot_two.remove_legacy_speech_cache()
+            self.assertTrue(legacy.exists())
+            slot_one.remove_legacy_speech_cache()
+
+            self.assertFalse(legacy.exists())
+            self.assertTrue(first.exists())
+            self.assertTrue(second.exists())
+            self.assertTrue(unrelated.exists())
+            self.assertEqual(slot_one._speech_cache_path("d" * 64).name, "1-" + ("d" * 64) + ".wav")
+            self.assertEqual(slot_two._speech_cache_path("d" * 64).name, "2-" + ("d" * 64) + ".wav")
 
     def test_concurrent_duplicate_speech_requests_share_one_complete_render(self):
         class BlockingRoomSpeechClient(FakeRoomSpeechClient):
@@ -415,6 +528,197 @@ class TerminalServiceTests(unittest.TestCase):
         service.send_input("request-return-only", b"", append_return=True)
         return_loads = [call for call in runner.calls if "load-buffer" in call[0]]
         self.assertEqual(return_loads[-1][1], b"\r")
+
+    def test_v2_http_routes_fixed_sessions_and_v1_remains_slot_one(self):
+        token = "fixture-" + ("a" * 56)
+        services = {session_id: FakeRouteService(session_id) for session_id in (1, 2, 3)}
+        server = terminald.TerminalHTTPServer(
+            ("127.0.0.1", 0),
+            services[1],
+            token,
+            terminald.parse_cidrs("127.0.0.0/8"),
+            services=services,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = "http://127.0.0.1:{}".format(server.server_address[1])
+        headers = {"Authorization": "Bearer " + token}
+
+        def load_json(path):
+            request = urllib_request.Request(base + path, headers=headers)
+            with urllib_request.urlopen(request, timeout=5) as response:
+                return json.load(response)
+
+        def post_json(path, payload):
+            request = urllib_request.Request(
+                base + path,
+                data=json.dumps(payload).encode(),
+                method="POST",
+                headers={**headers, "Content-Type": "application/json"},
+            )
+            with urllib_request.urlopen(request, timeout=5) as response:
+                return response, response.read()
+
+        try:
+            self.assertEqual(load_json("/health")["sessionIDs"], [1, 2, 3])
+            frame = load_json("/v2/terminal/frame?after=7&sessionID=2")
+            self.assertEqual(frame["sessionID"], 2)
+            self.assertEqual(services[2].calls, [("frame", 7)])
+            self.assertEqual(services[1].calls, [])
+
+            history = load_json("/v2/terminal/history?start=9&limit=10&sessionID=3")
+            self.assertEqual(history["sessionID"], 3)
+            self.assertEqual(services[3].calls, [("history", 9, 10)])
+
+            input_payload = {
+                "requestID": "slot-three",
+                "sessionID": 3,
+                "dataBase64": base64.b64encode(b"three").decode(),
+                "appendReturn": True,
+            }
+            _, raw_acknowledgement = post_json("/v2/terminal/input", input_payload)
+            acknowledgement = json.loads(raw_acknowledgement)
+            self.assertEqual(acknowledgement["sessionID"], 3)
+            self.assertIn(("input", "slot-three", b"three", True), services[3].calls)
+
+            response_id = "d" * 64
+            response, audio = post_json(
+                "/v2/terminal/speech",
+                {"sessionID": 2, "responseID": response_id},
+            )
+            self.assertEqual(response.headers["X-JARVIS-Terminal-Session"], "2")
+            self.assertEqual(audio[:4], b"RIFF")
+            self.assertIn(("speech", response_id), services[2].calls)
+
+            legacy = load_json("/v1/terminal/frame?after=0&sessionID=3")
+            self.assertEqual(legacy["sessionID"], 1)
+            legacy_input = dict(input_payload, requestID="legacy", sessionID=3)
+            _, raw_legacy_ack = post_json("/v1/terminal/input", legacy_input)
+            self.assertEqual(json.loads(raw_legacy_ack)["sessionID"], 1)
+            self.assertIn(("input", "legacy", b"three", True), services[1].calls)
+
+            for path in (
+                "/v2/terminal/frame?after=0",
+                "/v2/terminal/frame?after=0&sessionID=0",
+                "/v2/terminal/frame?after=0&sessionID=2&sessionID=3",
+                "/v2/terminal/frame?after=0&sessionID=02",
+            ):
+                with self.assertRaises(HTTPError) as raised:
+                    load_json(path)
+                self.assertEqual(raised.exception.code, 400)
+                raised.exception.close()
+
+            for invalid_session in (False, 4, 2.0, "2", "02"):
+                invalid_payload = dict(input_payload, sessionID=invalid_session)
+                with self.assertRaises(HTTPError) as raised:
+                    post_json("/v2/terminal/input", invalid_payload)
+                self.assertEqual(raised.exception.code, 400)
+                raised.exception.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+        self.assertTrue(all(service.closed for service in services.values()))
+
+        with self.assertRaises(terminald.TerminalError):
+            terminald.TerminalHTTPServer(
+                ("127.0.0.1", 0),
+                services[1],
+                token,
+                terminald.parse_cidrs("127.0.0.0/8"),
+                services={1: services[1], 2: services[3]},
+            )
+
+    def test_disposable_bootstrap_maps_only_fixed_slots_and_preserves_panes(self):
+        tmux = shutil.which("tmux")
+        zsh = shutil.which("zsh")
+        if not tmux or not zsh:
+            self.skipTest("tmux or zsh is unavailable")
+        socket = "jarvis-bootstrap-test-{}".format(uuid.uuid4().hex)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            script = root / "jarvis-mobile-terminal.sh"
+            source = terminald.BOOTSTRAP.read_text(encoding="utf-8")
+            source = source.replace(
+                'readonly TMUX_BIN="/opt/homebrew/bin/tmux"',
+                'readonly TMUX_BIN="{}"'.format(tmux),
+            ).replace(
+                'readonly TMUX_SOCKET="jarvis-mobile"',
+                'readonly TMUX_SOCKET="{}"'.format(socket),
+            ).replace(
+                'readonly TMUX_CONFIG="/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/config/jarvis-mobile.tmux.conf"',
+                'readonly TMUX_CONFIG="{}"'.format(terminald.APP_ROOT / "config" / "jarvis-mobile.tmux.conf"),
+            ).replace(
+                'readonly JARVIS_ROOT="/Users/dylanrapanan/JARVIS"',
+                'readonly JARVIS_ROOT="{}"'.format(root),
+            ).replace(
+                "readonly PI_COMMAND='/opt/homebrew/bin/pi --tui-mode regular'",
+                "readonly PI_COMMAND='sleep 30'",
+            )
+            script.write_text(source, encoding="utf-8")
+            script.chmod(0o700)
+
+            def ensure(slot):
+                return subprocess.run(
+                    [str(script), "--slot", str(slot), "--ensure-only"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=10,
+                )
+
+            def pane_pid(session):
+                return subprocess.run(
+                    [tmux, "-L", socket, "display-message", "-p", "-t", session + ":", "#{pane_pid}"],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    timeout=5,
+                ).stdout.decode().strip()
+
+            try:
+                self.assertEqual(ensure(2).returncode, 0)
+                first_pid = pane_pid("jarvis-ios-2")
+                self.assertEqual(ensure(2).returncode, 0)
+                self.assertEqual(pane_pid("jarvis-ios-2"), first_pid)
+                self.assertEqual(ensure(1).returncode, 0)
+                self.assertEqual(ensure(3).returncode, 0)
+                sessions = subprocess.run(
+                    [tmux, "-L", socket, "list-sessions", "-F", "#{session_name}"],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    timeout=5,
+                ).stdout.decode().splitlines()
+                self.assertEqual(sorted(sessions), ["jarvis-ios", "jarvis-ios-2", "jarvis-ios-3"])
+                for session in sessions:
+                    size = subprocess.run(
+                        [tmux, "-L", socket, "show-options", "-wv", "-t", session + ":0", "window-size"],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        timeout=5,
+                    ).stdout.decode().strip()
+                    self.assertEqual(size, "latest")
+
+                for arguments in (
+                    ["--slot", "4", "--ensure-only"],
+                    ["--slot", "1", "--slot", "2", "--ensure-only"],
+                    ["--session", "jarvis-ios-2", "--ensure-only"],
+                ):
+                    rejected = subprocess.run(
+                        [str(script), *arguments],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=5,
+                    )
+                    self.assertEqual(rejected.returncode, 64)
+                self.assertEqual(pane_pid("jarvis-ios-2"), first_pid)
+            finally:
+                subprocess.run(
+                    [tmux, "-L", socket, "kill-server"],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                )
 
     def test_disposable_tmux_history_pages_reach_oldest_retained_rows(self):
         tmux = shutil.which("tmux")
@@ -549,15 +853,25 @@ class TerminalServiceTests(unittest.TestCase):
                         with urllib_request.urlopen(frame_request, context=context, timeout=5) as response:
                             frame = json.load(response)
                         self.assertEqual(frame["columns"], 48)
+                        self.assertEqual(frame["sessionID"], 1)
+
+                        routed_frame_request = urllib_request.Request(
+                            base + "/v2/terminal/frame?after=0&sessionID=1",
+                            headers={"Authorization": "Bearer " + token},
+                        )
+                        with urllib_request.urlopen(routed_frame_request, context=context, timeout=5) as response:
+                            routed_frame = json.load(response)
+                        self.assertEqual(routed_frame["sessionID"], 1)
 
                         payload = json.dumps({
                             "requestID": "disposable-request",
+                            "sessionID": 1,
                             "dataBase64": base64.b64encode(b"fixture prompt").decode(),
                             "appendReturn": True,
                         }).encode()
                         for _ in range(2):
                             post = urllib_request.Request(
-                                base + "/v1/terminal/input",
+                                base + "/v2/terminal/input",
                                 data=payload,
                                 method="POST",
                                 headers={
@@ -566,7 +880,9 @@ class TerminalServiceTests(unittest.TestCase):
                                 },
                             )
                             with urllib_request.urlopen(post, context=context, timeout=5) as response:
-                                self.assertTrue(json.load(response)["ok"])
+                                acknowledgement = json.load(response)
+                                self.assertTrue(acknowledgement["ok"])
+                                self.assertEqual(acknowledgement["sessionID"], 1)
                     finally:
                         server.shutdown()
                         server.server_close()

@@ -60,6 +60,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     }
 
     @Published private(set) var frame: WatchTerminalFrame?
+    @Published private(set) var selectedSlot: JARVISTerminalSlot
     @Published private(set) var status: Status
     @Published private(set) var errorMessage: String?
     @Published private(set) var isSending = false
@@ -117,6 +118,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
             settings.save(configuration)
         }
         #endif
+        selectedSlot = JARVISTerminalSlot.load()
         status = settings.configuration == nil ? .notConfigured : .offline
         lastPersistedPreferredRoute = UserDefaults.standard.string(forKey: Self.preferredRouteKey)
         speechFileStore.removeOrphanedDownloads()
@@ -150,6 +152,25 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         status == .live && isConnectionConfirmed
     }
 
+    @discardableResult
+    func selectAdjacentSlot(_ direction: Int) -> Bool {
+        guard direction == -1 || direction == 1,
+              !isSending, pendingBackspaceCount == 0 else { return false }
+        let target = direction < 0 ? selectedSlot.previous : selectedSlot.next
+        guard let target, target != selectedSlot else { return false }
+        // Clear slot-bound prepared audio before persisting the new identity so
+        // even process termination between steps cannot restore cross-slot WAVs.
+        stopSpeech()
+        controlLatched = false
+        frame = nil
+        historyPages.removeAll()
+        historyRequest = nil
+        selectedSlot = target
+        target.persist()
+        restartIfNeeded()
+        return true
+    }
+
     func cachedHistoryPage(
         containing range: Range<Int>,
         paneID: String
@@ -175,6 +196,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         historyRequest = (paneID, pageStart)
         isHistoryLoading = true
         let generation = connectionGeneration
+        let slot = selectedSlot
         historyTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
@@ -187,9 +209,11 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
                 }
             }
             do {
-                let page = try await client.historyPage(start: pageStart)
+                let page = try await client.historyPage(start: pageStart, slot: slot)
                 guard !Task.isCancelled,
                       self.connectionGeneration == generation,
+                      self.selectedSlot == slot,
+                      page.sessionID == slot.rawValue,
                       page.paneID == paneID else { return }
                 var retained = self.historyPages.filter {
                     $0.paneID == paneID && $0.start != page.start
@@ -241,6 +265,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         speechResponseID = speech.responseID
         let responseID = speech.responseID
         let preparationID = UUID()
+        let slot = selectedSlot
         let preferredRoute = client?.selectedBaseURL ?? rememberedPreferredRoute(for: configuration)
         let speechClient = WatchTerminalClient(
             configuration: configuration,
@@ -265,10 +290,11 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
                 }
             }
             do {
-                _ = try await speechClient.preflight()
-                downloadedURL = try await speechClient.speechAudio(responseID: responseID)
+                _ = try await speechClient.preflight(slot: slot)
+                downloadedURL = try await speechClient.speechAudio(responseID: responseID, slot: slot)
                 try Task.checkCancellation()
                 guard self.speechPreparationID == preparationID,
+                      self.selectedSlot == slot,
                       self.appIsForeground,
                       self.isVisible,
                       self.frame?.speech?.responseID == responseID,
@@ -658,7 +684,11 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         pendingBackspaceIDs.insert(trackingID)
         pendingBackspaceCount = pendingBackspaceIDs.count
         let generation = connectionGeneration
-        let input = WatchTerminalInput(data: WatchTerminalKeyBytes.backspace, appendReturn: false)
+        let input = WatchTerminalInput(
+            session: selectedSlot,
+            data: WatchTerminalKeyBytes.backspace,
+            appendReturn: false
+        )
         Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
@@ -701,18 +731,26 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
             preferredBaseURL: preferredRoute
         )
         self.client = client
+        let slot = selectedSlot
+        let generation = connectionGeneration
         status = keepsLiveStatus ? .live : .connecting
         errorMessage = nil
-        trace("route_restart retained_frame=\(keepsLiveStatus) preferred=\(preferredRoute != nil)")
+        trace("route_restart session=\(slot.rawValue) retained_frame=\(keepsLiveStatus) preferred=\(preferredRoute != nil)")
         pollTask = Task { @MainActor [weak self] in
             guard let self else { return }
             // A newly created route must confirm itself immediately instead of
             // long-polling the last foreground sequence before showing recovery.
             var sequence = 0
-            while !Task.isCancelled, self.appIsForeground, self.isVisible {
+            while !Task.isCancelled,
+                  self.connectionGeneration == generation,
+                  self.appIsForeground,
+                  self.isVisible {
                 do {
-                    let next = try await client.frame(after: sequence)
-                    guard !Task.isCancelled else { return }
+                    let next = try await client.frame(after: sequence, slot: slot)
+                    guard !Task.isCancelled,
+                          self.connectionGeneration == generation,
+                          self.selectedSlot == slot,
+                          next.sessionID == slot.rawValue else { return }
                     let recoveredRoute = !self.isConnectionConfirmed
                     let frameChanged = self.frame != next
                     if let previous = self.frame,
@@ -764,7 +802,9 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
                 } catch is CancellationError {
                     return
                 } catch {
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled,
+                          self.connectionGeneration == generation,
+                          self.selectedSlot == slot else { return }
                     let wasConfirmed = self.isConnectionConfirmed
                     self.isConnectionConfirmed = false
                     if wasConfirmed { self.trace("route_poll_failed") }
@@ -851,7 +891,11 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         }
         isSending = true
         let generation = connectionGeneration
-        let input = WatchTerminalInput(data: data, appendReturn: appendReturn)
+        let input = WatchTerminalInput(
+            session: selectedSlot,
+            data: data,
+            appendReturn: appendReturn
+        )
         Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
@@ -949,6 +993,13 @@ struct WatchTerminalView: View {
             controller.setVisible(active)
             crownIsFocused = active
         }
+        .onChange(of: controller.selectedSlot) { _, _ in
+            crownPosition = 0
+            scrollOffset = 0
+            keyboardDraft = ""
+            showingKeyPalette = false
+            crownIsFocused = isActive
+        }
         .onDisappear {
             crownIsFocused = false
             controller.setVisible(false)
@@ -983,10 +1034,18 @@ struct WatchTerminalView: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 24).onEnded { value in
-                    guard value.translation.height < -60,
-                          abs(value.translation.height) > abs(value.translation.width),
+                    let horizontal = value.translation.width
+                    let vertical = value.translation.height
+                    if abs(horizontal) > abs(vertical), abs(horizontal) >= 48 {
+                        // Horizontal paging changes only local routing state and
+                        // never emits a terminal byte or tmux key binding.
+                        _ = controller.selectAdjacentSlot(horizontal < 0 ? 1 : -1)
+                        return
+                    }
+                    guard vertical < -60,
+                          abs(vertical) > abs(horizontal),
                           let onAdvancePage else { return }
-                    // Touch remains page navigation only. Terminal history is
+                    // Vertical touch remains dashboard navigation. History is
                     // controlled exclusively by the focused Digital Crown.
                     onAdvancePage()
                 }
@@ -1193,11 +1252,22 @@ struct WatchTerminalView: View {
 
     private var terminalStatusOverlay: some View {
         ZStack(alignment: .top) {
-            Text("JARVIS")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 2) {
+                Text("JARVIS · \(controller.selectedSlot.displayName)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                HStack(spacing: 3) {
+                    ForEach(JARVISTerminalSlot.allCases, id: \.self) { slot in
+                        Capsule()
+                            .fill(slot == controller.selectedSlot ? WatchJarvisStyle.accent : Color.secondary.opacity(0.55))
+                            .frame(width: slot == controller.selectedSlot ? 8 : 4, height: 2)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("JARVIS terminal session \(controller.selectedSlot.displayName) of 3")
+            .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: 5) {
                 Image(systemName: "terminal.fill")

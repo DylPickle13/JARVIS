@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import JARVISKit
 import Network
 
 @MainActor
@@ -13,6 +14,7 @@ enum PiTerminalConnectionStatus: Equatable {
 @MainActor
 final class PiTerminalController: ObservableObject {
     @Published private(set) var status: PiTerminalConnectionStatus = .idle
+    @Published private(set) var selectedSlot: JARVISTerminalSlot
     @Published private(set) var pendingHostTrust: PiPendingHostTrust?
     @Published private(set) var isControlLatched = false
     @Published private(set) var isTerminalFocused = false
@@ -26,6 +28,7 @@ final class PiTerminalController: ObservableObject {
 
     let settings: PiTerminalSettings
 
+    private let slotDefaults: UserDefaults
     private weak var terminalView: PiTerminalHostView?
     private var isVisible = false
     private var appIsActive = false
@@ -38,8 +41,13 @@ final class PiTerminalController: ObservableObject {
     private var attachmentTaskID: UUID?
     private var attachmentTask: Task<Void, Never>?
 
-    init(settings: PiTerminalSettings) {
+    init(
+        settings: PiTerminalSettings,
+        slotDefaults: UserDefaults = .standard
+    ) {
         self.settings = settings
+        self.slotDefaults = slotDefaults
+        self.selectedSlot = JARVISTerminalSlot.load(from: slotDefaults)
         startPathMonitor()
     }
 
@@ -65,6 +73,11 @@ final class PiTerminalController: ObservableObject {
         }
         view.keyboardFocusChanged = { [weak self] focused in
             Task { @MainActor [weak self] in self?.isTerminalFocused = focused }
+        }
+        view.sessionSwipeRequested = { [weak self] direction in
+            Task { @MainActor [weak self] in
+                _ = self?.selectAdjacentSlot(direction)
+            }
         }
         view.hostTrustRequested = { [weak self] request in
             Task { @MainActor [weak self] in
@@ -96,6 +109,32 @@ final class PiTerminalController: ObservableObject {
         status = .idle
         isControlLatched = false
         isTerminalFocused = false
+    }
+
+    var canSwitchSlots: Bool {
+        status == .connected
+            && !isAttachmentSheetPresented
+            && !isAttachmentBusy
+            && pendingHostTrust == nil
+    }
+
+    @discardableResult
+    func selectAdjacentSlot(_ direction: Int) -> Bool {
+        guard canSwitchSlots, direction == -1 || direction == 1 else { return false }
+        let target = direction < 0 ? selectedSlot.previous : selectedSlot.next
+        guard let target, target != selectedSlot else { return false }
+        selectedSlot = target
+        target.persist(to: slotDefaults)
+        attachmentStatusText = nil
+        attachmentError = nil
+        if terminalView?.switchSession(to: target) == true {
+            status = .connecting
+        } else {
+            terminalView?.disconnectSSH()
+            status = .idle
+            maybeConnect(force: true)
+        }
+        return true
     }
 
     func sendTerminalBytes(_ bytes: [UInt8]) {
@@ -589,7 +628,11 @@ final class PiTerminalController: ObservableObject {
         if !force, status == .connecting || status == .connected { return }
         let trustedKey = settings.trustedHostKey(host: configuration.host, port: configuration.port)
         status = .connecting
-        terminalView.connect(configuration: configuration, trustedHostKey: trustedKey)
+        terminalView.connect(
+            configuration: configuration,
+            trustedHostKey: trustedKey,
+            slot: selectedSlot
+        )
     }
 
     private func startPathMonitor() {

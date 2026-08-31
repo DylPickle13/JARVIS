@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import JARVISKit
 import NIOCore
 import NIOPosix
 import NIOSSH
@@ -214,22 +215,22 @@ private final class PiSSHSessionHandler: ChannelInboundHandler, @unchecked Senda
     typealias InboundIn = SSHChannelData
 
     private let term: String
+    private let command: String
     private let initialWindowSize: PiTerminalWindowSize
     private let onOutput: @Sendable ([UInt8]) -> Void
-    private let onReady: @Sendable () -> Void
     private let onEnded: @Sendable () -> Void
 
     init(
         term: String,
+        command: String,
         initialWindowSize: PiTerminalWindowSize,
         onOutput: @escaping @Sendable ([UInt8]) -> Void,
-        onReady: @escaping @Sendable () -> Void,
         onEnded: @escaping @Sendable () -> Void
     ) {
         self.term = term
+        self.command = command
         self.initialWindowSize = initialWindowSize
         self.onOutput = onOutput
-        self.onReady = onReady
         self.onEnded = onEnded
     }
 
@@ -253,10 +254,9 @@ private final class PiSSHSessionHandler: ChannelInboundHandler, @unchecked Senda
             promise: nil
         )
         context.triggerUserOutboundEvent(
-            SSHChannelRequestEvent.ExecRequest(command: PiTerminalConfiguration.remoteCommand, wantReply: false),
+            SSHChannelRequestEvent.ExecRequest(command: command, wantReply: false),
             promise: nil
         )
-        onReady()
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -287,10 +287,10 @@ private final class PiSSHConnection: @unchecked Sendable {
     private let configuration: PiTerminalConfiguration
     private let trustedHostKey: String?
     private let windowState: PiTerminalWindowState
-    private let onOutput: @Sendable ([UInt8]) -> Void
-    private let onReady: @Sendable () -> Void
+    private let onOutput: @Sendable ([UInt8], Int) -> Void
+    private let onReady: @Sendable (Int) -> Void
     private let onTrust: @Sendable (PiPendingHostTrust) -> Void
-    private let onFailure: @Sendable (Error) -> Void
+    private let onFailure: @Sendable (Error, Int) -> Void
 
     private let stateLock = NSLock()
     private var didFail = false
@@ -298,19 +298,23 @@ private final class PiSSHConnection: @unchecked Sendable {
     private var group: EventLoopGroup?
     private var channel: Channel?
     private var sessionChannel: Channel?
+    private var activeSlot: JARVISTerminalSlot
+    private var sessionGeneration = 0
 
     init(
         configuration: PiTerminalConfiguration,
         trustedHostKey: String?,
         initialWindowSize: PiTerminalWindowSize,
-        onOutput: @escaping @Sendable ([UInt8]) -> Void,
-        onReady: @escaping @Sendable () -> Void,
+        initialSlot: JARVISTerminalSlot,
+        onOutput: @escaping @Sendable ([UInt8], Int) -> Void,
+        onReady: @escaping @Sendable (Int) -> Void,
         onTrust: @escaping @Sendable (PiPendingHostTrust) -> Void,
-        onFailure: @escaping @Sendable (Error) -> Void
+        onFailure: @escaping @Sendable (Error, Int) -> Void
     ) {
         self.configuration = configuration
         self.trustedHostKey = trustedHostKey
         self.windowState = PiTerminalWindowState(initial: initialWindowSize)
+        self.activeSlot = initialSlot
         self.onOutput = onOutput
         self.onReady = onReady
         self.onTrust = onTrust
@@ -376,10 +380,55 @@ private final class PiSSHConnection: @unchecked Sendable {
                 if shouldClose {
                     channel.close(promise: nil)
                 } else {
-                    self.createSessionChannel(on: channel)
+                    self.stateLock.lock()
+                    let slot = self.activeSlot
+                    let generation = self.sessionGeneration
+                    self.stateLock.unlock()
+                    self.createSessionChannel(on: channel, slot: slot, generation: generation)
                 }
             }
         }
+    }
+
+    @discardableResult
+    func switchSession(to slot: JARVISTerminalSlot) -> Bool {
+        stateLock.lock()
+        guard !intentionalClose, !didFail, let parent = channel, parent.isActive else {
+            stateLock.unlock()
+            return false
+        }
+        if activeSlot == slot, sessionChannel != nil {
+            stateLock.unlock()
+            return true
+        }
+        activeSlot = slot
+        sessionGeneration += 1
+        let generation = sessionGeneration
+        let previous = sessionChannel
+        sessionChannel = nil
+        stateLock.unlock()
+
+        let openSelected: @Sendable () -> Void = { [weak self, weak parent] in
+            guard let self, let parent else { return }
+            self.createSessionChannel(on: parent, slot: slot, generation: generation)
+        }
+        if let previous {
+            previous.close().whenComplete { [weak self, weak parent] result in
+                switch result {
+                case .success:
+                    openSelected()
+                case .failure(let error):
+                    // Never open a replacement while the prior PTY might still
+                    // be attached. Fail the current generation and close the
+                    // parent rather than risking two visible tmux clients.
+                    self?.failSession(error, generation: generation)
+                    parent?.close(promise: nil)
+                }
+            }
+        } else {
+            parent.eventLoop.execute(openSelected)
+        }
+        return true
     }
 
     func send(_ data: Data) {
@@ -412,6 +461,7 @@ private final class PiSSHConnection: @unchecked Sendable {
 
     func performAttachmentRequest(
         _ request: PiAttachmentWireRequest,
+        slot: JARVISTerminalSlot,
         files: [PiAttachmentLocalFile],
         progress: @escaping @Sendable (Int64, Int64) -> Void,
         completion: @escaping @Sendable (Result<PiAttachmentWireResponse, Error>) -> Void
@@ -442,6 +492,7 @@ private final class PiSSHConnection: @unchecked Sendable {
                     try sync.addHandler(
                         PiSSHAttachmentSessionHandler(
                             request: request,
+                            receiverCommand: PiAttachmentProtocol.receiverCommand(for: slot),
                             requestFrame: requestFrame,
                             files: files,
                             progress: progress,
@@ -495,7 +546,15 @@ private final class PiSSHConnection: @unchecked Sendable {
         }
     }
 
-    private func createSessionChannel(on channel: Channel) {
+    private func createSessionChannel(
+        on channel: Channel,
+        slot: JARVISTerminalSlot,
+        generation: Int
+    ) {
+        stateLock.lock()
+        let shouldCreate = !intentionalClose && !didFail && sessionGeneration == generation
+        stateLock.unlock()
+        guard shouldCreate else { return }
         channel.pipeline.handler(type: NIOSSHHandler.self).flatMap { [weak self] (sshHandler: NIOSSHHandler) -> EventLoopFuture<Channel> in
             guard let self else {
                 return channel.eventLoop.makeFailedFuture(PiSSHError.invalidChannelType)
@@ -518,14 +577,18 @@ private final class PiSSHConnection: @unchecked Sendable {
                     try sync.addHandler(
                         PiSSHSessionHandler(
                             term: "xterm-256color",
+                            command: PiTerminalConfiguration.remoteCommand(for: slot),
                             initialWindowSize: self.windowState.snapshot(),
-                            onOutput: self.onOutput,
-                            onReady: self.onReady,
-                            onEnded: { [weak self] in self?.sessionEnded() }
+                            onOutput: { [weak self] bytes in
+                                self?.sessionOutput(bytes, generation: generation)
+                            },
+                            onEnded: { [weak self] in
+                                self?.sessionEnded(generation: generation)
+                            }
                         )
                     )
                     try sync.addHandler(PiSSHErrorHandler { [weak self] error in
-                        self?.fail(error)
+                        self?.failSession(error, generation: generation)
                     })
                 }
             }
@@ -534,10 +597,10 @@ private final class PiSSHConnection: @unchecked Sendable {
             guard let self else { return }
             switch result {
             case .failure(let error):
-                self.fail(error)
+                self.failSession(error, generation: generation)
             case .success(let childChannel):
                 self.stateLock.lock()
-                let shouldClose = self.intentionalClose
+                let shouldClose = self.intentionalClose || self.sessionGeneration != generation
                 if !shouldClose { self.sessionChannel = childChannel }
                 self.stateLock.unlock()
                 if shouldClose {
@@ -545,22 +608,45 @@ private final class PiSSHConnection: @unchecked Sendable {
                 } else {
                     // A SwiftUI layout resize may have arrived before the SSH child
                     // channel. Publish the retained current viewport now rather
-                    // than replaying the stale PTY creation dimensions.
+                    // than replaying the stale PTY creation dimensions. Report
+                    // readiness only after send() can resolve this exact child.
                     self.publishWindowChange(self.windowState.snapshot(), on: childChannel)
+                    self.sessionReady(generation: generation)
                 }
             }
         }
     }
 
-    private func sessionEnded() {
+    private func sessionOutput(_ bytes: [UInt8], generation: Int) {
         stateLock.lock()
-        let shouldReport = !intentionalClose
+        let shouldDeliver = !intentionalClose && sessionGeneration == generation
+        stateLock.unlock()
+        if shouldDeliver { onOutput(bytes, generation) }
+    }
+
+    private func sessionReady(generation: Int) {
+        stateLock.lock()
+        let shouldDeliver = !intentionalClose && sessionGeneration == generation
+        stateLock.unlock()
+        if shouldDeliver { onReady(generation) }
+    }
+
+    private func sessionEnded(generation: Int) {
+        stateLock.lock()
+        let shouldReport = !intentionalClose && sessionGeneration == generation
         let parent = channel
         stateLock.unlock()
         if shouldReport {
             fail(PiSSHError.sessionEnded)
             parent?.close(promise: nil)
         }
+    }
+
+    private func failSession(_ error: Error, generation: Int) {
+        stateLock.lock()
+        let isCurrent = sessionGeneration == generation
+        stateLock.unlock()
+        if isCurrent { fail(error) }
     }
 
     private func fail(_ error: Error) {
@@ -570,8 +656,9 @@ private final class PiSSHConnection: @unchecked Sendable {
             return
         }
         didFail = true
+        let generation = sessionGeneration
         stateLock.unlock()
-        onFailure(error)
+        onFailure(error, generation)
     }
 
     private func shutdownGroup() {
@@ -641,8 +728,11 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     var hostTrustRequested: ((PiPendingHostTrust) -> Void)?
     var controlLatchChanged: ((Bool) -> Void)?
     var keyboardFocusChanged: ((Bool) -> Void)?
+    var sessionSwipeRequested: ((Int) -> Void)?
 
     private var sshConnection: PiSSHConnection?
+    private var activeSlot: JARVISTerminalSlot = .one
+    private var activeSessionGeneration = 0
     private var attachmentOperations: [UUID: PiAttachmentSSHOperation] = [:]
     private var connectionID = UUID()
     private let keyboardResponder = PiTerminalKeyboardResponder()
@@ -652,6 +742,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     private var pinchStartFontSize = PiTerminalPresentation.defaultFontSize
     private var touchScrollPan: UIPanGestureRecognizer!
     private var keyboardDismissPan: UIPanGestureRecognizer!
+    private var sessionSwipePan: UIPanGestureRecognizer!
     private var remoteMouseModeEnabled = false
     private var touchScrollRemainder: CGFloat = 0
     var isRoutingTouchScrollToPi: Bool { remoteMouseModeEnabled }
@@ -697,6 +788,12 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         dismissPan.delegate = self
         keyboardDismissPan = dismissPan
         addGestureRecognizer(dismissPan)
+
+        let sessionPan = UIPanGestureRecognizer(target: self, action: #selector(handleSessionSwipePan(_:)))
+        sessionPan.cancelsTouchesInView = false
+        sessionPan.delegate = self
+        sessionSwipePan = sessionPan
+        addGestureRecognizer(sessionPan)
     }
 
     required init?(coder: NSCoder) {
@@ -773,11 +870,17 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         source.hideCursor()
     }
 
-    func connect(configuration: PiTerminalConfiguration, trustedHostKey: String?) {
+    func connect(
+        configuration: PiTerminalConfiguration,
+        trustedHostKey: String?,
+        slot: JARVISTerminalSlot
+    ) {
         disconnectSSH()
         prepareTerminalForFreshConnection()
         let id = UUID()
         connectionID = id
+        activeSlot = slot
+        activeSessionGeneration = 0
         stateChanged?(.connecting)
 
         let terminal = getTerminal()
@@ -790,15 +893,20 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
             configuration: configuration,
             trustedHostKey: trustedHostKey,
             initialWindowSize: dimensions,
-            onOutput: { [weak self] bytes in
+            initialSlot: slot,
+            onOutput: { [weak self] bytes, generation in
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.connectionID == id else { return }
+                    guard let self,
+                          self.connectionID == id,
+                          self.activeSessionGeneration == generation else { return }
                     self.feed(byteArray: bytes[...])
                 }
             },
-            onReady: { [weak self] in
+            onReady: { [weak self] generation in
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.connectionID == id else { return }
+                    guard let self,
+                          self.connectionID == id,
+                          self.activeSessionGeneration == generation else { return }
                     self.stateChanged?(.connected)
                 }
             },
@@ -811,7 +919,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
                     self.hostTrustRequested?(request)
                 }
             },
-            onFailure: { [weak self] error in
+            onFailure: { [weak self] error, _ in
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.connectionID == id else { return }
                     self.stateChanged?(.failed(error.localizedDescription))
@@ -820,6 +928,24 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         )
         sshConnection = connection
         connection.connect()
+    }
+
+    @discardableResult
+    func switchSession(to slot: JARVISTerminalSlot) -> Bool {
+        guard slot != activeSlot, let sshConnection else { return slot == activeSlot }
+        cancelAllAttachmentOperations()
+        activeSlot = slot
+        activeSessionGeneration += 1
+        // Advance both generation gates before clearing the emulator. Any old
+        // bytes already queued onto the main actor are then rejected, while the
+        // replacement child cannot open until the previous PTY has closed.
+        let switched = sshConnection.switchSession(to: slot)
+        prepareTerminalForFreshConnection()
+        controlLatched = false
+        remoteMouseModeEnabled = false
+        touchScrollRemainder = 0
+        stateChanged?(.connecting)
+        return switched
     }
 
     func prepareTerminalForFreshConnection() {
@@ -857,6 +983,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
                 do {
                     let operation = try sshConnection.performAttachmentRequest(
                         request,
+                        slot: activeSlot,
                         files: files,
                         progress: progress
                     ) { [weak self] result in
@@ -954,6 +1081,13 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         _ = resignFirstResponder()
     }
 
+    @objc private func handleSessionSwipePan(_ recognizer: UIPanGestureRecognizer) {
+        guard recognizer.state == .ended else { return }
+        let translation = recognizer.translation(in: self)
+        guard abs(translation.x) > abs(translation.y), abs(translation.x) >= 72 else { return }
+        sessionSwipeRequested?(translation.x < 0 ? 1 : -1)
+    }
+
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
         let velocity = pan.velocity(in: self)
@@ -964,6 +1098,9 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         if gestureRecognizer === keyboardDismissPan {
             return isTerminalKeyboardFocused && velocity.y > 0 && isVertical
         }
+        if gestureRecognizer === sessionSwipePan {
+            return abs(velocity.x) > abs(velocity.y)
+        }
         return true
     }
 
@@ -971,7 +1108,10 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
-        gestureRecognizer === keyboardDismissPan || otherGestureRecognizer === keyboardDismissPan
+        gestureRecognizer === keyboardDismissPan
+            || otherGestureRecognizer === keyboardDismissPan
+            || gestureRecognizer === sessionSwipePan
+            || otherGestureRecognizer === sessionSwipePan
     }
 
     override func becomeFirstResponder() -> Bool {

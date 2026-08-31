@@ -253,6 +253,10 @@ grep -q 'scripts/jarvis-mobile-terminal.sh' JARVIS/Terminal/PiTerminalSettings.s
 zsh -n scripts/jarvis-mobile-terminal.sh
 grep -q 'TMUX_SOCKET="jarvis-mobile"' scripts/jarvis-mobile-terminal.sh
 grep -q 'TMUX_SESSION="jarvis-ios"' scripts/jarvis-mobile-terminal.sh
+grep -q 'TMUX_SESSION="jarvis-ios-2"' scripts/jarvis-mobile-terminal.sh
+grep -q 'TMUX_SESSION="jarvis-ios-3"' scripts/jarvis-mobile-terminal.sh
+grep -q 'case "$slot" in' scripts/jarvis-mobile-terminal.sh
+grep -q -- '--slot' scripts/jarvis-mobile-terminal.sh
 grep -q 'new-session -d' scripts/jarvis-mobile-terminal.sh
 grep -q 'attach-session' scripts/jarvis-mobile-terminal.sh
 grep -q 'export PATH="/opt/homebrew/bin:' scripts/jarvis-mobile-terminal.sh
@@ -262,6 +266,16 @@ grep -q 'source-file "$TMUX_CONFIG"' scripts/jarvis-mobile-terminal.sh
 grep -q 'send-keys -X -N 1 scroll-up' config/jarvis-mobile.tmux.conf
 grep -q 'send-keys -X -N 1 scroll-down' config/jarvis-mobile.tmux.conf
 reject_match 'Pi terminal must not assign a special Pi session name' -Fq -- '--name' scripts/jarvis-mobile-terminal.sh
+reject_match 'Pi launcher must not interpolate a client-supplied tmux session' -E 'TMUX_SESSION=.*\$slot|TMUX_SESSION=.*\$[12]' scripts/jarvis-mobile-terminal.sh
+grep -q 'static func remoteCommand(for slot: JARVISTerminalSlot)' JARVIS/Terminal/PiTerminalSettings.swift
+grep -q 'private var sessionGeneration = 0' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'readiness only after send() can resolve this exact child' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'self.sessionReady(generation: generation)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'Never open a replacement while the prior PTY might still' JARVIS/Terminal/PiSSHTransport.swift
+reject_match 'Pi session switching must not open a replacement after an unverified child close' -Fq 'previous.close().whenComplete { _ in openSelected() }' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'sessionSwipeRequested' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'JARVISTerminalSlot.load(from: slotDefaults)' JARVIS/Terminal/PiTerminalController.swift
+grep -q 'PiAttachmentProtocol.receiverCommand(for: slot)' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVIS/Terminal/PiTerminalSettings.swift
 grep -q 'String(openSSHPublicKey: hostKey)' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'extended-keys-format csi-u' config/jarvis-mobile.tmux.conf
@@ -302,7 +316,7 @@ reject_match 'per-request terminal capture polling was restored' -Fq 'time.sleep
 grep -q 'MAX_HISTORY_PAGE_ROWS = 256' terminald/jarvis_terminald.py
 grep -q 'def history_page(self, start: int, limit: int)' terminald/jarvis_terminald.py
 grep -q '"/v1/terminal/history"' terminald/jarvis_terminald.py
-grep -q 'public func historyPage(start: Int, limit: Int = WatchTerminalHistoryPage.maximumRows)' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'public func historyPage(' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'Array(retained.suffix(3))' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'paste-buffer' terminald/jarvis_terminald.py
 grep -q 'processed_request_ids' terminald/jarvis_terminald.py
@@ -324,16 +338,28 @@ grep -q 'pi.on("agent_settled"' ../../../.pi/extensions/47-watch-terminal-speech
 grep -q 'message.stopReason !== "stop" && message.stopReason !== "length"' ../../../.pi/extensions/47-watch-terminal-speech.ts
 grep -q 'part?.type === "text"' ../../../.pi/extensions/47-watch-terminal-speech.ts
 grep -q 'ROOM_SPEECH_URL = "http://127.0.0.1:8791/synthesize"' terminald/jarvis_terminald.py
-grep -q 'parsed.path not in {"/v1/terminal/input", "/v1/terminal/speech"}' terminald/jarvis_terminald.py
+grep -q '"/v1/terminal/input": (False, False)' terminald/jarvis_terminald.py
+grep -q '"/v2/terminal/input": (True, False)' terminald/jarvis_terminald.py
+grep -q '"/v2/terminal/speech": (True, True)' terminald/jarvis_terminald.py
+grep -q 'TMUX_SESSIONS = {1: "jarvis-ios", 2: "jarvis-ios-2", 3: "jarvis-ios-3"}' terminald/jarvis_terminald.py
+grep -q 'self.tmux_target = TMUX_TARGET if session_id == 1 else "=" + self.tmux_session + ":"' terminald/jarvis_terminald.py
+grep -q 'service.frame_after(after)' terminald/jarvis_terminald.py
+grep -q 'def _v2_payload_session(value: Any)' terminald/jarvis_terminald.py
+grep -q 'if type(value) is not int or value not in TMUX_SESSIONS' terminald/jarvis_terminald.py
+grep -q '"sessionID": session_id' terminald/jarvis_terminald.py
+grep -q 'private static func canonicalSessionID(in data: Data) throws -> Int' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'CFGetTypeID(number) == CFNumberGetTypeID()' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q '!CFNumberIsFloatType(number)' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'acknowledgement.ok' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'path == "/synthesize"' ../raspberry-pi/room_audio/room_audio_server.py
 grep -q 'is_loopback_address(self.client_address\[0\])' ../raspberry-pi/room_audio/room_audio_server.py
-grep -q 'public func speechAudio(responseID: String)' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+grep -q 'public func speechAudio(' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'import AVFoundation' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Image(systemName: controller.isSpeechPlaying ? "stop.fill" : "speaker.wave.2.fill")' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'private func prepareSpeechIfNeeded()' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'private var speechClient: WatchTerminalClient?' JARVISWatch/Views/WatchTerminalView.swift
-grep -q '_ = try await speechClient.preflight()' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'downloadedURL = try await speechClient.speechAudio(responseID: responseID)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q '_ = try await speechClient.preflight(slot: slot)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'downloadedURL = try await speechClient.speechAudio(responseID: responseID, slot: slot)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'self.appIsForeground' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'self.prepareSpeechIfNeeded()' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'self.speechFileURL = try self.retainPreparedSpeech' JARVISWatch/Views/WatchTerminalView.swift
@@ -372,7 +398,7 @@ grep -q 'private func trace(_ event: String)' JARVISWatch/Views/WatchTerminalVie
 grep -q 'self.speech_synthesis_events: Dict\[str, threading.Event\]' terminald/jarvis_terminald.py
 grep -q 'completion.wait(timeout=185)' terminald/jarvis_terminald.py
 grep -q 'os.replace(temporary_path, cache_path)' terminald/jarvis_terminald.py
-grep -q 'for stale_path in self.speech_dir.glob("\*.wav")' terminald/jarvis_terminald.py
+grep -q 'for stale_path in self.speech_dir.glob("{}-\*.wav".format(self.session_id))' terminald/jarvis_terminald.py
 /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes:0' JARVISWatch/Info.plist | grep -qx 'audio'
 grep -q 'def _bounded_tts_chunks' ../voice/voice_pipeline.py
 grep -q 'cleaned_text = self._clean_text_for_tts(text)' ../voice/voice_pipeline.py
@@ -401,7 +427,11 @@ grep -q 'WatchTerminalANSIParser.viewport(' JARVISWatch/Views/WatchTerminalView.
 grep -q 'let editorFontSize = outputFontSize' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch terminal must not require horizontal swiping' -Fq 'ScrollView(.horizontal' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch terminal must not duplicate Pi input in a prompt rail' -E 'private var promptRail|promptViewport\(displayColumns:' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'Text("JARVIS")' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Text("JARVIS · \\(controller.selectedSlot.displayName)")' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'func selectAdjacentSlot(_ direction: Int) -> Bool' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'self.connectionGeneration == generation' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'abs(horizontal) >= 48' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'JARVISTerminalSlot.allCases' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.frame(maxWidth: \.infinity, alignment: \.center)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.padding(\.horizontal, 7)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Image(systemName: "terminal.fill")' JARVISWatch/Views/WatchTerminalView.swift
@@ -410,7 +440,7 @@ reject_match 'Watch Crown scrolling must remain local and read-only' -Fq 'contro
 grep -q 'showingKeyPalette' JARVISWatch/Views/WatchTerminalView.swift
 grep -q '\.submitLabel(.done)' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Input must not use the system chooser that can resume in dictation' -Fq 'TextFieldLink' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'Touch remains page navigation only' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'Vertical touch remains dashboard navigation' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'private func stageInput(_ input: String)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'title: "Keys"' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'title: "Input"' JARVISWatch/Views/WatchTerminalView.swift
@@ -421,7 +451,8 @@ grep -q 'controller.sendText(message, appendReturn: false)' JARVISWatch/Views/Wa
 grep -q 'controller.sendEnter()' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'send(WatchTerminalKeyBytes.carriageReturn, appendReturn: false)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'controller.sendBackspace()' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'WatchTerminalInput(data: WatchTerminalKeyBytes.backspace, appendReturn: false)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'data: WatchTerminalKeyBytes.backspace' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'session: selectedSlot' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'pendingBackspaceCount = pendingBackspaceIDs.count' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Backspace must not enter the normal loading state' -Fq 'isSending = true' < <(sed -n '/func sendBackspace()/,/private func restartIfNeeded/p' JARVISWatch/Views/WatchTerminalView.swift)
 reject_match 'Watch input dock must not show a Backspace loading indicator' -Fq 'ProgressView' < <(sed -n '/private var inputDock/,/private func stageInput/p' JARVISWatch/Views/WatchTerminalView.swift)
@@ -589,7 +620,10 @@ grep -q 'var prompt: String' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'JARVISSiriPromptRuntime.submit(prompt)' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'guard outcome == \.sent else { return \.result() }' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'JARVISSpokenPrompt.normalize(rawPrompt)' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'WatchTerminalInput(data: Data(normalized.utf8), appendReturn: true)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'typealias SlotLoader = () -> JARVISTerminalSlot' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'let slot = slotLoader()' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'session: slot' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'data: Data(normalized.utf8)' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q '#if os(watchOS)' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'static var openAppWhenRun: Bool { true }' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'static var openAppWhenRun: Bool { false }' HostAppIntents/JARVISSiriPromptIntent.swift

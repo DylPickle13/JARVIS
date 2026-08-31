@@ -1,4 +1,5 @@
 import Foundation
+import JARVISKit
 
 struct PiAttachmentLimits: Codable, Equatable, Sendable {
     let maxFiles: Int
@@ -273,6 +274,10 @@ enum PiAttachmentProtocol {
     static let chunkSize = 64 * 1024
     static let maximumSafeWireInteger = 9_007_199_254_740_991
     static let receiverCommand = "/opt/homebrew/bin/node /Users/dylanrapanan/JARVIS/.pi/scripts/pi-attach-mobile-receiver.mjs"
+
+    static func receiverCommand(for slot: JARVISTerminalSlot) -> String {
+        "\(receiverCommand) --slot \(slot.rawValue)"
+    }
 
     private static let hardMaxFiles = 100
     private static let hardMaxFileBytes: Int64 = 2 * 1024 * 1024 * 1024

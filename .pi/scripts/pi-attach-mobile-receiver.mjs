@@ -1,86 +1,96 @@
 #!/usr/bin/env node
 
-import { readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { lstat } from "node:fs/promises";
 
 const PROTOCOL_VERSION = 1;
 const OPERATION_TIMEOUT_MS = 5 * 60 * 1000;
 const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(SCRIPT_DIRECTORY, "../..");
 const RUNTIME_DIRECTORY = join(PROJECT_ROOT, ".pi", "runtime");
-const DESCRIPTOR_PATH = join(RUNTIME_DIRECTORY, "pi-attach-mobile.json");
 
 function fail(message) {
   process.stderr.write(`${message}\n`);
   process.exit(1);
 }
 
-if (process.argv.length !== 2) fail("The mobile attachment receiver takes no arguments.");
+const argumentsList = process.argv.slice(2);
+let sessionID = 1;
+if (argumentsList.length !== 0) {
+  if (
+    argumentsList.length !== 2 ||
+    argumentsList[0] !== "--slot" ||
+    !/^[123]$/.test(argumentsList[1])
+  ) fail("The mobile attachment receiver accepts only a fixed session slot.");
+  sessionID = Number(argumentsList[1]);
+}
 
-let descriptor;
-try {
-  const [runtimeInfo, descriptorInfo, raw] = await Promise.all([
-    lstat(RUNTIME_DIRECTORY),
-    lstat(DESCRIPTOR_PATH),
-    readFile(DESCRIPTOR_PATH, "utf8"),
-  ]);
+const descriptorPaths = [join(RUNTIME_DIRECTORY, `pi-attach-mobile-slot-${sessionID}.json`)];
+// Build 132 and the surviving pre-slot Pi process publish this Slot 1 path.
+if (sessionID === 1) descriptorPaths.push(join(RUNTIME_DIRECTORY, "pi-attach-mobile.json"));
+
+async function readDescriptor() {
+  const runtimeInfo = await lstat(RUNTIME_DIRECTORY);
   if (
     runtimeInfo.isSymbolicLink() ||
     !runtimeInfo.isDirectory() ||
     (runtimeInfo.mode & 0o777) !== 0o700 ||
-    descriptorInfo.isSymbolicLink() ||
-    !descriptorInfo.isFile() ||
-    (descriptorInfo.mode & 0o777) !== 0o600 ||
-    runtimeInfo.uid !== process.getuid() ||
-    descriptorInfo.uid !== process.getuid()
-  ) {
-    throw new Error("private runtime metadata is invalid");
+    runtimeInfo.uid !== process.getuid()
+  ) throw new Error("private runtime metadata is invalid");
+  const canonicalRuntime = await realpath(RUNTIME_DIRECTORY);
+
+  for (const path of descriptorPaths) {
+    try {
+      const [descriptorInfo, raw] = await Promise.all([
+        lstat(path),
+        readFile(path, "utf8"),
+      ]);
+      if (
+        descriptorInfo.isSymbolicLink() ||
+        !descriptorInfo.isFile() ||
+        (descriptorInfo.mode & 0o777) !== 0o600 ||
+        descriptorInfo.uid !== process.getuid()
+      ) continue;
+      const value = JSON.parse(raw);
+      if (value?.sessionID !== undefined && value.sessionID !== sessionID) continue;
+      if (value?.sessionID === undefined && sessionID !== 1) continue;
+      if (
+        value?.version !== PROTOCOL_VERSION ||
+        !Number.isSafeInteger(value.pid) ||
+        value.pid <= 1 ||
+        typeof value.generation !== "string" ||
+        !/^[0-9a-f]{32}$/i.test(value.generation) ||
+        typeof value.socketPath !== "string" ||
+        resolve(value.socketPath) !== value.socketPath ||
+        !new RegExp(
+          `^pi-attach-mobile-${value.pid}-[0-9a-f]{8}\\.sock$`,
+          "i",
+        ).test(value.socketPath.split("/").at(-1) || "")
+      ) continue;
+      if (await realpath(dirname(value.socketPath)) !== canonicalRuntime) continue;
+      process.kill(value.pid, 0);
+      const socketInfo = await lstat(value.socketPath);
+      if (
+        socketInfo.isSymbolicLink() ||
+        !socketInfo.isSocket() ||
+        socketInfo.uid !== process.getuid() ||
+        (socketInfo.mode & 0o777) !== 0o600
+      ) continue;
+      return value;
+    } catch {
+      // Try the bounded Slot 1 legacy path only; other slots have no fallback.
+    }
   }
-  descriptor = JSON.parse(raw);
+  throw new Error("no matching live descriptor");
+}
+
+let descriptor;
+try {
+  descriptor = await readDescriptor();
 } catch {
   fail("The live iPhone attachment endpoint is unavailable.");
-}
-
-if (
-  !descriptor ||
-  descriptor.version !== PROTOCOL_VERSION ||
-  !Number.isSafeInteger(descriptor.pid) ||
-  descriptor.pid <= 1 ||
-  typeof descriptor.generation !== "string" ||
-  !/^[0-9a-f]{32}$/i.test(descriptor.generation) ||
-  typeof descriptor.socketPath !== "string" ||
-  resolve(descriptor.socketPath) !== descriptor.socketPath ||
-  !new RegExp(
-    `^pi-attach-mobile-${descriptor.pid}-[0-9a-f]{8}\\.sock$`,
-    "i",
-  ).test(descriptor.socketPath.split("/").at(-1) || "")
-) {
-  fail("The live iPhone attachment endpoint is invalid.");
-}
-
-try {
-  const [canonicalRuntime, canonicalSocketDirectory] = await Promise.all([
-    realpath(RUNTIME_DIRECTORY),
-    realpath(dirname(descriptor.socketPath)),
-  ]);
-  if (canonicalRuntime !== canonicalSocketDirectory) {
-    throw new Error("socket directory is outside the private runtime");
-  }
-  process.kill(descriptor.pid, 0);
-  const socketInfo = await lstat(descriptor.socketPath);
-  if (
-    socketInfo.isSymbolicLink() ||
-    !socketInfo.isSocket() ||
-    socketInfo.uid !== process.getuid() ||
-    (socketInfo.mode & 0o777) !== 0o600
-  ) {
-    throw new Error("private socket metadata is invalid");
-  }
-} catch {
-  fail("The live iPhone attachment endpoint is stale.");
 }
 
 const socket = createConnection({ path: descriptor.socketPath });
