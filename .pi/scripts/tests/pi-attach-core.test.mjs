@@ -69,6 +69,31 @@ test("AttachmentStore keeps only loose attachment files and an in-memory queue",
   }
 });
 
+test("AttachmentStore never creates nested or Pi session directories", async () => {
+  const data = await fixture();
+  try {
+    const bytes = Buffer.from("flat attachment\n", "utf8");
+    const store = new core.AttachmentStore(data.attachmentsRoot, {
+      maxFiles: 3,
+      maxFileBytes: 1024,
+      maxTotalBytes: 2048,
+    });
+    const staged = await store.stage([{
+      name: "pi/session-id/files/report.txt",
+      sizeBytes: bytes.length,
+      openStream: async function* () { yield bytes; },
+    }]);
+
+    assert.equal(staged.length, 1);
+    assert.equal(staged[0].displayName, "report.txt");
+    assert.equal(dirname(staged[0].path), data.attachmentsRoot);
+    assert.deepEqual(await readdir(data.attachmentsRoot), ["report.txt"]);
+    await assert.rejects(stat(join(data.attachmentsRoot, "pi")), { code: "ENOENT" });
+  } finally {
+    await rm(data.directory, { recursive: true, force: true });
+  }
+});
+
 test("a new AttachmentStore has no persisted queue but leaves attachment files in place", async () => {
   const data = await fixture();
   try {
@@ -124,6 +149,59 @@ test("AttachmentStore enforces limits without disturbing its in-memory queue", a
     assert.equal(reconciled.length, 1);
     assert.equal(reconciled[0].displayName, "second.bin");
     await assert.rejects(stat(oldPath), { code: "ENOENT" });
+  } finally {
+    await rm(data.directory, { recursive: true, force: true });
+  }
+});
+
+test("AttachmentStore re-verifies prepared bytes at final commit and cleans tampering", async () => {
+  const data = await fixture();
+  try {
+    const store = new core.AttachmentStore(data.attachmentsRoot, {
+      maxFiles: 2,
+      maxFileBytes: 1024,
+      maxTotalBytes: 2048,
+    });
+    const bytes = Buffer.from("original", "utf8");
+    const prepared = await store.prepareCandidates([{
+      name: "integrity.txt",
+      sizeBytes: bytes.length,
+      openStream: async function* () { yield bytes; },
+    }]);
+    await writeFile(prepared[0].temporaryPath, Buffer.from("tampered", "utf8"));
+    await assert.rejects(
+      store.reconcilePrepared([], prepared),
+      /integrity verification/i,
+    );
+    assert.deepEqual(await store.load(), []);
+    assert.deepEqual(await readdir(data.attachmentsRoot), []);
+  } finally {
+    await rm(data.directory, { recursive: true, force: true });
+  }
+});
+
+test("attachment names are bounded by UTF-8 bytes and collision suffixes remain bounded", async () => {
+  const data = await fixture();
+  try {
+    const longName = `${"📎".repeat(100)}.txt`;
+    const sanitized = core.sanitizeAttachmentName(longName);
+    assert.ok(Buffer.byteLength(sanitized, "utf8") <= 160);
+    const bytes = Buffer.from("x");
+    const store = new core.AttachmentStore(data.attachmentsRoot, {
+      maxFiles: 2,
+      maxFileBytes: 10,
+      maxTotalBytes: 10,
+    });
+    const candidate = () => ({
+      name: longName,
+      sizeBytes: bytes.length,
+      openStream: async function* () { yield bytes; },
+    });
+    await store.stage([candidate()]);
+    await store.consume((await store.load()).map((item) => item.id));
+    const [collision] = await store.stage([candidate()]);
+    assert.ok(Buffer.byteLength(collision.fileName, "utf8") <= 160);
+    assert.match(collision.fileName, /-2\.txt$/);
   } finally {
     await rm(data.directory, { recursive: true, force: true });
   }

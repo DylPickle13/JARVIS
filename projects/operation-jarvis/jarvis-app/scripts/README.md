@@ -32,7 +32,8 @@ optional Metal component; install it once with
   detached when absent, tolerates concurrent reconnect creation, launches Pi's
   regular main-screen TUI without a display-name override so Watch captures see
   response output immediately, re-sources the checked-in one-line wheel fallback
-  bindings, and then attaches the phone PTY. Its
+  bindings, reasserts tmux's accepted latest-client window-size policy without
+  issuing a resize, and then attaches the phone PTY. Its
   `--ensure-only` mode lets the Watch bridge recreate the same session without
   attaching another tmux client or changing terminal dimensions.
 - `install-jarvis-terminald.sh` — installs and starts the separate authenticated

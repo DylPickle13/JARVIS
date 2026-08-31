@@ -368,9 +368,16 @@ private final class PiSSHConnection: @unchecked Sendable {
                 self.fail(error)
                 self.shutdownGroup()
             case .success(let channel):
-                self.channel = channel
+                self.stateLock.lock()
+                let shouldClose = self.intentionalClose
+                if !shouldClose { self.channel = channel }
+                self.stateLock.unlock()
                 channel.closeFuture.whenComplete { [weak self] _ in self?.shutdownGroup() }
-                self.createSessionChannel(on: channel)
+                if shouldClose {
+                    channel.close(promise: nil)
+                } else {
+                    self.createSessionChannel(on: channel)
+                }
             }
         }
     }
@@ -401,6 +408,57 @@ private final class PiSSHConnection: @unchecked Sendable {
         stateLock.unlock()
         guard let sessionChannel else { return }
         publishWindowChange(size, on: sessionChannel)
+    }
+
+    func performAttachmentRequest(
+        _ request: PiAttachmentWireRequest,
+        files: [PiAttachmentLocalFile],
+        progress: @escaping @Sendable (Int64, Int64) -> Void,
+        completion: @escaping @Sendable (Result<PiAttachmentWireResponse, Error>) -> Void
+    ) throws -> PiAttachmentSSHOperation {
+        let requestFrame = try PiAttachmentProtocol.requestFrame(request)
+        stateLock.lock()
+        let parent = channel
+        let isClosing = intentionalClose
+        stateLock.unlock()
+        guard let parent, !isClosing, parent.isActive else {
+            throw PiAttachmentTransportError.unavailable
+        }
+
+        let resultBox = PiAttachmentResultBox(completion: completion)
+        let operation = PiAttachmentSSHOperation(resultBox: resultBox)
+        parent.pipeline.handler(type: NIOSSHHandler.self).flatMap { sshHandler -> EventLoopFuture<Channel> in
+            let promise = parent.eventLoop.makePromise(of: Channel.self)
+            sshHandler.createChannel(promise, channelType: .session) { childChannel, channelType in
+                guard channelType == .session else {
+                    return childChannel.eventLoop.makeFailedFuture(PiSSHError.invalidChannelType)
+                }
+                return childChannel.eventLoop.makeCompletedFuture {
+                    guard let synchronousOptions = childChannel.syncOptions else {
+                        throw PiSSHError.invalidChannelType
+                    }
+                    try synchronousOptions.setOption(.allowRemoteHalfClosure, value: true)
+                    let sync = childChannel.pipeline.syncOperations
+                    try sync.addHandler(
+                        PiSSHAttachmentSessionHandler(
+                            request: request,
+                            requestFrame: requestFrame,
+                            files: files,
+                            progress: progress,
+                            resultBox: resultBox,
+                            operation: operation
+                        )
+                    )
+                    // Bind before child-channel activation so cancellation and
+                    // the absolute deadline can always close the exact child.
+                    operation.bind(channel: childChannel)
+                }
+            }
+            return promise.futureResult
+        }.whenFailure { error in
+            resultBox.finish(.failure(error))
+        }
+        return operation
     }
 
     private func publishWindowChange(_ size: PiTerminalWindowSize, on sessionChannel: Channel) {
@@ -479,12 +537,17 @@ private final class PiSSHConnection: @unchecked Sendable {
                 self.fail(error)
             case .success(let childChannel):
                 self.stateLock.lock()
-                self.sessionChannel = childChannel
+                let shouldClose = self.intentionalClose
+                if !shouldClose { self.sessionChannel = childChannel }
                 self.stateLock.unlock()
-                // A SwiftUI layout resize may have arrived before the SSH child
-                // channel. Publish the retained current viewport now rather
-                // than replaying the stale PTY creation dimensions.
-                self.publishWindowChange(self.windowState.snapshot(), on: childChannel)
+                if shouldClose {
+                    childChannel.close(promise: nil)
+                } else {
+                    // A SwiftUI layout resize may have arrived before the SSH child
+                    // channel. Publish the retained current viewport now rather
+                    // than replaying the stale PTY creation dimensions.
+                    self.publishWindowChange(self.windowState.snapshot(), on: childChannel)
+                }
             }
         }
     }
@@ -492,10 +555,11 @@ private final class PiSSHConnection: @unchecked Sendable {
     private func sessionEnded() {
         stateLock.lock()
         let shouldReport = !intentionalClose
+        let parent = channel
         stateLock.unlock()
         if shouldReport {
             fail(PiSSHError.sessionEnded)
-            channel?.close(promise: nil)
+            parent?.close(promise: nil)
         }
     }
 
@@ -579,6 +643,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     var keyboardFocusChanged: ((Bool) -> Void)?
 
     private var sshConnection: PiSSHConnection?
+    private var attachmentOperations: [UUID: PiAttachmentSSHOperation] = [:]
     private var connectionID = UUID()
     private let keyboardResponder = PiTerminalKeyboardResponder()
     private var controlLatched = false {
@@ -771,12 +836,57 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
 
     func disconnectSSH() {
         connectionID = UUID()
+        cancelAllAttachmentOperations()
         let connection = sshConnection
         sshConnection = nil
         connection?.disconnect()
         controlLatched = false
         remoteMouseModeEnabled = false
         touchScrollRemainder = 0
+    }
+
+    func performAttachmentRequest(
+        _ request: PiAttachmentWireRequest,
+        files: [PiAttachmentLocalFile] = [],
+        progress: @escaping @Sendable (Int64, Int64) -> Void = { _, _ in }
+    ) async throws -> PiAttachmentWireResponse {
+        guard let sshConnection else { throw PiAttachmentTransportError.unavailable }
+        let operationID = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                do {
+                    let operation = try sshConnection.performAttachmentRequest(
+                        request,
+                        files: files,
+                        progress: progress
+                    ) { [weak self] result in
+                        let transferred = PiAttachmentUncheckedResult(value: result)
+                        Task { @MainActor [weak self] in
+                            self?.attachmentOperations.removeValue(forKey: operationID)
+                            continuation.resume(with: transferred.value)
+                        }
+                    }
+                    attachmentOperations[operationID] = operation
+                    if Task.isCancelled { cancelAttachmentOperation(operationID) }
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelAttachmentOperation(operationID)
+            }
+        }
+    }
+
+    private func cancelAttachmentOperation(_ id: UUID) {
+        attachmentOperations.removeValue(forKey: id)?.cancel()
+    }
+
+    private func cancelAllAttachmentOperations() {
+        let operations = attachmentOperations.values
+        attachmentOperations.removeAll()
+        for operation in operations { operation.cancel() }
     }
 
     @objc private func handleFontPinch(_ recognizer: UIPinchGestureRecognizer) {

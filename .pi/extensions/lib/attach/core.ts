@@ -30,6 +30,15 @@ export type StagedAttachment = {
   createdAt: string;
 };
 
+export type PreparedAttachment = {
+  temporaryPath: string;
+  displayName: string;
+  sizeBytes: number;
+  sha256: string;
+  mimeType: string;
+  createdAt: string;
+};
+
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".txt": "text/plain",
   ".md": "text/markdown",
@@ -93,6 +102,15 @@ export function attachmentLimitsFromEnv(
   };
 }
 
+function truncateUtf8(value: string, maximumBytes: number): string {
+  let bounded = "";
+  for (const character of value) {
+    if (Buffer.byteLength(bounded + character, "utf8") > maximumBytes) break;
+    bounded += character;
+  }
+  return bounded;
+}
+
 export function sanitizeAttachmentName(value: string): string {
   const leaf = basename(String(value || "attachment"))
     .normalize("NFC")
@@ -100,7 +118,16 @@ export function sanitizeAttachmentName(value: string): string {
     .replace(/[\\/:]/g, "_")
     .trim();
   const safe = leaf || "attachment";
-  return [...safe].slice(0, 160).join("");
+  const rawExtension = extname(safe);
+  const extension = Buffer.byteLength(rawExtension, "utf8") <= 32
+    ? rawExtension
+    : "";
+  const stem = extension ? safe.slice(0, -extension.length) : safe;
+  const boundedStem = truncateUtf8(
+    stem || "attachment",
+    160 - Buffer.byteLength(extension, "utf8"),
+  ) || "attachment";
+  return `${boundedStem}${extension}`;
 }
 
 function startsWith(buffer: Buffer, bytes: number[]): boolean {
@@ -253,11 +280,19 @@ export class AttachmentStore {
 
   private attachmentFileName(displayName: string, attempt: number): string {
     if (attempt === 1) return displayName;
-    const extension = extname(displayName);
+    const rawExtension = extname(displayName);
+    const extension = Buffer.byteLength(rawExtension, "utf8") <= 32
+      ? rawExtension
+      : "";
     const stem = extension
       ? displayName.slice(0, -extension.length)
       : displayName;
-    return `${stem || "attachment"}-${attempt}${extension}`;
+    const suffix = `-${attempt}${extension}`;
+    const boundedStem = truncateUtf8(
+      stem || "attachment",
+      Math.max(160 - Buffer.byteLength(suffix, "utf8"), 1),
+    ) || "a";
+    return `${boundedStem}${suffix}`;
   }
 
   private async commitWithUniqueName(
@@ -280,11 +315,10 @@ export class AttachmentStore {
     );
   }
 
-  private async importCandidate(
+  private async prepareCandidate(
     candidate: AttachmentCandidate,
-  ): Promise<StagedAttachment> {
+  ): Promise<PreparedAttachment> {
     await this.ensureDirectory();
-    const id = randomUUID();
     const displayName = sanitizeAttachmentName(candidate.name);
     const temporaryPath = join(
       this.attachmentsRoot,
@@ -295,7 +329,6 @@ export class AttachmentStore {
     const prefixParts: Buffer[] = [];
     let prefixBytes = 0;
     let written = 0;
-    let committedPath: string | undefined;
 
     try {
       const stream = await candidate.openStream();
@@ -330,20 +363,11 @@ export class AttachmentStore {
       await output.sync();
       await output.close();
       await chmod(temporaryPath, ATTACHMENT_FILE_MODE);
-      const committed = await this.commitWithUniqueName(
-        temporaryPath,
-        displayName,
-      );
-      committedPath = committed.path;
-      await rm(temporaryPath, { force: true });
-      await chmod(committed.path, ATTACHMENT_FILE_MODE);
 
       const prefix = Buffer.concat(prefixParts, prefixBytes);
       return {
-        id,
-        displayName: committed.fileName,
-        fileName: committed.fileName,
-        path: committed.path,
+        temporaryPath,
+        displayName,
         sizeBytes: written,
         sha256: hash.digest("hex"),
         mimeType: detectAttachmentMimeType(prefix, displayName),
@@ -352,76 +376,119 @@ export class AttachmentStore {
     } catch (error) {
       await output.close().catch(() => undefined);
       await rm(temporaryPath, { force: true }).catch(() => undefined);
-      if (committedPath)
-        await rm(committedPath, { force: true }).catch(() => undefined);
       throw error;
     }
   }
 
-  async stage(
+  async prepareCandidates(
     candidates: AttachmentCandidate[],
-    mode: "add" | "replace" = "add",
-  ): Promise<StagedAttachment[]> {
-    const existing = await this.load();
-    const replace = mode === "replace";
-    this.validateCandidateSet(candidates, existing, replace);
-    if (candidates.length === 0) {
-      if (!replace) return existing;
-      this.staged = [];
-      await Promise.all(
-        existing.map((item) =>
-          rm(item.path, { force: true }).catch(() => undefined),
-        ),
-      );
-      return [];
-    }
-
-    const imported: StagedAttachment[] = [];
+  ): Promise<PreparedAttachment[]> {
+    this.validateCandidateSet(candidates, [], false);
+    const prepared: PreparedAttachment[] = [];
     try {
-      for (const candidate of candidates)
-        imported.push(await this.importCandidate(candidate));
-      const next = replace ? imported : [...existing, ...imported];
-      this.staged = next;
-      if (replace) {
-        await Promise.all(
-          existing.map((item) =>
-            rm(item.path, { force: true }).catch(() => undefined),
-          ),
-        );
+      for (const candidate of candidates) {
+        prepared.push(await this.prepareCandidate(candidate));
       }
-      return [...next];
+      return prepared;
     } catch (error) {
-      await Promise.all(
-        imported.map((item) =>
-          rm(item.path, { force: true }).catch(() => undefined),
-        ),
-      );
+      await this.discardPrepared(prepared);
       throw error;
     }
   }
 
-  async reconcile(
+  async discardPrepared(prepared: PreparedAttachment[]): Promise<void> {
+    await Promise.all(
+      prepared.map((item) =>
+        rm(item.temporaryPath, { force: true }).catch(() => undefined),
+      ),
+    );
+  }
+
+  private async commitPrepared(
+    prepared: PreparedAttachment,
+  ): Promise<StagedAttachment> {
+    const info = await lstat(prepared.temporaryPath);
+    if (
+      info.isSymbolicLink() ||
+      !info.isFile() ||
+      info.size !== prepared.sizeBytes ||
+      !/^[0-9a-f]{64}$/i.test(prepared.sha256)
+    ) {
+      throw new Error(`${prepared.displayName} changed before attachment commit.`);
+    }
+    const committed = await this.commitWithUniqueName(
+      prepared.temporaryPath,
+      prepared.displayName,
+    );
+    try {
+      const hash = createHash("sha256");
+      let verifiedBytes = 0;
+      const input = createReadStream(committed.path, {
+        flags: constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+      });
+      for await (const rawChunk of input) {
+        const chunk = Buffer.from(rawChunk);
+        verifiedBytes += chunk.length;
+        if (verifiedBytes > prepared.sizeBytes) {
+          throw new Error(`${prepared.displayName} changed before attachment commit.`);
+        }
+        hash.update(chunk);
+      }
+      if (
+        verifiedBytes !== prepared.sizeBytes ||
+        hash.digest("hex") !== prepared.sha256.toLowerCase()
+      ) {
+        throw new Error(`${prepared.displayName} failed final attachment integrity verification.`);
+      }
+      await rm(prepared.temporaryPath, { force: true });
+      await chmod(committed.path, ATTACHMENT_FILE_MODE);
+    } catch (error) {
+      await rm(committed.path, { force: true }).catch(() => undefined);
+      throw error;
+    }
+    return {
+      id: randomUUID(),
+      displayName: committed.fileName,
+      fileName: committed.fileName,
+      path: committed.path,
+      sizeBytes: prepared.sizeBytes,
+      sha256: prepared.sha256.toLowerCase(),
+      mimeType: prepared.mimeType,
+      createdAt: prepared.createdAt,
+    };
+  }
+
+  async reconcilePrepared(
     keepIds: string[],
-    candidates: AttachmentCandidate[],
+    prepared: PreparedAttachment[],
   ): Promise<StagedAttachment[]> {
     const existing = await this.load();
     if (new Set(keepIds).size !== keepIds.length) {
       throw new Error("The picker returned duplicate staged attachment IDs.");
     }
-
     const existingById = new Map(existing.map((item) => [item.id, item]));
     const kept = keepIds.map((id) => {
       const item = existingById.get(id);
-      if (!item)
+      if (!item) {
         throw new Error("The picker returned an unknown staged attachment.");
+      }
       return item;
     });
-    this.validateCandidateSet(candidates, kept, false);
+    this.validateCandidateSet(
+      prepared.map((item) => ({
+        name: item.displayName,
+        sizeBytes: item.sizeBytes,
+        openStream: async function* () {},
+      })),
+      kept,
+      false,
+    );
 
     const imported: StagedAttachment[] = [];
     try {
-      for (const candidate of candidates)
-        imported.push(await this.importCandidate(candidate));
+      for (const item of prepared) {
+        imported.push(await this.commitPrepared(item));
+      }
       const next = [...kept, ...imported];
       this.staged = next;
       const keptSet = new Set(keepIds);
@@ -437,6 +504,45 @@ export class AttachmentStore {
           rm(item.path, { force: true }).catch(() => undefined),
         ),
       );
+      await this.discardPrepared(prepared);
+      throw error;
+    }
+  }
+
+  async stage(
+    candidates: AttachmentCandidate[],
+    mode: "add" | "replace" = "add",
+  ): Promise<StagedAttachment[]> {
+    const existing = await this.load();
+    return this.reconcile(
+      mode === "replace" ? [] : existing.map((item) => item.id),
+      candidates,
+    );
+  }
+
+  async reconcile(
+    keepIds: string[],
+    candidates: AttachmentCandidate[],
+  ): Promise<StagedAttachment[]> {
+    const existing = await this.load();
+    if (new Set(keepIds).size !== keepIds.length) {
+      throw new Error("The picker returned duplicate staged attachment IDs.");
+    }
+    const existingById = new Map(existing.map((item) => [item.id, item]));
+    const kept = keepIds.map((id) => {
+      const item = existingById.get(id);
+      if (!item) {
+        throw new Error("The picker returned an unknown staged attachment.");
+      }
+      return item;
+    });
+    this.validateCandidateSet(candidates, kept, false);
+
+    const prepared = await this.prepareCandidates(candidates);
+    try {
+      return await this.reconcilePrepared(keepIds, prepared);
+    } catch (error) {
+      await this.discardPrepared(prepared);
       throw error;
     }
   }

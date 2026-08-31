@@ -28,6 +28,10 @@ fi
 # wheel fallback bindings take effect after an app upgrade without replacing
 # the persistent Pi process.
 "$TMUX_BIN" -L "$TMUX_SOCKET" source-file "$TMUX_CONFIG"
+# `resize-window` leaves an existing window with a per-window `manual` override;
+# sourcing the global profile alone does not clear it. Reassert the accepted
+# latest-client policy without issuing a resize command or replacing the pane.
+"$TMUX_BIN" -L "$TMUX_SOCKET" set-option -w -t "=$TMUX_SESSION:0" window-size latest
 
 # The Watch HTTPS bridge needs to create/recreate the persistent pane without
 # attaching a second terminal client or changing the iPhone's tmux dimensions.

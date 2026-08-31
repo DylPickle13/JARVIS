@@ -4,11 +4,14 @@ Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
 surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier,
 status/telemetry, service control), over LAN or Tailscale.
 
-**Status:** Build `0.3.0 (126)` remains the exact audited physical deployment
-on the allowlisted iPhone and Watch. Build `0.3.0 (127)` is the push-free source
-candidate for the private scheduler retirement and native read-only Jobs inbox;
-it must pass archive/product audits and exact-artifact physical deployment before
-replacing Build 126. `jarvisd` retains explicit trusted-network/token auth,
+**Status:** Build `0.3.0 (132)` is the exact audited physical deployment on the
+allowlisted iPhone and Watch. It adds private native iPhone Photos/Files staging,
+bounded foreground stale-state convergence, and job-centric Discord-style output
+channels with safe inline links. The owner accepted the deployed Jobs presentation
+after exact-artifact installation. Checked-in `project.yml` intentionally remains
+Build 127 and keeps `JARVIS_NATIVE_ATTACHMENTS` disabled by default; Build 132's
+number and iPhone-only flag exist only in its owner-private audited artifact.
+`jarvisd` retains explicit trusted-network/token auth,
 bounded APIs, single-flight state caching, guarded controls, and bounded event
 persistence. The app retains one scene-aware connection/polling coordinator,
 idempotent desired-state writes, and honest stale/unavailable UI. Build 37 retains
@@ -349,8 +352,8 @@ speech preparation, stale-state semantics, Neural Core motion, and guarded
 hardware controls are unchanged.
 Build 127 retires the former external chat transport and moves all four schedules
 to the owner-only generic scheduler. The iPhone adds a fourth **Jobs** tab with a
-bounded protected result cache, unread baseline, safe result deep links, and
-read-only Inbox/Schedules views. Jobs refreshes every 15 seconds while the app is
+bounded protected result cache, unread baseline, safe result deep links, and a
+read-only job list with per-job output channels. Jobs refreshes every 15 seconds while the app is
 active; Home-only hardware/service polling remains confined to Home. `jarvisd`
 exposes only sanitized bounded job/result projections. A dormant fail-closed
 Watch-only APNs provider and pure route parser remain inactive and push-free
@@ -565,9 +568,12 @@ and Open JARVIS.
 
 ## Read first
 
-This README is the single architecture, security, packaging, deployment, widget,
-physical-validation, recovery, release, and implementation-plan reference for
-the app. The former `docs/*.md` files are consolidated below. The JARVIS app side of the Pi attachment work is intentionally deferred and tracked separately in [`docs/pi-attach-integration-plan.md`](docs/pi-attach-integration-plan.md); no app implementation accompanies that plan yet.
+This README is the primary architecture, security, packaging, deployment, widget,
+physical-validation, recovery, and release reference for the app. Historical
+plans retired from `docs/` are consolidated below. The current native iPhone
+keyboard-avoidance and Photos/Files attachment architecture, implementation
+sequence, and physical gates are consolidated in the
+[`docs/README.md` implementation documentation](docs/README.md#iphone-terminal-keyboard-avoidance-and-native-attach-implementation-plan).
 
 ## Scope (v5, approved)
 
@@ -575,8 +581,9 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
   network, uptime, room audio, scheduler, scheduled jobs, and retained results),
   service start/stop/restart (room-audio server), Neural Core and Open JARVIS
   read-only widgets on iPhone and Watch, the two-turn “Hey JARVIS” App Intent,
-  the iPhone SSH-backed Pi terminal, and the foreground-only Watch view of that
-  same persistent terminal over the private HTTPS bridge, with LAN and
+  the iPhone SSH-backed Pi terminal with private native Photos/Files attachment
+  staging in enabled signed candidates, and the foreground-only Watch view of
+  that same persistent terminal over the private HTTPS bridge, with LAN and
   Tailscale remote access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
   word, Raspberry Pi room endpoint, scheduler process mutation and scheduled-
@@ -619,7 +626,8 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
   Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
   external data collection are removed. Home lists room audio, the scheduler,
   and protected `jarvisd` information. Jobs provides a bounded, durable,
-  read-only Inbox and Schedules view. Only server-allowlisted service actions
+  read-only job list and Discord-style per-job output channels with inline safe
+  links. Only server-allowlisted service actions
   are rendered; the scheduler card is read-only. Plug controls send
   desired-state `plug-on`/`plug-off`
   commands, serialize per resource, and show busy/error/unavailable states.
@@ -642,6 +650,15 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
   rendering to Pi. Wheel input is never queued, paced, retried, or replayed.
   Escape, Ctrl, Tab, slash, Up, Down, the keyboard toggle, tap-to-open,
   downward-swipe dismissal, persisted 9–20-point zoom, and landscape remain.
+  Build 129 confirmed that the accepted SwiftUI composition behaves correctly
+  when tmux retains `window-size latest`; the bootstrap reasserts that policy
+  without forcing pane geometry or replacing the protected Pi process. Build
+  132's isolated iPhone candidate enables a paperclip that stages reviewed
+  Photos/Files over a separately typed SSH child. It never injects `/attach`,
+  Return, filenames, or protocol bytes into the PTY. Commits are bounded,
+  generation/revision checked, exact-byte and SHA-256 verified, and never
+  automatically retried after ambiguous delivery. Watch remains attachment-
+  isolated.
 - **watchOS app** — the embedded Watch app opens directly on Terminal, followed
   by Plugs and System. Dashboard state refreshes every 15 seconds while visible,
   uses direct `jarvisd` first with immediate-only correlated iPhone relay and
@@ -692,7 +709,7 @@ jarvis-app/
 ├── project.yml                 # xcodegen spec (regenerates JARVIS.xcodeproj)
 ├── JARVIS.xcodeproj            # generated (do not hand-edit)
 ├── docs/
-│   ├── pi-attach-integration-plan.md # deferred iPhone attachment plan only
+│   ├── README.md               # terminal + native attachment implementation plans
 │   └── third-party/            # retained third-party license text
 ├── scripts/                    # verify, deploy, signing, terminald, provisioning
 ├── jarvisd/                    # Python hardware/status/service daemon (port 8790)
@@ -754,9 +771,13 @@ changes. Do not put tokens in the repository.
 
 # Consolidated architecture, operations, and implementation plans
 
-The Markdown documents formerly stored under `docs/` are preserved below in full so this README is the canonical single-file app reference. The `docs/third-party/` license text remains separate because it is not Markdown.
+Historical Markdown documents retired from `docs/` before the current terminal
+work are preserved below in full. This README remains canonical for that legacy
+architecture and operational material; the current terminal and native
+attachment plans are in [`docs/README.md`](docs/README.md). The
+`docs/third-party/` license text remains separate because it is not Markdown.
 
-<!-- Folded from `docs/README.md` -->
+<!-- Previously folded from the retired pre-consolidation docs index -->
 
 # JARVIS native Apple app — unified documentation
 
@@ -1849,22 +1870,27 @@ build 14 after reconnection. Build 15 and build 16 subsequently installed on bot
 devices. Do not repeat blind build-14 installs. No plug, purifier, scheduled-job,
 or managed-service mutation was emitted during these deployments.
 
-### Remaining Build 127 release gates
+### Build 132 release result
 
-1. Run repository smoke and full app verification against the exact Build 127
-   source without touching hardware.
-2. Archive/export once from clean `main`, then audit versions, signing profiles,
-   device allowlists, nested Watch hierarchy, entitlements, and exact products.
-3. Install the exact audited iPhone and Watch products and confirm both
-   inventories report `0.3.0 (127)` before replacing the Build 126 checkpoint.
-4. Physically validate the read-only Jobs Inbox/Schedules views, unread state,
-   safe deep links, and 15-second active refresh without any scheduler mutation.
-5. Recheck the two-kind widget galleries, “Hey JARVIS” prompt shortcut,
-   terminal persistence, Watch direct/relay/offline behavior, networking, and
-   accessibility rows affected by Build 127.
+- Source commit `b7e0eb444c62c30bada257f7f4b09cbc86d4310f` is preserved on
+  `feat/iphone-terminal-attach`; its isolated candidate enabled native iPhone
+  attachments and set build 132 without changing checked-in defaults.
+- The exact four-product archive passed signature, provisioning, entitlement,
+  background-mode, APNs-isolation, Watch-isolation, source-contract, and
+  62-file manifest audits with zero compiler diagnostics.
+- Exact archive products were installed without rebuilding. Both allowlisted
+  inventories report `0.3.0 (132)`, and the iPhone Jobs route plus Watch app
+  launched successfully.
+- Files/Photos staging, cancellation, clear, hashing, size/mode, cleanup,
+  pane-survival, no-model-turn, and flat attachment storage passed physically.
+  The owner also accepted the deployed job-centric Jobs presentation and safe
+  inline-link behavior.
+- The protected `jarvis-mobile` / `jarvis-ios` / `%0` runtime and
+  `window-size latest` policy survived deployment. APNs remains dormant and
+  Watch remains attachment-isolated.
 
-Purifier, plug, service, scheduler, and scheduled-job mutations are not required
-for this release. Do not issue a physical write merely as a deployment smoke test.
+Additional attachment stress cases and a repeated forced-idle stale-start probe
+remain optional follow-up validation, not Build 132 release blockers.
 
 ---
 
@@ -1951,8 +1977,10 @@ surviving runtime attempts a second dashboard event post.
 
 ```text
 jarvis-app/
-├── README.md                   # unified app + consolidated docs
-├── docs/third-party/           # retained third-party license text
+├── README.md                   # app reference + consolidated historical docs
+├── docs/
+│   ├── README.md               # current terminal + attachment implementation plans
+│   └── third-party/            # retained third-party license text
 ├── project.yml                 # XcodeGen source of truth
 ├── JARVIS.xcodeproj            # generated; never hand-edit
 ├── scripts/
@@ -2616,7 +2644,7 @@ approved clean reinstall becomes necessary; never alter pairing records.
 - Build 126 physical iPhone/Watch installation, terminal behavior, native
   plug/purifier controls, and two-kind widget catalogues.
 
-### Remaining consolidated matrix
+### Historical Build 127 matrix (completed and superseded by Build 132)
 
 | Owner | Test | Pass condition |
 |---|---|---|
@@ -2635,7 +2663,7 @@ change, use desired-state actions, and restore the original state. Real bot,
 scheduler, scheduled-job, or purifier mutations require separate explicit
 permission.
 
-### Final pass before Build 127 replaces Build 126
+### Historical Build 127 release checklist (completed and superseded)
 
 1. Finish the remaining Build 127 matrix.
 2. Run `./.pi/smoke-test.sh` once.
@@ -2969,7 +2997,7 @@ items rather than blockers for the accepted frame-removal correction.
 **Date:** 2026-08-23 EDT
 
 **Proposed release:** `0.3.0 (39)`
-**Status:** Historical Build 39–44 implementation record. The prompt intent remains current; Build 92 removed the host plug intents referenced by the original test plan, and Build 126 is the installed checkpoint.
+**Status:** Historical Build 39–44 implementation record. The prompt intent remains current; Build 92 removed the host plug intents referenced by the original test plan, and Build 126 was the installed checkpoint when this history was consolidated.
 
 > Historical note: references below to “two existing plug shortcuts” or plug-phrase regression tests describe the pre-Build-92 host surface. Current host metadata exposes only the bare two-turn “Hey JARVIS” prompt shortcut.
 

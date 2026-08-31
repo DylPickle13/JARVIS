@@ -85,6 +85,8 @@ public final class AppState: ObservableObject {
     private var networkAvailable = true
     private var retryAllowed = true
     private let activeRefreshInterval: Duration
+    private let staleConvergenceInterval: Duration
+    private let staleConvergenceAttempts: Int
     private let resultCache: ScheduledJobResultCache
     private let preferences: UserDefaults
     private let resultBaselineKey = "jarvis.jobs.result-baseline-established.v1"
@@ -103,6 +105,8 @@ public final class AppState: ObservableObject {
         store: EndpointStore? = nil,
         client: any JarvisAPI = JarvisClient(),
         activeRefreshInterval: Duration = JARVISRefreshPolicy.activeInterval,
+        staleConvergenceInterval: Duration = JARVISRefreshPolicy.staleConvergenceInterval,
+        staleConvergenceAttempts: Int = JARVISRefreshPolicy.staleConvergenceAttempts,
         preferences: UserDefaults = .standard,
         resultCacheURL: URL? = nil
     ) {
@@ -111,6 +115,8 @@ public final class AppState: ObservableObject {
         self.client = client
         self.watchTerminalProvisioning = WatchTerminalProvisioningSettings()
         self.activeRefreshInterval = activeRefreshInterval
+        self.staleConvergenceInterval = max(.zero, staleConvergenceInterval)
+        self.staleConvergenceAttempts = max(0, staleConvergenceAttempts)
         self.preferences = preferences
         self.resultCache = ScheduledJobResultCache(fileURL: resultCacheURL)
         self.endpointDraft = resolvedStore.endpointURLString ?? ""
@@ -138,6 +144,13 @@ public final class AppState: ObservableObject {
     }
 
     public var currentEndpoint: URL? { store.endpointURL }
+
+    /// True while a foreground read is in flight or jarvisd has explicitly
+    /// reported that its stale last-good snapshot is actively refreshing.
+    /// Native hardware writes remain disabled in either state.
+    public var isAwaitingFreshState: Bool {
+        isStateLoading || (lastState?.stale == true && lastState?.refreshing == true)
+    }
 
     // MARK: - Scene/network lifecycle
 
@@ -308,7 +321,7 @@ public final class AppState: ObservableObject {
         isStateLoading = true
         defer { isStateLoading = false }
         do {
-            let snapshot = try await client.state(endpoint)
+            let snapshot = try await convergedState(endpoint)
             let previousState = lastState
             let widgetsChanged = widgetReloadValue(previousState) != widgetReloadValue(snapshot)
             lastState = snapshot
@@ -340,6 +353,25 @@ public final class AppState: ObservableObject {
             retryAllowed = true
             if appIsActive { startConnectionLoop() }
         }
+    }
+
+    /// A state request activates jarvisd's fast collector cadence. If its
+    /// bounded activation wait expires just before a collector completes, the
+    /// first response is intentionally `stale + refreshing`. Perform only
+    /// bounded read-only follow-ups; a completed failure (`refreshing == false`)
+    /// remains stale and is never hidden or retried here.
+    private func convergedState(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        var snapshot = try await client.state(endpoint)
+        var attempts = 0
+        while snapshot.stale == true,
+              snapshot.refreshing == true,
+              attempts < staleConvergenceAttempts {
+            try Task.checkCancellation()
+            try await Task.sleep(for: staleConvergenceInterval)
+            snapshot = try await client.state(endpoint)
+            attempts += 1
+        }
+        return snapshot
     }
 
     private func widgetReloadValue(_ state: StateSnapshot?) -> WidgetReloadValue? {
