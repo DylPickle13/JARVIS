@@ -91,11 +91,27 @@ if os.environ.get("JARVISD_OPERATION_ROOT"):
 else:
     OPERATION_ROOT = _find_ancestor(JARVISD_DIR, "jarvis-cli") or JARVISD_DIR.parent.parent
 
-if os.environ.get("JARVISD_PROJECT_ROOT"):
+PROJECT_ROOT_IS_EXPLICIT = bool(os.environ.get("JARVISD_PROJECT_ROOT"))
+if PROJECT_ROOT_IS_EXPLICIT:
     PROJECT_ROOT = Path(os.environ["JARVISD_PROJECT_ROOT"]).resolve()
 else:
     PROJECT_ROOT = _find_ancestor(JARVISD_DIR, ".env") or OPERATION_ROOT.parent
-JARVIS_ROOT = _find_ancestor(JARVISD_DIR, ".pi") or PROJECT_ROOT
+
+
+def _resolve_jarvis_root(*, source_dir: Path, project_root: Path, project_root_is_explicit: bool) -> Path:
+    """Resolve runtime data from an explicit checkout before a user's global .pi directory."""
+    if os.environ.get("JARVISD_JARVIS_ROOT"):
+        return Path(os.environ["JARVISD_JARVIS_ROOT"]).expanduser().resolve()
+    if project_root_is_explicit:
+        return project_root
+    return _find_ancestor(source_dir, ".pi") or project_root
+
+
+JARVIS_ROOT = _resolve_jarvis_root(
+    source_dir=JARVISD_DIR,
+    project_root=PROJECT_ROOT,
+    project_root_is_explicit=PROJECT_ROOT_IS_EXPLICIT,
+)
 
 JARVIS_CLI = OPERATION_ROOT / "jarvis-cli"
 _load_env_file(PROJECT_ROOT / ".env")
@@ -210,6 +226,13 @@ PI_RPC_SESSIONS = Path(os.environ.get("PI_RPC_SESSIONS", str(PROJECT_ROOT / ".pi
 MOBILE_TMUX_BIN = Path("/opt/homebrew/bin/tmux")
 MOBILE_TMUX_SOCKET = "jarvis-mobile"
 MOBILE_TMUX_SESSIONS = ((1, "jarvis-ios"), (2, "jarvis-ios-2"), (3, "jarvis-ios-3"))
+MOBILE_PI_STATUS_MAX_AGE_SECONDS = min(
+    60.0,
+    max(4.0, float(os.environ.get("JARVISD_MOBILE_PI_STATUS_MAX_AGE_SECONDS", "10"))),
+)
+MAX_MOBILE_PI_STATUS_BYTES = 16 * 1024
+MAX_MOBILE_PI_STATUS_FILES_PER_PID = 8
+MAX_MOBILE_TMUX_OUTPUT_BYTES = 64 * 1024
 
 AUTH_MODES = {"trusted-network", "token"}
 PROTECTED_LABELS = {"com.operation-jarvis.jarvisd", "com.operation-jarvis.jarvisd-resurrector"}
@@ -729,8 +752,58 @@ class _UnixSocketHTTPConnection(http.client.HTTPConnection):
         self.sock = sock
 
 
-def _mobile_pi_session_states() -> list[dict]:
-    """Read the three fixed mobile tmux panes without attaching or mutating them."""
+def _fresh_local_pi_activity(pid: int, *, now: dt.datetime) -> bool | None:
+    """Return one Pi process's fresh agent-generation state, or unknown."""
+    if not PI_LOCAL_SESSIONS.is_dir():
+        return None
+
+    candidates: list[Path] = []
+    direct = PI_LOCAL_SESSIONS / f"{pid}.json"
+    if direct.exists():
+        candidates.append(direct)
+    try:
+        for path in PI_LOCAL_SESSIONS.glob(f"{pid}-*.json"):
+            candidates.append(path)
+            if len(candidates) > MAX_MOBILE_PI_STATUS_FILES_PER_PID:
+                return None
+    except OSError:
+        return None
+
+    freshest: tuple[dt.datetime, bool] | None = None
+    for path in candidates:
+        try:
+            if path.is_symlink():
+                continue
+            raw = path.read_bytes()
+            if len(raw) > MAX_MOBILE_PI_STATUS_BYTES:
+                continue
+            payload = json.loads(raw)
+            if (
+                not isinstance(payload, dict)
+                or payload.get("source") != "pi-extension-local-session-status"
+                or payload.get("pid") != pid
+                or not isinstance(payload.get("active"), bool)
+            ):
+                continue
+            updated_at = payload.get("updatedAt")
+            if not isinstance(updated_at, str) or len(updated_at) > 64:
+                continue
+            timestamp = dt.datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            if timestamp.tzinfo is None:
+                continue
+            timestamp = timestamp.astimezone(dt.timezone.utc)
+            age = (now - timestamp).total_seconds()
+            if age < -5.0 or age > MOBILE_PI_STATUS_MAX_AGE_SECONDS:
+                continue
+            if freshest is None or timestamp > freshest[0]:
+                freshest = (timestamp, payload["active"])
+        except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
+            continue
+    return freshest[1] if freshest is not None else None
+
+
+def _mobile_pi_session_states(*, now: dt.datetime | None = None) -> list[dict]:
+    """Read fixed tmux identities and fresh Pi activity without mutating either."""
     unknown = [{"sessionID": session_id, "active": None} for session_id, _name in MOBILE_TMUX_SESSIONS]
     try:
         result = subprocess.run(
@@ -741,7 +814,7 @@ def _mobile_pi_session_states() -> list[dict]:
                 "list-panes",
                 "-a",
                 "-F",
-                "#{session_name}\t#{pane_dead}",
+                "#{session_name}\t#{pane_dead}\t#{pane_pid}",
             ],
             capture_output=True,
             text=True,
@@ -751,25 +824,36 @@ def _mobile_pi_session_states() -> list[dict]:
     except (OSError, subprocess.SubprocessError):
         return unknown
 
-    # tmux exits 1 when its isolated server does not exist; all three fixed
-    # sessions are then definitively inactive. Other failures remain unknown.
-    if result.returncode == 1:
-        return [{"sessionID": session_id, "active": False} for session_id, _name in MOBILE_TMUX_SESSIONS]
-    if result.returncode != 0:
+    stdout = result.stdout or ""
+    if result.returncode != 0 or len(stdout.encode("utf-8")) > MAX_MOBILE_TMUX_OUTPUT_BYTES:
         return unknown
 
-    fixed_names = {name: session_id for session_id, name in MOBILE_TMUX_SESSIONS}
-    active_by_id = {session_id: False for session_id, _name in MOBILE_TMUX_SESSIONS}
-    for raw_line in result.stdout.splitlines():
+    fixed_names = {name for _session_id, name in MOBILE_TMUX_SESSIONS}
+    rows_by_name: dict[str, list[tuple[str, str] | None]] = {name: [] for name in fixed_names}
+    for raw_line in stdout.splitlines():
         fields = raw_line.split("\t")
-        if len(fields) != 2 or fields[0] not in fixed_names or fields[1] not in {"0", "1"}:
+        if not fields or fields[0] not in fixed_names:
             continue
-        session_id = fixed_names[fields[0]]
-        active_by_id[session_id] = active_by_id[session_id] or fields[1] == "0"
-    return [
-        {"sessionID": session_id, "active": active_by_id[session_id]}
-        for session_id, _name in MOBILE_TMUX_SESSIONS
-    ]
+        rows_by_name[fields[0]].append((fields[1], fields[2]) if len(fields) == 3 else None)
+
+    observed_at = now or dt.datetime.now(dt.timezone.utc)
+    states: list[dict] = []
+    for session_id, name in MOBILE_TMUX_SESSIONS:
+        rows = rows_by_name[name]
+        if not rows:
+            active: bool | None = False
+        elif len(rows) != 1 or rows[0] is None:
+            active = None
+        else:
+            pane_dead, raw_pid = rows[0]
+            if pane_dead == "1":
+                active = False
+            elif pane_dead != "0" or not raw_pid.isdecimal() or int(raw_pid) <= 0:
+                active = None
+            else:
+                active = _fresh_local_pi_activity(int(raw_pid), now=observed_at)
+        states.append({"sessionID": session_id, "active": active})
+    return states
 
 
 def _pi_sessions() -> dict:

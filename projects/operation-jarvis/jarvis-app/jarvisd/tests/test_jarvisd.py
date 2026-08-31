@@ -114,22 +114,59 @@ class DaemonUnitTests(unittest.TestCase):
         for _argv, _timeout, env in calls:
             self.assertEqual(env, {"JARVIS_EMIT_EVENTS": "0"})
 
-    def test_mobile_pi_session_states_are_fixed_read_only_and_individual(self):
+    def test_explicit_project_root_wins_over_global_pi_directory(self):
+        with tempfile.TemporaryDirectory() as raw:
+            home = Path(raw) / "home"
+            source = home / "Library" / "artifact" / "source" / "jarvisd"
+            project = home / "JARVIS"
+            source.mkdir(parents=True)
+            project.mkdir()
+            (home / ".pi").mkdir()
+
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("JARVISD_JARVIS_ROOT", None)
+                resolved = jarvisd._resolve_jarvis_root(
+                    source_dir=source,
+                    project_root=project,
+                    project_root_is_explicit=True,
+                )
+            self.assertEqual(resolved, project)
+
+    def test_mobile_pi_session_states_use_fresh_agent_activity(self):
+        now = jarvisd.dt.datetime(2026, 8, 31, 20, 0, tzinfo=jarvisd.dt.timezone.utc)
         completed = jarvisd.subprocess.CompletedProcess(
             args=[],
             returncode=0,
-            stdout="jarvis-ios\t0\njarvis-ios-2\t1\njarvis-ios-3\t0\nunrelated\t0\n",
+            stdout=(
+                "jarvis-ios\t0\t111\n"
+                "jarvis-ios-2\t1\t222\n"
+                "jarvis-ios-3\t0\t333\n"
+                "unrelated\t0\t444\n"
+            ),
             stderr="",
         )
-        with mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
-            states = jarvisd._mobile_pi_session_states()
+        with tempfile.TemporaryDirectory() as raw:
+            status_dir = Path(raw)
+            for pid, active in ((111, True), (222, True), (333, False)):
+                (status_dir / f"{pid}-session.json").write_text(
+                    json.dumps({
+                        "source": "pi-extension-local-session-status",
+                        "pid": pid,
+                        "active": active,
+                        "updatedAt": now.isoformat().replace("+00:00", "Z"),
+                    }),
+                    encoding="utf-8",
+                )
+            with mock.patch.object(jarvisd, "PI_LOCAL_SESSIONS", status_dir), \
+                 mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
+                states = jarvisd._mobile_pi_session_states(now=now)
 
         self.assertEqual(
             states,
             [
                 {"sessionID": 1, "active": True},
                 {"sessionID": 2, "active": False},
-                {"sessionID": 3, "active": True},
+                {"sessionID": 3, "active": False},
             ],
         )
         run.assert_called_once_with(
@@ -140,7 +177,7 @@ class DaemonUnitTests(unittest.TestCase):
                 "list-panes",
                 "-a",
                 "-F",
-                "#{session_name}\t#{pane_dead}",
+                "#{session_name}\t#{pane_dead}\t#{pane_pid}",
             ],
             capture_output=True,
             text=True,
@@ -148,31 +185,53 @@ class DaemonUnitTests(unittest.TestCase):
             check=False,
         )
 
+    def test_mobile_pi_session_states_fail_closed_for_stale_or_missing_activity(self):
+        now = jarvisd.dt.datetime(2026, 8, 31, 20, 0, tzinfo=jarvisd.dt.timezone.utc)
+        completed = jarvisd.subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="jarvis-ios\t0\t111\njarvis-ios-3\t0\t333\n",
+            stderr="",
+        )
+        with tempfile.TemporaryDirectory() as raw:
+            status_dir = Path(raw)
+            stale = now - jarvisd.dt.timedelta(seconds=jarvisd.MOBILE_PI_STATUS_MAX_AGE_SECONDS + 1)
+            (status_dir / "111-session.json").write_text(
+                json.dumps({
+                    "source": "pi-extension-local-session-status",
+                    "pid": 111,
+                    "active": True,
+                    "updatedAt": stale.isoformat().replace("+00:00", "Z"),
+                }),
+                encoding="utf-8",
+            )
+            with mock.patch.object(jarvisd, "PI_LOCAL_SESSIONS", status_dir), \
+                 mock.patch.object(jarvisd.subprocess, "run", return_value=completed):
+                self.assertEqual(
+                    jarvisd._mobile_pi_session_states(now=now),
+                    [
+                        {"sessionID": 1, "active": None},
+                        {"sessionID": 2, "active": False},
+                        {"sessionID": 3, "active": None},
+                    ],
+                )
+
     def test_mobile_pi_session_states_fail_closed_when_probe_is_unavailable(self):
+        unknown = [
+            {"sessionID": 1, "active": None},
+            {"sessionID": 2, "active": None},
+            {"sessionID": 3, "active": None},
+        ]
         with mock.patch.object(
             jarvisd.subprocess,
             "run",
             side_effect=jarvisd.subprocess.TimeoutExpired(cmd="tmux", timeout=2),
         ):
-            self.assertEqual(
-                jarvisd._mobile_pi_session_states(),
-                [
-                    {"sessionID": 1, "active": None},
-                    {"sessionID": 2, "active": None},
-                    {"sessionID": 3, "active": None},
-                ],
-            )
+            self.assertEqual(jarvisd._mobile_pi_session_states(), unknown)
 
         no_server = jarvisd.subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
         with mock.patch.object(jarvisd.subprocess, "run", return_value=no_server):
-            self.assertEqual(
-                jarvisd._mobile_pi_session_states(),
-                [
-                    {"sessionID": 1, "active": False},
-                    {"sessionID": 2, "active": False},
-                    {"sessionID": 3, "active": False},
-                ],
-            )
+            self.assertEqual(jarvisd._mobile_pi_session_states(), unknown)
 
     def test_pi_sessions_includes_fixed_mobile_session_states(self):
         expected = [

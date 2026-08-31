@@ -162,6 +162,9 @@ grep -q 'ForEach(1...3, id: \\.self)' JARVIS/Views/HomeView.swift
 grep -q 'private func piSessionStatusSection(sessionID: Int, active: Bool?)' JARVIS/Views/HomeView.swift
 grep -q 'public let mobileSessions: \[PiMobileSession\]?' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'MOBILE_TMUX_SESSIONS = ((1, "jarvis-ios"), (2, "jarvis-ios-2"), (3, "jarvis-ios-3"))' jarvisd/jarvisd.py
+grep -q '#{session_name}\\t#{pane_dead}\\t#{pane_pid}' jarvisd/jarvisd.py
+grep -q 'pi-extension-local-session-status' jarvisd/jarvisd.py
+grep -q 'if project_root_is_explicit:' jarvisd/jarvisd.py
 grep -q '"mobileSessions": _mobile_pi_session_states()' jarvisd/jarvisd.py
 grep -q 'SettingsGroup(title: "Configuration")' JARVIS/Views/SettingsView.swift
 grep -q 'SettingsGroup(title: "Maintenance")' JARVIS/Views/SettingsView.swift

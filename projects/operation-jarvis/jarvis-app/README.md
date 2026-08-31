@@ -29,11 +29,15 @@ content-free OSLog outcomes. Always-On, Reduce Motion, placeholder, and
 unavailable-font paths remain static. No cadence, process timer, private API,
 animated media, App Group, APNs, entitlement, or widget-interaction path is added.
 
-The iPhone Home Pi summary is divided into three equal Slot 1/2/3 sections. A
-bounded read-only `tmux list-panes` projection reports each fixed mobile Pi pane
-as active or inactive; probe failures and stale snapshots display `Unknown`
-instead of inferring a status. The projection never attaches, resizes, creates,
-restarts, or sends input to a session.
+The iPhone Home Pi summary is divided into three equal Slot 1/2/3 sections. One
+bounded read-only `tmux list-panes` projection binds each fixed pane PID to its
+fresh local Pi extension heartbeat. A slot is `Active` only during an actual Pi
+agent generation, `Inactive` when its fresh heartbeat is idle (or its fixed pane
+is absent/dead), and `Unknown` when either probe or heartbeat is unavailable,
+ambiguous, or stale. The projection never attaches, resizes, creates, restarts,
+or sends input to a session. An explicit `JARVISD_PROJECT_ROOT` is authoritative
+for scheduler and Codex quota paths, so artifact-hosted jarvisd cannot fall back
+to the user's unrelated global `.pi` directory.
 
 The three-conversation design fixes Slot 1 to `jarvis-ios`, adds only
 `jarvis-ios-2` and `jarvis-ios-3`, remembers selection independently on iPhone and
