@@ -30,7 +30,7 @@ Project folder: `projects/operation-jarvis/raspberry-pi/`
 | Native JARVIS host | `mac-mini-64` / `<private-lan-ip>` / user `dylanrapanan`; no jump host |
 | Native JARVIS key | `~/.ssh/jarvis_dashboard_host.pub` authorized on this Pi |
 | HDMI display state | Safe console mode, `1024x768@60`, `multi-user.target` |
-| Room audio | Anker PowerConf over Bluetooth: SCO mic + A2DP speaker |
+| Room audio | Anker PowerConf over USB ALSA, 48 kHz full-duplex capture/playback |
 
 ## Purpose
 
@@ -127,9 +127,11 @@ scp -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes \
 
 Current listener command is in [`room_audio/README.md`](./room_audio/README.md).
 
-Install or refresh the boot-time service from this repo:
+Install or refresh the boot-time service from this repo. The installer intentionally requires the Pi target and Mac room-audio URL:
 
 ```bash
+PI_HOST=raspberrypi \
+SERVER_URL=http://<private-lan-ip>:8791 \
 projects/operation-jarvis/raspberry-pi/scripts/install-room-audio-service.sh
 ```
 

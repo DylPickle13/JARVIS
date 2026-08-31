@@ -66,9 +66,9 @@ optional Metal component; install it once with
   complete removal of host Siri plug intents and greeting audio, immediate-only
   correlated Watch plug/purifier relay writes, bounded command-envelope age,
   removal of queued WatchConnectivity command delivery and response polling, and
-  the exact three-kind non-control widget catalogues with all plug-widget source,
-  App Intents, and built kinds absent. The iPhone terminal contract additionally
-  verifies the restored
+  the exact two-kind non-control widget catalogues with all retired plug/purifier
+  widget source, App Intents, and built kinds absent. The iPhone terminal
+  contract additionally verifies the restored
   fixed-step Pi viewport: native momentum/bounce is disabled, each threshold
   emits at most one immediate SGR wheel event, and no event is queued, paced,
   retried, replayed, or delivered after mouse mode/disconnection. iOS and live

@@ -572,12 +572,12 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
 ## Scope (v5, approved)
 
 - **In:** smart plugs, air purifier, status and telemetry (Pi session count,
-  network, uptime, room audio, scheduler, and scheduled jobs), service
-  start/stop/restart (room-audio server), Neural Core, launcher, and
-  read-only purifier-status widgets on iPhone and Watch, Siri/Shortcuts via App
-  Intents, the iPhone SSH-backed Pi terminal, and the
-  foreground-only Watch view of that same persistent terminal over the private
-  HTTPS bridge, with LAN and Tailscale remote access.
+  network, uptime, room audio, scheduler, scheduled jobs, and retained results),
+  service start/stop/restart (room-audio server), Neural Core and Open JARVIS
+  read-only widgets on iPhone and Watch, the two-turn “Hey JARVIS” App Intent,
+  the iPhone SSH-backed Pi terminal, and the foreground-only Watch view of that
+  same persistent terminal over the private HTTPS bridge, with LAN and
+  Tailscale remote access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
   word, Raspberry Pi room endpoint, scheduler process mutation and scheduled-
   job mutation in the read-only first release, active **APNs push + Live
@@ -598,11 +598,11 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
 ## Branding
 
 - App name: **JARVIS**
-- Accent: **light blue / holographic blue** (exact value set in M0)
+- Accent: Pi **`xhigh` purple** — `#D183E8` in dark mode/Watch and accessible `#8B008B` in iPhone light mode
 - Icon: generated from `../jarvis-icon.png` for both opaque iOS and watchOS
   app-icon catalogs
 
-## What's working now (M2/M2.1 + M3 foundations)
+## What's working now
 
 - **`jarvisd` daemon** — running under launchd (`com.operation-jarvis.jarvisd`)
   with a resurrector watchdog. Explicit `JARVISD_AUTH_MODE=trusted-network`
@@ -611,7 +611,8 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
   `/api/v1/state` (plugs, purifier, Pi count, network, uptime),
   `/api/v1/command` (allowlisted, rejects cast), `/api/jarvis/events` ingest,
   `/api/v1/events`, `/api/v1/services` (server-allowlisted lifecycle actions),
-  and `/api/v1/scheduled-jobs` (sanitized read-only inventory).
+  `/api/v1/scheduled-jobs`, `/api/v1/scheduled-job-results`, and the fixed
+  signing status/renewal endpoints.
 - **iOS app — navigation** — 4-tab shell (Home / JARVIS / Jobs / Settings).
   Home shows the connection header (LAN vs Tailscale + IP), Pi session count, a
   **2-column plug grid**, then the **air purifier** (power switch +
@@ -626,63 +627,34 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
   `/api/jarvis/events` ingest sink remain available to operational tooling, but
   the native iPhone client no longer displays or polls an Events feed.
 - **iOS app — lifecycle** — health-first discovery is owned by the scene
-  lifecycle, retries with backoff after transport failures, observes network
-  path changes, refreshes Home immediately and every 15 seconds, and cancels
-  polling in Settings or the background. Pull-to-refresh remains an optional
-  fallback. Polling also stops while JARVIS is selected. `jarvisd` state reads are
-  cached, so warm snapshots return in milliseconds.
-- **iOS app — Pi terminal** — SwiftTerm renders the real Pi TUI while SwiftNIO
+  lifecycle, retries with backoff after transport failures, and observes network
+  path changes. Home hardware/service state refreshes immediately and every 15
+  seconds only while Home is selected. Jobs schedules/results refresh every 15
+  seconds while any app tab is active; backgrounding cancels polling. Pull-to-
+  refresh remains optional, and warm `jarvisd` state reads return from cache.
+- **iOS app — Pi terminal** — SwiftTerm renders Pi's regular TUI while SwiftNIO
   SSH carries a password-authenticated PTY to this Mac. First use confirms and
-  remembers the SSH host key; the password is kept in target-local Keychain.
-  An isolated `jarvis-mobile` tmux server creates or attaches `jarvis-ios`, so
-  Pi survives tab changes, app backgrounding, termination, and reconnection.
-  Build 87 introduced native local scrollback. Build 93's `/resume` trigger produced
-  blank promoted rows, and build 94 made saved history available but rendered a
-  reconstructed transcript that the owner rejected visually. Build 95 restores the
-  earlier fixed-step Pi-owned viewport: SwiftTerm's native pan/momentum/bounce is
-  disabled, and each drag threshold sends one immediate SGR wheel event so the rows
-  remain exactly Pi-rendered. Wheel events are never queued, paced, retried, replayed,
-  or retained after mouse-mode loss/disconnection.
-  Build 37 retains build 36's Pi fullscreen TUI presentation,
-  fixes wheel routing to the input cursor, limits tmux's fallback to one line,
-  and hides the remote hardware cursor while retaining Pi's software cursor in
-  the fixed editor. The compact key deck exposes Escape, Ctrl, Tab, slash, Up, and Down. A fixed trailing button
-  always shows or hides the keyboard; the terminal also supports tap-to-open
-  and downward-swipe dismissal without letting shortcut keys reopen it. A fresh
-  install starts at 18 points, pinch persists intentional zoom, and landscape
-  is enabled.
-- **watchOS app** — builds for Apple Watch Series 11 (46mm), uses real
-  `WCSessionDelegate` reachability callbacks, refreshes immediately on
-  activation and every 15 seconds while visible, preserves frontmost work while
-  Always On is inactive, cancels only on background, and supports direct/relay/cache plug controls plus power/mode/fan controls inside the existing System-page purifier card. The normal refresh control is
-  gone; Retry appears only after failure. The app is embedded in the iPhone
-  bundle under `Watch/`. The corrected
-  parent registration plus developer Watch install produces
-  `isWatchAppInstalled=true` and `isCompanionAppInstalled=true` under free
-  provisioning; the final physical reachability/relay matrix remains open.
-  Build 33 places the foreground terminal directly on page one, followed by
-  Plugs and System for exactly three vertical pages. It uses pinned HTTPS
-  snapshots instead of direct SSH, stores its token in Watch-local Keychain,
-  supports system text entry plus Esc/Ctrl/Tab/slash/Up/Down, and cancels
-  polling when inactive. Build 34 adds LAN-to-Tailscale route failover and a
-  fitted one-tmux-row-per-display-row renderer. Build 36 adds build 35's
-  status-bar-free custom pager, reclaims the bottom inset, wraps output in an
-  11-point Read mode, preserves a pannable 9-point Raw grid, and pins the cursor
-  row. Build 37 replaces duplicate Type/Speak actions with a compact
-  Keys/Input/Send dock. Input uses WatchKit's public system text controller for
-  keyboard or dictation and inserts bytes with `appendReturn=false`; the
-  separate Send action emits exactly `0x0d`. Build 38 uses keyboard-first
-  `TextFieldLink` instead of the legacy controller that could open directly in
-  dictation; microphone entry remains available in the system keyboard. Build
-  41 removes the now-duplicate prompt rail, uses compact slash/DEL/Return-symbol
-  buttons, and keeps disconnected input disabled and unqueued; no text-input
-  completion can execute a command. Build 37 also replaces the System page's
-  connection-source panel with a Codex quota ring and adds the same tracker to
-  iPhone Home. Build 41 runs the quotas project's fixed read-only
-  `codex --json` command every minute and on each Watch System-page entry, publishes only sanitized quota fields,
-  retains the last good value on provider failure, and excludes quota failure
-  from global hardware-state staleness. The Watch still uses an underscored
-  status-bar modifier that requires physical regression after OS/Xcode updates.
+  remembers the SSH host key; the password stays in target-local Keychain. The
+  isolated `jarvis-mobile` tmux server creates or attaches `jarvis-ios`, so Pi
+  survives tab changes, backgrounding, termination, and reconnection. The
+  accepted Build 95 viewport disables native pan momentum/bounce and emits at
+  most one immediate SGR wheel event per drag threshold, leaving transcript
+  rendering to Pi. Wheel input is never queued, paced, retried, or replayed.
+  Escape, Ctrl, Tab, slash, Up, Down, the keyboard toggle, tap-to-open,
+  downward-swipe dismissal, persisted 9–20-point zoom, and landscape remain.
+- **watchOS app** — the embedded Watch app opens directly on Terminal, followed
+  by Plugs and System. Dashboard state refreshes every 15 seconds while visible,
+  uses direct `jarvisd` first with immediate-only correlated iPhone relay and
+  stale cache fallback, and provides guarded native plug plus purifier
+  power/mode/fan controls. The terminal uses bearer-authenticated,
+  certificate-pinned HTTPS to `terminald`, a fitted one-row-per-tmux-row ANSI
+  mirror, Crown-only paged read-only history, keyboard/dictation staging, and
+  exact slash/DEL/Return controls. Input fails closed until a fresh route is
+  confirmed and is never queued or replayed. Always-On presentation retains the
+  last truthful frame without promising continuous networking. Final-response
+  speech is explicitly requested and plays only from a verified local WAV.
+  Codex quota refresh remains read-only, one-minute, and non-critical to
+  hardware freshness.
 - **Two-turn Siri prompt** — the iPhone and Watch hosts advertise exactly one
   App Shortcut: “Hey JARVIS.” Siri then asks for the required free-form prompt.
   Host metadata contains no Siri plug entities, queries, or on/off intents. The
@@ -691,15 +663,12 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
   `appendReturn=true`. The question is the only app-provided dialogue; completion
   and failure results are silent. No greeting playback intent or bundled JARVIS WAV
   is present. Plug control remains available inside the iPhone and Watch apps.
-- **M3 widget foundations** — each embedded WidgetKit extension publishes three
-  focused, non-control widgets: Neural Core, Open JARVIS, and read-only Air
-  Purifier. The former selected-plug and plug-grid widgets and their App Intents
-  are removed. Fifteen-minute state timelines share a short single-flight
-  direct-daemon refresh. The Personal Team profile cannot provide
-  App Groups or shared widget credentials, so widgets do not claim shared
-  cache/token or phone-relay support. Signed physical gallery and representative
-  command validation pass; stale/offline and remaining accessory-family rows are
-  tracked in the unified documentation.
+- **Widget catalogue** — each embedded WidgetKit extension publishes exactly
+  two non-control widgets: Neural Core and Open JARVIS. All plug and purifier
+  widget source, App Intents, and built kinds are removed. Fifteen-minute Neural
+  Core timelines use a short single-flight direct-daemon refresh; launchers are
+  static. Personal Team provisioning provides no App Groups or shared widget
+  credentials, so widgets do not claim shared cache/token or phone relay.
 - **`JARVISKit`** — shared package with `JarvisClient` (incl. `discover`),
   `StateSnapshot` models, `EndpointStore` (Keychain), `WatchBridge`; mocked
   networking tests pass, while live integration tests are explicit opt-in.
@@ -725,8 +694,7 @@ jarvis-app/
 ├── docs/
 │   ├── pi-attach-integration-plan.md # deferred iPhone attachment plan only
 │   └── third-party/            # retained third-party license text
-├── scripts/
-│   └── redeploy-jarvis-app.sh  # one-command device build + install
+├── scripts/                    # verify, deploy, signing, terminald, provisioning
 ├── jarvisd/                    # Python hardware/status/service daemon (port 8790)
 │   ├── jarvisd.py              #   HTTP server + cached state coordinator
 │   ├── tests/                  #   auth, input, cache, event, service tests
@@ -742,7 +710,7 @@ jarvis-app/
 │   ├── Sources/JARVISKit/      #   Models, JarvisClient, EndpointStore, WatchBridge
 │   └── Tests/JARVISKitTests/   #   unit + live integration tests
 ├── JARVIS/                     # iOS app target (SwiftUI)
-│   ├── JARVISApp.swift         #   @main + Home/Pi/Settings tab shell
+│   ├── JARVISApp.swift         #   @main + Home/JARVIS/Jobs/Settings tab shell
 │   ├── AppState.swift          #   connection + state + command model
 │   ├── AppStateWatchBridge.swift
 │   ├── Info.plist              #   scoped local/Tailscale ATS policy
@@ -751,24 +719,26 @@ jarvis-app/
 │   ├── Terminal/               #   SwiftTerm + SwiftNIO SSH + Pi key deck
 │   └── Views/
 │       ├── HomeView.swift      #   Pi telemetry, plugs, purifier, services + daemon info
-│       ├── SettingsView.swift  #   connection management + about
+│       ├── JobsView.swift      #   read-only retained results and schedules
+│       ├── SettingsView.swift  #   connection, terminals, signing + app info
 │       └── Components.swift    #   badge, card, formatting helpers
 ├── JARVISWatch/                # watchOS app target
 │   ├── JARVISWatchApp.swift
 │   ├── Info.plist              #   ATS exception
 │   └── Views/WatchConnectView.swift
-├── JARVISWidget/               # three non-control iOS WidgetKit widgets
-└── JARVISWatchWidget/          # three non-control watchOS widgets/complications
+├── JARVISWidget/               # Neural Core + Open JARVIS
+└── JARVISWatchWidget/          # Neural Core + Open JARVIS complications
 ```
 
 ## Backend dependency
 
 `jarvisd` — Python daemon in `jarvis-app/jarvisd/` (port 8790, LaunchAgent +
 resurrector): auth, cached `/api/v1/state`, `/api/v1/command` (allowlisted →
-`jarvis-cli`), `/api/v1/events`, `/api/jarvis/events` ingest (existing
-jarvis-cli contract), `/api/v1/services` (start/stop/restart), and sanitized
-`/api/v1/scheduled-jobs`. The full contract and operating procedure are
-consolidated later in this README. Tailscale on the Mac is transport-only.
+`jarvis-cli`), `/api/v1/events`, `/api/jarvis/events` ingest, `/api/v1/services`
+(start/stop/restart), sanitized `/api/v1/scheduled-jobs` and
+`/api/v1/scheduled-job-results`, plus fixed signing status/renewal endpoints.
+The full contract and operating procedure are consolidated later in this
+README. Tailscale on the Mac is transport-only.
 
 ### Security configuration
 
@@ -836,7 +806,7 @@ never deploy to a device outside Dylan's allowlist.
   per-resource busy locks, and duplicate-write protection are implemented.
 - The corrected Xcode 26 Watch companion hierarchy, `Watch/` embedding, signing,
   parent registration, developer installation, icons, and installed flags pass.
-- Physical iPhone and Watch widget galleries expose the final four widget types.
+- Physical iPhone and Watch widget galleries expose the final two kinds per platform: Neural Core and Open JARVIS.
 - Physical plug-control tests restored their initial states and produced one
   command/event pair per intentional desired-state change.
 - Build-33 cellular/Tailscale cold launch and relaunch pass without a hardware
@@ -1879,31 +1849,22 @@ build 14 after reconnection. Build 15 and build 16 subsequently installed on bot
 devices. Do not repeat blind build-14 installs. No plug, purifier, scheduled-job,
 or managed-service mutation was emitted during these deployments.
 
-### Remaining release gates
+### Remaining Build 127 release gates
 
-1. Install build 24 on Dylan's iPhone, enter the Mac login password, approve the
-   displayed host fingerprint, and validate the live Pi TUI without issuing a
-   hardware command.
-2. Validate Pi persistence across Home/Pi tab changes, backgrounding, force
-   termination, portrait/landscape, software/hardware keyboards, and a live
-   LAN/Tailscale path change.
-3. Inspect the redesigned physical iPhone Home and Settings screens and all
-   three Watch pages in normal and large-text presentation.
-4. Inspect the remaining Watch accessory families.
-5. Force stale, unknown, and offline widget states and prove writes are blocked.
-6. Complete the Watch-originated state request, correlated relay command result,
-   timeout, duplicate-request, direct/relay failover, and offline-cache matrix.
-7. Complete live Wi-Fi/cellular path switching and Local Network permission
-   recovery for daemon traffic.
-8. Complete physical VoiceOver, Dynamic Type, contrast, and remaining
-   accessibility checks.
-9. Run the remaining event audit and disposable-service UI smoke, then one final
-   verification/deployment pass before release acceptance.
+1. Run repository smoke and full app verification against the exact Build 127
+   source without touching hardware.
+2. Archive/export once from clean `main`, then audit versions, signing profiles,
+   device allowlists, nested Watch hierarchy, entitlements, and exact products.
+3. Install the exact audited iPhone and Watch products and confirm both
+   inventories report `0.3.0 (127)` before replacing the Build 126 checkpoint.
+4. Physically validate the read-only Jobs Inbox/Schedules views, unread state,
+   safe deep links, and 15-second active refresh without any scheduler mutation.
+5. Recheck the two-kind widget galleries, “Hey JARVIS” prompt shortcut,
+   terminal persistence, Watch direct/relay/offline behavior, networking, and
+   accessibility rows affected by Build 127.
 
-The purifier physical write gate remains intentionally incomplete after VeSync
-cloud lag and timeouts. The purifier may remain off; do not retry a purifier
-write without explicit authorization. The former 30-minute reliability
-observation is waived and is not a release task.
+Purifier, plug, service, scheduler, and scheduled-job mutations are not required
+for this release. Do not issue a physical write merely as a deployment smoke test.
 
 ---
 
@@ -1948,8 +1909,9 @@ iPhone app / iPhone widgets / Watch app / Watch widgets
   cached stale fallback.
 - Neural Core and Open JARVIS widgets on iPhone and Watch; plug and purifier
   control remains inside the apps.
-- Typed App Intents and `jarvis://home`, `jarvis://pi`, and
-  `jarvis://settings` deep linking.
+- The host-only two-turn “Hey JARVIS” App Intent and `jarvis://home`,
+  `jarvis://pi`, `jarvis://jobs[/result/<sequence>]`, and `jarvis://settings`
+  deep linking.
 - iPhone-only authentic Pi TUI over SSH with persistent tmux reattachment.
 - LAN and Tailscale access.
 
@@ -2044,7 +2006,10 @@ it and may restart it. The daemon delegates commands to the canonical
 | `POST /api/jarvis/events` | Scoped event ingestion from canonical JARVIS actions. |
 | `GET /api/v1/services` | Registered LaunchAgent status and server metadata. |
 | `POST /api/v1/services/{name}` | Server-allowlisted start/stop/restart. |
-| `GET /api/v1/scheduled-jobs` | Sanitized read-only cron-runner inventory. |
+| `GET /api/v1/scheduled-jobs` | Sanitized read-only private-scheduler inventory. |
+| `GET /api/v1/scheduled-job-results` | Bounded sanitized retained results with `after`, `limit`, and optional `jobId`. |
+| `GET /api/v1/signing/status` | Bounded fixed signing-renewal status and profile projection. |
+| `POST /api/v1/signing/renew` | Starts only the fixed argument-free allowlisted renewal action; accepts no body. |
 
 Unknown paths/methods and malformed, scalar, empty, or oversized request bodies
 are rejected with bounded JSON errors. Client responses do not expose local
@@ -2119,14 +2084,20 @@ and an audit event. Do not stop the scheduler across an understood due boundary.
 
 ### iPhone
 
-- **Home:** Pi sessions → plugs → air purifier → services/jobs/`jarvisd`.
-- **Settings:** discovery, endpoint override, connection state, and About.
-- Health establishes connectivity before the slower state resource is loaded.
-- Scene lifecycle owns connection and polling; backgrounding cancels frequent
-  work, foregrounding reconnects, and network-path changes trigger rediscovery.
-- State, services, scheduled jobs, and health refresh together immediately and
-  every 15 seconds while Home is active. Settings performs no background
-  resource polling. Pull-to-refresh remains available but is not required.
+- **Home:** Pi sessions → plugs → air purifier → System summaries for services,
+  schedules, and protected `jarvisd` state.
+- **JARVIS:** the persistent SSH/tmux Pi terminal; Home hardware polling rests
+  while this tab is selected.
+- **Jobs:** read-only retained Inbox and Schedules views, unread baseline, safe
+  HTTP(S) links, and `jarvis://jobs/result/<sequence>` result routing.
+- **Settings:** focused Connection, Pi Terminal, Watch Terminal, and Developer
+  Signing destinations plus app version information.
+- Health establishes connectivity before slower resources load. Scene lifecycle
+  owns connection and polling; backgrounding cancels work, foregrounding
+  reconnects, and network-path changes trigger rediscovery.
+- Home state/services refresh immediately and every 15 seconds only on Home.
+  Jobs schedules/results refresh every 15 seconds while any tab is active.
+  Pull-to-refresh remains available but is not required.
 - Failure in one resource preserves the last successful values from others.
 - Missing data renders Loading, Stale, Unavailable, or Unknown—not plausible
   zero/off/stopped values.
@@ -2164,23 +2135,18 @@ command correlation are separate assertions.
 
 ### Siri and Shortcuts
 
-The discoverable host surface is deliberately plug-only:
+The iPhone and Watch hosts advertise exactly one App Shortcut: bare **“Hey
+JARVIS.”** Siri asks **“What would you like me to send to JARVIS?”**, normalizes
+the required free-form answer to one bounded logical line, preflights the saved
+authenticated/certificate-pinned terminal route, and attempts one immediate
+`appendReturn=true` request. Input is never queued, replayed, or retried after
+ambiguous delivery. iPhone uses a success-only `OpenURLIntent` handoff to the
+JARVIS tab; Watch foregrounds/selects Terminal only after confirmed delivery.
 
-- Turn On JARVIS Plug.
-- Turn Off JARVIS Plug.
-
-The plug parameter is a dynamic `AppEntity` sourced from current daemon state,
-not the widget's fixed configuration enum. Cached state may help resolve a
-spoken name, but only fresh direct or relayed state may authorize a write. A
-persisted target-local phrase-schema/catalogue signature ensures publication on
-first fresh state after an install or phrase update as well as after identifiers
-are added, removed, or renamed. The only fixed Watch phrases are “Hey JARVIS,
-turn on/off [the] [plug]” and parameterless “a plug” forms that prompt for the
-entity. “With JARVIS”, “Use JARVIS”, and contact-directed “Tell JARVIS” forms are
-not advertised. Matching is normalized but not fuzzy; ambiguity is handed back
-to Siri instead of guessing. The widget-only raw intent remains non-discoverable.
-No purifier, service, scheduler, status, launcher, or general JARVIS shortcut is
-published.
+Host metadata contains no plug entities, plug queries, or turn-on/off intents;
+plug and purifier control remains inside the native apps. Widgets contain no
+Siri prompt intent, and no purifier, service, scheduler, status, or launcher
+shortcut is published.
 
 ### Accessibility and presentation
 
@@ -2646,24 +2612,21 @@ approved clean reinstall becomes necessary; never alter pairing records.
   stop and cleanup.
 - All four iPhone plug controls with initial-state restoration.
 - Representative direct Watch lamp control with restoration.
-- Signed iPhone widget launcher and one-command ON/OFF feedback round trip.
-- Watch gallery, one editable selected-plug entry, all-four grid, launcher,
-  read-only purifier, and four intentional non-duplicated lamp writes with final
-  restoration.
+- Build 118 removal of every plug/purifier widget and widget write path.
+- Build 126 physical iPhone/Watch installation, terminal behavior, native
+  plug/purifier controls, and two-kind widget catalogues.
 
 ### Remaining consolidated matrix
 
 | Owner | Test | Pass condition |
 |---|---|---|
-| iPhone packaging | Activate existing build-14 IPA | Inventory reaches build 14 without data loss. |
-| Watch launcher | Circular Smart Stack and remaining families | Artwork fits, stays full colour where supported, clips cleanly, and launches. |
-| Watch app direct | One representative current-state command | Pending, correlated result, and refreshed state. |
-| Watch app relay | Disable direct path and repeat guarded command | iPhone relay returns one result; duplicate request executes once. |
-| Watch app offline | Remove direct and relay | Cached state is stale and writes fail/block honestly. |
-| Widgets | Inspect both galleries after Build 118 | Only Neural Core and Open JARVIS remain; no plug, purifier, or hardware-control widget appears. |
+| Build 127 packaging | Archive/export clean `main` once | All four exact products report `0.3.0 (127)` and pass profile, signature, entitlement, and Watch-hierarchy audits. |
+| Exact deployment | Install the audited iPhone IPA and nested Watch product | Both allowlisted inventories report Build 127; Build 126 is replaced only after verification. |
+| Jobs | Inspect Inbox, Schedules, unread state, details, and safe links | Sanitized results render, active refresh works, and no scheduler/job mutation route exists. |
+| Widgets | Inspect both galleries | Each platform exposes only Neural Core and Open JARVIS; no plug, purifier, or control widget appears. |
+| Siri/terminal | Run one harmless owner prompt | Bare “Hey JARVIS” sends once, success hands off correctly, and no host plug intent returns. |
+| Watch routing | Exercise read-only direct/relay/offline recovery | State and terminal routes recover honestly; no input or hardware write is queued/replayed. |
 | iPhone networking | Wi-Fi/cellular switch and Local Network deny/re-enable | Automatic recovery and truthful path/error state. |
-| Events | Inspect after targeted actions | User actions appear once; collector noise is absent. |
-| Disposable service UI | One reversible approved smoke | Correct status, confirmation, action, and event. |
 | Accessibility | Physical VoiceOver, large text, contrast, Reduce Motion | Core iPhone/Watch controls remain usable. |
 
 Use underlying canonical CLI/hardware state as truth once per test. Do not
@@ -2672,9 +2635,9 @@ change, use desired-state actions, and restore the original state. Real bot,
 scheduler, scheduled-job, or purifier mutations require separate explicit
 permission.
 
-### Final pass before `0.3.0`
+### Final pass before Build 127 replaces Build 126
 
-1. Finish the remaining physical matrix.
+1. Finish the remaining Build 127 matrix.
 2. Run `./.pi/smoke-test.sh` once.
 3. Run `JARVIS_RUN_IOS_TESTS=1 ./scripts/verify-jarvis-app.sh` once.
 4. Run the opt-in live JARVISKit suite once.
@@ -2683,14 +2646,16 @@ permission.
    artifacts or identities.
 7. Build from fresh DerivedData and deploy one exact archive to both allowlisted
    devices.
-8. Confirm versions and run a brief direct/relay smoke.
-9. Bump/release `0.3.0` only after every required row passes.
+8. Confirm both inventories report `0.3.0 (127)` and run read-only Jobs,
+   widget, terminal-route, and Siri handoff acceptance.
+9. Record Build 127 as the physical release only after every required row passes;
+   do not change the marketing version unless separately approved.
 
 All commits remain local unless Dylan separately requests a push.
 
 ---
 
-## 12. Condensed implementation history
+## 12. Condensed early implementation history (through Build 24)
 
 | Milestone/build | Result |
 |---|---|
@@ -2744,7 +2709,7 @@ coexistence, or Bridge installation are superseded by this document.
 # Animated Monochrome Cathedral Plan
 
 Date: 2026-08-23 EDT
-Status: Implemented, audited, and physically deployed as JARVIS 0.3.0 (47); visual motion acceptance remains pending
+Status: Historical implementation plan; deployed and physically accepted through the later Build 75/126 widget path, with WidgetKit/Always-On timing still system-controlled
 
 ## Decision summary
 
@@ -3004,7 +2969,9 @@ items rather than blockers for the accepted frame-removal correction.
 **Date:** 2026-08-23 EDT
 
 **Proposed release:** `0.3.0 (39)`
-**Status:** Implemented in build 39; atomic immediate-submit correction in build 40; physical Siri routing acceptance pending
+**Status:** Historical Build 39–44 implementation record. The prompt intent remains current; Build 92 removed the host plug intents referenced by the original test plan, and Build 126 is the installed checkpoint.
+
+> Historical note: references below to “two existing plug shortcuts” or plug-phrase regression tests describe the pre-Build-92 host surface. Current host metadata exposes only the bare two-turn “Hey JARVIS” prompt shortcut.
 
 ## Implementation result
 

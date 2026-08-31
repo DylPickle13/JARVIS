@@ -26,7 +26,7 @@ PowerConf mic/speaker on Raspberry Pi
 
 ## Machine endpoints
 
-Verified SSH endpoints for this room-audio stack on 2026-06-11 EDT:
+Verified SSH endpoints for this room-audio stack on 2026-08-30 EDT:
 
 | Role | Hostname | LAN IP | SSH user | Access notes |
 |---|---|---|---|---|
@@ -82,7 +82,7 @@ Optional environment variables:
 - `JARVIS_ROOM_AUDIO_INTERRUPT_ASR_BACKEND` / `JARVIS_ROOM_AUDIO_INTERRUPT_ASR_FALLBACK_BACKEND` — busy-only control-path overrides; the current deployment uses `apple-dictation` with no fallback.
 - `JARVIS_VOICE_APPLE_ASR_HELPER`, `JARVIS_VOICE_APPLE_ASR_LOCALE`, `JARVIS_VOICE_APPLE_ASR_TIMEOUT_SECONDS`, `JARVIS_VOICE_APPLE_ASR_CONTEXTUAL_STRINGS` — native helper path, locale, timeout, and up to 100 short hints. See [`../../voice/README.md`](../../voice/README.md).
 - `JARVIS_ROOM_AUDIO_WAKE_WORD` — legacy transcript-wake setting; room audio no longer uses it to reject turns after Pi-side openWakeWord has accepted them.
-- `JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS` — code default `450`; current `.env` uses `1000` for Bluetooth/A2DP first-syllable protection. If the acknowledgement ever clips again, raise this to about `1300`–`1500`.
+- `JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS` — code default `450`; the current room-speaker deployment retains `1000` ms of leading silence, originally added for A2DP first-syllable protection. Change it only after validating acknowledgement and final-answer playback on the active USB path.
 - `JARVIS_ROOM_AUDIO_PROCESSING_ACK_ENABLED` — defaults to `JARVIS_VOICE_PROCESSING_ACK_ENABLED`; when enabled, accepted turns can immediately play the acknowledgement.
 - `JARVIS_ROOM_AUDIO_PROCESSING_ACK_TEXT` — defaults to `JARVIS_VOICE_PROCESSING_ACK_TEXT` / `Generating your response, sir.`
 - `JARVIS_ROOM_AUDIO_ASYNC_JOB_TTL_SECONDS` — default `900`; retention window for async final-answer jobs.
@@ -109,7 +109,9 @@ Optional environment variables:
 Current USB/VAD listener command on the Raspberry Pi:
 
 ```bash
-python3 /home/pi/jarvis-room-audio-client.py \
+/home/pi/jarvis-room-audio/.venv/bin/python \
+  /home/pi/jarvis-room-audio-client.py \
+  --server-url http://<private-lan-ip>:8791 \
   --device 'plughw:CARD=PowerConf,DEV=0' \
   --playback-device 'plughw:CARD=PowerConf,DEV=0' \
   --rate 48000 \
@@ -130,11 +132,15 @@ python3 /home/pi/jarvis-room-audio-client.py \
   --openwakeword-model hey_jarvis \
   --openwakeword-ncpu 2 \
   --local-wake-word-threshold 0.75 \
+  --trust-local-wake-word \
   --bt-profile-settle-seconds 0 \
   --bt-playback-drain-seconds 0 \
   --startup-greeting \
   --no-greeting-on-reconnect \
-  --async-ack
+  --async-ack \
+  --poll-interval 0.25 \
+  --result-timeout 300 \
+  --interval 1.0
 ```
 
 Say a wake-word phrase for a normal idle turn:
@@ -151,9 +157,11 @@ stop
 
 Bare `stop` is ignored while JARVIS is idle. The first release intentionally accepts only the exact normalized word `stop`; longer phrases such as `don't stop` are rejected. The room-audio backend imports the transport-neutral policy from `projects/operation-jarvis/voice/voice_commands.py`. Interrupt handling preserves cancellation during active playback while preventing idle requests from invoking ASR or cancellation.
 
-The local wake-word dependency is required for the current listener. The service installer creates `/home/pi/jarvis-room-audio/.venv` and installs `openwakeword` there by default. If rebuilding manually, rerun:
+The local wake-word dependency is required for the current listener. The service installer creates `/home/pi/jarvis-room-audio/.venv` and installs `openwakeword` there by default. If rebuilding manually, provide both required endpoints:
 
 ```bash
+PI_HOST=raspberrypi \
+SERVER_URL=http://<private-lan-ip>:8791 \
 projects/operation-jarvis/raspberry-pi/scripts/install-room-audio-service.sh
 ```
 
@@ -162,14 +170,19 @@ The log should say `local wake word online`.
 For fixed-window diagnostics without requiring the wake word:
 
 ```bash
-python3 /home/pi/jarvis-room-audio-client.py --duration 5 --beep --no-wake-word
+/home/pi/jarvis-room-audio/.venv/bin/python \
+  /home/pi/jarvis-room-audio-client.py \
+  --server-url http://<private-lan-ip>:8791 \
+  --duration 5 --beep --no-wake-word
 ```
 
 ## Persistent Pi service
 
-Install or refresh the boot-time listener from this repo:
+Install or refresh the boot-time listener from this repo. The script fails closed unless both `PI_HOST` and `SERVER_URL` are provided:
 
 ```bash
+PI_HOST=raspberrypi \
+SERVER_URL=http://<private-lan-ip>:8791 \
 projects/operation-jarvis/raspberry-pi/scripts/install-room-audio-service.sh
 ```
 

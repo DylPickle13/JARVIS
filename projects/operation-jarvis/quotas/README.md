@@ -162,22 +162,22 @@ CLI flags:
 
 ## Pi session cost summary
 
-Pi session JSONL logs include per-response usage and cost fields. Summarize them with:
+Pi session JSONL logs include per-response usage and cost fields. From the repository root, summarize them with:
 
 ```bash
-python3 projects/operation-jarvis/quotas/pi_session_costs.py --cwd /Users/gemma/JARVIS
+python3 projects/operation-jarvis/quotas/pi_session_costs.py --cwd "$PWD"
 ```
 
 Show the highest-cost sessions too:
 
 ```bash
-python3 projects/operation-jarvis/quotas/pi_session_costs.py --cwd /Users/gemma/JARVIS --sessions --limit 20
+python3 projects/operation-jarvis/quotas/pi_session_costs.py --cwd "$PWD" --sessions --limit 20
 ```
 
 Export per-session CSV:
 
 ```bash
-python3 projects/operation-jarvis/quotas/pi_session_costs.py --cwd /Users/gemma/JARVIS --csv projects/operation-jarvis/quotas/data/session-costs.csv
+python3 projects/operation-jarvis/quotas/pi_session_costs.py --cwd "$PWD" --csv projects/operation-jarvis/quotas/data/session-costs.csv
 ```
 
 Notes:
