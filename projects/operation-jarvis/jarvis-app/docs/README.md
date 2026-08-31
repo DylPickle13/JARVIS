@@ -1,15 +1,30 @@
+# JARVIS app implementation documentation
+
+This is the canonical documentation index under `jarvis-app/docs`. It consolidates the iPhone terminal keyboard-avoidance and native Photos/Files attachment plans into one navigable document. The broader app architecture, operations, deployment, recovery, and historical plans remain in the [app README](../README.md).
+
+The dated status lines and checklists below are retained as implementation history; consult the app README and owner-only acceptance records for the currently deployed build state. Non-Markdown third-party license material remains separate under [`third-party/`](third-party/AnimationLimitBreaker-LICENSE.txt).
+
+## Contents
+
+- [iPhone terminal keyboard avoidance and native attachments](#iphone-terminal-keyboard-avoidance-and-native-attach-implementation-plan)
+- [Pi attachment product contract](#jarvis-app-pi-attachment-integration-plan)
+
+---
+
 # iPhone Terminal Keyboard Avoidance and Native Attach Implementation Plan
 
-Status: **planned only — no app, host-runtime, signing, or device change has been made**
+Status: **signed keyboard-only Build 129 physically passes; the exact-process private host endpoint is now active after one controlled reload, while iPhone attachment UI remains disabled pending the Build 130 attachment candidate**
 
 Prepared: **2026-08-30 EDT**
+
+Physical result: **Build 128 and the first Build 129 run both appeared to hide bottom Pi rows. Reinstalling the exact accepted Build 127 reproduced the issue, proving that app source was not the cause. The protected `jarvis-ios:0` window had retained a per-window `manual` override from an earlier detached-window recovery, despite the checked-in global `latest` policy. Restoring only that option produced observed 48×42 → 48×28 → 48×42 transitions without changing pane `%0`, PID 99571, history, editor state, or terminal bytes. Exact audited keyboard-only Build 129 was then reinstalled and physically accepted by the owner. Build 128 remains rejected and neither candidate was installed on Watch while its tunnel was unavailable.**
 
 This plan combines two iPhone terminal improvements:
 
 1. Make the software keyboard deterministically leave both the native key bar and Pi's rendered input editor visible.
 2. Add a native paperclip workflow that stages Photos/Files selections into the live Pi process exactly like the existing parameterless `/attach` command.
 
-The existing attachment product contract remains in [`pi-attach-integration-plan.md`](pi-attach-integration-plan.md). This document refines its implementation architecture, sequencing, concurrency rules, tests, and physical acceptance gates now that the desktop/local `/attach` extension and Mac SSH picker bridge exist.
+The existing attachment product contract remains in [the Pi attachment product contract](#jarvis-app-pi-attachment-integration-plan). This document refines its implementation architecture, sequencing, concurrency rules, tests, and physical acceptance gates now that the desktop/local `/attach` extension and Mac SSH picker bridge exist.
 
 ## Definition of done
 
@@ -68,9 +83,9 @@ The iPhone path therefore needs an extension-owned, process-scoped Unix socket o
 
 ## Architecture decisions
 
-### 1. Deterministic keyboard layout
+### 1. Deterministic keyboard layout — withdrawn in favor of the accepted composition
 
-Introduce an iPhone-only UIKit layout controller hosted by `UIViewControllerRepresentable`, using UIKit's public `UIKeyboardLayoutGuide` as the obstruction authority.
+The initial implementation introduced an iPhone-only UIKit layout controller hosted by `UIViewControllerRepresentable`, using UIKit's public `UIKeyboardLayoutGuide` as the obstruction authority. Its first signed run occurred while tmux was unknowingly pinned to `window-size manual`, so that run could not isolate the container. Exact Build 127 subsequently reproduced the issue and proved the host override was causal. The controller and its synthetic geometry test remain removed because the accepted Build 127 SwiftUI `VStack` plus `UIViewRepresentable` composition physically works once `window-size latest` is restored, avoiding an unnecessary presentation rewrite. The bootstrap now reasserts that policy for the existing exact window without a resize command. The following text records the withdrawn design rather than an active production decision.
 
 Production constraints:
 
@@ -467,6 +482,10 @@ For successful cases verify:
 9. Create the archive from a clean exact source commit, checksum it, and install only its products on the two allowlisted devices.
 10. Record keyboard and attachment physical evidence plus exact source/archive hashes in a new owner-only acceptance record.
 
+### Automated implementation checkpoint
+
+Before physical deployment, Gates 2–6 passed in the isolated source candidate: root smoke was `PASS=124 WARN=1 FAIL=0` (the warning was the temporary worktree's intentionally absent Pi session-history directory), attachment Node tests were 9/9 and 13/13, JARVISKit was 83 tests with three live-only skips, JARVISTests was 36/36, generated-project output was reproducible, and normal plus target-scoped Swift 6 warnings-as-errors builds passed for iOS and Watch. After retaining the accepted composition and removing the unnecessary synthetic layout test, the complete verifier passes JARVISKit 83 tests with three live-only skips and JARVISTests 35/35 with zero compiler diagnostics. Physical A/B testing identified and corrected the host `manual` sizing override, then accepted exact audited keyboard-only Build 129. The source still defaults to keyboard-only: the paperclip and programmatic sheet entry remain fail-closed unless `JARVIS_NATIVE_ATTACHMENTS` is enabled on the iPhone target for the later attachment candidate. The owner-only Build 128 artifact remains marked `REJECTED`. After the keyboard gate, the four reviewed host runtime files were copied with owner-only rollback backups and one controlled `/reload` preserved pane `%0` and Pi PID 99571. The resulting mode-0600 socket/descriptor passed a read-only fixed-receiver snapshot at revision 0 with no staged files; production root smoke passed `PASS=129 WARN=0 FAIL=0`. No Watch product was installed while its tunnel was unavailable. iPhone attachment and final cross-platform gates remain open.
+
 ## Compatibility and rollback
 
 - Old iPhone builds ignore the new host endpoint.
@@ -480,7 +499,8 @@ For successful cases verify:
 ## Final acceptance checklist
 
 - [ ] Keyboard issue reproduced or unsafe geometry captured without content.
-- [ ] UIKit keyboard-layout-guide fix passes repeated simulator and physical transitions.
+- [x] Build 128's inconclusive keyboard-layout-guide candidate was removed in favor of the accepted composition.
+- [x] Restored accepted terminal composition passes repeated physical transitions under `window-size latest`.
 - [ ] No terminal input or protected-runtime regression.
 - [ ] Host coordinator and mobile socket are exact-process-bound, private, transactional, and memory-only.
 - [ ] iPhone Photos/Files selection is private, bounded, streamed, and cancellable.
@@ -490,3 +510,108 @@ For successful cases verify:
 - [ ] Existing desktop `/attach` behavior remains accepted.
 - [ ] Watch, widgets, Jobs, controls, scheduler, room audio, and APNs-dormant state remain unchanged.
 - [ ] Exact signed archive passes audit and allowlisted-device physical validation.
+
+---
+
+# JARVIS App Pi Attachment Integration Plan
+
+Status: **planned only — not implemented**
+
+The combined execution sequence, keyboard-avoidance prerequisite, transaction model, and release gates are defined in [the combined iPhone terminal implementation plan](#iphone-terminal-keyboard-avoidance-and-native-attach-implementation-plan).
+
+This document describes the deferred iPhone integration for the project-local Pi `/attach` extension. The desktop/local extension and SSH client bridge may ship independently. No JARVIS app source, Xcode project, `jarvisd`, or `jarvis-terminald` change is part of the current implementation.
+
+## Product contract
+
+- Pi continues to register exactly one parameterless attachment command: `/attach`.
+- The iPhone app adds no Pi command, command alias, or text protocol exposed to the user.
+- A paperclip control in the iPhone Pi terminal is the native app equivalent of invoking `/attach`.
+- The app opens native `PhotosPicker` and `fileImporter` interfaces instead of a macOS file dialog.
+- Selecting files stages them in the live Pi process for the next normal Pi message; selection never submits the editor or starts a model turn.
+- The staging UI permits adding, removing, and clearing files without introducing additional slash commands.
+- Only attachment files persist on disk. Restarting Pi clears the unsent queue; no manifest or other attachment metadata is saved.
+- Watch attachment selection is out of scope.
+
+## Proposed user experience
+
+1. The user taps a paperclip beside the existing terminal keyboard control.
+2. A native sheet offers **Photos** and **Files**.
+3. The user selects one or more items and sees a staged-attachment tray with name, size, progress, and failures.
+4. Successfully uploaded files appear in Pi's existing attachment widget above the editor.
+5. The user's next normal terminal submission consumes the staged set.
+6. Cancelling a picker or failed upload leaves the previously staged set unchanged.
+
+The paperclip must not type `/attach` into SwiftTerm. Injecting command text could overwrite or combine with a partially edited prompt and would couple file transfer to terminal cursor state.
+
+## Transport design
+
+Use a separate one-shot SSH child session on the app's existing host-key-pinned SSH connection:
+
+1. The live `jarvis-ios` Pi extension binds a fixed owner-only Unix socket under `.pi/runtime`; the socket is removed on shutdown and contains no persisted queue metadata.
+2. The app opens a second SSH child channel and executes one fixed absolute receiver command. No user filename or local path is interpolated into the SSH command string.
+3. The receiver connects to the live extension socket and the app sends a bounded framed stream: protocol version, request ID, sanitized display name, declared size, and then exact file bytes.
+4. The extension streams to a mode-`0600` temporary file, verifies byte count and SHA-256, commits it directly under `attachments/` with a readable collision suffix, and adds the resulting record to its in-memory queue.
+5. The extension refreshes the same Pi attachment widget used by desktop `/attach`; if the target Pi process is not live, the upload fails closed.
+
+The transfer must not be routed through `jarvisd` or `jarvis-terminald`. Those services retain their current hardware/status and Watch-terminal boundaries respectively. There is no browser upload route, public listener, cloud storage, or persistent attachment daemon.
+
+If SwiftNIO SSH cannot safely share the current parent connection for a second child session, use one short-lived second SSH connection with the same saved credentials and host-key validation. Do not weaken pinning or add a fallback trust path.
+
+## Native APIs and source touchpoints
+
+Expected app files:
+
+- `JARVIS/Terminal/PiTerminalView.swift`
+  - Add the paperclip control without changing terminal input semantics.
+  - Present the source picker and staged-attachment tray.
+- `JARVIS/Terminal/PiTerminalController.swift`
+  - Own picker presentation state, upload progress, cancellation, and authoritative refresh.
+- `JARVIS/Terminal/PiSSHTransport.swift`
+  - Add the bounded one-shot upload child channel or short-lived upload connection.
+  - Keep terminal PTY bytes and upload bytes on separate channels.
+- New focused types under `JARVIS/Terminal/Attachments/`
+  - Security-scoped file access.
+  - Photo/file selection normalization.
+  - Framing and upload state machine.
+
+Use `PhotosPicker` for photo-library assets and SwiftUI `fileImporter` for Files. Copy security-scoped selections to one private temporary URL before upload, stream from disk rather than loading an entire file into memory, and delete temporary copies after a verified terminal-side acknowledgement.
+
+## Reliability and safety requirements
+
+- Enforce the same file-count, per-file, and aggregate byte limits as the Pi extension.
+- Treat every selected file as untrusted data; never execute or automatically extract it.
+- Sanitize display names on both app and host, while allocating collision-safe loose filenames.
+- Use request IDs for receiver-side deduplication.
+- A timeout or disconnected acknowledgement is ambiguous: do not retry automatically. Query the live in-memory queue before offering a manual retry.
+- Cancel uploads when the app backgrounds unless the exact transfer has already received a verified acknowledgement.
+- Never place file contents, host paths, mailbox nonces, credentials, or bearer material in logs or analytics.
+- Reject an absent or stale live socket, dead Pi processes, changed SSH host keys, truncated streams, oversized bodies, traversal names, symlinks, and duplicate request IDs.
+- Preserve uploaded files after their prompt is accepted because session history may refer to their local paths later.
+
+## Test plan
+
+### Unit tests
+
+- Picker cancellation and multi-selection.
+- Security-scoped URL acquisition/release.
+- Size/count limits before transfer.
+- Frame encoding and malformed acknowledgement rejection.
+- Upload state transitions, duplicate request handling, ambiguous timeout behavior, and no automatic retry.
+- Staged tray add/remove/clear behavior without terminal text injection.
+
+### Disposable integration tests
+
+- Use a disposable SSH server, receiver directory, Unix socket, and tmux/Pi fixture.
+- Verify exact bytes, size, SHA-256, mode `0600`, collision-safe flat filename, and in-memory queue update.
+- Verify a selected image appears as a native image on the next fixture prompt and a non-image appears as a readable local path.
+- Verify cancellation, disconnect, changed host key, stale nonce, dead PID, oversize, duplicate request ID, and app backgrounding fail closed.
+- Confirm that no fixture writes to the production `jarvis-ios` pane or touches `jarvisd`, `jarvis-terminald`, plugs, purifier, services, or schedulers.
+
+## Rollout gates
+
+1. Complete implementation behind the iPhone paperclip UI with no Watch changes.
+2. Pass JARVISKit and iPhone tests plus disposable SSH integration tests.
+3. Run warning-free iOS/watchOS builds and the repository verifier.
+4. Archive and audit the exact signed product before physical installation.
+5. Perform owner-driven physical validation with harmless files only: one photo, one text file, cancellation, background/foreground, LAN, and Tailscale.
+6. Confirm the production tmux pane identity and Pi PID are unchanged throughout validation.

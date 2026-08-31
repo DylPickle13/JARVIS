@@ -43,6 +43,16 @@ grep -q 'return STATE_COORDINATOR.snapshot(client_active=True)' jarvisd/jarvisd.
 grep -q 'record\["stale"\] = True' jarvisd/jarvisd.py
 reject_match 'fixed 250-millisecond jarvisd scheduler polling was restored' -Fq 'self._stop.wait(0.25)' jarvisd/jarvisd.py
 
+printf '%s\n' '== bounded foreground stale convergence =='
+grep -q 'staleConvergenceInterval: Duration = .milliseconds(500)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
+grep -q 'staleConvergenceAttempts = 8' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
+grep -q 'attempts < staleConvergenceAttempts' JARVIS/AppState.swift
+grep -q 'snapshot.stale == true' JARVIS/AppState.swift
+grep -q 'snapshot.refreshing == true' JARVIS/AppState.swift
+grep -q 'if app.isAwaitingFreshState { return "Online · refreshing" }' JARVIS/Views/HomeView.swift
+grep -q 'State is refreshing; wait before changing it' JARVIS/Views/HomeView.swift
+grep -q 'testStateFetchDoesNotRetryCompletedStaleSnapshot' JARVISTests/AppStateTests.swift
+
 printf '%s\n' '== bounded jarvisd logging contract =='
 grep -q 'from logging.handlers import RotatingFileHandler' jarvisd/jarvisd.py
 grep -q 'JARVISD_LOG_MAX_BYTES' jarvisd/jarvisd.py
@@ -137,7 +147,9 @@ grep -q '/api/v1/scheduled-job-results' jarvisd/jarvisd.py
 grep -q 'static let limit = 100' JARVIS/ScheduledJobResultCache.swift
 grep -q 'case jobs' JARVIS/AppState.swift
 grep -q 'await self.refreshJobs()' JARVIS/AppState.swift
-grep -q 'scheme == "http" || scheme == "https"' JARVIS/Views/JobsView.swift
+grep -q 'scheme == "http" || scheme == "https"' JARVIS/Views/LinkedJobResultText.swift
+grep -q 'JobChannelMessage' JARVIS/Views/JobsView.swift
+reject_match 'Jobs must not restore the flat Inbox/Schedules picker' -Fq 'Picker("Jobs section"' JARVIS/Views/JobsView.swift
 reject_match 'Jobs must remain read-only' -RqsE 'runServiceAction|runCommand|setPlug|setPurifier|retry' JARVIS/Views/JobsView.swift
 grep -q 'case pi' JARVIS/AppState.swift
 grep -q 'case "pi": selection = .pi' JARVIS/JARVISApp.swift
@@ -265,6 +277,8 @@ grep -q 'testPiTerminalResetsStaleAlternateScreenBeforeFreshConnection' JARVISTe
 grep -q 'testPiTerminalRetainsLayoutResizeUntilSSHSessionIsReady' JARVISTests/AppStateTests.swift
 reject_match 'Pi SSH session must not replay stale initial dimensions after authentication' -Fq 'self.resize(cols: self.initialWindowSize.cols, rows: self.initialWindowSize.rows)' JARVIS/Terminal/PiSSHTransport.swift
 reject_match 'Pi launcher must not kill its persistent session' -RqsE 'kill-session|kill-server' JARVIS/Terminal config/jarvis-mobile.tmux.conf scripts/jarvis-mobile-terminal.sh
+grep -q 'set-option -w -t "=$TMUX_SESSION:0" window-size latest' scripts/jarvis-mobile-terminal.sh
+reject_match 'Pi launcher must not force pane dimensions' -qsE '\$TMUX_BIN.*resize-(pane|window)' scripts/jarvis-mobile-terminal.sh
 
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations' JARVIS/Info.plist | grep -c UIInterfaceOrientationLandscape)" == "2" ]]
 

@@ -214,6 +214,12 @@ fi
 if [[ -e .pi/runtime/pi-web-access/web-search.json ]]; then
   require_mode "scoped web-access config" ".pi/runtime/pi-web-access/web-search.json" "600"
 fi
+if [[ -e .pi/runtime/pi-attach-mobile.json ]]; then
+  require_mode "live mobile attachment descriptor" ".pi/runtime/pi-attach-mobile.json" "600"
+fi
+while IFS= read -r path; do
+  require_mode "live mobile attachment socket" "$path" "600"
+done < <(find .pi/runtime -maxdepth 1 -type s -name 'pi-attach-mobile-*.sock' -print 2>/dev/null)
 
 section "Core commands"
 require_command "pi"
@@ -345,25 +351,37 @@ expected_extension_files=(
   .pi/extensions/50-browser/tools.ts
   .pi/extensions/lib/attach/core.ts
   .pi/extensions/lib/attach/images.ts
+  .pi/extensions/lib/attach/mobile-server.ts
   .pi/extensions/lib/attach/transport.ts
   .pi/extensions/lib/package-lock.json
   .pi/extensions/lib/package.json
   .pi/extensions/lib/ssh-pty.ts
   .pi/scripts/jarvis-pi-ssh
   .pi/scripts/pi-attach-bridge.mjs
+  .pi/scripts/pi-attach-mobile-receiver.mjs
   .pi/scripts/pi-attach-picker
   .pi/scripts/pi-attach-picker.swift
   .pi/scripts/tests/jarvis-pi-ssh.test.mjs
   .pi/scripts/tests/pi-attach-bridge.test.mjs
   .pi/scripts/tests/pi-attach-core.test.mjs
+  .pi/scripts/tests/pi-attach-mobile.test.mjs
   .pi/scripts/tests/pi-attach-transport.test.mjs
-  projects/operation-jarvis/jarvis-app/docs/pi-attach-integration-plan.md
+  projects/operation-jarvis/jarvis-app/docs/README.md
 )
 for path in "${expected_extension_files[@]}"; do
   require_file "extension source" "$path"
 done
+expected_app_docs="projects/operation-jarvis/jarvis-app/docs/README.md"
+actual_app_docs="$(find projects/operation-jarvis/jarvis-app/docs -maxdepth 1 -type f -name '*.md' | sort)"
+if [[ "$actual_app_docs" == "$expected_app_docs" ]]; then
+  pass "app Markdown documentation is consolidated"
+else
+  fail "app Markdown documentation is not consolidated"
+  diff -u <(printf '%s\n' "$expected_app_docs") <(printf '%s\n' "$actual_app_docs") 2>&1 | indent
+fi
 require_executable "native attachment picker launcher" ".pi/scripts/pi-attach-picker"
 require_executable "temporary SSH attachment bridge" ".pi/scripts/pi-attach-bridge.mjs"
+require_executable "fixed mobile attachment receiver" ".pi/scripts/pi-attach-mobile-receiver.mjs"
 require_executable "attachment-enabled SSH launcher" ".pi/scripts/jarvis-pi-ssh"
 
 expected_extension_roots_sorted="$(printf '%s\n' "${expected_extension_roots[@]}" | sort)"
@@ -514,6 +532,7 @@ fi
 section "Native attachment extension checks"
 if command -v node >/dev/null 2>&1; then
   run_check "flat attachment storage and one-command contract tests" node --test .pi/scripts/tests/pi-attach-core.test.mjs
+  run_check "private mobile attachment protocol tests" node --test .pi/scripts/tests/pi-attach-mobile.test.mjs
   run_check "temporary attachment bridge tests" node --test .pi/scripts/tests/pi-attach-bridge.test.mjs
   run_check "SSH Unix-socket attachment transport tests" node --test .pi/scripts/tests/pi-attach-transport.test.mjs
   run_check "attachment-enabled SSH launcher tests" node --test .pi/scripts/tests/jarvis-pi-ssh.test.mjs
@@ -601,7 +620,12 @@ if [[ -n "$PYTHON_BIN" ]]; then
   run_check "relative Markdown links resolve" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" - <<'PY'
 from pathlib import Path
 import re
-files = [Path('readme.md'), *Path('.pi/docs').glob('*.md')]
+files = [
+    Path('README.md'),
+    Path('projects/operation-jarvis/jarvis-app/README.md'),
+    Path('projects/operation-jarvis/jarvis-app/docs/README.md'),
+    *Path('.pi/docs').glob('*.md'),
+]
 missing = []
 for file in files:
     text = file.read_text(encoding='utf-8')

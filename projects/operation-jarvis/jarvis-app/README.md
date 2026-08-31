@@ -349,8 +349,8 @@ speech preparation, stale-state semantics, Neural Core motion, and guarded
 hardware controls are unchanged.
 Build 127 retires the former external chat transport and moves all four schedules
 to the owner-only generic scheduler. The iPhone adds a fourth **Jobs** tab with a
-bounded protected result cache, unread baseline, safe result deep links, and
-read-only Inbox/Schedules views. Jobs refreshes every 15 seconds while the app is
+bounded protected result cache, unread baseline, safe result deep links, and a
+read-only job list with per-job output channels. Jobs refreshes every 15 seconds while the app is
 active; Home-only hardware/service polling remains confined to Home. `jarvisd`
 exposes only sanitized bounded job/result projections. A dormant fail-closed
 Watch-only APNs provider and pure route parser remain inactive and push-free
@@ -565,9 +565,12 @@ and Open JARVIS.
 
 ## Read first
 
-This README is the single architecture, security, packaging, deployment, widget,
-physical-validation, recovery, release, and implementation-plan reference for
-the app. The former `docs/*.md` files are consolidated below. The JARVIS app side of the Pi attachment work is intentionally deferred and tracked separately in [`docs/pi-attach-integration-plan.md`](docs/pi-attach-integration-plan.md); no app implementation accompanies that plan yet.
+This README is the primary architecture, security, packaging, deployment, widget,
+physical-validation, recovery, and release reference for the app. Historical
+plans retired from `docs/` are consolidated below. The current native iPhone
+keyboard-avoidance and Photos/Files attachment architecture, implementation
+sequence, and physical gates are consolidated in the
+[`docs/README.md` implementation documentation](docs/README.md#iphone-terminal-keyboard-avoidance-and-native-attach-implementation-plan).
 
 ## Scope (v5, approved)
 
@@ -575,7 +578,7 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
   network, uptime, room audio, scheduler, and scheduled jobs), service
   start/stop/restart (room-audio server), Neural Core, launcher, and
   read-only purifier-status widgets on iPhone and Watch, Siri/Shortcuts via App
-  Intents, the iPhone SSH-backed Pi terminal, and the
+  Intents, the iPhone SSH-backed Pi terminal with native Photos/Files attachment staging, and the
   foreground-only Watch view of that same persistent terminal over the private
   HTTPS bridge, with LAN and Tailscale remote access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
@@ -618,7 +621,8 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
   Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
   external data collection are removed. Home lists room audio, the scheduler,
   and protected `jarvisd` information. Jobs provides a bounded, durable,
-  read-only Inbox and Schedules view. Only server-allowlisted service actions
+  read-only job list and Discord-style per-job output channels with inline safe
+  links. Only server-allowlisted service actions
   are rendered; the scheduler card is read-only. Plug controls send
   desired-state `plug-on`/`plug-off`
   commands, serialize per resource, and show busy/error/unavailable states.
@@ -648,9 +652,7 @@ the app. The former `docs/*.md` files are consolidated below. The JARVIS app sid
   and hides the remote hardware cursor while retaining Pi's software cursor in
   the fixed editor. The compact key deck exposes Escape, Ctrl, Tab, slash, Up, and Down. A fixed trailing button
   always shows or hides the keyboard; the terminal also supports tap-to-open
-  and downward-swipe dismissal without letting shortcut keys reopen it. A fresh
-  install starts at 18 points, pinch persists intentional zoom, and landscape
-  is enabled.
+  and downward-swipe dismissal without letting shortcut keys reopen it. Build 128 initially appeared to regress keyboard avoidance, but an exact Build 127 A/B reproduced the problem and exposed the actual cause: a prior host recovery had left `jarvis-ios:0` at `window-size manual`, pinning Pi at 48×42. The current source keeps the accepted Build 127 SwiftUI terminal/key-bar composition, and the bootstrap reasserts `window-size latest` without a resize command or pane replacement. Signed keyboard-only Build 129 physically passes under that policy. The later attachment candidate enables the `JARVIS_NATIVE_ATTACHMENTS` target condition: its paperclip opens private Photos/Files review and streams selected regular files over a separate typed SSH child to the exact live mobile Pi process; it never types `/attach`, Return, a filename, or protocol bytes into the PTY. Commits are generation/revision checked, SHA-256 verified, non-retried after ambiguity, and held only in Pi's existing memory queue. A fresh install starts at 18 points, pinch persists intentional zoom, and landscape is enabled.
 - **watchOS app** — builds for Apple Watch Series 11 (46mm), uses real
   `WCSessionDelegate` reachability callbacks, refreshes immediately on
   activation and every 15 seconds while visible, preserves frontmost work while
@@ -723,7 +725,7 @@ jarvis-app/
 ├── project.yml                 # xcodegen spec (regenerates JARVIS.xcodeproj)
 ├── JARVIS.xcodeproj            # generated (do not hand-edit)
 ├── docs/
-│   ├── pi-attach-integration-plan.md # deferred iPhone attachment plan only
+│   ├── README.md               # terminal + native attachment implementation plans
 │   └── third-party/            # retained third-party license text
 ├── scripts/
 │   └── redeploy-jarvis-app.sh  # one-command device build + install
@@ -784,9 +786,13 @@ changes. Do not put tokens in the repository.
 
 # Consolidated architecture, operations, and implementation plans
 
-The Markdown documents formerly stored under `docs/` are preserved below in full so this README is the canonical single-file app reference. The `docs/third-party/` license text remains separate because it is not Markdown.
+Historical Markdown documents retired from `docs/` before the current terminal
+work are preserved below in full. This README remains canonical for that legacy
+architecture and operational material; the current terminal and native
+attachment plans are in [`docs/README.md`](docs/README.md). The
+`docs/third-party/` license text remains separate because it is not Markdown.
 
-<!-- Folded from `docs/README.md` -->
+<!-- Previously folded from the retired pre-consolidation docs index -->
 
 # JARVIS native Apple app — unified documentation
 
@@ -1989,8 +1995,10 @@ surviving runtime attempts a second dashboard event post.
 
 ```text
 jarvis-app/
-├── README.md                   # unified app + consolidated docs
-├── docs/third-party/           # retained third-party license text
+├── README.md                   # app reference + consolidated historical docs
+├── docs/
+│   ├── README.md               # current terminal + attachment implementation plans
+│   └── third-party/            # retained third-party license text
 ├── project.yml                 # XcodeGen source of truth
 ├── JARVIS.xcodeproj            # generated; never hand-edit
 ├── scripts/

@@ -102,6 +102,73 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(app.isStateLoading)
     }
 
+    func testStateFetchConvergesBoundedStaleRefreshingSnapshot() async {
+        let staleRefreshing = StateSnapshot(ok: true, refreshing: true, stale: true)
+        let fresh = StateSnapshot(ok: true, refreshing: false, stale: false)
+        let api = FakeAPI(stateResponses: [staleRefreshing, fresh])
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(
+            store: store,
+            client: api,
+            staleConvergenceInterval: .zero,
+            staleConvergenceAttempts: 2
+        )
+
+        await app.fetchState()
+
+        XCTAssertEqual(api.stateCalls, 2)
+        XCTAssertEqual(app.lastState?.stale, false)
+        XCTAssertEqual(app.lastState?.refreshing, false)
+        XCTAssertFalse(app.isAwaitingFreshState)
+        XCTAssertFalse(app.isStateLoading)
+    }
+
+    func testStateFetchDoesNotRetryCompletedStaleSnapshot() async {
+        let completedStale = StateSnapshot(ok: true, refreshing: false, stale: true)
+        let fresh = StateSnapshot(ok: true, refreshing: false, stale: false)
+        let api = FakeAPI(stateResponses: [completedStale, fresh])
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(
+            store: store,
+            client: api,
+            staleConvergenceInterval: .zero,
+            staleConvergenceAttempts: 2
+        )
+
+        await app.fetchState()
+
+        XCTAssertEqual(api.stateCalls, 1)
+        XCTAssertEqual(app.lastState?.stale, true)
+        XCTAssertEqual(app.lastState?.refreshing, false)
+        XCTAssertFalse(app.isAwaitingFreshState)
+    }
+
+    func testStateFetchBoundsStillRefreshingFollowUps() async {
+        let staleRefreshing = StateSnapshot(ok: true, refreshing: true, stale: true)
+        let api = FakeAPI(stateResponses: [staleRefreshing, staleRefreshing, staleRefreshing])
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(
+            store: store,
+            client: api,
+            staleConvergenceInterval: .zero,
+            staleConvergenceAttempts: 2
+        )
+
+        await app.fetchState()
+
+        XCTAssertEqual(api.stateCalls, 3)
+        XCTAssertEqual(app.lastState?.stale, true)
+        XCTAssertEqual(app.lastState?.refreshing, true)
+        XCTAssertTrue(app.isAwaitingFreshState)
+        XCTAssertFalse(app.isStateLoading)
+    }
+
     func testHomePollingStopsOutsideHomeWhileJobsContinueAcrossActiveTabs() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
@@ -602,6 +669,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     let commandDelay: Duration?
     let scheduledJobsSucceeds: Bool
     var scheduledJobResultSequence: Int?
+    var stateResponses: [StateSnapshot]
     var commands: [String] = []
     var commandParams: [[String: JSONValue]] = []
     var stateCalls = 0
@@ -628,12 +696,14 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         commandSucceeds: Bool = true,
         commandDelay: Duration? = nil,
         scheduledJobsSucceeds: Bool = true,
-        scheduledJobResultSequence: Int? = nil
+        scheduledJobResultSequence: Int? = nil,
+        stateResponses: [StateSnapshot] = []
     ) {
         self.commandSucceeds = commandSucceeds
         self.commandDelay = commandDelay
         self.scheduledJobsSucceeds = scheduledJobsSucceeds
         self.scheduledJobResultSequence = scheduledJobResultSequence
+        self.stateResponses = stateResponses
     }
 
     func health(_ endpoint: JarvisEndpoint) async throws -> HealthResponse {
@@ -643,6 +713,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
 
     func state(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         stateCalls += 1
+        if !stateResponses.isEmpty { return stateResponses.removeFirst() }
         return state
     }
 

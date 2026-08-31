@@ -98,7 +98,7 @@ struct HomeView: View {
 
             Spacer(minLength: 8)
 
-            if app.isStateLoading || app.connectionState == .connecting {
+            if app.isAwaitingFreshState || app.connectionState == .connecting {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel("Refreshing JARVIS status")
@@ -106,7 +106,11 @@ struct HomeView: View {
 
             Text(freshnessLabel)
                 .font(.caption)
-                .foregroundStyle(app.lastState?.stale == true ? JarvisPalette.warning : .secondary)
+                .foregroundStyle(
+                    app.isAwaitingFreshState || app.lastState?.stale == true
+                        ? JarvisPalette.warning
+                        : .secondary
+                )
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
@@ -125,6 +129,7 @@ struct HomeView: View {
         switch app.connectionState {
         case .connected:
             if purifierConfirmationIsPrimaryStatus { return "Online · confirming purifier" }
+            if app.isAwaitingFreshState { return "Online · refreshing" }
             return app.lastState?.stale == true ? "Connected · stale" : "Online · \(networkLabel)"
         case .connecting: return "Connecting"
         case .failed: return "Offline"
@@ -134,7 +139,10 @@ struct HomeView: View {
 
     private var connectionColor: Color {
         switch app.connectionState {
-        case .connected: return app.lastState?.stale == true ? JarvisPalette.warning : JarvisPalette.accent
+        case .connected:
+            return app.isAwaitingFreshState || app.lastState?.stale == true
+                ? JarvisPalette.warning
+                : JarvisPalette.accent
         case .connecting: return JarvisPalette.warning
         case .failed: return .red
         case .idle: return .secondary
@@ -143,6 +151,7 @@ struct HomeView: View {
 
     private var freshnessLabel: String {
         if purifierConfirmationIsPrimaryStatus { return "Applying change" }
+        if app.isAwaitingFreshState { return "Updating status" }
         if app.lastState?.stale == true { return "Needs refresh" }
         if app.connectionState == .connected, app.lastState != nil, app.lastState?.ageSeconds == nil {
             return "Status current"
@@ -207,7 +216,8 @@ struct HomeView: View {
         let plugs = subsystem?.plugs ?? [:]
         let items = plugs.keys.sorted().map { (name: $0, isOn: plugs[$0]?.isOn) }
         let unavailable = subsystem?.ok != true
-        let stale = state.stale == true || subsystem?.stale == true
+        let refreshing = app.isAwaitingFreshState || subsystem?.refreshing == true
+        let stale = refreshing || state.stale == true || subsystem?.stale == true
 
         return VStack(alignment: .leading, spacing: 7) {
             MinimalSectionHeader(
@@ -245,13 +255,19 @@ struct HomeView: View {
                         .accessibilityHint(
                             item.isOn == nil
                                 ? "State unavailable"
-                                : (stale ? "State is stale; refresh before changing it" : "Double tap to set the opposite state")
+                                : (refreshing
+                                    ? "State is refreshing; wait before changing it"
+                                    : (stale ? "State is stale; refresh before changing it" : "Double tap to set the opposite state"))
                         )
                     }
                 }
             }
 
-            if stale { staleCaption("Plug data is stale.") }
+            if refreshing {
+                staleCaption("Refreshing plug data…")
+            } else if stale {
+                staleCaption("Plug data is stale.")
+            }
         }
         .accessibilityElement(children: .contain)
     }
@@ -273,7 +289,8 @@ struct HomeView: View {
             let fan = purifier.fanSetLevel ?? purifier.fanLevel
             let pending = purifier.verificationPending == true
             let busy = app.isOperationBusy("purifier") || pending
-            let stale = state.stale == true || purifier.stale == true
+            let refreshing = app.isAwaitingFreshState || purifier.refreshing == true
+            let stale = refreshing || state.stale == true || purifier.stale == true
 
             MinimalCard {
                 VStack(spacing: 9) {
@@ -311,6 +328,8 @@ struct HomeView: View {
 
             if pending {
                 purifierConfirmationCaption(purifier.pendingCommand)
+            } else if refreshing {
+                staleCaption("Refreshing air-purifier data…")
             } else if stale {
                 staleCaption("Air-purifier data is stale.")
             }

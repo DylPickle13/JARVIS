@@ -1,6 +1,16 @@
 import SwiftUI
 import SwiftTerm
 
+enum PiTerminalFeatureGate {
+#if JARVIS_NATIVE_ATTACHMENTS
+    static let nativeAttachmentsEnabled = true
+#else
+    // The first signed candidate remains keyboard-only. Enable this condition
+    // only on the later attachment candidate after keyboard acceptance.
+    static let nativeAttachmentsEnabled = false
+#endif
+}
+
 struct PiTerminalView: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var terminal: PiTerminalController
@@ -57,6 +67,14 @@ struct PiTerminalView: View {
                 primaryButton: .default(Text("Trust")) { terminal.trustPendingHost() },
                 secondaryButton: .cancel { terminal.rejectPendingHost() }
             )
+        }
+        .sheet(isPresented: Binding(
+            get: { terminal.isAttachmentSheetPresented },
+            set: { presented in
+                if !presented { terminal.dismissAttachmentSheet() }
+            }
+        )) {
+            PiAttachmentPickerView(controller: terminal)
         }
     }
 
@@ -205,20 +223,21 @@ struct PiTerminalView: View {
     }
 }
 
-private struct PiTerminalKeyBar: View {
+struct PiTerminalKeyBar: View {
+    static let height: CGFloat = 46
+
     @ObservedObject var controller: PiTerminalController
 
     var body: some View {
         HStack(spacing: 0) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 key("Esc", label: "Escape", bytes: [0x1b])
                 Button {
                     controller.toggleControlLatch()
                 } label: {
                     Text("Ctrl")
                         .foregroundStyle(controller.isControlLatched ? JarvisPalette.onAccent : .primary)
-                        .padding(.horizontal, 10)
-                        .frame(minWidth: 44, minHeight: 34)
+                        .frame(width: 44, height: 34)
                         .background(controller.isControlLatched ? JarvisPalette.accent : Color.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
                 }
                 .accessibilityLabel("Control modifier")
@@ -227,12 +246,27 @@ private struct PiTerminalKeyBar: View {
                 key("↑", label: "Up arrow", bytes: [0x1b, 0x5b, 0x41])
                 key("↓", label: "Down arrow", bytes: [0x1b, 0x5b, 0x42])
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 6)
             .padding(.vertical, 5)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
                 .frame(height: 30)
+
+            if PiTerminalFeatureGate.nativeAttachmentsEnabled {
+                Button {
+                    controller.presentAttachmentSheet()
+                } label: {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(controller.canOpenAttachments ? JarvisPalette.accent : Color.secondary)
+                        .frame(width: 46, height: 46)
+                        .contentShape(Rectangle())
+                }
+                .disabled(!controller.canOpenAttachments)
+                .accessibilityLabel("Attach files")
+                .accessibilityHint("Choose Photos or Files for the next Pi message")
+            }
 
             Button {
                 controller.toggleTerminalKeyboard()
@@ -240,13 +274,13 @@ private struct PiTerminalKeyBar: View {
                 Image(systemName: controller.isTerminalFocused ? "keyboard.chevron.compact.down" : "keyboard")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(controller.isTerminalFocused ? JarvisPalette.accent : Color.primary)
-                    .frame(width: 52, height: 46)
+                    .frame(width: 46, height: 46)
                     .contentShape(Rectangle())
             }
             .accessibilityLabel(controller.isTerminalFocused ? "Hide keyboard" : "Show keyboard")
             .accessibilityValue(controller.isTerminalFocused ? "Shown" : "Hidden")
         }
-        .frame(height: 46)
+        .frame(height: Self.height)
         .background(.ultraThinMaterial)
     }
 
@@ -263,8 +297,7 @@ private struct PiTerminalKeyBar: View {
         Text(title)
             .font(.callout.monospaced().weight(.semibold))
             .foregroundStyle(.primary)
-            .padding(.horizontal, 10)
-            .frame(minWidth: 44, minHeight: 34)
+            .frame(width: 44, height: 34)
             .background(Color.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
     }
 

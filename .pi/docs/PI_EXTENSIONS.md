@@ -11,7 +11,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `lib/env.ts` — `.env` discovery/parsing and env lookup helpers.
 - `lib/path.ts` — safe user path normalization helpers.
 - `lib/text.ts` — bounded text truncation helper.
-- `lib/attach/` — private attachment storage, image preparation, native-picker invocation, and temporary SSH picker-bridge transport used by the single `/attach` command.
+- `lib/attach/` — private transactional attachment storage, image preparation, native-picker invocation, temporary Mac SSH picker transport, and the exact-process mobile Unix-socket endpoint used by `/attach` and the native iPhone paperclip.
 - `lib/ssh-pty.ts` — local `node-pty` wrapper and headless xterm screen used for bidirectional SSH terminal sessions. Runtime dependencies are declared in `lib/package.json`.
 
 ## Extension roots covered by smoke test
@@ -20,7 +20,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `00-web-access-env.ts` — project-scoped `pi-web-access` bootstrap plus JARVIS web/search policy; never mutates or consumes global `~/.pi/web-search.json`.
 - `01-omlx-provider-setup-and-recovery.ts` — non-blocking local oMLX provider registration plus prompt-too-long/prefill-memory recovery. Startup uses static seeds or the private last-known context-window cache at `.pi/runtime/omlx-context-windows.json`; live oMLX discovery refreshes the provider registry and cache after `session_start`, and the provider's native `refreshModels` callback reads the active server values whenever Pi refreshes `/model`. Unreachable providers silently retain their cached models and retry on the next refresh.
 - `04-delete-current-session.ts` — current-session cleanup command.
-- `05-attach.ts` — the single parameterless `/attach` command: native macOS file selection and management, in-memory staging, and next-message image/path injection.
+- `05-attach.ts` — the single parameterless `/attach` command plus the private exact-mobile-process endpoint: native selection, revisioned in-memory staging, and next-message image/path injection. It exposes no LLM tool or additional command.
 - `10-jarvis-cron.ts` — private scheduled Pi jobs and bounded local result history.
 - `30-google-access.ts` — Google Workspace tool.
 - `34-maps.ts` — Google Maps places/geocode/routes natural-language tool.
@@ -87,7 +87,7 @@ Direct local use invokes `.pi/scripts/pi-attach-picker`, which compiles the chec
 
 The launcher starts a temporary client-loopback bridge and creates a random, token-protected reverse Unix-socket forwarding inside SSH. A versioned picker protocol returns retained staged IDs plus newly selected files, so remove/clear/cancel behavior is identical locally and over SSH; only new file bytes cross the encrypted connection. No browser, public listener, cloud intermediary, persistent daemon, or globally installed Pi extension is used. A plain SSH session fails closed with reconnection guidance rather than opening a dialog on the remote Mac.
 
-The JARVIS app side is deliberately deferred; its paperclip/Photos/Files and one-shot SSH upload design is documented in [`projects/operation-jarvis/jarvis-app/docs/pi-attach-integration-plan.md`](../../projects/operation-jarvis/jarvis-app/docs/pi-attach-integration-plan.md).
+The native iPhone implementation adds Photos/Files review behind a paperclip without typing `/attach` or writing terminal bytes. The checked-in app defaults to the keyboard-only physical candidate; the later attachment candidate must explicitly enable the iPhone target's `JARVIS_NATIVE_ATTACHMENTS` compilation condition. It streams bounded file bodies over a separate typed SSH session child to the fixed no-argument `.pi/scripts/pi-attach-mobile-receiver.mjs` command. That one-shot proxy can reach only the owner-mode endpoint published by the exact `jarvis-mobile` / `jarvis-ios` / pane `%0` Pi process. Reconcile commits use generation/revision checks, byte counts, SHA-256, collision-safe loose files, and bounded memory-only request outcomes; ambiguous delivery permits one read-only status query and never an automatic upload retry. The receiver is not a daemon, HTTP endpoint, general SSH command surface, or persistent queue. Architecture and acceptance gates are documented in the consolidated [`projects/operation-jarvis/jarvis-app/docs/README.md`](../../projects/operation-jarvis/jarvis-app/docs/README.md#iphone-terminal-keyboard-avoidance-and-native-attach-implementation-plan).
 
 ## SSH execution and interactive terminals
 
