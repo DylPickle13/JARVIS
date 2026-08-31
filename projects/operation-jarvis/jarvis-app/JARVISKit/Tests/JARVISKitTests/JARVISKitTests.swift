@@ -18,6 +18,30 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertFalse(CodexQuotaPresentationPolicy.isCritical(remainingPercent: 100))
     }
 
+    func testPiMobileSessionsDecodeIndividuallyAndRemainBackwardCompatible() throws {
+        let state = try JSONDecoder().decode(
+            StateSnapshot.self,
+            from: Data(
+                #"{"ok":true,"subsystems":{"pi":{"ok":true,"active":2,"mobileSessions":[{"sessionID":1,"active":true},{"sessionID":2,"active":false},{"sessionID":3,"active":null}]}}}"#.utf8
+            )
+        )
+        let sessions = try XCTUnwrap(state.subsystems?.pi?.mobileSessions)
+        XCTAssertEqual(
+            sessions,
+            [
+                PiMobileSession(sessionID: 1, active: true),
+                PiMobileSession(sessionID: 2, active: false),
+                PiMobileSession(sessionID: 3, active: nil),
+            ]
+        )
+
+        let legacy = try JSONDecoder().decode(
+            StateSnapshot.self,
+            from: Data(#"{"ok":true,"subsystems":{"pi":{"ok":true,"active":3}}}"#.utf8)
+        )
+        XCTAssertNil(legacy.subsystems?.pi?.mobileSessions)
+    }
+
     func testNeuralCoreMapsOnlyUsableCachedTelemetry() throws {
         let state = try JSONDecoder().decode(
             StateSnapshot.self,

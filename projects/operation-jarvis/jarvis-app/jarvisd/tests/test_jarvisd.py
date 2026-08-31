@@ -114,6 +114,76 @@ class DaemonUnitTests(unittest.TestCase):
         for _argv, _timeout, env in calls:
             self.assertEqual(env, {"JARVIS_EMIT_EVENTS": "0"})
 
+    def test_mobile_pi_session_states_are_fixed_read_only_and_individual(self):
+        completed = jarvisd.subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="jarvis-ios\t0\njarvis-ios-2\t1\njarvis-ios-3\t0\nunrelated\t0\n",
+            stderr="",
+        )
+        with mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
+            states = jarvisd._mobile_pi_session_states()
+
+        self.assertEqual(
+            states,
+            [
+                {"sessionID": 1, "active": True},
+                {"sessionID": 2, "active": False},
+                {"sessionID": 3, "active": True},
+            ],
+        )
+        run.assert_called_once_with(
+            [
+                "/opt/homebrew/bin/tmux",
+                "-L",
+                "jarvis-mobile",
+                "list-panes",
+                "-a",
+                "-F",
+                "#{session_name}\t#{pane_dead}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+
+    def test_mobile_pi_session_states_fail_closed_when_probe_is_unavailable(self):
+        with mock.patch.object(
+            jarvisd.subprocess,
+            "run",
+            side_effect=jarvisd.subprocess.TimeoutExpired(cmd="tmux", timeout=2),
+        ):
+            self.assertEqual(
+                jarvisd._mobile_pi_session_states(),
+                [
+                    {"sessionID": 1, "active": None},
+                    {"sessionID": 2, "active": None},
+                    {"sessionID": 3, "active": None},
+                ],
+            )
+
+        no_server = jarvisd.subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
+        with mock.patch.object(jarvisd.subprocess, "run", return_value=no_server):
+            self.assertEqual(
+                jarvisd._mobile_pi_session_states(),
+                [
+                    {"sessionID": 1, "active": False},
+                    {"sessionID": 2, "active": False},
+                    {"sessionID": 3, "active": False},
+                ],
+            )
+
+    def test_pi_sessions_includes_fixed_mobile_session_states(self):
+        expected = [
+            {"sessionID": 1, "active": True},
+            {"sessionID": 2, "active": False},
+            {"sessionID": 3, "active": True},
+        ]
+        with mock.patch.object(jarvisd, "_mobile_pi_session_states", return_value=expected):
+            result = jarvisd._pi_sessions()
+        self.assertEqual(result["mobileSessions"], expected)
+
     def test_default_state_contract_excludes_weather(self):
         coordinator = jarvisd.StateCoordinator()
         self.assertNotIn("weather", coordinator.collectors)

@@ -29,6 +29,12 @@ content-free OSLog outcomes. Always-On, Reduce Motion, placeholder, and
 unavailable-font paths remain static. No cadence, process timer, private API,
 animated media, App Group, APNs, entitlement, or widget-interaction path is added.
 
+The iPhone Home Pi summary is divided into three equal Slot 1/2/3 sections. A
+bounded read-only `tmux list-panes` projection reports each fixed mobile Pi pane
+as active or inactive; probe failures and stale snapshots display `Unknown`
+instead of inferring a status. The projection never attaches, resizes, creates,
+restarts, or sends input to a session.
+
 The three-conversation design fixes Slot 1 to `jarvis-ios`, adds only
 `jarvis-ios-2` and `jarvis-ios-3`, remembers selection independently on iPhone and
 Watch, routes Siri and iPhone attachments to the invoking/active device slot, and
@@ -645,8 +651,8 @@ sequence, and physical gates are consolidated in the
   `/api/v1/scheduled-jobs`, `/api/v1/scheduled-job-results`, and the fixed
   signing status/renewal endpoints.
 - **iOS app — navigation** — 4-tab shell (Home / JARVIS / Jobs / Settings).
-  Home shows the connection header (LAN vs Tailscale + IP), Pi session count, a
-  **2-column plug grid**, then the **air purifier** (power switch +
+  Home shows the connection header (LAN vs Tailscale + IP), three equal fixed Pi
+  session status sections, a **2-column plug grid**, then the **air purifier** (power switch +
   Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
   external data collection are removed. Home lists room audio, the scheduler,
   and protected `jarvisd` information. Jobs provides a bounded, durable,

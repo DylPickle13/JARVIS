@@ -595,7 +595,7 @@ struct HomeView: View {
     // MARK: - Pi and Codex overview cards
 
     private func piCard(_ state: StateSnapshot) -> AnyView {
-        guard let pi = state.subsystems?.pi, pi.ok == true, let active = pi.active else {
+        guard let pi = state.subsystems?.pi, pi.ok == true else {
             return AnyView(
                 MinimalCard {
                     compactUnavailableRow(title: "Pi sessions unavailable", detail: state.subsystems?.pi?.error)
@@ -603,31 +603,55 @@ struct HomeView: View {
             )
         }
 
+        let isStale = pi.stale == true
         let content = MinimalCard {
-            HStack(spacing: 11) {
-                Image(systemName: "terminal.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(JarvisPalette.accent)
-                    .frame(width: 34, height: 34)
-                    .background(JarvisPalette.accent.opacity(0.11), in: Circle())
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Pi sessions").font(.subheadline.weight(.semibold))
-                    Text("\(active) active").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 0) {
+                ForEach(1...3, id: \.self) { sessionID in
+                    if sessionID > 1 {
+                        Divider()
+                            .frame(height: 42)
+                    }
+                    piSessionStatusSection(
+                        sessionID: sessionID,
+                        active: isStale
+                            ? nil
+                            : pi.mobileSessions?.first(where: { $0.sessionID == sessionID })?.active
+                    )
                 }
-                Spacer()
-                Text("\(active)")
-                    .font(.title3.weight(.bold))
-                    .monospacedDigit()
-                    .foregroundStyle(JarvisPalette.accent)
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Pi sessions: \(active) active")
 
-        if pi.stale == true {
+        if isStale {
             return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Pi session data is stale.") })
         }
         return AnyView(content)
+    }
+
+    private func piSessionStatusSection(sessionID: Int, active: Bool?) -> some View {
+        let status = active.map { $0 ? "Active" : "Inactive" } ?? "Unknown"
+        let color: Color = active.map { $0 ? JarvisPalette.accent : .red } ?? JarvisPalette.warning
+
+        return VStack(spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: "terminal.fill")
+                    .font(.caption2.weight(.bold))
+                Text("Pi \(sessionID)")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(color)
+
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 6, height: 6)
+                Text(status)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 42)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Pi session \(sessionID), \(status.lowercased())")
     }
 
     private func codexQuotaCard(_ state: StateSnapshot) -> AnyView {

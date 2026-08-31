@@ -158,6 +158,11 @@ reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case even
 printf '%s\n' '== compact iPhone dashboard contract =='
 grep -q 'private var compactConnectionStrip' JARVIS/Views/HomeView.swift
 grep -q 'MinimalSectionHeader(title: "System"' JARVIS/Views/HomeView.swift
+grep -q 'ForEach(1...3, id: \\.self)' JARVIS/Views/HomeView.swift
+grep -q 'private func piSessionStatusSection(sessionID: Int, active: Bool?)' JARVIS/Views/HomeView.swift
+grep -q 'public let mobileSessions: \[PiMobileSession\]?' JARVISKit/Sources/JARVISKit/Models.swift
+grep -q 'MOBILE_TMUX_SESSIONS = ((1, "jarvis-ios"), (2, "jarvis-ios-2"), (3, "jarvis-ios-3"))' jarvisd/jarvisd.py
+grep -q '"mobileSessions": _mobile_pi_session_states()' jarvisd/jarvisd.py
 grep -q 'SettingsGroup(title: "Configuration")' JARVIS/Views/SettingsView.swift
 grep -q 'SettingsGroup(title: "Maintenance")' JARVIS/Views/SettingsView.swift
 [[ "$(grep -c 'NavigationLink {' JARVIS/Views/SettingsView.swift)" == "4" ]]

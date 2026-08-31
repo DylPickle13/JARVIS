@@ -308,6 +308,11 @@ public struct PurifierSubsystem: Codable, Equatable, Sendable {
     public let lastError: String?
 }
 
+public struct PiMobileSession: Codable, Equatable, Sendable {
+    public let sessionID: Int
+    public let active: Bool?
+}
+
 public struct PiSubsystem: Codable, Equatable, Sendable {
     public let ok: Bool?
     public let stale: Bool?
@@ -317,6 +322,7 @@ public struct PiSubsystem: Codable, Equatable, Sendable {
     public let localActive: Int?
     public let localTotal: Int?
     public let rpcActive: Int?
+    public let mobileSessions: [PiMobileSession]?
     public let error: String?
     public let lastError: String?
 }

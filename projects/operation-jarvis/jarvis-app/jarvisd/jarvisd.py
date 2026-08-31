@@ -207,6 +207,9 @@ PURIFIER_WRITE_WAIT_SECONDS = min(
 )
 PI_LOCAL_SESSIONS = Path(os.environ.get("PI_LOCAL_SESSIONS", str(PROJECT_ROOT / ".pi/runtime/local-pi-sessions")))
 PI_RPC_SESSIONS = Path(os.environ.get("PI_RPC_SESSIONS", str(PROJECT_ROOT / ".pi/runtime/pi-rpc-sessions.json")))
+MOBILE_TMUX_BIN = Path("/opt/homebrew/bin/tmux")
+MOBILE_TMUX_SOCKET = "jarvis-mobile"
+MOBILE_TMUX_SESSIONS = ((1, "jarvis-ios"), (2, "jarvis-ios-2"), (3, "jarvis-ios-3"))
 
 AUTH_MODES = {"trusted-network", "token"}
 PROTECTED_LABELS = {"com.operation-jarvis.jarvisd", "com.operation-jarvis.jarvisd-resurrector"}
@@ -726,6 +729,49 @@ class _UnixSocketHTTPConnection(http.client.HTTPConnection):
         self.sock = sock
 
 
+def _mobile_pi_session_states() -> list[dict]:
+    """Read the three fixed mobile tmux panes without attaching or mutating them."""
+    unknown = [{"sessionID": session_id, "active": None} for session_id, _name in MOBILE_TMUX_SESSIONS]
+    try:
+        result = subprocess.run(
+            [
+                str(MOBILE_TMUX_BIN),
+                "-L",
+                MOBILE_TMUX_SOCKET,
+                "list-panes",
+                "-a",
+                "-F",
+                "#{session_name}\t#{pane_dead}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return unknown
+
+    # tmux exits 1 when its isolated server does not exist; all three fixed
+    # sessions are then definitively inactive. Other failures remain unknown.
+    if result.returncode == 1:
+        return [{"sessionID": session_id, "active": False} for session_id, _name in MOBILE_TMUX_SESSIONS]
+    if result.returncode != 0:
+        return unknown
+
+    fixed_names = {name: session_id for session_id, name in MOBILE_TMUX_SESSIONS}
+    active_by_id = {session_id: False for session_id, _name in MOBILE_TMUX_SESSIONS}
+    for raw_line in result.stdout.splitlines():
+        fields = raw_line.split("\t")
+        if len(fields) != 2 or fields[0] not in fixed_names or fields[1] not in {"0", "1"}:
+            continue
+        session_id = fixed_names[fields[0]]
+        active_by_id[session_id] = active_by_id[session_id] or fields[1] == "0"
+    return [
+        {"sessionID": session_id, "active": active_by_id[session_id]}
+        for session_id, _name in MOBILE_TMUX_SESSIONS
+    ]
+
+
 def _pi_sessions() -> dict:
     active_local = 0
     local_total = 0
@@ -753,6 +799,7 @@ def _pi_sessions() -> dict:
         "localActive": active_local,
         "localTotal": local_total,
         "rpcActive": rpc_active,
+        "mobileSessions": _mobile_pi_session_states(),
     }
 
 
