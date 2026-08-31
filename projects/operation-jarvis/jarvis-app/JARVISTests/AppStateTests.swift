@@ -5,6 +5,20 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testPiSessionIndicatorsUseRunningGreenIdlePurpleAndFailClosedUnknown() {
+        let running = PiSessionIndicatorPresentation(active: true)
+        XCTAssertEqual(running.label, "Running")
+        XCTAssertEqual(running.tone, .running)
+
+        let idle = PiSessionIndicatorPresentation(active: false)
+        XCTAssertEqual(idle.label, "Idle")
+        XCTAssertEqual(idle.tone, .idle)
+
+        let unknown = PiSessionIndicatorPresentation(active: nil)
+        XCTAssertEqual(unknown.label, "Unknown")
+        XCTAssertEqual(unknown.tone, .unknown)
+    }
+
     func testISO8601ParsingSupportsPlainAndFractionalTimestampsWithoutSharedMutableFormatter() throws {
         let plain = try XCTUnwrap(JarvisFormat.parseISO8601("2026-08-29T12:34:56Z"))
         let fractional = try XCTUnwrap(JarvisFormat.parseISO8601("2026-08-29T12:34:56.250Z"))

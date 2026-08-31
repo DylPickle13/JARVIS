@@ -2,6 +2,39 @@ import Foundation
 import SwiftUI
 import JARVISKit
 
+enum PiSessionIndicatorTone: Equatable {
+    case running
+    case idle
+    case unknown
+
+    var color: Color {
+        switch self {
+        case .running: return .green
+        case .idle: return .purple
+        case .unknown: return JarvisPalette.warning
+        }
+    }
+}
+
+struct PiSessionIndicatorPresentation: Equatable {
+    let label: String
+    let tone: PiSessionIndicatorTone
+
+    init(active: Bool?) {
+        switch active {
+        case true:
+            label = "Running"
+            tone = .running
+        case false:
+            label = "Idle"
+            tone = .idle
+        case nil:
+            label = "Unknown"
+            tone = .unknown
+        }
+    }
+}
+
 struct HomeView: View {
     @EnvironmentObject var app: AppState
     let onOpenJobs: () -> Void
@@ -628,8 +661,9 @@ struct HomeView: View {
     }
 
     private func piSessionStatusSection(sessionID: Int, active: Bool?) -> some View {
-        let status = active.map { $0 ? "Active" : "Inactive" } ?? "Unknown"
-        let color: Color = active.map { $0 ? JarvisPalette.accent : .red } ?? JarvisPalette.warning
+        let presentation = PiSessionIndicatorPresentation(active: active)
+        let status = presentation.label
+        let color = presentation.tone.color
 
         return VStack(spacing: 5) {
             HStack(spacing: 5) {

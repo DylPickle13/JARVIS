@@ -160,6 +160,13 @@ grep -q 'private var compactConnectionStrip' JARVIS/Views/HomeView.swift
 grep -q 'MinimalSectionHeader(title: "System"' JARVIS/Views/HomeView.swift
 grep -q 'ForEach(1...3, id: \\.self)' JARVIS/Views/HomeView.swift
 grep -q 'private func piSessionStatusSection(sessionID: Int, active: Bool?)' JARVIS/Views/HomeView.swift
+grep -q 'label = "Running"' JARVIS/Views/HomeView.swift
+grep -q 'tone = \.running' JARVIS/Views/HomeView.swift
+grep -q 'case \.running: return \.green' JARVIS/Views/HomeView.swift
+grep -q 'label = "Idle"' JARVIS/Views/HomeView.swift
+grep -q 'tone = \.idle' JARVIS/Views/HomeView.swift
+grep -q 'case \.idle: return \.purple' JARVIS/Views/HomeView.swift
+reject_match 'Pi status indicator must not render inactive state in red' -Fq 'active.map { $0 ? JarvisPalette.accent : .red }' JARVIS/Views/HomeView.swift
 grep -q 'public let mobileSessions: \[PiMobileSession\]?' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'MOBILE_TMUX_SESSIONS = ((1, "jarvis-ios"), (2, "jarvis-ios-2"), (3, "jarvis-ios-3"))' jarvisd/jarvisd.py
 grep -q '#{session_name}\\t#{pane_dead}\\t#{pane_pid}' jarvisd/jarvisd.py

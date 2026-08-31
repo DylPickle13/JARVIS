@@ -31,10 +31,10 @@ animated media, App Group, APNs, entitlement, or widget-interaction path is adde
 
 The iPhone Home Pi summary is divided into three equal Slot 1/2/3 sections. One
 bounded read-only `tmux list-panes` projection binds each fixed pane PID to its
-fresh local Pi extension heartbeat. A slot is `Active` only during an actual Pi
-agent generation, `Inactive` when its fresh heartbeat is idle (or its fixed pane
-is absent/dead), and `Unknown` when either probe or heartbeat is unavailable,
-ambiguous, or stale. The projection never attaches, resizes, creates, restarts,
+fresh local Pi extension heartbeat. A slot is green `Running` only during an
+actual Pi agent generation, purple `Idle` when its fresh heartbeat is idle (or
+its fixed pane is absent/dead), and `Unknown` when either probe or heartbeat is
+unavailable, ambiguous, or stale. The projection never attaches, resizes, creates, restarts,
 or sends input to a session. An explicit `JARVISD_PROJECT_ROOT` is authoritative
 for scheduler and Codex quota paths, so artifact-hosted jarvisd cannot fall back
 to the user's unrelated global `.pi` directory.
