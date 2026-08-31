@@ -592,6 +592,46 @@ final class AppStateTests: XCTestCase {
         XCTAssertNil(responder.markedTextRange)
     }
 
+    func testPiTerminalInputIsRearmedOnlyByTheExactFreshSession() {
+        var state = PiTerminalInputTransitionState()
+        XCTAssertFalse(state.acceptsInput(generation: 0))
+
+        state.begin(generation: 1, keyboardWasFocused: true)
+        XCTAssertNil(state.complete(generation: 0), "A stale PTY must not enable input or restore focus")
+        XCTAssertFalse(state.acceptsInput(generation: 1))
+
+        state.begin(generation: 2, keyboardWasFocused: false)
+        XCTAssertNil(state.complete(generation: 1), "A superseded PTY must remain fail-closed")
+        XCTAssertEqual(state.complete(generation: 2), false)
+        XCTAssertTrue(state.acceptsInput(generation: 2))
+        XCTAssertNil(state.complete(generation: 2), "Readiness completion is one-shot")
+
+        state.invalidate()
+        XCTAssertFalse(state.acceptsInput(generation: 2))
+        state.begin(generation: 3, keyboardWasFocused: true)
+        XCTAssertEqual(state.complete(generation: 3), true, "Only a previously focused keyboard is rearmed")
+        XCTAssertTrue(state.acceptsInput(generation: 3))
+
+        let terminalView = PiTerminalHostView(frame: .zero)
+        var outboundBytes: [UInt8] = []
+        terminalView.outboundBytesObserver = { outboundBytes.append(contentsOf: $0) }
+        terminalView.sendAccessoryBytes([0x1b])
+        XCTAssertTrue(outboundBytes.isEmpty, "No key may be queued or sent before exact PTY readiness")
+
+        terminalView.beginTerminalInputTransition(generation: 0, restoreKeyboard: false)
+        XCTAssertTrue(terminalView.completeTerminalInputTransition(generation: 0))
+        terminalView.sendAccessoryBytes(PiTerminalKeyDeck.slashBytes)
+        XCTAssertEqual(outboundBytes, PiTerminalKeyDeck.slashBytes)
+
+        terminalView.beginTerminalInputTransition(generation: 0, restoreKeyboard: false)
+        terminalView.sendAccessoryBytes([0x1b])
+        XCTAssertEqual(
+            outboundBytes,
+            PiTerminalKeyDeck.slashBytes,
+            "A session switch must not retain, replay, or require an Escape byte"
+        )
+    }
+
     func testPiTerminalResetsStaleAlternateScreenBeforeFreshConnection() {
         let terminalView = PiTerminalHostView(frame: .zero)
         let staleGrid = Array(("\u{1b}[?1049h" + String(repeating: ".", count: 24)).utf8)
@@ -660,6 +700,8 @@ final class AppStateTests: XCTestCase {
 
         var outboundBytes: [UInt8] = []
         terminalView.outboundBytesObserver = { outboundBytes.append(contentsOf: $0) }
+        terminalView.beginTerminalInputTransition(generation: 0, restoreKeyboard: false)
+        XCTAssertTrue(terminalView.completeTerminalInputTransition(generation: 0))
         terminalView.sendAccessoryBytes(PiTerminalKeyDeck.slashBytes)
         XCTAssertEqual(outboundBytes, PiTerminalKeyDeck.slashBytes)
         outboundBytes.removeAll()

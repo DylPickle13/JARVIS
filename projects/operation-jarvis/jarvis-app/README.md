@@ -4,20 +4,21 @@ Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
 surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier,
 status/telemetry, service control), over LAN or Tailscale.
 
-**Status:** Build `0.3.0 (132)` is the exact audited physical deployment on the
-allowlisted iPhone and Watch. It adds private native iPhone Photos/Files staging,
-bounded foreground stale-state convergence, and job-centric Discord-style output
-channels with safe inline links. The owner accepted the deployed Jobs presentation
-after exact-artifact installation. Checked-in `project.yml` intentionally remains
-Build 127 and keeps `JARVIS_NATIVE_ATTACHMENTS` disabled by default; Build 132's
-number and iPhone-only flag exist only in its owner-private audited artifact.
+**Status:** Exact audited Build `0.3.0 (133)` is installed on the allowlisted
+iPhone and Watch, and the compatible three-session host runtime is active. Slot 1
+pane `%0` and Pi PID `26167` survived rollout; fixed Slots 2 and 3 run as separate
+persistent Pi processes. Owner review found an intermittent iPhone input-readiness
+race after horizontal switching, so Build 133 is deployed but not accepted. The
+follow-up keeps all terminal input fail-closed during PTY replacement and rearms a
+previously focused keyboard only after the exact fresh child reports ready; it never
+queues, replays, retries, or synthesizes a byte. Checked-in `project.yml` intentionally
+remains Build 127 without `JARVIS_NATIVE_ATTACHMENTS`; candidate build numbers and
+the iPhone-only attachment flag remain owner-artifact-only.
 
-A three-conversation Apple terminal candidate is being verified only in the
-isolated `feat/apple-multi-terminal-sessions` worktree. It fixes Slot 1 to
-`jarvis-ios`, adds only `jarvis-ios-2` and `jarvis-ios-3`, remembers selection
-independently on iPhone and Watch, routes Siri and iPhone attachments to the
-invoking/active device slot, and retains v1/no-session host compatibility as
-Slot 1. It has not been installed or activated against production; see the
+The three-conversation design fixes Slot 1 to `jarvis-ios`, adds only
+`jarvis-ios-2` and `jarvis-ios-3`, remembers selection independently on iPhone and
+Watch, routes Siri and iPhone attachments to the invoking/active device slot, and
+retains v1/no-session host compatibility as Slot 1. See the
 [canonical implementation contract](docs/README.md#three-fixed-mobile-pi-conversations).
 
 `jarvisd` retains explicit trusted-network/token auth,

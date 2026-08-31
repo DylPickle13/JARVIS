@@ -268,6 +268,7 @@ struct PiTerminalKeyBar: View {
                         .frame(width: 44, height: 34)
                         .background(controller.isControlLatched ? JarvisPalette.accent : Color.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
                 }
+                .disabled(!controller.canSendTerminalInput)
                 .accessibilityLabel("Control modifier")
                 key("Tab", label: "Tab", bytes: [0x09])
                 key("/", label: "Slash", bytes: PiTerminalKeyDeck.slashBytes)
@@ -305,6 +306,7 @@ struct PiTerminalKeyBar: View {
                     .frame(width: 46, height: 46)
                     .contentShape(Rectangle())
             }
+            .disabled(!controller.isTerminalFocused && !controller.canSendTerminalInput)
             .accessibilityLabel(controller.isTerminalFocused ? "Hide keyboard" : "Show keyboard")
             .accessibilityValue(controller.isTerminalFocused ? "Shown" : "Hidden")
         }
@@ -318,6 +320,7 @@ struct PiTerminalKeyBar: View {
         } label: {
             keyLabel(title)
         }
+        .disabled(!controller.canSendTerminalInput)
         .accessibilityLabel(label)
     }
 

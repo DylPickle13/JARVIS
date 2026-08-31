@@ -137,15 +137,22 @@ final class PiTerminalController: ObservableObject {
         return true
     }
 
+    var canSendTerminalInput: Bool {
+        status == .connected && terminalView?.isTerminalInputReady == true
+    }
+
     func sendTerminalBytes(_ bytes: [UInt8]) {
+        guard canSendTerminalInput else { return }
         terminalView?.sendAccessoryBytes(bytes)
     }
 
     func toggleControlLatch() {
+        guard canSendTerminalInput else { return }
         terminalView?.toggleControlLatch()
     }
 
     func pasteIntoTerminal() {
+        guard canSendTerminalInput else { return }
         terminalView?.paste(nil)
     }
 
@@ -153,7 +160,7 @@ final class PiTerminalController: ObservableObject {
         guard let terminalView else { return }
         if terminalView.isTerminalKeyboardFocused {
             _ = terminalView.resignFirstResponder()
-        } else {
+        } else if canSendTerminalInput {
             _ = terminalView.becomeFirstResponder()
         }
     }

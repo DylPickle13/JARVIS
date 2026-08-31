@@ -14,7 +14,7 @@ The dated status lines and checklists below are retained as implementation histo
 
 # Three Fixed Mobile Pi Conversations
 
-Status: **implemented and under isolated verification on `feat/apple-multi-terminal-sessions`; not installed on either physical device and not activated against the production tmux/terminald runtime**
+Status: **Build 133 is installed and the three-session runtime is active, but owner acceptance is withheld for an intermittent iPhone input-readiness race after slot switching; the fail-closed keyboard-rearm correction is under isolated verification**
 
 Prepared: **2026-08-30 EDT**
 
@@ -34,7 +34,7 @@ The protected-runtime baseline for this candidate is Slot 1 pane `%0`, Pi PID `2
 
 - iPhone and Watch each persist `JARVISTerminalSlot` in their own `UserDefaults.standard` container. Their selections are intentionally independent.
 - A horizontal left/right terminal swipe moves one slot without wrapping. Existing iPhone vertical touch scrolling, Watch vertical Terminal → Plugs → System paging, and Digital Crown history remain axis-separated.
-- iPhone owns one SSH parent and at most one attached PTY child. A switch closes the previous child before opening the fixed command for the new slot. Generation checks reject stale output/readiness callbacks, and input is never queued or replayed while switching.
+- iPhone owns one SSH parent and at most one attached PTY child. A switch closes the previous child before opening the fixed command for the new slot. Generation checks reject stale output/readiness callbacks, and input is never queued or replayed while switching. Keyboard and key-deck input remain disabled during replacement; if the software keyboard was focused, its isolated proxy resigns and resets, then rearms only after readiness from the exact fresh generation. No Escape or other terminal byte is synthesized.
 - Watch polls only the selected slot. Frame, history, input acknowledgement, and speech responses carry and validate `sessionID`; a mismatched or stale response cannot enable input.
 - Siri reads the invoking device's locally persisted slot, preflights that slot, and submits one non-retried input carrying the same identity.
 - Deep links continue to open the terminal without changing the remembered slot.

@@ -670,6 +670,35 @@ private final class PiSSHConnection: @unchecked Sendable {
     }
 }
 
+struct PiTerminalInputTransitionState: Equatable {
+    private(set) var generation: Int?
+    private(set) var isReady = false
+    private var shouldRestoreKeyboard = false
+
+    mutating func begin(generation: Int, keyboardWasFocused: Bool) {
+        self.generation = generation
+        isReady = false
+        shouldRestoreKeyboard = keyboardWasFocused
+    }
+
+    mutating func complete(generation: Int) -> Bool? {
+        guard self.generation == generation, !isReady else { return nil }
+        isReady = true
+        defer { shouldRestoreKeyboard = false }
+        return shouldRestoreKeyboard
+    }
+
+    mutating func invalidate() {
+        generation = nil
+        isReady = false
+        shouldRestoreKeyboard = false
+    }
+
+    func acceptsInput(generation: Int) -> Bool {
+        isReady && self.generation == generation
+    }
+}
+
 final class PiTerminalKeyboardResponder: UITextView {
     var insertTextHandler: ((String) -> Void)?
     var deleteBackwardHandler: (() -> Void)?
@@ -697,6 +726,12 @@ final class PiTerminalKeyboardResponder: UITextView {
     }
 
     override var hasText: Bool { true }
+
+    func resetProxyBuffer() {
+        unmarkText()
+        text = PiTerminalKeyboard.proxyBufferSentinel
+        selectedRange = NSRange(location: text.utf16.count, length: 0)
+    }
 
     override func insertText(_ text: String) {
         insertTextHandler?(text)
@@ -733,6 +768,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     private var sshConnection: PiSSHConnection?
     private var activeSlot: JARVISTerminalSlot = .one
     private var activeSessionGeneration = 0
+    private var inputTransition = PiTerminalInputTransitionState()
     private var attachmentOperations: [UUID: PiAttachmentSSHOperation] = [:]
     private var connectionID = UUID()
     private let keyboardResponder = PiTerminalKeyboardResponder()
@@ -747,6 +783,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     private var touchScrollRemainder: CGFloat = 0
     var isRoutingTouchScrollToPi: Bool { remoteMouseModeEnabled }
     var isTerminalKeyboardFocused: Bool { keyboardResponder.isFirstResponder }
+    var isTerminalInputReady: Bool { inputTransition.acceptsInput(generation: activeSessionGeneration) }
     var outboundBytesObserver: (([UInt8]) -> Void)?
 
     override init(frame: CGRect) {
@@ -875,12 +912,14 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         trustedHostKey: String?,
         slot: JARVISTerminalSlot
     ) {
+        let restoreKeyboard = keyboardResponder.isFirstResponder
         disconnectSSH()
         prepareTerminalForFreshConnection()
         let id = UUID()
         connectionID = id
         activeSlot = slot
         activeSessionGeneration = 0
+        beginTerminalInputTransition(generation: 0, restoreKeyboard: restoreKeyboard)
         stateChanged?(.connecting)
 
         let terminal = getTerminal()
@@ -906,7 +945,8 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
                 DispatchQueue.main.async { [weak self] in
                     guard let self,
                           self.connectionID == id,
-                          self.activeSessionGeneration == generation else { return }
+                          self.activeSessionGeneration == generation,
+                          self.completeTerminalInputTransition(generation: generation) else { return }
                     self.stateChanged?(.connected)
                 }
             },
@@ -919,9 +959,12 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
                     self.hostTrustRequested?(request)
                 }
             },
-            onFailure: { [weak self] error, _ in
+            onFailure: { [weak self] error, generation in
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.connectionID == id else { return }
+                    guard let self,
+                          self.connectionID == id,
+                          self.activeSessionGeneration == generation else { return }
+                    self.invalidateTerminalInput()
                     self.stateChanged?(.failed(error.localizedDescription))
                 }
             }
@@ -933,19 +976,46 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     @discardableResult
     func switchSession(to slot: JARVISTerminalSlot) -> Bool {
         guard slot != activeSlot, let sshConnection else { return slot == activeSlot }
+        let nextGeneration = activeSessionGeneration + 1
+        let restoreKeyboard = keyboardResponder.isFirstResponder
+        guard sshConnection.switchSession(to: slot) else { return false }
         cancelAllAttachmentOperations()
         activeSlot = slot
-        activeSessionGeneration += 1
+        activeSessionGeneration = nextGeneration
         // Advance both generation gates before clearing the emulator. Any old
         // bytes already queued onto the main actor are then rejected, while the
         // replacement child cannot open until the previous PTY has closed.
-        let switched = sshConnection.switchSession(to: slot)
+        // Keyboard and key-deck input are fail-closed during that gap; a focused
+        // keyboard is rearmed only after this exact replacement child is ready.
+        beginTerminalInputTransition(generation: nextGeneration, restoreKeyboard: restoreKeyboard)
         prepareTerminalForFreshConnection()
         controlLatched = false
         remoteMouseModeEnabled = false
         touchScrollRemainder = 0
         stateChanged?(.connecting)
-        return switched
+        return true
+    }
+
+    func beginTerminalInputTransition(generation: Int, restoreKeyboard: Bool? = nil) {
+        let shouldRestoreKeyboard = restoreKeyboard ?? keyboardResponder.isFirstResponder
+        inputTransition.begin(generation: generation, keyboardWasFocused: shouldRestoreKeyboard)
+        if shouldRestoreKeyboard { _ = keyboardResponder.resignFirstResponder() }
+        keyboardResponder.resetProxyBuffer()
+    }
+
+    @discardableResult
+    func completeTerminalInputTransition(generation: Int) -> Bool {
+        guard let shouldRestoreKeyboard = inputTransition.complete(generation: generation) else { return false }
+        keyboardResponder.resetProxyBuffer()
+        if shouldRestoreKeyboard, window != nil {
+            _ = keyboardResponder.becomeFirstResponder()
+        }
+        return true
+    }
+
+    private func invalidateTerminalInput() {
+        inputTransition.invalidate()
+        keyboardResponder.resetProxyBuffer()
     }
 
     func prepareTerminalForFreshConnection() {
@@ -962,6 +1032,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
 
     func disconnectSSH() {
         connectionID = UUID()
+        invalidateTerminalInput()
         cancelAllAttachmentOperations()
         let connection = sshConnection
         sshConnection = nil
@@ -1115,7 +1186,8 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     override func becomeFirstResponder() -> Bool {
-        keyboardResponder.becomeFirstResponder()
+        guard isTerminalInputReady else { return false }
+        return keyboardResponder.becomeFirstResponder()
     }
 
     override func resignFirstResponder() -> Bool {
@@ -1124,16 +1196,19 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     func sendAccessoryBytes(_ bytes: [UInt8]) {
+        guard isTerminalInputReady else { return }
         outboundBytesObserver?(bytes)
         guard sshConnection != nil else { return }
         sshConnection?.send(Data(bytes))
     }
 
     func toggleControlLatch() {
+        guard isTerminalInputReady else { return }
         controlLatched.toggle()
     }
 
     override func insertText(_ text: String) {
+        guard isTerminalInputReady else { return }
         if controlLatched,
            text.unicodeScalars.count == 1,
            let scalar = text.lowercased().unicodeScalars.first,
@@ -1147,6 +1222,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     override func deleteBackward() {
+        guard isTerminalInputReady else { return }
         super.deleteBackward()
     }
 
@@ -1159,6 +1235,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        guard isTerminalInputReady else { return }
         let bytes = Array(data)
         outboundBytesObserver?(bytes)
         sshConnection?.send(Data(bytes))

@@ -282,6 +282,26 @@ grep -q 'extended-keys-format csi-u' config/jarvis-mobile.tmux.conf
 grep -q 'window-size latest' config/jarvis-mobile.tmux.conf
 reject_match 'Pi terminal must not accept every SSH host key' -RqsE 'AcceptAllHostKeys|acceptAnything' JARVIS/Terminal
 reject_match 'Pi terminal reconnect must not queue input' -RqsE 'queuedInput|pendingInput|inputQueue' JARVIS/Terminal
+grep -q 'struct PiTerminalInputTransitionState' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'beginTerminalInputTransition(generation: nextGeneration' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'completeTerminalInputTransition(generation: generation)' JARVIS/Terminal/PiSSHTransport.swift
+grep -q 'guard isTerminalInputReady else { return false }' JARVIS/Terminal/PiSSHTransport.swift
+[[ "$(grep -c 'guard isTerminalInputReady else { return }' JARVIS/Terminal/PiSSHTransport.swift)" -ge 5 ]]
+grep -q 'status == .connected && terminalView?.isTerminalInputReady == true' JARVIS/Terminal/PiTerminalController.swift
+grep -q 'testPiTerminalInputIsRearmedOnlyByTheExactFreshSession' JARVISTests/AppStateTests.swift
+python3 - <<'PY'
+from pathlib import Path
+source = Path("JARVIS/Terminal/PiSSHTransport.swift").read_text()
+on_ready = source.index("            onReady:")
+complete = source.index("self.completeTerminalInputTransition(generation: generation)", on_ready)
+connected = source.index("self.stateChanged?(.connected)", complete)
+assert on_ready < complete < connected
+switch = source.index("    func switchSession(to slot: JARVISTerminalSlot) -> Bool")
+transition = source.index("    func beginTerminalInputTransition", switch)
+switch_body = source[switch:transition]
+assert "sendAccessoryBytes" not in switch_body
+assert "[0x1b]" not in switch_body
+PY
 grep -q 'prepareTerminalForFreshConnection()' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'terminal.resetToInitialState()' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'windowState.update(cols: cols, rows: rows)' JARVIS/Terminal/PiSSHTransport.swift
