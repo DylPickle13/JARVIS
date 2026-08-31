@@ -86,7 +86,13 @@ private struct RootTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            HomeView(onOpenJobs: { selection = .jobs })
+            HomeView(
+                onOpenJobs: { selection = .jobs },
+                onOpenPiTerminal: { slot in
+                    _ = piTerminal.selectSlot(slot)
+                    selection = .pi
+                }
+            )
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(AppSection.home)
 

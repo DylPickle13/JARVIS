@@ -116,6 +116,23 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(app.isStateLoading)
     }
 
+    func testRoutineStateReadKeepsFreshControlsAvailable() async throws {
+        let api = FakeAPI(stateDelay: .milliseconds(100))
+        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+
+        await app.fetchState()
+        let refresh = Task { await app.fetchState() }
+        try await Task.sleep(for: .milliseconds(25))
+
+        XCTAssertTrue(app.isStateLoading)
+        XCTAssertFalse(app.isAwaitingFreshState)
+        XCTAssertEqual(app.lastState?.stale, false)
+        await refresh.value
+    }
+
     func testStateFetchConvergesBoundedStaleRefreshingSnapshot() async {
         let staleRefreshing = StateSnapshot(ok: true, refreshing: true, stale: true)
         let fresh = StateSnapshot(ok: true, refreshing: false, stale: false)
@@ -183,7 +200,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(app.isStateLoading)
     }
 
-    func testHomePollingStopsOutsideHomeWhileJobsContinueAcrossActiveTabs() async throws {
+    func testCachedStatePollingContinuesAcrossActiveTabsWhileServicesStayHomeOnly() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
         let store = EndpointStore(defaults: defaults)
@@ -203,7 +220,7 @@ final class AppStateTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         let piCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.scheduledJobResultsCalls, api.healthCalls)
         try await Task.sleep(for: .milliseconds(250))
-        XCTAssertEqual(api.stateCalls, piCounts.0)
+        XCTAssertGreaterThan(api.stateCalls, piCounts.0)
         XCTAssertEqual(api.servicesCalls, piCounts.1)
         XCTAssertGreaterThan(api.scheduledJobsCalls, piCounts.2)
         XCTAssertGreaterThan(api.scheduledJobResultsCalls, piCounts.3)
@@ -214,7 +231,7 @@ final class AppStateTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         let settingsCounts = (api.stateCalls, api.servicesCalls, api.scheduledJobsCalls, api.scheduledJobResultsCalls, api.healthCalls)
         try await Task.sleep(for: .milliseconds(150))
-        XCTAssertEqual(api.stateCalls, settingsCounts.0)
+        XCTAssertGreaterThan(api.stateCalls, settingsCounts.0)
         XCTAssertEqual(api.servicesCalls, settingsCounts.1)
         XCTAssertGreaterThan(api.scheduledJobsCalls, settingsCounts.2)
         XCTAssertGreaterThan(api.scheduledJobResultsCalls, settingsCounts.3)
@@ -575,6 +592,23 @@ final class AppStateTests: XCTestCase {
         XCTAssertNil(JARVISTerminalSlot.three.next)
     }
 
+    func testHomePiCardCanSelectAnExactDeviceLocalTerminalSlotBeforePresentation() throws {
+        let suite = "jarvis.terminal-card-route.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = PiTerminalController(
+            settings: PiTerminalSettings(),
+            slotDefaults: defaults
+        )
+
+        XCTAssertTrue(controller.selectSlot(.three))
+        XCTAssertEqual(controller.selectedSlot, .three)
+        XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .three)
+        XCTAssertTrue(controller.selectSlot(.one))
+        XCTAssertEqual(controller.selectedSlot, .one)
+        XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .one)
+    }
+
     func testPiTerminalMigratesLegacyZoomAndPreservesLaterPinchChanges() {
         XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 0, savedZoomSchema: 0), 18)
         XCTAssertEqual(PiTerminalPresentation.resolvedFontSize(savedValue: 12.5, savedZoomSchema: 0), 18)
@@ -754,6 +788,7 @@ final class AppStateTests: XCTestCase {
 private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     let commandSucceeds: Bool
     let commandDelay: Duration?
+    let stateDelay: Duration?
     let scheduledJobsSucceeds: Bool
     var scheduledJobResultSequence: Int?
     var stateResponses: [StateSnapshot]
@@ -782,12 +817,14 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     init(
         commandSucceeds: Bool = true,
         commandDelay: Duration? = nil,
+        stateDelay: Duration? = nil,
         scheduledJobsSucceeds: Bool = true,
         scheduledJobResultSequence: Int? = nil,
         stateResponses: [StateSnapshot] = []
     ) {
         self.commandSucceeds = commandSucceeds
         self.commandDelay = commandDelay
+        self.stateDelay = stateDelay
         self.scheduledJobsSucceeds = scheduledJobsSucceeds
         self.scheduledJobResultSequence = scheduledJobResultSequence
         self.stateResponses = stateResponses
@@ -800,6 +837,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
 
     func state(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         stateCalls += 1
+        if let stateDelay { try await Task.sleep(for: stateDelay) }
         if !stateResponses.isEmpty { return stateResponses.removeFirst() }
         return state
     }

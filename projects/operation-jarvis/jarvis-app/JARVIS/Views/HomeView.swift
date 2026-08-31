@@ -38,9 +38,14 @@ struct PiSessionIndicatorPresentation: Equatable {
 struct HomeView: View {
     @EnvironmentObject var app: AppState
     let onOpenJobs: () -> Void
+    let onOpenPiTerminal: (JARVISTerminalSlot) -> Void
 
-    init(onOpenJobs: @escaping () -> Void = {}) {
+    init(
+        onOpenJobs: @escaping () -> Void = {},
+        onOpenPiTerminal: @escaping (JARVISTerminalSlot) -> Void = { _ in }
+    ) {
         self.onOpenJobs = onOpenJobs
+        self.onOpenPiTerminal = onOpenPiTerminal
     }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var fanLocal: Double = 2
@@ -249,8 +254,11 @@ struct HomeView: View {
         let plugs = subsystem?.plugs ?? [:]
         let items = plugs.keys.sorted().map { (name: $0, isOn: plugs[$0]?.isOn) }
         let unavailable = subsystem?.ok != true
-        let refreshing = app.isAwaitingFreshState || subsystem?.refreshing == true
-        let stale = refreshing || state.stale == true || subsystem?.stale == true
+        // A routine foreground state read keeps presenting the last confirmed
+        // control state. Only jarvisd's authoritative stale/refreshing flags
+        // disable hardware writes and show refresh messaging.
+        let stale = state.stale == true || subsystem?.stale == true
+        let refreshing = stale && (state.refreshing == true || subsystem?.refreshing == true)
 
         return VStack(alignment: .leading, spacing: 7) {
             MinimalSectionHeader(
@@ -322,8 +330,8 @@ struct HomeView: View {
             let fan = purifier.fanSetLevel ?? purifier.fanLevel
             let pending = purifier.verificationPending == true
             let busy = app.isOperationBusy("purifier") || pending
-            let refreshing = app.isAwaitingFreshState || purifier.refreshing == true
-            let stale = refreshing || state.stale == true || purifier.stale == true
+            let stale = state.stale == true || purifier.stale == true
+            let refreshing = stale && (state.refreshing == true || purifier.refreshing == true)
 
             MinimalCard {
                 VStack(spacing: 9) {
@@ -644,12 +652,19 @@ struct HomeView: View {
                         Divider()
                             .frame(height: 42)
                     }
-                    piSessionStatusSection(
-                        sessionID: sessionID,
-                        active: isStale
-                            ? nil
-                            : pi.mobileSessions?.first(where: { $0.sessionID == sessionID })?.active
-                    )
+                    Button {
+                        guard let slot = JARVISTerminalSlot(rawValue: sessionID) else { return }
+                        onOpenPiTerminal(slot)
+                    } label: {
+                        piSessionStatusSection(
+                            sessionID: sessionID,
+                            active: isStale
+                                ? nil
+                                : pi.mobileSessions?.first(where: { $0.sessionID == sessionID })?.active
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens Pi \(sessionID)'s terminal on the JARVIS tab")
                 }
             }
         }
@@ -684,6 +699,7 @@ struct HomeView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 42)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Pi session \(sessionID), \(status.lowercased())")
     }

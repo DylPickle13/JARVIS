@@ -123,10 +123,26 @@ final class PiTerminalController: ObservableObject {
         guard canSwitchSlots, direction == -1 || direction == 1 else { return false }
         let target = direction < 0 ? selectedSlot.previous : selectedSlot.next
         guard let target, target != selectedSlot else { return false }
+        return selectSlot(target)
+    }
+
+    /// Select an exact device-local conversation before presenting the JARVIS
+    /// tab. A hidden terminal has no SSH child, so card navigation only persists
+    /// the target; tab visibility then opens that exact slot through the normal
+    /// generation-bound connection path.
+    @discardableResult
+    func selectSlot(_ target: JARVISTerminalSlot) -> Bool {
+        guard !isAttachmentSheetPresented,
+              !isAttachmentBusy,
+              pendingHostTrust == nil else { return false }
+        guard target != selectedSlot else { return true }
+
         selectedSlot = target
         target.persist(to: slotDefaults)
         attachmentStatusText = nil
         attachmentError = nil
+
+        guard isVisible else { return true }
         if terminalView?.switchSession(to: target) == true {
             status = .connecting
         } else {

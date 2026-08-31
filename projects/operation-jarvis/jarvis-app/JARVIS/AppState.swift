@@ -145,11 +145,12 @@ public final class AppState: ObservableObject {
 
     public var currentEndpoint: URL? { store.endpointURL }
 
-    /// True while a foreground read is in flight or jarvisd has explicitly
-    /// reported that its stale last-good snapshot is actively refreshing.
-    /// Native hardware writes remain disabled in either state.
+    /// True while no state has loaded yet or jarvisd has explicitly reported
+    /// that its stale last-good snapshot is actively refreshing. An ordinary
+    /// foreground cache read does not make an already-fresh snapshot stale.
     public var isAwaitingFreshState: Bool {
-        isStateLoading || (lastState?.stale == true && lastState?.refreshing == true)
+        (isStateLoading && lastState == nil)
+            || (lastState?.stale == true && lastState?.refreshing == true)
     }
 
     // MARK: - Scene/network lifecycle
@@ -857,10 +858,13 @@ public final class AppState: ObservableObject {
                 if self.activeSection == .home {
                     await self.refreshHome()
                 } else {
-                    // Jobs remain current while any app tab is active. Terminal,
-                    // Settings, hardware state, and service polling remain idle
-                    // outside Home.
-                    await self.refreshJobs()
+                    // A lightweight cached state read keeps jarvisd's active
+                    // client lease alive on JARVIS, Jobs, and Settings. Plug and
+                    // purifier collectors therefore remain current when Home is
+                    // reopened, while heavier service polling stays Home-only.
+                    async let state: Void = self.fetchState()
+                    async let jobs: Void = self.refreshJobs()
+                    _ = await (state, jobs)
                 }
             }
         }

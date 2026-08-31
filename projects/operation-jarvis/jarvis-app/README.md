@@ -34,8 +34,11 @@ bounded read-only `tmux list-panes` projection binds each fixed pane PID to its
 fresh local Pi extension heartbeat. A slot is green `Running` only during an
 actual Pi agent generation, purple `Idle` when its fresh heartbeat is idle (or
 its fixed pane is absent/dead), and `Unknown` when either probe or heartbeat is
-unavailable, ambiguous, or stale. The projection never attaches, resizes, creates, restarts,
-or sends input to a session. An explicit `JARVISD_PROJECT_ROOT` is authoritative
+unavailable, ambiguous, or stale. Each section is a direct navigation button:
+tapping Pi 1, Pi 2, or Pi 3 selects that exact device-local conversation before
+opening the JARVIS terminal tab through its normal generation-bound connection
+path. The projection never attaches, resizes, creates, restarts, or sends input
+to a session. An explicit `JARVISD_PROJECT_ROOT` is authoritative
 for scheduler and Codex quota paths, so artifact-hosted jarvisd cannot fall back
 to the user's unrelated global `.pi` directory.
 
@@ -387,8 +390,11 @@ hardware controls are unchanged.
 Build 127 retires the former external chat transport and moves all four schedules
 to the owner-only generic scheduler. The iPhone adds a fourth **Jobs** tab with a
 bounded protected result cache, unread baseline, safe result deep links, and a
-read-only job list with per-job output channels. Jobs refreshes every 15 seconds while the app is
-active; Home-only hardware/service polling remains confined to Home. `jarvisd`
+read-only job list with per-job output channels. Jobs and lightweight cached
+state reads refresh every 15 seconds while the app is active; full hardware/service
+presentation remains confined to Home, and service polling remains Home-only.
+Routine cache reads keep a fresh confirmed control snapshot interactive instead
+of flashing a false refreshing state. `jarvisd`
 exposes only sanitized bounded job/result projections. A dormant fail-closed
 Watch-only APNs provider and pure route parser remain inactive and push-free
 until paid enrollment; no notification prompt, registration, token collection,
@@ -671,9 +677,13 @@ sequence, and physical gates are consolidated in the
 - **iOS app — lifecycle** — health-first discovery is owned by the scene
   lifecycle, retries with backoff after transport failures, and observes network
   path changes. Home hardware/service state refreshes immediately and every 15
-  seconds only while Home is selected. Jobs schedules/results refresh every 15
-  seconds while any app tab is active; backgrounding cancels polling. Pull-to-
-  refresh remains optional, and warm `jarvisd` state reads return from cache.
+  seconds while Home is selected. Lightweight cached state plus Jobs schedules/results
+  refresh every 15 seconds while any app tab is active, preserving jarvisd's active
+  lease so plug and purifier data normally remains current when Home reopens.
+  Service polling remains Home-only, and backgrounding cancels all polling. An
+  ordinary read does not label or disable an already-fresh control snapshot;
+  authoritative stale/refreshing flags still fail closed. Pull-to-refresh remains
+  optional, and warm `jarvisd` state reads return from cache.
 - **iOS app — Pi terminal** — SwiftTerm renders Pi's regular TUI while SwiftNIO
   SSH carries a password-authenticated PTY to this Mac. First use confirms and
   remembers the SSH host key; the password stays in target-local Keychain. The

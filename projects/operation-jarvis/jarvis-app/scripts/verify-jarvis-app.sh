@@ -50,7 +50,10 @@ grep -q 'attempts < staleConvergenceAttempts' JARVIS/AppState.swift
 grep -q 'snapshot.stale == true' JARVIS/AppState.swift
 grep -q 'snapshot.refreshing == true' JARVIS/AppState.swift
 grep -q 'if app.isAwaitingFreshState { return "Online · refreshing" }' JARVIS/Views/HomeView.swift
+grep -q '(isStateLoading && lastState == nil)' JARVIS/AppState.swift
 grep -q 'State is refreshing; wait before changing it' JARVIS/Views/HomeView.swift
+reject_match 'routine cached reads must not mark fresh controls as refreshing' -Fq 'let refreshing = app.isAwaitingFreshState ||' JARVIS/Views/HomeView.swift
+grep -q 'testRoutineStateReadKeepsFreshControlsAvailable' JARVISTests/AppStateTests.swift
 grep -q 'testStateFetchDoesNotRetryCompletedStaleSnapshot' JARVISTests/AppStateTests.swift
 
 printf '%s\n' '== bounded jarvisd logging contract =='
@@ -166,6 +169,12 @@ grep -q 'case \.running: return \.green' JARVIS/Views/HomeView.swift
 grep -q 'label = "Idle"' JARVIS/Views/HomeView.swift
 grep -q 'tone = \.idle' JARVIS/Views/HomeView.swift
 grep -q 'case \.idle: return \.purple' JARVIS/Views/HomeView.swift
+grep -q 'onOpenPiTerminal: { slot in' JARVIS/JARVISApp.swift
+grep -q '_ = piTerminal.selectSlot(slot)' JARVIS/JARVISApp.swift
+grep -q 'func selectSlot(_ target: JARVISTerminalSlot) -> Bool' JARVIS/Terminal/PiTerminalController.swift
+grep -q 'onOpenPiTerminal(slot)' JARVIS/Views/HomeView.swift
+grep -Fq 'terminal on the JARVIS tab' JARVIS/Views/HomeView.swift
+grep -q 'testHomePiCardCanSelectAnExactDeviceLocalTerminalSlotBeforePresentation' JARVISTests/AppStateTests.swift
 reject_match 'Pi status indicator must not render inactive state in red' -Fq 'active.map { $0 ? JarvisPalette.accent : .red }' JARVIS/Views/HomeView.swift
 grep -q 'public let mobileSessions: \[PiMobileSession\]?' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'MOBILE_TMUX_SESSIONS = ((1, "jarvis-ios"), (2, "jarvis-ios-2"), (3, "jarvis-ios-3"))' jarvisd/jarvisd.py
@@ -606,6 +615,9 @@ reject_match 'endpoint bridges must not restore permissive scheme-and-host-only 
 
 printf '%s\n' '== native refresh and Tailscale contract =='
 grep -q 'activeInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
+grep -q "A lightweight cached state read keeps jarvisd's active" JARVIS/AppState.swift
+grep -q 'async let state: Void = self.fetchState()' JARVIS/AppState.swift
+grep -q 'testCachedStatePollingContinuesAcrossActiveTabsWhileServicesStayHomeOnly' JARVISTests/AppStateTests.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q '100.87.28.34' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q 'TAILSCALE_APP_CLI' jarvisd/jarvisd.py
