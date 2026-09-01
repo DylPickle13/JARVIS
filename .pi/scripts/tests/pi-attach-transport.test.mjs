@@ -34,6 +34,65 @@ async function waitForDescriptor(path, child) {
   throw new Error("timed out waiting for descriptor");
 }
 
+test("shared mobile tmux picker accepts only exclusively local VS Code client ancestries", () => {
+  const processes = new Map([
+    [101, { parentPID: 201, executable: "/opt/homebrew/bin/tmux" }],
+    [102, { parentPID: 202, executable: "/opt/homebrew/bin/tmux" }],
+    [201, {
+      parentPID: 1,
+      executable: "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper",
+    }],
+    [202, {
+      parentPID: 1,
+      executable: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+    }],
+  ]);
+  assert.equal(
+    transport.allClientProcessesAreLocalVSCode([101, 102], processes),
+    true,
+  );
+  assert.equal(transport.allClientProcessesAreLocalVSCode([], processes), false);
+  assert.equal(
+    transport.allClientProcessesAreLocalVSCode([101, 101], processes),
+    false,
+  );
+});
+
+test("shared mobile tmux picker fails closed for mixed, SSH, and incomplete client ancestries", () => {
+  const processes = new Map([
+    [101, { parentPID: 201, executable: "/opt/homebrew/bin/tmux" }],
+    [102, { parentPID: 302, executable: "/opt/homebrew/bin/tmux" }],
+    [103, { parentPID: 303, executable: "/opt/homebrew/bin/tmux" }],
+    [201, {
+      parentPID: 1,
+      executable: "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper",
+    }],
+    [302, { parentPID: 402, executable: "/bin/zsh" }],
+    [402, { parentPID: 1, executable: "/usr/libexec/sshd-session" }],
+    [303, {
+      parentPID: 403,
+      executable: "/Users/remote/.vscode-server/bin/node",
+    }],
+    [403, { parentPID: 1, executable: "/usr/libexec/sshd-session" }],
+  ]);
+  assert.equal(
+    transport.allClientProcessesAreLocalVSCode([101, 102], processes),
+    false,
+  );
+  assert.equal(
+    transport.allClientProcessesAreLocalVSCode([102], processes),
+    false,
+  );
+  assert.equal(
+    transport.allClientProcessesAreLocalVSCode([103], processes),
+    false,
+  );
+  assert.equal(
+    transport.allClientProcessesAreLocalVSCode([999], processes),
+    false,
+  );
+});
+
 async function listenUnixProxy(socketPath, port) {
   const server = createNetServer((client) => {
     const upstream = connect(port, "127.0.0.1");

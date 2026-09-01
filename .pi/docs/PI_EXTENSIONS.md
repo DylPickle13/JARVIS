@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-08-26 EDT
+Updated: 2026-08-31 EDT
 
 The local Pi extension inventory lives in `.pi/extensions/`. `.pi/smoke-test.sh` keeps a read-only manifest check so added or removed extension roots are visible during smoke testing. The manifest intentionally ignores the shared `.pi/extensions/lib/` directory.
 
@@ -79,7 +79,9 @@ The project-local `05-attach.ts` extension registers exactly one parameterless c
 
 Selected files are copied directly into the ignored private `attachments/` directory with owner-only modes and readable collision suffixes such as `photo-2.png`. The staged queue exists only in the live Pi process: no manifests, per-session directories, or other attachment metadata are written. Restarting Pi clears any unsent queue while leaving its copied files in place. Defaults are 10 files, 50 MiB per file, and 100 MiB total; bounded `PI_ATTACH_MAX_FILES`, `PI_ATTACH_MAX_FILE_BYTES`, and `PI_ATTACH_MAX_TOTAL_BYTES` environment overrides are available. Images supported by the active model are normalized through Pi's image pipeline and included as native image blocks; every attachment is also represented by its flat local path and bounded prompt metadata. Non-image files remain local for `read`, the PDF extension, or other explicit tools. Consumed files are retained because later session turns may refer to those paths; files explicitly removed before submission are deleted.
 
-Direct local use invokes `.pi/scripts/pi-attach-picker`, which compiles the checked-in AppKit helper into ignored mode-`0700` runtime storage on first use. Plain SSH cannot ask the client computer to open a dialog. For attachment-enabled SSH, connect from the client checkout with:
+Direct local use invokes `.pi/scripts/pi-attach-picker`, which compiles the checked-in AppKit helper into ignored mode-`0700` runtime storage on first use. The three persistent `jarvis-mobile` Pi processes may retain stale SSH variables from their original creation even while viewed locally. `/attach` treats that inheritance as stale only when the exact allowlisted tmux session is currently attached exclusively by client processes descended from the local `/Applications/Visual Studio Code.app`; missing, mixed, raced, or genuinely remote client evidence still fails closed. This changes no tmux state and never infers a picker target merely from the presence of any local client.
+
+Plain SSH cannot ask the client computer to open a dialog. For attachment-enabled SSH, connect from the client checkout with:
 
 ```bash
 .pi/scripts/jarvis-pi-ssh [ssh options] <host>

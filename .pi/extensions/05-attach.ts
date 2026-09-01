@@ -13,10 +13,12 @@ import {
 } from "./lib/attach/core.ts";
 import { prepareAttachmentImages } from "./lib/attach/images.ts";
 import {
+  exactMobileTmuxIdentity,
   MobileAttachmentServer,
   type MobileAttachmentSnapshot,
 } from "./lib/attach/mobile-server.ts";
 import {
+  exactMobileTmuxHasOnlyLocalVSCodeClients,
   looksLikeSshSession,
   requestSshAttachmentPicker,
   runNativeAttachmentPicker,
@@ -156,7 +158,13 @@ export default function registerAttachExtension(pi: ExtensionAPI) {
     if (sshAttachmentBridgeConfigured()) {
       return requestSshAttachmentPicker(pickerExisting, currentStore.limits);
     }
-    if (looksLikeSshSession()) throw new Error(PLAIN_SSH_MESSAGE);
+    if (looksLikeSshSession()) {
+      const identity = await exactMobileTmuxIdentity();
+      if (
+        !identity ||
+        !(await exactMobileTmuxHasOnlyLocalVSCodeClients(identity))
+      ) throw new Error(PLAIN_SSH_MESSAGE);
+    }
     const result = await runNativeAttachmentPicker(
       NATIVE_PICKER,
       pickerExisting,
