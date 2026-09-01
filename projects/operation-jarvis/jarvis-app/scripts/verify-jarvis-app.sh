@@ -185,13 +185,17 @@ grep -q 'testPeriodicSchedulerStillFailsClosedWhenUnavailable' JARVISTests/AppSt
 reject_match 'periodic scheduler must not be summarized as a continuously running process' -Fq 'of \(sortedServices.count) running' JARVIS/Views/HomeView.swift
 grep -q 'sessionIDs: \[1, 2, 3\]' JARVIS/Views/HomeView.swift
 grep -q 'sessionIDs: \[4, 5, 6\]' JARVIS/Views/HomeView.swift
-grep -q 'private func piSessionStatusSection(sessionID: Int, active: Bool?)' JARVIS/Views/HomeView.swift
-grep -q 'label = "Running"' JARVIS/Views/HomeView.swift
-grep -q 'tone = \.running' JARVIS/Views/HomeView.swift
-grep -q 'case \.running: return \.green' JARVIS/Views/HomeView.swift
+grep -q 'private func piSessionStatusSection(sessionID: Int, lifecycle: PiSessionLifecycle)' JARVIS/Views/HomeView.swift
+grep -q 'label = "Offline"' JARVIS/Views/HomeView.swift
 grep -q 'label = "Idle"' JARVIS/Views/HomeView.swift
-grep -q 'tone = \.idle' JARVIS/Views/HomeView.swift
+grep -q 'label = "Running"' JARVIS/Views/HomeView.swift
+grep -q 'label = "Waiting"' JARVIS/Views/HomeView.swift
+grep -q 'label = "Compacting"' JARVIS/Views/HomeView.swift
+grep -q 'label = "Unknown"' JARVIS/Views/HomeView.swift
+grep -q 'case \.running: return \.green' JARVIS/Views/HomeView.swift
 grep -q 'case \.idle: return \.purple' JARVIS/Views/HomeView.swift
+grep -q 'case \.waiting: return \.orange' JARVIS/Views/HomeView.swift
+grep -q 'case \.compacting: return \.blue' JARVIS/Views/HomeView.swift
 grep -q 'onOpenPiTerminal: { slot in' JARVIS/JARVISApp.swift
 grep -q '_ = piTerminal.selectSlot(slot)' JARVIS/JARVISApp.swift
 grep -q 'func selectSlot(_ target: JARVISTerminalSlot) -> Bool' JARVIS/Terminal/PiTerminalController.swift
@@ -200,6 +204,14 @@ grep -Fq 'terminal on the JARVIS tab' JARVIS/Views/HomeView.swift
 grep -q 'testHomePiCardCanSelectAnExactDeviceLocalTerminalSlotBeforePresentation' JARVISTests/AppStateTests.swift
 reject_match 'Pi status indicator must not render inactive state in red' -Fq 'active.map { $0 ? JarvisPalette.accent : .red }' JARVIS/Views/HomeView.swift
 grep -q 'public let mobileSessions: \[PiMobileSession\]?' JARVISKit/Sources/JARVISKit/Models.swift
+grep -q 'public enum PiSessionLifecycle: String' JARVISKit/Sources/JARVISKit/Models.swift
+grep -q 'public var resolvedLifecycle: PiSessionLifecycle' JARVISKit/Sources/JARVISKit/Models.swift
+grep -q 'pi.on("agent_settled"' ../../../.pi/extensions/46-local-pi-session-status.ts
+grep -q 'pi.on("ui_prompt_start"' ../../../.pi/extensions/46-local-pi-session-status.ts
+grep -q 'pi.on("session_before_compact"' ../../../.pi/extensions/46-local-pi-session-status.ts
+grep -q 'version: 2' ../../../.pi/extensions/46-local-pi-session-status.ts
+grep -q 'MOBILE_PI_REPORTED_LIFECYCLES' jarvisd/jarvisd.py
+grep -q 'lifecycle = "offline"' jarvisd/jarvisd.py
 grep -q '(1, "jarvis-ios")' jarvisd/jarvisd.py
 grep -q '(6, "jarvis-ios-6")' jarvisd/jarvisd.py
 grep -q '#{session_name}\\t#{pane_dead}\\t#{pane_pid}' jarvisd/jarvisd.py

@@ -132,7 +132,7 @@ class DaemonUnitTests(unittest.TestCase):
                 )
             self.assertEqual(resolved, project)
 
-    def test_mobile_pi_session_states_use_fresh_agent_activity(self):
+    def test_mobile_pi_session_states_use_fresh_lifecycle(self):
         now = jarvisd.dt.datetime(2026, 8, 31, 20, 0, tzinfo=jarvisd.dt.timezone.utc)
         completed = jarvisd.subprocess.CompletedProcess(
             args=[],
@@ -142,6 +142,7 @@ class DaemonUnitTests(unittest.TestCase):
                 "jarvis-ios-2\t1\t222\n"
                 "jarvis-ios-3\t0\t333\n"
                 "jarvis-ios-4\t0\t444\n"
+                "jarvis-ios-5\t0\t555\n"
                 "jarvis-ios-6\t0\t666\n"
                 "unrelated\t0\t777\n"
             ),
@@ -149,12 +150,19 @@ class DaemonUnitTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as raw:
             status_dir = Path(raw)
-            for pid, active in ((111, True), (222, True), (333, False), (444, True)):
+            for pid, lifecycle in (
+                (111, "running"),
+                (222, "waiting"),
+                (333, "idle"),
+                (444, "waiting"),
+                (555, "compacting"),
+            ):
                 (status_dir / f"{pid}-session.json").write_text(
                     json.dumps({
+                        "version": 2,
                         "source": "pi-extension-local-session-status",
                         "pid": pid,
-                        "active": active,
+                        "lifecycle": lifecycle,
                         "updatedAt": now.isoformat().replace("+00:00", "Z"),
                     }),
                     encoding="utf-8",
@@ -166,12 +174,12 @@ class DaemonUnitTests(unittest.TestCase):
         self.assertEqual(
             states,
             [
-                {"sessionID": 1, "active": True},
-                {"sessionID": 2, "active": False},
-                {"sessionID": 3, "active": False},
-                {"sessionID": 4, "active": True},
-                {"sessionID": 5, "active": False},
-                {"sessionID": 6, "active": None},
+                {"sessionID": 1, "lifecycle": "running", "active": True},
+                {"sessionID": 2, "lifecycle": "offline", "active": False},
+                {"sessionID": 3, "lifecycle": "idle", "active": False},
+                {"sessionID": 4, "lifecycle": "waiting", "active": True},
+                {"sessionID": 5, "lifecycle": "compacting", "active": True},
+                {"sessionID": 6, "lifecycle": "unknown", "active": None},
             ],
         )
         run.assert_called_once_with(
@@ -190,6 +198,36 @@ class DaemonUnitTests(unittest.TestCase):
             check=False,
         )
 
+    def test_fresh_local_pi_lifecycle_accepts_v1_during_manual_reload_rollout(self):
+        now = jarvisd.dt.datetime(2026, 8, 31, 20, 0, tzinfo=jarvisd.dt.timezone.utc)
+        with tempfile.TemporaryDirectory() as raw:
+            status_dir = Path(raw)
+            for pid, active in ((111, True), (222, False)):
+                (status_dir / f"{pid}-session.json").write_text(
+                    json.dumps({
+                        "version": 1,
+                        "source": "pi-extension-local-session-status",
+                        "pid": pid,
+                        "active": active,
+                        "updatedAt": now.isoformat().replace("+00:00", "Z"),
+                    }),
+                    encoding="utf-8",
+                )
+            (status_dir / "333-session.json").write_text(
+                json.dumps({
+                    "version": 2,
+                    "source": "pi-extension-local-session-status",
+                    "pid": 333,
+                    "lifecycle": "invented",
+                    "updatedAt": now.isoformat().replace("+00:00", "Z"),
+                }),
+                encoding="utf-8",
+            )
+            with mock.patch.object(jarvisd, "PI_LOCAL_SESSIONS", status_dir):
+                self.assertEqual(jarvisd._fresh_local_pi_lifecycle(111, now=now), "running")
+                self.assertEqual(jarvisd._fresh_local_pi_lifecycle(222, now=now), "idle")
+                self.assertIsNone(jarvisd._fresh_local_pi_lifecycle(333, now=now))
+
     def test_mobile_pi_session_states_fail_closed_for_stale_or_missing_activity(self):
         now = jarvisd.dt.datetime(2026, 8, 31, 20, 0, tzinfo=jarvisd.dt.timezone.utc)
         completed = jarvisd.subprocess.CompletedProcess(
@@ -203,9 +241,10 @@ class DaemonUnitTests(unittest.TestCase):
             stale = now - jarvisd.dt.timedelta(seconds=jarvisd.MOBILE_PI_STATUS_MAX_AGE_SECONDS + 1)
             (status_dir / "111-session.json").write_text(
                 json.dumps({
+                    "version": 2,
                     "source": "pi-extension-local-session-status",
                     "pid": 111,
-                    "active": True,
+                    "lifecycle": "running",
                     "updatedAt": stale.isoformat().replace("+00:00", "Z"),
                 }),
                 encoding="utf-8",
@@ -215,23 +254,23 @@ class DaemonUnitTests(unittest.TestCase):
                 self.assertEqual(
                     jarvisd._mobile_pi_session_states(now=now),
                     [
-                        {"sessionID": 1, "active": None},
-                        {"sessionID": 2, "active": False},
-                        {"sessionID": 3, "active": None},
-                        {"sessionID": 4, "active": False},
-                        {"sessionID": 5, "active": False},
-                        {"sessionID": 6, "active": None},
+                        {"sessionID": 1, "lifecycle": "unknown", "active": None},
+                        {"sessionID": 2, "lifecycle": "offline", "active": False},
+                        {"sessionID": 3, "lifecycle": "unknown", "active": None},
+                        {"sessionID": 4, "lifecycle": "offline", "active": False},
+                        {"sessionID": 5, "lifecycle": "offline", "active": False},
+                        {"sessionID": 6, "lifecycle": "unknown", "active": None},
                     ],
                 )
 
     def test_mobile_pi_session_states_fail_closed_when_probe_is_unavailable(self):
         unknown = [
-            {"sessionID": 1, "active": None},
-            {"sessionID": 2, "active": None},
-            {"sessionID": 3, "active": None},
-            {"sessionID": 4, "active": None},
-            {"sessionID": 5, "active": None},
-            {"sessionID": 6, "active": None},
+            {"sessionID": 1, "lifecycle": "unknown", "active": None},
+            {"sessionID": 2, "lifecycle": "unknown", "active": None},
+            {"sessionID": 3, "lifecycle": "unknown", "active": None},
+            {"sessionID": 4, "lifecycle": "unknown", "active": None},
+            {"sessionID": 5, "lifecycle": "unknown", "active": None},
+            {"sessionID": 6, "lifecycle": "unknown", "active": None},
         ]
         with mock.patch.object(
             jarvisd.subprocess,
@@ -246,16 +285,35 @@ class DaemonUnitTests(unittest.TestCase):
 
     def test_pi_sessions_includes_fixed_mobile_session_states(self):
         expected = [
-            {"sessionID": 1, "active": True},
-            {"sessionID": 2, "active": False},
-            {"sessionID": 3, "active": True},
-            {"sessionID": 4, "active": False},
-            {"sessionID": 5, "active": True},
-            {"sessionID": 6, "active": False},
+            {"sessionID": 1, "lifecycle": "running", "active": True},
+            {"sessionID": 2, "lifecycle": "idle", "active": False},
+            {"sessionID": 3, "lifecycle": "waiting", "active": True},
+            {"sessionID": 4, "lifecycle": "offline", "active": False},
+            {"sessionID": 5, "lifecycle": "compacting", "active": True},
+            {"sessionID": 6, "lifecycle": "unknown", "active": None},
         ]
         with mock.patch.object(jarvisd, "_mobile_pi_session_states", return_value=expected):
             result = jarvisd._pi_sessions()
         self.assertEqual(result["mobileSessions"], expected)
+
+    def test_pi_sessions_counts_v2_running_waiting_and_compacting_as_active(self):
+        with tempfile.TemporaryDirectory() as raw:
+            status_dir = Path(raw)
+            for index, lifecycle in enumerate(
+                ("idle", "running", "waiting", "compacting", "invented"),
+                start=1,
+            ):
+                (status_dir / f"{index}.json").write_text(
+                    json.dumps({"version": 2, "lifecycle": lifecycle}),
+                    encoding="utf-8",
+                )
+            with mock.patch.object(jarvisd, "PI_LOCAL_SESSIONS", status_dir), \
+                 mock.patch.object(jarvisd, "PI_RPC_SESSIONS", status_dir / "missing.json"), \
+                 mock.patch.object(jarvisd, "_mobile_pi_session_states", return_value=[]):
+                result = jarvisd._pi_sessions()
+        self.assertEqual(result["localTotal"], 5)
+        self.assertEqual(result["localActive"], 3)
+        self.assertEqual(result["active"], 3)
 
     def test_default_state_contract_excludes_weather(self):
         coordinator = jarvisd.StateCoordinator()

@@ -3,14 +3,20 @@ import SwiftUI
 import JARVISKit
 
 enum PiSessionIndicatorTone: Equatable {
-    case running
+    case offline
     case idle
+    case running
+    case waiting
+    case compacting
     case unknown
 
     var color: Color {
         switch self {
-        case .running: return .green
+        case .offline: return .gray
         case .idle: return .purple
+        case .running: return .green
+        case .waiting: return .orange
+        case .compacting: return .blue
         case .unknown: return JarvisPalette.warning
         }
     }
@@ -20,15 +26,24 @@ struct PiSessionIndicatorPresentation: Equatable {
     let label: String
     let tone: PiSessionIndicatorTone
 
-    init(active: Bool?) {
-        switch active {
-        case true:
-            label = "Running"
-            tone = .running
-        case false:
+    init(lifecycle: PiSessionLifecycle) {
+        switch lifecycle {
+        case .offline:
+            label = "Offline"
+            tone = .offline
+        case .idle:
             label = "Idle"
             tone = .idle
-        case nil:
+        case .running:
+            label = "Running"
+            tone = .running
+        case .waiting:
+            label = "Waiting"
+            tone = .waiting
+        case .compacting:
+            label = "Compacting"
+            tone = .compacting
+        case .unknown:
             label = "Unknown"
             tone = .unknown
         }
@@ -748,12 +763,10 @@ struct HomeView: View {
                     guard let slot = JARVISTerminalSlot(rawValue: sessionID) else { return }
                     onOpenPiTerminal(slot)
                 } label: {
-                    piSessionStatusSection(
-                        sessionID: sessionID,
-                        active: isStale
-                            ? nil
-                            : sessions?.first(where: { $0.sessionID == sessionID })?.active
-                    )
+                    let lifecycle = isStale
+                        ? PiSessionLifecycle.unknown
+                        : sessions?.first(where: { $0.sessionID == sessionID })?.resolvedLifecycle ?? .unknown
+                    piSessionStatusSection(sessionID: sessionID, lifecycle: lifecycle)
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens Pi \(sessionID)'s terminal on the JARVIS tab")
@@ -761,8 +774,8 @@ struct HomeView: View {
         }
     }
 
-    private func piSessionStatusSection(sessionID: Int, active: Bool?) -> some View {
-        let presentation = PiSessionIndicatorPresentation(active: active)
+    private func piSessionStatusSection(sessionID: Int, lifecycle: PiSessionLifecycle) -> some View {
+        let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
         let status = presentation.label
         let color = presentation.tone.color
 

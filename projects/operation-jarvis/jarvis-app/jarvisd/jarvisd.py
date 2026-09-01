@@ -240,6 +240,9 @@ MOBILE_PI_STATUS_MAX_AGE_SECONDS = min(
 MAX_MOBILE_PI_STATUS_BYTES = 16 * 1024
 MAX_MOBILE_PI_STATUS_FILES_PER_PID = 8
 MAX_MOBILE_TMUX_OUTPUT_BYTES = 64 * 1024
+MOBILE_PI_REPORTED_LIFECYCLES = frozenset({"idle", "running", "waiting", "compacting"})
+MOBILE_PI_ACTIVE_LIFECYCLES = frozenset({"running", "waiting", "compacting"})
+MOBILE_PI_PUBLIC_LIFECYCLES = MOBILE_PI_REPORTED_LIFECYCLES | {"offline", "unknown"}
 
 AUTH_MODES = {"trusted-network", "token"}
 PROTECTED_LABELS = {"com.operation-jarvis.jarvisd", "com.operation-jarvis.jarvisd-resurrector"}
@@ -759,8 +762,8 @@ class _UnixSocketHTTPConnection(http.client.HTTPConnection):
         self.sock = sock
 
 
-def _fresh_local_pi_activity(pid: int, *, now: dt.datetime) -> bool | None:
-    """Return one Pi process's fresh agent-generation state, or unknown."""
+def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
+    """Return one Pi process's fresh lifecycle, or None for unknown evidence."""
     if not PI_LOCAL_SESSIONS.is_dir():
         return None
 
@@ -776,7 +779,7 @@ def _fresh_local_pi_activity(pid: int, *, now: dt.datetime) -> bool | None:
     except OSError:
         return None
 
-    freshest: tuple[dt.datetime, bool] | None = None
+    freshest: tuple[dt.datetime, str] | None = None
     for path in candidates:
         try:
             if path.is_symlink():
@@ -789,9 +792,19 @@ def _fresh_local_pi_activity(pid: int, *, now: dt.datetime) -> bool | None:
                 not isinstance(payload, dict)
                 or payload.get("source") != "pi-extension-local-session-status"
                 or payload.get("pid") != pid
-                or not isinstance(payload.get("active"), bool)
             ):
                 continue
+
+            version = payload.get("version")
+            if version == 2 and payload.get("lifecycle") in MOBILE_PI_REPORTED_LIFECYCLES:
+                lifecycle = payload["lifecycle"]
+            elif version == 1 and isinstance(payload.get("active"), bool):
+                # Preserve availability while live Build 142 Pi processes wait
+                # for their owner-controlled manual /reload.
+                lifecycle = "running" if payload["active"] else "idle"
+            else:
+                continue
+
             updated_at = payload.get("updatedAt")
             if not isinstance(updated_at, str) or len(updated_at) > 64:
                 continue
@@ -803,15 +816,29 @@ def _fresh_local_pi_activity(pid: int, *, now: dt.datetime) -> bool | None:
             if age < -5.0 or age > MOBILE_PI_STATUS_MAX_AGE_SECONDS:
                 continue
             if freshest is None or timestamp > freshest[0]:
-                freshest = (timestamp, payload["active"])
+                freshest = (timestamp, lifecycle)
         except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
             continue
     return freshest[1] if freshest is not None else None
 
 
+def _mobile_pi_state(session_id: int, lifecycle: str) -> dict:
+    """Build the lifecycle response with a Build 142 compatibility activity."""
+    if lifecycle not in MOBILE_PI_PUBLIC_LIFECYCLES:
+        lifecycle = "unknown"
+    active: bool | None
+    if lifecycle in MOBILE_PI_ACTIVE_LIFECYCLES:
+        active = True
+    elif lifecycle in {"idle", "offline"}:
+        active = False
+    else:
+        active = None
+    return {"sessionID": session_id, "lifecycle": lifecycle, "active": active}
+
+
 def _mobile_pi_session_states(*, now: dt.datetime | None = None) -> list[dict]:
-    """Read fixed tmux identities and fresh Pi activity without mutating either."""
-    unknown = [{"sessionID": session_id, "active": None} for session_id, _name in MOBILE_TMUX_SESSIONS]
+    """Read fixed tmux identities and fresh Pi lifecycle without mutating either."""
+    unknown = [_mobile_pi_state(session_id, "unknown") for session_id, _name in MOBILE_TMUX_SESSIONS]
     try:
         result = subprocess.run(
             [
@@ -848,18 +875,18 @@ def _mobile_pi_session_states(*, now: dt.datetime | None = None) -> list[dict]:
     for session_id, name in MOBILE_TMUX_SESSIONS:
         rows = rows_by_name[name]
         if not rows:
-            active: bool | None = False
+            lifecycle = "offline"
         elif len(rows) != 1 or rows[0] is None:
-            active = None
+            lifecycle = "unknown"
         else:
             pane_dead, raw_pid = rows[0]
             if pane_dead == "1":
-                active = False
+                lifecycle = "offline"
             elif pane_dead != "0" or not raw_pid.isdecimal() or int(raw_pid) <= 0:
-                active = None
+                lifecycle = "unknown"
             else:
-                active = _fresh_local_pi_activity(int(raw_pid), now=observed_at)
-        states.append({"sessionID": session_id, "active": active})
+                lifecycle = _fresh_local_pi_lifecycle(int(raw_pid), now=observed_at) or "unknown"
+        states.append(_mobile_pi_state(session_id, lifecycle))
     return states
 
 
@@ -870,7 +897,13 @@ def _pi_sessions() -> dict:
         for f in PI_LOCAL_SESSIONS.glob("*.json"):
             local_total += 1
             try:
-                if json.loads(f.read_text(encoding="utf-8")).get("active"):
+                payload = json.loads(f.read_text(encoding="utf-8"))
+                if not isinstance(payload, dict):
+                    continue
+                if payload.get("version") == 2:
+                    if payload.get("lifecycle") in MOBILE_PI_ACTIVE_LIFECYCLES:
+                        active_local += 1
+                elif payload.get("version") == 1 and payload.get("active") is True:
                     active_local += 1
             except Exception:  # noqa: BLE001
                 continue

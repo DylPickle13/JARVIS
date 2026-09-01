@@ -8,6 +8,8 @@ const HEARTBEAT_MS = 2_000;
 const PRUNE_INTERVAL_MS = 60_000;
 const MAX_STATUS_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
+type LocalPiSessionLifecycle = "idle" | "running" | "waiting" | "compacting";
+
 function findProjectRoot(cwd: string): string {
   let current = resolve(cwd || process.cwd());
   while (true) {
@@ -40,7 +42,10 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   let statusPath = join(statusDir, `${process.pid}.json`);
   let sessionFile = "";
   let cwd = process.cwd();
-  let active = false;
+  let lifecycle: LocalPiSessionLifecycle = "idle";
+  let agentRunning = false;
+  let waitingForPrompt = false;
+  let compacting = false;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let lastPruneMs = 0;
 
@@ -78,16 +83,23 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     }
   }
 
+  function resolvedLifecycle(isIdle?: boolean): LocalPiSessionLifecycle {
+    if (compacting) return "compacting";
+    if (waitingForPrompt) return "waiting";
+    if (agentRunning || isIdle === false) return "running";
+    return "idle";
+  }
+
   function writeStatus(reason: string) {
     const now = new Date().toISOString();
     pruneStatusDir();
     try {
       mkdirSync(statusDir, { recursive: true });
       const payload = {
-        version: 1,
+        version: 2,
         id: `local:${process.pid}`,
         pid: process.pid,
-        active,
+        lifecycle,
         source: "pi-extension-local-session-status",
         reason,
         cwd,
@@ -100,6 +112,11 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     }
   }
 
+  function updateLifecycle(reason: string, isIdle?: boolean) {
+    lifecycle = resolvedLifecycle(isIdle);
+    writeStatus(reason);
+  }
+
   function removeStatus() {
     try {
       rmSync(statusPath, { force: true });
@@ -110,7 +127,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
 
   function ensureHeartbeat() {
     if (heartbeat) return;
-    heartbeat = setInterval(() => writeStatus(active ? "heartbeat-active" : "heartbeat-idle"), HEARTBEAT_MS);
+    heartbeat = setInterval(() => writeStatus(`heartbeat-${lifecycle}`), HEARTBEAT_MS);
     heartbeat.unref?.();
   }
 
@@ -121,8 +138,11 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     sessionFile = ctx.sessionManager.getSessionFile() || "";
     const suffix = sessionFile ? safeFileName(sessionFile) : "ephemeral";
     statusPath = join(statusDir, `${process.pid}-${suffix}.json`);
+    agentRunning = !ctx.isIdle();
+    waitingForPrompt = false;
+    compacting = false;
+    lifecycle = resolvedLifecycle(ctx.isIdle());
     pruneStatusDir(true);
-    active = !ctx.isIdle();
     writeStatus("session-start");
     ensureHeartbeat();
   });
@@ -130,16 +150,49 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   pi.on("agent_start", async (_event, ctx) => {
     cwd = ctx.cwd || cwd;
     sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
-    active = true;
-    writeStatus("agent-start");
+    agentRunning = true;
+    updateLifecycle("agent-start", false);
     ensureHeartbeat();
   });
 
+  // agent_end is not idle: Pi may still retry, compact, or continue. Only
+  // agent_settled authoritatively marks the end of automatic agent activity.
   pi.on("agent_end", async (_event, ctx) => {
     cwd = ctx.cwd || cwd;
     sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
-    active = false;
-    writeStatus("agent-end");
+    updateLifecycle("agent-end-awaiting-settle", false);
+  });
+
+  pi.on("agent_settled", async (_event, ctx) => {
+    cwd = ctx.cwd || cwd;
+    sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
+    agentRunning = !ctx.isIdle();
+    updateLifecycle("agent-settled", ctx.isIdle());
+  });
+
+  pi.on("ui_prompt_start", async () => {
+    waitingForPrompt = true;
+    updateLifecycle("ui-prompt-start");
+  });
+
+  pi.on("ui_prompt_end", async (_event, ctx) => {
+    waitingForPrompt = false;
+    updateLifecycle("ui-prompt-end", ctx.isIdle());
+  });
+
+  pi.on("session_before_compact", async () => {
+    compacting = true;
+    updateLifecycle("session-before-compact");
+  });
+
+  pi.on("session_compact", async (_event, ctx) => {
+    compacting = false;
+    updateLifecycle("session-compact", ctx.isIdle());
+  });
+
+  pi.on("session_compact_failed", async (_event, ctx) => {
+    compacting = false;
+    updateLifecycle("session-compact-failed", ctx.isIdle());
   });
 
   pi.on("session_shutdown", async () => {

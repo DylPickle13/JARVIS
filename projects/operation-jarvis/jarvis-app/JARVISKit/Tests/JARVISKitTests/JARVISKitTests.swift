@@ -18,24 +18,35 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertFalse(CodexQuotaPresentationPolicy.isCritical(remainingPercent: 100))
     }
 
-    func testPiMobileSessionsDecodeIndividuallyAndRemainBackwardCompatible() throws {
+    func testPiMobileSessionLifecyclesDecodeAndRemainBackwardCompatible() throws {
         let state = try JSONDecoder().decode(
             StateSnapshot.self,
             from: Data(
-                #"{"ok":true,"subsystems":{"pi":{"ok":true,"active":2,"mobileSessions":[{"sessionID":1,"active":true},{"sessionID":2,"active":false},{"sessionID":3,"active":null},{"sessionID":4,"active":false},{"sessionID":5,"active":true},{"sessionID":6,"active":null}]}}}"#.utf8
+                #"{"ok":true,"subsystems":{"pi":{"ok":true,"active":3,"mobileSessions":[{"sessionID":1,"lifecycle":"running","active":true},{"sessionID":2,"lifecycle":"idle","active":false},{"sessionID":3,"lifecycle":"offline","active":false},{"sessionID":4,"lifecycle":"waiting","active":true},{"sessionID":5,"lifecycle":"compacting","active":true},{"sessionID":6,"lifecycle":"unknown","active":null}]}}}"#.utf8
             )
         )
         let sessions = try XCTUnwrap(state.subsystems?.pi?.mobileSessions)
         XCTAssertEqual(
             sessions,
             [
-                PiMobileSession(sessionID: 1, active: true),
-                PiMobileSession(sessionID: 2, active: false),
-                PiMobileSession(sessionID: 3, active: nil),
-                PiMobileSession(sessionID: 4, active: false),
-                PiMobileSession(sessionID: 5, active: true),
-                PiMobileSession(sessionID: 6, active: nil),
+                PiMobileSession(sessionID: 1, lifecycle: .running, active: true),
+                PiMobileSession(sessionID: 2, lifecycle: .idle, active: false),
+                PiMobileSession(sessionID: 3, lifecycle: .offline, active: false),
+                PiMobileSession(sessionID: 4, lifecycle: .waiting, active: true),
+                PiMobileSession(sessionID: 5, lifecycle: .compacting, active: true),
+                PiMobileSession(sessionID: 6, lifecycle: .unknown, active: nil),
             ]
+        )
+
+        let build142 = try JSONDecoder().decode(
+            StateSnapshot.self,
+            from: Data(
+                #"{"ok":true,"subsystems":{"pi":{"ok":true,"mobileSessions":[{"sessionID":1,"active":true},{"sessionID":2,"active":false},{"sessionID":3,"active":null}]}}}"#.utf8
+            )
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(build142.subsystems?.pi?.mobileSessions).map(\.resolvedLifecycle),
+            [.running, .idle, .unknown]
         )
 
         let legacy = try JSONDecoder().decode(

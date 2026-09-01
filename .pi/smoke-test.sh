@@ -365,6 +365,7 @@ expected_extension_files=(
   .pi/scripts/pi-attach-mobile-receiver.mjs
   .pi/scripts/pi-attach-picker
   .pi/scripts/pi-attach-picker.swift
+  .pi/scripts/tests/local-pi-session-status.test.mjs
   .pi/scripts/tests/jarvis-pi-ssh.test.mjs
   .pi/scripts/tests/pi-attach-bridge.test.mjs
   .pi/scripts/tests/pi-attach-core.test.mjs
@@ -533,6 +534,11 @@ for (const path of optionalToolFiles) {
 
 console.log(`canonical lazy groups (${toolGroups.length}): ${toolGroups.join(', ')}, all; additive deferred loading enabled; cache-prefix hooks audited`);
 NODE
+fi
+
+section "Local Pi lifecycle telemetry checks"
+if command -v node >/dev/null 2>&1; then
+  run_check "local Pi lifecycle event contract tests" node --test .pi/scripts/tests/local-pi-session-status.test.mjs
 fi
 
 section "Native attachment extension checks"

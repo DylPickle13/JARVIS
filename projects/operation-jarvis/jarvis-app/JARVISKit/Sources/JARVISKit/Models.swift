@@ -308,9 +308,40 @@ public struct PurifierSubsystem: Codable, Equatable, Sendable {
     public let lastError: String?
 }
 
+public enum PiSessionLifecycle: String, Codable, Equatable, Sendable {
+    case offline
+    case idle
+    case running
+    case waiting
+    case compacting
+    case unknown
+}
+
 public struct PiMobileSession: Codable, Equatable, Sendable {
     public let sessionID: Int
+    public let lifecycle: PiSessionLifecycle?
+    /// Build 142 compatibility during the host-first rollout. New UI resolves
+    /// the lifecycle first and uses this only with an older jarvisd response.
     public let active: Bool?
+
+    public init(
+        sessionID: Int,
+        lifecycle: PiSessionLifecycle? = nil,
+        active: Bool? = nil
+    ) {
+        self.sessionID = sessionID
+        self.lifecycle = lifecycle
+        self.active = active
+    }
+
+    public var resolvedLifecycle: PiSessionLifecycle {
+        if let lifecycle { return lifecycle }
+        switch active {
+        case true: return .running
+        case false: return .idle
+        case nil: return .unknown
+        }
+    }
 }
 
 public struct PiSubsystem: Codable, Equatable, Sendable {

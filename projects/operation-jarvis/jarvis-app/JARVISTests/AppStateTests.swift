@@ -5,18 +5,21 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
-    func testPiSessionIndicatorsUseRunningGreenIdlePurpleAndFailClosedUnknown() {
-        let running = PiSessionIndicatorPresentation(active: true)
-        XCTAssertEqual(running.label, "Running")
-        XCTAssertEqual(running.tone, .running)
+    func testPiSessionIndicatorsPresentEveryLifecycleAndFailClosedUnknown() {
+        let expected: [(PiSessionLifecycle, String, PiSessionIndicatorTone)] = [
+            (.offline, "Offline", .offline),
+            (.idle, "Idle", .idle),
+            (.running, "Running", .running),
+            (.waiting, "Waiting", .waiting),
+            (.compacting, "Compacting", .compacting),
+            (.unknown, "Unknown", .unknown),
+        ]
 
-        let idle = PiSessionIndicatorPresentation(active: false)
-        XCTAssertEqual(idle.label, "Idle")
-        XCTAssertEqual(idle.tone, .idle)
-
-        let unknown = PiSessionIndicatorPresentation(active: nil)
-        XCTAssertEqual(unknown.label, "Unknown")
-        XCTAssertEqual(unknown.tone, .unknown)
+        for (lifecycle, label, tone) in expected {
+            let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
+            XCTAssertEqual(presentation.label, label)
+            XCTAssertEqual(presentation.tone, tone)
+        }
     }
 
     func testPeriodicSchedulerIsScheduledAndAvailableBetweenLaunchdRuns() throws {
