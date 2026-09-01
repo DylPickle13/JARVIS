@@ -52,6 +52,121 @@ export function looksLikeSshSession(env: NodeJS.ProcessEnv = process.env): boole
   return Boolean(env.SSH_CONNECTION?.trim() || env.SSH_CLIENT?.trim() || env.SSH_TTY?.trim());
 }
 
+export type ProcessAncestryEntry = {
+  parentPID: number;
+  executable: string;
+};
+
+const LOCAL_VSCODE_EXECUTABLE_PREFIX =
+  "/Applications/Visual Studio Code.app/Contents/";
+const MOBILE_TMUX_SESSIONS = new Set([
+  "jarvis-ios",
+  "jarvis-ios-2",
+  "jarvis-ios-3",
+]);
+const MAX_TMUX_CLIENTS = 16;
+const MAX_PROCESS_ANCESTORS = 32;
+
+export function allClientProcessesAreLocalVSCode(
+  clientPIDs: number[],
+  processes: Map<number, ProcessAncestryEntry>,
+): boolean {
+  if (
+    clientPIDs.length === 0 ||
+    clientPIDs.length > MAX_TMUX_CLIENTS ||
+    new Set(clientPIDs).size !== clientPIDs.length
+  ) return false;
+
+  return clientPIDs.every((clientPID) => {
+    let currentPID = clientPID;
+    const visited = new Set<number>();
+    for (let depth = 0; depth < MAX_PROCESS_ANCESTORS; depth += 1) {
+      if (currentPID <= 1 || visited.has(currentPID)) return false;
+      visited.add(currentPID);
+      const process = processes.get(currentPID);
+      if (!process) return false;
+      if (process.executable.startsWith(LOCAL_VSCODE_EXECUTABLE_PREFIX)) {
+        return true;
+      }
+      currentPID = process.parentPID;
+    }
+    return false;
+  });
+}
+
+function parseProcessTable(stdout: string): Map<number, ProcessAncestryEntry> {
+  const processes = new Map<number, ProcessAncestryEntry>();
+  for (const line of stdout.split("\n")) {
+    const match = line.match(/^\s*([0-9]+)\s+([0-9]+)\s+(.+?)\s*$/);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const parentPID = Number(match[2]);
+    if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(parentPID)) continue;
+    processes.set(pid, { parentPID, executable: match[3] });
+  }
+  return processes;
+}
+
+export async function exactMobileTmuxHasOnlyLocalVSCodeClients(
+  identity: { sessionName: string },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<boolean> {
+  if (
+    process.platform !== "darwin" ||
+    !MOBILE_TMUX_SESSIONS.has(identity.sessionName)
+  ) return false;
+  const socketPath = env.TMUX?.trim().split(",", 1)[0] || "";
+  if (!socketPath.startsWith("/") || basename(socketPath) !== "jarvis-mobile") {
+    return false;
+  }
+
+  const listClients = () =>
+    execFileAsync(
+      "/opt/homebrew/bin/tmux",
+      [
+        "-S",
+        socketPath,
+        "list-clients",
+        "-t",
+        `=${identity.sessionName}`,
+        "-F",
+        "#{client_pid}|#{session_name}",
+      ],
+      { encoding: "utf8", timeout: 2_000, maxBuffer: 8_192 },
+    );
+
+  try {
+    const { stdout: clientsBefore } = await listClients();
+    const { stdout: processesOutput } = await execFileAsync(
+      "/bin/ps",
+      ["-axo", "pid=,ppid=,comm="],
+      { encoding: "utf8", timeout: 2_000, maxBuffer: 512 * 1024 },
+    );
+    const { stdout: clientsAfter } = await listClients();
+    if (clientsBefore.trim() !== clientsAfter.trim()) return false;
+    const lines = clientsAfter.trim().split("\n").filter(Boolean);
+    if (lines.length === 0 || lines.length > MAX_TMUX_CLIENTS) return false;
+    const clientPIDs: number[] = [];
+    for (const line of lines) {
+      const [rawPID, sessionName, ...extra] = line.split("|");
+      const pid = Number(rawPID);
+      if (
+        extra.length > 0 ||
+        sessionName !== identity.sessionName ||
+        !Number.isSafeInteger(pid) ||
+        pid <= 1
+      ) return false;
+      clientPIDs.push(pid);
+    }
+    return allClientProcessesAreLocalVSCode(
+      clientPIDs,
+      parseProcessTable(processesOutput),
+    );
+  } catch {
+    return false;
+  }
+}
+
 function validateKeepIds(value: unknown, existing: PickerExistingAttachment[], source: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error(`${source} returned invalid staged attachment IDs.`);
