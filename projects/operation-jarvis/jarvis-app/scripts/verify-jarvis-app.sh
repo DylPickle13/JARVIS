@@ -183,7 +183,8 @@ grep -q 'Loaded; wakes periodically and exits between checks.' JARVIS/Views/Home
 grep -q 'testPeriodicSchedulerIsScheduledAndAvailableBetweenLaunchdRuns' JARVISTests/AppStateTests.swift
 grep -q 'testPeriodicSchedulerStillFailsClosedWhenUnavailable' JARVISTests/AppStateTests.swift
 reject_match 'periodic scheduler must not be summarized as a continuously running process' -Fq 'of \(sortedServices.count) running' JARVIS/Views/HomeView.swift
-grep -q 'ForEach(1...3, id: \\.self)' JARVIS/Views/HomeView.swift
+grep -q 'sessionIDs: \[1, 2, 3\]' JARVIS/Views/HomeView.swift
+grep -q 'sessionIDs: \[4, 5, 6\]' JARVIS/Views/HomeView.swift
 grep -q 'private func piSessionStatusSection(sessionID: Int, active: Bool?)' JARVIS/Views/HomeView.swift
 grep -q 'label = "Running"' JARVIS/Views/HomeView.swift
 grep -q 'tone = \.running' JARVIS/Views/HomeView.swift
@@ -199,7 +200,8 @@ grep -Fq 'terminal on the JARVIS tab' JARVIS/Views/HomeView.swift
 grep -q 'testHomePiCardCanSelectAnExactDeviceLocalTerminalSlotBeforePresentation' JARVISTests/AppStateTests.swift
 reject_match 'Pi status indicator must not render inactive state in red' -Fq 'active.map { $0 ? JarvisPalette.accent : .red }' JARVIS/Views/HomeView.swift
 grep -q 'public let mobileSessions: \[PiMobileSession\]?' JARVISKit/Sources/JARVISKit/Models.swift
-grep -q 'MOBILE_TMUX_SESSIONS = ((1, "jarvis-ios"), (2, "jarvis-ios-2"), (3, "jarvis-ios-3"))' jarvisd/jarvisd.py
+grep -q '(1, "jarvis-ios")' jarvisd/jarvisd.py
+grep -q '(6, "jarvis-ios-6")' jarvisd/jarvisd.py
 grep -q '#{session_name}\\t#{pane_dead}\\t#{pane_pid}' jarvisd/jarvisd.py
 grep -q 'pi-extension-local-session-status' jarvisd/jarvisd.py
 grep -q 'if project_root_is_explicit:' jarvisd/jarvisd.py
@@ -301,6 +303,9 @@ grep -q 'TMUX_SOCKET="jarvis-mobile"' scripts/jarvis-mobile-terminal.sh
 grep -q 'TMUX_SESSION="jarvis-ios"' scripts/jarvis-mobile-terminal.sh
 grep -q 'TMUX_SESSION="jarvis-ios-2"' scripts/jarvis-mobile-terminal.sh
 grep -q 'TMUX_SESSION="jarvis-ios-3"' scripts/jarvis-mobile-terminal.sh
+grep -q 'TMUX_SESSION="jarvis-ios-4"' scripts/jarvis-mobile-terminal.sh
+grep -q 'TMUX_SESSION="jarvis-ios-5"' scripts/jarvis-mobile-terminal.sh
+grep -q 'TMUX_SESSION="jarvis-ios-6"' scripts/jarvis-mobile-terminal.sh
 grep -q 'case "$slot" in' scripts/jarvis-mobile-terminal.sh
 grep -q -- '--slot' scripts/jarvis-mobile-terminal.sh
 grep -q 'new-session -d' scripts/jarvis-mobile-terminal.sh
@@ -321,6 +326,9 @@ grep -q 'Never open a replacement while the prior PTY might still' JARVIS/Termin
 reject_match 'Pi session switching must not open a replacement after an unverified child close' -Fq 'previous.close().whenComplete { _ in openSelected() }' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'sessionSwipeRequested' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'JARVISTerminalSlot.load(from: slotDefaults)' JARVIS/Terminal/PiTerminalController.swift
+grep -q 'case six = 6' JARVISKit/Sources/JARVISKit/TerminalSessionSlot.swift
+grep -Fq 'session \(terminal.selectedSlot.displayName) of 6' JARVIS/Terminal/PiTerminalView.swift
+grep -Fq 'session \(controller.selectedSlot.displayName) of 6' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'PiAttachmentProtocol.receiverCommand(for: slot)' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVIS/Terminal/PiTerminalSettings.swift
 grep -q 'String(openSSHPublicKey: hostKey)' JARVIS/Terminal/PiSSHTransport.swift
@@ -407,9 +415,13 @@ grep -q 'ROOM_SPEECH_URL = "http://127.0.0.1:8791/synthesize"' terminald/jarvis_
 grep -q '"/v1/terminal/input": (False, False)' terminald/jarvis_terminald.py
 grep -q '"/v2/terminal/input": (True, False)' terminald/jarvis_terminald.py
 grep -q '"/v2/terminal/speech": (True, True)' terminald/jarvis_terminald.py
-grep -q 'TMUX_SESSIONS = {1: "jarvis-ios", 2: "jarvis-ios-2", 3: "jarvis-ios-3"}' terminald/jarvis_terminald.py
+grep -q '1: "jarvis-ios"' terminald/jarvis_terminald.py
+grep -q '6: "jarvis-ios-6"' terminald/jarvis_terminald.py
 grep -q 'self.tmux_target = TMUX_TARGET if session_id == 1 else "=" + self.tmux_session + ":"' terminald/jarvis_terminald.py
 grep -q 'service.frame_after(after)' terminald/jarvis_terminald.py
+grep -q '\["jarvis-ios-6", 6\]' ../../../.pi/extensions/lib/attach/mobile-server.ts
+grep -q '"jarvis-ios-6"' ../../../.pi/extensions/lib/attach/transport.ts
+grep -Fq '!/^[1-6]$/.test(argumentsList[1])' ../../../.pi/scripts/pi-attach-mobile-receiver.mjs
 grep -q 'def _v2_payload_session(value: Any)' terminald/jarvis_terminald.py
 grep -q 'if type(value) is not int or value not in TMUX_SESSIONS' terminald/jarvis_terminald.py
 grep -q '"sessionID": session_id' terminald/jarvis_terminald.py

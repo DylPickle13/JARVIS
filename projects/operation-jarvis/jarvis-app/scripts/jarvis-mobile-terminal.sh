@@ -46,8 +46,17 @@ case "$slot" in
   3)
     readonly TMUX_SESSION="jarvis-ios-3"
     ;;
+  4)
+    readonly TMUX_SESSION="jarvis-ios-4"
+    ;;
+  5)
+    readonly TMUX_SESSION="jarvis-ios-5"
+    ;;
+  6)
+    readonly TMUX_SESSION="jarvis-ios-6"
+    ;;
   *)
-    print -u2 -- "The mobile terminal slot must be 1, 2, or 3."
+    print -u2 -- "The mobile terminal slot must be 1, 2, 3, 4, 5, or 6."
     exit 64
     ;;
 esac
@@ -76,7 +85,7 @@ fi
 # override and retain latest-client sizing independently for this slot.
 "$TMUX_BIN" -L "$TMUX_SOCKET" set-option -w -t "=$TMUX_SESSION:0" window-size latest
 
-# terminald eagerly ensures all three slots without attaching a second client or
+# terminald eagerly ensures all six slots without attaching a second client or
 # changing the dimensions retained by an existing iPhone PTY.
 if [[ "$ensure_only" == "1" ]]; then
   exit 0

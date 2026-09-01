@@ -63,6 +63,9 @@ const MOBILE_TMUX_SESSIONS = new Set([
   "jarvis-ios",
   "jarvis-ios-2",
   "jarvis-ios-3",
+  "jarvis-ios-4",
+  "jarvis-ios-5",
+  "jarvis-ios-6",
 ]);
 const MAX_TMUX_CLIENTS = 16;
 const MAX_PROCESS_ANCESTORS = 32;

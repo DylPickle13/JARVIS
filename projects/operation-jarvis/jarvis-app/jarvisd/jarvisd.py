@@ -225,7 +225,14 @@ PI_LOCAL_SESSIONS = Path(os.environ.get("PI_LOCAL_SESSIONS", str(PROJECT_ROOT / 
 PI_RPC_SESSIONS = Path(os.environ.get("PI_RPC_SESSIONS", str(PROJECT_ROOT / ".pi/runtime/pi-rpc-sessions.json")))
 MOBILE_TMUX_BIN = Path("/opt/homebrew/bin/tmux")
 MOBILE_TMUX_SOCKET = "jarvis-mobile"
-MOBILE_TMUX_SESSIONS = ((1, "jarvis-ios"), (2, "jarvis-ios-2"), (3, "jarvis-ios-3"))
+MOBILE_TMUX_SESSIONS = (
+    (1, "jarvis-ios"),
+    (2, "jarvis-ios-2"),
+    (3, "jarvis-ios-3"),
+    (4, "jarvis-ios-4"),
+    (5, "jarvis-ios-5"),
+    (6, "jarvis-ios-6"),
+)
 MOBILE_PI_STATUS_MAX_AGE_SECONDS = min(
     60.0,
     max(4.0, float(os.environ.get("JARVISD_MOBILE_PI_STATUS_MAX_AGE_SECONDS", "10"))),

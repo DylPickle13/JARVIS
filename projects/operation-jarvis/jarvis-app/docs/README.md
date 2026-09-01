@@ -6,15 +6,15 @@ The dated status lines and checklists below are retained as implementation histo
 
 ## Contents
 
-- [Three fixed mobile Pi conversations](#three-fixed-mobile-pi-conversations)
+- [Six fixed mobile Pi conversations](#six-fixed-mobile-pi-conversations)
 - [iPhone terminal keyboard avoidance and native attachments](#iphone-terminal-keyboard-avoidance-and-native-attach-implementation-plan)
 - [Pi attachment product contract](#jarvis-app-pi-attachment-integration-plan)
 
 ---
 
-# Three Fixed Mobile Pi Conversations
+# Six Fixed Mobile Pi Conversations
 
-Status: **Build 133 is installed and the three-session runtime is active, but owner acceptance is withheld for an intermittent iPhone input-readiness race after slot switching; the fail-closed keyboard-rearm correction is under isolated verification**
+Status: **Build 141 is owner-accepted; the next isolated candidate additively expands its protected three-session runtime to six fixed conversations**
 
 Prepared: **2026-08-30 EDT**
 
@@ -25,10 +25,15 @@ Prepared: **2026-08-30 EDT**
 | 1 | `jarvis-ios` | `1` |
 | 2 | `jarvis-ios-2` | `2` |
 | 3 | `jarvis-ios-3` | `3` |
+| 4 | `jarvis-ios-4` | `4` |
+| 5 | `jarvis-ios-5` | `5` |
+| 6 | `jarvis-ios-6` | `6` |
 
-All three sessions use socket `jarvis-mobile` and working directory `/Users/dylanrapanan/JARVIS`. The mapping is compiled/host-allowlisted; no client-supplied tmux target is accepted. Slot 1's surviving pane `%0` and Pi process must not be replaced during rollout. Missing Slots 2 and 3 are created detached and continue running when no phone PTY or Watch poll is active. `window-size latest` remains the only sizing policy; no rollout or switch may call `resize-window`, `resize-pane`, `kill-session`, or `kill-server`.
+All six sessions use socket `jarvis-mobile` and working directory `/Users/dylanrapanan/JARVIS`. The mapping is compiled/host-allowlisted; no client-supplied tmux target is accepted. The surviving Slots 1–3 panes and Pi processes must not be replaced during rollout. Missing Slots 4–6 are created detached and continue running when no phone PTY or Watch poll is active. `window-size latest` remains the only sizing policy; no rollout or switch may call `resize-window`, `resize-pane`, `kill-session`, or `kill-server`.
 
-The protected-runtime baseline for this candidate is Slot 1 pane `%0`, Pi PID `26167`, started `2026-08-30 20:27:31 EDT`. Older acceptance history below records PID `99571`; that PID is historical and had transitioned to `26167` before this isolated feature began. The transition does not authorize another replacement: rollout must preserve `26167` unless an owner-approved recovery is separately recorded.
+Local VS Code presents exactly two terminal groups selected from the terminal-tabs picker on the right: Slots **1 | 2 | 3** in the first group and Slots **4 | 5 | 6** in the second. Every task client attaches with `-f ignore-size`. Because VS Code inserts each later split beside the first pane, deterministic task creation order is `1, 3, 2` and `4, 6, 5`; the visual order is still ascending. Closing a task terminal detaches only that client and never stops a tmux session or Pi.
+
+The protected-runtime baseline for this candidate is Slot 1 pane `%0` / Pi PID `26167`, Slot 2 pane `%1` / Pi PID `24108`, and Slot 3 pane `%3` / Pi PID `96273`. Older acceptance history below records PID `99571`; that PID is historical and had transitioned to `26167` before this isolated feature began. The transition does not authorize another replacement: rollout must preserve all three current pane/PID identities unless an owner-approved recovery is separately recorded.
 
 ## Device behavior
 
@@ -41,22 +46,22 @@ The protected-runtime baseline for this candidate is Slot 1 pane `%0`, Pi PID `2
 
 ## Additive host protocol
 
-`jarvis-terminald` retains all `/v1/terminal/*` routes as Slot 1 for installed older builds. New apps use `/v2/terminal/*` and must supply exactly one session identity from `1...3`. The daemon owns independent `TerminalService` instances, frame sequences, histories, input-deduplication sets, samplers, speech markers, and bounded speech caches per slot. JSON input acknowledgement and WAV response headers echo the selected identity.
+`jarvis-terminald` retains all `/v1/terminal/*` routes as Slot 1 for installed older builds. New apps use `/v2/terminal/*` and must supply exactly one session identity from `1...6`. The daemon owns independent `TerminalService` instances, frame sequences, histories, input-deduplication sets, samplers, speech markers, and bounded speech caches per slot. JSON input acknowledgement and WAV response headers echo the selected identity.
 
-The launcher remains no-argument-compatible with Build 132 and additionally accepts only `--slot 1|2|3` plus optional `--ensure-only`. Startup eagerly ensures the three fixed sessions without attaching a hidden client.
+The launcher remains no-argument-compatible with Build 132 and additionally accepts only `--slot 1|2|3|4|5|6` plus optional `--ensure-only`. Startup eagerly ensures the six fixed sessions without attaching a hidden client.
 
 ## Slot-scoped native attachments
 
-The iPhone paperclip always targets the active iPhone slot and switching is blocked for the life of an attachment sheet/transaction. PTY and attachment bytes remain separate typed SSH child channels. The receiver accepts only optional `--slot 1|2|3`; filenames and other picker data never enter its command string.
+The iPhone paperclip always targets the active iPhone slot and switching is blocked for the life of an attachment sheet/transaction. PTY and attachment bytes remain separate typed SSH child channels. The receiver accepts only optional `--slot 1|2|3|4|5|6`; filenames and other picker data never enter its command string.
 
 Each exact mobile Pi process publishes `pi-attach-mobile-slot-<slot>.json`. Slot 1 also publishes/accepts legacy `pi-attach-mobile.json`, including fallback to a live legacy descriptor if a scoped descriptor is stale during rollback. Every descriptor remains mode `0600` under the mode-`0700` private runtime directory and points to an owner-only process-scoped socket. Queue CAS, byte/hash verification, limits, deadlines, ambiguity handling, flat `attachments/` storage, and no-model-turn behavior are unchanged.
 
 ## Rollout boundary
 
 1. Audit source and signed archive in isolation; do not touch production tmux or physical devices.
-2. Record Slot 1 session, pane, Pi PID, dimensions, and descriptor before host rollout.
-3. Land the compatible launcher/terminald/receiver first; prove installed Build 132 still reaches Slot 1.
-4. Eagerly create Slots 2 and 3, then prove Slot 1 pane/PID survived exactly.
+2. Record Slots 1–3 sessions, panes, Pi PIDs, dimensions, clients, and descriptors before host rollout.
+3. Land the compatible launcher/terminald/receiver first; prove installed Build 141 still reaches Slots 1–3.
+4. Eagerly create Slots 4–6, then prove every Slots 1–3 pane/PID survived exactly.
 5. Install only the exact audited archive on the allowlisted iPhone and Watch after owner instruction.
 6. Physically accept independent persistence, horizontal gestures, Siri routing, attachments, Watch vertical/Crown coexistence, stale-response rejection, and all isolation invariants.
 
@@ -100,7 +105,7 @@ The existing attachment product contract remains in [the Pi attachment product c
 
 ## Non-negotiable invariants
 
-- Preserve tmux socket `jarvis-mobile`, Slot 1 session `jarvis-ios`, pane `%0`, current pane ordering, and the persistent Pi process except for an owner-approved recovery action; the later three-session design adds only fixed `jarvis-ios-2` and `jarvis-ios-3`.
+- Preserve tmux socket `jarvis-mobile`, all existing Slots 1–3 sessions, panes, ordering, and persistent Pi processes except for an owner-approved recovery action; the six-session design adds only fixed `jarvis-ios-4`, `jarvis-ios-5`, and `jarvis-ios-6`.
 - Preserve immediate-only terminal input. Never queue, replay, synthesize, or retry terminal bytes.
 - Preserve the current Keychain password storage, exact host-key pinning, changed-key rejection, LAN/Tailscale behavior, and fixed terminal bootstrap command.
 - Keep PTY bytes and attachment bytes on separate SSH child channels.
@@ -204,7 +209,7 @@ Add a fixed host command, for example:
 
 The app stores this as a constant. It never appends a filename, path, request ID, shell fragment, or user-controlled value. The process is a bounded stdin/stdout proxy to the extension-owned Unix socket and exits after one operation. It is not a daemon and does not inspect or execute attachment content.
 
-The extension publishes its mobile endpoint only when it proves it is running in the exact `jarvis-mobile` tmux socket and one of the three fixed sessions. Slot 1 must remain `jarvis-ios` pane `%0`; Slots 2 and 3 must be window/pane index `0` in `jarvis-ios-2` and `jarvis-ios-3`. Use the inherited `TMUX`/`TMUX_PANE` identity plus a fixed, read-only tmux identity query; fail closed if any value is absent or mismatched.
+The extension publishes its mobile endpoint only when it proves it is running in the exact `jarvis-mobile` tmux socket and one of the six fixed sessions. Slot 1 must remain `jarvis-ios` pane `%0`; Slots 2–6 must be window/pane index `0` in their exact allowlisted sessions. Use the inherited `TMUX`/`TMUX_PANE` identity plus a fixed, read-only tmux identity query; fail closed if any value is absent or mismatched.
 
 Runtime files:
 

@@ -165,7 +165,7 @@ final class WatchTerminalTests: XCTestCase {
         XCTAssertEqual(frame.screenStart, 0)
         XCTAssertEqual(frame.ansiLines, frame.lines)
 
-        let invalid = Data(#"{"sessionID":4,"sequence":1,"columns":2,"rows":2,"cursorColumn":0,"cursorRow":1,"alternateScreen":false,"mouseMode":false,"historySize":0,"lines":["a","b"]}"#.utf8)
+        let invalid = Data(#"{"sessionID":7,"sequence":1,"columns":2,"rows":2,"cursorColumn":0,"cursorRow":1,"alternateScreen":false,"mouseMode":false,"historySize":0,"lines":["a","b"]}"#.utf8)
         XCTAssertThrowsError(try JSONDecoder().decode(WatchTerminalFrame.self, from: invalid))
     }
 
@@ -400,17 +400,17 @@ final class WatchTerminalTests: XCTestCase {
         let requestedURLs = LockedBox<[URL]>([])
         TerminalURLProtocol.handler = { request in
             requestedURLs.update { if let url = request.url { $0.append(url) } }
-            return (200, try JSONEncoder().encode(self.fixtureFrame(session: .three)))
+            return (200, try JSONEncoder().encode(self.fixtureFrame(session: .six)))
         }
         let client = fixtureClient()
         defer { client.close() }
 
-        let frame = try await client.preflight(slot: .three)
-        XCTAssertEqual(frame.sessionID, 3)
+        let frame = try await client.preflight(slot: .six)
+        XCTAssertEqual(frame.sessionID, 6)
         let firstURL = try XCTUnwrap(requestedURLs.snapshot().first)
         let firstComponents = URLComponents(url: firstURL, resolvingAgainstBaseURL: false)
         XCTAssertEqual(firstComponents?.path, "/v2/terminal/frame")
-        XCTAssertEqual(firstComponents?.queryItems?.first(where: { $0.name == "sessionID" })?.value, "3")
+        XCTAssertEqual(firstComponents?.queryItems?.first(where: { $0.name == "sessionID" })?.value, "6")
 
         let mismatchedRequests = LockedBox(0)
         TerminalURLProtocol.handler = { _ in
@@ -427,18 +427,18 @@ final class WatchTerminalTests: XCTestCase {
         }
         XCTAssertGreaterThanOrEqual(mismatchedRequests.snapshot(), 1)
 
-        let encodedSelectedFrame = try JSONEncoder().encode(fixtureFrame(session: .three))
+        let encodedSelectedFrame = try JSONEncoder().encode(fixtureFrame(session: .six))
         let encodedSelectedFrameText = try XCTUnwrap(String(data: encodedSelectedFrame, encoding: .utf8))
         let floatingIdentityText = encodedSelectedFrameText.replacingOccurrences(
-            of: "\"sessionID\":3",
-            with: "\"sessionID\":3.0"
+            of: "\"sessionID\":6",
+            with: "\"sessionID\":6.0"
         )
         XCTAssertNotEqual(floatingIdentityText, encodedSelectedFrameText)
         TerminalURLProtocol.handler = { _ in (200, Data(floatingIdentityText.utf8)) }
         let nonCanonical = fixtureClient()
         defer { nonCanonical.close() }
         do {
-            _ = try await nonCanonical.preflight(slot: .three)
+            _ = try await nonCanonical.preflight(slot: .six)
             XCTFail("Expected a non-canonical floating-point frame identity to fail closed")
         } catch {
             XCTAssertEqual(error as? WatchTerminalClientError, .invalidResponse)

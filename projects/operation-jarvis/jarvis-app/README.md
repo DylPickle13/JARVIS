@@ -4,16 +4,12 @@ Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
 surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier,
 status/telemetry, service control), over LAN or Tailscale.
 
-**Status:** Exact audited Build `0.3.0 (133)` is installed on the allowlisted
-iPhone and Watch, and the compatible three-session host runtime is active. Slot 1
-pane `%0` and Pi PID `26167` survived rollout; fixed Slots 2 and 3 run as separate
-persistent Pi processes. Owner review found an intermittent iPhone input-readiness
-race after horizontal switching, so Build 133 is deployed but not accepted. The
-follow-up keeps all terminal input fail-closed during PTY replacement and rearms a
-previously focused keyboard only after the exact fresh child reports ready; it never
-queues, replays, retries, or synthesizes a byte. Checked-in `project.yml` intentionally
-remains Build 127 without `JARVIS_NATIVE_ATTACHMENTS`; candidate build numbers and
-the iPhone-only attachment flag remain owner-artifact-only.
+**Status:** Exact audited Build `0.3.0 (141)` is owner-accepted on the allowlisted
+iPhone and Watch. The accepted responsive-state source is merged into `main`; the
+next candidate expands the existing protected three-session runtime to six fixed
+persistent conversations without replacing Slots 1–3. Checked-in `project.yml`
+intentionally remains Build 127 without `JARVIS_NATIVE_ATTACHMENTS`; candidate
+build numbers and the iPhone-only attachment flag remain owner-artifact-only.
 
 Build 141 makes hardware presentation responsive by preventing routine refreshes
 from invalidating recent authoritative data. The always-on host keeps plugs warm
@@ -42,24 +38,24 @@ content-free OSLog outcomes. Always-On, Reduce Motion, placeholder, and
 unavailable-font paths remain static. No cadence, process timer, private API,
 animated media, App Group, APNs, entitlement, or widget-interaction path is added.
 
-The iPhone Home Pi summary is divided into three equal Slot 1/2/3 sections. One
+The iPhone Home Pi summary is divided into two rows of three equal Slot 1–6 sections. One
 bounded read-only `tmux list-panes` projection binds each fixed pane PID to its
 fresh local Pi extension heartbeat. A slot is green `Running` only during an
 actual Pi agent generation, purple `Idle` when its fresh heartbeat is idle (or
 its fixed pane is absent/dead), and `Unknown` when either probe or heartbeat is
 unavailable, ambiguous, or stale. Each section is a direct navigation button:
-tapping Pi 1, Pi 2, or Pi 3 selects that exact device-local conversation before
+tapping Pi 1 through Pi 6 selects that exact device-local conversation before
 opening the JARVIS terminal tab through its normal generation-bound connection
 path. The projection never attaches, resizes, creates, restarts, or sends input
 to a session. An explicit `JARVISD_PROJECT_ROOT` is authoritative
 for scheduler and Codex quota paths, so artifact-hosted jarvisd cannot fall back
 to the user's unrelated global `.pi` directory.
 
-The three-conversation design fixes Slot 1 to `jarvis-ios`, adds only
-`jarvis-ios-2` and `jarvis-ios-3`, remembers selection independently on iPhone and
-Watch, routes Siri and iPhone attachments to the invoking/active device slot, and
-retains v1/no-session host compatibility as Slot 1. See the
-[canonical implementation contract](docs/README.md#three-fixed-mobile-pi-conversations).
+The six-conversation design preserves Slots 1–3 and adds only `jarvis-ios-4`,
+`jarvis-ios-5`, and `jarvis-ios-6`. Selection remains independent on iPhone and
+Watch, Siri and iPhone attachments route to the invoking/active device slot, and
+v1/no-session host compatibility remains Slot 1. See the
+[canonical implementation contract](docs/README.md#six-fixed-mobile-pi-conversations).
 
 `jarvisd` retains explicit trusted-network/token auth,
 bounded APIs, single-flight state caching, guarded controls, and bounded event
@@ -674,8 +670,8 @@ sequence, and physical gates are consolidated in the
   `/api/v1/scheduled-jobs`, `/api/v1/scheduled-job-results`, and the fixed
   signing status/renewal endpoints.
 - **iOS app — navigation** — 4-tab shell (Home / JARVIS / Jobs / Settings).
-  Home shows the connection header (LAN vs Tailscale + IP), three equal fixed Pi
-  session status sections, a **2-column plug grid**, then the **air purifier** (power switch +
+  Home shows the connection header (LAN vs Tailscale + IP), six fixed Pi session
+  status sections in two rows of three, a **2-column plug grid**, then the **air purifier** (power switch +
   Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
   external data collection are removed. Home lists room audio, the scheduler,
   and protected `jarvisd` information. Jobs provides a bounded, durable,

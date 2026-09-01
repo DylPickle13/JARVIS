@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Authenticated HTTPS snapshot/input bridge for the Apple Watch terminal.
 
-This daemon is intentionally separate from jarvisd. It exposes only three fixed
+This daemon is intentionally separate from jarvisd. It exposes only six fixed
 jarvis-mobile tmux sessions and has no hardware, service, scheduler, or JARVIS
 control-plane integration.
 """
@@ -32,7 +32,14 @@ APP_ROOT = Path(__file__).resolve().parent.parent
 BOOTSTRAP = APP_ROOT / "scripts" / "jarvis-mobile-terminal.sh"
 TMUX = "/opt/homebrew/bin/tmux"
 TMUX_SOCKET = "jarvis-mobile"
-TMUX_SESSIONS = {1: "jarvis-ios", 2: "jarvis-ios-2", 3: "jarvis-ios-3"}
+TMUX_SESSIONS = {
+    1: "jarvis-ios",
+    2: "jarvis-ios-2",
+    3: "jarvis-ios-3",
+    4: "jarvis-ios-4",
+    5: "jarvis-ios-5",
+    6: "jarvis-ios-6",
+}
 # Slot 1 aliases remain patchable for the existing focused tests and v1 clients.
 TMUX_SESSION = TMUX_SESSIONS[1]
 TMUX_TARGET = "=" + TMUX_SESSION + ":"
@@ -1013,8 +1020,8 @@ def run_server(host: str, port: int) -> None:
         session_id: TerminalService(session_id=session_id)
         for session_id in sorted(TMUX_SESSIONS)
     }
-    # Eagerly create missing Slots 2 and 3 while Slot 1's surviving pane remains
-    # untouched. Each bootstrap is idempotent and never attaches or resizes.
+    # Eagerly create missing Slots 2 through 6 while Slot 1's surviving pane
+    # remains untouched. Each bootstrap is idempotent and never attaches or resizes.
     for service in services.values():
         service.ensure_session()
     services[1].remove_legacy_speech_cache()

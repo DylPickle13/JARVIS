@@ -289,6 +289,10 @@ final class PiAttachmentTests: XCTestCase {
             PiAttachmentProtocol.receiverCommand,
             "/opt/homebrew/bin/node /Users/dylanrapanan/JARVIS/.pi/scripts/pi-attach-mobile-receiver.mjs"
         )
+        XCTAssertEqual(
+            PiAttachmentProtocol.receiverCommand(for: .six),
+            PiAttachmentProtocol.receiverCommand + " --slot 6"
+        )
         XCTAssertFalse(PiAttachmentProtocol.receiverCommand.contains("%s"))
         XCTAssertFalse(PiAttachmentProtocol.receiverCommand.contains("$"))
     }

@@ -22,7 +22,7 @@ if (argumentsList.length !== 0) {
   if (
     argumentsList.length !== 2 ||
     argumentsList[0] !== "--slot" ||
-    !/^[123]$/.test(argumentsList[1])
+    !/^[1-6]$/.test(argumentsList[1])
   ) fail("The mobile attachment receiver accepts only a fixed session slot.");
   sessionID = Number(argumentsList[1]);
 }

@@ -219,7 +219,7 @@ if [[ -e .pi/runtime/pi-attach-mobile.json ]]; then
 fi
 while IFS= read -r path; do
   require_mode "slot-scoped mobile attachment descriptor" "$path" "600"
-done < <(find .pi/runtime -maxdepth 1 -type f -name 'pi-attach-mobile-slot-[123].json' -print 2>/dev/null)
+done < <(find .pi/runtime -maxdepth 1 -type f -name 'pi-attach-mobile-slot-[1-6].json' -print 2>/dev/null)
 while IFS= read -r path; do
   require_mode "live mobile attachment socket" "$path" "600"
 done < <(find .pi/runtime -maxdepth 1 -type s -name 'pi-attach-mobile-*.sock' -print 2>/dev/null)

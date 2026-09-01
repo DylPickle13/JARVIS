@@ -712,26 +712,18 @@ struct HomeView: View {
 
         let isStale = pi.stale == true
         let content = MinimalCard {
-            HStack(spacing: 0) {
-                ForEach(1...3, id: \.self) { sessionID in
-                    if sessionID > 1 {
-                        Divider()
-                            .frame(height: 42)
-                    }
-                    Button {
-                        guard let slot = JARVISTerminalSlot(rawValue: sessionID) else { return }
-                        onOpenPiTerminal(slot)
-                    } label: {
-                        piSessionStatusSection(
-                            sessionID: sessionID,
-                            active: isStale
-                                ? nil
-                                : pi.mobileSessions?.first(where: { $0.sessionID == sessionID })?.active
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens Pi \(sessionID)'s terminal on the JARVIS tab")
-                }
+            VStack(spacing: 0) {
+                piSessionStatusRow(
+                    sessionIDs: [1, 2, 3],
+                    sessions: pi.mobileSessions,
+                    isStale: isStale
+                )
+                Divider()
+                piSessionStatusRow(
+                    sessionIDs: [4, 5, 6],
+                    sessions: pi.mobileSessions,
+                    isStale: isStale
+                )
             }
         }
 
@@ -739,6 +731,34 @@ struct HomeView: View {
             return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Pi session data is stale.") })
         }
         return AnyView(content)
+    }
+
+    private func piSessionStatusRow(
+        sessionIDs: [Int],
+        sessions: [PiMobileSession]?,
+        isStale: Bool
+    ) -> some View {
+        HStack(spacing: 0) {
+            ForEach(sessionIDs, id: \.self) { sessionID in
+                if sessionID != sessionIDs.first {
+                    Divider()
+                        .frame(height: 42)
+                }
+                Button {
+                    guard let slot = JARVISTerminalSlot(rawValue: sessionID) else { return }
+                    onOpenPiTerminal(slot)
+                } label: {
+                    piSessionStatusSection(
+                        sessionID: sessionID,
+                        active: isStale
+                            ? nil
+                            : sessions?.first(where: { $0.sessionID == sessionID })?.active
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens Pi \(sessionID)'s terminal on the JARVIS tab")
+            }
+        }
     }
 
     private func piSessionStatusSection(sessionID: Int, active: Bool?) -> some View {

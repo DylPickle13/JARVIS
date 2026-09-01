@@ -1258,6 +1258,9 @@ struct WatchTerminalView: View {
                     .foregroundStyle(.white)
                 HStack(spacing: 3) {
                     ForEach(JARVISTerminalSlot.allCases, id: \.self) { slot in
+                        if slot == .four {
+                            Spacer().frame(width: 2)
+                        }
                         Capsule()
                             .fill(slot == controller.selectedSlot ? WatchJarvisStyle.accent : Color.secondary.opacity(0.55))
                             .frame(width: slot == controller.selectedSlot ? 8 : 4, height: 2)
@@ -1266,7 +1269,7 @@ struct WatchTerminalView: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("JARVIS terminal session \(controller.selectedSlot.displayName) of 3")
+            .accessibilityLabel("JARVIS terminal session \(controller.selectedSlot.displayName) of 6")
             .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: 5) {

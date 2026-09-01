@@ -28,13 +28,13 @@ optional Metal component; install it once with
   `JARVIS.app/Watch/` (`dstSubfolderSpec = 16`), the Xcode 26 layout accepted by
   the corrected iPhone/Watch target relationship.
 - `jarvis-mobile-terminal.sh` — macOS SSH bootstrap for the phone terminal. It
-  supplies Homebrew's PATH and maps only fixed slots `1...3` to `jarvis-ios`,
-  `jarvis-ios-2`, and `jarvis-ios-3`. It creates the selected session detached
+  supplies Homebrew's PATH and maps only fixed slots `1...6` to `jarvis-ios`
+  through `jarvis-ios-6`. It creates the selected session detached
   when absent, tolerates concurrent creation, launches Pi's regular main-screen
   TUI without a display-name override, re-sources the checked-in one-line wheel
   bindings, reasserts tmux's accepted latest-client window-size policy without
   issuing a resize, and then attaches the phone PTY. No arguments retain Slot 1
-  compatibility; `--slot 1|2|3 --ensure-only` lets the Watch bridge create a
+  compatibility; `--slot 1|2|3|4|5|6 --ensure-only` lets the Watch bridge create a
   fixed session without attaching another client or changing its dimensions.
 - `install-jarvis-terminald.sh` — installs and starts the separate authenticated
   HTTPS Watch/Siri terminal bridge on TCP `8792`. Build 39 captures a bounded

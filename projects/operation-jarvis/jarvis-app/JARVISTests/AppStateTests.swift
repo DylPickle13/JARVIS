@@ -622,8 +622,16 @@ final class AppStateTests: XCTestCase {
             PiTerminalConfiguration.remoteCommand + " --slot 3"
         )
         XCTAssertEqual(
+            PiTerminalConfiguration.remoteCommand(for: .six),
+            PiTerminalConfiguration.remoteCommand + " --slot 6"
+        )
+        XCTAssertEqual(
             PiAttachmentProtocol.receiverCommand(for: .two),
             PiAttachmentProtocol.receiverCommand + " --slot 2"
+        )
+        XCTAssertEqual(
+            PiAttachmentProtocol.receiverCommand(for: .six),
+            PiAttachmentProtocol.receiverCommand + " --slot 6"
         )
     }
 
@@ -632,13 +640,18 @@ final class AppStateTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
+        XCTAssertEqual(JARVISTerminalSlot.allCases.map(\.rawValue), [1, 2, 3, 4, 5, 6])
         XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .one)
-        JARVISTerminalSlot.three.persist(to: defaults)
-        XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .three)
+        JARVISTerminalSlot.six.persist(to: defaults)
+        XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .six)
         XCTAssertNil(JARVISTerminalSlot.one.previous)
         XCTAssertEqual(JARVISTerminalSlot.one.next, .two)
-        XCTAssertEqual(JARVISTerminalSlot.three.previous, .two)
-        XCTAssertNil(JARVISTerminalSlot.three.next)
+        XCTAssertEqual(JARVISTerminalSlot.three.next, .four)
+        XCTAssertEqual(JARVISTerminalSlot.four.previous, .three)
+        XCTAssertEqual(JARVISTerminalSlot.six.previous, .five)
+        XCTAssertNil(JARVISTerminalSlot.six.next)
+        XCTAssertNil(JARVISTerminalSlot(rawValue: 0))
+        XCTAssertNil(JARVISTerminalSlot(rawValue: 7))
     }
 
     func testHomePiCardCanSelectAnExactDeviceLocalTerminalSlotBeforePresentation() throws {
@@ -650,9 +663,9 @@ final class AppStateTests: XCTestCase {
             slotDefaults: defaults
         )
 
-        XCTAssertTrue(controller.selectSlot(.three))
-        XCTAssertEqual(controller.selectedSlot, .three)
-        XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .three)
+        XCTAssertTrue(controller.selectSlot(.six))
+        XCTAssertEqual(controller.selectedSlot, .six)
+        XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .six)
         XCTAssertTrue(controller.selectSlot(.one))
         XCTAssertEqual(controller.selectedSlot, .one)
         XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .one)

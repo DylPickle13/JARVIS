@@ -156,24 +156,24 @@ class TerminalServiceTests(unittest.TestCase):
 
     def test_fixed_slots_route_to_independent_tmux_targets_and_bootstraps(self):
         runner = FakeRunner()
-        service = self.frame_service(runner, session_id=2)
+        service = self.frame_service(runner, session_id=6)
 
         frame = service.frame_after(0)
-        service.send_input("slot-two-input", b"two", append_return=True)
+        service.send_input("slot-six-input", b"six", append_return=True)
         service.ensure_session()
 
-        self.assertEqual(frame["sessionID"], 2)
+        self.assertEqual(frame["sessionID"], 6)
         capture_call = next(call[0] for call in runner.calls if "capture-pane" in call[0])
-        self.assertEqual(capture_call[capture_call.index("-t") + 1], "=jarvis-ios-2:")
+        self.assertEqual(capture_call[capture_call.index("-t") + 1], "=jarvis-ios-6:")
         paste_call = next(call[0] for call in runner.calls if "paste-buffer" in call[0])
-        self.assertEqual(paste_call[paste_call.index("-t") + 1], "=jarvis-ios-2:")
+        self.assertEqual(paste_call[paste_call.index("-t") + 1], "=jarvis-ios-6:")
         bootstrap_call = next(call[0] for call in runner.calls if str(terminald.BOOTSTRAP) in call[0])
         self.assertEqual(
             bootstrap_call,
-            [str(terminald.BOOTSTRAP), "--slot", "2", "--ensure-only"],
+            [str(terminald.BOOTSTRAP), "--slot", "6", "--ensure-only"],
         )
         with self.assertRaises(terminald.TerminalError):
-            terminald.TerminalService(runner, session_id=4)
+            terminald.TerminalService(runner, session_id=7)
         with self.assertRaises(terminald.TerminalError):
             terminald.TerminalService(runner, session_id=True)
 
@@ -531,7 +531,7 @@ class TerminalServiceTests(unittest.TestCase):
 
     def test_v2_http_routes_fixed_sessions_and_v1_remains_slot_one(self):
         token = "fixture-" + ("a" * 56)
-        services = {session_id: FakeRouteService(session_id) for session_id in (1, 2, 3)}
+        services = {session_id: FakeRouteService(session_id) for session_id in range(1, 7)}
         server = terminald.TerminalHTTPServer(
             ("127.0.0.1", 0),
             services[1],
@@ -560,26 +560,26 @@ class TerminalServiceTests(unittest.TestCase):
                 return response, response.read()
 
         try:
-            self.assertEqual(load_json("/health")["sessionIDs"], [1, 2, 3])
+            self.assertEqual(load_json("/health")["sessionIDs"], [1, 2, 3, 4, 5, 6])
             frame = load_json("/v2/terminal/frame?after=7&sessionID=2")
             self.assertEqual(frame["sessionID"], 2)
             self.assertEqual(services[2].calls, [("frame", 7)])
             self.assertEqual(services[1].calls, [])
 
-            history = load_json("/v2/terminal/history?start=9&limit=10&sessionID=3")
-            self.assertEqual(history["sessionID"], 3)
-            self.assertEqual(services[3].calls, [("history", 9, 10)])
+            history = load_json("/v2/terminal/history?start=9&limit=10&sessionID=6")
+            self.assertEqual(history["sessionID"], 6)
+            self.assertEqual(services[6].calls, [("history", 9, 10)])
 
             input_payload = {
-                "requestID": "slot-three",
-                "sessionID": 3,
-                "dataBase64": base64.b64encode(b"three").decode(),
+                "requestID": "slot-six",
+                "sessionID": 6,
+                "dataBase64": base64.b64encode(b"six").decode(),
                 "appendReturn": True,
             }
             _, raw_acknowledgement = post_json("/v2/terminal/input", input_payload)
             acknowledgement = json.loads(raw_acknowledgement)
-            self.assertEqual(acknowledgement["sessionID"], 3)
-            self.assertIn(("input", "slot-three", b"three", True), services[3].calls)
+            self.assertEqual(acknowledgement["sessionID"], 6)
+            self.assertIn(("input", "slot-six", b"six", True), services[6].calls)
 
             response_id = "d" * 64
             response, audio = post_json(
@@ -590,16 +590,17 @@ class TerminalServiceTests(unittest.TestCase):
             self.assertEqual(audio[:4], b"RIFF")
             self.assertIn(("speech", response_id), services[2].calls)
 
-            legacy = load_json("/v1/terminal/frame?after=0&sessionID=3")
+            legacy = load_json("/v1/terminal/frame?after=0&sessionID=6")
             self.assertEqual(legacy["sessionID"], 1)
-            legacy_input = dict(input_payload, requestID="legacy", sessionID=3)
+            legacy_input = dict(input_payload, requestID="legacy", sessionID=6)
             _, raw_legacy_ack = post_json("/v1/terminal/input", legacy_input)
             self.assertEqual(json.loads(raw_legacy_ack)["sessionID"], 1)
-            self.assertIn(("input", "legacy", b"three", True), services[1].calls)
+            self.assertIn(("input", "legacy", b"six", True), services[1].calls)
 
             for path in (
                 "/v2/terminal/frame?after=0",
                 "/v2/terminal/frame?after=0&sessionID=0",
+                "/v2/terminal/frame?after=0&sessionID=7",
                 "/v2/terminal/frame?after=0&sessionID=2&sessionID=3",
                 "/v2/terminal/frame?after=0&sessionID=02",
             ):
@@ -608,7 +609,7 @@ class TerminalServiceTests(unittest.TestCase):
                 self.assertEqual(raised.exception.code, 400)
                 raised.exception.close()
 
-            for invalid_session in (False, 4, 2.0, "2", "02"):
+            for invalid_session in (False, 7, 2.0, "2", "02"):
                 invalid_payload = dict(input_payload, sessionID=invalid_session)
                 with self.assertRaises(HTTPError) as raised:
                     post_json("/v2/terminal/input", invalid_payload)
@@ -682,13 +683,19 @@ class TerminalServiceTests(unittest.TestCase):
                 self.assertEqual(pane_pid("jarvis-ios-2"), first_pid)
                 self.assertEqual(ensure(1).returncode, 0)
                 self.assertEqual(ensure(3).returncode, 0)
+                self.assertEqual(ensure(4).returncode, 0)
+                self.assertEqual(ensure(5).returncode, 0)
+                self.assertEqual(ensure(6).returncode, 0)
                 sessions = subprocess.run(
                     [tmux, "-L", socket, "list-sessions", "-F", "#{session_name}"],
                     check=True,
                     stdout=subprocess.PIPE,
                     timeout=5,
                 ).stdout.decode().splitlines()
-                self.assertEqual(sorted(sessions), ["jarvis-ios", "jarvis-ios-2", "jarvis-ios-3"])
+                self.assertEqual(
+                    sorted(sessions),
+                    ["jarvis-ios", "jarvis-ios-2", "jarvis-ios-3", "jarvis-ios-4", "jarvis-ios-5", "jarvis-ios-6"],
+                )
                 for session in sessions:
                     size = subprocess.run(
                         [tmux, "-L", socket, "show-options", "-wv", "-t", session + ":0", "window-size"],
@@ -699,7 +706,8 @@ class TerminalServiceTests(unittest.TestCase):
                     self.assertEqual(size, "latest")
 
                 for arguments in (
-                    ["--slot", "4", "--ensure-only"],
+                    ["--slot", "0", "--ensure-only"],
+                    ["--slot", "7", "--ensure-only"],
                     ["--slot", "1", "--slot", "2", "--ensure-only"],
                     ["--session", "jarvis-ios-2", "--ensure-only"],
                 ):

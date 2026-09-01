@@ -22,7 +22,7 @@ final class JARVISKitTests: XCTestCase {
         let state = try JSONDecoder().decode(
             StateSnapshot.self,
             from: Data(
-                #"{"ok":true,"subsystems":{"pi":{"ok":true,"active":2,"mobileSessions":[{"sessionID":1,"active":true},{"sessionID":2,"active":false},{"sessionID":3,"active":null}]}}}"#.utf8
+                #"{"ok":true,"subsystems":{"pi":{"ok":true,"active":2,"mobileSessions":[{"sessionID":1,"active":true},{"sessionID":2,"active":false},{"sessionID":3,"active":null},{"sessionID":4,"active":false},{"sessionID":5,"active":true},{"sessionID":6,"active":null}]}}}"#.utf8
             )
         )
         let sessions = try XCTUnwrap(state.subsystems?.pi?.mobileSessions)
@@ -32,6 +32,9 @@ final class JARVISKitTests: XCTestCase {
                 PiMobileSession(sessionID: 1, active: true),
                 PiMobileSession(sessionID: 2, active: false),
                 PiMobileSession(sessionID: 3, active: nil),
+                PiMobileSession(sessionID: 4, active: false),
+                PiMobileSession(sessionID: 5, active: true),
+                PiMobileSession(sessionID: 6, active: nil),
             ]
         )
 

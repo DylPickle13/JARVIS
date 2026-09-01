@@ -84,6 +84,9 @@ struct PiTerminalView: View {
         VStack {
             HStack(spacing: 5) {
                 ForEach(JARVISTerminalSlot.allCases, id: \.self) { slot in
+                    if slot == .four {
+                        Spacer().frame(width: 3)
+                    }
                     Capsule()
                         .fill(slot == terminal.selectedSlot ? JarvisPalette.accent : Color.white.opacity(0.38))
                         .frame(width: slot == terminal.selectedSlot ? 15 : 7, height: 4)
@@ -102,7 +105,7 @@ struct PiTerminalView: View {
         }
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Pi terminal session \(terminal.selectedSlot.displayName) of 3")
+        .accessibilityLabel("Pi terminal session \(terminal.selectedSlot.displayName) of 6")
         .accessibilityHint("Swipe left or right across the terminal to change session")
     }
 

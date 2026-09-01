@@ -141,13 +141,15 @@ class DaemonUnitTests(unittest.TestCase):
                 "jarvis-ios\t0\t111\n"
                 "jarvis-ios-2\t1\t222\n"
                 "jarvis-ios-3\t0\t333\n"
-                "unrelated\t0\t444\n"
+                "jarvis-ios-4\t0\t444\n"
+                "jarvis-ios-6\t0\t666\n"
+                "unrelated\t0\t777\n"
             ),
             stderr="",
         )
         with tempfile.TemporaryDirectory() as raw:
             status_dir = Path(raw)
-            for pid, active in ((111, True), (222, True), (333, False)):
+            for pid, active in ((111, True), (222, True), (333, False), (444, True)):
                 (status_dir / f"{pid}-session.json").write_text(
                     json.dumps({
                         "source": "pi-extension-local-session-status",
@@ -167,6 +169,9 @@ class DaemonUnitTests(unittest.TestCase):
                 {"sessionID": 1, "active": True},
                 {"sessionID": 2, "active": False},
                 {"sessionID": 3, "active": False},
+                {"sessionID": 4, "active": True},
+                {"sessionID": 5, "active": False},
+                {"sessionID": 6, "active": None},
             ],
         )
         run.assert_called_once_with(
@@ -190,7 +195,7 @@ class DaemonUnitTests(unittest.TestCase):
         completed = jarvisd.subprocess.CompletedProcess(
             args=[],
             returncode=0,
-            stdout="jarvis-ios\t0\t111\njarvis-ios-3\t0\t333\n",
+            stdout="jarvis-ios\t0\t111\njarvis-ios-3\t0\t333\njarvis-ios-6\t0\t666\n",
             stderr="",
         )
         with tempfile.TemporaryDirectory() as raw:
@@ -213,6 +218,9 @@ class DaemonUnitTests(unittest.TestCase):
                         {"sessionID": 1, "active": None},
                         {"sessionID": 2, "active": False},
                         {"sessionID": 3, "active": None},
+                        {"sessionID": 4, "active": False},
+                        {"sessionID": 5, "active": False},
+                        {"sessionID": 6, "active": None},
                     ],
                 )
 
@@ -221,6 +229,9 @@ class DaemonUnitTests(unittest.TestCase):
             {"sessionID": 1, "active": None},
             {"sessionID": 2, "active": None},
             {"sessionID": 3, "active": None},
+            {"sessionID": 4, "active": None},
+            {"sessionID": 5, "active": None},
+            {"sessionID": 6, "active": None},
         ]
         with mock.patch.object(
             jarvisd.subprocess,
@@ -238,6 +249,9 @@ class DaemonUnitTests(unittest.TestCase):
             {"sessionID": 1, "active": True},
             {"sessionID": 2, "active": False},
             {"sessionID": 3, "active": True},
+            {"sessionID": 4, "active": False},
+            {"sessionID": 5, "active": True},
+            {"sessionID": 6, "active": False},
         ]
         with mock.patch.object(jarvisd, "_mobile_pi_session_states", return_value=expected):
             result = jarvisd._pi_sessions()
