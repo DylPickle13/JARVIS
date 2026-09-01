@@ -116,6 +116,20 @@ extension AppState: WatchBridgeDelegate {
         requestID: String,
         error: WatchCommandError
     ) {}
+
+    public nonisolated func watchBridgeDidReceivePushRegistration(
+        _ bridge: WatchBridge,
+        registration: JARVISPushRegistration
+    ) {
+        Task { @MainActor in
+            PushNotificationCoordinator.shared.receiveWatchRegistration(registration)
+        }
+    }
+
+    public nonisolated func watchBridgeDidReceivePushPreference(
+        _ bridge: WatchBridge,
+        enabled: Bool
+    ) {}
 }
 
 @MainActor

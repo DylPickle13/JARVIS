@@ -74,6 +74,7 @@ public protocol JarvisAPI: Sendable {
         limit: Int,
         jobId: String?
     ) async throws -> ScheduledJobResultsResponse
+    func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult
     func signingRenewalStatus(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus
     func startSigningRenewal(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus
@@ -81,6 +82,10 @@ public protocol JarvisAPI: Sendable {
 }
 
 public extension JarvisAPI {
+    func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus {
+        throw JarvisError.transport("Notification status is unavailable.")
+    }
+
     /// Test doubles and compatibility clients may treat an explicit quota read
     /// as an ordinary state read. JarvisClient overrides this with the bounded
     /// `refresh=codexQuota` request.
@@ -321,6 +326,10 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .jarvisPathSegment) ?? name
         let body = try JSONSerialization.data(withJSONObject: ["action": action])
         return try await perform(endpoint, "/api/v1/services/\(encodedName)", method: "POST", body: body, as: ServiceActionResult.self)
+    }
+
+    public func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus {
+        try await perform(endpoint, "/api/v1/notification-status", as: JARVISNotificationStatus.self)
     }
 
     public func signingRenewalStatus(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus {

@@ -56,6 +56,21 @@ MAX_RESULTS = 500
 MAX_RESULT_BYTES = 64 * 1024
 MAX_RESULT_SUMMARY_CHARS = 280
 MAX_RESULT_PAGE = 100
+APNS_PROVIDER_ENABLED = os.environ.get("JARVIS_APNS_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
+APNS_ENVIRONMENT = os.environ.get("JARVIS_APNS_ENVIRONMENT", "development").strip().lower()
+APNS_TEAM_ID = os.environ.get("JARVIS_APNS_TEAM_ID", "").strip()
+APNS_KEY_ID = os.environ.get("JARVIS_APNS_KEY_ID", "").strip()
+APNS_KEY_PATH = Path(os.environ.get("JARVIS_APNS_KEY_PATH", "")).expanduser()
+APNS_MAX_DELIVERY_ATTEMPTS = 4
+APNS_DELIVERY_EXPIRY_SECONDS = 5 * 60
+APNS_PLATFORM_TOPICS = {
+    "iphone": "com.operation-jarvis.jarvis",
+    "watch": "com.operation-jarvis.jarvis.watchkitapp",
+}
+APNS_DEVICE_TOKEN_RE = re.compile(r"^[0-9A-Fa-f]{64,200}$")
+APNS_INSTALLATION_ID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+)
 DURATION_RE = re.compile(r"^(\+?)(\d+)(s|m|h|d)$", re.I)
 ISOISH_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]")
 SECRET_ASSIGNMENT_RE = re.compile(
@@ -183,6 +198,38 @@ def init_db(conn: sqlite3.Connection) -> None:
           updated_at TEXT NOT NULL,
           FOREIGN KEY(result_sequence) REFERENCES results(sequence) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS notification_devices (
+          platform TEXT PRIMARY KEY CHECK(platform IN ('iphone','watch')),
+          installation_id TEXT NOT NULL,
+          topic TEXT NOT NULL,
+          environment TEXT NOT NULL CHECK(environment IN ('development','production')),
+          device_token TEXT NOT NULL,
+          token_sha256 TEXT NOT NULL,
+          active INTEGER NOT NULL DEFAULT 1,
+          registered_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          invalidated_at TEXT,
+          invalidation_reason TEXT,
+          last_accepted_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS notification_deliveries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          outbox_id INTEGER NOT NULL,
+          platform TEXT NOT NULL CHECK(platform IN ('iphone','watch')),
+          apns_id TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('pending','accepted','suppressed','failed','ambiguous')),
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at TEXT,
+          last_attempt_at TEXT,
+          accepted_at TEXT,
+          last_error TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(outbox_id, platform),
+          FOREIGN KEY(outbox_id) REFERENCES notification_outbox(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS notification_deliveries_due_idx
+          ON notification_deliveries(status, next_attempt_at, id);
         """
     )
     columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
@@ -387,6 +434,460 @@ def release_lock(conn: sqlite3.Connection, name: str, owner: str) -> None:
         conn.execute("DELETE FROM locks WHERE name=? AND owner=?", (name, owner))
 
 
+def _config_value(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM config WHERE key=?", (key,)).fetchone()
+    return str(row["value"]) if row is not None else None
+
+
+def _set_config_value(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO config(key,value,updated_at) VALUES(?,?,?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at
+        """,
+        (key, value, iso()),
+    )
+
+
+def notification_dispatch_enabled(conn: sqlite3.Connection) -> bool:
+    return APNS_PROVIDER_ENABLED and _config_value(conn, "apns_dispatch_enabled") == "1"
+
+
+def _provider_configuration():
+    from apns_provider import APNsConfiguration
+
+    return APNsConfiguration(
+        team_id=APNS_TEAM_ID,
+        key_id=APNS_KEY_ID,
+        key_path=APNS_KEY_PATH,
+        enabled=APNS_PROVIDER_ENABLED,
+        environment=APNS_ENVIRONMENT,
+    )
+
+
+def register_notification_device(payload: dict[str, Any]) -> dict[str, Any]:
+    common_fields = {"protocolVersion", "action", "platform", "environment", "installationID"}
+    if not isinstance(payload, dict):
+        raise ValueError("Notification registration must be an object")
+    action = payload.get("action")
+    if action not in {"register", "deactivate"}:
+        raise ValueError("Notification registration action is invalid")
+    expected_fields = common_fields | ({"deviceToken"} if action == "register" else set())
+    if set(payload) != expected_fields:
+        raise ValueError("Notification registration fields are invalid")
+    if payload.get("protocolVersion") != 1:
+        raise ValueError("Notification registration protocol version is unsupported")
+    platform = payload.get("platform")
+    if platform not in APNS_PLATFORM_TOPICS:
+        raise ValueError("Notification registration platform is invalid")
+    environment = payload.get("environment")
+    if environment not in {"development", "production"}:
+        raise ValueError("Notification registration environment is invalid")
+    if environment != APNS_ENVIRONMENT:
+        raise ValueError("Notification registration environment does not match the host")
+    raw_installation = payload.get("installationID")
+    if not isinstance(raw_installation, str) or not APNS_INSTALLATION_ID_RE.fullmatch(raw_installation):
+        raise ValueError("Notification installation identifier is invalid")
+    installation_id = str(uuid.UUID(raw_installation)).lower()
+    now = iso()
+
+    with closing(connect()) as conn:
+        if action == "deactivate":
+            with conn:
+                # Owner disable removes the private token instead of retaining
+                # an inactive copy. The installation-scoped predicate prevents
+                # stale clients from deleting a newer registration.
+                cursor = conn.execute(
+                    "DELETE FROM notification_devices WHERE platform=? AND installation_id=? AND active=1",
+                    (platform, installation_id),
+                )
+            secure_database_permissions()
+            return {
+                "ok": True,
+                "protocolVersion": 1,
+                "platform": platform,
+                "active": False,
+                "changed": cursor.rowcount == 1,
+            }
+
+        raw_token = payload.get("deviceToken")
+        if not isinstance(raw_token, str) or not APNS_DEVICE_TOKEN_RE.fullmatch(raw_token):
+            raise ValueError("Notification device token is invalid")
+        token = raw_token.lower()
+        digest = __import__("hashlib").sha256(token.encode("ascii")).hexdigest()
+        with conn:
+            mixed = conn.execute(
+                "SELECT 1 FROM notification_devices WHERE active=1 AND environment<>? LIMIT 1",
+                (environment,),
+            ).fetchone()
+            if mixed is not None:
+                raise ValueError("Mixed APNs registration environments are not allowed")
+            existing = conn.execute(
+                "SELECT installation_id,device_token,registered_at FROM notification_devices WHERE platform=?",
+                (platform,),
+            ).fetchone()
+            is_same_registration = (
+                existing is not None
+                and existing["installation_id"] == installation_id
+                and existing["device_token"] == token
+            )
+            registered_at = existing["registered_at"] if is_same_registration else now
+            conn.execute(
+                """
+                INSERT INTO notification_devices(
+                  platform,installation_id,topic,environment,device_token,token_sha256,
+                  active,registered_at,updated_at,invalidated_at,invalidation_reason,last_accepted_at
+                ) VALUES(?,?,?,?,?,?,1,?,?,NULL,NULL,NULL)
+                ON CONFLICT(platform) DO UPDATE SET
+                  installation_id=excluded.installation_id,
+                  topic=excluded.topic,
+                  environment=excluded.environment,
+                  device_token=excluded.device_token,
+                  token_sha256=excluded.token_sha256,
+                  active=1,
+                  registered_at=excluded.registered_at,
+                  updated_at=excluded.updated_at,
+                  invalidated_at=NULL,
+                  invalidation_reason=NULL,
+                  last_accepted_at=CASE
+                    WHEN notification_devices.installation_id=excluded.installation_id
+                     AND notification_devices.device_token=excluded.device_token
+                    THEN notification_devices.last_accepted_at
+                    ELSE NULL
+                  END
+                """,
+                (
+                    platform,
+                    installation_id,
+                    APNS_PLATFORM_TOPICS[platform],
+                    environment,
+                    token,
+                    digest,
+                    registered_at,
+                    now,
+                ),
+            )
+        secure_database_permissions()
+        return {
+            "ok": True,
+            "protocolVersion": 1,
+            "platform": platform,
+            "active": True,
+            "tokenFingerprint": digest[:12],
+            "registeredAt": registered_at,
+        }
+
+
+def enqueue_notification_for_result(
+    conn: sqlite3.Connection,
+    *,
+    result_sequence: int,
+    created_at: str,
+) -> None:
+    if not notification_dispatch_enabled(conn):
+        return
+    devices = conn.execute(
+        "SELECT platform FROM notification_devices WHERE active=1 AND environment=? ORDER BY platform",
+        (APNS_ENVIRONMENT,),
+    ).fetchall()
+    outbox_status = "pending" if devices else "suppressed"
+    cursor = conn.execute(
+        """
+        INSERT OR IGNORE INTO notification_outbox(
+          result_sequence,carrier,status,attempt_count,next_attempt_at,last_attempt_at,
+          accepted_at,last_error,created_at,updated_at
+        ) VALUES(?,'apns',?,0,?,NULL,NULL,?,?,?)
+        """,
+        (
+            result_sequence,
+            outbox_status,
+            created_at if devices else None,
+            None if devices else "no-active-device",
+            created_at,
+            created_at,
+        ),
+    )
+    if cursor.rowcount != 1:
+        return
+    outbox_id = int(cursor.lastrowid)
+    for device in devices:
+        conn.execute(
+            """
+            INSERT INTO notification_deliveries(
+              outbox_id,platform,apns_id,status,attempt_count,next_attempt_at,
+              last_attempt_at,accepted_at,last_error,created_at,updated_at
+            ) VALUES(?,?,?,'pending',0,?,NULL,NULL,NULL,?,?)
+            """,
+            (outbox_id, device["platform"], str(uuid.uuid4()), created_at, created_at, created_at),
+        )
+
+
+def _update_outbox_aggregate(conn: sqlite3.Connection, outbox_id: int) -> None:
+    rows = conn.execute(
+        "SELECT status,attempt_count,last_attempt_at,accepted_at,last_error,next_attempt_at FROM notification_deliveries WHERE outbox_id=?",
+        (outbox_id,),
+    ).fetchall()
+    if not rows:
+        status = "suppressed"
+    else:
+        states = {str(row["status"]) for row in rows}
+        if "pending" in states:
+            status = "pending"
+        elif "ambiguous" in states:
+            status = "ambiguous"
+        elif "accepted" in states:
+            status = "accepted"
+        elif states == {"suppressed"}:
+            status = "suppressed"
+        else:
+            status = "failed"
+    attempts = sum(int(row["attempt_count"] or 0) for row in rows)
+    last_attempt = max((row["last_attempt_at"] for row in rows if row["last_attempt_at"]), default=None)
+    accepted_at = max((row["accepted_at"] for row in rows if row["accepted_at"]), default=None)
+    next_attempt = min((row["next_attempt_at"] for row in rows if row["next_attempt_at"]), default=None)
+    errors = [str(row["last_error"]) for row in rows if row["last_error"]]
+    conn.execute(
+        """
+        UPDATE notification_outbox
+           SET status=?,attempt_count=?,next_attempt_at=?,last_attempt_at=?,accepted_at=?,last_error=?,updated_at=?
+         WHERE id=?
+        """,
+        (status, attempts, next_attempt, last_attempt, accepted_at, errors[0][:160] if errors else None, iso(), outbox_id),
+    )
+
+
+def _invalidate_notification_device(
+    conn: sqlite3.Connection,
+    *,
+    platform: str,
+    expected_token: str,
+    reason: str,
+    invalidation_timestamp: int | None,
+) -> None:
+    device = conn.execute(
+        "SELECT device_token,updated_at FROM notification_devices WHERE platform=? AND active=1",
+        (platform,),
+    ).fetchone()
+    if device is None or device["device_token"] != expected_token:
+        return
+    if invalidation_timestamp is not None:
+        confirmed_at = parse_iso(str(device["updated_at"])).timestamp()
+        if confirmed_at >= invalidation_timestamp:
+            return
+    # APNs invalidation removes the unusable private token immediately. Public
+    # status needs only the fail-closed absence of a current registration.
+    conn.execute("DELETE FROM notification_devices WHERE platform=?", (platform,))
+
+
+def drain_notifications(conn: sqlite3.Connection) -> dict[str, Any]:
+    if not notification_dispatch_enabled(conn):
+        return {"enabled": False, "attempted": 0}
+    owner = acquire_lock(conn, "notification-dispatch")
+    if not owner:
+        return {"enabled": True, "attempted": 0, "locked": True}
+    attempted = 0
+    try:
+        configuration = _provider_configuration()
+        configuration.validate_for_send()
+        from apns_provider import APNsProvider
+
+        provider = APNsProvider(configuration)
+        now = utcnow()
+        rows = conn.execute(
+            """
+            SELECT d.id AS delivery_id,d.outbox_id,d.platform,d.apns_id,d.attempt_count,d.created_at,
+                   o.result_sequence,r.job_id,nd.topic,nd.environment,nd.device_token
+              FROM notification_deliveries d
+              JOIN notification_outbox o ON o.id=d.outbox_id
+              JOIN results r ON r.sequence=o.result_sequence
+              LEFT JOIN notification_devices nd ON nd.platform=d.platform AND nd.active=1
+             WHERE d.status='pending' AND (d.next_attempt_at IS NULL OR d.next_attempt_at<=?)
+             ORDER BY d.id ASC LIMIT 20
+            """,
+            (iso(now),),
+        ).fetchall()
+        for row in rows:
+            attempted += 1
+            delivery_id = int(row["delivery_id"])
+            outbox_id = int(row["outbox_id"])
+            attempt_count = int(row["attempt_count"] or 0) + 1
+            current_iso = iso()
+            created_at = parse_iso(str(row["created_at"]))
+            age = max(0, (now - created_at).total_seconds())
+            if age >= APNS_DELIVERY_EXPIRY_SECONDS or attempt_count > APNS_MAX_DELIVERY_ATTEMPTS:
+                with conn:
+                    conn.execute(
+                        "UPDATE notification_deliveries SET status='failed',attempt_count=?,last_attempt_at=?,last_error='expired',next_attempt_at=NULL,updated_at=? WHERE id=?",
+                        (attempt_count, current_iso, current_iso, delivery_id),
+                    )
+                    _update_outbox_aggregate(conn, outbox_id)
+                continue
+            if row["device_token"] is None:
+                with conn:
+                    conn.execute(
+                        "UPDATE notification_deliveries SET status='suppressed',attempt_count=?,last_attempt_at=?,last_error='inactive-device',next_attempt_at=NULL,updated_at=? WHERE id=?",
+                        (attempt_count, current_iso, current_iso, delivery_id),
+                    )
+                    _update_outbox_aggregate(conn, outbox_id)
+                continue
+            if row["environment"] != APNS_ENVIRONMENT:
+                raise RuntimeError("Active APNs registration environment mismatch")
+            result = provider.send_alert(
+                topic=str(row["topic"]),
+                device_token=str(row["device_token"]),
+                result_sequence=int(row["result_sequence"]),
+                job_id=str(row["job_id"]),
+                apns_id=str(row["apns_id"]),
+                expiration=int(created_at.timestamp()) + APNS_DELIVERY_EXPIRY_SECONDS,
+            )
+            fatal_configuration_failure = result.status_code == 403
+            with conn:
+                if result.outcome == "accepted":
+                    conn.execute(
+                        "UPDATE notification_deliveries SET status='accepted',attempt_count=?,last_attempt_at=?,accepted_at=?,last_error=NULL,next_attempt_at=NULL,updated_at=? WHERE id=?",
+                        (attempt_count, current_iso, current_iso, current_iso, delivery_id),
+                    )
+                    conn.execute(
+                        "UPDATE notification_devices SET last_accepted_at=? WHERE platform=?",
+                        (current_iso, row["platform"]),
+                    )
+                elif result.outcome == "retry" and attempt_count < APNS_MAX_DELIVERY_ATTEMPTS and age < APNS_DELIVERY_EXPIRY_SECONDS:
+                    retry_after = max(1, int(result.retry_after_seconds or min(30 * (2 ** (attempt_count - 1)), 120)))
+                    next_attempt = iso(now + dt.timedelta(seconds=retry_after))
+                    conn.execute(
+                        "UPDATE notification_deliveries SET status='pending',attempt_count=?,last_attempt_at=?,next_attempt_at=?,last_error=?,updated_at=? WHERE id=?",
+                        (attempt_count, current_iso, next_attempt, result.reason[:80], current_iso, delivery_id),
+                    )
+                else:
+                    final_status = "ambiguous" if result.outcome == "ambiguous" else "failed"
+                    conn.execute(
+                        "UPDATE notification_deliveries SET status=?,attempt_count=?,last_attempt_at=?,next_attempt_at=NULL,last_error=?,updated_at=? WHERE id=?",
+                        (final_status, attempt_count, current_iso, result.reason[:80], current_iso, delivery_id),
+                    )
+                if result.invalidate_token:
+                    _invalidate_notification_device(
+                        conn,
+                        platform=str(row["platform"]),
+                        expected_token=str(row["device_token"]),
+                        reason=result.reason,
+                        invalidation_timestamp=result.invalidation_timestamp,
+                    )
+                _update_outbox_aggregate(conn, outbox_id)
+                if fatal_configuration_failure:
+                    # A provider-auth or topic-authorization rejection closes
+                    # the durable dispatch gate. A later owner-reviewed enable
+                    # is required before either topic can transmit again.
+                    _set_config_value(conn, "apns_dispatch_enabled", "0")
+            if fatal_configuration_failure:
+                raise RuntimeError("APNs provider authentication or topic authorization was rejected")
+        if attempted:
+            with conn:
+                _set_config_value(conn, "apns_last_error", "")
+                _set_config_value(conn, "apns_last_attempt_at", iso())
+    except Exception as exc:
+        with conn:
+            _set_config_value(conn, "apns_last_error", sanitize_text(exc)[:160])
+        LOGGER.error("APNs dispatch failed: %s", sanitize_text(exc))
+        return {"enabled": True, "attempted": attempted, "error": "APNs dispatch is unavailable"}
+    finally:
+        release_lock(conn, "notification-dispatch", owner)
+        secure_database_permissions()
+    return {"enabled": True, "attempted": attempted}
+
+
+def _provider_is_configured() -> bool:
+    try:
+        _provider_configuration().validate_for_send()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def notification_status(_args: argparse.Namespace | None = None) -> dict[str, Any]:
+    provider_configured = _provider_is_configured()
+    with closing(connect()) as conn:
+        devices = {
+            str(row["platform"]): {
+                "registered": bool(row["active"]),
+                "registeredAt": row["updated_at"] if row["active"] else None,
+                "lastAcceptedAt": row["last_accepted_at"],
+            }
+            for row in conn.execute(
+                "SELECT platform,active,updated_at,last_accepted_at FROM notification_devices ORDER BY platform"
+            ).fetchall()
+        }
+        counts = {
+            str(row["status"]): int(row["count"])
+            for row in conn.execute(
+                "SELECT status,COUNT(*) AS count FROM notification_deliveries GROUP BY status"
+            ).fetchall()
+        }
+        last_row = conn.execute(
+            "SELECT status,last_attempt_at,accepted_at FROM notification_outbox ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        dispatch = notification_dispatch_enabled(conn)
+        last_error = _config_value(conn, "apns_last_error") or None
+    payload = {
+        "ok": True,
+        "providerConfigured": provider_configured,
+        "dispatchEnabled": dispatch,
+        "environment": APNS_ENVIRONMENT if provider_configured else None,
+        "devices": {
+            "iphone": devices.get("iphone", {"registered": False, "registeredAt": None, "lastAcceptedAt": None}),
+            "watch": devices.get("watch", {"registered": False, "registeredAt": None, "lastAcceptedAt": None}),
+        },
+        "pendingCount": counts.get("pending", 0),
+        "failedCount": counts.get("failed", 0),
+        "ambiguousCount": counts.get("ambiguous", 0),
+        "lastOutcome": str(last_row["status"]) if last_row is not None else None,
+        "lastAttemptAt": last_row["last_attempt_at"] if last_row is not None else None,
+        "lastAcceptedAt": last_row["accepted_at"] if last_row is not None else None,
+        "error": last_error,
+    }
+    payload["message"] = (
+        "JARVIS notifications "
+        + ("enabled" if dispatch else "disabled")
+        + f"; iPhone={'registered' if payload['devices']['iphone']['registered'] else 'missing'}"
+        + f"; Watch={'registered' if payload['devices']['watch']['registered'] else 'missing'}"
+    )
+    return payload
+
+
+def enable_notification_dispatch(_args: argparse.Namespace) -> dict[str, Any]:
+    configuration = _provider_configuration()
+    configuration.validate_for_send()
+    with closing(connect()) as conn:
+        rows = conn.execute(
+            "SELECT platform,environment FROM notification_devices WHERE active=1 ORDER BY platform"
+        ).fetchall()
+        platforms = {str(row["platform"]) for row in rows if row["environment"] == APNS_ENVIRONMENT}
+        if platforms != set(APNS_PLATFORM_TOPICS):
+            raise ValueError("Both current iPhone and Watch APNs registrations are required")
+        with conn:
+            _set_config_value(conn, "apns_dispatch_enabled", "1")
+            _set_config_value(conn, "apns_last_error", "")
+    result = notification_status()
+    result["message"] = "JARVIS APNs dispatch enabled for future scheduled results"
+    return result
+
+
+def disable_notification_dispatch(_args: argparse.Namespace) -> dict[str, Any]:
+    with closing(connect()) as conn:
+        with conn:
+            _set_config_value(conn, "apns_dispatch_enabled", "0")
+    result = notification_status()
+    result["message"] = "JARVIS APNs dispatch disabled"
+    return result
+
+
+def drain_notifications_command(_args: argparse.Namespace) -> dict[str, Any]:
+    with closing(connect()) as conn:
+        result = drain_notifications(conn)
+    result["ok"] = "error" not in result
+    result["message"] = f"Notification drain attempted {result.get('attempted', 0)} delivery(s)"
+    return result
+
+
 def sanitize_text(value: Any) -> str:
     text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
     text = CONTROL_RE.sub("", text)
@@ -508,6 +1009,11 @@ def persist_completion(
                 ),
             )
             sequence = int(cursor.lastrowid)
+            enqueue_notification_for_result(
+                conn,
+                result_sequence=sequence,
+                created_at=iso(finished),
+            )
             conn.execute(
                 "DELETE FROM results WHERE sequence IN (SELECT sequence FROM results ORDER BY sequence DESC LIMIT -1 OFFSET ?)",
                 (MAX_RESULTS,),
@@ -932,7 +1438,13 @@ def run_due(_args: argparse.Namespace) -> dict[str, Any]:
         finally:
             release_lock(conn, "run-due", owner)
         results = [run_pi_for_job(conn, job) for job in jobs]
-    return {"ok": True, "message": f"Ran {len(results)} due job(s)", "runs": results}
+        notification_result = drain_notifications(conn)
+    return {
+        "ok": True,
+        "message": f"Ran {len(results)} due job(s)",
+        "runs": results,
+        "notifications": notification_result,
+    }
 
 
 def run_one(args: argparse.Namespace) -> dict[str, Any]:
@@ -941,7 +1453,13 @@ def run_one(args: argparse.Namespace) -> dict[str, Any]:
         if not job:
             raise ValueError(f"Job not found: {args.job_id}")
         result = run_pi_for_job(conn, job, forced=True)
-    return {"ok": True, "message": f"Ran {job['name']}: {result['status']}", "run": result}
+        notification_result = drain_notifications(conn)
+    return {
+        "ok": True,
+        "message": f"Ran {job['name']}: {result['status']}",
+        "run": result,
+        "notifications": notification_result,
+    }
 
 
 def list_runs(args: argparse.Namespace) -> dict[str, Any]:
@@ -1101,6 +1619,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("install")
     sub.add_parser("uninstall")
     sub.add_parser("status")
+    sub.add_parser("notification-status")
+    sub.add_parser("notification-enable")
+    sub.add_parser("notification-disable")
+    sub.add_parser("notification-drain")
     return parser
 
 
@@ -1126,6 +1648,10 @@ def main(argv: list[str] | None = None) -> int:
             "install": install_launchd,
             "uninstall": uninstall_launchd,
             "status": status,
+            "notification-status": notification_status,
+            "notification-enable": enable_notification_dispatch,
+            "notification-disable": disable_notification_dispatch,
+            "notification-drain": drain_notifications_command,
         }
         result = commands[args.command](args)
         if args.json:

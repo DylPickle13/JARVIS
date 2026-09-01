@@ -13,8 +13,9 @@ optional Metal component; install it once with
   developer-install route. A direct install is authoritative only after the
   corrected parent package is registered on the iPhone and both installed
   flags are checked.
-- `renew-free-signing.sh` — the fixed, argument-free action behind iPhone
-  **Settings → Developer Signing**. It reads a private mode-600 allowlist from
+- `renew-free-signing.sh` — a retained fixed, argument-free manual recovery
+  action. Build 144 removes the obsolete iPhone Developer Signing destination
+  after paid-program enrollment. The script reads a private mode-600 allowlist from
   `$HOME/Library/Application Support/JARVIS/signing-renewal/config.env`, asks
   Xcode for four fresh Personal Team profiles, archives clean `main` in an
   isolated worktree, audits team/device/profile/signature/hierarchy rules, and

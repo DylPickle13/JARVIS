@@ -1,11 +1,12 @@
 # JARVIS app implementation documentation
 
-This is the canonical documentation index under `jarvis-app/docs`. It consolidates the iPhone terminal keyboard-avoidance and native Photos/Files attachment plans into one navigable document. The broader app architecture, operations, deployment, recovery, and historical plans remain in the [app README](../README.md).
+This is the canonical documentation index under `jarvis-app/docs`. It consolidates the native APNs notification plan, iPhone terminal keyboard-avoidance plan, and native Photos/Files attachment plans into one navigable document. The broader app architecture, operations, deployment, recovery, and historical plans remain in the [app README](../README.md).
 
 The dated status lines and checklists below are retained as implementation history; consult the app README and owner-only acceptance records for the currently deployed build state. Non-Markdown third-party license material remains separate under [`third-party/`](third-party/AnimationLimitBreaker-LICENSE.txt).
 
 ## Contents
 
+- [Native iPhone and Apple Watch APNs notifications](#native-iphone-and-apple-watch-apns-scheduled-job-notifications)
 - [Six fixed mobile Pi conversations](#six-fixed-mobile-pi-conversations)
 - [iPhone terminal keyboard avoidance and native attachments](#iphone-terminal-keyboard-avoidance-and-native-attach-implementation-plan)
 - [Pi attachment product contract](#jarvis-app-pi-attachment-integration-plan)
@@ -674,3 +675,422 @@ Use `PhotosPicker` for photo-library assets and SwiftUI `fileImporter` for Files
 4. Archive and audit the exact signed product before physical installation.
 5. Perform owner-driven physical validation with harmless files only: one photo, one text file, cancellation, background/foreground, LAN, and Tailscale.
 6. Confirm the production tmux pane identity and Pi PID are unchanged throughout validation.
+
+---
+
+# Native iPhone and Apple Watch APNs Scheduled-Job Notifications
+
+Status: **Build 144 implementation candidate; Build 143 remains immutable; provider and host dispatch remain dormant**
+
+Prepared: **2026-09-01 EDT**
+
+Implementation authorized: **2026-09-01 EDT**
+
+## Candidate implementation status
+
+The isolated `feat/native-apns-notifications` candidate implements the dormant
+host provider/data model, strict registration helper, native iPhone/Watch
+coordinators, explicit two-device authorization flow, fixed-command pinned-SSH
+token upload, Jobs routing, Watch result sheet, sanitized Settings status, and
+app-only push entitlements. The iPhone **Developer Signing** Settings destination
+has been removed; the historical manual recovery script remains available.
+
+Implementation does **not** itself enable delivery. `JARVIS_APNS_ENABLED` still
+defaults to `0`, scheduler dispatch still defaults off in private SQLite config,
+no authentication key is checked in, and no historical result is backfilled.
+Apple capability/profile/key creation, exact signed archive audit, approved-device
+registration, physical APNs validation, and final host-dispatch activation remain
+separate gated rollout work.
+
+## Decision summary
+
+The first notification release will send the same generic scheduled-result alert to the JARVIS iPhone app and directly to the JARVIS Watch app, using each app's own APNs device token and bundle-ID topic:
+
+- iPhone: `com.operation-jarvis.jarvis`
+- Watch: `com.operation-jarvis.jarvis.watchkitapp`
+
+The Watch app is currently a dependent companion app. Apple permits sending only to iPhone or to both devices for this app type, and states that when the provider sends to both, the system presents one notification at the best destination. JARVIS will choose both because direct Watch delivery is an explicit product goal and iPhone delivery remains the supported fallback. The provider must not attempt its own cross-device presentation or deduplication.
+
+This is a new future build, not an in-place activation of Build 143. No portal capability, entitlement, profile, prompt, device registration, provider credential, network traffic, scheduler enqueue, daemon, port, or installed app changes are authorized by this plan alone.
+
+## Product contract
+
+### In scope
+
+- Notify only when the scheduler persists a new non-silent result or error in its durable Jobs history.
+- Retain the existing Jobs database as the source of truth. APNs is a lossy alert carrier, never the result store.
+- Keep the lock-screen and Watch alert generic: `JARVIS Jobs` / `A scheduled job result is ready.`
+- Include only a versioned route and positive retained `resultSequence` in custom payload data.
+- Register the iPhone and Watch apps independently with APNs and retain one active approved-device registration for each topic and environment.
+- On an iPhone notification tap, open the existing Jobs tab and exact result thread.
+- On a Watch notification tap, present a bounded read-only result sheet over the existing app; do not add a fourth dashboard page or disturb Terminal → Plugs → System navigation.
+- Add accurate notification health in Settings without exposing tokens, credentials, output, job names, or result contents.
+- Preserve Build 143's six Pi sessions, attachments, exact-generation input behavior, Neural Core motion, controls, widgets, scheduler semantics, terminald, jarvisd, room audio, and ports `8790–8792`.
+
+### Explicitly out of scope
+
+- Discord, Web Push, email, SMS, third-party notification relays, or cloud result storage.
+- Silent/background pushes, `content-available`, background fetch, background processing, PushKit, Live Activities, complication pushes, or notification service/content extensions.
+- Job output, prompt, job name, status, links, host paths, tokens, or credentials in an APNs payload.
+- Notification actions that execute commands or mutate Jobs. Jobs remains read-only.
+- A new daemon, listener, public endpoint, or port.
+- Automatic enrollment, launch-time permission surprises, profile mutation outside the audited candidate, or historical-result backfill.
+
+## Existing foundation
+
+The accepted tree already provides:
+
+- `.pi/scheduler/apns_provider.py`: a dormant, fail-closed token-authenticated HTTP/2 provider with generic payloads, bounded JWT age, strict key permissions, and APNs response classification.
+- `.pi/scheduler/runner.py`: a private mode-`0600` SQLite database with durable `results` and a dormant `notification_outbox`; current tests prove that the outbox stays empty before activation.
+- `JARVISKit/Sources/JARVISKit/ScheduledJobNotificationRoute.swift`: pure validation of a positive `resultSequence` with no authorization, registration, token, traffic, or notification side effects.
+- Existing iPhone Jobs deep-link routing and exact-result fetching.
+- Existing WatchConnectivity, iPhone host-key-pinned SSH, and a private scheduler process that runs once per minute.
+
+The provider's current Watch-only topic assumption is scaffolding, not the final architecture. It must be generalized to a strict two-topic allowlist before activation.
+
+## End-to-end architecture
+
+```text
+Scheduler persists a bounded local result
+            │
+            ├── durable Jobs history remains authoritative
+            │
+            └── if and only if host dispatch is explicitly enabled:
+                  create one notification event
+                          │
+                          ├── iPhone topic + active iPhone token
+                          └── Watch topic + active Watch token
+                                   │
+                             Apple Push Notification service
+                                   │
+                          system chooses best presentation
+
+Notification tap
+      ├── iPhone → existing Jobs tab → exact retained result
+      └── Watch  → bounded read-only result sheet → existing jarvisd result API
+```
+
+APNs acceptance does not mean display, and APNs delivery is not guaranteed. The UI must never infer that a result does not exist because no alert appeared. Conversely, an alert must never carry the result itself.
+
+## Apple account, capability, and signing plan
+
+Apple Developer Program enrollment is active as an Individual account under Team ID `5GB5BU49Q8`. The developer account already contains explicit App IDs for both required bundle identifiers and currently contains no APNs authentication key.
+
+Portal and signing changes require a separate owner checkpoint and occur only after source and unsigned tests are ready:
+
+1. Enable **Push Notifications** only on these two explicit App IDs:
+   - `com.operation-jarvis.jarvis`
+   - `com.operation-jarvis.jarvis.watchkitapp`
+2. Do not enable Push Notifications on either widget identifier or any legacy Watch identifier.
+3. Regenerate the affected paid-team development provisioning profiles. Apple invalidates profiles associated with a modified App ID, so no candidate may reuse the old profiles.
+4. Add checked-in iPhone and Watch entitlements files and set `CODE_SIGN_ENTITLEMENTS` only on the two app targets. The final signed products must contain the profile-matched `aps-environment` value.
+5. Keep `JARVISWatch/Info.plist` background modes exactly `audio`. Visible APNs alerts do not require `remote-notification`; `fetch` and `processing` remain forbidden.
+6. Create a dedicated, least-privileged APNs authentication key matching the candidate environment. Prefer a topic-specific key covering only the two JARVIS app topics when the portal offers that option; keep sandbox and production credentials separate if the selected key type is environment-scoped.
+7. Store the downloaded `.p8` outside Git under `~/Library/Application Support/JARVIS/apns/`, with directory mode `0700` and file mode `0600`. Add repository guards for `.p8`/`AuthKey_*`; never put key bytes in `.env`, source, logs, artifacts, tests, durable project memory, or documentation.
+8. Record only non-secret evidence: Team ID, Key ID, allowed topics, environment, file permission check, and a local SHA-256 fingerprint. The `.p8` contents and APNs device tokens are excluded from every manifest and acceptance record.
+
+The candidate audit must extract both the signed executable entitlements and embedded provisioning profiles. It must prove exact topic/profile alignment, the expected `aps-environment`, unchanged bundle identifiers, no push entitlement on widgets, and no new Watch background mode.
+
+## Explicit authorization and app lifecycle
+
+Notification support has three independent gates:
+
+1. **Compiled support** — the future signed build has the exact capability and entitlement.
+2. **Owner opt-in** — the owner explicitly enables scheduled-job notifications in JARVIS Settings and grants system authorization on both devices.
+3. **Host dispatch** — the private scheduler configuration is explicitly activated after both registrations and provider credentials validate.
+
+All three must be true before a real scheduled result can generate APNs traffic.
+
+### iPhone
+
+- Add an iPhone `UIApplicationDelegate` through `@UIApplicationDelegateAdaptor`.
+- Install the `UNUserNotificationCenterDelegate` during app launch, but do not request permission or call `registerForRemoteNotifications()` merely because the app launched.
+- Add a Settings-only **Scheduled job notifications** flow with explanatory copy and an explicit Enable button.
+- After that action, request alert, sound, and badge authorization. If granted, call `registerForRemoteNotifications()` and do so again on later launches while the feature remains enabled, as Apple recommends.
+- If authorization is denied, show a non-blocking Settings link; never loop or synthesize another prompt.
+- Disabling JARVIS notifications unregisters the app locally and sends an idempotent deactivation to the host when the secure route is available. System permission remains owner-controlled in Settings.
+
+### Watch
+
+- Add a Watch application delegate through the SwiftUI Watch delegate adaptor and configure its notification-center delegate at launch.
+- The iPhone opt-in sends only a non-secret desired-state signal through WatchConnectivity.
+- On the next explicit Watch app use, show a JARVIS explanation screen with **Allow Notifications** and **Not Now**. The system authorization prompt appears only after the owner taps Allow Notifications.
+- Once authorized, call the current WatchKit remote-notification registration API on every subsequent launch while enabled.
+- Never add a notification toggle to the tight three-page dashboard. Permission setup is a temporary onboarding overlay; notification state can be summarized in the System page only if it fits without displacing accepted controls.
+
+Authorization and APNs registration are different states. The Settings status must distinguish Off, Needs Permission, Registering, Pending Secure Upload, Active, Denied, and Error instead of collapsing them into a generic enabled flag.
+
+## Secure device-token registration
+
+Every app/device combination receives a different APNs token. The token can change, and neither app may rely on a locally cached old value. Each launch asks APNs for the current token, then forwards the callback value to the host.
+
+JARVIS will not upload APNs tokens through plain jarvisd HTTP. It will reuse the accepted authenticated channels:
+
+1. The iPhone receives its own token directly.
+2. The Watch receives its own token and relays it to the paired iPhone through an immediate WatchConnectivity message. The message contains a strict versioned registration envelope; it is never placed in the shared state snapshot or latest-value application context.
+3. If the phone is unreachable, the Watch retains the token only in process memory. A later explicit iPhone Retry preference can resend it, and the Watch asks APNs to register again on a later launch. It does not write the token to `UserDefaults`, cache files, widget stores, or logs, and it creates no background retry queue.
+4. The iPhone submits each token over a separate one-shot, host-key-pinned SSH channel. It reuses the saved SSH credential and exact changed-host-key rejection. It never opens or writes to a tmux PTY.
+5. The SSH child executes one fixed absolute command with no token, topic, path, or user value in the command string, for example:
+
+   ```text
+   /Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/.pi/scheduler/apns_registration.py
+   ```
+
+6. The helper accepts one bounded JSON object on stdin and emits one bounded acknowledgement. It derives the topic from the fixed platform value, validates `development|production`, validates a 64–200 hexadecimal token, and rejects unknown keys, oversized input, malformed installation IDs, mixed environments, symlinks, and unsafe database permissions.
+7. The app supplies a random installation identifier stored as `ThisDeviceOnly` Keychain data. It supplies no CoreDevice UDID, user name, host path, job data, or terminal session identity.
+8. The host upsert is idempotent. Retrying an unconfirmed registration is safe and never enqueues or sends a notification. Diagnostics contain only a short token SHA-256 prefix, never the token.
+
+The registration transport may multiplex a separate child on an existing authenticated SSH parent. If no parent exists, it may create one short-lived connection with the same pinned-host configuration. It must not weaken trust, ask for new trust in the background, affect terminal readiness, stage attachment bytes, or touch any Pi process.
+
+## Private registration and delivery state
+
+Extend the existing private scheduler database rather than introducing another service or public store.
+
+### Device registrations
+
+Add a bounded table representing exactly the approved iPhone and Watch registration slots. Suggested fields:
+
+- random installation ID;
+- fixed platform (`iphone` or `watch`);
+- fixed topic derived by the host;
+- APNs environment;
+- current token and full token SHA-256 for equality checks;
+- current-registration state and registration/update timestamps;
+- last accepted delivery timestamp.
+
+The database remains mode `0600` under a mode-`0700` directory. Tokens are needed for sending and are therefore stored only in this owner-only database. They never appear in public scheduler output, jarvisd payloads, SQLite error strings, backups intended for source artifacts, or logs.
+
+A new registration for the same installation replaces its token atomically. Because this deployment has exactly one approved iPhone and one approved Watch, a separately authorized replacement installation supersedes the older active slot for that platform/environment instead of accumulating stale targets. Installation-scoped owner deactivation deletes the current row and token; a stale installation cannot delete its replacement. APNs invalidation likewise removes the unusable token, but an invalidation timestamp older than a newer registration is ignored.
+
+### Notification events and deliveries
+
+Keep `notification_outbox` as one row per persisted result and add per-device delivery rows keyed by outbox event and registration slot. Per-delivery state is required because iPhone acceptance, Watch acceptance, retry, and invalidation can differ.
+
+- When host dispatch is disabled, completion behavior is unchanged and the outbox remains empty. This preserves the existing preactivation invariant.
+- Activation never backfills existing results.
+- After activation, result insertion and outbox insertion occur in one SQLite transaction.
+- Silent successful checks that do not create a Jobs result do not create an alert.
+- If no active target exists at completion time, record the event as suppressed; do not alert later when a device registers.
+- Deleting an old bounded result cascades its old notification event and delivery rows.
+
+## Provider and dispatch behavior
+
+Generalize `.pi/scheduler/apns_provider.py` from one Watch topic to a strict configuration selected per delivery:
+
+- only the two exact JARVIS topics;
+- sandbox host for `development`, production host for `production`;
+- `apns-push-type: alert`;
+- `apns-priority: 10`;
+- short expiration, initially five minutes;
+- a stable per-delivery `apns-id` for correlation without token exposure;
+- a per-job hashed `apns-collapse-id` so disconnected devices do not receive a burst of stale alerts for repeated runs of one job;
+- one JWT reused for the iPhone and Watch requests in the same dispatcher invocation;
+- no import-time credential read or network side effect.
+
+The scheduler's existing once-per-minute launchd job drains due notification deliveries after running due jobs. Use the existing SQLite lock mechanism for one dispatcher at a time; add no resident process.
+
+Delivery policy:
+
+- `200`: accepted by APNs; mark that target accepted. Do not claim that the user saw it.
+- `400` token/topic errors or `410 Unregistered`: invalidate only the affected registration. Honor APNs's invalidation timestamp so a response for an old token cannot invalidate a newer registration.
+- `403` authentication/topic configuration failures: fail closed globally for that drain, retain bounded diagnostic reason, and send nothing else until corrected.
+- `429`, `500`, or `503` with a definite APNs response: retry with `Retry-After` or capped exponential backoff, within the five-minute expiry and a small maximum attempt count.
+- Transport failure after request transmission is **ambiguous**. Do not automatically retry it because a second request could create a duplicate visible alert. Durable Jobs history remains available.
+- Never retry a delivery against the other topic or token. iPhone and Watch are independent targets for the same event.
+
+Host activation lives in one owner-only configuration outside Git and defaults to false. Startup or drain must fail before transport if the key is absent, permissions are unsafe, Team ID/Key ID/topic/environment is invalid, active registrations are mixed-environment, or credentials do not cover both topics.
+
+## Payload, privacy, and routing
+
+Use the same payload body for both device targets:
+
+```json
+{
+  "aps": {
+    "alert": {
+      "title": "JARVIS Jobs",
+      "body": "A scheduled job result is ready."
+    },
+    "sound": "default",
+    "thread-id": "jarvis-jobs"
+  },
+  "route": "scheduled-job-result",
+  "routeVersion": 1,
+  "resultSequence": "41"
+}
+```
+
+The payload must remain below a small internal bound far under APNs's maximum. Extend `ScheduledJobNotificationRoute` to require the exact route name, exact supported version, and positive integer sequence while ignoring no malformed alternative. Tests must prove that job names, prompts, output, error text, URLs, local paths, identifiers, API tokens, APNs tokens, and provider credentials never serialize into the request.
+
+No `content-available`, `mutable-content`, command action, or result body is permitted.
+
+### Foreground and tap handling
+
+- Both notification delegates implement `willPresent`; otherwise foreground Watch notifications can be silently discarded. Return only the intended alert/list/banner and sound presentation options for a valid JARVIS payload.
+- Both delegates always call completion handlers exactly once.
+- An invalid payload may open the app normally but cannot select a result or mutate state.
+- iPhone default-action taps post a process-local route consumed by `RootTabView`; it selects Jobs and sets the existing `requestedJobResultSequence` binding.
+- Watch default-action taps set a bounded pending route consumed by `WatchConnectView`. Present a read-only sheet without changing the accepted dashboard pager. Fetch only the exact sequence through the existing authenticated scheduled-results API. If it was pruned or the Mac is unavailable, show `Result unavailable — check Jobs on iPhone` and a manual Retry button.
+- The Watch sheet shows bounded sanitized title/summary and a short output prefix; the complete durable result remains in iPhone Jobs. It performs no background fetch before a tap.
+
+## Accurate owner-visible status
+
+Add a compact Notifications section in iPhone Settings. Combine local system authorization with a new sanitized read-only status from the existing jarvisd port. Expose only:
+
+- global host dispatch enabled/disabled;
+- configured environment;
+- iPhone registered yes/no and last registration time;
+- Watch registered yes/no and last registration time;
+- last aggregate APNs outcome/time;
+- pending, failed, and ambiguous counts.
+
+Do not return device tokens, token hashes, installation IDs, Key IDs, key paths, job names, result sequences, or APNs response bodies. This status is informational and must never disable unrelated controls. It belongs in Settings, not Build 143's two-row Home interface.
+
+## Implementation phases and gates
+
+### Phase 0 — preserve the accepted baseline
+
+- Branch from exact `acfe26edbdb8eef1a28771cde31a0eab4563db94` with a clean worktree.
+- Record Build 143 artifact/evidence hashes and treat them as read-only rollback material.
+- Make no portal or device changes.
+
+### Phase 1 — host data model and provider, still dormant
+
+- Add registration validation/upsert/deactivation and private tables.
+- Add outbox/delivery state, strict payload builder, two-topic provider configuration, retry/invalidation handling, and sanitized status.
+- Keep dispatch disabled by default; prove no credentials are read, no outbox rows are created, and no network call occurs while disabled.
+- Test only with fakes and a disposable SQLite database.
+
+### Phase 2 — app code, still no portal mutation
+
+- Add pure notification state machines, delegates, explicit permission UI, secure registration transport, Watch token relay, tap routing, Watch result sheet, and Settings telemetry.
+- Simulator tests use injected authorization/token providers and never pretend to validate APNs.
+- Preserve checked-in `CURRENT_PROJECT_VERSION: 127`; build number and native-attachment condition remain candidate-export-only inputs.
+
+### Phase 3 — explicit Apple account checkpoint
+
+- Obtain owner approval for portal mutation.
+- Enable the two App IDs, create the least-privileged APNs key, and regenerate paid-team profiles.
+- Add exact signed entitlements and regenerate the Xcode project deterministically.
+- Keep the provider disabled and do not request device permission yet.
+
+### Phase 4 — exact candidate verification and freeze
+
+- Run all scheduler, provider, jarvisd, terminald, JARVISKit, iPhone, Watch, attachment, lifecycle, and smoke tests.
+- Build iOS and watchOS Release products without warnings.
+- Archive from one exact commit with the accepted package lock and no overlays.
+- Audit source, package lock, capabilities, entitlements, profiles, topics, background modes, bundle identifiers, credentials exclusion, and frozen archive hashes.
+
+### Phase 5 — owner-driven device registration
+
+- Install only the exact frozen archive on the approved iPhone and approved Watch. Never target the forbidden Watch CoreDevice.
+- Launch both apps, inspect the permission explanations, and let the owner decide whether to continue.
+- Grant iPhone permission, then explicitly complete the Watch permission overlay.
+- Confirm current tokens reached the host using only registration status and token-digest equality checks.
+- Keep scheduler dispatch disabled throughout this phase.
+
+### Phase 6 — bounded physical APNs validation
+
+Use a deliberate harmless test result; do not run `projects-drive-backup`.
+
+1. Send an explicit iPhone-only test delivery and verify generic content plus exact Jobs routing.
+2. Send an explicit Watch-only test delivery and verify direct Watch presentation plus the bounded result sheet.
+3. Send the same test event to both active tokens and verify the system presents one notification at the best destination.
+4. Validate phone locked/watch worn, phone foreground, Watch app foreground, Watch temporarily unreachable, denial/re-enable, token re-registration, and a pruned/unavailable result route.
+5. Confirm no payload or logs contain private result data or tokens.
+6. Confirm all six tmux panes/PIDs, ports `8790–8792`, terminal input readiness, attachments, Jobs history, controls, audio, widgets, and Watch `audio` background mode remain unchanged.
+
+Only after those gates and explicit owner approval may host dispatch be enabled for future scheduler results. Enabling must not send old outbox/history.
+
+### Phase 7 — acceptance and rollback readiness
+
+- Seal a new build artifact, signed-capability audit, redacted registration/provider status, physical acceptance record, and deployment manifest.
+- Record the APNs Key ID and key-file fingerprint, never the private key or device tokens.
+- Document the one-command host dispatch disable path.
+- To roll back, disable host dispatch first, then reinstall an accepted frozen build. Build 143 does not register for APNs and remains a valid behavioral rollback; any still-current registrations stay private and inert while dispatch is disabled.
+- Revoke an APNs key only if compromised or deliberately retired, not as a normal app rollback step.
+
+## Test matrix
+
+### Python/provider and scheduler
+
+- Disabled configuration has zero credential reads, zero enqueue, and zero transport.
+- Exact topic/environment allowlist; mixed or unknown values fail before signing.
+- Generic payload privacy and size; equal payloads for iPhone and Watch.
+- JWT claims/signature, bounded reuse, key owner/mode, and missing-tool failures.
+- Registration body bounds, action-specific fields, token syntax, platform-derived topic, installation rotation, deactivation/invalidation token removal, and no token logging.
+- Atomic result/outbox insertion, no silent-result alert, no historical backfill, bounded cascade, and one delivery per active slot.
+- Accepted, permanent failure, invalidation timestamp, definite retry, attempt cap, expiry, and ambiguous no-retry behavior.
+- Concurrent scheduler invocations cannot double-dispatch.
+- Sanitized status never exposes secret fields.
+
+### Swift/JARVISKit and apps
+
+- No permission request or APNs registration before explicit opt-in.
+- Authorization transitions for not-determined, granted, provisional, denied, and settings-changed states.
+- Current entitlement environment extraction and fail-closed mismatch handling.
+- Token callbacks normalize only valid bytes and never persist/log token text.
+- Watch-to-phone registration envelope validation, unreachable behavior, and no token in application context/state caches.
+- Host-key change, unavailable credentials, backgrounding, timeout, malformed acknowledgement, and idempotent registration retry.
+- Foreground presentation completion exactly once.
+- Exact payload route validation and rejection of missing, zero, fractional, overflow, wrong-version, wrong-route, or output-bearing payloads.
+- iPhone Jobs routing, Watch sheet routing, unavailable result fallback, and unchanged dashboard gestures.
+- Settings status distinguishes local authorization from host registration and provider activation.
+
+### Signed artifact and physical devices
+
+- `aps-environment` exists only on iPhone and Watch app executables and matches each profile.
+- Both exact topics are allowed by provider configuration and key scope.
+- Widgets have no push entitlement.
+- Watch `UIBackgroundModes` remains exactly `audio`.
+- No `.p8`, APNs token, provider JWT, Key ID-bearing config, or private database is included in source/archive manifests.
+- Sandbox and production are never mixed.
+- Real APNs acceptance, system best-destination behavior, foreground behavior, and token rotation are physical-device-only acceptance gates.
+
+## Expected source touchpoints
+
+Host:
+
+- `.pi/scheduler/apns_provider.py`
+- `.pi/scheduler/runner.py`
+- new `.pi/scheduler/apns_registration.py`
+- `.pi/scheduler/tests/test_apns_provider.py`
+- `.pi/scheduler/tests/test_runner.py`
+- `jarvisd/jarvisd.py` and tests for sanitized read-only status
+- `.pi/smoke-test.sh`, `.gitignore`, and scheduler/rebuild documentation
+
+Shared/app:
+
+- `JARVISKit/Sources/JARVISKit/ScheduledJobNotificationRoute.swift`
+- new pure registration/status models under `JARVISKit`
+- `JARVIS/JARVISApp.swift`, notification coordinator/delegate, Settings, `AppState`, and tests
+- `JARVISWatch/JARVISWatchApp.swift`, notification coordinator/delegate, `WatchConnectView`, bounded result sheet, and tests
+- `JARVISKit/Sources/JARVISKit/WatchBridge.swift`
+- iPhone host-key-pinned SSH transport refactored only enough to support the fixed one-shot registration command
+- `project.yml`, generated `JARVIS.xcodeproj`, iPhone/Watch entitlements, verifier, app README, and this canonical documentation
+
+No terminald, room-audio, widget implementation, Pi lifecycle extension, tmux configuration, attachment protocol, or new network listener should need behavioral changes.
+
+## Definition of done
+
+- Build 143 and its evidence are unchanged.
+- A new exact signed build contains paid-team push capability only for the iPhone and Watch apps.
+- Permission and registration occur only after explicit owner actions.
+- Exactly one approved iPhone token and one approved Watch token are securely registered for one matching environment.
+- Every future persisted non-silent result creates at most one event with independent iPhone/Watch delivery state; no old result is backfilled.
+- The APNs payload is generic, private, bounded, and identical across both topics.
+- Apple, not JARVIS, selects the best presentation when both targets receive the event.
+- iPhone and Watch taps reach the intended retained result without adding write actions.
+- Definite transient failures retry within bounds; ambiguous sends do not retry; invalid tokens are retired safely.
+- Provider disable is immediate, fail-closed, and leaves durable Jobs history intact.
+- All automated, signed-artifact, and owner-driven physical gates pass on only the approved devices.
+
+## Apple references
+
+- [Enabling and receiving notifications on watchOS](https://developer.apple.com/documentation/watchos-apps/enabling-and-receiving-notifications)
+- [Registering your app with APNs](https://developer.apple.com/documentation/usernotifications/registering-your-app-with-apns)
+- [Handling notifications and notification-related actions](https://developer.apple.com/documentation/usernotifications/handling-notifications-and-notification-related-actions)
+- [Setting up a remote notification server](https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server)
+- [Establishing a token-based connection to APNs](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns)
+- [Communicating with APNs using authentication tokens](https://developer.apple.com/help/account/capabilities/communicate-with-apns-using-authentication-tokens/)
+- [Enabling App ID capabilities and regenerating affected profiles](https://developer.apple.com/help/account/identifiers/enable-app-capabilities/)

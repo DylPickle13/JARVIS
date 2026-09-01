@@ -5,7 +5,9 @@ import JARVISKit
 struct WatchConnectView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = WatchConnectModel()
+    @StateObject private var notifications = WatchPushNotificationCoordinator.shared
     @State private var siriTerminalRequestSequence = 0
+    @State private var pushResultRoute: WatchPushResultRoute?
 
     var body: some View {
         // TimelineView gives frontmost Always On snapshots a supported periodic
@@ -34,6 +36,22 @@ struct WatchConnectView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: JARVISSiriNavigation.terminalRequestNotification)) { _ in
             openSiriTerminalIfRequested()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .jarvisWatchPushRoute)) { notification in
+            guard let sequence = notification.userInfo?["resultSequence"] as? Int, sequence > 0 else { return }
+            pushResultRoute = WatchPushResultRoute(sequence: sequence)
+            notifications.consumePendingResultSequence()
+        }
+        .onChange(of: notifications.pendingResultSequence) { _, sequence in
+            guard let sequence, sequence > 0 else { return }
+            pushResultRoute = WatchPushResultRoute(sequence: sequence)
+            notifications.consumePendingResultSequence()
+        }
+        .sheet(isPresented: $notifications.showPermissionExplanation) {
+            WatchNotificationPermissionView(notifications: notifications)
+        }
+        .sheet(item: $pushResultRoute) { route in
+            WatchJobResultSheet(model: model, sequence: route.sequence)
         }
         .onOpenURL { url in
             guard JARVISSiriNavigation.isTerminalURL(url) else { return }
@@ -517,6 +535,22 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         }
     }
 
+    func scheduledJobResult(sequence: Int) async throws -> ScheduledJobResult {
+        guard sequence > 0, let endpoint = store.endpoint else {
+            throw JarvisError.transport("The private Jobs endpoint is unavailable.")
+        }
+        let response = try await client.scheduledJobResults(
+            endpoint,
+            after: sequence - 1,
+            limit: 100,
+            jobId: nil
+        )
+        guard response.ok, let result = response.results.first(where: { $0.sequence == sequence }) else {
+            throw JarvisError.transport("This retained job result is unavailable.")
+        }
+        return result
+    }
+
     private func acceptRelayResult(
         _ response: Result<CommandResult, WatchRelayFailure>,
         failureMessage: String
@@ -584,6 +618,114 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         requestID: String
     ) {}
 
+    nonisolated func watchBridgeDidReceivePushRegistration(
+        _ bridge: WatchBridge,
+        registration: JARVISPushRegistration
+    ) {}
+
+    nonisolated func watchBridgeDidReceivePushPreference(
+        _ bridge: WatchBridge,
+        enabled: Bool
+    ) {
+        Task { @MainActor in
+            await WatchPushNotificationCoordinator.shared.receiveDesiredEnabled(enabled)
+        }
+    }
+}
+
+private struct WatchNotificationPermissionView: View {
+    @ObservedObject var notifications: WatchPushNotificationCoordinator
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 10) {
+                Image(systemName: "bell.badge.fill")
+                    .font(.title2)
+                    .foregroundStyle(.green)
+                Text("JARVIS Job Alerts")
+                    .font(.headline)
+                Text("Allow generic alerts when a retained scheduled job result is ready. Result details stay in private Jobs history.")
+                    .font(.caption2)
+                    .multilineTextAlignment(.center)
+                Button("Allow Notifications") {
+                    Task { await notifications.authorizeFromExplanation() }
+                }
+                .buttonStyle(.borderedProminent)
+                Button("Not Now") {
+                    notifications.deferAuthorization()
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding()
+        }
+    }
+}
+
+private struct WatchPushResultRoute: Identifiable {
+    let sequence: Int
+    var id: Int { sequence }
+}
+
+private struct WatchJobResultSheet: View {
+    @ObservedObject var model: WatchConnectModel
+    let sequence: Int
+    @State private var result: ScheduledJobResult?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                if let result {
+                    Text(result.title)
+                        .font(.headline)
+                    Text(result.status.uppercased())
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(result.status == "success" ? .green : .orange)
+                    Text(result.summary)
+                        .font(.caption)
+                    if let output = result.output, !output.isEmpty {
+                        Divider()
+                        Text(bounded(output, limit: 4_000))
+                            .font(.caption2.monospaced())
+                    }
+                    if let error = result.error, !error.isEmpty {
+                        Divider()
+                        Text(bounded(error, limit: 1_000))
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.orange)
+                    }
+                } else if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button("Retry") {
+                        Task { await load() }
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    ProgressView()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+        }
+        .navigationTitle("Job Result")
+        .task { await load() }
+    }
+
+    private func load() async {
+        errorMessage = nil
+        do {
+            result = try await model.scheduledJobResult(sequence: sequence)
+        } catch {
+            errorMessage = "Result unavailable — check Jobs on iPhone."
+        }
+    }
+
+    private func bounded(_ value: String, limit: Int) -> String {
+        guard value.count > limit else { return value }
+        return String(value.prefix(limit)) + "\n…"
+    }
 }
 
 enum WatchFormat {

@@ -2,6 +2,31 @@ import Foundation
 import SwiftUI
 import WidgetKit
 import JARVISKit
+import UIKit
+import UserNotifications
+
+@MainActor
+final class JARVISAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = PushNotificationCoordinator.shared
+        return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { @MainActor in
+            PushNotificationCoordinator.shared.didRegisterForRemoteNotifications(deviceToken: deviceToken)
+        }
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        Task { @MainActor in
+            PushNotificationCoordinator.shared.didFailToRegisterForRemoteNotifications(error)
+        }
+    }
+}
 
 private enum PhoneNeuralCoreWidgetReloadCoordinator {
     private static let lastRequestedAtKey = "jarvis.phone-neural-core-widget.last-reload-request-at"
@@ -23,8 +48,10 @@ private enum PhoneNeuralCoreWidgetReloadCoordinator {
 
 @main
 struct JARVISApp: App {
+    @UIApplicationDelegateAdaptor(JARVISAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var app = AppState()
+    @StateObject private var notifications = PushNotificationCoordinator.shared
     @StateObject private var piTerminal: PiTerminalController
 
     init() {
@@ -40,10 +67,12 @@ struct JARVISApp: App {
         WindowGroup {
             RootTabView()
                 .environmentObject(app)
+                .environmentObject(notifications)
                 .environmentObject(piTerminal)
                 .tint(Color.accentColor)
                 .task {
                     app.startWatchBridge()
+                    notifications.configure(app: app)
                     app.sceneDidBecomeActive()
                     piTerminal.sceneDidBecomeActive()
                 }
@@ -72,6 +101,7 @@ struct JARVISApp: App {
 private struct RootTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var notifications: PushNotificationCoordinator
     @EnvironmentObject var piTerminal: PiTerminalController
     @State private var selection: AppSection = .home
     @State private var requestedJobResultSequence: Int?
@@ -139,6 +169,18 @@ private struct RootTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: JARVISSiriNavigation.terminalRequestNotification)) { _ in
             openSiriTerminalIfRequested()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .jarvisPushRoute)) { notification in
+            guard let sequence = notification.userInfo?["resultSequence"] as? Int, sequence > 0 else { return }
+            selection = .jobs
+            requestedJobResultSequence = sequence
+            notifications.consumePendingResultSequence()
+        }
+        .onChange(of: notifications.pendingResultSequence) { _, sequence in
+            guard let sequence, sequence > 0 else { return }
+            selection = .jobs
+            requestedJobResultSequence = sequence
+            notifications.consumePendingResultSequence()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { openSiriTerminalIfRequested() }

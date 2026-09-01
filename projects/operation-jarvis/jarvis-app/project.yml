@@ -57,6 +57,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.operation-jarvis.jarvis
         INFOPLIST_FILE: JARVIS/Info.plist
+        CODE_SIGN_ENTITLEMENTS: JARVIS/JARVIS.entitlements
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -126,6 +127,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.operation-jarvis.jarvis.watchkitapp
         PRODUCT_NAME: JARVISWatch
         INFOPLIST_FILE: JARVISWatch/Info.plist
+        CODE_SIGN_ENTITLEMENTS: JARVISWatch/JARVISWatch.entitlements
         GENERATE_INFOPLIST_FILE: NO
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: WatchAppIcon

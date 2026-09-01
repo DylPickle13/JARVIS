@@ -981,6 +981,43 @@ class DaemonUnitTests(unittest.TestCase):
         finally:
             jarvisd.EVENTS = old_events
 
+    def test_notification_status_is_strict_sanitized_and_fixed_command(self):
+        payload = {
+            "ok": True,
+            "providerConfigured": True,
+            "dispatchEnabled": False,
+            "environment": "development",
+            "devices": {
+                "iphone": {"registered": True, "registeredAt": "2026-09-01T00:00:00Z", "lastAcceptedAt": None},
+                "watch": {"registered": False, "registeredAt": None, "lastAcceptedAt": None},
+            },
+            "pendingCount": 2,
+            "failedCount": 1,
+            "ambiguousCount": 0,
+            "lastOutcome": "pending",
+            "lastAttemptAt": "2026-09-01T00:01:00Z",
+            "lastAcceptedAt": None,
+            "error": "bounded public error",
+            "deviceToken": "ab" * 32,
+            "privatePath": "/Users/example/private",
+        }
+        completed = mock.Mock(returncode=0, stdout=json.dumps(payload), stderr="private stderr")
+        with mock.patch.object(jarvisd, "SCHEDULER_RUNNER", Path(__file__)), \
+             mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
+            result = jarvisd._notification_status()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["devices"]["iphone"]["registered"], True)
+        self.assertNotIn("deviceToken", result)
+        self.assertNotIn("privatePath", result)
+        self.assertEqual(run.call_args.args[0][-2:], ["--json", "notification-status"])
+
+        payload["devices"]["watch"]["deviceToken"] = "cd" * 32
+        # Nested extra fields are ignored by an explicit public reconstruction.
+        self.assertNotIn("deviceToken", json.dumps(jarvisd._public_notification_status(payload)))
+        payload["pendingCount"] = -1
+        with self.assertRaisesRegex(ValueError, "count"):
+            jarvisd._public_notification_status(payload)
+
     def test_public_scheduled_jobs_recomputes_summary_and_filters_private_fields(self):
         result = jarvisd._public_scheduled_jobs({
             "ok": True,
@@ -1280,6 +1317,17 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("does not accept", body.decode())
         rejected.assert_not_called()
+
+    def test_notification_status_endpoint_is_authenticated_and_read_only(self):
+        response = jarvisd._notification_status_unavailable()
+        with mock.patch.object(jarvisd, "_notification_status", return_value=response) as status_call:
+            status, _, body = self.request("GET", "/api/v1/notification-status", token="api-secret")
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(body)["ok"])
+        status_call.assert_called_once_with()
+
+        status, _, _ = self.request("GET", "/api/v1/notification-status")
+        self.assertEqual(status, 401)
 
     def test_scheduled_jobs_endpoint_returns_sanitized_contract(self):
         response = {

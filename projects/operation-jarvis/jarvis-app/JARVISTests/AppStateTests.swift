@@ -5,6 +5,26 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testNativeNotificationRouteAcceptsOnlyGenericVersionedJobsPayload() {
+        let accepted = PushNotificationCoordinator.route(from: [
+            "route": "scheduled-job-result",
+            "routeVersion": 1,
+            "resultSequence": "41",
+            "jobName": "ignored private field",
+        ])
+        XCTAssertEqual(accepted?.resultSequence, 41)
+        XCTAssertNil(PushNotificationCoordinator.route(from: [
+            "route": "scheduled-job-result",
+            "routeVersion": 2,
+            "resultSequence": "41",
+        ]))
+        XCTAssertNil(PushNotificationCoordinator.route(from: [
+            "route": "scheduled-job-result",
+            "routeVersion": 1,
+            "resultSequence": 0,
+        ]))
+    }
+
     func testPiSessionIndicatorsPresentEveryLifecycleAndFailClosedUnknown() {
         let expected: [(PiSessionLifecycle, String, PiSessionIndicatorTone)] = [
             (.offline, "Offline", .offline),

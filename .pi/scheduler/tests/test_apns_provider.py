@@ -65,13 +65,22 @@ class APNsProviderTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def configuration(self, *, enabled: bool = True, production: bool = False):
+    def configuration(self, *, enabled: bool = True, environment: str = "development"):
         return self.apns.APNsConfiguration(
             team_id="TEAMID1234",
             key_id="KEYID12345",
             key_path=self.key_path,
             enabled=enabled,
-            production=production,
+            environment=environment,
+        )
+
+    def send(self, provider, *, topic=None, sequence=1, token="ab" * 32, job_id="job_fixture"):
+        return provider.send_alert(
+            topic=topic or self.apns.IPHONE_APNS_TOPIC,
+            device_token=token,
+            result_sequence=sequence,
+            job_id=job_id,
+            apns_id="123e4567-e89b-42d3-a456-426614174000",
         )
 
     def test_provider_token_contains_only_required_claims_and_raw_signature(self) -> None:
@@ -95,46 +104,55 @@ class APNsProviderTests(unittest.TestCase):
             self.configuration(enabled=False), signer=signer, transport=transport
         )
         with self.assertRaisesRegex(self.apns.APNsConfigurationError, "disabled"):
-            provider.send_alert(
-                device_token="ab" * 32,
-                result_sequence=1,
-                job_id="job_fixture",
-            )
+            self.send(provider)
         self.assertEqual(signer.messages, [])
         self.assertEqual(transport.requests, [])
 
-    def test_alert_is_watch_only_generic_and_accepted(self) -> None:
+    def test_alert_is_generic_for_both_exact_topics_and_accepted(self) -> None:
         response = self.apns.APNsResponse(200, {"apns-id": "opaque"}, b"")
         transport = FakeTransport(response=response)
         signer = FakeSigner()
         provider = self.apns.APNsProvider(
-            self.configuration(production=True),
+            self.configuration(environment="production"),
             signer=signer,
             transport=transport,
             now=lambda: 1_800_000_000,
         )
 
-        result = provider.send_alert(
-            device_token="ab" * 32,
-            result_sequence=41,
-            job_id="private-job-id",
-        )
+        for topic in (self.apns.IPHONE_APNS_TOPIC, self.apns.WATCH_APNS_TOPIC):
+            result = self.send(provider, topic=topic, sequence=41, job_id="private-job-id")
+            self.assertTrue(result.accepted)
 
-        self.assertTrue(result.accepted)
-        self.assertEqual(len(transport.requests), 1)
-        request = transport.requests[0]
-        self.assertEqual(request.host, self.apns.APNS_PRODUCTION_HOST)
-        self.assertEqual(request.headers["apns-topic"], self.apns.WATCH_APNS_TOPIC)
-        self.assertEqual(request.headers["apns-push-type"], "alert")
-        self.assertEqual(request.headers["apns-expiration"], "1800000300")
-        payload = json.loads(request.body)
-        self.assertEqual(payload["resultSequence"], "41")
-        self.assertEqual(payload["aps"]["alert"]["body"], self.apns.GENERIC_ALERT_BODY)
-        serialized = request.body.decode("utf-8")
-        self.assertNotIn("private-job-id", serialized)
-        self.assertNotIn("output", serialized.lower())
-        self.assertNotIn("prompt", serialized.lower())
-        self.assertTrue(request.headers["apns-collapse-id"].startswith("jarvis-"))
+        self.assertEqual(len(transport.requests), 2)
+        for request, topic in zip(
+            transport.requests,
+            (self.apns.IPHONE_APNS_TOPIC, self.apns.WATCH_APNS_TOPIC),
+            strict=True,
+        ):
+            self.assertEqual(request.host, self.apns.APNS_PRODUCTION_HOST)
+            self.assertEqual(request.headers["apns-topic"], topic)
+            self.assertEqual(request.headers["apns-id"], "123e4567-e89b-42d3-a456-426614174000")
+            self.assertEqual(request.headers["apns-push-type"], "alert")
+            self.assertEqual(request.headers["apns-expiration"], "1800000300")
+            payload = json.loads(request.body)
+            self.assertEqual(payload["route"], "scheduled-job-result")
+            self.assertEqual(payload["routeVersion"], 1)
+            self.assertEqual(payload["resultSequence"], "41")
+            self.assertEqual(payload["aps"]["alert"]["body"], self.apns.GENERIC_ALERT_BODY)
+            serialized = request.body.decode("utf-8")
+            self.assertNotIn("private-job-id", serialized)
+            self.assertNotIn("output", serialized.lower())
+            self.assertNotIn("prompt", serialized.lower())
+            self.assertTrue(request.headers["apns-collapse-id"].startswith("jarvis-"))
+
+    def test_unknown_topic_fails_before_signing_or_transport(self) -> None:
+        signer = FakeSigner()
+        transport = FakeTransport()
+        provider = self.apns.APNsProvider(self.configuration(), signer=signer, transport=transport)
+        with self.assertRaisesRegex(self.apns.APNsConfigurationError, "topic"):
+            self.send(provider, topic="com.operation-jarvis.jarvis.widget")
+        self.assertEqual(signer.messages, [])
+        self.assertEqual(transport.requests, [])
 
     def test_provider_token_is_reused_only_within_bounded_age(self) -> None:
         now = [1_800_000_000]
@@ -144,27 +162,24 @@ class APNsProviderTests(unittest.TestCase):
             self.configuration(), signer=signer, transport=transport, now=lambda: now[0]
         )
         for sequence in (1, 2):
-            provider.send_alert(device_token="cd" * 32, result_sequence=sequence, job_id="job_fixture")
+            self.send(provider, sequence=sequence, token="cd" * 32)
         self.assertEqual(len(signer.messages), 1)
         now[0] += self.apns.MAX_PROVIDER_TOKEN_AGE_SECONDS
-        provider.send_alert(device_token="cd" * 32, result_sequence=3, job_id="job_fixture")
+        self.send(provider, sequence=3, token="cd" * 32)
         self.assertEqual(len(signer.messages), 2)
 
     def test_unregistered_response_invalidates_without_exposing_token(self) -> None:
         transport = FakeTransport(
-            response=self.apns.APNsResponse(410, {}, b'{"reason":"Unregistered","timestamp":1800000000}')
+            response=self.apns.APNsResponse(410, {}, b'{"reason":"Unregistered","timestamp":1800000000000}')
         )
         provider = self.apns.APNsProvider(
             self.configuration(), signer=FakeSigner(), transport=transport
         )
-        result = provider.send_alert(
-            device_token="ef" * 32,
-            result_sequence=9,
-            job_id="job_fixture",
-        )
+        result = self.send(provider, sequence=9, token="ef" * 32)
         self.assertEqual(result.outcome, "failed")
         self.assertEqual(result.reason, "Unregistered")
         self.assertTrue(result.invalidate_token)
+        self.assertEqual(result.invalidation_timestamp, 1_800_000_000)
 
     def test_retry_and_ambiguous_transport_are_classified_without_network(self) -> None:
         retry = self.apns.classify_response(
@@ -177,11 +192,7 @@ class APNsProviderTests(unittest.TestCase):
         provider = self.apns.APNsProvider(
             self.configuration(), signer=FakeSigner(), transport=transport
         )
-        ambiguous = provider.send_alert(
-            device_token="12" * 32,
-            result_sequence=10,
-            job_id="job_fixture",
-        )
+        ambiguous = self.send(provider, sequence=10, token="12" * 32)
         self.assertEqual(ambiguous.outcome, "ambiguous")
         self.assertEqual(ambiguous.reason, "transport-error")
 
@@ -192,7 +203,7 @@ class APNsProviderTests(unittest.TestCase):
             self.configuration(), signer=FakeSigner(), transport=transport
         )
         with self.assertRaisesRegex(self.apns.APNsConfigurationError, "owner-only"):
-            provider.send_alert(device_token="34" * 32, result_sequence=1, job_id="job_fixture")
+            self.send(provider, token="34" * 32)
         self.assertEqual(transport.requests, [])
 
     def test_der_es256_signature_is_converted_to_fixed_width_raw_values(self) -> None:

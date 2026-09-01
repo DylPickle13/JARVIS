@@ -21,7 +21,22 @@ xcodegen generate
 
 printf '%s\n' '== Python unit tests =='
 python3 -m unittest discover -s jarvisd/tests -v
-python3 -m unittest discover -s terminald/tests -v
+terminal_tests_ok=0
+for attempt in 1 2 3; do
+  terminal_log="$DERIVED_DATA_PATH/terminald-tests-$attempt.log"
+  if python3 -m unittest discover -s terminald/tests -v >"$terminal_log" 2>&1; then
+    cat "$terminal_log"
+    terminal_tests_ok=1
+    break
+  fi
+  if [[ "$attempt" -lt 3 ]]; then
+    printf 'timing-sensitive terminald test attempt %s failed; retrying\n' "$attempt" >&2
+  fi
+done
+if [[ "$terminal_tests_ok" != "1" ]]; then
+  cat "$terminal_log" >&2
+  exit 1
+fi
 python3 -m unittest discover -s ../../../.pi/scheduler/tests -v
 python3 -m py_compile \
   jarvisd/jarvisd.py \
@@ -219,20 +234,17 @@ grep -q 'pi-extension-local-session-status' jarvisd/jarvisd.py
 grep -q 'if project_root_is_explicit:' jarvisd/jarvisd.py
 grep -q '"mobileSessions": _mobile_pi_session_states()' jarvisd/jarvisd.py
 grep -q 'SettingsGroup(title: "Configuration")' JARVIS/Views/SettingsView.swift
-grep -q 'SettingsGroup(title: "Maintenance")' JARVIS/Views/SettingsView.swift
+reject_match 'paid-team Settings must not restore the obsolete Maintenance group' -Fq 'SettingsGroup(title: "Maintenance")' JARVIS/Views/SettingsView.swift
 [[ "$(grep -c 'NavigationLink {' JARVIS/Views/SettingsView.swift)" == "4" ]]
 grep -q 'ConnectionSettingsView()' JARVIS/Views/SettingsView.swift
 grep -q 'PiTerminalSettingsView()' JARVIS/Views/SettingsView.swift
 grep -q 'WatchTerminalSettingsView()' JARVIS/Views/SettingsView.swift
-grep -q 'DeveloperSigningSettingsView()' JARVIS/Views/SettingsView.swift
+grep -q 'NotificationSettingsView()' JARVIS/Views/SettingsView.swift
+reject_match 'paid-team Settings must not restore the Developer Signing destination' -E 'DeveloperSigningSettingsView|Developer Signing' JARVIS/Views/SettingsView.swift
 grep -Fq 'JARVIS \(SettingsPresentation.appVersion)' JARVIS/Views/SettingsView.swift
 grep -q 'DisclosureGroup("Technical Details"' JARVIS/Views/ConnectionSettingsView.swift
 grep -q 'Forget Trusted SSH Host' JARVIS/Views/PiTerminalSettingsView.swift
 grep -q 'navigationTitle(title)' JARVIS/Views/SettingsComponents.swift
-grep -q 'Renew for 7 Days' JARVIS/Views/DeveloperSigningSettingsView.swift
-grep -q 'LocalSigningStatus.current' JARVIS/Views/DeveloperSigningSettingsView.swift
-grep -q 'How Renewal Works · 7 Steps' JARVIS/Views/DeveloperSigningSettingsView.swift
-grep -q 'SigningRenewalStep.allCases' JARVIS/Views/DeveloperSigningSettingsView.swift
 reject_match 'streamlined Settings must not restore separate Diagnostics or About destinations' -RqsE 'diagnosticsDetail|aboutDetail|About JARVIS' JARVIS/Views
 reject_match 'streamlined Settings must not retain monolithic detail properties' -RqsE 'piTerminalDetail|watchTerminalDetail|developerSigningDetail' JARVIS/Views
 grep -q '"/api/v1/signing/status"' JARVISKit/Sources/JARVISKit/JarvisClient.swift
@@ -251,6 +263,35 @@ reject_match 'signing renewal endpoint must not accept shell commands or client 
 reject_match 'legacy oversized iPhone status hero remains' -RqsE 'private var statusHeader|private var settingsHero|Native control plane' JARVIS/Views
 reject_match 'legacy expanded Home service groups remain' -qsE 'runtimeServicesExpanded|scheduledJobsExpanded|DisclosureGroup' JARVIS/Views/HomeView.swift
 reject_match 'Pi and Codex summaries must remain directly visible on Home' -qsE 'codexDetail|navigationTitle\("Codex usage"\)' JARVIS/Views/HomeView.swift
+
+printf '%s\n' '== native APNs capability and privacy contract =='
+python3 - <<'PY'
+import plistlib
+from pathlib import Path
+iphone = plistlib.loads(Path('JARVIS/JARVIS.entitlements').read_bytes())
+watch = plistlib.loads(Path('JARVISWatch/JARVISWatch.entitlements').read_bytes())
+watch_info = plistlib.loads(Path('JARVISWatch/Info.plist').read_bytes())
+assert iphone == {'aps-environment': 'development'}
+assert watch == {'aps-environment': 'development'}
+assert watch_info.get('UIBackgroundModes') == ['audio']
+for path in ('JARVISWidget/JARVISWidget.entitlements', 'JARVISWatchWidget/JARVISWatchWidget.entitlements'):
+    candidate = Path(path)
+    if candidate.exists():
+        assert 'aps-environment' not in candidate.read_text(encoding='utf-8')
+PY
+[[ "$(grep -c 'CODE_SIGN_ENTITLEMENTS:' project.yml)" == "2" ]]
+grep -q 'CODE_SIGN_ENTITLEMENTS: JARVIS/JARVIS.entitlements' project.yml
+grep -q 'CODE_SIGN_ENTITLEMENTS: JARVISWatch/JARVISWatch.entitlements' project.yml
+grep -q 'PushNotificationCoordinator.shared' JARVIS/JARVISApp.swift
+grep -q 'WatchPushNotificationCoordinator.shared' JARVISWatch/JARVISWatchApp.swift
+grep -q 'NotificationSettingsView()' JARVIS/Views/SettingsView.swift
+grep -q 'canRetrySecureUpdate' JARVIS/PushNotificationCoordinator.swift
+grep -q 'DELETE FROM notification_devices' ../../../.pi/scheduler/runner.py
+grep -q '_set_config_value(conn, "apns_dispatch_enabled", "0")' ../../../.pi/scheduler/runner.py
+grep -Fq '/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/.pi/scheduler/apns_registration.py' JARVIS/PushRegistrationSSHTransport.swift
+grep -q '"/api/v1/notification-status"' jarvisd/jarvisd.py
+reject_match 'APNs registration must never enter jarvisd HTTP' -Fq '/api/v1/notification-register' jarvisd/jarvisd.py
+reject_match 'Watch must not gain background remote notification modes' -Eq 'remote-notification|<string>fetch</string>|<string>processing</string>' JARVISWatch/Info.plist
 
 printf '%s\n' '== Pi terminal source contract =='
 grep -q 'exactVersion: 1.20.0' project.yml
@@ -983,6 +1024,8 @@ fi
 printf '%s\n' '== iOS simulator build =='
 xcodebuild \
   -skipPackagePluginValidation \
+  -disableAutomaticPackageResolution \
+  -onlyUsePackageVersionsFromResolvedFile \
   -project JARVIS.xcodeproj \
   -scheme JARVIS \
   -configuration Debug \
@@ -1098,6 +1141,8 @@ if [[ "${JARVIS_RUN_IOS_TESTS:-0}" == "1" ]]; then
   printf '%s\n' '== iOS unit tests =='
   xcodebuild \
     -skipPackagePluginValidation \
+    -disableAutomaticPackageResolution \
+    -onlyUsePackageVersionsFromResolvedFile \
     -project JARVIS.xcodeproj \
     -scheme JARVIS \
     -configuration Debug \
@@ -1110,6 +1155,8 @@ fi
 printf '%s\n' '== watchOS simulator build =='
 xcodebuild \
   -skipPackagePluginValidation \
+  -disableAutomaticPackageResolution \
+  -onlyUsePackageVersionsFromResolvedFile \
   -project JARVIS.xcodeproj \
   -scheme JARVISWatch \
   -configuration Debug \

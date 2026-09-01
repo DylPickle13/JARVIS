@@ -153,6 +153,8 @@ public protocol WatchBridgeDelegate: AnyObject {
     func watchBridgeDidReceivePurifierCommand(_ bridge: WatchBridge, command: WatchPurifierCommand, requestID: String)
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult)
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError)
+    func watchBridgeDidReceivePushRegistration(_ bridge: WatchBridge, registration: JARVISPushRegistration)
+    func watchBridgeDidReceivePushPreference(_ bridge: WatchBridge, enabled: Bool)
 }
 
 public extension WatchBridgeDelegate {
@@ -163,6 +165,8 @@ public extension WatchBridgeDelegate {
     func watchBridgeDidReceivePurifierCommand(_ bridge: WatchBridge, command: WatchPurifierCommand, requestID: String) {}
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult) {}
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError) {}
+    func watchBridgeDidReceivePushRegistration(_ bridge: WatchBridge, registration: JARVISPushRegistration) {}
+    func watchBridgeDidReceivePushPreference(_ bridge: WatchBridge, enabled: Bool) {}
 }
 
 public enum WatchRelayFailure: LocalizedError, Equatable, Sendable {
@@ -348,6 +352,21 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         })
     }
 
+    /// Immediate-only private relay. Registration tokens are never placed in
+    /// application context, UserDefaults, logs, or a retry queue.
+    @discardableResult
+    public func sendPushRegistration(_ registration: JARVISPushRegistration) -> Bool {
+        guard registration.isValid,
+              let payload = try? JSONEncoder().encode(registration) else { return false }
+        return send(WatchMessage(type: "pushRegistration", payload: payload))
+    }
+
+    @discardableResult
+    public func sendPushPreference(enabled: Bool) -> Bool {
+        let payload = try? JSONEncoder().encode(enabled)
+        return send(WatchMessage(type: "pushPreference", payload: payload))
+    }
+
     @discardableResult
     public func sendCommandResult(requestID: String, result: CommandResult) -> Bool {
         let payload = try? JSONEncoder().encode(result)
@@ -519,6 +538,18 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
                   let configuration = try? JSONDecoder().decode(WatchTerminalConfiguration.self, from: data),
                   configuration.isValid else { return }
             delegate?.watchBridgeDidReceiveTerminalConfiguration(self, configuration: configuration)
+        case "pushRegistration":
+            guard validateCommandDelivery(raw, requestID: requestID),
+                  let data = raw["payload"] as? Data,
+                  let registration = try? JSONDecoder().decode(JARVISPushRegistration.self, from: data),
+                  registration.platform == .watch,
+                  registration.isValid else { return }
+            delegate?.watchBridgeDidReceivePushRegistration(self, registration: registration)
+        case "pushPreference":
+            guard validateCommandDelivery(raw, requestID: requestID),
+                  let data = raw["payload"] as? Data,
+                  let enabled = try? JSONDecoder().decode(Bool.self, from: data) else { return }
+            delegate?.watchBridgeDidReceivePushPreference(self, enabled: enabled)
         default:
             break
         }
@@ -633,6 +664,10 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
     public func requestStateData(timeout: Duration = .seconds(15)) async -> Result<Data, WatchRelayFailure> {
         .failure(.unavailable)
     }
+    @discardableResult
+    public func sendPushRegistration(_ registration: JARVISPushRegistration) -> Bool { false }
+    @discardableResult
+    public func sendPushPreference(enabled: Bool) -> Bool { false }
     @discardableResult
     public func sendCommandResult(requestID: String, result: CommandResult) -> Bool { false }
     @discardableResult

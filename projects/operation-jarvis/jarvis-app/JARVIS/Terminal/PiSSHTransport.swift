@@ -137,7 +137,7 @@ enum PiTerminalPresentation {
     }
 }
 
-private enum PiSSHError: LocalizedError {
+enum PiSSHError: LocalizedError {
     case invalidChannelType
     case hostKeyChanged
     case hostKeyRejected
@@ -157,7 +157,7 @@ private enum PiSSHError: LocalizedError {
     }
 }
 
-private final class PiHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unchecked Sendable {
+final class PiHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unchecked Sendable {
     private let host: String
     private let port: Int
     private let trustedKey: String?

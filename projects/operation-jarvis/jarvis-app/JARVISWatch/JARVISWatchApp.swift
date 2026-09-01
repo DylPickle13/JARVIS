@@ -2,6 +2,24 @@ import Foundation
 import SwiftUI
 import WidgetKit
 import JARVISKit
+import UserNotifications
+import WatchKit
+
+@MainActor
+final class JARVISWatchExtensionDelegate: NSObject, WKExtensionDelegate {
+    func applicationDidFinishLaunching() {
+        UNUserNotificationCenter.current().delegate = WatchPushNotificationCoordinator.shared
+        WatchPushNotificationCoordinator.shared.configure()
+    }
+
+    func didRegisterForRemoteNotifications(withDeviceToken deviceToken: Data) {
+        WatchPushNotificationCoordinator.shared.didRegister(deviceToken: deviceToken)
+    }
+
+    func didFailToRegisterForRemoteNotificationsWithError(_ error: Error) {
+        WatchPushNotificationCoordinator.shared.didFailToRegister(error)
+    }
+}
 
 private enum WatchLauncherWidgetReloadPolicy {
     private static let lastRequestedBuildKey = "jarvis.watch-launcher-widget.last-reload-build"
@@ -39,6 +57,7 @@ private enum WatchNeuralCoreWidgetReloadCoordinator {
 
 @main
 struct JARVISWatchApp: App {
+    @WKExtensionDelegateAdaptor(JARVISWatchExtensionDelegate.self) private var extensionDelegate
     @Environment(\.scenePhase) private var scenePhase
 
     init() {

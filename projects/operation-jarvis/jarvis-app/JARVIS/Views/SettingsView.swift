@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// A focused settings index. Configuration, recovery, and signing controls stay
-/// available in dedicated pages without duplicating diagnostics on the root.
+/// A focused settings index for active runtime configuration.
 struct SettingsView: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var notifications: PushNotificationCoordinator
     @EnvironmentObject var piTerminal: PiTerminalController
-    @State private var localSigningStatus = LocalSigningStatus.current()
 
     var body: some View {
         NavigationStack {
@@ -51,23 +50,18 @@ struct SettingsView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                    }
 
-                    SettingsGroup(title: "Maintenance") {
+                        settingsDivider
+
                         NavigationLink {
-                            DeveloperSigningSettingsView()
+                            NotificationSettingsView()
                         } label: {
-                            TimelineView(.periodic(from: .now, by: 60)) { context in
-                                SettingsNavigationRow(
-                                    title: "Developer Signing",
-                                    systemImage: "checkmark.seal",
-                                    value: signingSummary(at: context.date),
-                                    color: SettingsPresentation.signingColor(
-                                        expiration: localSigningStatus.earliestExpiration,
-                                        at: context.date
-                                    )
-                                )
-                            }
+                            SettingsNavigationRow(
+                                title: "Notifications",
+                                systemImage: "bell.badge.fill",
+                                value: notifications.overallTitle,
+                                color: notifications.overallTitle == "Active" ? JarvisPalette.accent : .secondary
+                            )
                         }
                         .buttonStyle(.plain)
                     }
@@ -85,17 +79,11 @@ struct SettingsView: View {
             .scrollIndicators(.hidden)
             .background(JarvisBackdrop())
             .navigationTitle("Settings")
-            .onAppear { localSigningStatus = .current() }
         }
     }
 
     private var settingsDivider: some View {
         Divider().padding(.leading, 35)
-    }
-
-    private func signingSummary(at date: Date) -> String {
-        guard let expiration = localSigningStatus.earliestExpiration else { return "Unavailable" }
-        return SettingsPresentation.signingCountdown(to: expiration, at: date)
     }
 }
 
@@ -103,5 +91,6 @@ struct SettingsView: View {
     let settings = PiTerminalSettings(defaults: UserDefaults(suiteName: "pi-settings-preview")!)
     return SettingsView()
         .environmentObject(AppState())
+        .environmentObject(PushNotificationCoordinator.shared)
         .environmentObject(PiTerminalController(settings: settings))
 }

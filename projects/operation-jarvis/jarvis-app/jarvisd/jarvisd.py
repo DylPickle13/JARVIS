@@ -1235,6 +1235,104 @@ def _scheduled_jobs() -> dict:
         return _scheduled_jobs_unavailable()
 
 
+def _notification_status_unavailable() -> dict:
+    return {
+        "ok": False,
+        "providerConfigured": False,
+        "dispatchEnabled": False,
+        "environment": None,
+        "devices": {
+            "iphone": {"registered": False, "registeredAt": None, "lastAcceptedAt": None},
+            "watch": {"registered": False, "registeredAt": None, "lastAcceptedAt": None},
+        },
+        "pendingCount": 0,
+        "failedCount": 0,
+        "ambiguousCount": 0,
+        "lastOutcome": None,
+        "lastAttemptAt": None,
+        "lastAcceptedAt": None,
+        "error": "Notification status is unavailable.",
+    }
+
+
+def _public_notification_status(payload: Any) -> dict:
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        raise ValueError("notification runner returned an invalid result")
+
+    def optional_text(value: Any, limit: int) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("notification text is invalid")
+        clean = re.sub(r"[\x00-\x1f\x7f]", "", value).strip()
+        return clean[:limit] or None
+    allowed_outcomes = {None, "pending", "accepted", "suppressed", "failed", "ambiguous"}
+    environment = payload.get("environment")
+    if environment not in {None, "development", "production"}:
+        raise ValueError("notification environment is invalid")
+    last_outcome = payload.get("lastOutcome")
+    if last_outcome not in allowed_outcomes:
+        raise ValueError("notification outcome is invalid")
+    raw_devices = payload.get("devices")
+    if not isinstance(raw_devices, dict) or set(raw_devices) != {"iphone", "watch"}:
+        raise ValueError("notification devices are invalid")
+    devices: dict[str, dict] = {}
+    for platform in ("iphone", "watch"):
+        raw = raw_devices.get(platform)
+        if not isinstance(raw, dict):
+            raise ValueError("notification device is invalid")
+        registered = raw.get("registered")
+        if not isinstance(registered, bool):
+            raise ValueError("notification registration state is invalid")
+        registered_at = optional_text(raw.get("registeredAt"), 64)
+        last_accepted_at = optional_text(raw.get("lastAcceptedAt"), 64)
+        devices[platform] = {
+            "registered": registered,
+            "registeredAt": registered_at,
+            "lastAcceptedAt": last_accepted_at,
+        }
+
+    def count(name: str) -> int:
+        value = payload.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100_000:
+            raise ValueError("notification count is invalid")
+        return value
+
+    return {
+        "ok": True,
+        "providerConfigured": payload.get("providerConfigured") is True,
+        "dispatchEnabled": payload.get("dispatchEnabled") is True,
+        "environment": environment,
+        "devices": devices,
+        "pendingCount": count("pendingCount"),
+        "failedCount": count("failedCount"),
+        "ambiguousCount": count("ambiguousCount"),
+        "lastOutcome": last_outcome,
+        "lastAttemptAt": optional_text(payload.get("lastAttemptAt"), 64),
+        "lastAcceptedAt": optional_text(payload.get("lastAcceptedAt"), 64),
+        "error": optional_text(payload.get("error"), 160),
+    }
+
+
+def _notification_status() -> dict:
+    if not SCHEDULER_RUNNER.is_file():
+        return _notification_status_unavailable()
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(SCHEDULER_RUNNER), "--json", "notification-status"],
+            cwd=str(JARVIS_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=SCHEDULED_JOBS_TIMEOUT,
+        )
+        stdout = proc.stdout or ""
+        if proc.returncode != 0 or len(stdout.encode("utf-8")) > 16 * 1024:
+            return _notification_status_unavailable()
+        return _public_notification_status(json.loads(stdout))
+    except Exception:  # noqa: BLE001
+        return _notification_status_unavailable()
+
+
 def _scheduled_job_results_unavailable() -> dict:
     return {
         "ok": False,
@@ -2603,6 +2701,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._auth_or_respond():
                 return
             self._send(200, _scheduled_jobs())
+            return
+        if path == "/api/v1/notification-status":
+            if not self._auth_or_respond():
+                return
+            self._send(200, _notification_status())
             return
         if path == "/api/v1/scheduled-job-results":
             if not self._auth_or_respond():

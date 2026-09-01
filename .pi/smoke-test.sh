@@ -554,6 +554,50 @@ if command -v swiftc >/dev/null 2>&1; then
 fi
 run_check "native attachment shell launchers parse" zsh -n .pi/scripts/pi-attach-picker .pi/scripts/jarvis-pi-ssh
 
+section "Native APNs notification checks"
+require_file "fixed APNs registration helper" ".pi/scheduler/apns_registration.py"
+require_file "iPhone push entitlement" "projects/operation-jarvis/jarvis-app/JARVIS/JARVIS.entitlements"
+require_file "Watch push entitlement" "projects/operation-jarvis/jarvis-app/JARVISWatch/JARVISWatch.entitlements"
+if [[ -n "$PYTHON_BIN" ]]; then
+  run_check "private APNs provider, registration, and scheduler tests" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" -m unittest discover -s .pi/scheduler/tests
+  run_check "native APNs capability and privacy assertions" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" - <<'PY'
+from pathlib import Path
+import plistlib
+import subprocess
+
+root = Path('projects/operation-jarvis/jarvis-app')
+iphone = plistlib.loads((root / 'JARVIS/JARVIS.entitlements').read_bytes())
+watch = plistlib.loads((root / 'JARVISWatch/JARVISWatch.entitlements').read_bytes())
+assert iphone == {'aps-environment': 'development'}
+assert watch == {'aps-environment': 'development'}
+watch_info = plistlib.loads((root / 'JARVISWatch/Info.plist').read_bytes())
+assert watch_info.get('UIBackgroundModes') == ['audio']
+for forbidden in ('remote-notification', 'fetch', 'processing'):
+    assert forbidden not in watch_info.get('UIBackgroundModes', [])
+project = (root / 'project.yml').read_text(encoding='utf-8')
+assert project.count('CODE_SIGN_ENTITLEMENTS:') == 2
+assert 'JARVIS/JARVIS.entitlements' in project
+assert 'JARVISWatch/JARVISWatch.entitlements' in project
+settings = (root / 'JARVIS/Views/SettingsView.swift').read_text(encoding='utf-8')
+assert 'DeveloperSigningSettingsView' not in settings
+assert 'Developer Signing' not in settings
+transport = (root / 'JARVIS/PushRegistrationSSHTransport.swift').read_text(encoding='utf-8')
+command = '/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/.pi/scheduler/apns_registration.py'
+assert command in transport
+provider = Path('.pi/scheduler/apns_provider.py').read_text(encoding='utf-8')
+assert 'com.operation-jarvis.jarvis"' in provider
+assert 'com.operation-jarvis.jarvis.watchkitapp"' in provider
+runner = Path('.pi/scheduler/runner.py').read_text(encoding='utf-8')
+assert 'DELETE FROM notification_devices' in runner
+assert '_set_config_value(conn, "apns_dispatch_enabled", "0")' in runner
+coordinator = (root / 'JARVIS/PushNotificationCoordinator.swift').read_text(encoding='utf-8')
+assert 'canRetrySecureUpdate' in coordinator
+tracked = subprocess.check_output(['git', 'ls-files'], text=True).splitlines()
+assert not any(path.endswith('.p8') or Path(path).name.startswith('AuthKey_') for path in tracked)
+print('native APNs capability and privacy assertions passed')
+PY
+fi
+
 section "CLI import/help checks"
 if [[ -n "$PYTHON_BIN" ]]; then
   run_check "Root Python direct dependency import check" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" - <<'PY'

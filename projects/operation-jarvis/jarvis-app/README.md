@@ -4,12 +4,20 @@ Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
 surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier,
 status/telemetry, service control), over LAN or Tailscale.
 
-**Status:** Exact audited Build `0.3.0 (141)` is owner-accepted on the allowlisted
-iPhone and Watch. The accepted responsive-state source is merged into `main`; the
-next candidate expands the existing protected three-session runtime to six fixed
-persistent conversations without replacing Slots 1–3. Checked-in `project.yml`
-intentionally remains Build 127 without `JARVIS_NATIVE_ATTACHMENTS`; candidate
-build numbers and the iPhone-only attachment flag remain owner-artifact-only.
+**Status:** Exact audited Build `0.3.0 (143)` remains owner-accepted and immutable
+on the allowlisted iPhone and Watch. Build 144 is an isolated native-APNs candidate:
+source support is implemented with dispatch disabled by default, while Apple portal
+resources, provider credentials, device registration, signed deployment, and physical
+acceptance remain gated. Checked-in `project.yml` intentionally remains Build 127;
+candidate build numbers and the iPhone-only attachment flag remain artifact-only.
+
+Build 144 adds independent iPhone/Watch APNs registration, an immediate Watch token
+relay, fixed-command host-key-pinned SSH upload, generic privacy-safe Jobs payloads,
+per-device durable delivery state, bounded retry/invalidation policy, exact Jobs tap
+routing, a Watch result sheet, and sanitized Settings health. Provider configuration,
+owner opt-in, and host dispatch remain separate gates. The obsolete in-app
+**Developer Signing** destination is removed now that paid Apple Developer Program
+signing is active; the manual renewal script remains recovery material.
 
 Build 141 makes hardware presentation responsive by preventing routine refreshes
 from invalidating recent authoritative data. The always-on host keeps plugs warm
@@ -624,30 +632,28 @@ keyboard-avoidance and Photos/Files attachment architecture, implementation
 sequence, and physical gates are consolidated in the
 [`docs/README.md` implementation documentation](docs/README.md#iphone-terminal-keyboard-avoidance-and-native-attach-implementation-plan).
 
-## Scope (v5, approved)
+## Scope (v6, approved)
 
 - **In:** smart plugs, air purifier, status and telemetry (Pi session count,
   network, uptime, room audio, scheduler, scheduled jobs, and retained results),
   service start/stop/restart (room-audio server), Neural Core and Open JARVIS
   read-only widgets on iPhone and Watch, the two-turn “Hey JARVIS” App Intent,
   the iPhone SSH-backed Pi terminal with private native Photos/Files attachment
-  staging in enabled signed candidates, and the foreground-only Watch view of
-  that same persistent terminal over the private HTTPS bridge, with LAN and
-  Tailscale remote access.
+  staging in enabled signed candidates, the foreground-only Watch view of that
+  same persistent terminal over the private HTTPS bridge, and generic native
+  APNs scheduled-result alerts on iPhone and Watch, with LAN and Tailscale access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
   word, Raspberry Pi room endpoint, scheduler process mutation and scheduled-
-  job mutation in the read-only first release, active **APNs push + Live
-  Activities** (paid-account only), **oMLX** (nothing), room-display HUD, and
-  phone-voice PWA.
+  job mutation, Live Activities, silent push/background fetch, **oMLX**
+  (nothing), room-display HUD, and phone-voice PWA.
 
 ## Devices & distribution
 
 - iPhone 11 (iOS 26) + Apple Watch Series 11 46 mm (watchOS 26).
-- Free Apple ID (no $99 yet): 7-day provisioning expiry. Build 104 exposes the
-  earliest iPhone/Watch component expiry and a user-confirmed Mac-side renewal
-  under **Settings → Developer Signing**; `scripts/renew-free-signing.sh` is its
-  fixed allowlisted action. `scripts/redeploy-jarvis-app.sh` remains available
-  for iPhone-only development.
+- Individual Apple Developer Program, Team ID `5GB5BU49Q8`. Build 144 removes
+  the obsolete in-app Developer Signing destination. The fixed
+  `scripts/renew-free-signing.sh` remains manual recovery material, and
+  `scripts/redeploy-jarvis-app.sh` remains available for intentional development.
 - Simulator validation is restricted to exactly one iPhone 11 and one Apple
   Watch Series 11 (46mm) device; physical devices remain the release gate.
 

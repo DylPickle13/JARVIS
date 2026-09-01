@@ -116,6 +116,26 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertEqual(result.jobs.first?.runCount, 4)
     }
 
+    func testNotificationStatusUsesSanitizedReadOnlyEndpoint() async throws {
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/v1/notification-status")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            return MockURLProtocol.response(
+                request,
+                status: 200,
+                body: #"{"ok":true,"providerConfigured":false,"dispatchEnabled":false,"environment":null,"devices":{"iphone":{"registered":true,"registeredAt":"2026-09-01T00:00:00Z","lastAcceptedAt":null},"watch":{"registered":false,"registeredAt":null,"lastAcceptedAt":null}},"pendingCount":0,"failedCount":0,"ambiguousCount":0,"lastOutcome":null,"lastAttemptAt":null,"lastAcceptedAt":null,"error":null}"#
+            )
+        }
+
+        let result = try await client.notificationStatus(endpoint)
+
+        XCTAssertTrue(result.ok)
+        XCTAssertTrue(result.devices.iphone.registered)
+        XCTAssertFalse(result.devices.watch.registered)
+        XCTAssertFalse(result.dispatchEnabled)
+    }
+
     func testScheduledJobResultsEncodeBoundedCursorAndDecodeResult() async throws {
         MockURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/api/v1/scheduled-job-results")

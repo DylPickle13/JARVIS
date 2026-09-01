@@ -36,6 +36,8 @@
 .env
 .env.*
 !.env.example
+*.p8
+AuthKey_*
 download.html
 .DS_Store
 

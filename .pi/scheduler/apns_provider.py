@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Dormant, fail-closed APNs provider for future direct Watch alerts.
+"""Fail-closed APNs provider for private JARVIS scheduled-result alerts.
 
-This module has no import-time side effects and does not register devices,
-request notification permission, read credentials, or contact Apple unless an
-explicitly enabled ``APNsProvider.send_alert`` call is made. The scheduler does
-not import it before paid Apple Developer Program activation.
+The module has no import-time credential or network side effects. Callers must
+explicitly enable and validate a configuration before any signing or transport.
+Device registration, durable outbox state, retry policy, and activation remain
+scheduler-owned.
 """
 
 from __future__ import annotations
@@ -24,16 +24,25 @@ import threading
 import time
 from typing import Callable, Mapping, Protocol
 
+IPHONE_APNS_TOPIC = "com.operation-jarvis.jarvis"
 WATCH_APNS_TOPIC = "com.operation-jarvis.jarvis.watchkitapp"
+APNS_TOPICS = frozenset({IPHONE_APNS_TOPIC, WATCH_APNS_TOPIC})
 APNS_PRODUCTION_HOST = "api.push.apple.com"
 APNS_SANDBOX_HOST = "api.sandbox.push.apple.com"
+APNS_ENVIRONMENTS = frozenset({"development", "production"})
 GENERIC_ALERT_TITLE = "JARVIS Jobs"
 GENERIC_ALERT_BODY = "A scheduled job result is ready."
+ROUTE_NAME = "scheduled-job-result"
+ROUTE_VERSION = 1
 MAX_PROVIDER_TOKEN_AGE_SECONDS = 50 * 60
 DEFAULT_EXPIRATION_SECONDS = 5 * 60
+MAX_PAYLOAD_BYTES = 1024
 DEVICE_TOKEN_RE = re.compile(r"^[0-9A-Fa-f]{64,200}$")
 APPLE_IDENTIFIER_RE = re.compile(r"^[A-Z0-9]{10}$")
 JOB_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+APNS_ID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+)
 KNOWN_REASONS = {
     "BadCollapseId",
     "BadDeviceToken",
@@ -81,12 +90,11 @@ class APNsConfiguration:
     key_id: str
     key_path: Path
     enabled: bool = False
-    production: bool = False
-    topic: str = WATCH_APNS_TOPIC
+    environment: str = "development"
 
     @property
     def host(self) -> str:
-        return APNS_PRODUCTION_HOST if self.production else APNS_SANDBOX_HOST
+        return APNS_PRODUCTION_HOST if self.environment == "production" else APNS_SANDBOX_HOST
 
     def validate_for_send(self) -> None:
         if not self.enabled:
@@ -95,8 +103,8 @@ class APNsConfiguration:
             raise APNsConfigurationError("APNs Team ID is invalid")
         if not APPLE_IDENTIFIER_RE.fullmatch(self.key_id):
             raise APNsConfigurationError("APNs Key ID is invalid")
-        if self.topic != WATCH_APNS_TOPIC:
-            raise APNsConfigurationError("Only the JARVIS Watch APNs topic is permitted")
+        if self.environment not in APNS_ENVIRONMENTS:
+            raise APNsConfigurationError("APNs environment is invalid")
         _validate_private_key_path(self.key_path)
 
 
@@ -122,6 +130,7 @@ class APNsSendResult:
     reason: str
     retry_after_seconds: int | None = None
     invalidate_token: bool = False
+    invalidation_timestamp: int | None = None
 
     @property
     def accepted(self) -> bool:
@@ -231,8 +240,12 @@ def build_provider_token(
     issued_at: int,
     signer: APNsSigner,
 ) -> str:
-    header = _b64url(json.dumps({"alg": "ES256", "kid": key_id}, separators=(",", ":"), sort_keys=True).encode("utf-8"))
-    claims = _b64url(json.dumps({"iat": issued_at, "iss": team_id}, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    header = _b64url(
+        json.dumps({"alg": "ES256", "kid": key_id}, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+    claims = _b64url(
+        json.dumps({"iat": issued_at, "iss": team_id}, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
     signing_input = f"{header}.{claims}".encode("ascii")
     signature = signer.sign(signing_input)
     if len(signature) != 64:
@@ -277,7 +290,9 @@ class CurlHTTP2Transport:
                 f"output = {_curl_config_quote(str(response_path))}",
                 'write-out = "%{http_code}"',
             ]
-            lines.extend(f"header = {_curl_config_quote(f'{name}: {value}')}" for name, value in request.headers.items())
+            lines.extend(
+                f"header = {_curl_config_quote(f'{name}: {value}')}" for name, value in request.headers.items()
+            )
             try:
                 completed = subprocess.run(
                     [self.curl_path, "--config", "-"],
@@ -308,13 +323,12 @@ class CurlHTTP2Transport:
             return APNsResponse(status_code=status_code, headers=response_headers, body=body)
 
 
-def _response_reason(response: APNsResponse) -> str:
+def _response_payload(response: APNsResponse) -> dict:
     try:
         payload = json.loads(response.body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return "unknown"
-    reason = payload.get("reason") if isinstance(payload, dict) else None
-    return reason if isinstance(reason, str) and reason in KNOWN_REASONS else "unknown"
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _retry_after(headers: Mapping[str, str], default: int) -> int:
@@ -326,11 +340,25 @@ def _retry_after(headers: Mapping[str, str], default: int) -> int:
 
 
 def classify_response(response: APNsResponse) -> APNsSendResult:
-    reason = _response_reason(response)
+    payload = _response_payload(response)
+    raw_reason = payload.get("reason")
+    reason = raw_reason if isinstance(raw_reason, str) and raw_reason in KNOWN_REASONS else "unknown"
+    raw_timestamp = payload.get("timestamp")
+    timestamp = None
+    if isinstance(raw_timestamp, int) and not isinstance(raw_timestamp, bool) and raw_timestamp >= 0:
+        # APNs documents token-invalidation timestamps in milliseconds since
+        # the Unix epoch. Normalize once so scheduler comparisons use seconds.
+        timestamp = raw_timestamp // 1_000 if raw_timestamp >= 10_000_000_000 else raw_timestamp
     if response.status_code == 200:
         return APNsSendResult("accepted", 200, "accepted")
     if response.status_code == 410 or reason in TOKEN_INVALIDATION_REASONS:
-        return APNsSendResult("failed", response.status_code, reason, invalidate_token=True)
+        return APNsSendResult(
+            "failed",
+            response.status_code,
+            reason,
+            invalidate_token=True,
+            invalidation_timestamp=timestamp,
+        )
     if response.status_code in RETRYABLE_STATUS_CODES:
         return APNsSendResult(
             "retry",
@@ -339,6 +367,25 @@ def classify_response(response: APNsResponse) -> APNsSendResult:
             retry_after_seconds=_retry_after(response.headers, 30),
         )
     return APNsSendResult("failed", response.status_code, reason)
+
+
+def build_alert_payload(result_sequence: int) -> bytes:
+    if isinstance(result_sequence, bool) or not 0 < result_sequence <= 9_223_372_036_854_775_807:
+        raise APNsConfigurationError("APNs result sequence is invalid")
+    payload = {
+        "aps": {
+            "alert": {"title": GENERIC_ALERT_TITLE, "body": GENERIC_ALERT_BODY},
+            "sound": "default",
+            "thread-id": "jarvis-jobs",
+        },
+        "resultSequence": str(result_sequence),
+        "route": ROUTE_NAME,
+        "routeVersion": ROUTE_VERSION,
+    }
+    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    if len(encoded) > MAX_PAYLOAD_BYTES:
+        raise APNsConfigurationError("APNs payload exceeds the private JARVIS limit")
+    return encoded
 
 
 class APNsProvider:
@@ -374,42 +421,49 @@ class APNsProvider:
             self._provider_token_issued_at = now
             return token
 
-    def send_alert(self, *, device_token: str, result_sequence: int, job_id: str) -> APNsSendResult:
+    def send_alert(
+        self,
+        *,
+        topic: str,
+        device_token: str,
+        result_sequence: int,
+        job_id: str,
+        apns_id: str,
+        expiration: int | None = None,
+    ) -> APNsSendResult:
         self.configuration.validate_for_send()
+        if topic not in APNS_TOPICS:
+            raise APNsConfigurationError("APNs topic is not an allowed JARVIS app topic")
         if not DEVICE_TOKEN_RE.fullmatch(device_token):
             raise APNsConfigurationError("APNs device token is invalid")
-        if isinstance(result_sequence, bool) or not 0 < result_sequence <= 9_223_372_036_854_775_807:
-            raise APNsConfigurationError("APNs result sequence is invalid")
         if not JOB_ID_RE.fullmatch(job_id):
             raise APNsConfigurationError("APNs job identifier is invalid")
+        if not APNS_ID_RE.fullmatch(apns_id):
+            raise APNsConfigurationError("APNs request identifier is invalid")
 
         now = int(self.now())
-        token = self._token(now)
-        payload = {
-            "aps": {
-                "alert": {"title": GENERIC_ALERT_TITLE, "body": GENERIC_ALERT_BODY},
-                "sound": "default",
-                "thread-id": "jarvis-jobs",
-            },
-            "resultSequence": str(result_sequence),
-        }
+        resolved_expiration = expiration if expiration is not None else now + DEFAULT_EXPIRATION_SECONDS
+        if isinstance(resolved_expiration, bool) or not now < resolved_expiration <= now + DEFAULT_EXPIRATION_SECONDS:
+            raise APNsConfigurationError("APNs expiration is invalid")
+        provider_token = self._token(now)
         collapse_id = "jarvis-" + hashlib.sha256(job_id.encode("utf-8")).hexdigest()[:32]
         request = APNsRequest(
             host=self.configuration.host,
             path=f"/3/device/{device_token}",
             headers={
-                "authorization": f"bearer {token}",
-                "apns-topic": self.configuration.topic,
+                "authorization": f"bearer {provider_token}",
+                "apns-topic": topic,
                 "apns-push-type": "alert",
                 "apns-priority": "10",
-                "apns-expiration": str(now + DEFAULT_EXPIRATION_SECONDS),
+                "apns-expiration": str(resolved_expiration),
                 "apns-collapse-id": collapse_id,
+                "apns-id": apns_id.lower(),
                 "content-type": "application/json",
             },
-            body=json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"),
+            body=build_alert_payload(result_sequence),
         )
         try:
             response = self.transport.send(request)
         except APNsTransportError:
-            return APNsSendResult("ambiguous", None, "transport-error", retry_after_seconds=30)
+            return APNsSendResult("ambiguous", None, "transport-error")
         return classify_response(response)
