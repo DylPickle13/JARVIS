@@ -35,6 +35,62 @@ struct PiSessionIndicatorPresentation: Equatable {
     }
 }
 
+enum RuntimeServiceDisplayState: Equatable {
+    case running
+    case scheduled
+    case stopped
+    case unloaded
+    case unconfigured
+    case unknown
+
+    var label: String {
+        switch self {
+        case .running: return "Running"
+        case .scheduled: return "Scheduled"
+        case .stopped: return "Stopped"
+        case .unloaded: return "Unloaded"
+        case .unconfigured: return "Unconfigured"
+        case .unknown: return "Unknown"
+        }
+    }
+
+    var isAvailable: Bool {
+        self == .running || self == .scheduled
+    }
+
+    var color: Color {
+        switch self {
+        case .running: return .green
+        case .scheduled: return JarvisPalette.accent
+        case .unconfigured, .unknown: return JarvisPalette.warning
+        case .stopped, .unloaded: return .secondary
+        }
+    }
+}
+
+enum RuntimeServicePresentation {
+    private static let periodicServiceNames: Set<String> = ["jobs-scheduler"]
+
+    static func state(name: String, service: ServiceActionResult) -> RuntimeServiceDisplayState {
+        guard service.ok else { return .unknown }
+        let isLoaded = service.loaded == true
+        if service.configured == false && !isLoaded { return .unconfigured }
+        if service.running == true { return .running }
+        if periodicServiceNames.contains(name), isLoaded { return .scheduled }
+        return isLoaded ? .stopped : .unloaded
+    }
+
+    static func summary(
+        servicesLoaded: Bool,
+        services: [(name: String, service: ServiceActionResult)]
+    ) -> String {
+        guard servicesLoaded else { return "Loading" }
+        guard !services.isEmpty else { return "No services" }
+        let available = services.filter { state(name: $0.name, service: $0.service).isAvailable }.count
+        return "\(available) of \(services.count) available"
+    }
+}
+
 struct HomeView: View {
     @EnvironmentObject var app: AppState
     let onOpenJobs: () -> Void
@@ -621,10 +677,10 @@ struct HomeView: View {
     }
 
     private var runtimeServiceSummary: String {
-        guard app.servicesLoaded else { return "Loading" }
-        guard !sortedServices.isEmpty else { return "No services" }
-        let running = sortedServices.filter { $0.service.running == true }.count
-        return "\(running) of \(sortedServices.count) running"
+        RuntimeServicePresentation.summary(
+            servicesLoaded: app.servicesLoaded,
+            services: sortedServices
+        )
     }
 
     private var scheduledJobsSummary: String {
@@ -866,15 +922,16 @@ struct HomeView: View {
     }
 
     private func serviceCard(name: String, service: ServiceActionResult) -> some View {
+        let presentation = RuntimeServicePresentation.state(name: name, service: service)
         let isKnown = service.ok
-        let isLoaded = service.loaded == true
-        let isRunning = service.running == true
-        let isUnconfigured = service.configured == false && !isLoaded
+        let isRunning = presentation == .running
+        let isScheduled = presentation == .scheduled
+        let isUnconfigured = presentation == .unconfigured
         let busy = app.isOperationBusy("service:\(name)")
         let allowed = Set(service.allowedActions ?? [])
         let displayName = service.displayName ?? JarvisFormat.displayName(name)
-        let status = !isKnown ? "Unknown" : (isRunning ? "Running" : (isUnconfigured ? "Unconfigured" : (isLoaded ? "Stopped" : "Unloaded")))
-        let color: Color = !isKnown || isUnconfigured ? .orange : (isRunning ? .green : .secondary)
+        let status = presentation.label
+        let color = presentation.color
 
         return Card {
             VStack(alignment: .leading, spacing: 10) {
@@ -889,10 +946,14 @@ struct HomeView: View {
                 }
                 if isRunning, let pid = service.pid {
                     Text("PID \(pid)").font(.caption).foregroundStyle(.tertiary)
+                } else if isScheduled {
+                    Text("Loaded; wakes periodically and exits between checks.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 } else if isUnconfigured {
-                    Text("LaunchAgent configuration is unavailable.").font(.caption).foregroundStyle(.orange)
+                    Text("LaunchAgent configuration is unavailable.").font(.caption).foregroundStyle(JarvisPalette.warning)
                 } else if !isKnown, let error = service.error {
-                    Text(error).font(.caption).foregroundStyle(.orange)
+                    Text(error).font(.caption).foregroundStyle(JarvisPalette.warning)
                 }
 
                 if allowed.isEmpty {

@@ -97,9 +97,7 @@ struct JobsView: View {
 
     private var summaryStrip: some View {
         let enabled = app.lastScheduledJobs.filter(\.enabled).count
-        let issues = app.lastScheduledJobs.filter { job in
-            job.lastStatus == "error" || (job.consecutiveErrors ?? 0) > 0
-        }.count
+        let issues = app.lastScheduledJobs.filter(JobsPresentation.hasCurrentIssue).count
         return HStack(spacing: 0) {
             summaryMetric(
                 value: String(enabled),
@@ -224,9 +222,7 @@ private struct ScheduledJobRow: View {
     private var job: ScheduledJob? { thread.job }
     private var latest: ScheduledJobResult? { thread.latestMessage }
     private var hasFailure: Bool {
-        job?.lastStatus == "error"
-            || (job?.consecutiveErrors ?? 0) > 0
-            || latest?.status == "error"
+        JobsPresentation.hasCurrentIssue(job)
     }
     private var statusColor: Color {
         guard let job else { return .secondary }
@@ -280,7 +276,7 @@ private struct ScheduledJobRow: View {
 
                 Text(latest.map { JobResultRichText.plainText($0.summary) } ?? "No retained messages")
                     .font(.caption)
-                    .foregroundStyle(latest?.status == "error" ? JarvisPalette.warning : .secondary)
+                    .foregroundStyle(hasFailure && latest?.status == "error" ? JarvisPalette.warning : .secondary)
                     .lineLimit(2)
 
                 HStack(spacing: 5) {
@@ -427,7 +423,7 @@ private struct JobThreadHeader: View {
     let thread: ScheduledJobThread
 
     private var hasFailure: Bool {
-        thread.job?.lastStatus == "error" || (thread.job?.consecutiveErrors ?? 0) > 0
+        JobsPresentation.hasCurrentIssue(thread.job)
     }
     private var color: Color {
         guard let job = thread.job else { return .secondary }

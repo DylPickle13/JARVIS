@@ -2138,10 +2138,20 @@ Current Home runtime order:
 2. Scheduled Jobs Runner — read-only.
 3. Protected `jarvisd` status card.
 
+The Scheduled Jobs Runner is a periodic one-shot LaunchAgent: it wakes to check
+for due work and then exits. Home therefore presents a loaded runner as
+**Scheduled**, and the System summary counts it as available rather than falsely
+calling it stopped between checks. Unknown, unloaded, or unconfigured evidence
+still fails closed and is not counted as available.
+
 Scheduled jobs remain canonical `.pi/scheduler/runner.py` records, not fake
 LaunchAgents. Public output is sanitized again at the daemon boundary. The app
 may receive only bounded fields such as ID, name, description, schedule, enabled
 state, next/last run, last status, run count, and retained result summaries.
+A configured job's Issue badge follows its current `lastStatus` and
+`consecutiveErrors`; a retained historical failure does not keep a recovered
+silent-success job marked as unhealthy. The failure remains visible in its
+read-only history.
 Prompts, model names, context identifiers, paths, environment values, command
 lines, database details, and unsanitized output must never reach the native
 response.

@@ -154,6 +154,10 @@ grep -q 'scheme == "http" || scheme == "https"' JARVIS/Views/LinkedJobResultText
 grep -q 'JobChannelMessage' JARVIS/Views/JobsView.swift
 reject_match 'Jobs must not restore the flat Inbox/Schedules picker' -Fq 'Picker("Jobs section"' JARVIS/Views/JobsView.swift
 reject_match 'Jobs must remain read-only' -RqsE 'runServiceAction|runCommand|setPlug|setPurifier|retry' JARVIS/Views/JobsView.swift
+grep -q 'static func hasCurrentIssue(_ job: ScheduledJob?)' JARVIS/Views/JobsPresentation.swift
+grep -q 'JobsPresentation.hasCurrentIssue(job)' JARVIS/Views/JobsView.swift
+reject_match 'retained historical failures must not override a recovered job status' -Fq '|| latest?.status == "error"' JARVIS/Views/JobsView.swift
+grep -q 'testRecoveredSilentJobDoesNotInheritIssueFromRetainedFailure' JARVISTests/JobsPresentationTests.swift
 grep -q 'case pi' JARVIS/AppState.swift
 grep -q 'case "pi": selection = .pi' JARVIS/JARVISApp.swift
 reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case events|fetchEvents|lastEvents|eventsLoading' JARVIS
@@ -161,6 +165,12 @@ reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case even
 printf '%s\n' '== compact iPhone dashboard contract =='
 grep -q 'private var compactConnectionStrip' JARVIS/Views/HomeView.swift
 grep -q 'MinimalSectionHeader(title: "System"' JARVIS/Views/HomeView.swift
+grep -q 'case scheduled' JARVIS/Views/HomeView.swift
+grep -Fq 'return "\(available) of \(services.count) available"' JARVIS/Views/HomeView.swift
+grep -q 'Loaded; wakes periodically and exits between checks.' JARVIS/Views/HomeView.swift
+grep -q 'testPeriodicSchedulerIsScheduledAndAvailableBetweenLaunchdRuns' JARVISTests/AppStateTests.swift
+grep -q 'testPeriodicSchedulerStillFailsClosedWhenUnavailable' JARVISTests/AppStateTests.swift
+reject_match 'periodic scheduler must not be summarized as a continuously running process' -Fq 'of \(sortedServices.count) running' JARVIS/Views/HomeView.swift
 grep -q 'ForEach(1...3, id: \\.self)' JARVIS/Views/HomeView.swift
 grep -q 'private func piSessionStatusSection(sessionID: Int, active: Bool?)' JARVIS/Views/HomeView.swift
 grep -q 'label = "Running"' JARVIS/Views/HomeView.swift

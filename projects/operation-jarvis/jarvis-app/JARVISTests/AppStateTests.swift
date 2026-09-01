@@ -19,6 +19,48 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(unknown.tone, .unknown)
     }
 
+    func testPeriodicSchedulerIsScheduledAndAvailableBetweenLaunchdRuns() throws {
+        let response = try JSONDecoder().decode(
+            ServicesListResponse.self,
+            from: Data(
+                #"{"ok":true,"services":{"room-audio-server":{"ok":true,"loaded":true,"running":true},"jobs-scheduler":{"ok":true,"loaded":true,"running":false,"configured":true,"allowedActions":[]}}}"#.utf8
+            )
+        )
+        let services = response.services.map { (name: $0.key, service: $0.value) }
+        let scheduler = try XCTUnwrap(response.services["jobs-scheduler"])
+
+        XCTAssertEqual(
+            RuntimeServicePresentation.state(name: "jobs-scheduler", service: scheduler),
+            .scheduled
+        )
+        XCTAssertEqual(
+            RuntimeServicePresentation.summary(servicesLoaded: true, services: services),
+            "2 of 2 available"
+        )
+    }
+
+    func testPeriodicSchedulerStillFailsClosedWhenUnavailable() throws {
+        let response = try JSONDecoder().decode(
+            ServicesListResponse.self,
+            from: Data(
+                #"{"ok":true,"services":{"jobs-scheduler":{"ok":false,"loaded":null,"running":null,"error":"launchctl probe failed"}}}"#.utf8
+            )
+        )
+        let scheduler = try XCTUnwrap(response.services["jobs-scheduler"])
+
+        XCTAssertEqual(
+            RuntimeServicePresentation.state(name: "jobs-scheduler", service: scheduler),
+            .unknown
+        )
+        XCTAssertEqual(
+            RuntimeServicePresentation.summary(
+                servicesLoaded: true,
+                services: [(name: "jobs-scheduler", service: scheduler)]
+            ),
+            "0 of 1 available"
+        )
+    }
+
     func testISO8601ParsingSupportsPlainAndFractionalTimestampsWithoutSharedMutableFormatter() throws {
         let plain = try XCTUnwrap(JarvisFormat.parseISO8601("2026-08-29T12:34:56Z"))
         let fractional = try XCTUnwrap(JarvisFormat.parseISO8601("2026-08-29T12:34:56.250Z"))

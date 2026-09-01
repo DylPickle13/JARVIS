@@ -29,6 +29,39 @@ final class JobsPresentationTests: XCTestCase {
         XCTAssertEqual(retainedSequences, [1, 2, 3])
     }
 
+    func testRecoveredSilentJobDoesNotInheritIssueFromRetainedFailure() throws {
+        let recovered = try job(
+            id: "job_recovered",
+            name: "recovered",
+            schedule: "1m",
+            kind: "interval",
+            lastStatus: "success",
+            consecutiveErrors: 0
+        )
+        let retainedFailure = try result(
+            sequence: 9,
+            jobID: recovered.id,
+            jobName: recovered.name,
+            status: "error"
+        )
+        let thread = try XCTUnwrap(
+            JobsPresentation.threads(jobs: [recovered], results: [retainedFailure]).scheduled.first
+        )
+
+        XCTAssertEqual(thread.latestMessage?.status, "error")
+        XCTAssertFalse(JobsPresentation.hasCurrentIssue(thread.job))
+
+        let failing = try job(
+            id: "job_failing",
+            name: "failing",
+            schedule: "1d",
+            kind: "interval",
+            lastStatus: "error",
+            consecutiveErrors: 1
+        )
+        XCTAssertTrue(JobsPresentation.hasCurrentIssue(failing))
+    }
+
     func testCadenceUsesFriendlyIntervalAndDailyDescriptions() {
         XCTAssertEqual(JobsPresentation.cadence(kind: "interval", schedule: "1m"), "Every minute")
         XCTAssertEqual(JobsPresentation.cadence(kind: "interval", schedule: "30m"), "Every 30 minutes")
@@ -79,7 +112,9 @@ final class JobsPresentationTests: XCTestCase {
         id: String,
         name: String,
         schedule: String,
-        kind: String
+        kind: String,
+        lastStatus: String = "success",
+        consecutiveErrors: Int = 0
     ) throws -> ScheduledJob {
         try decode([
             "id": id,
@@ -89,27 +124,28 @@ final class JobsPresentationTests: XCTestCase {
             "enabled": true,
             "nextRunAt": "2026-09-01T12:00:00Z",
             "lastRunAt": "2026-09-01T11:30:00Z",
-            "lastStatus": "success",
+            "lastStatus": lastStatus,
             "runCount": 4,
             "description": "Fixture job",
             "lastSilentSuccessAt": "2026-09-01T11:30:00Z",
             "lastOutputAt": NSNull(),
             "lastErrorAt": NSNull(),
-            "consecutiveErrors": 0,
+            "consecutiveErrors": consecutiveErrors,
         ])
     }
 
     private func result(
         sequence: Int,
         jobID: String,
-        jobName: String
+        jobName: String,
+        status: String = "success"
     ) throws -> ScheduledJobResult {
         try decode([
             "sequence": sequence,
             "id": "run_\(sequence)",
             "jobId": jobID,
             "jobName": jobName,
-            "status": "success",
+            "status": status,
             "outputKind": "scheduler",
             "startedAt": "2026-09-01T11:29:59Z",
             "finishedAt": "2026-09-01T11:30:00Z",
@@ -118,7 +154,7 @@ final class JobsPresentationTests: XCTestCase {
             "title": "Fixture result",
             "summary": "Fixture summary",
             "output": "Fixture output",
-            "error": NSNull(),
+            "error": status == "error" ? "Fixture failure" as Any : NSNull(),
             "truncated": false,
         ])
     }

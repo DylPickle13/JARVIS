@@ -51,6 +51,11 @@ enum JobsPresentation {
         return ScheduledJobThreadSections(scheduled: scheduled, archived: archived)
     }
 
+    static func hasCurrentIssue(_ job: ScheduledJob?) -> Bool {
+        guard let job else { return false }
+        return job.lastStatus == "error" || (job.consecutiveErrors ?? 0) > 0
+    }
+
     static func cadence(kind: String, schedule: String) -> String {
         switch kind {
         case "interval":
