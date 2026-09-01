@@ -111,7 +111,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     let snapshotStore = SnapshotStore()
     let terminal = WatchTerminalController()
 
-    init(activeRefreshInterval: Duration = JARVISRefreshPolicy.activeInterval) {
+    init(activeRefreshInterval: Duration = JARVISRefreshPolicy.controlActiveInterval) {
         self.activeRefreshInterval = activeRefreshInterval
         #if DEBUG
         let arguments = CommandLine.arguments
@@ -129,16 +129,25 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         WatchBridge.shared.delegate = self
     }
 
+    private var cachedStateExpired: Bool {
+        guard let cachedAt else { return lastState == nil }
+        return Date().timeIntervalSince(cachedAt) > 900
+    }
+
     var isStale: Bool {
-        guard let cachedAt else { return lastState?.stale == true }
-        return Date().timeIntervalSince(cachedAt) > 900 || lastState?.stale == true
+        cachedStateExpired || lastState?.stale == true
     }
 
     func isPlugStateStale(_ name: String) -> Bool {
-        connectionState != .connected
-            || isStale
-            || lastState?.subsystems?.plugs?.stale == true
-            || lastState?.subsystems?.plugs?.plugs?[name]?.stale == true
+        let subsystem = lastState?.subsystems?.plugs
+        let plug = subsystem?.plugs?[name]
+        return connectionState != .connected
+            || cachedStateExpired
+            || subsystem?.ok != true
+            || subsystem?.stale == true
+            || plug?.ok != true
+            || plug?.stale == true
+            || plug?.isOn == nil
     }
 
     var isPurifierVerificationPending: Bool {
@@ -147,7 +156,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
 
     var isPurifierStateStale: Bool {
         connectionState != .connected
-            || isStale
+            || cachedStateExpired
             || lastState?.subsystems?.purifier?.ok != true
             || lastState?.subsystems?.purifier?.stale == true
     }
@@ -169,7 +178,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         switch connectionState {
         case .connected:
             if pendingRelay { return "Waiting for iPhone" }
-            return isViaPhone ? "Via iPhone" : (isStale ? "Connected · stale" : "Connected")
+            return isViaPhone ? "Via iPhone" : (isStale ? "Connected · partial" : "Connected")
         case .failed: return "Offline"
         case .connecting: return "Connecting"
         case .idle: return "Idle"

@@ -41,8 +41,9 @@ public enum JARVISPlugCatalog {
     public static func descriptors(from snapshot: StateSnapshot) -> [JARVISPlugDescriptor] {
         guard let subsystem = snapshot.subsystems?.plugs,
               let plugs = subsystem.plugs else { return [] }
+        // Overall snapshot staleness can come from unrelated Pi, service, or
+        // network collectors. Only plug-scoped evidence may disable plugs.
         let sharedStale = snapshot.ok == false
-            || snapshot.stale == true
             || subsystem.ok != true
             || subsystem.stale == true
         return plugs.map { id, state in
@@ -63,7 +64,6 @@ public enum JARVISPlugCatalog {
     /// a desired-state write. Cached or partially known state cannot pass.
     public static func freshPlug(id: String, in snapshot: StateSnapshot) throws -> JARVISPlugDescriptor {
         guard snapshot.ok,
-              snapshot.stale != true,
               let subsystem = snapshot.subsystems?.plugs,
               subsystem.ok == true,
               subsystem.stale != true,

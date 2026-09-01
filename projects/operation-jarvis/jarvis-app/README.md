@@ -15,6 +15,19 @@ queues, replays, retries, or synthesizes a byte. Checked-in `project.yml` intent
 remains Build 127 without `JARVIS_NATIVE_ATTACHMENTS`; candidate build numbers and
 the iPhone-only attachment flag remain owner-artifact-only.
 
+Build 141 makes hardware presentation responsive by preventing routine refreshes
+from invalidating recent authoritative data. The always-on host keeps plugs warm
+every 10 seconds and the purifier every 45 seconds even without a visible client;
+Codex uses a five-minute idle cadence plus a bounded visible-panel request. Plug,
+purifier, and quota last-good values have explicit 30-second, 90-second, and
+15-minute freshness limits. A transient collector failure inside that limit keeps
+the confirmed value usable while preserving its error; expiry, missing data, and
+purifier write verification remain fail-closed. iPhone Home and the Watch dashboard
+read the cheap cache every five seconds while visible, while heavier Home resources
+retain a 15-second cadence. Overall Pi/service/network staleness no longer disables
+fresh plug or purifier controls, and one failed plug remains isolated from the
+others. Frozen Build 140 is unchanged.
+
 The Neural Core correction keeps both widget surfaces at 48 frames over the same
 two-second loop while separating the entire decorative composition—phase,
 density, firing energy, and authored luminance—from telemetry freshness. Physical

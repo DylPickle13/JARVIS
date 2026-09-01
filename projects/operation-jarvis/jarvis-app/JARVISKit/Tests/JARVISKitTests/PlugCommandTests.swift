@@ -38,6 +38,15 @@ final class PlugCommandTests: XCTestCase {
         XCTAssertEqual(after.first?.displayName, "Reading Lamp")
     }
 
+    func testUnrelatedOverallStalenessDoesNotDisableFreshPlugSubsystem() throws {
+        let partial = try makeState(["reading-lamp": false], overallStale: true)
+
+        let descriptor = try JARVISPlugCatalog.freshPlug(id: "reading-lamp", in: partial)
+
+        XCTAssertFalse(descriptor.stale)
+        XCTAssertEqual(descriptor.isOn, false)
+    }
+
     func testFreshPlugFailsClosedForStaleAndUnknownState() throws {
         let stale = try makeState(["reading-lamp": false], subsystemStale: true)
         XCTAssertThrowsError(try JARVISPlugCatalog.freshPlug(id: "reading-lamp", in: stale)) {
@@ -118,14 +127,15 @@ final class PlugCommandTests: XCTestCase {
 
     private func makeState(
         _ values: [String: Bool],
-        subsystemStale: Bool = false
+        subsystemStale: Bool = false,
+        overallStale: Bool = false
     ) throws -> StateSnapshot {
         let plugs: [String: Any] = Dictionary(uniqueKeysWithValues: values.map { key, value in
             (key, ["ok": true, "stale": false, "isOn": value] as [String: Any])
         })
         let object: [String: Any] = [
             "ok": true,
-            "stale": false,
+            "stale": overallStale,
             "subsystems": [
                 "plugs": [
                     "ok": true,

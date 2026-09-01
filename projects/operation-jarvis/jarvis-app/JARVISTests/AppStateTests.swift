@@ -155,6 +155,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(app.connectionState, .connected)
         XCTAssertEqual(app.lastHealth?.version, "test")
         XCTAssertEqual(app.lastState?.summary?.plugsOn, 1)
+        XCTAssertEqual(api.codexRefreshCalls, 1)
         XCTAssertFalse(app.isStateLoading)
     }
 
@@ -238,7 +239,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(api.stateCalls, 3)
         XCTAssertEqual(app.lastState?.stale, true)
         XCTAssertEqual(app.lastState?.refreshing, true)
-        XCTAssertTrue(app.isAwaitingFreshState)
+        XCTAssertFalse(app.isAwaitingFreshState, "routine convergence must not globally block usable controls")
         XCTAssertFalse(app.isStateLoading)
     }
 
@@ -246,7 +247,12 @@ final class AppStateTests: XCTestCase {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
         let store = EndpointStore(defaults: defaults)
-        let app = AppState(store: store, client: api, activeRefreshInterval: .milliseconds(100))
+        let app = AppState(
+            store: store,
+            client: api,
+            activeRefreshInterval: .milliseconds(100),
+            controlRefreshInterval: .milliseconds(100)
+        )
         app.endpointDraft = "http://fake.jarvis:8790"
 
         app.sceneDidBecomeActive()
@@ -254,9 +260,9 @@ final class AppStateTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(25))
         }
         XCTAssertGreaterThanOrEqual(api.stateCalls, 2)
-        XCTAssertEqual(api.stateCalls, api.servicesCalls)
-        XCTAssertEqual(api.stateCalls, api.scheduledJobsCalls)
-        XCTAssertEqual(api.stateCalls, api.scheduledJobResultsCalls)
+        XCTAssertGreaterThan(api.stateCalls, api.servicesCalls, "visible controls should poll faster than heavy Home resources")
+        XCTAssertEqual(api.servicesCalls, api.scheduledJobsCalls)
+        XCTAssertEqual(api.servicesCalls, api.scheduledJobResultsCalls)
 
         app.setActiveSection(.pi)
         try await Task.sleep(for: .milliseconds(50))
@@ -559,6 +565,7 @@ final class AppStateTests: XCTestCase {
             store: store,
             client: api,
             activeRefreshInterval: .milliseconds(100),
+            controlRefreshInterval: .milliseconds(100),
             preferences: defaults,
             resultCacheURL: FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-jobs-polling-\(UUID().uuidString).json")
         )
@@ -837,6 +844,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var commands: [String] = []
     var commandParams: [[String: JSONValue]] = []
     var stateCalls = 0
+    var codexRefreshCalls = 0
     var healthCalls = 0
     var servicesCalls = 0
     var scheduledJobsCalls = 0
@@ -882,6 +890,11 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         if let stateDelay { try await Task.sleep(for: stateDelay) }
         if !stateResponses.isEmpty { return stateResponses.removeFirst() }
         return state
+    }
+
+    func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        codexRefreshCalls += 1
+        return try await state(endpoint)
     }
 
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult {

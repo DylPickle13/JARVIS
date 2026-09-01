@@ -85,6 +85,9 @@ public final class AppState: ObservableObject {
     private var networkAvailable = true
     private var retryAllowed = true
     private let activeRefreshInterval: Duration
+    private let controlRefreshInterval: Duration
+    private let visibleCodexRefreshInterval: TimeInterval
+    private var lastVisibleCodexRefreshAt: Date?
     private let staleConvergenceInterval: Duration
     private let staleConvergenceAttempts: Int
     private let resultCache: ScheduledJobResultCache
@@ -95,6 +98,7 @@ public final class AppState: ObservableObject {
     private var connectionLoopTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
     private var pollingTask: Task<Void, Never>?
+    private var homeControlPollsSinceResources = 0
     private var pathMonitor: NWPathMonitor?
     var watchCommandResponses: [String: WatchCommandCacheEntry] = [:]
     var watchCommandInFlight: Set<String> = []
@@ -105,6 +109,8 @@ public final class AppState: ObservableObject {
         store: EndpointStore? = nil,
         client: any JarvisAPI = JarvisClient(),
         activeRefreshInterval: Duration = JARVISRefreshPolicy.activeInterval,
+        controlRefreshInterval: Duration = JARVISRefreshPolicy.controlActiveInterval,
+        visibleCodexRefreshInterval: TimeInterval = JARVISRefreshPolicy.visibleCodexRefreshInterval,
         staleConvergenceInterval: Duration = JARVISRefreshPolicy.staleConvergenceInterval,
         staleConvergenceAttempts: Int = JARVISRefreshPolicy.staleConvergenceAttempts,
         preferences: UserDefaults = .standard,
@@ -115,6 +121,8 @@ public final class AppState: ObservableObject {
         self.client = client
         self.watchTerminalProvisioning = WatchTerminalProvisioningSettings()
         self.activeRefreshInterval = activeRefreshInterval
+        self.controlRefreshInterval = controlRefreshInterval
+        self.visibleCodexRefreshInterval = max(5, visibleCodexRefreshInterval)
         self.staleConvergenceInterval = max(.zero, staleConvergenceInterval)
         self.staleConvergenceAttempts = max(0, staleConvergenceAttempts)
         self.preferences = preferences
@@ -145,12 +153,10 @@ public final class AppState: ObservableObject {
 
     public var currentEndpoint: URL? { store.endpointURL }
 
-    /// True while no state has loaded yet or jarvisd has explicitly reported
-    /// that its stale last-good snapshot is actively refreshing. An ordinary
-    /// foreground cache read does not make an already-fresh snapshot stale.
+    /// Only the initial state load blocks the dashboard. A routine background
+    /// collector refresh never replaces usable controls with a global spinner.
     public var isAwaitingFreshState: Bool {
-        (isStateLoading && lastState == nil)
-            || (lastState?.stale == true && lastState?.refreshing == true)
+        isStateLoading && lastState == nil
     }
 
     // MARK: - Scene/network lifecycle
@@ -307,22 +313,26 @@ public final class AppState: ObservableObject {
     }
 
     public func fetchState() async {
+        await fetchState(refreshingCodexQuota: false)
+    }
+
+    private func fetchState(refreshingCodexQuota: Bool) async {
         guard activeEndpoint != nil else { return }
         stateTask?.cancel()
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.performFetchState()
+            await self.performFetchState(refreshingCodexQuota: refreshingCodexQuota)
         }
         stateTask = task
         await task.value
     }
 
-    private func performFetchState() async {
+    private func performFetchState(refreshingCodexQuota: Bool) async {
         guard let endpoint = activeEndpoint else { return }
         isStateLoading = true
         defer { isStateLoading = false }
         do {
-            let snapshot = try await convergedState(endpoint)
+            let snapshot = try await convergedState(endpoint, refreshingCodexQuota: refreshingCodexQuota)
             let previousState = lastState
             let widgetsChanged = widgetReloadValue(previousState) != widgetReloadValue(snapshot)
             lastState = snapshot
@@ -361,8 +371,13 @@ public final class AppState: ObservableObject {
     /// first response is intentionally `stale + refreshing`. Perform only
     /// bounded read-only follow-ups; a completed failure (`refreshing == false`)
     /// remains stale and is never hidden or retried here.
-    private func convergedState(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
-        var snapshot = try await client.state(endpoint)
+    private func convergedState(
+        _ endpoint: JarvisEndpoint,
+        refreshingCodexQuota: Bool = false
+    ) async throws -> StateSnapshot {
+        var snapshot = refreshingCodexQuota
+            ? try await client.stateRefreshingCodexQuota(endpoint)
+            : try await client.state(endpoint)
         var attempts = 0
         while snapshot.stale == true,
               snapshot.refreshing == true,
@@ -534,7 +549,6 @@ public final class AppState: ObservableObject {
               connectionState == .connected,
               stateErrorMessage == nil,
               let snapshot = lastState,
-              snapshot.stale != true,
               let purifier = snapshot.subsystems?.purifier,
               purifier.ok == true,
               purifier.stale != true else {
@@ -561,7 +575,6 @@ public final class AppState: ObservableObject {
         await fetchState()
         guard connectionState == .connected,
               stateErrorMessage == nil,
-              lastState?.stale != true,
               let confirmed = lastState?.subsystems?.purifier,
               confirmed.ok == true,
               confirmed.stale != true,
@@ -823,7 +836,9 @@ public final class AppState: ObservableObject {
     }
 
     private func refreshHomeResources(refreshHealth: Bool) async {
-        async let state: Void = fetchState()
+        homeControlPollsSinceResources = 0
+        let refreshCodexQuota = reserveVisibleCodexRefreshIfDue()
+        async let state: Void = fetchState(refreshingCodexQuota: refreshCodexQuota)
         async let services: Void = fetchServices()
         async let jobs: Void = fetchScheduledJobs()
         async let results: Void = fetchScheduledJobResults()
@@ -833,6 +848,20 @@ public final class AppState: ObservableObject {
         } else {
             _ = await (state, services, jobs, results)
         }
+    }
+
+    private func refreshVisibleControlState() async {
+        let refreshCodexQuota = reserveVisibleCodexRefreshIfDue()
+        await fetchState(refreshingCodexQuota: refreshCodexQuota)
+    }
+
+    private func reserveVisibleCodexRefreshIfDue(now: Date = Date()) -> Bool {
+        if let lastVisibleCodexRefreshAt,
+           now.timeIntervalSince(lastVisibleCodexRefreshAt) < visibleCodexRefreshInterval {
+            return false
+        }
+        lastVisibleCodexRefreshAt = now
+        return true
     }
 
     private func restartPolling(refreshImmediately: Bool) {
@@ -849,14 +878,22 @@ public final class AppState: ObservableObject {
                 }
             }
             while !Task.isCancelled, self.appIsActive, self.connectionState == .connected {
+                let interval = self.activeSection == .home
+                    ? self.controlRefreshInterval
+                    : self.activeRefreshInterval
                 do {
-                    try await Task.sleep(for: self.activeRefreshInterval)
+                    try await Task.sleep(for: interval)
                 } catch {
                     return
                 }
                 guard !Task.isCancelled, self.appIsActive, self.connectionState == .connected else { return }
                 if self.activeSection == .home {
-                    await self.refreshHome()
+                    self.homeControlPollsSinceResources += 1
+                    if self.homeControlPollsSinceResources >= 3 {
+                        await self.refreshHome()
+                    } else {
+                        await self.refreshVisibleControlState()
+                    }
                 } else {
                     // A lightweight cached state read keeps jarvisd's active
                     // client lease alive on JARVIS, Jobs, and Settings. Plug and

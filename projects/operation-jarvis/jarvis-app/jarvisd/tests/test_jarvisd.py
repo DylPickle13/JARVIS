@@ -249,8 +249,12 @@ class DaemonUnitTests(unittest.TestCase):
         self.assertNotIn("weather", coordinator.DEFAULT_INTERVALS)
         self.assertIn("codexQuota", coordinator.collectors)
         self.assertEqual(coordinator.DEFAULT_INTERVALS["codexQuota"], 60.0)
-        self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["plugs"], 120.0)
-        self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["codexQuota"], 900.0)
+        self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["plugs"], 10.0)
+        self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["purifier"], 45.0)
+        self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["codexQuota"], 300.0)
+        self.assertEqual(coordinator.DEFAULT_FRESHNESS_LIMITS["plugs"], 30.0)
+        self.assertEqual(coordinator.DEFAULT_FRESHNESS_LIMITS["purifier"], 90.0)
+        self.assertEqual(coordinator.DEFAULT_ACTIVATION_WAIT_SECONDS, 0.0)
 
     def test_codex_quota_failure_does_not_stale_critical_state(self):
         coordinator = jarvisd.StateCoordinator(
@@ -692,6 +696,122 @@ class DaemonUnitTests(unittest.TestCase):
             self.assertEqual(snapshot["subsystems"]["test"]["value"], 1)
             self.assertFalse(snapshot["subsystems"]["test"]["stale"])
         finally:
+            coordinator.stop()
+
+    def test_recent_control_failure_keeps_usable_last_good_until_freshness_expiry(self):
+        clock = [100.0]
+        coordinator = jarvisd.StateCoordinator(
+            collectors={"plugs": lambda: {"ok": True}},
+            freshness_limits={"plugs": 30},
+            now=lambda: clock[0],
+        )
+        coordinator._records["plugs"].update({
+            "data": {"ok": True, "value": "confirmed"},
+            "lastGoodAt": 90.0,
+            "updatedAt": "2026-09-01T00:00:00Z",
+            "stale": False,
+        })
+        failed = jarvisd.concurrent.futures.Future()
+        failed.set_result({"ok": False, "error": "temporary"})
+        coordinator._complete("plugs", failed, coordinator._records["plugs"]["revision"])
+
+        recent = coordinator.snapshot()["subsystems"]["plugs"]
+        self.assertEqual(recent["value"], "confirmed")
+        self.assertFalse(recent["stale"])
+        self.assertEqual(recent["lastError"], "temporary")
+
+        clock[0] = 121.0
+        expired = coordinator.snapshot()["subsystems"]["plugs"]
+        self.assertTrue(expired["stale"])
+
+    def test_partial_plug_failure_retains_and_expires_only_that_devices_last_good(self):
+        clock = [100.0]
+        coordinator = jarvisd.StateCoordinator(
+            collectors={"plugs": lambda: {"ok": True}},
+            freshness_limits={"plugs": 30},
+            now=lambda: clock[0],
+        )
+        coordinator._records["plugs"].update({
+            "data": {
+                "ok": True,
+                "count": 2,
+                "onCount": 2,
+                "plugs": {
+                    "lamp": {"ok": True, "isOn": True},
+                    "tv": {"ok": True, "isOn": True},
+                },
+            },
+            "lastGoodAt": 90.0,
+            "itemLastGoodAt": {"lamp": 90.0, "tv": 90.0},
+            "updatedAt": "2026-09-01T00:00:00Z",
+            "stale": False,
+        })
+        partial = jarvisd.concurrent.futures.Future()
+        partial.set_result({
+            "ok": True,
+            "count": 2,
+            "onCount": 0,
+            "plugs": {
+                "lamp": {"ok": True, "isOn": False},
+                "tv": {"ok": False, "isOn": None, "error": "temporary"},
+            },
+        })
+        coordinator._complete("plugs", partial, coordinator._records["plugs"]["revision"])
+
+        recent = coordinator.snapshot()["subsystems"]["plugs"]
+        self.assertFalse(recent["stale"])
+        self.assertFalse(recent["plugs"]["lamp"]["isOn"])
+        self.assertFalse(recent["plugs"]["lamp"]["stale"])
+        self.assertTrue(recent["plugs"]["tv"]["isOn"])
+        self.assertFalse(recent["plugs"]["tv"]["stale"])
+        self.assertEqual(recent["plugs"]["tv"]["error"], "temporary")
+        self.assertIn("tv: temporary", recent["lastError"])
+
+        clock[0] = 126.0
+        partially_expired = coordinator.snapshot()["subsystems"]["plugs"]
+        self.assertFalse(partially_expired["stale"])
+        self.assertFalse(partially_expired["plugs"]["lamp"]["stale"])
+        self.assertTrue(partially_expired["plugs"]["tv"]["stale"])
+
+        clock[0] = 131.0
+        fully_expired = coordinator.snapshot()["subsystems"]["plugs"]
+        self.assertTrue(fully_expired["stale"])
+
+    def test_recent_control_activation_returns_immediately_and_refreshes_in_background(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        def collector():
+            started.set()
+            release.wait(1)
+            return {"ok": True, "value": "new"}
+
+        coordinator = jarvisd.StateCoordinator(
+            collectors={"plugs": collector},
+            freshness_limits={"plugs": 30},
+            active_lease_seconds=5,
+            activation_wait_seconds=1,
+        )
+        coordinator._records["plugs"].update({
+            "data": {"ok": True, "value": "recent"},
+            "lastGoodAt": time.time() - 10,
+            "updatedAt": "2026-09-01T00:00:00Z",
+            "stale": False,
+            "nextDue": time.time() + 300,
+        })
+        coordinator._active_until = 0
+        try:
+            started_at = time.monotonic()
+            coordinator.activate_client()
+            elapsed = time.monotonic() - started_at
+            self.assertLess(elapsed, 0.3)
+            self.assertTrue(started.wait(0.3))
+            state = coordinator.snapshot()["subsystems"]["plugs"]
+            self.assertEqual(state["value"], "recent")
+            self.assertFalse(state["stale"])
+            self.assertTrue(state["refreshing"])
+        finally:
+            release.set()
             coordinator.stop()
 
     def test_state_coordinator_keeps_last_good_on_failure(self):

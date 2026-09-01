@@ -33,28 +33,40 @@ python3 -m py_compile \
   ../../../.pi/scheduler/runner.py \
   ../../../.pi/scheduler/apns_provider.py
 
-printf '%s\n' '== activity-aware jarvisd collector contract =='
+printf '%s\n' '== warm responsive jarvisd collector contract =='
 grep -q 'DEFAULT_ACTIVE_LEASE_SECONDS = 45.0' jarvisd/jarvisd.py
-grep -q 'DEFAULT_ACTIVATION_WAIT_SECONDS = 3.0' jarvisd/jarvisd.py
-grep -q 'DEFAULT_IDLE_INTERVALS = {' jarvisd/jarvisd.py
+grep -q 'DEFAULT_ACTIVATION_WAIT_SECONDS = 0.0' jarvisd/jarvisd.py
+grep -q '"plugs": 10.0' jarvisd/jarvisd.py
+grep -q '"purifier": 45.0' jarvisd/jarvisd.py
+grep -q '"codexQuota": 300.0' jarvisd/jarvisd.py
+grep -q 'DEFAULT_FRESHNESS_LIMITS = {' jarvisd/jarvisd.py
+grep -q '"plugs": 30.0' jarvisd/jarvisd.py
+grep -q '"purifier": 90.0' jarvisd/jarvisd.py
+grep -q 'def _record_is_stale' jarvisd/jarvisd.py
+grep -q 'def _plug_item_is_stale' jarvisd/jarvisd.py
+grep -q 'def _complete_plug_collection_locked' jarvisd/jarvisd.py
+grep -q 'recent_last_good = (' jarvisd/jarvisd.py
+grep -q 'test_partial_plug_failure_retains_and_expires_only_that_devices_last_good' jarvisd/tests/test_jarvisd.py
 grep -q 'self._condition = threading.Condition(self._lock)' jarvisd/jarvisd.py
 grep -q 'def activate_client(self, wait_timeout:' jarvisd/jarvisd.py
 grep -q 'return STATE_COORDINATOR.snapshot(client_active=True)' jarvisd/jarvisd.py
-grep -q 'record\["stale"\] = True' jarvisd/jarvisd.py
 reject_match 'fixed 250-millisecond jarvisd scheduler polling was restored' -Fq 'self._stop.wait(0.25)' jarvisd/jarvisd.py
 
-printf '%s\n' '== bounded foreground stale convergence =='
+printf '%s\n' '== responsive scoped foreground state =='
+grep -q 'controlActiveInterval: Duration = .seconds(5)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
+grep -q 'visibleCodexRefreshInterval: TimeInterval = 60' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'staleConvergenceInterval: Duration = .milliseconds(500)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'staleConvergenceAttempts = 8' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'attempts < staleConvergenceAttempts' JARVIS/AppState.swift
 grep -q 'snapshot.stale == true' JARVIS/AppState.swift
 grep -q 'snapshot.refreshing == true' JARVIS/AppState.swift
-grep -q 'if app.isAwaitingFreshState { return "Online · refreshing" }' JARVIS/Views/HomeView.swift
-grep -q '(isStateLoading && lastState == nil)' JARVIS/AppState.swift
-grep -q 'State is refreshing; wait before changing it' JARVIS/Views/HomeView.swift
-reject_match 'routine cached reads must not mark fresh controls as refreshing' -Fq 'let refreshing = app.isAwaitingFreshState ||' JARVIS/Views/HomeView.swift
+grep -q 'isStateLoading && lastState == nil' JARVIS/AppState.swift
+grep -q 'let stale = subsystemStale || items.contains' JARVIS/Views/HomeView.swift
+grep -q 'let stale = purifier.stale == true' JARVIS/Views/HomeView.swift
+reject_match 'overall snapshot staleness must not gate the plug section' -Fq 'let stale = state.stale == true || subsystem?.stale == true' JARVIS/Views/HomeView.swift
+reject_match 'overall snapshot staleness must not gate the purifier section' -Fq 'let stale = state.stale == true || purifier.stale == true' JARVIS/Views/HomeView.swift
 grep -q 'testRoutineStateReadKeepsFreshControlsAvailable' JARVISTests/AppStateTests.swift
-grep -q 'testStateFetchDoesNotRetryCompletedStaleSnapshot' JARVISTests/AppStateTests.swift
+grep -q 'testUnrelatedOverallStalenessDoesNotDisableFreshPlugSubsystem' JARVISKit/Tests/JARVISKitTests/PlugCommandTests.swift
 
 printf '%s\n' '== bounded jarvisd logging contract =='
 grep -q 'from logging.handlers import RotatingFileHandler' jarvisd/jarvisd.py
@@ -637,7 +649,10 @@ for plist in JARVIS/Info.plist JARVISWatch/Info.plist JARVISWidget/Info.plist JA
 done
 reject_match 'retired Tailscale node address is still present' -RqsF '100.96.55.86' \
   JARVIS JARVISWatch JARVISWidget JARVISWatchWidget JARVISKit/Sources jarvisd
-grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVIS/AppState.swift
+grep -q 'self.activeSection == .home' JARVIS/AppState.swift
+grep -q '? self.controlRefreshInterval' JARVIS/AppState.swift
+grep -q 'try await Task.sleep(for: interval)' JARVIS/AppState.swift
+grep -q 'homeControlPollsSinceResources >= 3' JARVIS/AppState.swift
 grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'client.resolveState(' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'private var cachedAuthenticationToken: String?' JARVISWatch/Views/WatchConnectView.swift

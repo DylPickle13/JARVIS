@@ -1543,21 +1543,32 @@ class StateCoordinator:
     }
     DEFAULT_IDLE_INTERVALS = {
         "pi": 60.0,
-        "plugs": 120.0,
+        # Hardware state stays warm on the always-on Mac even when no native
+        # client is visible. These are bounded host reads, not app polling.
+        "plugs": 10.0,
         "services": 300.0,
-        "purifier": 180.0,
+        "purifier": 45.0,
         "network": 600.0,
+        "codexQuota": 300.0,
+    }
+    # A recent last-good control value remains usable while its next collection
+    # is in flight. Sustained age, missing data, pending write verification, or
+    # an expired failure grace remains fail-closed.
+    DEFAULT_FRESHNESS_LIMITS = {
+        "plugs": 30.0,
+        "purifier": 90.0,
         "codexQuota": 900.0,
     }
     CONTROL_SUBSYSTEMS = frozenset({"plugs", "purifier"})
     DEFAULT_ACTIVE_LEASE_SECONDS = 45.0
-    DEFAULT_ACTIVATION_WAIT_SECONDS = 3.0
+    DEFAULT_ACTIVATION_WAIT_SECONDS = 0.0
 
     def __init__(
         self,
         collectors: dict[str, Callable[[], dict]] | None = None,
         intervals: dict[str, float] | None = None,
         idle_intervals: dict[str, float] | None = None,
+        freshness_limits: dict[str, float] | None = None,
         active_lease_seconds: float = DEFAULT_ACTIVE_LEASE_SECONDS,
         activation_wait_seconds: float = DEFAULT_ACTIVATION_WAIT_SECONDS,
         now: Callable[[], float] = time.time,
@@ -1572,6 +1583,7 @@ class StateCoordinator:
         }
         self.intervals = {**self.DEFAULT_INTERVALS, **(intervals or {})}
         self.idle_intervals = {**self.DEFAULT_IDLE_INTERVALS, **(idle_intervals or {})}
+        self.freshness_limits = {**self.DEFAULT_FRESHNESS_LIMITS, **(freshness_limits or {})}
         self.active_lease_seconds = max(1.0, float(active_lease_seconds))
         self.activation_wait_seconds = max(0.0, float(activation_wait_seconds))
         self._now = now
@@ -1589,6 +1601,9 @@ class StateCoordinator:
                 "revision": 0,
                 "completionCount": 0,
                 "pending": None,
+                # Used only by the aggregate plug collector so one device can
+                # retain and expire its own last-good value independently.
+                "itemLastGoodAt": {},
             }
             for name in self.collectors
         }
@@ -1637,13 +1652,54 @@ class StateCoordinator:
         fallback = self.intervals.get(name, 30.0)
         return max(0.5, float(source.get(name, fallback)))
 
+    def _freshness_limit(self, name: str) -> float | None:
+        raw = self.freshness_limits.get(name)
+        return max(0.5, float(raw)) if raw is not None else None
+
+    def _plug_item_is_stale(
+        self,
+        record: dict[str, Any],
+        plug_name: str,
+        state: Any,
+        now: float,
+    ) -> bool:
+        if not isinstance(state, dict) or not isinstance(state.get("isOn"), bool):
+            return True
+        timestamps = record.get("itemLastGoodAt")
+        last_good = timestamps.get(plug_name) if isinstance(timestamps, dict) else None
+        if last_good is None:
+            last_good = record.get("lastGoodAt")
+        limit = self._freshness_limit("plugs")
+        if last_good is None or (limit is not None and max(0.0, now - float(last_good)) > limit):
+            return True
+        return state.get("ok") is not True or state.get("stale") is True
+
+    def _record_is_stale(self, name: str, record: dict[str, Any], now: float) -> bool:
+        data = record.get("data")
+        if data is None or record.get("lastGoodAt") is None:
+            return True
+        if isinstance(record.get("pending"), dict):
+            return True
+        if name == "plugs" and isinstance(data, dict) and isinstance(data.get("plugs"), dict):
+            plugs = data["plugs"]
+            # One expired or failed device must not stale fresh peers. The
+            # subsystem itself is stale only when no configured plug is fresh.
+            return bool(plugs) and all(
+                self._plug_item_is_stale(record, plug_name, state, now)
+                for plug_name, state in plugs.items()
+            )
+        limit = self._freshness_limit(name)
+        if limit is not None and max(0.0, now - float(record["lastGoodAt"])) > limit:
+            return True
+        return bool(record.get("stale"))
+
     def activate_client(self, wait_timeout: float | None = None) -> None:
         """Renew active cadence and refresh stale control state before use.
 
-        A transition from idle marks over-age plug/purifier data stale before
-        waking collectors. The caller waits only for one bounded completion per
-        stale control subsystem; timeout or collection failure remains visibly
-        stale and therefore cannot authorize a native control write.
+        A transition from idle wakes every collector immediately, but recent
+        last-good control data remains usable. The default state read never
+        blocks; explicit callers may still wait for one bounded completion when
+        a control subsystem is genuinely beyond its freshness limit.
         """
         now = self._now()
         targets: dict[str, int] = {}
@@ -1653,13 +1709,7 @@ class StateCoordinator:
             if not was_active:
                 for name, record in self._records.items():
                     record["nextDue"] = 0.0
-                    if name not in self.CONTROL_SUBSYSTEMS:
-                        continue
-                    last_good = record.get("lastGoodAt")
-                    maximum_age = max(0.5, float(self.intervals.get(name, 30.0)))
-                    age = None if last_good is None else max(0.0, now - float(last_good))
-                    if record.get("data") is None or record.get("stale") or age is None or age > maximum_age:
-                        record["stale"] = True
+                    if name in self.CONTROL_SUBSYSTEMS and self._record_is_stale(name, record, now):
                         targets[name] = int(record.get("completionCount", 0))
             self._condition.notify_all()
         self.start()
@@ -1717,7 +1767,7 @@ class StateCoordinator:
             data = copy.deepcopy(record["data"]) if isinstance(record["data"], dict) else {"ok": True, "plugs": {}}
             plugs = copy.deepcopy(data.get("plugs")) if isinstance(data.get("plugs"), dict) else {}
             state = copy.deepcopy(plugs.get(name)) if isinstance(plugs.get(name), dict) else {}
-            state.update({"ok": True, "isOn": is_on, "error": None})
+            state.update({"ok": True, "stale": False, "isOn": is_on, "error": None})
             for source, target in (("host", "host"), ("rssi", "rssi"), ("alias", "alias")):
                 if source in plug:
                     state[target] = copy.deepcopy(plug[source])
@@ -1729,6 +1779,7 @@ class StateCoordinator:
                 "plugs": plugs,
             })
             self._apply_authoritative_locked("plugs", data)
+            record["itemLastGoodAt"][name] = record["lastGoodAt"]
             self._condition.notify_all()
         self.start()
         return True
@@ -1800,6 +1851,64 @@ class StateCoordinator:
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": _safe_error(exc)}
 
+    def _complete_plug_collection_locked(self, result: dict[str, Any], now: float) -> None:
+        """Merge aggregate plug reads without letting one device poison peers."""
+        record = self._records["plugs"]
+        previous_data = record.get("data") if isinstance(record.get("data"), dict) else {}
+        previous_plugs = previous_data.get("plugs") if isinstance(previous_data.get("plugs"), dict) else {}
+        incoming_plugs = result.get("plugs") if isinstance(result.get("plugs"), dict) else {}
+        prior_timestamps = record.get("itemLastGoodAt")
+        timestamps = dict(prior_timestamps) if isinstance(prior_timestamps, dict) else {}
+        aggregate_last_good = record.get("lastGoodAt")
+        limit = self._freshness_limit("plugs")
+        merged: dict[str, dict[str, Any]] = {}
+        errors: list[str] = []
+        live_success = False
+
+        for plug_name, raw_state in incoming_plugs.items():
+            state = copy.deepcopy(raw_state) if isinstance(raw_state, dict) else {}
+            if state.get("ok") is True and isinstance(state.get("isOn"), bool):
+                state["stale"] = False
+                state["error"] = None
+                merged[plug_name] = state
+                timestamps[plug_name] = now
+                live_success = True
+                continue
+
+            error = _safe_error(state.get("error") or "plug status unavailable", 300)
+            errors.append(f"{plug_name}: {error}")
+            previous = previous_plugs.get(plug_name)
+            last_good = timestamps.get(plug_name, aggregate_last_good)
+            if isinstance(previous, dict) and isinstance(previous.get("isOn"), bool):
+                retained = copy.deepcopy(previous)
+                expired = last_good is None or (
+                    limit is not None and max(0.0, now - float(last_good)) > limit
+                )
+                retained.update({"ok": True, "stale": expired, "error": error})
+                merged[plug_name] = retained
+                if last_good is not None:
+                    timestamps[plug_name] = last_good
+            else:
+                state.update({"ok": False, "stale": True, "error": error})
+                merged[plug_name] = state
+                timestamps.pop(plug_name, None)
+
+        timestamps = {plug_name: timestamps[plug_name] for plug_name in merged if plug_name in timestamps}
+        data = copy.deepcopy(result)
+        data.update({
+            "ok": not merged or any(isinstance(state.get("isOn"), bool) for state in merged.values()),
+            "count": len(merged),
+            "onCount": sum(1 for state in merged.values() if state.get("isOn") is True),
+            "plugs": merged,
+        })
+        record["data"] = data
+        record["updatedAt"] = _iso_now()
+        record["itemLastGoodAt"] = timestamps
+        if live_success or (not merged and result.get("ok") is True):
+            record["lastGoodAt"] = now
+        record["error"] = "; ".join(errors) if errors else None
+        record["stale"] = self._record_is_stale("plugs", record, now)
+
     def _complete(self, name: str, future: concurrent.futures.Future, revision: int) -> None:
         try:
             result = future.result()
@@ -1815,6 +1924,11 @@ class StateCoordinator:
                 # collection was in flight. Discard the old read and collect
                 # again rather than reverting the UI to pre-command state.
                 record["nextDue"] = 0.0
+                self._condition.notify_all()
+                return
+            if name == "plugs" and isinstance(result, dict) and isinstance(result.get("plugs"), dict):
+                record["nextDue"] = now + self._interval_locked(name, now)
+                self._complete_plug_collection_locked(result, now)
                 self._condition.notify_all()
                 return
             pending = record.get("pending")
@@ -1853,7 +1967,19 @@ class StateCoordinator:
                 record["stale"] = False
             else:
                 record["error"] = _safe_error(result.get("error") if isinstance(result, dict) else result)
-                record["stale"] = True
+                limit = self._freshness_limit(name)
+                last_good = record.get("lastGoodAt")
+                recent_last_good = (
+                    limit is not None
+                    and record.get("data") is not None
+                    and last_good is not None
+                    and not isinstance(record.get("pending"), dict)
+                    and max(0.0, now - float(last_good)) <= limit
+                )
+                # One transient read failure must not disable a recently
+                # confirmed control. Age expiry and pending verification still
+                # become stale through _record_is_stale.
+                record["stale"] = not recent_last_good
             self._condition.notify_all()
 
     def snapshot(self, client_active: bool = False, wait_timeout: float | None = None) -> dict:
@@ -1865,13 +1991,20 @@ class StateCoordinator:
             records = copy.deepcopy(self._records)
         subsystems: dict[str, dict] = {}
         metadata: dict[str, dict] = {}
+        effective_stale: dict[str, bool] = {}
         now = self._now()
         for name, record in records.items():
             data = copy.deepcopy(record["data"]) if record["data"] is not None else {
                 "ok": False,
                 "error": record["error"] or "loading",
             }
-            data["stale"] = bool(record["stale"])
+            stale = self._record_is_stale(name, record, now)
+            effective_stale[name] = stale
+            data["stale"] = stale
+            if name == "plugs" and isinstance(data.get("plugs"), dict):
+                for plug_name, state in data["plugs"].items():
+                    if isinstance(state, dict):
+                        state["stale"] = self._plug_item_is_stale(record, plug_name, state, now)
             data["refreshing"] = bool(record["refreshing"])
             if record["updatedAt"]:
                 data["updatedAt"] = record["updatedAt"]
@@ -1893,7 +2026,7 @@ class StateCoordinator:
                 "ok": data.get("ok") is True,
                 "updatedAt": record["updatedAt"],
                 "ageSeconds": round(age, 1) if age is not None else None,
-                "stale": bool(record["stale"]),
+                "stale": stale,
                 "refreshing": bool(record["refreshing"]),
                 "error": record["error"],
             }
@@ -1913,7 +2046,7 @@ class StateCoordinator:
             "ok": True,
             "loading": any(record["data"] is None for record in critical_records.values()),
             "refreshing": any(record["refreshing"] for record in critical_records.values()),
-            "stale": any(record["stale"] for record in critical_records.values()),
+            "stale": any(effective_stale[name] for name in critical_records),
             "generatedAt": _iso_now(),
             "ageSeconds": round(max(ages), 1) if ages else None,
             "version": VERSION,

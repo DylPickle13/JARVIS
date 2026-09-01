@@ -223,8 +223,8 @@ struct HomeView: View {
         switch app.connectionState {
         case .connected:
             if purifierConfirmationIsPrimaryStatus { return "Online · confirming purifier" }
-            if app.isAwaitingFreshState { return "Online · refreshing" }
-            return app.lastState?.stale == true ? "Connected · stale" : "Online · \(networkLabel)"
+            if app.isAwaitingFreshState { return "Online · loading status" }
+            return app.lastState?.stale == true ? "Online · partial data" : "Online · \(networkLabel)"
         case .connecting: return "Connecting"
         case .failed: return "Offline"
         case .idle: return "Ready to connect"
@@ -245,8 +245,8 @@ struct HomeView: View {
 
     private var freshnessLabel: String {
         if purifierConfirmationIsPrimaryStatus { return "Applying change" }
-        if app.isAwaitingFreshState { return "Updating status" }
-        if app.lastState?.stale == true { return "Needs refresh" }
+        if app.isAwaitingFreshState { return "Loading status" }
+        if app.lastState?.stale == true { return "Some data delayed" }
         if app.connectionState == .connected, app.lastState != nil, app.lastState?.ageSeconds == nil {
             return "Status current"
         }
@@ -308,13 +308,20 @@ struct HomeView: View {
     private func plugsSection(_ state: StateSnapshot) -> some View {
         let subsystem = state.subsystems?.plugs
         let plugs = subsystem?.plugs ?? [:]
-        let items = plugs.keys.sorted().map { (name: $0, isOn: plugs[$0]?.isOn) }
+        let subsystemStale = subsystem?.stale == true
+        let items = plugs.keys.sorted().map { name in
+            let plug = plugs[name]
+            return (
+                name: name,
+                isOn: plug?.isOn,
+                stale: subsystemStale || plug?.ok != true || plug?.stale == true
+            )
+        }
         let unavailable = subsystem?.ok != true
-        // A routine foreground state read keeps presenting the last confirmed
-        // control state. Only jarvisd's authoritative stale/refreshing flags
-        // disable hardware writes and show refresh messaging.
-        let stale = state.stale == true || subsystem?.stale == true
-        let refreshing = stale && (state.refreshing == true || subsystem?.refreshing == true)
+        // Overall snapshot state can be partial because Pi, services, or network
+        // telemetry is delayed. Only plug-scoped evidence gates plug controls.
+        let stale = subsystemStale || items.contains(where: { $0.stale })
+        let refreshing = subsystemStale && subsystem?.refreshing == true
 
         return VStack(alignment: .leading, spacing: 7) {
             MinimalSectionHeader(
@@ -345,16 +352,18 @@ struct HomeView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(
-                            item.isOn == nil || stale || app.isOperationBusy("plug:\(item.name)")
+                            item.isOn == nil || item.stale || app.isOperationBusy("plug:\(item.name)")
                         )
                         .accessibilityLabel("\(JarvisFormat.displayName(item.name)) plug")
                         .accessibilityValue(item.isOn.map { $0 ? "on" : "off" } ?? "unavailable")
                         .accessibilityHint(
                             item.isOn == nil
                                 ? "State unavailable"
-                                : (refreshing
-                                    ? "State is refreshing; wait before changing it"
-                                    : (stale ? "State is stale; refresh before changing it" : "Double tap to set the opposite state"))
+                                : (item.stale
+                                    ? (refreshing
+                                        ? "State is refreshing; wait before changing it"
+                                        : "State is stale; refresh before changing it")
+                                    : "Double tap to set the opposite state")
                         )
                     }
                 }
@@ -386,8 +395,9 @@ struct HomeView: View {
             let fan = purifier.fanSetLevel ?? purifier.fanLevel
             let pending = purifier.verificationPending == true
             let busy = app.isOperationBusy("purifier") || pending
-            let stale = state.stale == true || purifier.stale == true
-            let refreshing = stale && (state.refreshing == true || purifier.refreshing == true)
+            // Purifier controls depend only on purifier-scoped freshness.
+            let stale = purifier.stale == true
+            let refreshing = stale && purifier.refreshing == true
 
             MinimalCard {
                 VStack(spacing: 9) {
