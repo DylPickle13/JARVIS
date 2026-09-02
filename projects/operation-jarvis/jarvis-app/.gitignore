@@ -17,6 +17,7 @@ build/
 .swiftpm/
 Packages/
 Package.resolved
+!JARVIS.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # macOS
 .DS_Store

@@ -5,12 +5,17 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
-    func testNativeNotificationRouteAcceptsOnlyGenericVersionedJobsPayload() {
+    func testNativeNotificationRouteAcceptsOnlyVersionedJobsRoutingFields() {
         let accepted = PushNotificationCoordinator.route(from: [
             "route": "scheduled-job-result",
             "routeVersion": 1,
             "resultSequence": "41",
-            "jobName": "ignored private field",
+            "aps": [
+                "alert": [
+                    "title": "Apple Refurb Scraper",
+                    "body": "Completed — Found two listings.",
+                ],
+            ],
         ])
         XCTAssertEqual(accepted?.resultSequence, 41)
         XCTAssertNil(PushNotificationCoordinator.route(from: [
@@ -40,48 +45,6 @@ final class AppStateTests: XCTestCase {
             XCTAssertEqual(presentation.label, label)
             XCTAssertEqual(presentation.tone, tone)
         }
-    }
-
-    func testPeriodicSchedulerIsScheduledAndAvailableBetweenLaunchdRuns() throws {
-        let response = try JSONDecoder().decode(
-            ServicesListResponse.self,
-            from: Data(
-                #"{"ok":true,"services":{"room-audio-server":{"ok":true,"loaded":true,"running":true},"jobs-scheduler":{"ok":true,"loaded":true,"running":false,"configured":true,"allowedActions":[]}}}"#.utf8
-            )
-        )
-        let services = response.services.map { (name: $0.key, service: $0.value) }
-        let scheduler = try XCTUnwrap(response.services["jobs-scheduler"])
-
-        XCTAssertEqual(
-            RuntimeServicePresentation.state(name: "jobs-scheduler", service: scheduler),
-            .scheduled
-        )
-        XCTAssertEqual(
-            RuntimeServicePresentation.summary(servicesLoaded: true, services: services),
-            "2 of 2 available"
-        )
-    }
-
-    func testPeriodicSchedulerStillFailsClosedWhenUnavailable() throws {
-        let response = try JSONDecoder().decode(
-            ServicesListResponse.self,
-            from: Data(
-                #"{"ok":true,"services":{"jobs-scheduler":{"ok":false,"loaded":null,"running":null,"error":"launchctl probe failed"}}}"#.utf8
-            )
-        )
-        let scheduler = try XCTUnwrap(response.services["jobs-scheduler"])
-
-        XCTAssertEqual(
-            RuntimeServicePresentation.state(name: "jobs-scheduler", service: scheduler),
-            .unknown
-        )
-        XCTAssertEqual(
-            RuntimeServicePresentation.summary(
-                servicesLoaded: true,
-                services: [(name: "jobs-scheduler", service: scheduler)]
-            ),
-            "0 of 1 available"
-        )
     }
 
     func testISO8601ParsingSupportsPlainAndFractionalTimestampsWithoutSharedMutableFormatter() throws {
@@ -266,7 +229,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(app.isStateLoading)
     }
 
-    func testCachedStatePollingContinuesAcrossActiveTabsWhileServicesStayHomeOnly() async throws {
+    func testCachedStateAndJobsPollingContinueAcrossActiveTabsWithoutServicesPolling() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
         let store = EndpointStore(defaults: defaults)
@@ -279,13 +242,13 @@ final class AppStateTests: XCTestCase {
         app.endpointDraft = "http://fake.jarvis:8790"
 
         app.sceneDidBecomeActive()
-        for _ in 0..<40 where api.stateCalls < 2 || api.servicesCalls < 2 || api.scheduledJobsCalls < 2 || api.scheduledJobResultsCalls < 2 {
+        for _ in 0..<40 where api.stateCalls < 2 || api.scheduledJobsCalls < 2 || api.scheduledJobResultsCalls < 2 {
             try await Task.sleep(for: .milliseconds(25))
         }
         XCTAssertGreaterThanOrEqual(api.stateCalls, 2)
-        XCTAssertGreaterThan(api.stateCalls, api.servicesCalls, "visible controls should poll faster than heavy Home resources")
-        XCTAssertEqual(api.servicesCalls, api.scheduledJobsCalls)
-        XCTAssertEqual(api.servicesCalls, api.scheduledJobResultsCalls)
+        XCTAssertGreaterThan(api.stateCalls, api.scheduledJobsCalls, "visible controls should poll faster than Jobs resources")
+        XCTAssertEqual(api.servicesCalls, 0)
+        XCTAssertEqual(api.scheduledJobsCalls, api.scheduledJobResultsCalls)
 
         app.setActiveSection(.pi)
         try await Task.sleep(for: .milliseconds(50))
@@ -548,36 +511,169 @@ final class AppStateTests: XCTestCase {
         let store = EndpointStore(defaults: defaults)
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("jarvis-results-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let readStateURL = URL(fileURLWithPath: cacheURL.path + ".read-state-v2")
+        defer {
+            try? FileManager.default.removeItem(at: cacheURL)
+            try? FileManager.default.removeItem(at: readStateURL)
+        }
         let app = AppState(
             store: store,
             client: api,
             preferences: defaults,
-            resultCacheURL: cacheURL
+            resultCacheURL: cacheURL,
+            resultReadStateURL: readStateURL
         )
         app.endpointDraft = "http://fake.jarvis:8790"
 
         await app.refresh()
 
         XCTAssertEqual(app.lastScheduledJobResults.map(\.sequence), [5])
+        XCTAssertEqual(app.unreadScheduledJobCount, 0)
         XCTAssertEqual(app.unreadScheduledJobResultCount, 0)
 
         api.scheduledJobResultSequence = 6
         await app.fetchScheduledJobResults()
 
         XCTAssertEqual(app.lastScheduledJobResults.map(\.sequence), [6, 5])
+        XCTAssertEqual(app.unreadScheduledJobCount, 1)
         XCTAssertEqual(app.unreadScheduledJobResultCount, 1)
-        app.markScheduledJobResultsRead()
+        XCTAssertTrue(app.hasUnreadScheduledJobResults(for: "job_demo"))
+        app.markScheduledJobRead(jobID: "job_demo")
+        XCTAssertEqual(app.unreadScheduledJobCount, 0)
         XCTAssertEqual(app.unreadScheduledJobResultCount, 0)
 
         let restored = AppState(
             store: store,
             client: FakeAPI(),
             preferences: defaults,
-            resultCacheURL: cacheURL
+            resultCacheURL: cacheURL,
+            resultReadStateURL: readStateURL
         )
         XCTAssertEqual(restored.lastScheduledJobResults.map(\.sequence), [6, 5])
         XCTAssertEqual(restored.unreadScheduledJobResultCount, 0)
+    }
+
+    func testLegacyMigrationWithoutCacheBaselinesFirstSuccessfulServerSync() async {
+        let api = FakeAPI()
+        api.scheduledJobResultSequence = 5
+        let defaults = UserDefaults(suiteName: "jarvis.legacy-no-cache.\(UUID().uuidString)")!
+        defaults.set(true, forKey: "jarvis.jobs.result-baseline-established.v1")
+        defaults.set(2, forKey: "jarvis.jobs.last-read-sequence.v1")
+        let store = EndpointStore(defaults: defaults)
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jarvis-legacy-no-cache-\(UUID().uuidString).json")
+        let readStateURL = URL(fileURLWithPath: cacheURL.path + ".read-state-v2")
+        defer {
+            try? FileManager.default.removeItem(at: cacheURL)
+            try? FileManager.default.removeItem(at: readStateURL)
+        }
+        let app = AppState(
+            store: store,
+            client: api,
+            preferences: defaults,
+            resultCacheURL: cacheURL,
+            resultReadStateURL: readStateURL
+        )
+        app.endpointDraft = "http://fake.jarvis:8790"
+
+        await app.refresh()
+
+        XCTAssertEqual(app.lastScheduledJobResults.map(\.sequence), [5])
+        XCTAssertEqual(app.unreadScheduledJobCount, 0)
+        XCTAssertEqual(app.unreadScheduledJobResultCount, 0)
+
+        api.scheduledJobResultSequence = 6
+        await app.fetchScheduledJobResults()
+
+        XCTAssertEqual(app.lastScheduledJobResults.map(\.sequence), [6, 5])
+        XCTAssertEqual(app.unreadScheduledJobCount, 1)
+        XCTAssertEqual(app.unreadScheduledJobResultCount, 1)
+    }
+
+    func testPerJobReadWatermarksPreserveOtherUnreadThreadsAndMigrateLegacyState() throws {
+        func makeResult(sequence: Int, jobID: String) throws -> ScheduledJobResult {
+            let object: [String: Any] = [
+                "sequence": sequence,
+                "id": "run_\(sequence)",
+                "jobId": jobID,
+                "jobName": jobID,
+                "status": "success",
+                "outputKind": "direct",
+                "startedAt": "2026-09-02T00:00:00Z",
+                "finishedAt": "2026-09-02T00:00:01Z",
+                "durationSeconds": 1.0,
+                "exitCode": 0,
+                "title": "Completed",
+                "summary": "Ready",
+                "output": "Ready",
+                "error": NSNull(),
+                "truncated": false,
+            ]
+            let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+            return try JSONDecoder().decode(ScheduledJobResult.self, from: data)
+        }
+
+        let defaults = UserDefaults(suiteName: "jarvis.per-job-read.\(UUID().uuidString)")!
+        defaults.set(true, forKey: "jarvis.jobs.result-baseline-established.v1")
+        defaults.set(2, forKey: "jarvis.jobs.last-read-sequence.v1")
+        let store = EndpointStore(defaults: defaults)
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jarvis-per-job-read-\(UUID().uuidString).json")
+        let readStateURL = URL(fileURLWithPath: cacheURL.path + ".read-state-v2")
+        defer {
+            try? FileManager.default.removeItem(at: cacheURL)
+            try? FileManager.default.removeItem(at: readStateURL)
+        }
+        let migratedResults = [
+            try makeResult(sequence: 5, jobID: "job_beta"),
+            try makeResult(sequence: 4, jobID: "job_alpha"),
+        ]
+        ScheduledJobResultCache(fileURL: cacheURL).save(migratedResults)
+
+        let app = AppState(
+            store: store,
+            client: FakeAPI(),
+            preferences: defaults,
+            resultCacheURL: cacheURL,
+            resultReadStateURL: readStateURL
+        )
+
+        XCTAssertEqual(app.unreadScheduledJobCount, 0, "Build 144 cache history must migrate as read")
+        XCTAssertEqual(app.unreadScheduledJobResultCount, 0)
+
+        let postMigrationResults = [
+            try makeResult(sequence: 8, jobID: "job_beta"),
+            try makeResult(sequence: 7, jobID: "job_alpha"),
+            try makeResult(sequence: 6, jobID: "job_alpha"),
+        ] + migratedResults
+        app.lastScheduledJobResults = postMigrationResults
+        ScheduledJobResultCache(fileURL: cacheURL).save(postMigrationResults)
+
+        XCTAssertEqual(app.unreadScheduledJobCount, 2)
+        XCTAssertEqual(app.unreadScheduledJobResultCount, 3)
+        XCTAssertEqual(app.unreadScheduledJobResultCount(for: "job_alpha"), 2)
+        XCTAssertEqual(app.unreadScheduledJobResultCount(for: "job_beta"), 1)
+
+        app.markScheduledJobRead(jobID: "job_alpha")
+
+        XCTAssertFalse(app.hasUnreadScheduledJobResults(for: "job_alpha"))
+        XCTAssertTrue(app.hasUnreadScheduledJobResults(for: "job_beta"))
+        XCTAssertEqual(app.unreadScheduledJobCount, 1)
+        XCTAssertEqual(app.unreadScheduledJobResultCount, 1)
+        let attributes = try FileManager.default.attributesOfItem(atPath: readStateURL.path)
+        let permissions = try XCTUnwrap(attributes[.posixPermissions] as? NSNumber).intValue
+        XCTAssertEqual(permissions & 0o777, 0o600)
+
+        let restored = AppState(
+            store: store,
+            client: FakeAPI(),
+            preferences: defaults,
+            resultCacheURL: cacheURL,
+            resultReadStateURL: readStateURL
+        )
+        XCTAssertFalse(restored.hasUnreadScheduledJobResults(for: "job_alpha"))
+        XCTAssertTrue(restored.hasUnreadScheduledJobResults(for: "job_beta"))
+        XCTAssertEqual(restored.unreadScheduledJobCount, 1)
     }
 
     func testJobsPollingRefreshesJobsWithoutPollingHomeState() async throws {
@@ -611,22 +707,32 @@ final class AppStateTests: XCTestCase {
         app.sceneWillResignActive()
     }
 
-    func testScheduledJobsFailureDoesNotHideServiceStatus() async throws {
+    func testHomeRefreshDoesNotPollRemovedServicesSurface() async {
         let api = FakeAPI(scheduledJobsSucceeds: false)
-        let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
+        let defaults = UserDefaults(suiteName: "jarvis.no-services-poll.\(UUID().uuidString)")!
         let store = EndpointStore(defaults: defaults)
-        let app = AppState(store: store, client: api)
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jarvis-no-services-\(UUID().uuidString).json")
+        let readStateURL = URL(fileURLWithPath: cacheURL.path + ".read-state-v2")
+        defer {
+            try? FileManager.default.removeItem(at: cacheURL)
+            try? FileManager.default.removeItem(at: readStateURL)
+        }
+        let app = AppState(
+            store: store,
+            client: api,
+            preferences: defaults,
+            resultCacheURL: cacheURL,
+            resultReadStateURL: readStateURL
+        )
         app.endpointDraft = "http://fake.jarvis:8790"
+
         await app.refresh()
 
-        await app.fetchServices()
-        await app.fetchScheduledJobs()
-
-        XCTAssertTrue(app.servicesLoaded)
-        XCTAssertEqual(app.lastServices["room-audio-server"]?.running, true)
+        XCTAssertEqual(api.servicesCalls, 0)
+        XCTAssertGreaterThan(api.scheduledJobsCalls, 0)
         XCTAssertTrue(app.scheduledJobsLoaded)
         XCTAssertNotNil(app.scheduledJobsErrorMessage)
-        XCTAssertTrue(app.lastScheduledJobs.isEmpty)
     }
 
     func testPiTerminalContractUsesPersistentTmuxBootstrap() {

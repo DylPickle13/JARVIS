@@ -92,7 +92,7 @@ struct NotificationSettingsView: View {
                     .buttonStyle(.bordered)
                 }
 
-                Text("Alerts contain only a generic Jobs route. Result details remain in the private, durable Jobs history on your Mac. iPhone and Apple Watch register independently; APNs delivery is best-effort.")
+                Text("Alerts identify the job and include a short, sanitized result preview. Full details remain in durable Jobs history. Apple may show previews on the Lock Screen; use system Show Previews settings to hide them. iPhone and Apple Watch register independently, and APNs delivery is best-effort.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

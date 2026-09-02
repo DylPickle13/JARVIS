@@ -587,6 +587,13 @@ assert command in transport
 provider = Path('.pi/scheduler/apns_provider.py').read_text(encoding='utf-8')
 assert 'com.operation-jarvis.jarvis"' in provider
 assert 'com.operation-jarvis.jarvis.watchkitapp"' in provider
+assert 'MAX_ALERT_PREVIEW_CHARACTERS = 240' in provider
+assert 'SENSITIVE_CONTEXT_RE' in provider
+assert 'FALLBACK_ALERT_BODY' in provider
+iphone_copy = (root / 'JARVIS/Views/NotificationSettingsView.swift').read_text(encoding='utf-8')
+watch_copy = (root / 'JARVISWatch/Views/WatchConnectView.swift').read_text(encoding='utf-8')
+assert 'Show Previews' in iphone_copy
+assert 'Show Previews' in watch_copy
 runner = Path('.pi/scheduler/runner.py').read_text(encoding='utf-8')
 assert 'DELETE FROM notification_devices' in runner
 assert '_set_config_value(conn, "apns_dispatch_enabled", "0")' in runner

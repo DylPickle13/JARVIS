@@ -644,7 +644,7 @@ private struct WatchNotificationPermissionView: View {
                     .foregroundStyle(.green)
                 Text("JARVIS Job Alerts")
                     .font(.headline)
-                Text("Allow generic alerts when a retained scheduled job result is ready. Result details stay in private Jobs history.")
+                Text("Allow alerts with the job name and a short, sanitized result preview. Apple may show it on the Lock Screen; use system Show Previews to hide it. Full details stay in Jobs.")
                     .font(.caption2)
                     .multilineTextAlignment(.center)
                 Button("Allow Notifications") {

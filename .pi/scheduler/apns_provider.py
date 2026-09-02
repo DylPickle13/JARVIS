@@ -22,6 +22,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import unicodedata
 from typing import Callable, Mapping, Protocol
 
 IPHONE_APNS_TOPIC = "com.operation-jarvis.jarvis"
@@ -30,13 +31,43 @@ APNS_TOPICS = frozenset({IPHONE_APNS_TOPIC, WATCH_APNS_TOPIC})
 APNS_PRODUCTION_HOST = "api.push.apple.com"
 APNS_SANDBOX_HOST = "api.sandbox.push.apple.com"
 APNS_ENVIRONMENTS = frozenset({"development", "production"})
-GENERIC_ALERT_TITLE = "JARVIS Jobs"
-GENERIC_ALERT_BODY = "A scheduled job result is ready."
+FALLBACK_ALERT_TITLE = "JARVIS Jobs"
+FALLBACK_ALERT_BODY = "Result details are ready in Jobs."
 ROUTE_NAME = "scheduled-job-result"
 ROUTE_VERSION = 1
 MAX_PROVIDER_TOKEN_AGE_SECONDS = 50 * 60
 DEFAULT_EXPIRATION_SECONDS = 5 * 60
 MAX_PAYLOAD_BYTES = 1024
+MAX_ALERT_TITLE_BYTES = 120
+MAX_ALERT_PREVIEW_CHARACTERS = 240
+MAX_ALERT_BODY_BYTES = 640
+MARKDOWN_LINK_RE = re.compile(r"\[([^\]\n]{1,160})\]\([^)\s]+\)")
+URL_RE = re.compile(r"\b(?:[a-z][a-z0-9+.-]{1,15}://|www\.)[^\s<>()]+", re.IGNORECASE)
+BARE_NETWORK_LOCATION_RE = re.compile(
+    r"(?<![@\w])(?:(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?|"
+    r"(?:[a-z0-9-]+\.)+(?:com|org|net|ca|io|dev|app|ai|co|local|internal))"
+    r"(?:/[^\s<>()]*)?",
+    re.IGNORECASE,
+)
+LOCAL_PATH_RE = re.compile(
+    r"(?i)(?:(?<![a-z0-9])(?:~?/|\.\.?/)[^\s,;]+|"
+    r"(?<![a-z0-9])[a-z]:\\[^\s,;]+|(?<!\S)(?:[a-z0-9._~-]+/)+[^\s,;]+)"
+)
+SENSITIVE_CONTEXT_RE = re.compile(
+    r"(?i)(?<![a-z0-9])(?:prompts?|models?|credentials?|tokens?|secrets?|passwords?|passwd|"
+    r"authorization|auth|api[_ -]?key|private[_ -]?key|access[_ -]?key|cookies?|"
+    r"session[_ -]?id)(?![a-z0-9])|<local-path>"
+)
+BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(?:token|secret|password|passwd|authorization|api[_ -]?key|private[_ -]?key|"
+    r"access[_ -]?key|cookie|session[_ -]?id)\b\s*[:=]"
+)
+OPAQUE_SECRET_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:eyJ[A-Za-z0-9_-]{20,}|[A-Fa-f0-9]{32,}|"
+    r"(?:sk|pk|gh[opusr]|xox[abprs])[-_][A-Za-z0-9_-]{16,}|[A-Za-z0-9_+/=-]{40,})(?![A-Za-z0-9])"
+)
+PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 DEVICE_TOKEN_RE = re.compile(r"^[0-9A-Fa-f]{64,200}$")
 APPLE_IDENTIFIER_RE = re.compile(r"^[A-Z0-9]{10}$")
 JOB_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -369,12 +400,88 @@ def classify_response(response: APNsResponse) -> APNsSendResult:
     return APNsSendResult("failed", response.status_code, reason)
 
 
-def build_alert_payload(result_sequence: int) -> bytes:
+def _truncate_utf8(value: str, maximum: int) -> str:
+    encoded = value.encode("utf-8")
+    if len(encoded) <= maximum:
+        return value
+    suffix = "…"
+    allowance = max(0, maximum - len(suffix.encode("utf-8")))
+    prefix = encoded[:allowance]
+    while prefix:
+        try:
+            return prefix.decode("utf-8").rstrip() + suffix
+        except UnicodeDecodeError as exc:
+            prefix = prefix[: exc.start]
+    return suffix if maximum >= len(suffix.encode("utf-8")) else ""
+
+
+def _truncate_characters(value: str, maximum: int) -> str:
+    if len(value) <= maximum:
+        return value
+    if maximum <= 0:
+        return ""
+    if maximum == 1:
+        return "…"
+    return value[: maximum - 1].rstrip() + "…"
+
+
+def _plain_notification_text(value: str, *, replace_links: bool) -> str:
+    text = unicodedata.normalize(
+        "NFC",
+        str(value or "").replace("\r\n", "\n").replace("\r", "\n"),
+    )
+    text = "".join(
+        character
+        for character in text
+        if character in "\n\t" or unicodedata.category(character) not in {"Cc", "Cf", "Cs"}
+    )
+    if replace_links:
+        text = MARKDOWN_LINK_RE.sub(lambda match: match.group(1), text)
+        text = URL_RE.sub("link available in Jobs", text)
+        text = BARE_NETWORK_LOCATION_RE.sub("link available in Jobs", text)
+    # Result summaries are sanitized before persistence. This second, stricter
+    # boundary deliberately falls back to generic text whenever a summary still
+    # resembles private metadata, a credential, a token, or any local path.
+    # Partial redaction is not sufficient for Lock Screen content because paths
+    # and prompts may contain spaces or otherwise ambiguous boundaries.
+    if (
+        SENSITIVE_CONTEXT_RE.search(text)
+        or BEARER_RE.search(text)
+        or SECRET_ASSIGNMENT_RE.search(text)
+        or OPAQUE_SECRET_RE.search(text)
+        or PRIVATE_KEY_RE.search(text)
+        or LOCAL_PATH_RE.search(text)
+    ):
+        return ""
+    return " ".join(text.split()).strip()
+
+
+def _display_job_name(value: str) -> str:
+    clean = _plain_notification_text(value, replace_links=True)
+    words = clean.replace("-", " ").replace("_", " ").split()
+    display = " ".join(word[:1].upper() + word[1:] for word in words)
+    return _truncate_utf8(display or FALLBACK_ALERT_TITLE, MAX_ALERT_TITLE_BYTES)
+
+
+def build_alert_payload(
+    result_sequence: int,
+    *,
+    job_name: str,
+    status: str,
+    summary: str,
+) -> bytes:
     if isinstance(result_sequence, bool) or not 0 < result_sequence <= 9_223_372_036_854_775_807:
         raise APNsConfigurationError("APNs result sequence is invalid")
+    if status not in {"success", "error"}:
+        raise APNsConfigurationError("APNs result status is invalid")
+    title = _display_job_name(job_name)
+    preview = _plain_notification_text(summary, replace_links=True) or FALLBACK_ALERT_BODY
+    preview = _truncate_characters(preview, MAX_ALERT_PREVIEW_CHARACTERS)
+    status_label = "Failed" if status == "error" else "Completed"
+    body = _truncate_utf8(f"{status_label} — {preview}", MAX_ALERT_BODY_BYTES)
     payload = {
         "aps": {
-            "alert": {"title": GENERIC_ALERT_TITLE, "body": GENERIC_ALERT_BODY},
+            "alert": {"title": title, "body": body},
             "sound": "default",
             "thread-id": "jarvis-jobs",
         },
@@ -382,7 +489,39 @@ def build_alert_payload(result_sequence: int) -> bytes:
         "route": ROUTE_NAME,
         "routeVersion": ROUTE_VERSION,
     }
-    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    def encode() -> bytes:
+        return json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+
+    encoded = encode()
+    if len(encoded) > MAX_PAYLOAD_BYTES:
+        # JSON escaping can make quote- or backslash-heavy text larger than its
+        # UTF-8 representation. Fit only the visible body, preserving the fixed
+        # routing metadata, status prefix, and already-bounded title.
+        full_body = body
+        minimum = len(status_label) + len(" — …")
+        low, high = minimum, len(full_body)
+        best: bytes | None = None
+        while low <= high:
+            midpoint = (low + high) // 2
+            payload["aps"]["alert"]["body"] = _truncate_characters(full_body, midpoint)
+            candidate = encode()
+            if len(candidate) <= MAX_PAYLOAD_BYTES:
+                best = candidate
+                low = midpoint + 1
+            else:
+                high = midpoint - 1
+        if best is None:
+            payload["aps"]["alert"] = {
+                "title": FALLBACK_ALERT_TITLE,
+                "body": f"{status_label} — {FALLBACK_ALERT_BODY}",
+            }
+            best = encode()
+        encoded = best
     if len(encoded) > MAX_PAYLOAD_BYTES:
         raise APNsConfigurationError("APNs payload exceeds the private JARVIS limit")
     return encoded
@@ -428,6 +567,9 @@ class APNsProvider:
         device_token: str,
         result_sequence: int,
         job_id: str,
+        job_name: str,
+        status: str,
+        summary: str,
         apns_id: str,
         expiration: int | None = None,
     ) -> APNsSendResult:
@@ -445,6 +587,12 @@ class APNsProvider:
         resolved_expiration = expiration if expiration is not None else now + DEFAULT_EXPIRATION_SECONDS
         if isinstance(resolved_expiration, bool) or not now < resolved_expiration <= now + DEFAULT_EXPIRATION_SECONDS:
             raise APNsConfigurationError("APNs expiration is invalid")
+        payload = build_alert_payload(
+            result_sequence,
+            job_name=job_name,
+            status=status,
+            summary=summary,
+        )
         provider_token = self._token(now)
         collapse_id = "jarvis-" + hashlib.sha256(job_id.encode("utf-8")).hexdigest()[:32]
         request = APNsRequest(
@@ -460,7 +608,7 @@ class APNsProvider:
                 "apns-id": apns_id.lower(),
                 "content-type": "application/json",
             },
-            body=build_alert_payload(result_sequence),
+            body=payload,
         )
         try:
             response = self.transport.send(request)

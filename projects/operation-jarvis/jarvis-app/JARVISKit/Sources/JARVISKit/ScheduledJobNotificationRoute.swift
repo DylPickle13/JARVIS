@@ -1,7 +1,7 @@
 import CoreFoundation
 import Foundation
 
-/// Pure, side-effect-free routing for the generic JARVIS Jobs APNs payload.
+/// Pure, side-effect-free validation for fixed JARVIS Jobs APNs routing metadata.
 public struct ScheduledJobNotificationRoute: Equatable, Sendable {
     public static let name = "scheduled-job-result"
     public static let version = 1

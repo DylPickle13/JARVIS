@@ -1085,6 +1085,26 @@ No terminald, room-audio, widget implementation, Pi lifecycle extension, tmux co
 - Provider disable is immediate, fail-closed, and leaves durable Jobs history intact.
 - All automated, signed-artifact, and owner-driven physical gates pass on only the approved devices.
 
+## Build 145 privacy-contract addendum
+
+The Build 144 definition above remains the historical contract for its sealed artifact.
+Build 145 intentionally proposes a different owner-visible alert contract: the APNs
+`aps.alert` title contains the immutable result job name, and the body contains
+`Completed — …` or `Failed — …` followed by an approximately 240-character excerpt
+from the already-sanitized immutable result summary. Custom routing data remains only
+the fixed route, route version, and positive retained result sequence. Full output,
+prompts, model configuration, credentials, tokens, local paths, and raw URLs are not
+sent. Any preview that still resembles sensitive context fails closed to generic text.
+The iPhone and Watch permission copy warns that Apple may display this content on the
+Lock Screen and points the owner to the system **Show Previews** control.
+
+Build 145 also removes only the iPhone Home System/Services presentation and polling;
+jarvisd APIs and services remain intact. Opening the Jobs root does not clear unread
+state. Protected per-job sequence watermarks mark only the opened/deep-linked thread
+read, and the Jobs tab badge counts unread job threads rather than retained results.
+Build 144 cache history is baselined as read during migration, so rollout does not
+surface old results. This addendum is not deployment or physical acceptance evidence.
+
 ## Apple references
 
 - [Enabling and receiving notifications on watchOS](https://developer.apple.com/documentation/watchos-apps/enabling-and-receiving-notifications)

@@ -74,12 +74,26 @@ class APNsProviderTests(unittest.TestCase):
             environment=environment,
         )
 
-    def send(self, provider, *, topic=None, sequence=1, token="ab" * 32, job_id="job_fixture"):
+    def send(
+        self,
+        provider,
+        *,
+        topic=None,
+        sequence=1,
+        token="ab" * 32,
+        job_id="job_fixture",
+        job_name="apple_refurb_scraper",
+        status="success",
+        summary="Found two matching refurbished Mac mini listings.",
+    ):
         return provider.send_alert(
             topic=topic or self.apns.IPHONE_APNS_TOPIC,
             device_token=token,
             result_sequence=sequence,
             job_id=job_id,
+            job_name=job_name,
+            status=status,
+            summary=summary,
             apns_id="123e4567-e89b-42d3-a456-426614174000",
         )
 
@@ -108,7 +122,7 @@ class APNsProviderTests(unittest.TestCase):
         self.assertEqual(signer.messages, [])
         self.assertEqual(transport.requests, [])
 
-    def test_alert_is_generic_for_both_exact_topics_and_accepted(self) -> None:
+    def test_alert_identifies_job_for_both_exact_topics_and_is_accepted(self) -> None:
         response = self.apns.APNsResponse(200, {"apns-id": "opaque"}, b"")
         transport = FakeTransport(response=response)
         signer = FakeSigner()
@@ -138,12 +152,116 @@ class APNsProviderTests(unittest.TestCase):
             self.assertEqual(payload["route"], "scheduled-job-result")
             self.assertEqual(payload["routeVersion"], 1)
             self.assertEqual(payload["resultSequence"], "41")
-            self.assertEqual(payload["aps"]["alert"]["body"], self.apns.GENERIC_ALERT_BODY)
+            self.assertEqual(payload["aps"]["alert"]["title"], "Apple Refurb Scraper")
+            self.assertEqual(
+                payload["aps"]["alert"]["body"],
+                "Completed — Found two matching refurbished Mac mini listings.",
+            )
+            self.assertEqual(
+                set(payload),
+                {"aps", "resultSequence", "route", "routeVersion"},
+            )
+            self.assertEqual(set(payload["aps"]), {"alert", "sound", "thread-id"})
+            self.assertNotIn("badge", payload["aps"])
             serialized = request.body.decode("utf-8")
             self.assertNotIn("private-job-id", serialized)
-            self.assertNotIn("output", serialized.lower())
+            self.assertNotIn("jobName", serialized)
+            self.assertNotIn("summary", serialized)
             self.assertNotIn("prompt", serialized.lower())
+            self.assertLessEqual(len(request.body), self.apns.MAX_PAYLOAD_BYTES)
             self.assertTrue(request.headers["apns-collapse-id"].startswith("jarvis-"))
+
+    def test_preview_replaces_links_and_falls_back_for_any_sensitive_context(self) -> None:
+        transport = FakeTransport(response=self.apns.APNsResponse(200, {}, b""))
+        provider = self.apns.APNsProvider(
+            self.configuration(),
+            signer=FakeSigner(),
+            transport=transport,
+        )
+
+        result = self.send(
+            provider,
+            status="error",
+            summary=(
+                "See [listing](https://example.com/private), example.org/raw, or "
+                "192.168.1.20:8790/status"
+            ),
+        )
+        self.assertTrue(result.accepted)
+        body = json.loads(transport.requests[-1].body)["aps"]["alert"]["body"]
+        self.assertTrue(body.startswith("Failed — See listing"))
+        self.assertEqual(body.count("link available in Jobs"), 2)
+        self.assertNotIn("https://", body)
+        self.assertNotIn("example.org", body)
+        self.assertNotIn("192.168.1.20", body)
+
+        unsafe_summaries = (
+            "TOKEN=super-secret Bearer abc.def.ghi",
+            "Saved under /Users/example/My Private Folder/result.txt",
+            "Saved as path:/var/private/result.txt",
+            r"Saved as C:\Users\example\private.txt",
+            "Saved as output/private/result.txt",
+            "Prompt: include private owner instructions",
+            "selected_model=Qwen private configuration",
+            "OPENAI_API_KEY=not-for-lock-screen",
+            "Credential rotation finished",
+            "opaque value 0123456789abcdef0123456789abcdef",
+            "base64 dGhpcy1pcy1hLWZha2Utc2VjcmV0LXZhbHVlLWxvbmc=",
+            "-----BEGIN PRIVATE KEY-----",
+        )
+        for index, summary in enumerate(unsafe_summaries, start=1):
+            with self.subTest(summary=summary):
+                self.send(provider, sequence=index + 1, summary=summary)
+                payload = json.loads(transport.requests[-1].body)
+                self.assertEqual(
+                    payload["aps"]["alert"]["body"],
+                    "Completed — Result details are ready in Jobs.",
+                )
+                serialized = transport.requests[-1].body.decode("utf-8")
+                self.assertNotIn(summary, serialized)
+
+        self.send(provider, sequence=20, job_name="daily_model_report")
+        payload = json.loads(transport.requests[-1].body)
+        self.assertEqual(payload["aps"]["alert"]["title"], self.apns.FALLBACK_ALERT_TITLE)
+
+    def test_preview_is_utf8_bounded_and_invalid_status_fails_before_signing(self) -> None:
+        payload = self.apns.build_alert_payload(
+            42,
+            job_name="daily_🔥_briefing",
+            status="success",
+            summary="🔥" * 1_000,
+        )
+        decoded = json.loads(payload)
+        self.assertEqual(decoded["aps"]["alert"]["title"], "Daily 🔥 Briefing")
+        self.assertTrue(decoded["aps"]["alert"]["body"].endswith("…"))
+        self.assertLessEqual(
+            len(decoded["aps"]["alert"]["body"].encode("utf-8")),
+            self.apns.MAX_ALERT_BODY_BYTES,
+        )
+        self.assertLessEqual(len(payload), self.apns.MAX_PAYLOAD_BYTES)
+
+        ascii_payload = self.apns.build_alert_payload(
+            43,
+            job_name='"' * 1_000,
+            status="success",
+            summary='"' * 1_000,
+        )
+        ascii_decoded = json.loads(ascii_payload)
+        self.assertLessEqual(
+            len(ascii_decoded["aps"]["alert"]["body"]),
+            len("Completed — ") + self.apns.MAX_ALERT_PREVIEW_CHARACTERS,
+        )
+        self.assertLessEqual(len(ascii_payload), self.apns.MAX_PAYLOAD_BYTES)
+
+        signer = FakeSigner()
+        transport = FakeTransport()
+        provider = self.apns.APNsProvider(
+            self.configuration(), signer=signer, transport=transport
+        )
+        with self.assertRaisesRegex(self.apns.APNsConfigurationError, "status"):
+            self.send(provider, status="unknown")
+        self.assertEqual(signer.messages, [])
+        self.assertEqual(transport.requests, [])
 
     def test_unknown_topic_fails_before_signing_or_transport(self) -> None:
         signer = FakeSigner()

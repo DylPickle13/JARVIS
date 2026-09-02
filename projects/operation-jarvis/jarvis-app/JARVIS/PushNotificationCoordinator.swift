@@ -184,6 +184,11 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
         pendingResultSequence = resultSequence
     }
 
+    func receivedForegroundResult(resultSequence: Int) {
+        guard resultSequence > 0, let app else { return }
+        Task { await app.fetchScheduledJobResult(sequence: resultSequence) }
+    }
+
     func consumePendingResultSequence() {
         pendingResultSequence = nil
     }
@@ -373,7 +378,12 @@ extension PushNotificationCoordinator: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        guard Self.route(from: notification.request.content.userInfo) != nil else { return [] }
+        guard let route = Self.route(from: notification.request.content.userInfo) else { return [] }
+        await MainActor.run {
+            PushNotificationCoordinator.shared.receivedForegroundResult(
+                resultSequence: route.resultSequence
+            )
+        }
         return [.banner, .sound]
     }
 

@@ -696,7 +696,8 @@ def drain_notifications(conn: sqlite3.Connection) -> dict[str, Any]:
         rows = conn.execute(
             """
             SELECT d.id AS delivery_id,d.outbox_id,d.platform,d.apns_id,d.attempt_count,d.created_at,
-                   o.result_sequence,r.job_id,nd.topic,nd.environment,nd.device_token
+                   o.result_sequence,r.job_id,r.job_name,r.status AS result_status,r.summary,
+                   nd.topic,nd.environment,nd.device_token
               FROM notification_deliveries d
               JOIN notification_outbox o ON o.id=d.outbox_id
               JOIN results r ON r.sequence=o.result_sequence
@@ -737,6 +738,9 @@ def drain_notifications(conn: sqlite3.Connection) -> dict[str, Any]:
                 device_token=str(row["device_token"]),
                 result_sequence=int(row["result_sequence"]),
                 job_id=str(row["job_id"]),
+                job_name=str(row["job_name"]),
+                status=str(row["result_status"]),
+                summary=str(row["summary"]),
                 apns_id=str(row["apns_id"]),
                 expiration=int(created_at.timestamp()) + APNS_DELIVERY_EXPIRY_SECONDS,
             )

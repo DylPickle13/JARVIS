@@ -117,7 +117,6 @@ private struct RootTabView: View {
     var body: some View {
         TabView(selection: $selection) {
             HomeView(
-                onOpenJobs: { selection = .jobs },
                 onOpenPiTerminal: { slot in
                     _ = piTerminal.selectSlot(slot)
                     selection = .pi
@@ -132,7 +131,7 @@ private struct RootTabView: View {
 
             JobsView(requestedResultSequence: $requestedJobResultSequence)
                 .tabItem { Label("Jobs", systemImage: "calendar.badge.clock") }
-                .badge(app.unreadScheduledJobResultCount)
+                .badge(app.unreadScheduledJobCount)
                 .tag(AppSection.jobs)
 
             SettingsView()

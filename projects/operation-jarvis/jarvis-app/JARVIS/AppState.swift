@@ -56,11 +56,6 @@ public final class AppState: ObservableObject {
     @Published public var isStateLoading = false
     @Published public var stateErrorMessage: String?
 
-    @Published public var lastServices: [String: ServiceActionResult] = [:]
-    @Published public var servicesLoaded = false
-    @Published public var servicesLoading = false
-    @Published public var servicesErrorMessage: String?
-
     @Published public var lastScheduledJobs: [ScheduledJob] = []
     @Published public var scheduledJobsSummary: ScheduledJobsSummary?
     @Published public var scheduledJobsLoaded = false
@@ -71,7 +66,7 @@ public final class AppState: ObservableObject {
     @Published public var scheduledJobResultsLoaded = false
     @Published public var scheduledJobResultsLoading = false
     @Published public var scheduledJobResultsErrorMessage: String?
-    @Published public private(set) var lastReadScheduledJobResultSequence = 0
+    @Published private var scheduledJobReadState = ScheduledJobReadState.empty
 
     @Published public var signingRenewalStatus: SigningRenewalStatus?
     @Published public var signingRenewalLoading = false
@@ -91,6 +86,7 @@ public final class AppState: ObservableObject {
     private let staleConvergenceInterval: Duration
     private let staleConvergenceAttempts: Int
     private let resultCache: ScheduledJobResultCache
+    private let resultReadStateStore: ScheduledJobReadStateStore
     private let preferences: UserDefaults
     private let resultBaselineKey = "jarvis.jobs.result-baseline-established.v1"
     private let lastReadResultKey = "jarvis.jobs.last-read-sequence.v1"
@@ -114,7 +110,8 @@ public final class AppState: ObservableObject {
         staleConvergenceInterval: Duration = JARVISRefreshPolicy.staleConvergenceInterval,
         staleConvergenceAttempts: Int = JARVISRefreshPolicy.staleConvergenceAttempts,
         preferences: UserDefaults = .standard,
-        resultCacheURL: URL? = nil
+        resultCacheURL: URL? = nil,
+        resultReadStateURL: URL? = nil
     ) {
         let resolvedStore = store ?? EndpointStore(defaults: JARVISSharedStore.defaults)
         self.store = resolvedStore
@@ -127,10 +124,34 @@ public final class AppState: ObservableObject {
         self.staleConvergenceAttempts = max(0, staleConvergenceAttempts)
         self.preferences = preferences
         self.resultCache = ScheduledJobResultCache(fileURL: resultCacheURL)
+        let derivedReadStateURL = resultReadStateURL ?? resultCacheURL.map {
+            URL(fileURLWithPath: $0.path + ".read-state-v2")
+        }
+        self.resultReadStateStore = ScheduledJobReadStateStore(fileURL: derivedReadStateURL)
         self.endpointDraft = resolvedStore.endpointURLString ?? ""
         self.lastScheduledJobResults = self.resultCache.load()
         self.scheduledJobResultsLoaded = !self.lastScheduledJobResults.isEmpty
-        self.lastReadScheduledJobResultSequence = max(0, preferences.integer(forKey: lastReadResultKey))
+        if let saved = self.resultReadStateStore.load() {
+            self.scheduledJobReadState = saved
+        } else {
+            let legacyEstablished = preferences.bool(forKey: resultBaselineKey)
+            let legacySequence = legacyEstablished
+                ? max(0, preferences.integer(forKey: lastReadResultKey))
+                : 0
+            let cachedBaseline = self.lastScheduledJobResults.map(\.sequence).max() ?? 0
+            self.scheduledJobReadState = ScheduledJobReadState(
+                // Without a cache, wait for the first successful server sync so
+                // Build 144 history cannot reappear merely because local cache
+                // state was missing. A positive legacy watermark remains a lower
+                // bound when that first baseline is established.
+                baselineEstablished: cachedBaseline > 0,
+                baselineSequence: max(legacySequence, cachedBaseline),
+                jobReadSequences: [:]
+            )
+            if self.scheduledJobReadState.baselineEstablished {
+                self.resultReadStateStore.save(self.scheduledJobReadState)
+            }
+        }
         seedFromLaunchArgumentsIfPresent()
         self.endpointDraft = resolvedStore.endpointURLString ?? ""
     }
@@ -629,25 +650,7 @@ public final class AppState: ObservableObject {
         )
     }
 
-    // MARK: - Services
-
-    public func fetchServices() async {
-        guard let endpoint = activeEndpoint else { return }
-        servicesLoading = true
-        defer { servicesLoading = false }
-        do {
-            let response = try await client.services(endpoint)
-            lastServices = response.services
-            servicesLoaded = true
-            servicesErrorMessage = nil
-        } catch let error as JarvisError {
-            servicesErrorMessage = error.errorDescription
-        } catch is CancellationError {
-            return
-        } catch {
-            servicesErrorMessage = error.localizedDescription
-        }
-    }
+    // MARK: - Scheduled jobs
 
     public func fetchScheduledJobs() async {
         guard let endpoint = activeEndpoint else { return }
@@ -674,20 +677,41 @@ public final class AppState: ObservableObject {
         }
     }
 
+    public var unreadScheduledJobCount: Int {
+        Set(lastScheduledJobResults.lazy.filter(isScheduledJobResultUnread).map(\.jobId)).count
+    }
+
     public var unreadScheduledJobResultCount: Int {
-        lastScheduledJobResults.filter { $0.sequence > lastReadScheduledJobResultSequence }.count
+        lastScheduledJobResults.lazy.filter(isScheduledJobResultUnread).count
+    }
+
+    public func unreadScheduledJobResultCount(for jobID: String) -> Int {
+        lastScheduledJobResults.lazy
+            .filter { $0.jobId == jobID && self.isScheduledJobResultUnread($0) }
+            .count
+    }
+
+    public func hasUnreadScheduledJobResults(for jobID: String) -> Bool {
+        lastScheduledJobResults.contains { $0.jobId == jobID && self.isScheduledJobResultUnread($0) }
     }
 
     public func scheduledJobResult(sequence: Int) -> ScheduledJobResult? {
         lastScheduledJobResults.first { $0.sequence == sequence }
     }
 
-    public func markScheduledJobResultsRead() {
-        guard let newest = lastScheduledJobResults.map(\.sequence).max(),
-              newest > lastReadScheduledJobResultSequence else { return }
-        lastReadScheduledJobResultSequence = newest
-        preferences.set(newest, forKey: lastReadResultKey)
-        preferences.set(true, forKey: resultBaselineKey)
+    public func markScheduledJobRead(jobID: String) {
+        guard let newest = lastScheduledJobResults.lazy
+            .filter({ $0.jobId == jobID })
+            .map(\.sequence)
+            .max() else { return }
+        let previous = scheduledJobReadState.readSequence(for: jobID)
+        scheduledJobReadState.markRead(jobID: jobID, through: newest)
+        guard scheduledJobReadState.readSequence(for: jobID) != previous else { return }
+        resultReadStateStore.save(scheduledJobReadState)
+    }
+
+    private func isScheduledJobResultUnread(_ result: ScheduledJobResult) -> Bool {
+        result.sequence > scheduledJobReadState.readSequence(for: result.jobId)
     }
 
     public func fetchScheduledJobResults(after explicitCursor: Int? = nil) async {
@@ -713,9 +737,12 @@ public final class AppState: ObservableObject {
                 incoming: response.results
             )
             resultCache.save(lastScheduledJobResults)
-            if !preferences.bool(forKey: resultBaselineKey) {
+            if !scheduledJobReadState.baselineEstablished {
                 let baseline = lastScheduledJobResults.map(\.sequence).max() ?? 0
-                lastReadScheduledJobResultSequence = baseline
+                scheduledJobReadState.establishBaseline(baseline)
+                resultReadStateStore.save(scheduledJobReadState)
+                // Keep the legacy watermark only as a one-way migration aid for
+                // Build 144 rollback. Build 145 read decisions are per job.
                 preferences.set(baseline, forKey: lastReadResultKey)
                 preferences.set(true, forKey: resultBaselineKey)
             }
@@ -734,6 +761,18 @@ public final class AppState: ObservableObject {
     public func fetchScheduledJobResult(sequence: Int) async {
         guard sequence > 0 else { return }
         if scheduledJobResult(sequence: sequence) != nil { return }
+        // A foreground push can race the periodic Jobs request. Wait within a
+        // strict bound for that request to publish or finish, then issue the
+        // sequence-focused fetch instead of silently dropping convergence.
+        for _ in 0..<100 where scheduledJobResultsLoading {
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return
+            }
+            if scheduledJobResult(sequence: sequence) != nil { return }
+        }
+        guard !scheduledJobResultsLoading else { return }
         await fetchScheduledJobResults(after: sequence - 1)
     }
 
@@ -745,35 +784,6 @@ public final class AppState: ObservableObject {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = error.localizedDescription
-        }
-    }
-
-    @discardableResult
-    public func runServiceAction(_ name: String, _ action: String) async -> Bool {
-        let key = "service:\(name)"
-        guard beginOperation(key) else { return false }
-        defer { endOperation(key) }
-        guard let endpoint = activeEndpoint else {
-            operationErrorMessage = "Not connected."
-            return false
-        }
-        do {
-            let result = try await client.serviceAction(endpoint, name: name, action: action)
-            await fetchServices()
-            guard result.ok else {
-                operationErrorMessage = result.error ?? "\(action.capitalized) failed for \(name)."
-                return false
-            }
-            operationErrorMessage = nil
-            return true
-        } catch let error as JarvisError {
-            operationErrorMessage = error.errorDescription
-            return false
-        } catch is CancellationError {
-            return false
-        } catch {
-            operationErrorMessage = error.localizedDescription
-            return false
         }
     }
 
@@ -839,14 +849,13 @@ public final class AppState: ObservableObject {
         homeControlPollsSinceResources = 0
         let refreshCodexQuota = reserveVisibleCodexRefreshIfDue()
         async let state: Void = fetchState(refreshingCodexQuota: refreshCodexQuota)
-        async let services: Void = fetchServices()
         async let jobs: Void = fetchScheduledJobs()
         async let results: Void = fetchScheduledJobResults()
         if refreshHealth {
             async let health: Void = fetchHealth()
-            _ = await (state, services, jobs, results, health)
+            _ = await (state, jobs, results, health)
         } else {
-            _ = await (state, services, jobs, results)
+            _ = await (state, jobs, results)
         }
     }
 
@@ -898,7 +907,7 @@ public final class AppState: ObservableObject {
                     // A lightweight cached state read keeps jarvisd's active
                     // client lease alive on JARVIS, Jobs, and Settings. Plug and
                     // purifier collectors therefore remain current when Home is
-                    // reopened, while heavier service polling stays Home-only.
+                    // reopened without restoring the removed Services polling.
                     async let state: Void = self.fetchState()
                     async let jobs: Void = self.refreshJobs()
                     _ = await (state, jobs)
@@ -917,10 +926,8 @@ public final class AppState: ObservableObject {
         store.clear()
         lastState = nil
         lastHealth = nil
-        lastServices = [:]
         lastScheduledJobs = []
         scheduledJobsSummary = nil
-        servicesLoaded = false
         scheduledJobsLoaded = false
         scheduledJobsErrorMessage = nil
         scheduledJobResultsLoading = false

@@ -359,6 +359,10 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         self.assertEqual(calls[0]["apns_id"], first_delivery["apns_id"])
         self.assertEqual(calls[2]["apns_id"], first_delivery["apns_id"])
+        for call in calls:
+            self.assertEqual(call["job_name"], "test-job")
+            self.assertEqual(call["status"], "success")
+            self.assertEqual(call["summary"], "private result remains local")
         self.assertEqual(row["status"], "ambiguous")
         self.assertEqual(row["attempt_count"], 2)
         self.assertIsNone(row["next_attempt_at"])

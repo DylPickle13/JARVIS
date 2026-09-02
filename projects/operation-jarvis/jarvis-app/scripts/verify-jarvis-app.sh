@@ -5,7 +5,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 DERIVED_DATA_PATH="$(mktemp -d "${TMPDIR:-/tmp}/jarvis-verify-derived.XXXXXX")"
-trap 'rm -rf "$DERIVED_DATA_PATH"' EXIT
+LOCKED_PACKAGE_RESOLUTION="$ROOT/JARVIS.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+LOCKED_PACKAGE_BACKUP="$DERIVED_DATA_PATH/Package.resolved"
+LOCKED_PACKAGE_SHA256="6c5bd48d304680d527550b04c1fe3f1a82b4156cee4fe204d42f102cf93e9de4"
+cleanup() {
+  if [[ -f "$LOCKED_PACKAGE_BACKUP" ]]; then
+    mkdir -p "$(dirname "$LOCKED_PACKAGE_RESOLUTION")"
+    cp "$LOCKED_PACKAGE_BACKUP" "$LOCKED_PACKAGE_RESOLUTION"
+  fi
+  rm -rf "$DERIVED_DATA_PATH"
+}
+trap cleanup EXIT
 
 reject_match() {
   local message="$1"
@@ -17,7 +27,23 @@ reject_match() {
 }
 
 printf '%s\n' '== XcodeGen =='
+[[ -f "$LOCKED_PACKAGE_RESOLUTION" ]] || {
+  echo "locked Package.resolved is missing before XcodeGen" >&2
+  exit 1
+}
+[[ "$(shasum -a 256 "$LOCKED_PACKAGE_RESOLUTION" | awk '{print $1}')" == "$LOCKED_PACKAGE_SHA256" ]] || {
+  echo "locked Package.resolved hash is unexpected" >&2
+  exit 1
+}
+cp "$LOCKED_PACKAGE_RESOLUTION" "$LOCKED_PACKAGE_BACKUP"
 xcodegen generate
+mkdir -p "$(dirname "$LOCKED_PACKAGE_RESOLUTION")"
+cp "$LOCKED_PACKAGE_BACKUP" "$LOCKED_PACKAGE_RESOLUTION"
+cmp -s "$LOCKED_PACKAGE_BACKUP" "$LOCKED_PACKAGE_RESOLUTION" || {
+  echo "locked Package.resolved changed during XcodeGen" >&2
+  exit 1
+}
+grep -q 'a9a5efd40eaf558a2bcd48d64b1d1646be686008' "$LOCKED_PACKAGE_RESOLUTION"
 
 printf '%s\n' '== Python unit tests =='
 python3 -m unittest discover -s jarvisd/tests -v
@@ -180,7 +206,15 @@ grep -q 'await self.refreshJobs()' JARVIS/AppState.swift
 grep -q 'scheme == "http" || scheme == "https"' JARVIS/Views/LinkedJobResultText.swift
 grep -q 'JobChannelMessage' JARVIS/Views/JobsView.swift
 reject_match 'Jobs must not restore the flat Inbox/Schedules picker' -Fq 'Picker("Jobs section"' JARVIS/Views/JobsView.swift
+reject_match 'Jobs must not restore the top summary card' -Fq 'summaryStrip' JARVIS/Views/JobsView.swift
+reject_match 'compact job rows must not restore result previews' -Fq 'latest.map { JobResultRichText.plainText($0.summary) }' JARVIS/Views/JobsView.swift
+reject_match 'compact job rows must not restore message-count labels' -Fq '\(thread.messages.count) message' JARVIS/Views/JobsView.swift
 reject_match 'Jobs must remain read-only' -RqsE 'runServiceAction|runCommand|setPlug|setPurifier|retry' JARVIS/Views/JobsView.swift
+grep -q 'unreadScheduledJobCount' JARVIS/AppState.swift
+grep -q 'markScheduledJobRead(jobID:' JARVIS/AppState.swift JARVIS/Views/JobsView.swift
+grep -q 'scheduled-job-read-state-v2.json' JARVIS/ScheduledJobResultCache.swift
+grep -q 'testPerJobReadWatermarksPreserveOtherUnreadThreadsAndMigrateLegacyState' JARVISTests/AppStateTests.swift
+grep -q 'testLegacyMigrationWithoutCacheBaselinesFirstSuccessfulServerSync' JARVISTests/AppStateTests.swift
 grep -q 'static func hasCurrentIssue(_ job: ScheduledJob?)' JARVIS/Views/JobsPresentation.swift
 grep -q 'JobsPresentation.hasCurrentIssue(job)' JARVIS/Views/JobsView.swift
 reject_match 'retained historical failures must not override a recovered job status' -Fq '|| latest?.status == "error"' JARVIS/Views/JobsView.swift
@@ -191,13 +225,9 @@ reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case even
 
 printf '%s\n' '== compact iPhone dashboard contract =='
 grep -q 'private var compactConnectionStrip' JARVIS/Views/HomeView.swift
-grep -q 'MinimalSectionHeader(title: "System"' JARVIS/Views/HomeView.swift
-grep -q 'case scheduled' JARVIS/Views/HomeView.swift
-grep -Fq 'return "\(available) of \(services.count) available"' JARVIS/Views/HomeView.swift
-grep -q 'Loaded; wakes periodically and exits between checks.' JARVIS/Views/HomeView.swift
-grep -q 'testPeriodicSchedulerIsScheduledAndAvailableBetweenLaunchdRuns' JARVISTests/AppStateTests.swift
-grep -q 'testPeriodicSchedulerStillFailsClosedWhenUnavailable' JARVISTests/AppStateTests.swift
-reject_match 'periodic scheduler must not be summarized as a continuously running process' -Fq 'of \(sortedServices.count) running' JARVIS/Views/HomeView.swift
+reject_match 'removed Home System and Services UI must stay absent' -E 'systemSection|servicesDetail|RuntimeServicePresentation|MinimalSectionHeader\(title: "System"' JARVIS/Views/HomeView.swift
+reject_match 'removed iPhone Services polling and mutation must stay absent' -E 'fetchServices|runServiceAction|lastServices|servicesLoaded' JARVIS/AppState.swift
+grep -q 'testHomeRefreshDoesNotPollRemovedServicesSurface' JARVISTests/AppStateTests.swift
 grep -q 'sessionIDs: \[1, 2, 3\]' JARVIS/Views/HomeView.swift
 grep -q 'sessionIDs: \[4, 5, 6\]' JARVIS/Views/HomeView.swift
 grep -q 'private func piSessionStatusSection(sessionID: Int, lifecycle: PiSessionLifecycle)' JARVIS/Views/HomeView.swift
@@ -286,6 +316,11 @@ grep -q 'PushNotificationCoordinator.shared' JARVIS/JARVISApp.swift
 grep -q 'WatchPushNotificationCoordinator.shared' JARVISWatch/JARVISWatchApp.swift
 grep -q 'NotificationSettingsView()' JARVIS/Views/SettingsView.swift
 grep -q 'canRetrySecureUpdate' JARVIS/PushNotificationCoordinator.swift
+grep -q 'receivedForegroundResult' JARVIS/PushNotificationCoordinator.swift
+grep -q 'Show Previews' JARVIS/Views/NotificationSettingsView.swift JARVISWatch/Views/WatchConnectView.swift
+grep -q 'MAX_ALERT_PREVIEW_CHARACTERS = 240' ../../../.pi/scheduler/apns_provider.py
+grep -q 'SENSITIVE_CONTEXT_RE' ../../../.pi/scheduler/apns_provider.py
+grep -q 'FALLBACK_ALERT_BODY' ../../../.pi/scheduler/apns_provider.py
 grep -q 'DELETE FROM notification_devices' ../../../.pi/scheduler/runner.py
 grep -q '_set_config_value(conn, "apns_dispatch_enabled", "0")' ../../../.pi/scheduler/runner.py
 grep -Fq '/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/.pi/scheduler/apns_registration.py' JARVIS/PushRegistrationSSHTransport.swift
@@ -704,7 +739,7 @@ printf '%s\n' '== native refresh and Tailscale contract =='
 grep -q 'activeInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q "A lightweight cached state read keeps jarvisd's active" JARVIS/AppState.swift
 grep -q 'async let state: Void = self.fetchState()' JARVIS/AppState.swift
-grep -q 'testCachedStatePollingContinuesAcrossActiveTabsWhileServicesStayHomeOnly' JARVISTests/AppStateTests.swift
+grep -q 'testCachedStateAndJobsPollingContinueAcrossActiveTabsWithoutServicesPolling' JARVISTests/AppStateTests.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q '100.87.28.34' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q 'TAILSCALE_APP_CLI' jarvisd/jarvisd.py

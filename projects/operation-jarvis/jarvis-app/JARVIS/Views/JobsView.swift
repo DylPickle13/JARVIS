@@ -22,10 +22,6 @@ struct JobsView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    if !sections.scheduled.isEmpty || !sections.archived.isEmpty {
-                        summaryStrip
-                    }
-
                     if let error = app.scheduledJobsErrorMessage {
                         messageCard(
                             title: "Schedules unavailable",
@@ -76,12 +72,10 @@ struct JobsView: View {
             }
             .refreshable {
                 await app.refreshJobs()
-                app.markScheduledJobResultsRead()
             }
             .task {
                 await app.refreshJobs()
                 await consumeRequestedResult()
-                app.markScheduledJobResultsRead()
             }
             .onChange(of: requestedResultSequence) { _, _ in
                 Task { await consumeRequestedResult() }
@@ -93,62 +87,6 @@ struct JobsView: View {
         (app.scheduledJobsLoading || app.scheduledJobResultsLoading)
             && app.lastScheduledJobs.isEmpty
             && app.lastScheduledJobResults.isEmpty
-    }
-
-    private var summaryStrip: some View {
-        let enabled = app.lastScheduledJobs.filter(\.enabled).count
-        let issues = app.lastScheduledJobs.filter(JobsPresentation.hasCurrentIssue).count
-        return HStack(spacing: 0) {
-            summaryMetric(
-                value: String(enabled),
-                label: "Active",
-                systemImage: "calendar.badge.clock",
-                color: JarvisPalette.accent
-            )
-            summaryDivider
-            summaryMetric(
-                value: String(app.lastScheduledJobResults.count),
-                label: "Messages",
-                systemImage: "text.bubble.fill",
-                color: JarvisPalette.accent
-            )
-            summaryDivider
-            summaryMetric(
-                value: String(issues),
-                label: issues == 1 ? "Issue" : "Issues",
-                systemImage: issues == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
-                color: issues == 0 ? JarvisPalette.accent : JarvisPalette.warning
-            )
-        }
-        .padding(.vertical, 12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(JarvisPalette.accent.opacity(0.12), lineWidth: 0.75)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(enabled) active jobs, \(app.lastScheduledJobResults.count) retained messages, \(issues) issues")
-    }
-
-    private func summaryMetric(value: String, label: String, systemImage: String, color: Color) -> some View {
-        VStack(spacing: 3) {
-            HStack(spacing: 5) {
-                Image(systemName: systemImage)
-                    .font(.caption.weight(.semibold))
-                Text(value)
-                    .font(.headline.monospacedDigit())
-            }
-            .foregroundStyle(color)
-            Text(label)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var summaryDivider: some View {
-        Divider()
-            .frame(height: 31)
     }
 
     private func jobGroup(title: String, threads: [ScheduledJobThread]) -> some View {
@@ -165,13 +103,16 @@ struct JobsView: View {
                         NavigationLink(
                             value: Route.thread(jobID: thread.id, focusedSequence: nil)
                         ) {
-                            ScheduledJobRow(thread: thread)
+                            ScheduledJobRow(
+                                thread: thread,
+                                unreadCount: app.unreadScheduledJobResultCount(for: thread.id)
+                            )
                         }
                         .buttonStyle(.plain)
 
                         if thread.id != threads.last?.id {
                             Divider()
-                                .padding(.leading, 49)
+                                .padding(.leading, 16)
                         }
                     }
                 }
@@ -218,127 +159,78 @@ struct JobsView: View {
 private struct ScheduledJobRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let thread: ScheduledJobThread
+    let unreadCount: Int
 
     private var job: ScheduledJob? { thread.job }
-    private var latest: ScheduledJobResult? { thread.latestMessage }
-    private var hasFailure: Bool {
-        JobsPresentation.hasCurrentIssue(job)
-    }
-    private var statusColor: Color {
-        guard let job else { return .secondary }
-        if !job.enabled { return .secondary }
-        return hasFailure ? JarvisPalette.warning : JarvisPalette.accent
-    }
+    private var hasFailure: Bool { JobsPresentation.hasCurrentIssue(job) }
     private var statusText: String {
         guard let job else { return "Archived" }
         if !job.enabled { return "Disabled" }
         return hasFailure ? "Issue" : "Active"
     }
-    private var symbol: String {
-        guard let job else { return "archivebox.fill" }
-        return JobsPresentation.scheduleSymbol(kind: job.kind)
+    private var cadenceText: String {
+        guard let job else { return "Schedule no longer configured" }
+        return JobsPresentation.cadence(kind: job.kind, schedule: job.schedule)
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 11) {
-            ZStack {
-                Circle()
-                    .fill(statusColor.opacity(0.13))
-                Image(systemName: symbol)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(statusColor)
-            }
-            .frame(width: 38, height: 38)
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    if unreadCount > 0 {
+                        Circle()
+                            .fill(JarvisPalette.accent)
+                            .frame(width: 7, height: 7)
+                            .accessibilityHidden(true)
+                    }
+                    Text(JarvisFormat.displayName(thread.name))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                }
 
-            VStack(alignment: .leading, spacing: 5) {
-                titleRow
-
-                if let job {
-                    Label(
-                        JobsPresentation.cadence(kind: job.kind, schedule: job.schedule),
-                        systemImage: "clock"
-                    )
+                Text(cadenceText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                    if let next = JarvisFormat.localDateTime(job.nextRunAt) {
-                        Text("Next · \(next)")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                } else {
-                    Text("Schedule no longer configured")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Text(latest.map { JobResultRichText.plainText($0.summary) } ?? "No retained messages")
-                    .font(.caption)
-                    .foregroundStyle(hasFailure && latest?.status == "error" ? JarvisPalette.warning : .secondary)
-                    .lineLimit(2)
-
-                HStack(spacing: 5) {
-                    Text("\(thread.messages.count) message\(thread.messages.count == 1 ? "" : "s")")
-                    if let relative = latest.map({ JarvisFormat.relativeTime($0.finishedAt) }), !relative.isEmpty {
-                        Text("·")
-                        Text(relative)
-                    }
-                }
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.tertiary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             }
+
+            Spacer(minLength: 8)
+
+            if hasFailure {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(JarvisPalette.warning)
+                    .accessibilityHidden(true)
+            } else if job?.enabled == false {
+                Image(systemName: "pause.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            } else if job == nil {
+                Image(systemName: "archivebox.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(JarvisFormat.displayName(thread.name)), \(statusText), \(thread.messages.count) retained messages")
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Opens this job's message history")
     }
 
-    @ViewBuilder
-    private var titleRow: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .top, spacing: 6) {
-                    jobTitle(lineLimit: 2)
-                    Spacer(minLength: 4)
-                    chevron
-                }
-                statusBadge
-            }
-        } else {
-            HStack(spacing: 7) {
-                jobTitle(lineLimit: 1)
-                Spacer(minLength: 4)
-                statusBadge
-                chevron
-            }
-        }
-    }
-
-    private func jobTitle(lineLimit: Int) -> some View {
-        Text(JarvisFormat.displayName(thread.name))
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(lineLimit)
-    }
-
-    private var statusBadge: some View {
-        Text(statusText)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(statusColor)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(statusColor.opacity(0.1), in: Capsule())
-    }
-
-    private var chevron: some View {
-        Image(systemName: "chevron.right")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.tertiary)
-            .padding(.top, 2)
+    private var accessibilityLabel: String {
+        let unread = unreadCount > 0
+            ? ", \(unreadCount) unread result\(unreadCount == 1 ? "" : "s")"
+            : ""
+        return "\(JarvisFormat.displayName(thread.name)), \(statusText)\(unread), \(cadenceText)"
     }
 }
 
@@ -353,6 +245,10 @@ private struct JobThreadView: View {
             results: app.lastScheduledJobResults
         )
         return (sections.scheduled + sections.archived).first { $0.id == jobID }
+    }
+
+    private var newestSequence: Int? {
+        thread?.messages.map(\.sequence).max()
     }
 
     var body: some View {
@@ -408,11 +304,18 @@ private struct JobThreadView: View {
             .background(JarvisBackdrop())
             .navigationTitle(thread.map { JarvisFormat.displayName($0.name) } ?? "Job")
             .navigationBarTitleDisplayMode(.inline)
-            .refreshable { await app.refreshJobs() }
+            .refreshable {
+                await app.refreshJobs()
+                app.markScheduledJobRead(jobID: jobID)
+            }
             .onAppear {
+                app.markScheduledJobRead(jobID: jobID)
                 if let focusedSequence {
                     proxy.scrollTo(focusedSequence, anchor: .top)
                 }
+            }
+            .onChange(of: newestSequence) { _, _ in
+                app.markScheduledJobRead(jobID: jobID)
             }
         }
     }

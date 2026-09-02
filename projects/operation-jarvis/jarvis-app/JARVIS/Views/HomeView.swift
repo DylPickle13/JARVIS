@@ -50,85 +50,16 @@ struct PiSessionIndicatorPresentation: Equatable {
     }
 }
 
-enum RuntimeServiceDisplayState: Equatable {
-    case running
-    case scheduled
-    case stopped
-    case unloaded
-    case unconfigured
-    case unknown
-
-    var label: String {
-        switch self {
-        case .running: return "Running"
-        case .scheduled: return "Scheduled"
-        case .stopped: return "Stopped"
-        case .unloaded: return "Unloaded"
-        case .unconfigured: return "Unconfigured"
-        case .unknown: return "Unknown"
-        }
-    }
-
-    var isAvailable: Bool {
-        self == .running || self == .scheduled
-    }
-
-    var color: Color {
-        switch self {
-        case .running: return .green
-        case .scheduled: return JarvisPalette.accent
-        case .unconfigured, .unknown: return JarvisPalette.warning
-        case .stopped, .unloaded: return .secondary
-        }
-    }
-}
-
-enum RuntimeServicePresentation {
-    private static let periodicServiceNames: Set<String> = ["jobs-scheduler"]
-
-    static func state(name: String, service: ServiceActionResult) -> RuntimeServiceDisplayState {
-        guard service.ok else { return .unknown }
-        let isLoaded = service.loaded == true
-        if service.configured == false && !isLoaded { return .unconfigured }
-        if service.running == true { return .running }
-        if periodicServiceNames.contains(name), isLoaded { return .scheduled }
-        return isLoaded ? .stopped : .unloaded
-    }
-
-    static func summary(
-        servicesLoaded: Bool,
-        services: [(name: String, service: ServiceActionResult)]
-    ) -> String {
-        guard servicesLoaded else { return "Loading" }
-        guard !services.isEmpty else { return "No services" }
-        let available = services.filter { state(name: $0.name, service: $0.service).isAvailable }.count
-        return "\(available) of \(services.count) available"
-    }
-}
-
 struct HomeView: View {
     @EnvironmentObject var app: AppState
-    let onOpenJobs: () -> Void
     let onOpenPiTerminal: (JARVISTerminalSlot) -> Void
 
-    init(
-        onOpenJobs: @escaping () -> Void = {},
-        onOpenPiTerminal: @escaping (JARVISTerminalSlot) -> Void = { _ in }
-    ) {
-        self.onOpenJobs = onOpenJobs
+    init(onOpenPiTerminal: @escaping (JARVISTerminalSlot) -> Void = { _ in }) {
         self.onOpenPiTerminal = onOpenPiTerminal
     }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var fanLocal: Double = 2
     @State private var isDraggingFan = false
-    @State private var pendingServiceAction: PendingServiceAction?
-
-    private struct PendingServiceAction {
-        let name: String
-        let displayName: String
-        let action: String
-        let message: String
-    }
 
     private var usesAccessibilityLayout: Bool { dynamicTypeSize.isAccessibilitySize }
     private var gridColumns: [GridItem] {
@@ -155,7 +86,6 @@ struct HomeView: View {
                             codexQuotaCard(state)
                             plugsSection(state)
                             purifierSection(state)
-                            systemSection
                         }
                     } else {
                         compactOfflineCard
@@ -168,27 +98,6 @@ struct HomeView: View {
             .background(JarvisBackdrop())
             .navigationTitle("JARVIS")
             .refreshable { await app.refreshHome() }
-            .confirmationDialog(
-                serviceConfirmationTitle,
-                isPresented: Binding(
-                    get: { pendingServiceAction != nil },
-                    set: { if !$0 { pendingServiceAction = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button(
-                    pendingServiceAction?.action.capitalized ?? "Continue",
-                    role: pendingServiceAction?.action == "stop" ? .destructive : nil
-                ) {
-                    if let target = pendingServiceAction {
-                        Task { await performServiceAction(target.name, target.action) }
-                    }
-                    pendingServiceAction = nil
-                }
-                Button("Cancel", role: .cancel) { pendingServiceAction = nil }
-            } message: {
-                Text(pendingServiceAction?.message ?? "")
-            }
         }
     }
 
@@ -614,106 +523,6 @@ struct HomeView: View {
         .disabled(isOn != true || mode != "manual" || stale || busy)
     }
 
-    // MARK: - System summary
-
-    private var systemSection: some View {
-        MinimalCard {
-            VStack(spacing: 0) {
-                MinimalSectionHeader(title: "System", systemImage: "server.rack")
-                    .padding(.bottom, 5)
-
-                Divider()
-
-                NavigationLink {
-                    servicesDetail
-                } label: {
-                    systemSummaryRow(
-                        title: "Services",
-                        systemImage: "gearshape.2",
-                        value: runtimeServiceSummary,
-                        color: app.servicesErrorMessage == nil ? .secondary : JarvisPalette.warning,
-                        showsChevron: true
-                    )
-                }
-                .buttonStyle(.plain)
-
-                compactDivider
-
-                Button(action: onOpenJobs) {
-                    systemSummaryRow(
-                        title: "Scheduled jobs",
-                        systemImage: "calendar.badge.clock",
-                        value: scheduledJobsSummary,
-                        color: app.scheduledJobsErrorMessage == nil ? .secondary : JarvisPalette.warning,
-                        showsChevron: true
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    private func systemSummaryRow(
-        title: String,
-        systemImage: String,
-        value: String,
-        color: Color,
-        showsChevron: Bool = false
-    ) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(color == .secondary ? JarvisPalette.accent : color)
-                .frame(width: 20)
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .monospacedDigit()
-            if showsChevron {
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .frame(minHeight: 35)
-        .contentShape(Rectangle())
-    }
-
-    private var compactDivider: some View {
-        Divider().padding(.leading, 29)
-    }
-
-    private var sortedServices: [(name: String, service: ServiceActionResult)] {
-        app.lastServices.map { (name: $0.key, service: $0.value) }.sorted { left, right in
-            let leftOrder = left.service.sortOrder ?? 1_000
-            let rightOrder = right.service.sortOrder ?? 1_000
-            if leftOrder != rightOrder { return leftOrder < rightOrder }
-            let leftName = left.service.displayName ?? JarvisFormat.displayName(left.name)
-            let rightName = right.service.displayName ?? JarvisFormat.displayName(right.name)
-            return leftName.localizedCaseInsensitiveCompare(rightName) == .orderedAscending
-        }
-    }
-
-    private var runtimeServiceSummary: String {
-        RuntimeServicePresentation.summary(
-            servicesLoaded: app.servicesLoaded,
-            services: sortedServices
-        )
-    }
-
-    private var scheduledJobsSummary: String {
-        guard app.scheduledJobsLoaded else { return "Loading" }
-        guard let summary = app.scheduledJobsSummary else { return "No jobs" }
-        return "\(summary.enabled) of \(summary.total) enabled"
-    }
-
     // MARK: - Pi and Codex overview cards
 
     private func piCard(_ state: StateSnapshot) -> AnyView {
@@ -937,186 +746,7 @@ struct HomeView: View {
         return "\(Int(balance.rounded())) credits"
     }
 
-    // MARK: - Service detail
-
-    private var servicesDetail: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
-                if let error = app.servicesErrorMessage {
-                    statusErrorCard(title: "Runtime status unavailable", message: error)
-                }
-                if !app.servicesLoaded {
-                    loadingStatusCard("Loading runtime services…")
-                } else if sortedServices.isEmpty {
-                    Card { Text("No registered runtime services.").foregroundStyle(.secondary) }
-                } else {
-                    ForEach(sortedServices, id: \.name) { item in
-                        serviceCard(name: item.name, service: item.service)
-                    }
-                }
-                daemonCard
-            }
-            .padding(16)
-        }
-        .background(JarvisBackdrop())
-        .navigationTitle("Services")
-        .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await app.refreshHome() }
-    }
-
-    private func serviceCard(name: String, service: ServiceActionResult) -> some View {
-        let presentation = RuntimeServicePresentation.state(name: name, service: service)
-        let isKnown = service.ok
-        let isRunning = presentation == .running
-        let isScheduled = presentation == .scheduled
-        let isUnconfigured = presentation == .unconfigured
-        let busy = app.isOperationBusy("service:\(name)")
-        let allowed = Set(service.allowedActions ?? [])
-        let displayName = service.displayName ?? JarvisFormat.displayName(name)
-        let status = presentation.label
-        let color = presentation.color
-
-        return Card {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 9) {
-                    Circle().fill(color).frame(width: 9, height: 9)
-                    Text(displayName).font(.headline)
-                    Spacer(minLength: 8)
-                    Text(status).font(.subheadline).foregroundStyle(color)
-                }
-                if let description = service.description, !description.isEmpty {
-                    Text(description).font(.subheadline).foregroundStyle(.secondary)
-                }
-                if isRunning, let pid = service.pid {
-                    Text("PID \(pid)").font(.caption).foregroundStyle(.tertiary)
-                } else if isScheduled {
-                    Text("Loaded; wakes periodically and exits between checks.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                } else if isUnconfigured {
-                    Text("LaunchAgent configuration is unavailable.").font(.caption).foregroundStyle(JarvisPalette.warning)
-                } else if !isKnown, let error = service.error {
-                    Text(error).font(.caption).foregroundStyle(JarvisPalette.warning)
-                }
-
-                if allowed.isEmpty {
-                    Label("Read-only status", systemImage: "eye")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    HStack(spacing: 10) {
-                        if isRunning, allowed.contains("stop") {
-                            Button(role: .destructive) {
-                                requestServiceAction(name: name, service: service, action: "stop")
-                            } label: {
-                                Label("Stop", systemImage: "stop.fill").frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(busy)
-                        } else if !isRunning, allowed.contains("start") {
-                            Button {
-                                requestServiceAction(name: name, service: service, action: "start")
-                            } label: {
-                                Label("Start", systemImage: "play.fill").frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(busy || !isKnown || isUnconfigured)
-                        }
-                        if allowed.contains("restart") {
-                            Button {
-                                requestServiceAction(name: name, service: service, action: "restart")
-                            } label: {
-                                Label("Restart", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(busy || !isKnown || isUnconfigured)
-                        }
-                    }
-                }
-                if busy {
-                    ProgressView("Applying action…").font(.caption)
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    private var daemonCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 7) {
-                Label("jarvisd", systemImage: "server.rack").font(.headline)
-                if let version = app.lastHealth?.version {
-                    LabeledContent("Version", value: version).font(.subheadline)
-                }
-                if let uptime = app.lastHealth?.uptimeSeconds {
-                    LabeledContent("Uptime", value: JarvisFormat.uptime(uptime)).font(.subheadline)
-                }
-                if app.lastHealth == nil {
-                    Text("Daemon info unavailable.").font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    // MARK: - Detail helpers and actions
-
-    private func loadingStatusCard(_ message: String) -> some View {
-        Card {
-            HStack(spacing: 12) {
-                ProgressView()
-                Text(message).foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private func statusErrorCard(title: String, message: String) -> some View {
-        Card {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.subheadline.weight(.semibold))
-                    Text(message).font(.caption).foregroundStyle(.secondary)
-                }
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            }
-        }
-    }
-
-    private var serviceConfirmationTitle: String {
-        guard let target = pendingServiceAction else { return "Confirm service action" }
-        return "\(target.action.capitalized) \(target.displayName)?"
-    }
-
-    private func requestServiceAction(name: String, service: ServiceActionResult, action: String) {
-        let displayName = service.displayName ?? JarvisFormat.displayName(name)
-        let requiresConfirmation = action == "stop" || (action == "restart" && service.critical == true)
-        guard requiresConfirmation else {
-            Task { await performServiceAction(name, action) }
-            return
-        }
-        pendingServiceAction = PendingServiceAction(
-            name: name,
-            displayName: displayName,
-            action: action,
-            message: serviceImpactMessage(name: name, displayName: displayName, action: action)
-        )
-    }
-
-    private func serviceImpactMessage(name: String, displayName: String, action: String) -> String {
-        switch name {
-        case "jobs-scheduler":
-            return "This will \(action) future scheduled-job dispatch. Work already running may continue."
-        case "room-audio-server":
-            return "This will \(action) \(displayName) and temporarily interrupt room voice access."
-        default:
-            return "This will \(action) \(displayName) now."
-        }
-    }
-
-    private func performServiceAction(_ name: String, _ action: String) async {
-        _ = await app.runServiceAction(name, action)
-    }
+    // MARK: - Detail helpers
 
     @ViewBuilder
     private func unavailableCard(title: String, detail: String?) -> some View {

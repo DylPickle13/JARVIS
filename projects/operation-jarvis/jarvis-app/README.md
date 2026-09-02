@@ -1,15 +1,24 @@
 # jarvis-app
 
 Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
-surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier,
-status/telemetry, service control), over LAN or Tailscale.
+surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier, and
+status/telemetry), over LAN or Tailscale.
 
-**Status:** Exact audited Build `0.3.0 (143)` remains owner-accepted and immutable
-on the allowlisted iPhone and Watch. Build 144 is an isolated native-APNs candidate:
-source support is implemented with dispatch disabled by default, while Apple portal
-resources, provider credentials, device registration, signed deployment, and physical
-acceptance remain gated. Checked-in `project.yml` intentionally remains Build 127;
-candidate build numbers and the iPhone-only attachment flag remain artifact-only.
+**Status:** Exact audited Build `0.3.0 (144)` remains owner-accepted and immutable
+on the allowlisted iPhone and Watch. Build 145 is isolated source work for a compact
+Jobs experience and bounded notification previews; no Build 145 host rollout, signed
+deployment, or physical acceptance is implied. Checked-in `project.yml` intentionally
+remains Build 127; candidate build numbers and the iPhone-only attachment flag remain
+artifact-only.
+
+Build 145 removes the duplicated iPhone Home **System/Services** presentation and its
+polling without changing jarvisd's service APIs or running services. Jobs now uses
+compact job/cadence rows, per-job protected read watermarks, unread-thread tab badging,
+and thread-local read behavior. APNs alerts identify the immutable result job name and
+show a success/failure-prefixed, approximately 240-character preview derived only from
+the sanitized result summary. Prompts, models, credential-like content, tokens, local
+paths, and raw URLs are omitted or fail closed to generic text. Full output remains in
+Jobs, while Apple's Lock Screen **Show Previews** setting controls system disclosure.
 
 Build 144 adds independent iPhone/Watch APNs registration, an immediate Watch token
 relay, fixed-command host-key-pinned SSH upload, generic privacy-safe Jobs payloads,
