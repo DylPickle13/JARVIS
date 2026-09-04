@@ -34,6 +34,8 @@ All six sessions use socket `jarvis-mobile` and working directory `/Users/dylanr
 
 Local VS Code presents exactly two terminal groups selected from the terminal-tabs picker on the right: Slots **1 | 2 | 3** in the first group and Slots **4 | 5 | 6** in the second. Every task client attaches with `-f ignore-size`. Because VS Code inserts each later split beside the first pane, deterministic task creation order is `1, 3, 2` and `4, 6, 5`; the visual order is still ascending. Closing a task terminal detaches only that client and never stops a tmux session or Pi.
 
+The local ignored VS Code workspace also provides the owner-triggered task **JARVIS: Restart and show all 6 Pi sessions**. Its host-only helper snapshots each fixed pane's exact `sessionFile` from the fresh local Pi status descriptor, requires all six processes to be idle, then uses `tmux respawn-pane -k` to replace only the Pi command in place. It preserves the tmux session, pane identity, clients, and dimensions; it never selects the most-recent session, kills the tmux server/session, resizes a pane, or changes the phone/Watch launcher path. A missing file is accepted only for Pi's legitimate empty-session path, which is materialized on the first assistant message.
+
 The protected-runtime baseline for this candidate is Slot 1 pane `%0` / Pi PID `26167`, Slot 2 pane `%1` / Pi PID `24108`, and Slot 3 pane `%3` / Pi PID `96273`. Older acceptance history below records PID `99571`; that PID is historical and had transitioned to `26167` before this isolated feature began. The transition does not authorize another replacement: rollout must preserve all three current pane/PID identities unless an owner-approved recovery is separately recorded.
 
 ## Device behavior
