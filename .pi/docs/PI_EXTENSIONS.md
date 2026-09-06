@@ -36,7 +36,6 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `98-slim-provider-payload.ts` — deterministic provider payload/schema slimming, including OpenAI deferred `tool_search_output` schemas.
 - `99-lazy-tools.ts` — additive lazy optional tool activation using Pi's native deferred-loading protocol where supported.
-- `thinking-level-on-model-select.ts` — applies thinking levels pinned in `enabledModels`/`--models` on active model switches, falling back to `xhigh`; Qwen3.8 27B is pinned to `medium` in `.pi/settings.json`.
 
 ## Current tool surface
 
