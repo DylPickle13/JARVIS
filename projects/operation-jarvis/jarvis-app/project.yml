@@ -103,6 +103,10 @@ targets:
     platform: iOS
     sources:
       - path: JARVISTests
+      # WatchJobsModel is platform-neutral state logic. Compile the production
+      # source into the iOS test bundle so route, cache, unread, and lifecycle
+      # behavior can be exercised without a physical Watch test host.
+      - path: JARVISWatch/WatchJobsModel.swift
     dependencies:
       - target: JARVIS
     settings:

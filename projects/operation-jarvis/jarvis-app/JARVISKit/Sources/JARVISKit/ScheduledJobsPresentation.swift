@@ -1,28 +1,40 @@
 import Foundation
-import JARVISKit
 
-struct ScheduledJobThread: Identifiable {
-    let id: String
-    let job: ScheduledJob?
-    let name: String
-    let messages: [ScheduledJobResult]
+public struct ScheduledJobThread: Identifiable, Sendable {
+    public let id: String
+    public let job: ScheduledJob?
+    public let name: String
+    public let messages: [ScheduledJobResult]
 
-    var latestMessage: ScheduledJobResult? { messages.first }
-    var isArchived: Bool { job == nil }
+    public init(id: String, job: ScheduledJob?, name: String, messages: [ScheduledJobResult]) {
+        self.id = id
+        self.job = job
+        self.name = name
+        self.messages = messages
+    }
+
+    public var latestMessage: ScheduledJobResult? { messages.first }
+    public var isArchived: Bool { job == nil }
 }
 
-struct ScheduledJobThreadSections {
-    let scheduled: [ScheduledJobThread]
-    let archived: [ScheduledJobThread]
+public struct ScheduledJobThreadSections: Sendable {
+    public let scheduled: [ScheduledJobThread]
+    public let archived: [ScheduledJobThread]
+
+    public init(scheduled: [ScheduledJobThread], archived: [ScheduledJobThread]) {
+        self.scheduled = scheduled
+        self.archived = archived
+    }
 }
 
-enum JobsPresentation {
-    static func threads(
+/// Pure Jobs grouping and presentation policy shared by iPhone and Apple Watch.
+public enum JobsPresentation {
+    public static func threads(
         jobs: [ScheduledJob],
         results: [ScheduledJobResult]
     ) -> ScheduledJobThreadSections {
         let orderedResults = results.sorted { lhs, rhs in lhs.sequence > rhs.sequence }
-        let grouped = Dictionary(grouping: orderedResults, by: \.jobId)
+        let grouped = Dictionary(grouping: orderedResults, by: \ScheduledJobResult.jobId)
         var scheduledIDs = Set<String>()
 
         let scheduled = jobs.compactMap { job -> ScheduledJobThread? in
@@ -51,12 +63,12 @@ enum JobsPresentation {
         return ScheduledJobThreadSections(scheduled: scheduled, archived: archived)
     }
 
-    static func hasCurrentIssue(_ job: ScheduledJob?) -> Bool {
+    public static func hasCurrentIssue(_ job: ScheduledJob?) -> Bool {
         guard let job else { return false }
         return job.lastStatus == "error" || (job.consecutiveErrors ?? 0) > 0
     }
 
-    static func cadence(kind: String, schedule: String) -> String {
+    public static func cadence(kind: String, schedule: String) -> String {
         switch kind {
         case "interval":
             return intervalCadence(schedule) ?? "Repeats · \(schedule)"
@@ -69,7 +81,7 @@ enum JobsPresentation {
         }
     }
 
-    static func scheduleSymbol(kind: String) -> String {
+    public static func scheduleSymbol(kind: String) -> String {
         switch kind {
         case "interval": return "arrow.clockwise"
         case "once": return "calendar.badge.checkmark"
@@ -77,7 +89,7 @@ enum JobsPresentation {
         }
     }
 
-    static func runCount(_ count: Int) -> String {
+    public static func runCount(_ count: Int) -> String {
         count.formatted(.number.notation(.compactName))
     }
 

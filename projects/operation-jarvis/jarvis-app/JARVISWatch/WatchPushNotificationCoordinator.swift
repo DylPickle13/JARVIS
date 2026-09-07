@@ -4,17 +4,13 @@ import Security
 import UserNotifications
 import WatchKit
 
-extension Notification.Name {
-    static let jarvisWatchPushRoute = Notification.Name("com.operation-jarvis.jarvis.watch.push-route")
-}
-
 @MainActor
 final class WatchPushNotificationCoordinator: NSObject, ObservableObject {
     static let shared = WatchPushNotificationCoordinator()
 
     @Published private(set) var desiredEnabled: Bool
     @Published private(set) var state: JARVISNotificationLocalState
-    @Published private(set) var pendingResultSequence: Int?
+    @Published private(set) var pendingRoute: ScheduledJobNavigationRequest?
     @Published var showPermissionExplanation = false
     @Published private(set) var errorMessage: String?
 
@@ -128,11 +124,15 @@ final class WatchPushNotificationCoordinator: NSObject, ObservableObject {
 
     func present(resultSequence: Int) {
         guard resultSequence > 0 else { return }
-        pendingResultSequence = resultSequence
+        // Coalesce duplicate callbacks for one explicit action. A different
+        // result sequence remains a newer action and supersedes this route.
+        if pendingRoute?.resultSequence == resultSequence { return }
+        pendingRoute = ScheduledJobNavigationRequest(resultSequence: resultSequence)
     }
 
-    func consumePendingResultSequence() {
-        pendingResultSequence = nil
+    func consumePendingRoute(_ route: ScheduledJobNavigationRequest) {
+        guard pendingRoute?.id == route.id else { return }
+        pendingRoute = nil
     }
 
     func didFailToRegister(_ error: Error) {
@@ -185,17 +185,9 @@ final class WatchPushNotificationCoordinator: NSObject, ObservableObject {
     private static let environment: JARVISPushEnvironment = .development
 
     nonisolated static func route(from userInfo: [AnyHashable: Any]) -> ScheduledJobNotificationRoute? {
-        let version: Int?
-        if let value = userInfo["routeVersion"] as? Int {
-            version = value
-        } else if let value = userInfo["routeVersion"] as? String {
-            version = Int(value)
-        } else {
-            version = nil
-        }
-        return ScheduledJobNotificationRoute(
+        ScheduledJobNotificationRoute(
             route: userInfo["route"] as? String,
-            version: version,
+            version: userInfo["routeVersion"],
             resultSequence: userInfo["resultSequence"]
         )
     }
@@ -214,14 +206,10 @@ extension WatchPushNotificationCoordinator: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard let route = Self.route(from: response.notification.request.content.userInfo) else { return }
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+              let route = Self.route(from: response.notification.request.content.userInfo) else { return }
         await MainActor.run {
             WatchPushNotificationCoordinator.shared.present(resultSequence: route.resultSequence)
         }
-        NotificationCenter.default.post(
-            name: .jarvisWatchPushRoute,
-            object: nil,
-            userInfo: ["resultSequence": route.resultSequence]
-        )
     }
 }

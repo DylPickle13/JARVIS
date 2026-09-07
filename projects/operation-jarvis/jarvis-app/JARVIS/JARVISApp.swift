@@ -104,7 +104,7 @@ private struct RootTabView: View {
     @EnvironmentObject var notifications: PushNotificationCoordinator
     @EnvironmentObject var piTerminal: PiTerminalController
     @State private var selection: AppSection = .home
-    @State private var requestedJobResultSequence: Int?
+    @State private var requestedJobRoute: ScheduledJobNavigationRequest?
 
     init() {
         let args = CommandLine.arguments
@@ -129,7 +129,10 @@ private struct RootTabView: View {
                 .tabItem { Label("JARVIS", systemImage: "terminal.fill") }
                 .tag(AppSection.pi)
 
-            JobsView(requestedResultSequence: $requestedJobResultSequence)
+            JobsView(
+                requestedRoute: $requestedJobRoute,
+                onRouteConsumed: notifications.consumePendingRoute
+            )
                 .tabItem { Label("Jobs", systemImage: "calendar.badge.clock") }
                 .badge(app.unreadScheduledJobCount)
                 .tag(AppSection.jobs)
@@ -161,7 +164,9 @@ private struct RootTabView: View {
                 let components = url.pathComponents.filter { $0 != "/" }
                 if components.count == 2, components[0].lowercased() == "result",
                    let sequence = Int(components[1]), sequence > 0 {
-                    requestedJobResultSequence = sequence
+                    // Keep URL and APNs actions in one newest-wins inbox so an
+                    // explicit deep link cannot strand an older pending tap.
+                    notifications.present(resultSequence: sequence)
                 }
             default: selection = .home
             }
@@ -169,17 +174,10 @@ private struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: JARVISSiriNavigation.terminalRequestNotification)) { _ in
             openSiriTerminalIfRequested()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .jarvisPushRoute)) { notification in
-            guard let sequence = notification.userInfo?["resultSequence"] as? Int, sequence > 0 else { return }
+        .onChange(of: notifications.pendingRoute, initial: true) { _, route in
+            guard let route else { return }
             selection = .jobs
-            requestedJobResultSequence = sequence
-            notifications.consumePendingResultSequence()
-        }
-        .onChange(of: notifications.pendingResultSequence) { _, sequence in
-            guard let sequence, sequence > 0 else { return }
-            selection = .jobs
-            requestedJobResultSequence = sequence
-            notifications.consumePendingResultSequence()
+            requestedJobRoute = route
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { openSiriTerminalIfRequested() }

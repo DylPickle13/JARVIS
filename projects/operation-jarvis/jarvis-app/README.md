@@ -4,12 +4,37 @@ Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
 surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier, and
 status/telemetry), over LAN or Tailscale.
 
-**Status:** Exact audited Build `0.3.0 (144)` remains owner-accepted and immutable
-on the allowlisted iPhone and Watch. Build 145 is isolated source work for a compact
-Jobs experience and bounded notification previews; no Build 145 host rollout, signed
-deployment, or physical acceptance is implied. Checked-in `project.yml` intentionally
-remains Build 127; candidate build numbers and the iPhone-only attachment flag remain
-artifact-only.
+**Status:** Exact audited Build `0.3.0 (145)` remains owner-accepted and immutable
+on the allowlisted iPhone and Watch, with future-only APNs dispatch active. Build 146 is
+an isolated candidate for integrated Watch Jobs and hardened exact-result routing; no
+Build 146 deployment or physical acceptance is implied until its exact audited archive
+is frozen and the owner connects the two approved devices. Checked-in `project.yml`
+intentionally remains Build 127; candidate build numbers and the iPhone-only attachment
+flag remain artifact-only.
+
+Build 146 adds a fourth full-screen Watch dashboard page in the fixed order
+**Terminal → Plugs → System → Jobs**. The Watch now keeps its own protected, bounded
+100-result cache and per-job read watermarks, baselines retained pre-upgrade history on
+its first complete successful sync, and presents compact Scheduled/Archived rows with
+no output preview. Opening a thread—not the Jobs root—marks only that job read. Threads
+show newest-first, server-bounded output/error, status, cadence, time, duration,
+sequence, exit code, failure/truncation metadata, and only safe HTTP/HTTPS links through
+touch and Digital Crown scrolling. Jobs polling runs only while that page is visible and
+interactive; pull-to-refresh and an explicit notification lookup remain bounded, while
+Always-On and background polling stop.
+
+Build 146 also replaces the standalone Watch result sheet with exact integrated Jobs
+navigation. iPhone and Watch keep a tapped sequence pending until its exact retained
+result has been verified and its thread destination established. Temporary failures
+remain on a result-specific loading/error/Retry destination; dismissal is explicit,
+duplicate process-local callbacks are idempotent, and a newer explicit result action
+wins. Focused lookups do not advance the general-history cursor, and an exact retained
+result older than the ordinary newest-100 window remains available for its destination.
+Foreground banners never navigate; iPhone may refresh retained data in place. Boolean or
+otherwise malformed routing numbers fail closed. iPhone `jarvis://jobs/result/<sequence>`
+continues through the same newest-wins route inbox.
+Read state and caches remain target-local and all Build 145 APNs payload, provider,
+registration, dispatch, entitlement, retry, and privacy limits remain unchanged.
 
 Build 145 removes the duplicated iPhone Home **System/Services** presentation and its
 polling without changing jarvisd's service APIs or running services. Jobs now uses

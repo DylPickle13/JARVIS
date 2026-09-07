@@ -276,7 +276,7 @@ warn_file "Google Chrome app" "/Applications/Google Chrome.app/Contents/MacOS/Go
 if command -v node >/dev/null 2>&1; then
   run_check "Read local Pi package versions and verify web-access pin" node - <<'NODE'
 const fs = require('fs');
-const expectedWebAccess = '0.13.0';
+const expectedWebAccess = '0.28.0';
 const installedWebAccess = JSON.parse(fs.readFileSync('.pi/npm/node_modules/pi-web-access/package.json', 'utf8'));
 const localSettings = JSON.parse(fs.readFileSync('.pi/settings.json', 'utf8'));
 const settingsTemplate = JSON.parse(fs.readFileSync('.pi/settings.example.json', 'utf8'));
@@ -558,6 +558,10 @@ section "Native APNs notification checks"
 require_file "fixed APNs registration helper" ".pi/scheduler/apns_registration.py"
 require_file "iPhone push entitlement" "projects/operation-jarvis/jarvis-app/JARVIS/JARVIS.entitlements"
 require_file "Watch push entitlement" "projects/operation-jarvis/jarvis-app/JARVISWatch/JARVISWatch.entitlements"
+require_file "shared protected Jobs history store" "projects/operation-jarvis/jarvis-app/JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift"
+require_file "Watch Jobs state model" "projects/operation-jarvis/jarvis-app/JARVISWatch/WatchJobsModel.swift"
+require_file "Watch Jobs dashboard page" "projects/operation-jarvis/jarvis-app/JARVISWatch/Views/WatchJobsView.swift"
+require_file "Watch Jobs routing tests" "projects/operation-jarvis/jarvis-app/JARVISTests/WatchJobsModelTests.swift"
 if [[ -n "$PYTHON_BIN" ]]; then
   run_check "private APNs provider, registration, and scheduler tests" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" -m unittest discover -s .pi/scheduler/tests
   run_check "native APNs capability and privacy assertions" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" - <<'PY'
@@ -598,7 +602,36 @@ runner = Path('.pi/scheduler/runner.py').read_text(encoding='utf-8')
 assert 'DELETE FROM notification_devices' in runner
 assert '_set_config_value(conn, "apns_dispatch_enabled", "0")' in runner
 coordinator = (root / 'JARVIS/PushNotificationCoordinator.swift').read_text(encoding='utf-8')
+watch_coordinator = (root / 'JARVISWatch/WatchPushNotificationCoordinator.swift').read_text(encoding='utf-8')
 assert 'canRetrySecureUpdate' in coordinator
+for source in (coordinator, watch_coordinator):
+    assert '@Published private(set) var pendingRoute: ScheduledJobNavigationRequest?' in source
+    assert 'if pendingRoute?.resultSequence == resultSequence { return }' in source
+    assert 'response.actionIdentifier == UNNotificationDefaultActionIdentifier' in source
+for retired in ('pendingResultSequence', 'consumePendingResultSequence', 'jarvisPushRoute', 'jarvisWatchPushRoute'):
+    assert retired not in coordinator
+    assert retired not in watch_coordinator
+watch_dashboard = (root / 'JARVISWatch/Views/WatchDashboardContent.swift').read_text(encoding='utf-8')
+page_block = watch_dashboard.split('private enum WatchDashboardPage', 1)[1].split('\n}', 1)[0]
+assert [line.strip() for line in page_block.splitlines() if line.strip().startswith('case ')] == [
+    'case terminal', 'case plugs', 'case system', 'case jobs'
+]
+watch_jobs = (root / 'JARVISWatch/Views/WatchJobsView.swift').read_text(encoding='utf-8')
+assert 'Scheduled Jobs' in watch_jobs and 'Archived Jobs' in watch_jobs
+assert 'result.output' in watch_jobs and 'result.error' in watch_jobs
+assert 'WatchJobResultSheet' not in watch_jobs and 'bounded(' not in watch_jobs
+watch_model = (root / 'JARVISWatch/WatchJobsModel.swift').read_text(encoding='utf-8')
+assert 'if establishesFullHistory, !readState.baselineEstablished' in watch_model
+assert 'guard pageIsVisible, sceneIsInteractive' in watch_model
+assert 'historyCursorKey' in watch_model
+assert 'response.results.count == 1' in watch_model
+assert 'limit: 1' in watch_model
+history_store = (root / 'JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift').read_text(encoding='utf-8')
+assert 'public static let limit = 100' in history_store
+assert 'public static let maximumCatchUpPages = 5' in history_store
+assert 'preserving sequence: Int' in history_store
+assert 'completeFileProtectionUntilFirstUserAuthentication' in history_store
+assert '.posixPermissions: 0o600' in history_store
 tracked = subprocess.check_output(['git', 'ls-files'], text=True).splitlines()
 assert not any(path.endswith('.p8') or Path(path).name.startswith('AuthKey_') for path in tracked)
 print('native APNs capability and privacy assertions passed')

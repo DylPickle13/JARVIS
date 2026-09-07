@@ -22,6 +22,18 @@ final class ScheduledJobNotificationRouteTests: XCTestCase {
         XCTAssertNil(ScheduledJobNotificationRoute(payload: base.merging(["resultSequence": .string("0")]) { _, new in new }))
         XCTAssertNil(ScheduledJobNotificationRoute(payload: base.merging(["resultSequence": .string("result output")]) { _, new in new }))
         XCTAssertNil(ScheduledJobNotificationRoute(payload: base.merging(["resultSequence": .number(1.5)]) { _, new in new }))
+        XCTAssertNil(ScheduledJobNotificationRoute(payload: base.merging(["routeVersion": .bool(true)]) { _, new in new }))
+        XCTAssertNil(ScheduledJobNotificationRoute(payload: base.merging(["resultSequence": .bool(true)]) { _, new in new }))
+        XCTAssertNil(ScheduledJobNotificationRoute(
+            route: "scheduled-job-result",
+            version: NSNumber(value: true),
+            resultSequence: 41
+        ))
+        XCTAssertNil(ScheduledJobNotificationRoute(
+            route: "scheduled-job-result",
+            version: 1,
+            resultSequence: NSNumber(value: true)
+        ))
         XCTAssertNil(ScheduledJobNotificationRoute(payload: base.merging(["output": .string("private")]) { _, new in new }))
     }
 

@@ -8,8 +8,11 @@ struct JobsView: View {
     }
 
     @EnvironmentObject private var app: AppState
-    @Binding var requestedResultSequence: Int?
+    @Binding var requestedRoute: ScheduledJobNavigationRequest?
+    let onRouteConsumed: (ScheduledJobNavigationRequest) -> Void
     @State private var path: [Route] = []
+    @State private var resolvingRouteID: UUID?
+    @State private var routeErrorMessage: String?
 
     private var sections: ScheduledJobThreadSections {
         JobsPresentation.threads(
@@ -22,6 +25,9 @@ struct JobsView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
+                    if let route = requestedRoute {
+                        requestedRouteCard(route)
+                    }
                     if let error = app.scheduledJobsErrorMessage {
                         messageCard(
                             title: "Schedules unavailable",
@@ -77,7 +83,11 @@ struct JobsView: View {
                 await app.refreshJobs()
                 await consumeRequestedResult()
             }
-            .onChange(of: requestedResultSequence) { _, _ in
+            .onChange(of: requestedRoute) { _, _ in
+                Task { await consumeRequestedResult() }
+            }
+            .onChange(of: app.lastScheduledJobResults.map(\.sequence)) { _, _ in
+                guard requestedRoute != nil else { return }
                 Task { await consumeRequestedResult() }
             }
         }
@@ -145,14 +155,76 @@ struct JobsView: View {
         }
     }
 
+    private func requestedRouteCard(_ route: ScheduledJobNavigationRequest) -> some View {
+        MinimalCard {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    if resolvingRouteID == route.id {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(JarvisPalette.warning)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(resolvingRouteID == route.id
+                            ? "Opening result #\(route.resultSequence)…"
+                            : "Result #\(route.resultSequence) unavailable")
+                            .font(.subheadline.weight(.semibold))
+                        if let routeErrorMessage {
+                            Text(routeErrorMessage)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                }
+
+                if resolvingRouteID != route.id {
+                    HStack {
+                        Button("Retry") {
+                            Task { await consumeRequestedResult() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Dismiss", role: .cancel) {
+                            dismissRequestedResult(route)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+        }
+    }
+
     @MainActor
     private func consumeRequestedResult() async {
-        guard let sequence = requestedResultSequence, sequence > 0 else { return }
-        await app.fetchScheduledJobResult(sequence: sequence)
-        if let result = app.scheduledJobResult(sequence: sequence) {
-            path = [.thread(jobID: result.jobId, focusedSequence: sequence)]
+        guard let route = requestedRoute, resolvingRouteID != route.id else { return }
+        // A pending explicit action owns the visible destination. Do not leave
+        // an unrelated thread covering its loading, failure, or Retry state.
+        path = []
+        resolvingRouteID = route.id
+        routeErrorMessage = nil
+        defer {
+            if resolvingRouteID == route.id { resolvingRouteID = nil }
         }
-        requestedResultSequence = nil
+
+        let result = await app.fetchScheduledJobResult(sequence: route.resultSequence)
+        guard requestedRoute?.id == route.id else { return }
+        guard let result, result.sequence == route.resultSequence else {
+            routeErrorMessage = app.scheduledJobResultsErrorMessage
+                ?? "The exact retained result could not be loaded."
+            return
+        }
+        path = [.thread(jobID: result.jobId, focusedSequence: result.sequence)]
+        requestedRoute = nil
+        routeErrorMessage = nil
+        onRouteConsumed(route)
+    }
+
+    private func dismissRequestedResult(_ route: ScheduledJobNavigationRequest) {
+        guard requestedRoute?.id == route.id else { return }
+        requestedRoute = nil
+        routeErrorMessage = nil
+        onRouteConsumed(route)
     }
 }
 

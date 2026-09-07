@@ -90,6 +90,8 @@ public final class AppState: ObservableObject {
     private let preferences: UserDefaults
     private let resultBaselineKey = "jarvis.jobs.result-baseline-established.v1"
     private let lastReadResultKey = "jarvis.jobs.last-read-sequence.v1"
+    private let resultHistoryCursorKey = "jarvis.jobs.result-history-cursor.v1"
+    private var scheduledJobHistoryCursor: Int?
     private var refreshTask: Task<Void, Never>?
     private var connectionLoopTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
@@ -131,6 +133,29 @@ public final class AppState: ObservableObject {
         self.endpointDraft = resolvedStore.endpointURLString ?? ""
         self.lastScheduledJobResults = self.resultCache.load()
         self.scheduledJobResultsLoaded = !self.lastScheduledJobResults.isEmpty
+        let cachedHistoryCursor = self.lastScheduledJobResults.map(\.sequence).max()
+        let persistedHistoryCursor = (preferences.object(forKey: resultHistoryCursorKey) as? NSNumber)?.intValue
+        if let cachedHistoryCursor {
+            if let persistedHistoryCursor, persistedHistoryCursor >= 0 {
+                self.scheduledJobHistoryCursor = min(persistedHistoryCursor, cachedHistoryCursor)
+            } else if persistedHistoryCursor == -1 {
+                // This cache was created by an exact lookup before any complete
+                // general history sync; it must not advance the polling cursor.
+                self.scheduledJobHistoryCursor = nil
+            } else {
+                // One-way Build 145 migration: its existing newest-first cache
+                // predates the dedicated general-history cursor.
+                self.scheduledJobHistoryCursor = cachedHistoryCursor
+                preferences.set(cachedHistoryCursor, forKey: resultHistoryCursorKey)
+            }
+        } else {
+            // A missing or unavailable protected cache must trigger a newest-page
+            // request rather than trusting an unaccompanied defaults cursor.
+            self.scheduledJobHistoryCursor = nil
+            if persistedHistoryCursor == nil {
+                preferences.set(-1, forKey: resultHistoryCursorKey)
+            }
+        }
         if let saved = self.resultReadStateStore.load() {
             self.scheduledJobReadState = saved
         } else {
@@ -140,12 +165,15 @@ public final class AppState: ObservableObject {
                 : 0
             let cachedBaseline = self.lastScheduledJobResults.map(\.sequence).max() ?? 0
             self.scheduledJobReadState = ScheduledJobReadState(
-                // Without a cache, wait for the first successful server sync so
-                // Build 144 history cannot reappear merely because local cache
-                // state was missing. A positive legacy watermark remains a lower
-                // bound when that first baseline is established.
-                baselineEstablished: cachedBaseline > 0,
-                baselineSequence: max(legacySequence, cachedBaseline),
+                // Without a general-sync cache—or with a cache explicitly
+                // marked focused-only—wait for the first successful server sync.
+                // A positive Build 144 watermark remains a lower bound when that
+                // migration baseline is eventually established.
+                baselineEstablished: cachedBaseline > 0 && persistedHistoryCursor != -1,
+                baselineSequence: max(
+                    legacySequence,
+                    persistedHistoryCursor == -1 ? 0 : cachedBaseline
+                ),
                 jobReadSequences: [:]
             )
             if self.scheduledJobReadState.baselineEstablished {
@@ -718,33 +746,45 @@ public final class AppState: ObservableObject {
         guard let endpoint = activeEndpoint, !scheduledJobResultsLoading else { return }
         scheduledJobResultsLoading = true
         defer { scheduledJobResultsLoading = false }
-        let currentNewest = lastScheduledJobResults.map(\.sequence).max()
-        let cursor = explicitCursor ?? currentNewest
+        let cursor = explicitCursor ?? scheduledJobHistoryCursor
         do {
-            let response = try await client.scheduledJobResults(
-                endpoint,
-                after: cursor,
-                limit: ScheduledJobResultCache.limit,
-                jobId: nil
-            )
-            scheduledJobResultsLoaded = true
-            guard response.ok else {
-                scheduledJobResultsErrorMessage = response.error ?? "Scheduled-job results are unavailable."
-                return
-            }
-            lastScheduledJobResults = ScheduledJobResultCache.merging(
-                cached: lastScheduledJobResults,
-                incoming: response.results
-            )
-            resultCache.save(lastScheduledJobResults)
-            if !scheduledJobReadState.baselineEstablished {
-                let baseline = lastScheduledJobResults.map(\.sequence).max() ?? 0
-                scheduledJobReadState.establishBaseline(baseline)
-                resultReadStateStore.save(scheduledJobReadState)
-                // Keep the legacy watermark only as a one-way migration aid for
-                // Build 144 rollback. Build 145 read decisions are per job.
-                preferences.set(baseline, forKey: lastReadResultKey)
-                preferences.set(true, forKey: resultBaselineKey)
+            var pageCursor = cursor
+            var pageCount = 0
+            while true {
+                let response = try await client.scheduledJobResults(
+                    endpoint,
+                    after: pageCursor,
+                    limit: ScheduledJobResultCache.limit,
+                    jobId: nil
+                )
+                scheduledJobResultsLoaded = true
+                guard response.ok else {
+                    scheduledJobResultsErrorMessage = response.error ?? "Scheduled-job results are unavailable."
+                    return
+                }
+                let cacheSaved = acceptScheduledJobResults(response.results)
+                pageCount += 1
+
+                if explicitCursor == nil {
+                    let advancedCursor = max(pageCursor ?? 0, response.nextAfter)
+                    scheduledJobHistoryCursor = advancedCursor
+                    if cacheSaved {
+                        preferences.set(advancedCursor, forKey: resultHistoryCursorKey)
+                    }
+                }
+
+                // An uncursored request already returns the newest bounded
+                // window; `hasMore` there refers only to older rows. Cursored
+                // catch-up pages are ascending and can be drained safely.
+                guard explicitCursor == nil,
+                      pageCursor != nil,
+                      response.hasMore,
+                      pageCount < ScheduledJobResultCache.maximumCatchUpPages else { break }
+                guard response.nextAfter > (pageCursor ?? 0) else {
+                    scheduledJobResultsErrorMessage = "Scheduled-job result continuation is invalid."
+                    return
+                }
+                pageCursor = response.nextAfter
             }
             scheduledJobResultsErrorMessage = nil
         } catch let error as JarvisError {
@@ -758,22 +798,94 @@ public final class AppState: ObservableObject {
         }
     }
 
-    public func fetchScheduledJobResult(sequence: Int) async {
-        guard sequence > 0 else { return }
-        if scheduledJobResult(sequence: sequence) != nil { return }
+    @discardableResult
+    public func fetchScheduledJobResult(sequence: Int) async -> ScheduledJobResult? {
+        guard sequence > 0 else { return nil }
+        if let result = scheduledJobResult(sequence: sequence) { return result }
         // A foreground push can race the periodic Jobs request. Wait within a
-        // strict bound for that request to publish or finish, then issue the
-        // sequence-focused fetch instead of silently dropping convergence.
+        // strict bound for that request to publish or finish, then issue one
+        // exact-cursor request instead of silently dropping convergence.
         for _ in 0..<100 where scheduledJobResultsLoading {
             do {
                 try await Task.sleep(for: .milliseconds(50))
             } catch {
-                return
+                return nil
             }
-            if scheduledJobResult(sequence: sequence) != nil { return }
+            if let result = scheduledJobResult(sequence: sequence) { return result }
         }
-        guard !scheduledJobResultsLoading else { return }
-        await fetchScheduledJobResults(after: sequence - 1)
+        guard let endpoint = activeEndpoint, !scheduledJobResultsLoading else { return nil }
+
+        scheduledJobResultsLoading = true
+        defer { scheduledJobResultsLoading = false }
+        do {
+            let response = try await client.scheduledJobResults(
+                endpoint,
+                after: sequence - 1,
+                limit: 1,
+                jobId: nil
+            )
+            scheduledJobResultsLoaded = true
+            guard response.ok else {
+                scheduledJobResultsErrorMessage = response.error ?? "Scheduled-job results are unavailable."
+                return nil
+            }
+            guard response.results.count == 1,
+                  let result = response.results.first,
+                  result.sequence == sequence else {
+                scheduledJobResultsErrorMessage = "Result #\(sequence) is no longer retained."
+                return nil
+            }
+            _ = acceptScheduledJobResults(
+                [result],
+                preserving: sequence,
+                establishesBaseline: false
+            )
+            scheduledJobResultsErrorMessage = nil
+            return result
+        } catch is CancellationError {
+            return nil
+        } catch let error as JarvisError {
+            scheduledJobResultsLoaded = true
+            scheduledJobResultsErrorMessage = error.errorDescription
+            return nil
+        } catch {
+            scheduledJobResultsLoaded = true
+            scheduledJobResultsErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    private func acceptScheduledJobResults(
+        _ incoming: [ScheduledJobResult],
+        preserving focusedSequence: Int? = nil,
+        establishesBaseline: Bool = true
+    ) -> Bool {
+        if let focusedSequence {
+            lastScheduledJobResults = ScheduledJobResultCache.merging(
+                cached: lastScheduledJobResults,
+                incoming: incoming,
+                preserving: focusedSequence
+            )
+        } else {
+            lastScheduledJobResults = ScheduledJobResultCache.merging(
+                cached: lastScheduledJobResults,
+                incoming: incoming
+            )
+        }
+        let cacheSaved = resultCache.save(lastScheduledJobResults)
+        if establishesBaseline, !scheduledJobReadState.baselineEstablished {
+            // Only the general-sync response owns migration. A focused result
+            // already in the cache must not raise this global read floor.
+            let baseline = incoming.map(\.sequence).max() ?? 0
+            scheduledJobReadState.establishBaseline(baseline)
+            resultReadStateStore.save(scheduledJobReadState)
+            // Keep the legacy watermark only as a one-way migration aid for
+            // Build 144 rollback. Build 145+ read decisions are per job.
+            preferences.set(baseline, forKey: lastReadResultKey)
+            preferences.set(true, forKey: resultBaselineKey)
+        }
+        return cacheSaved
     }
 
     public func fetchHealth() async {

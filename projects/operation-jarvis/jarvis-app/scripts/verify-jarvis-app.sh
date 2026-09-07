@@ -198,12 +198,12 @@ grep -q 'Label("JARVIS"' JARVIS/JARVISApp.swift
 grep -q 'Label("Jobs", systemImage: "calendar.badge.clock")' JARVIS/JARVISApp.swift
 reject_match 'Pi tab must be labeled JARVIS' -Fq 'Label("Pi"' JARVIS/JARVISApp.swift
 grep -q 'Label("Settings"' JARVIS/JARVISApp.swift
-grep -q 'JobsView(requestedResultSequence:' JARVIS/JARVISApp.swift
+grep -q 'requestedRoute: \$requestedJobRoute' JARVIS/JARVISApp.swift
 grep -q '/api/v1/scheduled-job-results' jarvisd/jarvisd.py
-grep -q 'static let limit = 100' JARVIS/ScheduledJobResultCache.swift
+grep -q 'public static let limit = 100' JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift
 grep -q 'case jobs' JARVIS/AppState.swift
 grep -q 'await self.refreshJobs()' JARVIS/AppState.swift
-grep -q 'scheme == "http" || scheme == "https"' JARVIS/Views/LinkedJobResultText.swift
+grep -q 'scheme == "http" || scheme == "https"' JARVISKit/Sources/JARVISKit/JobResultRichText.swift
 grep -q 'JobChannelMessage' JARVIS/Views/JobsView.swift
 reject_match 'Jobs must not restore the flat Inbox/Schedules picker' -Fq 'Picker("Jobs section"' JARVIS/Views/JobsView.swift
 reject_match 'Jobs must not restore the top summary card' -Fq 'summaryStrip' JARVIS/Views/JobsView.swift
@@ -212,10 +212,10 @@ reject_match 'compact job rows must not restore message-count labels' -Fq '\(thr
 reject_match 'Jobs must remain read-only' -RqsE 'runServiceAction|runCommand|setPlug|setPurifier|retry' JARVIS/Views/JobsView.swift
 grep -q 'unreadScheduledJobCount' JARVIS/AppState.swift
 grep -q 'markScheduledJobRead(jobID:' JARVIS/AppState.swift JARVIS/Views/JobsView.swift
-grep -q 'scheduled-job-read-state-v2.json' JARVIS/ScheduledJobResultCache.swift
+grep -q 'scheduled-job-read-state-v2.json' JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift
 grep -q 'testPerJobReadWatermarksPreserveOtherUnreadThreadsAndMigrateLegacyState' JARVISTests/AppStateTests.swift
 grep -q 'testLegacyMigrationWithoutCacheBaselinesFirstSuccessfulServerSync' JARVISTests/AppStateTests.swift
-grep -q 'static func hasCurrentIssue(_ job: ScheduledJob?)' JARVIS/Views/JobsPresentation.swift
+grep -q 'public static func hasCurrentIssue(_ job: ScheduledJob?)' JARVISKit/Sources/JARVISKit/ScheduledJobsPresentation.swift
 grep -q 'JobsPresentation.hasCurrentIssue(job)' JARVIS/Views/JobsView.swift
 reject_match 'retained historical failures must not override a recovered job status' -Fq '|| latest?.status == "error"' JARVIS/Views/JobsView.swift
 grep -q 'testRecoveredSilentJobDoesNotInheritIssueFromRetainedFailure' JARVISTests/JobsPresentationTests.swift
@@ -317,6 +317,26 @@ grep -q 'WatchPushNotificationCoordinator.shared' JARVISWatch/JARVISWatchApp.swi
 grep -q 'NotificationSettingsView()' JARVIS/Views/SettingsView.swift
 grep -q 'canRetrySecureUpdate' JARVIS/PushNotificationCoordinator.swift
 grep -q 'receivedForegroundResult' JARVIS/PushNotificationCoordinator.swift
+grep -q '@Published private(set) var pendingRoute: ScheduledJobNavigationRequest?' JARVIS/PushNotificationCoordinator.swift JARVISWatch/WatchPushNotificationCoordinator.swift
+[[ "$(grep -Rcs 'if pendingRoute?.resultSequence == resultSequence { return }' JARVIS/PushNotificationCoordinator.swift JARVISWatch/WatchPushNotificationCoordinator.swift | awk -F: '{sum += $2} END {print sum + 0}')" == "2" ]]
+[[ "$(grep -Rcs 'response.actionIdentifier == UNNotificationDefaultActionIdentifier' JARVIS/PushNotificationCoordinator.swift JARVISWatch/WatchPushNotificationCoordinator.swift | awk -F: '{sum += $2} END {print sum + 0}')" == "2" ]]
+grep -q 'notifications.present(resultSequence: sequence)' JARVIS/JARVISApp.swift
+grep -q 'onRouteConsumed: notifications.consumePendingRoute' JARVIS/JARVISApp.swift
+grep -q 'onJobRouteConsumed: notifications.consumePendingRoute' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'requestedRoute = nil' JARVIS/Views/JobsView.swift
+grep -q 'onRouteConsumed(route)' JARVIS/Views/JobsView.swift JARVISWatch/Views/WatchJobsView.swift
+grep -q 'after: sequence - 1' JARVIS/AppState.swift
+grep -q 'limit: 1' JARVIS/AppState.swift
+grep -q 'response.results.count == 1' JARVIS/AppState.swift JARVISWatch/WatchJobsModel.swift
+grep -q 'resultHistoryCursorKey' JARVIS/AppState.swift
+grep -q 'historyCursorKey' JARVISWatch/WatchJobsModel.swift
+grep -q 'preserving: sequence' JARVIS/AppState.swift
+grep -q 'result.sequence == route.resultSequence' JARVIS/Views/JobsView.swift
+grep -q 'testNotificationNavigationInboxCoalescesDuplicatesAndNewestResultWins' JARVISTests/AppStateTests.swift
+grep -q 'testFocusedResultFetchUsesExactCursorAndRejectsAnotherSequence' JARVISTests/AppStateTests.swift
+reject_match 'obsolete duplicate notification route bus must stay removed' -RqsE 'jarvisPushRoute|jarvisWatchPushRoute|pendingResultSequence|consumePendingResultSequence' JARVIS JARVISWatch
+reject_match 'foreground banners must not auto-navigate' -qE 'present\(resultSequence:' < <(sed -n '/willPresent notification:/,/return \[.banner, .sound\]/p' JARVIS/PushNotificationCoordinator.swift)
+reject_match 'foreground Watch banners must not auto-navigate' -qE 'present\(resultSequence:' < <(sed -n '/willPresent notification:/,/return \[.banner, .sound\]/p' JARVISWatch/WatchPushNotificationCoordinator.swift)
 grep -q 'Show Previews' JARVIS/Views/NotificationSettingsView.swift JARVISWatch/Views/WatchConnectView.swift
 grep -q 'MAX_ALERT_PREVIEW_CHARACTERS = 240' ../../../.pi/scheduler/apns_provider.py
 grep -q 'SENSITIVE_CONTEXT_RE' ../../../.pi/scheduler/apns_provider.py
@@ -675,9 +695,18 @@ grep -q 'override func deleteBackward()' JARVIS/Terminal/PiSSHTransport.swift
 reject_match 'SwiftTerm must not regain the marked repeat sentinel' -qsF 'setMarkedText(sentinel' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'WatchTerminalView(' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private enum WatchDashboardPage: Hashable, CaseIterable' JARVISWatch/Views/WatchDashboardContent.swift
-[[ "$(sed -n '/private enum WatchDashboardPage/,/^}/p' JARVISWatch/Views/WatchDashboardContent.swift | grep -c '^    case ')" == "3" ]]
+[[ "$(sed -n '/private enum WatchDashboardPage/,/^}/p' JARVISWatch/Views/WatchDashboardContent.swift | grep -c '^    case ')" == "4" ]]
+python3 - <<'PY'
+from pathlib import Path
+source = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text(encoding='utf-8')
+block = source.split('private enum WatchDashboardPage', 1)[1].split('\n}', 1)[0]
+assert [line.strip() for line in block.splitlines() if line.strip().startswith('case ')] == [
+    'case terminal', 'case plugs', 'case system', 'case jobs'
+]
+PY
 grep -q '@State private var selectedPage: WatchDashboardPage = .terminal' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'pageDragGesture(previous: .terminal, next: .system)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'pageDragGesture(previous: .plugs, next: .jobs)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'The shorter Plugs grid must not collapse the page before the bottom edge.' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'GeometryReader { geometry in' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'let tileHeight = max(72, (geometry.size.height - rowSpacing) / CGFloat(rowCount))' JARVISWatch/Views/WatchDashboardContent.swift
@@ -700,6 +729,53 @@ reject_match 'Air-purifier controls must stay in the existing System card, not a
 reject_match 'System Watch pager must not reserve the removed clock strip' -Fq 'tabViewStyle(.verticalPage)' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch terminal must not require an Open button' -qs 'Open JARVIS' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch terminal must not use a navigation launcher' -qs 'NavigationLink' JARVISWatch/Views/WatchDashboardContent.swift
+
+printf '%s\n' '== integrated Watch Jobs and exact-route contract =='
+[[ -f JARVISWatch/Views/WatchJobsView.swift ]]
+[[ -f JARVISWatch/WatchJobsModel.swift ]]
+[[ ! -e JARVIS/ScheduledJobResultCache.swift ]]
+[[ ! -e JARVIS/Views/JobsPresentation.swift ]]
+grep -q 'case \.jobs:' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'WatchJobsView(' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'if page == \.jobs, jobs.unreadJobCount > 0' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'Text("Scheduled Jobs")\|threadSection(title: "Scheduled Jobs"' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'Text("Archived Jobs")\|threadSection(title: "Archived Jobs"' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'Image(systemName: "chevron.right")' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'accessibilityLabel("Back to Jobs")' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'model.openThread(jobID: thread.id)' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'model.markSelectedThreadRead()' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'result.output' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'result.error' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'result.durationSeconds' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'result.sequence' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'result.exitCode' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'result.truncated' JARVISWatch/Views/WatchJobsView.swift
+grep -q 'JobResultRichText.attributedString' JARVISWatch/Views/WatchJobsView.swift
+reject_match 'Watch Jobs must render server-bounded output without a second client truncation' -E 'bounded\(|prefix\([[:space:]]*[0-9_]+\)' JARVISWatch/Views/WatchJobsView.swift
+reject_match 'compact Watch root rows must not contain output previews' -E 'latestMessage|\.summary|\.output|\.error' < <(sed -n '/private struct WatchScheduledJobRow/,/private struct WatchJobThreadView/p' JARVISWatch/Views/WatchJobsView.swift)
+grep -q 'static let limit = 100' JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift
+grep -q 'static let maximumCatchUpPages = 5' JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift
+grep -q 'response.hasMore' JARVIS/AppState.swift JARVISWatch/WatchJobsModel.swift
+grep -q 'completeFileProtectionUntilFirstUserAuthentication' JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift
+grep -q 'FileProtectionType.completeUntilFirstUserAuthentication' JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift
+grep -q '\.posixPermissions: 0o600' JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift
+grep -q '\.posixPermissions: 0o700' JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift
+grep -q 'if establishesFullHistory, !readState.baselineEstablished' JARVISWatch/WatchJobsModel.swift
+grep -q 'selectedJobID = nil' JARVISWatch/WatchJobsModel.swift
+grep -q 'after: route.resultSequence - 1' JARVISWatch/WatchJobsModel.swift
+grep -q 'limit: 1' JARVISWatch/WatchJobsModel.swift
+grep -q 'guard openCachedResult(for: route)' JARVISWatch/WatchJobsModel.swift
+grep -q 'guard pageIsVisible, sceneIsInteractive' JARVISWatch/WatchJobsModel.swift
+grep -q 'jobs.sceneDidEnterAlwaysOn()' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'jobs.sceneDidEnterBackground()' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'testFocusedLookupDoesNotEstablishAnIncompleteMigrationBaseline' JARVISTests/WatchJobsModelTests.swift
+grep -q 'testMissingExactRouteStaysPendingForRetryAndNeverOpensAnotherResult' JARVISTests/WatchJobsModelTests.swift
+grep -q 'testExactOlderRouteRemainsAvailableInsideTheBoundedCache' JARVISTests/WatchJobsModelTests.swift
+grep -q 'testFocusedLookupDoesNotAdvanceThePersistedGeneralHistoryCursor' JARVISTests/WatchJobsModelTests.swift
+grep -q 'testPollingRunsOnlyForVisibleInteractiveJobsAndStopsForAlwaysOn' JARVISTests/WatchJobsModelTests.swift
+grep -q 'await self.jobs.refreshIfVisible()' JARVISWatch/Views/WatchConnectView.swift
+reject_match 'standalone Watch push-result presentation must stay removed' -RqsE 'WatchPushResultRoute|WatchJobResultSheet|pushResultRoute' JARVISWatch
+
 [[ -x terminald/jarvis_terminald.py ]]
 [[ -x scripts/install-jarvis-terminald.sh ]]
 [[ -x scripts/jarvis-terminal-provisioning.sh ]]

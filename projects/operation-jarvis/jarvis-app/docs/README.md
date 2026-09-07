@@ -39,7 +39,7 @@ The protected-runtime baseline for this candidate is Slot 1 pane `%0` / Pi PID `
 ## Device behavior
 
 - iPhone and Watch each persist `JARVISTerminalSlot` in their own `UserDefaults.standard` container. Their selections are intentionally independent.
-- A horizontal left/right terminal swipe moves one slot without wrapping. Existing iPhone vertical touch scrolling, Watch vertical Terminal → Plugs → System paging, and Digital Crown history remain axis-separated.
+- A horizontal left/right terminal swipe moves one slot without wrapping. Existing iPhone vertical touch scrolling, Watch vertical Terminal → Plugs → System → Jobs paging, terminal Digital Crown history, and Jobs list/thread scrolling remain axis-separated.
 - iPhone owns one SSH parent and at most one attached PTY child. A switch closes the previous child before opening the fixed command for the new slot. Generation checks reject stale output/readiness callbacks, and input is never queued or replayed while switching. Keyboard and key-deck input remain disabled during replacement; if the software keyboard was focused, its isolated proxy resigns and resets, then rearms only after readiness from the exact fresh generation. No Escape or other terminal byte is synthesized.
 - Watch polls only the selected slot. Frame, history, input acknowledgement, and speech responses carry and validate `sessionID`; a mismatched or stale response cannot enable input.
 - Siri reads the invoking device's locally persisted slot, preflights that slot, and submits one non-retried input carrying the same identity.
@@ -680,15 +680,20 @@ Use `PhotosPicker` for photo-library assets and SwiftUI `fileImporter` for Files
 
 # Native iPhone and Apple Watch APNs Scheduled-Job Notifications
 
-Status: **Build 144 implementation candidate; Build 143 remains immutable; provider and host dispatch remain dormant**
+Status: **Build 144 and Build 145 are sealed historical foundations; Build 145 future-only dispatch is active; Build 146 integrated Watch Jobs is an undeployed candidate**
 
 Prepared: **2026-09-01 EDT**
 
 Implementation authorized: **2026-09-01 EDT**
 
-## Candidate implementation status
+This section preserves the foundational Build 144 design and rollout gates. The
+Build 145 and Build 146 addenda at the end are normative wherever their preview or
+navigation contracts deliberately supersede the original generic-alert/result-sheet
+behavior. Builds 143–145 and their evidence remain immutable.
 
-The isolated `feat/native-apns-notifications` candidate implements the dormant
+## Historical Build 144 implementation status
+
+The isolated `feat/native-apns-notifications` candidate implemented the dormant
 host provider/data model, strict registration helper, native iPhone/Watch
 coordinators, explicit two-device authorization flow, fixed-command pinned-SSH
 token upload, Jobs routing, Watch result sheet, sanitized Settings status, and
@@ -723,7 +728,7 @@ This is a new future build, not an in-place activation of Build 143. No portal c
 - Include only a versioned route and positive retained `resultSequence` in custom payload data.
 - Register the iPhone and Watch apps independently with APNs and retain one active approved-device registration for each topic and environment.
 - On an iPhone notification tap, open the existing Jobs tab and exact result thread.
-- On a Watch notification tap, present a bounded read-only result sheet over the existing app; do not add a fourth dashboard page or disturb Terminal → Plugs → System navigation.
+- On a Watch notification tap, select the fourth Jobs dashboard page, verify the exact retained sequence, and open its read-only job thread without disturbing Terminal, Plugs, or System behavior.
 - Add accurate notification health in Settings without exposing tokens, credentials, output, job names, or result contents.
 - Preserve Build 143's six Pi sessions, attachments, exact-generation input behavior, Neural Core motion, controls, widgets, scheduler semantics, terminald, jarvisd, room audio, and ports `8790–8792`.
 
@@ -766,8 +771,8 @@ Scheduler persists a bounded local result
                           system chooses best presentation
 
 Notification tap
-      ├── iPhone → existing Jobs tab → exact retained result
-      └── Watch  → bounded read-only result sheet → existing jarvisd result API
+      ├── iPhone → existing Jobs tab → exact retained result thread
+      └── Watch  → fourth Jobs page → exact retained result thread → existing jarvisd result API
 ```
 
 APNs acceptance does not mean display, and APNs delivery is not guaranteed. The UI must never infer that a result does not exist because no alert appeared. Conversely, an alert must never carry the result itself.
@@ -816,7 +821,7 @@ All three must be true before a real scheduled result can generate APNs traffic.
 - The iPhone opt-in sends only a non-secret desired-state signal through WatchConnectivity.
 - On the next explicit Watch app use, show a JARVIS explanation screen with **Allow Notifications** and **Not Now**. The system authorization prompt appears only after the owner taps Allow Notifications.
 - Once authorized, call the current WatchKit remote-notification registration API on every subsequent launch while enabled.
-- Never add a notification toggle to the tight three-page dashboard. Permission setup is a temporary onboarding overlay; notification state can be summarized in the System page only if it fits without displacing accepted controls.
+- Never add a notification toggle to the full-screen dashboard. Permission setup remains a temporary onboarding overlay; notification state can be summarized in the System page only if it fits without displacing accepted controls.
 
 Authorization and APNs registration are different states. The Settings status must distinguish Off, Needs Permission, Registering, Pending Secure Upload, Active, Denied, and Error instead of collapsing them into a generic enabled flag.
 
@@ -929,9 +934,11 @@ No `content-available`, `mutable-content`, command action, or result body is per
 - Both notification delegates implement `willPresent`; otherwise foreground Watch notifications can be silently discarded. Return only the intended alert/list/banner and sound presentation options for a valid JARVIS payload.
 - Both delegates always call completion handlers exactly once.
 - An invalid payload may open the app normally but cannot select a result or mutate state.
-- iPhone default-action taps post a process-local route consumed by `RootTabView`; it selects Jobs and sets the existing `requestedJobResultSequence` binding.
-- Watch default-action taps set a bounded pending route consumed by `WatchConnectView`. Present a read-only sheet without changing the accepted dashboard pager. Fetch only the exact sequence through the existing authenticated scheduled-results API. If it was pruned or the Mac is unavailable, show `Result unavailable — check Jobs on iPhone` and a manual Retry button.
-- The Watch sheet shows bounded sanitized title/summary and a short output prefix; the complete durable result remains in iPhone Jobs. It performs no background fetch before a tap.
+- Only default-action taps navigate. Foreground banners may refresh retained data but never select Jobs or a result.
+- iPhone and Watch each place the action in a process-local, newest-wins route inbox. Duplicate callbacks for the same pending sequence are idempotent; a newer explicit sequence supersedes older work.
+- A requested sequence remains pending until the client fetches with the exact cursor, verifies the returned sequence, establishes that result's thread destination, and only then consumes the coordinator route. A stale completion cannot consume a newer request.
+- Temporary endpoint, authentication, transport, or retention failures keep a result-specific loading/error destination with manual **Retry** and **Dismiss**. They never silently discard the action or open another result.
+- iPhone selects its existing Jobs tab and preserves `jarvis://jobs/result/<sequence>`. Watch selects the fourth Jobs page and opens the matching read-only thread; the standalone result sheet and its client-side output prefix are removed.
 
 ## Accurate owner-visible status
 
@@ -963,7 +970,7 @@ Do not return device tokens, token hashes, installation IDs, Key IDs, key paths,
 
 ### Phase 2 — app code, still no portal mutation
 
-- Add pure notification state machines, delegates, explicit permission UI, secure registration transport, Watch token relay, tap routing, Watch result sheet, and Settings telemetry.
+- Add pure notification state machines, delegates, explicit permission UI, secure registration transport, Watch token relay, exact tap routing, and Settings telemetry. Build 146 later integrates Watch routing into its Jobs page and removes the standalone result sheet.
 - Simulator tests use injected authorization/token providers and never pretend to validate APNs.
 - Preserve checked-in `CURRENT_PROJECT_VERSION: 127`; build number and native-attachment condition remain candidate-export-only inputs.
 
@@ -994,7 +1001,7 @@ Do not return device tokens, token hashes, installation IDs, Key IDs, key paths,
 Use a deliberate harmless test result; do not run `projects-drive-backup`.
 
 1. Send an explicit iPhone-only test delivery and verify generic content plus exact Jobs routing.
-2. Send an explicit Watch-only test delivery and verify direct Watch presentation plus the bounded result sheet.
+2. Send an explicit Watch-only test delivery and verify direct Watch presentation plus exact integrated Jobs-page routing.
 3. Send the same test event to both active tokens and verify the system presents one notification at the best destination.
 4. Validate phone locked/watch worn, phone foreground, Watch app foreground, Watch temporarily unreachable, denial/re-enable, token re-registration, and a pruned/unavailable result route.
 5. Confirm no payload or logs contain private result data or tokens.
@@ -1034,7 +1041,7 @@ Only after those gates and explicit owner approval may host dispatch be enabled 
 - Host-key change, unavailable credentials, backgrounding, timeout, malformed acknowledgement, and idempotent registration retry.
 - Foreground presentation completion exactly once.
 - Exact payload route validation and rejection of missing, zero, fractional, overflow, wrong-version, wrong-route, or output-bearing payloads.
-- iPhone Jobs routing, Watch sheet routing, unavailable result fallback, and unchanged dashboard gestures.
+- iPhone Jobs routing, integrated Watch Jobs routing, exact-sequence retry/fallback, newest-wins idempotence, and isolated dashboard/list gestures.
 - Settings status distinguishes local authorization from host registration and provider activation.
 
 ### Signed artifact and physical devices
@@ -1064,7 +1071,7 @@ Shared/app:
 - `JARVISKit/Sources/JARVISKit/ScheduledJobNotificationRoute.swift`
 - new pure registration/status models under `JARVISKit`
 - `JARVIS/JARVISApp.swift`, notification coordinator/delegate, Settings, `AppState`, and tests
-- `JARVISWatch/JARVISWatchApp.swift`, notification coordinator/delegate, `WatchConnectView`, bounded result sheet, and tests
+- `JARVISWatch/JARVISWatchApp.swift`, notification coordinator/delegate, `WatchConnectView`, `WatchJobsModel`, `WatchJobsView`, and tests
 - `JARVISKit/Sources/JARVISKit/WatchBridge.swift`
 - iPhone host-key-pinned SSH transport refactored only enough to support the fixed one-shot registration command
 - `project.yml`, generated `JARVIS.xcodeproj`, iPhone/Watch entitlements, verifier, app README, and this canonical documentation
@@ -1088,22 +1095,82 @@ No terminald, room-audio, widget implementation, Pi lifecycle extension, tmux co
 ## Build 145 privacy-contract addendum
 
 The Build 144 definition above remains the historical contract for its sealed artifact.
-Build 145 intentionally proposes a different owner-visible alert contract: the APNs
-`aps.alert` title contains the immutable result job name, and the body contains
-`Completed — …` or `Failed — …` followed by an approximately 240-character excerpt
-from the already-sanitized immutable result summary. Custom routing data remains only
-the fixed route, route version, and positive retained result sequence. Full output,
-prompts, model configuration, credentials, tokens, local paths, and raw URLs are not
-sent. Any preview that still resembles sensitive context fails closed to generic text.
-The iPhone and Watch permission copy warns that Apple may display this content on the
-Lock Screen and points the owner to the system **Show Previews** control.
+Sealed and owner-accepted Build 145 intentionally adopts a different owner-visible alert
+contract: the APNs `aps.alert` title contains the immutable result job name, and the body
+contains `Completed — …` or `Failed — …` followed by an excerpt from the already-
+sanitized immutable result summary. Bounds remain title `120` UTF-8 bytes, body `640`
+bytes, excerpt `240` characters, and total payload `1024` bytes. There is no APNs badge
+or app-icon badge. Custom routing data remains only `route=scheduled-job-result`,
+`routeVersion=1`, and a positive retained `resultSequence`. Full output, prompts, model
+configuration, credentials, tokens, private keys, network locations, local paths, opaque
+secrets, and raw URLs are not sent. Any preview that still resembles sensitive context
+fails closed to generic text. The iPhone and Watch permission copy warns that Apple may
+display this content on the Lock Screen and points the owner to the system **Show
+Previews** control.
 
 Build 145 also removes only the iPhone Home System/Services presentation and polling;
 jarvisd APIs and services remain intact. Opening the Jobs root does not clear unread
 state. Protected per-job sequence watermarks mark only the opened/deep-linked thread
 read, and the Jobs tab badge counts unread job threads rather than retained results.
 Build 144 cache history is baselined as read during migration, so rollout does not
-surface old results. This addendum is not deployment or physical acceptance evidence.
+surface old results. Build 145's future-only APNs dispatch activation never backfilled
+historical results.
+
+## Build 146 integrated Watch Jobs and routing addendum
+
+Build 146 deliberately supersedes Build 144's three-page/standalone-sheet Watch UX while
+leaving every provider, scheduler, registration, payload, entitlement, retry, and
+future-only dispatch rule unchanged.
+
+- The fixed Watch dashboard order is **Terminal → Plugs → System → Jobs**, with four
+  non-wrapping indicator dots. The Jobs dot uses the JARVIS accent when any Watch-local
+  job thread is unread.
+- The Jobs root has separate **Scheduled Jobs** and **Archived Jobs** sections. Compact
+  rows contain name, cadence, unread state, current issue/disabled/archive state, and a
+  chevron, but no output, error, summary, or APNs-preview text.
+- Watch owns a separate 100-result protected cache and protected per-job read-state file.
+  Both are owner-only mode `0600` beneath a mode-`0700` directory and use complete-until-
+  first-unlock data protection. iPhone cache paths, payload versions, and formats remain
+  byte-compatible with Build 145; iPhone and Watch never synchronize read state.
+- The first complete successful Watch history sync baselines all then-retained history as
+  read. “Complete” here is the API's uncursored newest-100 window: older rows reported by
+  `hasMore` are outside the target-local cache bound, while the resulting global sequence
+  floor still treats pre-migration history as read. A focused notification lookup is not
+  allowed to establish or raise that baseline because it may request an older or isolated
+  result. Opening Jobs root marks nothing; opening one thread marks only that job through
+  its newest retained sequence.
+- A Watch thread is read-only and newest-first. It renders the full server-bounded output
+  and/or error—not APNs preview text—plus status/cadence, timestamp, duration, sequence,
+  optional exit code, failure state, and truncation state. Inline destinations are limited
+  to bounded credential-free HTTP/HTTPS URLs. Native ScrollView behavior supports touch
+  and Digital Crown movement, and a custom in-page Back control leaves the dashboard pager
+  geometry untouched.
+- Jobs refreshes only while its page is visible and the scene is interactive, after an
+  explicit pull-to-refresh, or for a bounded notification lookup. Periodic Jobs polling
+  is canceled in Always-On/inactive and background states. Cached content remains visible.
+- Both platforms route only `UNNotificationDefaultActionIdentifier`. Foreground banners
+  do not navigate. A UUID identifies each pending action; duplicate callbacks for the
+  same pending sequence coalesce, while a different newer sequence supersedes old work.
+  Exact lookup uses `after = resultSequence - 1`, `limit = 1`, requires exactly one
+  equal sequence, and consumes the pending route only after the matching thread destination
+  is established. Boolean or otherwise malformed numeric routing fields fail closed.
+  Focused lookups never advance the separately persisted general-history cursor; an
+  ordinary refresh drains at most five ascending continuation pages to catch up within
+  the server's 500-result retention bound. If an exact server-retained result is older
+  than the ordinary newest-100 cache window, the
+  bounded cache temporarily retains that exact destination while preserving descending
+  ordering and the 100-result limit.
+- During loading or temporary failure, no unrelated result remains over the requested
+  destination. The exact route persists with Retry and explicit Dismiss controls. An old
+  asynchronous completion cannot consume a newer route.
+- iPhone retains `jarvis://jobs/result/<sequence>` and sends both URL and APNs actions
+  through one newest-wins route inbox. The Watch removes `WatchPushResultRoute` and
+  `WatchJobResultSheet`; notification routing is integrated into the Jobs page.
+
+Build 146 changes no scheduler/database schema, daemon, API, port, tmux session, terminal,
+hardware command, room-audio process, widget behavior, background mode, bundle identifier,
+or signed capability. Physical notification-tap acceptance remains owner-controlled and
+requires separate authorization after the exact Build 146 archive is audited and frozen.
 
 ## Apple references
 

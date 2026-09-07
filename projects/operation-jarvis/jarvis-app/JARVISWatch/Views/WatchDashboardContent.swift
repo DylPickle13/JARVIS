@@ -6,11 +6,15 @@ private enum WatchDashboardPage: Hashable, CaseIterable {
     case terminal
     case plugs
     case system
+    case jobs
 }
 
 struct WatchDashboardContent: View {
     @ObservedObject var model: WatchConnectModel
+    @ObservedObject var jobs: WatchJobsModel
     let siriTerminalRequestSequence: Int
+    let requestedJobRoute: ScheduledJobNavigationRequest?
+    let onJobRouteConsumed: (ScheduledJobNavigationRequest) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedPage: WatchDashboardPage = .terminal
     @State private var showsPurifierModeChoices = false
@@ -44,10 +48,14 @@ struct WatchDashboardContent: View {
             #if DEBUG && targetEnvironment(simulator)
             if CommandLine.arguments.contains("-jarvisOpenWatchSystem") {
                 selectedPage = .system
+            } else if CommandLine.arguments.contains("-jarvisOpenWatchJobs") {
+                selectedPage = .jobs
             }
             #endif
+            model.setJobsPageVisible(selectedPage == .jobs)
         }
         .onChange(of: selectedPage) { _, page in
+            model.setJobsPageVisible(page == .jobs)
             if page == .system {
                 Task { await model.refreshCodexQuotaWhenVisible() }
             } else {
@@ -57,6 +65,13 @@ struct WatchDashboardContent: View {
         .onChange(of: siriTerminalRequestSequence) { oldValue, newValue in
             guard newValue != oldValue else { return }
             selectedPage = .terminal
+        }
+        .onChange(of: requestedJobRoute, initial: true) { _, route in
+            guard let route else { return }
+            presentJobRoute(route)
+        }
+        .onDisappear {
+            model.setJobsPageVisible(false)
         }
     }
 
@@ -78,7 +93,14 @@ struct WatchDashboardContent: View {
             resolvedSystemPage
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
-                .gesture(pageDragGesture(previous: .plugs, next: nil))
+                .gesture(pageDragGesture(previous: .plugs, next: .jobs))
+        case .jobs:
+            WatchJobsView(
+                model: jobs,
+                onPreviousPage: { selectedPage = .system },
+                resolveRoute: model.resolveScheduledJobRoute,
+                onRouteConsumed: onJobRouteConsumed
+            )
         }
     }
 
@@ -86,7 +108,7 @@ struct WatchDashboardContent: View {
         VStack(spacing: 5) {
             ForEach(WatchDashboardPage.allCases, id: \.self) { page in
                 Circle()
-                    .fill(page == selectedPage ? Color.white : Color.secondary.opacity(0.55))
+                    .fill(pageIndicatorColor(for: page))
                     .frame(width: page == selectedPage ? 6 : 5, height: page == selectedPage ? 6 : 5)
             }
         }
@@ -94,6 +116,21 @@ struct WatchDashboardContent: View {
         .padding(.trailing, 1)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private func pageIndicatorColor(for page: WatchDashboardPage) -> Color {
+        if page == selectedPage { return .white }
+        if page == .jobs, jobs.unreadJobCount > 0 { return WatchJarvisStyle.accent }
+        return Color.secondary.opacity(0.55)
+    }
+
+    private func presentJobRoute(_ route: ScheduledJobNavigationRequest) {
+        selectedPage = .jobs
+        Task {
+            if await model.resolveScheduledJobRoute(route) {
+                onJobRouteConsumed(route)
+            }
+        }
     }
 
     private func pageDragGesture(

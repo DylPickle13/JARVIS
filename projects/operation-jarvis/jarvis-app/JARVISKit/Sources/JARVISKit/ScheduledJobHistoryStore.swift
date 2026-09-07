@@ -1,5 +1,4 @@
 import Foundation
-import JARVISKit
 
 private func writeProtectedJARVISData(_ data: Data, to fileURL: URL) throws {
     let directory = fileURL.deletingLastPathComponent()
@@ -20,17 +19,25 @@ private func writeProtectedJARVISData(_ data: Data, to fileURL: URL) throws {
     try FileManager.default.setAttributes(attributes, ofItemAtPath: fileURL.path)
 }
 
-struct ScheduledJobResultCache: Sendable {
-    static let limit = 100
+/// Bounded, target-local cache for retained scheduled-job results.
+///
+/// The payload version, default path, ordering, and 100-result bound are kept
+/// compatible with the Build 145 iPhone cache. iOS and watchOS use separate app
+/// containers even though they intentionally use the same relative filename.
+public struct ScheduledJobResultCache: Sendable {
+    public static let limit = 100
+    /// The server retains at most 500 results. Catch-up stays bounded even if a
+    /// future server advertises additional continuation pages.
+    public static let maximumCatchUpPages = 5
 
     private struct Payload: Codable {
         let version: Int
         let results: [ScheduledJobResult]
     }
 
-    let fileURL: URL
+    public let fileURL: URL
 
-    init(fileURL: URL? = nil) {
+    public init(fileURL: URL? = nil) {
         if let fileURL {
             self.fileURL = fileURL
             return
@@ -42,29 +49,50 @@ struct ScheduledJobResultCache: Sendable {
             .appendingPathComponent("scheduled-job-results-v1.json", isDirectory: false)
     }
 
-    func load() -> [ScheduledJobResult] {
+    public func load() -> [ScheduledJobResult] {
         guard let data = try? Data(contentsOf: fileURL),
               let payload = try? JSONDecoder().decode(Payload.self, from: data),
               payload.version == 1 else { return [] }
         return Self.normalized(payload.results)
     }
 
-    func save(_ results: [ScheduledJobResult]) {
+    @discardableResult
+    public func save(_ results: [ScheduledJobResult]) -> Bool {
         let normalized = Self.normalized(results)
         do {
             let data = try JSONEncoder().encode(Payload(version: 1, results: normalized))
             try writeProtectedJARVISData(data, to: fileURL)
+            return true
         } catch {
             // The authenticated server remains authoritative. A cache failure
             // must never hide fresh in-memory results or interrupt polling.
+            return false
         }
     }
 
-    static func merging(
+    public static func merging(
         cached: [ScheduledJobResult],
         incoming: [ScheduledJobResult]
     ) -> [ScheduledJobResult] {
         normalized(incoming + cached)
+    }
+
+    /// Keeps an exact, server-verified notification destination available even
+    /// when it is older than the ordinary newest-100 cache window. The next
+    /// general history sync may replace the pin; ordering, payload format, and
+    /// the hard 100-result bound remain unchanged.
+    public static func merging(
+        cached: [ScheduledJobResult],
+        incoming: [ScheduledJobResult],
+        preserving sequence: Int
+    ) -> [ScheduledJobResult] {
+        let merged = normalized(incoming + cached)
+        guard sequence > 0,
+              !merged.contains(where: { $0.sequence == sequence }),
+              let focused = (incoming + cached).first(where: { $0.sequence == sequence }) else {
+            return merged
+        }
+        return normalized([focused] + Array(merged.prefix(max(0, limit - 1))))
     }
 
     private static func normalized(_ values: [ScheduledJobResult]) -> [ScheduledJobResult] {
@@ -77,33 +105,44 @@ struct ScheduledJobResultCache: Sendable {
     }
 }
 
-struct ScheduledJobReadState: Codable, Equatable, Sendable {
-    var baselineEstablished: Bool
-    var baselineSequence: Int
-    var jobReadSequences: [String: Int]
+public struct ScheduledJobReadState: Codable, Equatable, Sendable {
+    public var baselineEstablished: Bool
+    public var baselineSequence: Int
+    public var jobReadSequences: [String: Int]
 
-    static let empty = ScheduledJobReadState(
+    public init(
+        baselineEstablished: Bool,
+        baselineSequence: Int,
+        jobReadSequences: [String: Int]
+    ) {
+        self.baselineEstablished = baselineEstablished
+        self.baselineSequence = baselineSequence
+        self.jobReadSequences = jobReadSequences
+    }
+
+    public static let empty = ScheduledJobReadState(
         baselineEstablished: false,
         baselineSequence: 0,
         jobReadSequences: [:]
     )
 
-    func readSequence(for jobID: String) -> Int {
-        max(0, jobReadSequences[jobID] ?? (baselineEstablished ? baselineSequence : 0))
+    public func readSequence(for jobID: String) -> Int {
+        let migrationFloor = baselineEstablished ? baselineSequence : 0
+        return max(0, migrationFloor, jobReadSequences[jobID] ?? 0)
     }
 
-    mutating func establishBaseline(_ sequence: Int) {
+    public mutating func establishBaseline(_ sequence: Int) {
         guard !baselineEstablished else { return }
         baselineEstablished = true
         baselineSequence = max(baselineSequence, max(0, sequence))
     }
 
-    mutating func markRead(jobID: String, through sequence: Int) {
+    public mutating func markRead(jobID: String, through sequence: Int) {
         guard !jobID.isEmpty, sequence > readSequence(for: jobID) else { return }
         jobReadSequences[jobID] = sequence
     }
 
-    mutating func normalize(limit: Int = 1_000) {
+    public mutating func normalize(limit: Int = 1_000) {
         baselineSequence = max(0, baselineSequence)
         jobReadSequences = Dictionary(
             uniqueKeysWithValues: jobReadSequences
@@ -118,15 +157,15 @@ struct ScheduledJobReadState: Codable, Equatable, Sendable {
     }
 }
 
-struct ScheduledJobReadStateStore: Sendable {
+public struct ScheduledJobReadStateStore: Sendable {
     private struct Payload: Codable {
         let version: Int
         let state: ScheduledJobReadState
     }
 
-    let fileURL: URL
+    public let fileURL: URL
 
-    init(fileURL: URL? = nil) {
+    public init(fileURL: URL? = nil) {
         if let fileURL {
             self.fileURL = fileURL
             return
@@ -138,7 +177,7 @@ struct ScheduledJobReadStateStore: Sendable {
             .appendingPathComponent("scheduled-job-read-state-v2.json", isDirectory: false)
     }
 
-    func load() -> ScheduledJobReadState? {
+    public func load() -> ScheduledJobReadState? {
         guard let data = try? Data(contentsOf: fileURL),
               let payload = try? JSONDecoder().decode(Payload.self, from: data),
               payload.version == 2 else { return nil }
@@ -147,7 +186,7 @@ struct ScheduledJobReadStateStore: Sendable {
         return state
     }
 
-    func save(_ state: ScheduledJobReadState) {
+    public func save(_ state: ScheduledJobReadState) {
         var normalized = state
         normalized.normalize()
         do {

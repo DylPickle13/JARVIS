@@ -14,10 +14,10 @@
 		164A7C5B2C9AA9272A226560 /* PiAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8DEE39E010FD51DF01CE39 /* PiAttachmentTests.swift */; };
 		1D5E7CC1DB8E703A3D114F61 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8068A9EC5CBE6A47B603710 /* JARVISKit */; };
 		1DC8B19B903AE4B1F55DDA99 /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */; };
-		21967EDA0584E59D62CCAA1D /* ScheduledJobResultCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = E463812FB128A016FE221F9A /* ScheduledJobResultCache.swift */; };
 		21E9789B6D7FDCFD43AD0B35 /* WidgetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */; };
 		2392D67F2D4A760498DF32EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ED67C789A071ACDEA4FD69FC /* Assets.xcassets */; };
 		26D143A1482F252A0D5C3892 /* JARVISWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1B144126B4647E06FE7EED06 /* JARVISWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		285BBD47EB95C2364F624D92 /* WatchJobsModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AE7C82A6919910DCCB2FFA5 /* WatchJobsModelTests.swift */; };
 		2C39CF58603D08048BA65D1A /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFAD68F450FB6F9BE8C17A8 /* LauncherWidget.swift */; };
 		2DD281718165D457D750A2CC /* NeuralCoreArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197A46DD464AA704E3FB32E9 /* NeuralCoreArtwork.swift */; };
 		2DD3D8F93DACBDBEFC94B1E1 /* NeuralCoreWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 535E6788F7CEA7378CB167A8 /* NeuralCoreWidget.swift */; };
@@ -30,6 +30,7 @@
 		4531362D9F95607130CA5155 /* PiTerminalController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31627FF42650862FB0296B9C /* PiTerminalController.swift */; };
 		47D15BD4F3FC45BED8969D74 /* WatchTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02220D93FADA230BF50A667D /* WatchTerminalView.swift */; };
 		4E6CBD9D3FD1B7C1FCA867DB /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8448BBD15DA42029DD6D6212 /* NIOCore */; };
+		4F7432778C29782E63BDF42D /* WatchJobsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3237249D6B7F3438CE97C67 /* WatchJobsModel.swift */; };
 		5031EA9725F243EAEA791808 /* JARVISWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 366131BF98CEBD234A1B3EAC /* JARVISWatchApp.swift */; };
 		513C03156788F045E10B6DC3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F511B3C48F0433661629C5AB /* PrivacyInfo.xcprivacy */; };
 		52D863AFDF79688CA2CF1042 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 1F4C583917FA03DBF11F4A10 /* NIOSSH */; };
@@ -45,6 +46,7 @@
 		8C6D2EF20D60D5C1F69E964C /* DeveloperSigningSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53C1087DDDA6246634A9DA3 /* DeveloperSigningSettingsView.swift */; };
 		8E6BE9F9B34D9B7BC922C127 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = 301E6348CB2E3FD4E2A1BD9D /* JARVISKit */; };
 		9133343133C13A0DA96CDEF2 /* JARVISApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A275952024515DF0771793A /* JARVISApp.swift */; };
+		95D980CFEA72CAC956921F47 /* WatchJobsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3237249D6B7F3438CE97C67 /* WatchJobsModel.swift */; };
 		968430E16AEDD8FACCCA4A90 /* JARVISSiriShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1B9D6B42D835D03F42F78A /* JARVISSiriShortcuts.swift */; };
 		98E8AFEA1342697E3906487A /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF549C08E0899CD48EC8294 /* LauncherWidget.swift */; };
 		9E9F58260B97E592FE005E0A /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */; };
@@ -73,10 +75,10 @@
 		EEE4CC5EB02DFF6C33B54B6D /* AppStateWatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B3A49AB08F03AB80167B37B /* AppStateWatchBridge.swift */; };
 		EEF5AF3EBBE8F552CDBE8AD7 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = BA99DC927D3AD3324FD8A12D /* NIOPosix */; };
 		EF1CB94BDED2CA7AA9FAECD9 /* JARVISSiriPromptIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64AD2C56B02C620DFD3C0790 /* JARVISSiriPromptIntent.swift */; };
+		F0854C3C067D4B857BC0DE6D /* WatchJobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61AEF102626B342076EACC36 /* WatchJobsView.swift */; };
 		F34D7B1A2671F4A44B16377B /* WatchPushNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E59FF1EC8B04806AC245F3F /* WatchPushNotificationCoordinator.swift */; };
 		F44772CB4ED1CF9904DE511F /* PiAttachmentSSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B3DF6C367DAF49D5333EF0 /* PiAttachmentSSHTransport.swift */; };
 		FCF833080CAEA662AA8530EB /* JARVISWatchWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */; };
-		FD30E7847A19FB57B1860313 /* JobsPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45E6CA247E4B9961E9B18D2E /* JobsPresentation.swift */; };
 		FD95A85E202BD3525C7A4A4E /* JARVISWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1548C41F74BB5F0E3EF25885 /* JARVISWidgetBundle.swift */; };
 		FE8D5C18EDBC05C290A999F4 /* JARVISSiriPromptIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64AD2C56B02C620DFD3C0790 /* JARVISSiriPromptIntent.swift */; };
 		FFF7A45F6375FCF4A3B382ED /* WatchConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A2A9AA1169ECDB2E5008ACC /* WatchConnectView.swift */; };
@@ -160,19 +162,20 @@
 		266A9071FEC39AB8EC4067A2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		28C023257637E052A6CBCF4A /* PiSSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiSSHTransport.swift; sourceTree = "<group>"; };
 		29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWatchWidgetBundle.swift; sourceTree = "<group>"; };
+		2AE7C82A6919910DCCB2FFA5 /* WatchJobsModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchJobsModelTests.swift; sourceTree = "<group>"; };
 		2C8DEE39E010FD51DF01CE39 /* PiAttachmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentTests.swift; sourceTree = "<group>"; };
 		31627FF42650862FB0296B9C /* PiTerminalController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalController.swift; sourceTree = "<group>"; };
 		325AC9EE99D5B5BA85A84D73 /* JARVISTerminalConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISTerminalConfigurationStore.swift; sourceTree = "<group>"; };
 		366131BF98CEBD234A1B3EAC /* JARVISWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWatchApp.swift; sourceTree = "<group>"; };
 		3B3A49AB08F03AB80167B37B /* AppStateWatchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateWatchBridge.swift; sourceTree = "<group>"; };
 		40C659E6D5CAA095003D8887 /* WidgetSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSupport.swift; sourceTree = "<group>"; };
-		45E6CA247E4B9961E9B18D2E /* JobsPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsPresentation.swift; sourceTree = "<group>"; };
 		48B3DF6C367DAF49D5333EF0 /* PiAttachmentSSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentSSHTransport.swift; sourceTree = "<group>"; };
 		4A2A9AA1169ECDB2E5008ACC /* WatchConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectView.swift; sourceTree = "<group>"; };
 		4DB14639976C804207585F8F /* LinkedJobResultText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkedJobResultText.swift; sourceTree = "<group>"; };
 		509E3B0D14498373656B563B /* PiAttachmentPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentPickerView.swift; sourceTree = "<group>"; };
 		535E6788F7CEA7378CB167A8 /* NeuralCoreWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreWidget.swift; sourceTree = "<group>"; };
 		539EA6AF53BDC5A406B64C5D /* PiAttachmentProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentProtocol.swift; sourceTree = "<group>"; };
+		61AEF102626B342076EACC36 /* WatchJobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchJobsView.swift; sourceTree = "<group>"; };
 		64AD2C56B02C620DFD3C0790 /* JARVISSiriPromptIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISSiriPromptIntent.swift; sourceTree = "<group>"; };
 		65330ED0EAB103D03CD69952 /* PiAttachmentTemporaryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentTemporaryStore.swift; sourceTree = "<group>"; };
 		65BFEC04E2CD0C7D691F114D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -195,6 +198,7 @@
 		9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTerminalSettingsView.swift; sourceTree = "<group>"; };
 		9CDED70C520590C29476EBEF /* PiTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalView.swift; sourceTree = "<group>"; };
 		9E59FF1EC8B04806AC245F3F /* WatchPushNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPushNotificationCoordinator.swift; sourceTree = "<group>"; };
+		A3237249D6B7F3438CE97C67 /* WatchJobsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchJobsModel.swift; sourceTree = "<group>"; };
 		A5136B3B670CA19BFD429B9D /* NeuralCoreContinuousAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreContinuousAnimation.swift; sourceTree = "<group>"; };
 		B20440B35638B5FF94AF10A0 /* WatchTerminalProvisioningSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTerminalProvisioningSettings.swift; sourceTree = "<group>"; };
 		B3E32755A9AB7BFF1E2C07B9 /* JARVISWidgetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWidgetTheme.swift; sourceTree = "<group>"; };
@@ -207,7 +211,6 @@
 		DB17F31548738F2D4FA74526 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		DB1B9D6B42D835D03F42F78A /* JARVISSiriShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISSiriShortcuts.swift; sourceTree = "<group>"; };
 		DBE6CDFF2E6B3AEAFD720F34 /* JARVIS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JARVIS.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E463812FB128A016FE221F9A /* ScheduledJobResultCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledJobResultCache.swift; sourceTree = "<group>"; };
 		ED67C789A071ACDEA4FD69FC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F511B3C48F0433661629C5AB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F62BBA7F765D9BA752EFC52A /* PushNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationCoordinator.swift; sourceTree = "<group>"; };
@@ -261,6 +264,7 @@
 				07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */,
 				88764939E043048E6692C482 /* JobsPresentationTests.swift */,
 				2C8DEE39E010FD51DF01CE39 /* PiAttachmentTests.swift */,
+				2AE7C82A6919910DCCB2FFA5 /* WatchJobsModelTests.swift */,
 			);
 			path = JARVISTests;
 			sourceTree = "<group>";
@@ -293,7 +297,6 @@
 				C05CEF9EA2E1CBE04169AAE3 /* ConnectionSettingsView.swift */,
 				C53C1087DDDA6246634A9DA3 /* DeveloperSigningSettingsView.swift */,
 				6BD318AB3793295E0031F850 /* HomeView.swift */,
-				45E6CA247E4B9961E9B18D2E /* JobsPresentation.swift */,
 				7A0A5FAA0FDA2D9A0B9685E8 /* JobsView.swift */,
 				4DB14639976C804207585F8F /* LinkedJobResultText.swift */,
 				DB17F31548738F2D4FA74526 /* NotificationSettingsView.swift */,
@@ -335,6 +338,7 @@
 				266A9071FEC39AB8EC4067A2 /* Assets.xcassets */,
 				70FED192B11A8F4BD074C930 /* JARVISWatch.entitlements */,
 				366131BF98CEBD234A1B3EAC /* JARVISWatchApp.swift */,
+				A3237249D6B7F3438CE97C67 /* WatchJobsModel.swift */,
 				9E59FF1EC8B04806AC245F3F /* WatchPushNotificationCoordinator.swift */,
 			);
 			path = JARVISWatch;
@@ -345,6 +349,7 @@
 			children = (
 				4A2A9AA1169ECDB2E5008ACC /* WatchConnectView.swift */,
 				771620AD2CA9D898AE768103 /* WatchDashboardContent.swift */,
+				61AEF102626B342076EACC36 /* WatchJobsView.swift */,
 				02220D93FADA230BF50A667D /* WatchTerminalView.swift */,
 			);
 			path = Views;
@@ -423,7 +428,6 @@
 				6BD0615D3C7D457B6C7DDA44 /* ProvisioningProfileStatus.swift */,
 				F62BBA7F765D9BA752EFC52A /* PushNotificationCoordinator.swift */,
 				03D534B7F39774A6BEDAA367 /* PushRegistrationSSHTransport.swift */,
-				E463812FB128A016FE221F9A /* ScheduledJobResultCache.swift */,
 			);
 			path = JARVIS;
 			sourceTree = "<group>";
@@ -674,7 +678,6 @@
 				EF1CB94BDED2CA7AA9FAECD9 /* JARVISSiriPromptIntent.swift in Sources */,
 				C0D68E750912988FBB245E4F /* JARVISSiriShortcuts.swift in Sources */,
 				A65E646E19987B41F50BE458 /* JARVISTerminalConfigurationStore.swift in Sources */,
-				FD30E7847A19FB57B1860313 /* JobsPresentation.swift in Sources */,
 				8B09035C23304A17B9642C71 /* JobsView.swift in Sources */,
 				C463B201AF806C1AC734C4AE /* LinkedJobResultText.swift in Sources */,
 				B312FDB359467D2B1CA1D449 /* NotificationSettingsView.swift in Sources */,
@@ -690,7 +693,6 @@
 				B357D02541C826207B390685 /* ProvisioningProfileStatus.swift in Sources */,
 				BBF19EEC98E5C297BA65210D /* PushNotificationCoordinator.swift in Sources */,
 				5B5B448515CF5F0728A3C35B /* PushRegistrationSSHTransport.swift in Sources */,
-				21967EDA0584E59D62CCAA1D /* ScheduledJobResultCache.swift in Sources */,
 				1DC8B19B903AE4B1F55DDA99 /* SettingsComponents.swift in Sources */,
 				D250A7189D6C70AD54591AFE /* SettingsView.swift in Sources */,
 				00A8A57CB85F3DEEC79B83AF /* WatchTerminalProvisioningSettings.swift in Sources */,
@@ -705,6 +707,8 @@
 				9E9F58260B97E592FE005E0A /* AppStateTests.swift in Sources */,
 				C090C98DB4B95B2F5B97A281 /* JobsPresentationTests.swift in Sources */,
 				164A7C5B2C9AA9272A226560 /* PiAttachmentTests.swift in Sources */,
+				95D980CFEA72CAC956921F47 /* WatchJobsModel.swift in Sources */,
+				285BBD47EB95C2364F624D92 /* WatchJobsModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -718,6 +722,8 @@
 				5031EA9725F243EAEA791808 /* JARVISWatchApp.swift in Sources */,
 				FFF7A45F6375FCF4A3B382ED /* WatchConnectView.swift in Sources */,
 				BB211C6FB4A23BD0C80D09DD /* WatchDashboardContent.swift in Sources */,
+				4F7432778C29782E63BDF42D /* WatchJobsModel.swift in Sources */,
+				F0854C3C067D4B857BC0DE6D /* WatchJobsView.swift in Sources */,
 				F34D7B1A2671F4A44B16377B /* WatchPushNotificationCoordinator.swift in Sources */,
 				47D15BD4F3FC45BED8969D74 /* WatchTerminalView.swift in Sources */,
 			);

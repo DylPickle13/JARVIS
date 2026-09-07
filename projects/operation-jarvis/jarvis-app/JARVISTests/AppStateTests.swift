@@ -5,6 +5,27 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testNotificationNavigationInboxCoalescesDuplicatesAndNewestResultWins() throws {
+        let coordinator = PushNotificationCoordinator.shared
+        if let pending = coordinator.pendingRoute {
+            coordinator.consumePendingRoute(pending)
+        }
+
+        coordinator.present(resultSequence: 41)
+        let first = try XCTUnwrap(coordinator.pendingRoute)
+        coordinator.present(resultSequence: 41)
+        XCTAssertEqual(coordinator.pendingRoute, first, "duplicate process-local signals must be idempotent")
+
+        coordinator.present(resultSequence: 42)
+        let newest = try XCTUnwrap(coordinator.pendingRoute)
+        XCTAssertEqual(newest.resultSequence, 42)
+        XCTAssertNotEqual(newest.id, first.id)
+        coordinator.consumePendingRoute(first)
+        XCTAssertEqual(coordinator.pendingRoute, newest, "an obsolete completion cannot consume the newest action")
+        coordinator.consumePendingRoute(newest)
+        XCTAssertNil(coordinator.pendingRoute)
+    }
+
     func testNativeNotificationRouteAcceptsOnlyVersionedJobsRoutingFields() {
         let accepted = PushNotificationCoordinator.route(from: [
             "route": "scheduled-job-result",
@@ -27,6 +48,16 @@ final class AppStateTests: XCTestCase {
             "route": "scheduled-job-result",
             "routeVersion": 1,
             "resultSequence": 0,
+        ]))
+        XCTAssertNil(PushNotificationCoordinator.route(from: [
+            "route": "scheduled-job-result",
+            "routeVersion": NSNumber(value: true),
+            "resultSequence": 41,
+        ]))
+        XCTAssertNil(PushNotificationCoordinator.route(from: [
+            "route": "scheduled-job-result",
+            "routeVersion": 1,
+            "resultSequence": NSNumber(value: true),
         ]))
     }
 
@@ -503,6 +534,64 @@ final class AppStateTests: XCTestCase {
             delivery: { _, _, _ in throw WatchTerminalClientError.submissionUnconfirmed }
         )
         XCTAssertEqual(uncertainOutcome, .unconfirmed)
+    }
+
+    func testFocusedResultFetchUsesExactCursorAndRejectsAnotherSequence() async throws {
+        let api = FakeAPI(scheduledJobResultSequence: 41)
+        let suite = "jarvis.focused-result.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jarvis-focused-result-\(UUID().uuidString).json")
+        let readStateURL = URL(fileURLWithPath: cacheURL.path + ".read-state-v2")
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: cacheURL)
+            try? FileManager.default.removeItem(at: readStateURL)
+        }
+        let app = AppState(
+            store: store,
+            client: api,
+            preferences: defaults,
+            resultCacheURL: cacheURL,
+            resultReadStateURL: readStateURL
+        )
+
+        let mismatch = await app.fetchScheduledJobResult(sequence: 40)
+        XCTAssertNil(mismatch)
+        XCTAssertEqual(api.scheduledJobResultRequests.last, .init(after: 39, limit: 1, jobID: nil))
+        XCTAssertEqual(app.scheduledJobResultsErrorMessage, "Result #40 is no longer retained.")
+        XCTAssertTrue(app.lastScheduledJobResults.isEmpty, "a mismatched exact lookup must not mutate history")
+
+        let exact = await app.fetchScheduledJobResult(sequence: 41)
+        XCTAssertEqual(exact?.sequence, 41)
+        XCTAssertEqual(api.scheduledJobResultRequests.last, .init(after: 40, limit: 1, jobID: nil))
+
+        // A focused-only cache must not become the general polling cursor after
+        // a cold restart; the first complete sync still requests the newest page.
+        api.scheduledJobResultSequence = 42
+        let restored = AppState(
+            store: store,
+            client: api,
+            preferences: defaults,
+            resultCacheURL: cacheURL,
+            resultReadStateURL: readStateURL
+        )
+        XCTAssertEqual(restored.unreadScheduledJobResultCount, 1)
+        await restored.fetchScheduledJobResults()
+        XCTAssertEqual(api.scheduledJobResultRequests.last, .init(after: nil, limit: 100, jobID: nil))
+
+        api.scheduledJobResultSequence = 43
+        let restoredAfterFullSync = AppState(
+            store: store,
+            client: api,
+            preferences: defaults,
+            resultCacheURL: cacheURL,
+            resultReadStateURL: readStateURL
+        )
+        await restoredAfterFullSync.fetchScheduledJobResults()
+        XCTAssertEqual(api.scheduledJobResultRequests.last, .init(after: 42, limit: 100, jobID: nil))
     }
 
     func testScheduledResultFirstSyncBaselinesThenTracksAndPersistsUnread() async throws {
@@ -990,7 +1079,14 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var healthCalls = 0
     var servicesCalls = 0
     var scheduledJobsCalls = 0
+    struct ScheduledJobResultRequest: Equatable {
+        let after: Int?
+        let limit: Int
+        let jobID: String?
+    }
+
     var scheduledJobResultsCalls = 0
+    var scheduledJobResultRequests: [ScheduledJobResultRequest] = []
     var signingStatusCalls = 0
     var signingStartCalls = 0
     private var purifierIsOn = false
@@ -1096,6 +1192,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         jobId: String?
     ) async throws -> ScheduledJobResultsResponse {
         scheduledJobResultsCalls += 1
+        scheduledJobResultRequests.append(.init(after: after, limit: limit, jobID: jobId))
         let result: String
         if let sequence = scheduledJobResultSequence, sequence > (after ?? 0) {
             result = #"{"sequence":\#(sequence),"id":"run_\#(sequence)","jobId":"job_demo","jobName":"demo","status":"success","outputKind":"direct","startedAt":"2026-08-30T00:00:00Z","finishedAt":"2026-08-30T00:00:01Z","durationSeconds":1.0,"exitCode":0,"title":"demo completed","summary":"Ready","output":"Ready","error":null,"truncated":false}"#

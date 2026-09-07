@@ -5,10 +5,6 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
-extension Notification.Name {
-    static let jarvisPushRoute = Notification.Name("com.operation-jarvis.jarvis.push-route")
-}
-
 @MainActor
 final class PushNotificationCoordinator: NSObject, ObservableObject {
     static let shared = PushNotificationCoordinator()
@@ -18,7 +14,7 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
     @Published private(set) var iphoneState: JARVISNotificationLocalState = .off
     @Published private(set) var watchState: JARVISNotificationLocalState = .off
     @Published private(set) var hostStatus: JARVISNotificationStatus?
-    @Published private(set) var pendingResultSequence: Int?
+    @Published private(set) var pendingRoute: ScheduledJobNavigationRequest?
     @Published private(set) var isWorking = false
     @Published private(set) var errorMessage: String?
 
@@ -181,7 +177,11 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
 
     func present(resultSequence: Int) {
         guard resultSequence > 0 else { return }
-        pendingResultSequence = resultSequence
+        // A single explicit notification action can surface through more than
+        // one process-local lifecycle callback. Keep that signal idempotent,
+        // while a tap for a different result always supersedes older work.
+        if pendingRoute?.resultSequence == resultSequence { return }
+        pendingRoute = ScheduledJobNavigationRequest(resultSequence: resultSequence)
     }
 
     func receivedForegroundResult(resultSequence: Int) {
@@ -189,8 +189,9 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
         Task { await app.fetchScheduledJobResult(sequence: resultSequence) }
     }
 
-    func consumePendingResultSequence() {
-        pendingResultSequence = nil
+    func consumePendingRoute(_ route: ScheduledJobNavigationRequest) {
+        guard pendingRoute?.id == route.id else { return }
+        pendingRoute = nil
     }
 
     func didFailToRegisterForRemoteNotifications(_ error: Error) {
@@ -356,18 +357,9 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
     private static let environment: JARVISPushEnvironment = .development
 
     nonisolated static func route(from userInfo: [AnyHashable: Any]) -> ScheduledJobNotificationRoute? {
-        let route = userInfo["route"] as? String
-        let version: Int?
-        if let value = userInfo["routeVersion"] as? Int {
-            version = value
-        } else if let value = userInfo["routeVersion"] as? String {
-            version = Int(value)
-        } else {
-            version = nil
-        }
-        return ScheduledJobNotificationRoute(
-            route: route,
-            version: version,
+        ScheduledJobNotificationRoute(
+            route: userInfo["route"] as? String,
+            version: userInfo["routeVersion"],
             resultSequence: userInfo["resultSequence"]
         )
     }
@@ -391,15 +383,11 @@ extension PushNotificationCoordinator: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard let route = Self.route(from: response.notification.request.content.userInfo) else { return }
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+              let route = Self.route(from: response.notification.request.content.userInfo) else { return }
         await MainActor.run {
             PushNotificationCoordinator.shared.present(resultSequence: route.resultSequence)
         }
-        NotificationCenter.default.post(
-            name: .jarvisPushRoute,
-            object: nil,
-            userInfo: ["resultSequence": route.resultSequence]
-        )
     }
 }
 
