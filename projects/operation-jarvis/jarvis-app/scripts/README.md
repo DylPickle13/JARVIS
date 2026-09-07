@@ -29,8 +29,8 @@ optional Metal component; install it once with
   `JARVIS.app/Watch/` (`dstSubfolderSpec = 16`), the Xcode 26 layout accepted by
   the corrected iPhone/Watch target relationship.
 - `jarvis-mobile-terminal.sh` — macOS SSH bootstrap for the phone terminal. It
-  supplies Homebrew's PATH and maps only fixed slots `1...6` to `jarvis-ios`
-  through `jarvis-ios-6`. It creates the selected session detached
+  supplies Homebrew's PATH and maps only fixed slots `1...9` to `jarvis-ios`
+  through `jarvis-ios-9`. It creates the selected session detached
   when absent, tolerates concurrent creation, launches Pi's regular main-screen
   TUI without a display-name override, re-sources the checked-in one-line wheel
   bindings, reasserts tmux's accepted latest-client window-size policy without

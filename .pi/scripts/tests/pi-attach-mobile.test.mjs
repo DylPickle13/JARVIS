@@ -112,7 +112,7 @@ test("mobile server rejects non-allowlisted slot configuration before publishing
   const directory = await mkdtemp("/tmp/pia-invalid-slot-");
   const runtimeDirectory = join(directory, ".pi", "runtime");
   try {
-    for (const mobileSlot of [0, 7]) {
+    for (const mobileSlot of [0, 10]) {
       await assert.rejects(
         mobile.MobileAttachmentServer.start(
           {
@@ -607,7 +607,7 @@ test("receiver keeps no-argument Slot 1 compatibility and rejects arbitrary argu
     assert.equal(response.ok, true);
     assert.equal(response.operation, "snapshot");
 
-    for (const argumentsList of [["unexpected"], ["--slot", "0"], ["--slot", "7"]]) {
+    for (const argumentsList of [["unexpected"], ["--slot", "0"], ["--slot", "10"]]) {
       const rejected = spawn(process.execPath, [copiedReceiver, ...argumentsList], {
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -623,8 +623,9 @@ test("receiver keeps no-argument Slot 1 compatibility and rejects arbitrary argu
   }
 });
 
-test("receiver routes Slot 6 only through its scoped descriptor", async () => {
-  const data = await fixture({ mobileSlot: 6 });
+for (const slot of [6, 7, 8, 9]) {
+test(`receiver routes Slot ${slot} only through its scoped descriptor`, async () => {
+  const data = await fixture({ mobileSlot: slot });
   const receiverRoot = dirname(dirname(data.runtimeDirectory));
   const scriptsDirectory = join(receiverRoot, ".pi", "scripts");
   await mkdir(scriptsDirectory, { recursive: true });
@@ -632,10 +633,10 @@ test("receiver routes Slot 6 only through its scoped descriptor", async () => {
   await copyFile(join(projectRoot, ".pi", "scripts", "pi-attach-mobile-receiver.mjs"), copiedReceiver);
   try {
     const descriptor = JSON.parse(await readFile(data.server.descriptorPath, "utf8"));
-    assert.equal(descriptor.sessionID, 6);
-    assert.match(data.server.descriptorPath, /pi-attach-mobile-slot-6\.json$/);
+    assert.equal(descriptor.sessionID, slot);
+    assert.ok(data.server.descriptorPath.endsWith(`pi-attach-mobile-slot-${slot}.json`));
 
-    const child = spawn(process.execPath, [copiedReceiver, "--slot", "6"], {
+    const child = spawn(process.execPath, [copiedReceiver, "--slot", String(slot)], {
       stdio: ["pipe", "pipe", "pipe"],
     });
     const stdout = [];
@@ -657,8 +658,9 @@ test("receiver routes Slot 6 only through its scoped descriptor", async () => {
     await rm(data.directory, { recursive: true, force: true });
   }
 });
+}
 
-test("mobile identity gate accepts all six fixed jarvis-mobile sessions only", async () => {
+test("mobile identity gate accepts all nine fixed jarvis-mobile sessions only", async () => {
   const directory = await mkdtemp("/tmp/pia-tmux-");
   const socketPath = join(directory, "jarvis-mobile");
   const tmux = "/opt/homebrew/bin/tmux";
@@ -672,6 +674,9 @@ test("mobile identity gate accepts all six fixed jarvis-mobile sessions only", a
       "jarvis-ios-4",
       "jarvis-ios-5",
       "jarvis-ios-6",
+      "jarvis-ios-7",
+      "jarvis-ios-8",
+      "jarvis-ios-9",
     ].entries()) {
       execFileSync(tmux, [
         "-S", socketPath, "new-session", "-d", "-s", sessionName, "sleep 30",
@@ -691,7 +696,7 @@ test("mobile identity gate accepts all six fixed jarvis-mobile sessions only", a
       if (index === 0) slotOneProcess = { environment, processId: Number(panePID) };
       observed.push(paneID);
     }
-    assert.equal(new Set(observed).size, 6);
+    assert.equal(new Set(observed).size, 9);
     await assert.rejects(
       mobile.MobileAttachmentServer.start(
         {

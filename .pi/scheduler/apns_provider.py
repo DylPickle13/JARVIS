@@ -589,7 +589,7 @@ class APNsProvider:
         self, *, topic: str, device_token: str, session_id: int,
         apns_id: str, expiration: int | None = None,
     ) -> APNsSendResult:
-        if type(session_id) is not int or not 1 <= session_id <= 6:
+        if type(session_id) is not int or not 1 <= session_id <= 9:
             raise APNsConfigurationError("Pi session slot is invalid")
         # Static text only: no prompt, response, model, path, or session filename.
         payload = json.dumps({"aps": {"alert": {

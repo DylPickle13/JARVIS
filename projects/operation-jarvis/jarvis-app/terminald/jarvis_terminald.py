@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Authenticated HTTPS snapshot/input bridge for the Apple Watch terminal.
 
-This daemon is intentionally separate from jarvisd. It exposes only six fixed
+This daemon is intentionally separate from jarvisd. It exposes only nine fixed
 jarvis-mobile tmux sessions and has no hardware, service, scheduler, or JARVIS
 control-plane integration.
 """
@@ -39,6 +39,9 @@ TMUX_SESSIONS = {
     4: "jarvis-ios-4",
     5: "jarvis-ios-5",
     6: "jarvis-ios-6",
+    7: "jarvis-ios-7",
+    8: "jarvis-ios-8",
+    9: "jarvis-ios-9",
 }
 # Slot 1 aliases remain patchable for the existing focused tests and v1 clients.
 TMUX_SESSION = TMUX_SESSIONS[1]

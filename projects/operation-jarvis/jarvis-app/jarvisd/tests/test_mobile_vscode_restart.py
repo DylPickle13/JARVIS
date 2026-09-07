@@ -65,10 +65,34 @@ class MobileVscodeRestartTests(unittest.TestCase):
             now=now,
         )
 
-        self.assertEqual([item.slot for item in snapshots], [1, 2, 3, 4, 5, 6])
-        self.assertEqual([item.pane_id for item in snapshots], ["%0", "%1", "%2", "%3", "%4", "%5"])
-        self.assertEqual([item.session_file for item in snapshots], [session_files[index] for index in range(1, 7)])
+        self.assertEqual([item.slot for item in snapshots], list(range(1, 10)))
+        self.assertEqual([item.pane_id for item in snapshots], [f"%{i}" for i in range(9)])
+        self.assertEqual([item.session_file for item in snapshots], [session_files[index] for index in range(1, 10)])
         self.assertTrue(all(item.lifecycle == "idle" for item in snapshots))
+
+    def test_task_catalog_has_only_two_visible_actions_and_nine_hidden_attachments(self):
+        catalog = json.loads((SCRIPT_PATH.parent.parent / "config/jarvis-mobile-vscode-tasks.json").read_text())
+        tasks = {task["label"]: task for task in catalog["tasks"]}
+        visible = [task for task in tasks.values() if not task.get("hide", False)]
+        self.assertEqual([task["label"] for task in visible], [
+            "JARVIS: Show all 9 Pi sessions", "JARVIS: Restart and show all 9 Pi sessions"])
+        show, restart_task = visible
+        self.assertEqual(len(show["dependsOn"]), 9)
+        self.assertEqual(len(set(show["dependsOn"])), 9)
+        self.assertEqual(restart_task["dependsOn"][1:], show["dependsOn"])
+        self.assertEqual(restart_task["dependsOrder"], "sequence")
+        self.assertTrue(tasks[restart_task["dependsOn"][0]]["hide"])
+        groups = {}
+        for label in show["dependsOn"]:
+            task = tasks[label]
+            self.assertTrue(task["hide"])
+            self.assertEqual(task["runOptions"]["instanceLimit"], 1)
+            self.assertIn("attach-session -f ignore-size", task["command"])
+            self.assertNotIn("respawn", task["command"])
+            groups.setdefault(task["presentation"]["group"], []).append(label)
+        self.assertEqual(sorted(map(len, groups.values())), [3, 3, 3])
+        for name in restart.SLOT_NAMES.values():
+            self.assertEqual(sum(f"-t '={name}:'" in tasks[label]["command"] for label in show["dependsOn"]), 1)
 
     def test_any_non_idle_slot_refuses_the_whole_restart(self):
         root, status_dir, session_dir, now, pane_output, _ = self.fixture(lifecycle_by_slot={3: "running"})

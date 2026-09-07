@@ -87,7 +87,16 @@ class APNsProviderTests(unittest.TestCase):
         self.assertEqual(payload["route"], "pi-session-completed")
         self.assertNotIn("badge", payload["aps"])
         self.assertLessEqual(len(transport.requests[0].body), 1024)
-        for slot in [True, 0, 7, 1.5, "1"]:
+        for slot in range(1, 10):
+            result = provider.send_session_completion(
+                topic=self.apns.WATCH_APNS_TOPIC, device_token="ab" * 32,
+                session_id=slot, apns_id=str(uuid.uuid4()),
+            )
+            self.assertEqual(result.outcome, "accepted")
+            payload = json.loads(transport.requests[-1].body)
+            self.assertEqual(payload["aps"]["alert"]["body"], f"Session {slot} finished.")
+            self.assertEqual(int(payload["sessionID"]), slot)
+        for slot in [True, 0, 10, 1.5, "1"]:
             with self.assertRaises(self.apns.APNsConfigurationError):
                 provider.send_session_completion(
                     topic=self.apns.IPHONE_APNS_TOPIC, device_token="ab" * 32,

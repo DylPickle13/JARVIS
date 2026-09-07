@@ -888,7 +888,7 @@ final class AppStateTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        XCTAssertEqual(JARVISTerminalSlot.allCases.map(\.rawValue), [1, 2, 3, 4, 5, 6])
+        XCTAssertEqual(JARVISTerminalSlot.allCases.map(\.rawValue), Array(1...9))
         XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .one)
         JARVISTerminalSlot.six.persist(to: defaults)
         XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .six)
@@ -897,9 +897,11 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(JARVISTerminalSlot.three.next, .four)
         XCTAssertEqual(JARVISTerminalSlot.four.previous, .three)
         XCTAssertEqual(JARVISTerminalSlot.six.previous, .five)
-        XCTAssertNil(JARVISTerminalSlot.six.next)
+        XCTAssertEqual(JARVISTerminalSlot.six.next, .seven)
+        XCTAssertEqual(JARVISTerminalSlot.nine.previous, .eight)
+        XCTAssertNil(JARVISTerminalSlot.nine.next)
         XCTAssertNil(JARVISTerminalSlot(rawValue: 0))
-        XCTAssertNil(JARVISTerminalSlot(rawValue: 7))
+        XCTAssertNil(JARVISTerminalSlot(rawValue: 10))
     }
 
     func testHomePiCardCanSelectAnExactDeviceLocalTerminalSlotBeforePresentation() throws {

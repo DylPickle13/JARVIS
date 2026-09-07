@@ -4,11 +4,11 @@ import XCTest
 final class ScheduledJobNotificationRouteTests: XCTestCase {
     func testTerminalTapInboxIsBoundedExactAndDuplicateIdempotent() {
         var inbox = PiTerminalNotificationInbox()
-        for slot in 1...6 {
+        for slot in 1...9 {
             XCTAssertEqual(inbox.receive(notificationID: "tap-\(slot)", sessionID: slot)?.sessionID, slot)
         }
         XCTAssertNil(inbox.receive(notificationID: "tap-1", sessionID: 1))
-        XCTAssertNil(inbox.receive(notificationID: "bad", sessionID: 7))
+        XCTAssertNil(inbox.receive(notificationID: "bad", sessionID: 10))
         XCTAssertNil(inbox.receive(notificationID: "bad", sessionID: 0))
         XCTAssertNil(inbox.receive(notificationID: "", sessionID: 1))
         for index in 0..<100 { _ = inbox.receive(notificationID: "new-\(index)", sessionID: 6) }
@@ -54,7 +54,7 @@ final class ScheduledJobNotificationRouteTests: XCTestCase {
     func testPiCompletionRoutesRejectMalformedOrOutOfRangeSlots() {
         XCTAssertEqual(PiSessionCompletionNotificationRoute(
             route: "pi-session-completed", version: 1, sessionID: 6)?.sessionID, 6)
-        let invalidValues: [Any] = [true, 0, 7, 1.5, "other"]
+        let invalidValues: [Any] = [true, 0, 10, 1.5, "other"]
         for invalid in invalidValues {
             XCTAssertNil(PiSessionCompletionNotificationRoute(
                 route: "pi-session-completed", version: 1, sessionID: invalid))

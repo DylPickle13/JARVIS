@@ -233,6 +233,9 @@ MOBILE_TMUX_SESSIONS = (
     (4, "jarvis-ios-4"),
     (5, "jarvis-ios-5"),
     (6, "jarvis-ios-6"),
+    (7, "jarvis-ios-7"),
+    (8, "jarvis-ios-8"),
+    (9, "jarvis-ios-9"),
 )
 MOBILE_PI_STATUS_MAX_AGE_SECONDS = min(
     60.0,

@@ -259,7 +259,7 @@ grep -q 'version: 2' ../../../.pi/extensions/46-local-pi-session-status.ts
 grep -q 'MOBILE_PI_REPORTED_LIFECYCLES' jarvisd/jarvisd.py
 grep -q 'lifecycle = "offline"' jarvisd/jarvisd.py
 grep -q '(1, "jarvis-ios")' jarvisd/jarvisd.py
-grep -q '(6, "jarvis-ios-6")' jarvisd/jarvisd.py
+grep -q '(9, "jarvis-ios-9")' jarvisd/jarvisd.py
 grep -q '#{session_name}\\t#{pane_dead}\\t#{pane_pid}' jarvisd/jarvisd.py
 grep -q 'pi-extension-local-session-status' jarvisd/jarvisd.py
 grep -q 'if project_root_is_explicit:' jarvisd/jarvisd.py
@@ -414,7 +414,7 @@ grep -q 'TMUX_SESSION="jarvis-ios-2"' scripts/jarvis-mobile-terminal.sh
 grep -q 'TMUX_SESSION="jarvis-ios-3"' scripts/jarvis-mobile-terminal.sh
 grep -q 'TMUX_SESSION="jarvis-ios-4"' scripts/jarvis-mobile-terminal.sh
 grep -q 'TMUX_SESSION="jarvis-ios-5"' scripts/jarvis-mobile-terminal.sh
-grep -q 'TMUX_SESSION="jarvis-ios-6"' scripts/jarvis-mobile-terminal.sh
+grep -q 'TMUX_SESSION="jarvis-ios-9"' scripts/jarvis-mobile-terminal.sh
 grep -q 'case "$slot" in' scripts/jarvis-mobile-terminal.sh
 grep -q -- '--slot' scripts/jarvis-mobile-terminal.sh
 grep -q 'new-session -d' scripts/jarvis-mobile-terminal.sh
@@ -435,7 +435,7 @@ grep -q 'Never open a replacement while the prior PTY might still' JARVIS/Termin
 reject_match 'Pi session switching must not open a replacement after an unverified child close' -Fq 'previous.close().whenComplete { _ in openSelected() }' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'sessionSwipeRequested' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'JARVISTerminalSlot.load(from: slotDefaults)' JARVIS/Terminal/PiTerminalController.swift
-grep -q 'case six = 6' JARVISKit/Sources/JARVISKit/TerminalSessionSlot.swift
+grep -q 'case nine = 9' JARVISKit/Sources/JARVISKit/TerminalSessionSlot.swift
 grep -Fq 'session \(terminal.selectedSlot.displayName) of 6' JARVIS/Terminal/PiTerminalView.swift
 grep -Fq 'session \(controller.selectedSlot.displayName) of 6' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'PiAttachmentProtocol.receiverCommand(for: slot)' JARVIS/Terminal/PiSSHTransport.swift
@@ -525,12 +525,12 @@ grep -q '"/v1/terminal/input": (False, False)' terminald/jarvis_terminald.py
 grep -q '"/v2/terminal/input": (True, False)' terminald/jarvis_terminald.py
 grep -q '"/v2/terminal/speech": (True, True)' terminald/jarvis_terminald.py
 grep -q '1: "jarvis-ios"' terminald/jarvis_terminald.py
-grep -q '6: "jarvis-ios-6"' terminald/jarvis_terminald.py
+grep -q '9: "jarvis-ios-9"' terminald/jarvis_terminald.py
 grep -q 'self.tmux_target = TMUX_TARGET if session_id == 1 else "=" + self.tmux_session + ":"' terminald/jarvis_terminald.py
 grep -q 'service.frame_after(after)' terminald/jarvis_terminald.py
-grep -q '\["jarvis-ios-6", 6\]' ../../../.pi/extensions/lib/attach/mobile-server.ts
-grep -q '"jarvis-ios-6"' ../../../.pi/extensions/lib/attach/transport.ts
-grep -Fq '!/^[1-6]$/.test(argumentsList[1])' ../../../.pi/scripts/pi-attach-mobile-receiver.mjs
+grep -q '\["jarvis-ios-9", 9\]' ../../../.pi/extensions/lib/attach/mobile-server.ts
+grep -q '"jarvis-ios-9"' ../../../.pi/extensions/lib/attach/transport.ts
+grep -Fq '!/^[1-9]$/.test(argumentsList[1])' ../../../.pi/scripts/pi-attach-mobile-receiver.mjs
 grep -q 'def _v2_payload_session(value: Any)' terminald/jarvis_terminald.py
 grep -q 'if type(value) is not int or value not in TMUX_SESSIONS' terminald/jarvis_terminald.py
 grep -q '"sessionID": session_id' terminald/jarvis_terminald.py
@@ -1136,6 +1136,15 @@ watch-quicklook-196.png:196
 watch-quicklook-216.png:216
 watch-marketing-1024.png:1024
 ICONS
+
+printf '%s\n' '== nine-session iPhone 3x3 Home grid =='
+python3 - <<'PYGRID'
+from pathlib import Path
+import re
+text = Path('JARVIS/Views/HomeView.swift').read_text()
+card = text.split('private func piCard(', 1)[1].split('private func piSessionStatusRow(', 1)[0]
+assert re.findall(r'sessionIDs: \[([^\]]+)\]', card) == ['1, 2, 3', '4, 5, 6', '7, 8, 9']
+PYGRID
 
 printf '%s\n' '== target-local completion notification cleanup =='
 python3 - <<'PYCLEANUP'

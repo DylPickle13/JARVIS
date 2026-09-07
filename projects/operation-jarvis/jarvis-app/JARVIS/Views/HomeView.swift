@@ -619,6 +619,12 @@ struct HomeView: View {
                     sessions: pi.mobileSessions,
                     isStale: isStale
                 )
+                Divider()
+                piSessionStatusRow(
+                    sessionIDs: [7, 8, 9],
+                    sessions: pi.mobileSessions,
+                    isStale: isStale
+                )
             }
         }
 

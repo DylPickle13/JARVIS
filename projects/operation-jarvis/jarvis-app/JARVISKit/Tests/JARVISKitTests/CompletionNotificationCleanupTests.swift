@@ -9,7 +9,7 @@ final class CompletionNotificationCleanupTests: XCTestCase {
 
     func testOnlyStrictCompletionRoutesAreEligible() {
         let date = Date()
-        for slot in 1...6 {
+        for slot in 1...9 {
             XCTAssertNotNil(CompletionNotificationDelivery(identifier: "n", deliveredAt: date,
                 userInfo: ["route": "pi-session-completed", "routeVersion": 1, "sessionID": slot]))
         }
@@ -18,7 +18,7 @@ final class CompletionNotificationCleanupTests: XCTestCase {
             ["route": "other", "routeVersion": 1, "sessionID": 1],
             ["route": "pi-session-completed", "routeVersion": 2, "sessionID": 1],
             ["route": "pi-session-completed", "routeVersion": true, "sessionID": 1],
-            ["route": "pi-session-completed", "routeVersion": 1, "sessionID": 7],
+            ["route": "pi-session-completed", "routeVersion": 1, "sessionID": 10],
             ["route": "pi-session-completed", "routeVersion": 1, "sessionID": false],
             [:]
         ]

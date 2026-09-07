@@ -1,3 +1,29 @@
+## Nine-session candidate (Build 153)
+
+The iPhone Home Pi card is exactly **3 columns × 3 rows**: 1–3, 4–6,
+7–9. iPhone and Watch retain non-wrapping selection and independent histories.
+Slots 1–6 retain their identities; slots 7–9 add `jarvis-ios-7` through
+`jarvis-ios-9` on the same `jarvis-mobile` socket. Completion routing and
+Build 152 foreground cleanup cover all nine; scheduled Jobs stay separate.
+
+The versioned `config/jarvis-mobile-vscode-tasks.json` is the deployment source
+for the local, ignored `.vscode/tasks.json`. Only **Show all 9 Pi sessions**
+and **Restart and show all 9 Pi sessions** are visible; individual attachment
+and restart helpers are hidden dependencies. Three terminal groups each contain
+three sessions. Attach uses `ignore-size` and per-helper instance limits.
+Restart requires all nine to be idle, resumes their exact session files, and
+waits for readiness before opening views; it never kills the tmux server.
+
+Deployment is pending owner approval. Stage host allowlists/receiver/provider,
+update pinned jarvisd and terminald with bounded service restarts, provision
+only new slots 7–9, then install audited signed apps. Existing Pi processes
+need not restart just to add slots; new processes load the extended attachment
+allowlist. Preserve current six pane/PIDs, histories, room audio and APNs state.
+Back up local tasks before replacing with the versioned template. Never run the
+restart task during deployment or synthetic APNs tests. Rollback must retain
+new conversations, not delete sessions 7–9. Physical routing and task-layout
+acceptance are separate from automated checks.
+
 # jarvis-app
 
 Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
@@ -19,7 +45,7 @@ Build 147 changes:
   nonblank footer instead of assuming a fixed two-row footer.
 - Pi lifecycle heartbeats reconcile `ctx.isIdle()` after compaction, including when
   no later settle callback arrives. Retries/queued continuations remain Running.
-- Future successful settled turns in the six fixed mobile Pi sessions can send
+- Future successful settled turns in the nine fixed mobile Pi sessions can send
   content-free APNs alerts: “Session N finished.” No prompt/response/model/path is
   sent. Build 147 taps opened JARVIS; Build 148 routes them to the exact Pi terminal.
 - Completion dispatch is independently opt-in via the private
@@ -115,11 +141,12 @@ to a session. An explicit `JARVISD_PROJECT_ROOT` is authoritative
 for scheduler and Codex quota paths, so artifact-hosted jarvisd cannot fall back
 to the user's unrelated global `.pi` directory.
 
-The six-conversation design preserves Slots 1–3 and adds only `jarvis-ios-4`,
-`jarvis-ios-5`, and `jarvis-ios-6`. Selection remains independent on iPhone and
+The nine-conversation design preserves Slots 1–6 and adds only `jarvis-ios-7`,
+`jarvis-ios-8`, and `jarvis-ios-9`. Selection remains independent on iPhone and
 Watch, Siri and iPhone attachments route to the invoking/active device slot, and
 v1/no-session host compatibility remains Slot 1. See the
-[canonical implementation contract](docs/README.md#six-fixed-mobile-pi-conversations).
+[earlier six-session implementation contract](docs/README.md#six-fixed-mobile-pi-conversations);
+the nine-session candidate contract above supersedes its slot limits.
 
 `jarvisd` retains explicit trusted-network/token auth,
 bounded APIs, single-flight state caching, guarded controls, and bounded event
@@ -732,7 +759,7 @@ sequence, and physical gates are consolidated in the
   `/api/v1/scheduled-jobs`, `/api/v1/scheduled-job-results`, and the fixed
   signing status/renewal endpoints.
 - **iOS app — navigation** — 4-tab shell (Home / JARVIS / Jobs / Settings).
-  Home shows the connection header (LAN vs Tailscale + IP), six fixed Pi session
+  Home shows the connection header (LAN vs Tailscale + IP), nine fixed Pi session
   status sections in two rows of three, a **2-column plug grid**, then the **air purifier** (power switch +
   Auto/Manual/Sleep/Pet segmented control + fan 1–4 slider). Weather and its
   external data collection are removed. Home lists room audio, the scheduler,

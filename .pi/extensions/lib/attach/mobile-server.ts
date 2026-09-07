@@ -389,18 +389,21 @@ async function atomicDescriptor(
 }
 
 export type ExactMobileTmuxIdentity = {
-  slot: 1 | 2 | 3 | 4 | 5 | 6;
+  slot: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   sessionName: string;
   paneID: string;
 };
 
-const MOBILE_TMUX_SESSIONS = new Map<string, 1 | 2 | 3 | 4 | 5 | 6>([
+const MOBILE_TMUX_SESSIONS = new Map<string, 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9>([
   ["jarvis-ios", 1],
   ["jarvis-ios-2", 2],
   ["jarvis-ios-3", 3],
   ["jarvis-ios-4", 4],
   ["jarvis-ios-5", 5],
   ["jarvis-ios-6", 6],
+  ["jarvis-ios-7", 7],
+  ["jarvis-ios-8", 8],
+  ["jarvis-ios-9", 9],
 ]);
 
 export async function exactMobileTmuxIdentity(
@@ -451,7 +454,7 @@ export async function isExactMobileTmuxProcess(
 
 export class MobileAttachmentServer {
   readonly generation: string;
-  readonly slot: 1 | 2 | 3 | 4 | 5 | 6;
+  readonly slot: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   readonly descriptorPath: string;
   readonly legacyDescriptorPath?: string;
   readonly socketPath: string;
@@ -469,7 +472,7 @@ export class MobileAttachmentServer {
     hooks: MobileAttachmentHooks,
     runtimeDirectory: string,
     processId: number,
-    slot: 1 | 2 | 3 | 4 | 5 | 6,
+    slot: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
     operationTimeoutMs: number,
   ) {
     this.server = server;
@@ -508,10 +511,10 @@ export class MobileAttachmentServer {
       }
     }
     const rawSlot = options.mobileSlot ?? identity?.slot ?? 1;
-    if (!Number.isSafeInteger(rawSlot) || rawSlot < 1 || rawSlot > 6) {
+    if (!Number.isSafeInteger(rawSlot) || rawSlot < 1 || rawSlot > 9) {
       throw new Error("The mobile attachment slot is invalid.");
     }
-    const slot = rawSlot as 1 | 2 | 3 | 4 | 5 | 6;
+    const slot = rawSlot as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
     if (identity && identity.slot !== slot) {
       throw new Error("The mobile attachment slot did not match the protected tmux process.");
     }

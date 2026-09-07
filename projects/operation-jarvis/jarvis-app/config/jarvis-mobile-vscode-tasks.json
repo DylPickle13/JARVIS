@@ -1,0 +1,354 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "JARVIS: Restart all Pi processes (preserve sessions)",
+      "type": "shell",
+      "command": "/usr/bin/python3 /Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/scripts/jarvis-mobile-vscode-restart.py --all",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true,
+        "close": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS Mobile Pi 1 \u2014 jarvis-ios",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_1\\nJARVIS_TASK_READY_1\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_1$",
+          "endsPattern": "^JARVIS_TASK_READY_1$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-1-3"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS Mobile Pi 2 \u2014 jarvis-ios-2",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_2\\nJARVIS_TASK_READY_2\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios-2:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_2$",
+          "endsPattern": "^JARVIS_TASK_READY_2$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-1-3"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS Mobile Pi 3 \u2014 jarvis-ios-3",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_3\\nJARVIS_TASK_READY_3\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios-3:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_3$",
+          "endsPattern": "^JARVIS_TASK_READY_3$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-1-3"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS Mobile Pi 4 \u2014 jarvis-ios-4",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_4\\nJARVIS_TASK_READY_4\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios-4:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_4$",
+          "endsPattern": "^JARVIS_TASK_READY_4$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-4-6"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS Mobile Pi 5 \u2014 jarvis-ios-5",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_5\\nJARVIS_TASK_READY_5\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios-5:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_5$",
+          "endsPattern": "^JARVIS_TASK_READY_5$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-4-6"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS Mobile Pi 6 \u2014 jarvis-ios-6",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_6\\nJARVIS_TASK_READY_6\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios-6:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_6$",
+          "endsPattern": "^JARVIS_TASK_READY_6$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-4-6"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS Mobile Pi 7 \u2014 jarvis-ios-7",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_7\\nJARVIS_TASK_READY_7\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios-7:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_7$",
+          "endsPattern": "^JARVIS_TASK_READY_7$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-7-9"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS Mobile Pi 8 \u2014 jarvis-ios-8",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_8\\nJARVIS_TASK_READY_8\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios-8:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_8$",
+          "endsPattern": "^JARVIS_TASK_READY_8$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-7-9"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS Mobile Pi 9 \u2014 jarvis-ios-9",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_9\\nJARVIS_TASK_READY_9\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios-9:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_9$",
+          "endsPattern": "^JARVIS_TASK_READY_9$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-7-9"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS: Show all 9 Pi sessions",
+      "dependsOn": [
+        "JARVIS Mobile Pi 1 \u2014 jarvis-ios",
+        "JARVIS Mobile Pi 3 \u2014 jarvis-ios-3",
+        "JARVIS Mobile Pi 2 \u2014 jarvis-ios-2",
+        "JARVIS Mobile Pi 4 \u2014 jarvis-ios-4",
+        "JARVIS Mobile Pi 6 \u2014 jarvis-ios-6",
+        "JARVIS Mobile Pi 5 \u2014 jarvis-ios-5",
+        "JARVIS Mobile Pi 7 \u2014 jarvis-ios-7",
+        "JARVIS Mobile Pi 9 \u2014 jarvis-ios-9",
+        "JARVIS Mobile Pi 8 \u2014 jarvis-ios-8"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "JARVIS: Restart and show all 9 Pi sessions",
+      "dependsOn": [
+        "JARVIS: Restart all Pi processes (preserve sessions)",
+        "JARVIS Mobile Pi 1 \u2014 jarvis-ios",
+        "JARVIS Mobile Pi 3 \u2014 jarvis-ios-3",
+        "JARVIS Mobile Pi 2 \u2014 jarvis-ios-2",
+        "JARVIS Mobile Pi 4 \u2014 jarvis-ios-4",
+        "JARVIS Mobile Pi 6 \u2014 jarvis-ios-6",
+        "JARVIS Mobile Pi 5 \u2014 jarvis-ios-5",
+        "JARVIS Mobile Pi 7 \u2014 jarvis-ios-7",
+        "JARVIS Mobile Pi 9 \u2014 jarvis-ios-9",
+        "JARVIS Mobile Pi 8 \u2014 jarvis-ios-8"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    }
+  ]
+}

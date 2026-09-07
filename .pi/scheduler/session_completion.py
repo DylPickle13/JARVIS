@@ -18,7 +18,7 @@ import sys
 import time
 import uuid
 
-SLOTS = {"jarvis-ios": 1, **{f"jarvis-ios-{i}": i for i in range(2, 7)}}
+SLOTS = {"jarvis-ios": 1, **{f"jarvis-ios-{i}": i for i in range(2, 10)}}
 
 
 def resolve_slot(pane: str, pid: int) -> int | None:
@@ -52,7 +52,7 @@ def deliver(*, event_id: str, slot: int, store: sqlite3.Connection,
             registry: sqlite3.Connection, provider, gate, invalidate,
             now=time.time, sleep=time.sleep, configuration_failed=lambda: None) -> None:
     """Only a current explicit event is eligible; old receipts are never drained."""
-    if str(uuid.UUID(event_id)) != event_id or type(slot) is not int or not 1 <= slot <= 6:
+    if str(uuid.UUID(event_id)) != event_id or type(slot) is not int or not 1 <= slot <= 9:
         raise ValueError("invalid completion identity")
     if not gate():
         return

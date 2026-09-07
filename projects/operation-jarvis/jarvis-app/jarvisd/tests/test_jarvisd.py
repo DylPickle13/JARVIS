@@ -180,6 +180,9 @@ class DaemonUnitTests(unittest.TestCase):
                 {"sessionID": 4, "lifecycle": "waiting", "active": True},
                 {"sessionID": 5, "lifecycle": "compacting", "active": True},
                 {"sessionID": 6, "lifecycle": "unknown", "active": None},
+                {"sessionID": 7, "lifecycle": "offline", "active": False},
+                {"sessionID": 8, "lifecycle": "offline", "active": False},
+                {"sessionID": 9, "lifecycle": "offline", "active": False},
             ],
         )
         run.assert_called_once_with(
@@ -260,6 +263,9 @@ class DaemonUnitTests(unittest.TestCase):
                         {"sessionID": 4, "lifecycle": "offline", "active": False},
                         {"sessionID": 5, "lifecycle": "offline", "active": False},
                         {"sessionID": 6, "lifecycle": "unknown", "active": None},
+                        {"sessionID": 7, "lifecycle": "offline", "active": False},
+                        {"sessionID": 8, "lifecycle": "offline", "active": False},
+                        {"sessionID": 9, "lifecycle": "offline", "active": False},
                     ],
                 )
 
@@ -271,6 +277,9 @@ class DaemonUnitTests(unittest.TestCase):
             {"sessionID": 4, "lifecycle": "unknown", "active": None},
             {"sessionID": 5, "lifecycle": "unknown", "active": None},
             {"sessionID": 6, "lifecycle": "unknown", "active": None},
+            {"sessionID": 7, "lifecycle": "unknown", "active": None},
+            {"sessionID": 8, "lifecycle": "unknown", "active": None},
+            {"sessionID": 9, "lifecycle": "unknown", "active": None},
         ]
         with mock.patch.object(
             jarvisd.subprocess,
@@ -291,6 +300,9 @@ class DaemonUnitTests(unittest.TestCase):
             {"sessionID": 4, "lifecycle": "offline", "active": False},
             {"sessionID": 5, "lifecycle": "compacting", "active": True},
             {"sessionID": 6, "lifecycle": "unknown", "active": None},
+            {"sessionID": 7, "lifecycle": "unknown", "active": None},
+            {"sessionID": 8, "lifecycle": "unknown", "active": None},
+            {"sessionID": 9, "lifecycle": "unknown", "active": None},
         ]
         with mock.patch.object(jarvisd, "_mobile_pi_session_states", return_value=expected):
             result = jarvisd._pi_sessions()

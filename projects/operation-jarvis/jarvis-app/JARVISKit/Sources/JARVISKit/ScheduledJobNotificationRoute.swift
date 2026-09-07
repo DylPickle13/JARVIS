@@ -67,7 +67,7 @@ public struct PiSessionCompletionNotificationRoute: Equatable, Sendable {
               let validated = ScheduledJobNotificationRoute(
                 route: ScheduledJobNotificationRoute.name, version: version,
                 resultSequence: sessionID),
-              (1...6).contains(validated.resultSequence) else { return nil }
+              (1...9).contains(validated.resultSequence) else { return nil }
         self.sessionID = validated.resultSequence
     }
 }
@@ -85,7 +85,7 @@ public struct PiTerminalNotificationInbox: Sendable {
     private var seen: [String] = []
     public init() {}
     public mutating func receive(notificationID: String, sessionID: Int) -> PiTerminalNotificationRequest? {
-        guard (1...6).contains(sessionID), !notificationID.isEmpty,
+        guard (1...9).contains(sessionID), !notificationID.isEmpty,
               !seen.contains(notificationID) else { return nil }
         seen.append(notificationID)
         if seen.count > 64 { seen.removeFirst(seen.count - 64) }
