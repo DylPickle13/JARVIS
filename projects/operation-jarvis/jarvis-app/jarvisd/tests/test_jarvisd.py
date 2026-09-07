@@ -1024,7 +1024,7 @@ class DaemonUnitTests(unittest.TestCase):
             "summary": {"total": 999, "enabled": 999},
             "jobs": [{
                 "id": "job_abc123",
-                "name": "daily-job-search",
+                "name": "example-scheduled-job",
                 "kind": "cron",
                 "schedule": "0 9 * * *",
                 "enabled": True,

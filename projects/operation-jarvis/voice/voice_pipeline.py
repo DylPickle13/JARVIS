@@ -119,7 +119,7 @@ DEFAULT_VOICE_APPLE_ASR_CONTEXTUAL_STRINGS = (
     "Jarvis,stop,Pickering,PowerConf,oMLX,family room light,family room TV,"
     "family room speakers,Air Purifier"
 )
-DEFAULT_VOICE_LLM_MODEL = "Qwen3.5-9B-6bit"
+DEFAULT_VOICE_LLM_MODEL = "Qwen3.5-9B-4bit"
 DEFAULT_VOICE_TTS_BACKEND = "piper"
 DEFAULT_VOICE_TTS_PIPER_REPO_ID = "jgkawell/jarvis"
 DEFAULT_VOICE_TTS_PIPER_QUALITY = "high"

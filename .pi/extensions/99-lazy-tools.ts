@@ -10,7 +10,8 @@ type CanonicalToolGroup =
   | "google"
   | "cron"
   | "browser"
-  | "reaper";
+  | "reaper"
+  | "apple_notes";
 type ToolGroup = CanonicalToolGroup | "all";
 type ConcreteToolGroup = CanonicalToolGroup;
 type GuidanceGroup = ConcreteToolGroup;
@@ -54,6 +55,13 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
     "browser_tabs",
     "browser_close",
   ],
+  apple_notes: [
+    "apple_notes_search",
+    "apple_notes_read",
+    "apple_notes_write",
+    "apple_notes_update",
+    "apple_notes_delete",
+  ],
 };
 
 const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
@@ -66,6 +74,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   cron: "jarvis_cron for private scheduled Pi/JARVIS jobs and bounded local result history",
   reaper: "reaper_ping/reaper_lua for the live REAPER session on mac-mini-16 via inline Lua bridge",
   browser: "visible Chrome for rendered/interactive web: screenshots/clicks/typing/uploads/extract",
+  apple_notes: "Apple Notes read/write access through macOS Notes automation; iCloud Notes by default",
 };
 
 const GROUP_NAMES = Object.keys(TOOL_GROUPS) as ConcreteToolGroup[];
@@ -154,6 +163,16 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "If a REAPER API call returns an unexpected value/type, stop immediately and look up the API before retrying. Do not make a second guessed attempt.",
       "Capture all return values for REAPER API functions unless the signature has been verified; many return multiple values. Use `reaper.APIExists(\"FunctionName\")` for common availability checks.",
       "Official ReaScript API reference: https://www.reaper.fm/sdk/reascript/reascripthelp.html",
+    ],
+  },
+  apple_notes: {
+    skill: "Apple Notes",
+    lines: [
+      "For Apple Notes requests, first call `load_tools({ groups: [\"apple_notes\"] })`, then use the exact unlocked `apple_notes_*` tool; do not use SQLite, Shortcuts, JXA, shell scripts, or guessed Notes commands.",
+      "The tools use macOS Notes automation with iCloud → Notes as the write default. Search/read may omit `folder` to scan non-deleted iCloud folders.",
+      "Use `apple_notes_read` before updating or deleting when the note id is unknown. Prefer stable note ids over title fallbacks; ambiguous titles fail safely.",
+      "`apple_notes_update` requires an explicit `mode`: `replace` preserves the title and replaces the body; `append` adds plaintext after the current note.",
+      "`apple_notes_delete` moves the note to Recently Deleted. It requires confirmation, and UI-capable sessions show an additional confirmation dialog.",
     ],
   },
   browser: {
@@ -289,7 +308,7 @@ export default function lazyTools(pi: ExtensionAPI) {
     description: LOAD_TOOLS_DESCRIPTION,
     promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET,
     promptGuidelines: [
-      "Call load_tools before any optional group listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
+      "Call load_tools before any optional group listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Apple Notes => load `apple_notes`, then use the exact unlocked `apple_notes_*` tool. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `jarvis_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Web: `web_search`=discover (`provider: \"youtube\"` for YouTube), `fetch_content`=static, `get_search_content`=stored. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
       "After load_tools succeeds, use the exact unlocked tool and returned playbook. If a required tool is unavailable, say so; if a tool was listed as unlocked but is not callable, report schema refresh failure rather than substituting another tool.",

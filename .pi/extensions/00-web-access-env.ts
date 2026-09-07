@@ -239,7 +239,7 @@ export default async function registerPiWebAccessEnv(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", async (event) => {
-		if (event.toolName !== "web_search" && event.toolName !== "fetch_content") return;
+		if (event.toolName !== "web_search" && event.toolName !== "source_check" && event.toolName !== "fetch_content") return;
 		const input = event.input as Record<string, unknown> | undefined;
 		if (!input || typeof input !== "object" || Array.isArray(input)) return;
 
@@ -249,17 +249,20 @@ export default async function registerPiWebAccessEnv(pi: ExtensionAPI) {
 			return;
 		}
 
-		// pi-web-access opens the browser-backed curator whenever workflow is not exactly
-		// "none". Force it off for every web_search call so model-supplied
-		// workflow:"summary-review" or future config drift cannot pop open Chrome.
-		input.workflow = "none";
-
 		// Never allow Gemini-backed search through pi-web-access. Use Exa by default
-		// and avoid the extension's auto fallback chain reaching Gemini.
+		// and avoid the extension's auto fallback chain reaching Gemini. This also
+		// covers source_check, which was added after the original wrapper.
 		const provider = typeof input.provider === "string" ? input.provider.trim().toLowerCase() : "";
 		if (!provider || provider === "auto" || provider === "gemini") {
 			input.provider = "exa";
 		}
+
+		if (event.toolName === "source_check") return;
+
+		// pi-web-access opens the browser-backed curator whenever workflow is not exactly
+		// "none". Force it off for every web_search call so model-supplied
+		// workflow:"summary-review" or future config drift cannot pop open Chrome.
+		input.workflow = "none";
 
 		// Full-content search results are delivered by pi-web-access as separate
 		// background fetch notifications. Prefer the deterministic workflow:
@@ -268,7 +271,7 @@ export default async function registerPiWebAccessEnv(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_result", (event) => {
-		if (!["web_search", "fetch_content", "get_search_content"].includes(event.toolName)) return undefined;
+		if (!["web_search", "source_check", "fetch_content", "get_search_content"].includes(event.toolName)) return undefined;
 
 		const content = sanitizeWebAccessValue(event.content);
 		const details = sanitizeWebAccessValue(event.details);

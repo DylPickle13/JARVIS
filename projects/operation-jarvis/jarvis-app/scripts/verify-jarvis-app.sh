@@ -67,6 +67,7 @@ python3 -m unittest discover -s ../../../.pi/scheduler/tests -v
 python3 -m py_compile \
   jarvisd/jarvisd.py \
   terminald/jarvis_terminald.py \
+  scripts/jarvis-mobile-vscode-restart.py \
   ../jarvis.py \
   ../raspberry-pi/room_audio/room_audio_server.py \
   ../voice/voice_pipeline.py \

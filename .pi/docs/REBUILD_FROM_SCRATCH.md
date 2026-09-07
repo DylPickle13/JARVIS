@@ -162,15 +162,15 @@ The ignored project package config lives in `.pi/settings.json`; its safe tracke
 
 ```bash
 cd /path/to/JARVIS
-pi install -l npm:pi-web-access@0.13.0
+pi install -l npm:pi-web-access@0.28.0
 pi list
 ```
 
 Expected project package source and installed version:
 
 ```text
-npm:pi-web-access@0.13.0
-pi-web-access@0.13.0
+npm:pi-web-access@0.28.0
+pi-web-access@0.28.0
 ```
 
 Do not replace the exact version with a range or unversioned source during a rebuild. Keep `"extensions": []` on the package entry; removing that filter would load a second copy against shared global configuration. Pi packages execute with full system access, so review an upgrade before intentionally changing the pinned version in both settings files.
@@ -317,7 +317,7 @@ The owner-only database retains at most 500 sanitized output-producing successes
 - [ ] `.env`, `.pi/settings.json`, `.pi/APPEND_SYSTEM.md`, and `.pi/ssh-hosts.json` were privately restored or created from their tracked templates.
 - [ ] All four local files remain ignored by git and have mode `0600`.
 - [ ] `.pi/runtime`, `.pi/memory`, and `.pi/scheduler` have mode `0700`; private databases and sidecars have mode `0600`.
-- [ ] `.pi/settings.json` retains `npm:pi-web-access@0.13.0`; `pi list` and the installed package metadata agree.
+- [ ] `.pi/settings.json` retains `npm:pi-web-access@0.28.0`; `pi list` and the installed package metadata agree.
 - [ ] `/lazy-tools` works in Pi.
 - [ ] `memory.py --json status` works.
 - [ ] The Pi session JSONL directory recorded in `.pi/APPEND_SYSTEM.md` exists and can be searched with baseline coding tools.

@@ -45,9 +45,6 @@ LAUNCHD_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCHD_LABEL}.pli
 DEFAULT_PATH = config.DEFAULT_SCHEDULER_PATH
 DIRECT_STDOUT_MODEL = "__direct_stdout__"
 PI_FIRST_ENABLED_MODEL = "__pi_first_enabled__"
-DAILY_JOB_NAME = "daily-job-search"
-DAILY_JOB_ID = "job_ca728bbf8731"
-LEGACY_DAILY_JOB_MODELS = ("omlx-64/Qwen3.6-35B-A3B-6bit", "Qwen3.6-35B-A3B-6bit")
 PRIVATE_FILE_MODE = 0o600
 PRIVATE_DIR_MODE = 0o700
 SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
@@ -242,14 +239,6 @@ def init_db(conn: sqlite3.Connection) -> None:
     for name, declaration in additions.items():
         if name not in columns:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {declaration}")
-    conn.execute(
-        """
-        UPDATE jobs
-           SET model=?, updated_at=?
-         WHERE (id=? OR name=?) AND model IN (?, ?)
-        """,
-        (PI_FIRST_ENABLED_MODEL, iso(), DAILY_JOB_ID, DAILY_JOB_NAME, *LEGACY_DAILY_JOB_MODELS),
-    )
     conn.commit()
 
 
@@ -1287,11 +1276,6 @@ def build_pi_command(job: sqlite3.Row) -> list[str]:
 def validate_success_output(job: sqlite3.Row, assistant_text: str) -> str | None:
     identifiers = {str(job["name"]).casefold(), str(job["id"]).casefold()}
     text = assistant_text.strip()
-    if {DAILY_JOB_NAME, DAILY_JOB_ID} & identifiers:
-        if len(text) < 80:
-            return f"Output validation failed: daily-job-search output was too short ({len(text)} chars)."
-        if not text.startswith("☀️ Daily Job Picks"):
-            return "Output validation failed: daily-job-search output must start with '☀️ Daily Job Picks'."
     for rule in _split_env_csv(os.environ.get("JARVIS_SCHEDULER_REQUIRED_OUTPUT_PREFIXES", "")):
         if "=" not in rule:
             continue
