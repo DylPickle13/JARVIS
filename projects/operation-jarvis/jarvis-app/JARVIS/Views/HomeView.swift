@@ -350,7 +350,6 @@ struct HomeView: View {
 
     // MARK: - Purifier
 
-    @ViewBuilder
     private func purifierSection(_ state: StateSnapshot) -> some View {
         let purifier = state.subsystems?.purifier
         let busy = app.isOperationBusy("purifier") || purifier?.verificationPending == true
