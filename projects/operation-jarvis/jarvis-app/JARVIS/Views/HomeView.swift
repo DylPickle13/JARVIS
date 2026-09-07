@@ -460,6 +460,8 @@ struct HomeView: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
+            .font(.subheadline)
+            .fixedSize(horizontal: true, vertical: false)
             .tint(JarvisPalette.accent)
             .disabled(isOn != true || stale || busy)
             .accessibilityLabel("Air purifier mode")
