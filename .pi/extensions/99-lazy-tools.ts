@@ -11,6 +11,7 @@ type CanonicalToolGroup =
   | "cron"
   | "browser"
   | "reaper"
+  | "obs"
   | "apple_notes";
 type ToolGroup = CanonicalToolGroup | "all";
 type ConcreteToolGroup = CanonicalToolGroup;
@@ -41,6 +42,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   google: ["google_workspace"],
   cron: ["jarvis_cron"],
   reaper: ["reaper_ping", "reaper_lua"],
+  obs: ["obs"],
   browser: [
     "browser_status",
     "browser_open",
@@ -73,6 +75,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
   cron: "jarvis_cron for private scheduled Pi/JARVIS jobs and bounded local result history",
   reaper: "reaper_ping/reaper_lua for the live REAPER session on mac-mini-16 via inline Lua bridge",
+  obs: "obs for OBS status, main recording/streaming start/stop, launch and guarded graceful quit on mac-mini-16; no phone/source controls or force-kill",
   browser: "visible Chrome for rendered/interactive web: screenshots/clicks/typing/uploads/extract",
   apple_notes: "Apple Notes read/write access through macOS Notes automation; iCloud Notes by default",
 };
@@ -150,6 +153,15 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Adding a job requires `schedule` and `prompt`; schedules can be relative (`+5m`), intervals (`5m`), cron, or ISO depending on the runner.",
       "`run` starts one detached manual run; inspect retained history with `runs` and a specific result with `output`.",
       "Treat remove/disable/install/uninstall changes as mutating operations: require clear user intent and summarize what changed.",
+    ],
+  },
+  obs: {
+    skill: "minimal OBS control",
+    lines: [
+      'Load the obs group, then use obs with action: status, record_start, record_stop, stream_start, stream_stop, launch, or quit.',
+      'Targets only mac-mini-16. Controls the main OBS recording, not individual Source Record outputs. No phone/source/scene/settings controls.',
+      'Streaming and launch/quit require explicit user intent. Quit is graceful and refuses active or unverified outputs. Never force-kill, automatically restart OBS, or modify its configuration.',
+      'After a timeout or uncertain mutation, check status before issuing another command; never blindly retry.',
     ],
   },
   reaper: {
