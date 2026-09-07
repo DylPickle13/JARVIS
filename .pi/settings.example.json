@@ -8,7 +8,7 @@
   },
   "packages": [
     {
-      "source": "npm:pi-web-access@0.13.0",
+      "source": "npm:pi-web-access@0.28.0",
       "extensions": [],
       "skills": []
     }
