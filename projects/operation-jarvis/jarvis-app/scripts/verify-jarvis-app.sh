@@ -1137,6 +1137,17 @@ watch-quicklook-216.png:216
 watch-marketing-1024.png:1024
 ICONS
 
+printf '%s\n' '== terminal slot indicators grouped in threes =='
+python3 - <<'PYSPACING'
+from pathlib import Path
+for name in ['JARVIS/Terminal/PiTerminalView.swift', 'JARVISWatch/Views/WatchTerminalView.swift']:
+    text = Path(name).read_text()
+    indicators = text.split('ForEach(JARVISTerminalSlot.allCases', 1)[1].split('Capsule()', 1)[0]
+    assert indicators.count('if slot == .four || slot == .seven {') == 1, name
+    assert indicators.count('Spacer().frame(width:') == 1, name
+    assert 'of 6' not in text, name
+PYSPACING
+
 printf '%s\n' '== nine-session iPhone 3x3 Home grid =='
 python3 - <<'PYGRID'
 from pathlib import Path
