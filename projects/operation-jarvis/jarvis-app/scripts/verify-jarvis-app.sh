@@ -436,8 +436,8 @@ reject_match 'Pi session switching must not open a replacement after an unverifi
 grep -q 'sessionSwipeRequested' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'JARVISTerminalSlot.load(from: slotDefaults)' JARVIS/Terminal/PiTerminalController.swift
 grep -q 'case nine = 9' JARVISKit/Sources/JARVISKit/TerminalSessionSlot.swift
-grep -Fq 'session \(terminal.selectedSlot.displayName) of 6' JARVIS/Terminal/PiTerminalView.swift
-grep -Fq 'session \(controller.selectedSlot.displayName) of 6' JARVISWatch/Views/WatchTerminalView.swift
+grep -Fq 'session \(terminal.selectedSlot.displayName) of \(JARVISTerminalSlot.allCases.count)' JARVIS/Terminal/PiTerminalView.swift
+grep -Fq 'session \(controller.selectedSlot.displayName) of \(JARVISTerminalSlot.allCases.count)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'PiAttachmentProtocol.receiverCommand(for: slot)' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVIS/Terminal/PiTerminalSettings.swift
 grep -q 'String(openSSHPublicKey: hostKey)' JARVIS/Terminal/PiSSHTransport.swift
