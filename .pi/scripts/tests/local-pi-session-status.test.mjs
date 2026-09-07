@@ -221,3 +221,33 @@ test("heartbeat reconciles imported conversation history without a new prompt", 
     assert.equal((await payload()).lifecycle, "idle");
   });
 });
+
+
+test("Siri admission remains Running before agent startup and during uncertain delivery", async () => {
+  const root = await mkdtemp("/tmp/siri-status-");
+  await mkdir(join(root, ".pi")); await mkdir(join(root, "projects"));
+  const handlers = new Map(); let admissionHandler;
+  const pi = {
+    on: (name, handler) => handlers.set(name, handler),
+    events: { on: (name, handler) => {
+      assert.equal(name, "jarvis:siri-admission"); admissionHandler = handler;
+      return () => { admissionHandler = undefined; };
+    } },
+  };
+  registerLocalPiSessionStatus(pi);
+  const ctx = { cwd: root, isIdle: () => true, sessionManager: { getSessionFile: () => "", getEntries: () => [] } };
+  try {
+    await handlers.get("session_start")({}, ctx);
+    assert.equal((await statusPayload(root)).lifecycle, "new");
+    admissionHandler({ pending: true });
+    assert.equal((await statusPayload(root)).lifecycle, "running");
+    await new Promise(resolve => setTimeout(resolve, 2150));
+    assert.equal((await statusPayload(root)).lifecycle, "running", "heartbeat must not make an uncertain Siri admission restartable");
+    admissionHandler({ pending: false });
+    assert.equal((await statusPayload(root)).lifecycle, "new");
+  } finally {
+    await handlers.get("session_shutdown")();
+    assert.equal(admissionHandler, undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});

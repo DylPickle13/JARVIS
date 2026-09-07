@@ -4,7 +4,7 @@ import JARVISKit
 
 struct SendPromptToJARVISIntent: AppIntent {
     static let title: LocalizedStringResource = "Talk to JARVIS"
-    static let description = IntentDescription("Send a spoken prompt to the active JARVIS Pi session.")
+    static let description = IntentDescription("Send a spoken prompt to an unused New JARVIS Pi session, or refuse if none are available.")
     #if os(watchOS)
     static var openAppWhenRun: Bool { true }
     #else
@@ -19,14 +19,15 @@ struct SendPromptToJARVISIntent: AppIntent {
     )
     var prompt: String
 
-    /// One normalized prompt and one Return are attempted exactly once. The
+    /// One normalized prompt is submitted exactly once to a host-selected New slot. The
     /// value question above is the only app-provided dialogue; completion and
-    /// failure results are deliberately silent.
+    /// other failure results are deliberately silent. No capacity is an explicit refusal.
     func perform() async throws -> some IntentResult {
         let outcome = await JARVISSiriPromptRuntime.submit(prompt)
-        guard outcome == .sent else { return .result() }
+        if outcome == .noNewSession { throw JARVISNewSessionError.noAvailableSession }
+        guard case .sent(let slot) = outcome else { return .result() }
 
-        JARVISSiriNavigation.requestTerminalPresentation()
+        await JARVISSiriNavigation.requestTerminalPresentation(slot: slot)
         #if os(iOS)
         if #available(iOS 18.2, *) {
             return .result(opensIntent: OpenJARVISTerminalIntent(target: .terminal))
@@ -63,7 +64,8 @@ struct OpenJARVISTerminalIntent: OpenIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        JARVISSiriNavigation.requestTerminalPresentation()
+        // The originating intent already persisted the exact destination. Do not
+        // repost a last-selected-slot request after that destination was consumed.
         return .result()
     }
 }
@@ -72,31 +74,39 @@ struct OpenJARVISTerminalIntent: OpenIntent {
 enum JARVISSiriNavigation {
     static let terminalRequestNotification = Notification.Name("com.operation-jarvis.siri-terminal-requested")
     static let terminalURL = URL(string: "jarvis://terminal")!
-    private static let terminalRequestKey = "jarvis.siri-terminal-requested"
+    private static let terminalRequestKey = "jarvis.siri-new-terminal-slot-requested"
 
     static func isTerminalURL(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "jarvis" else { return false }
         return url.host?.lowercased() == "terminal"
     }
 
+    @MainActor
     static func requestTerminalPresentation(
+        slot: JARVISTerminalSlot,
         defaults: UserDefaults = .standard,
         notificationCenter: NotificationCenter = .default
     ) {
-        defaults.set(true, forKey: terminalRequestKey)
+        defaults.set(slot.rawValue, forKey: terminalRequestKey)
         notificationCenter.post(name: terminalRequestNotification, object: nil)
     }
 
     @discardableResult
-    static func consumeTerminalPresentationRequest(defaults: UserDefaults = .standard) -> Bool {
-        guard defaults.bool(forKey: terminalRequestKey) else { return false }
+    @MainActor
+    static func consumeTerminalPresentationRequest(
+        defaults: UserDefaults = .standard,
+        select: (JARVISTerminalSlot) -> Bool
+    ) -> Bool {
+        guard let slot = JARVISTerminalSlot(rawValue: defaults.integer(forKey: terminalRequestKey)),
+              select(slot) else { return false } // retain request while a picker/input operation blocks navigation
         defaults.removeObject(forKey: terminalRequestKey)
         return true
     }
 }
 
 enum JARVISSiriPromptOutcome: Equatable {
-    case sent
+    case sent(JARVISTerminalSlot)
+    case noNewSession
     case empty
     case invalidControls
     case tooLong
@@ -110,18 +120,16 @@ enum JARVISSiriPromptOutcome: Equatable {
 
 enum JARVISSiriPromptRuntime {
     typealias ConfigurationLoader = () -> JARVISTerminalConfigurationLoadResult
-    typealias SlotLoader = () -> JARVISTerminalSlot
-    typealias Delivery = (WatchTerminalConfiguration, JARVISTerminalSlot, WatchTerminalInput) async throws -> Void
+    typealias Delivery = (WatchTerminalConfiguration, String) async throws -> JARVISTerminalSlot
 
     static func submit(
         _ rawPrompt: String,
         configurationLoader: ConfigurationLoader = { JARVISTerminalConfigurationStore.load() },
-        slotLoader: SlotLoader = { JARVISTerminalSlot.load() },
-        delivery: Delivery = { configuration, slot, input in
+        delivery: Delivery = { configuration, prompt in
             let client = WatchTerminalClient(configuration: configuration)
             defer { client.close() }
-            _ = try await client.preflight(slot: slot)
-            try await client.send(input)
+            try await client.preflightNewSessionPrompt()
+            return try await client.sendToNewSession(prompt)
         }
     ) async -> JARVISSiriPromptOutcome {
         let normalized: String
@@ -148,16 +156,10 @@ enum JARVISSiriPromptRuntime {
         }
 
         do {
-            // UserDefaults.standard is device-local: iPhone Siri follows the
-            // last iPhone slot while Watch Siri follows the last Watch slot.
-            let slot = slotLoader()
-            let input = WatchTerminalInput(
-                session: slot,
-                data: Data(normalized.utf8),
-                appendReturn: true
-            )
-            try await delivery(configuration, slot, input)
-            return .sent
+            let slot = try await delivery(configuration, normalized)
+            return .sent(slot)
+        } catch JARVISNewSessionError.noAvailableSession {
+            return .noNewSession
         } catch WatchTerminalClientError.certificateRejected {
             return .identityMismatch
         } catch WatchTerminalClientError.rejected(_) {

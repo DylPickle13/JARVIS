@@ -203,7 +203,7 @@ private struct RootTabView: View {
     }
 
     private func openSiriTerminalIfRequested() {
-        guard JARVISSiriNavigation.consumeTerminalPresentationRequest() else { return }
+        guard JARVISSiriNavigation.consumeTerminalPresentationRequest(select: { piTerminal.selectSlot($0) }) else { return }
         selection = .pi
     }
 

@@ -97,7 +97,7 @@ struct WatchConnectView: View {
     }
 
     private func openSiriTerminalIfRequested() {
-        guard JARVISSiriNavigation.consumeTerminalPresentationRequest() else { return }
+        guard JARVISSiriNavigation.consumeTerminalPresentationRequest(select: { model.terminal.selectSlot($0) }) else { return }
         siriTerminalRequestSequence += 1
     }
 }

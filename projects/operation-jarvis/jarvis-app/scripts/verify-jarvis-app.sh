@@ -45,6 +45,9 @@ cmp -s "$LOCKED_PACKAGE_BACKUP" "$LOCKED_PACKAGE_RESOLUTION" || {
 }
 grep -q 'a9a5efd40eaf558a2bcd48d64b1d1646be686008' "$LOCKED_PACKAGE_RESOLUTION"
 
+printf '%s\n' '== Siri guarded-admission Node tests =='
+node --test ../../../.pi/scripts/tests/siri-new-session.test.mjs
+
 printf '%s\n' '== Python unit tests =='
 python3 -m unittest discover -s jarvisd/tests -v
 terminal_tests_ok=0
@@ -882,16 +885,23 @@ grep -q 'struct SendPromptToJARVISIntent: AppIntent' HostAppIntents/JARVISSiriPr
 grep -q 'requestValueDialog: IntentDialog("What would you like me to send to JARVIS?")' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'var prompt: String' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'JARVISSiriPromptRuntime.submit(prompt)' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'guard outcome == \.sent else { return \.result() }' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'guard case \.sent(let slot) = outcome else { return \.result() }' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'JARVISSpokenPrompt.normalize(rawPrompt)' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'typealias SlotLoader = () -> JARVISTerminalSlot' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'let slot = slotLoader()' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'session: slot' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'data: Data(normalized.utf8)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'client.preflightNewSessionPrompt()' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'client.sendToNewSession(prompt)' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'throw JARVISNewSessionError.noAvailableSession' HostAppIntents/JARVISSiriPromptIntent.swift
+reject_match 'Siri regained selected-slot or raw-PTY fallback' -qsE 'SlotLoader|slotLoader|JARVISTerminalSlot.load|WatchTerminalInput|client.send\(' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'v2/terminal/new-session-prompt' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
+[[ -f ../../../.pi/extensions/04-siri-new-session.ts ]]
+grep -q 'pi.sendUserMessage(text)' ../../../.pi/extensions/04-siri-new-session.ts
+grep -q 'ctx.hasPendingMessages() === false' ../../../.pi/extensions/04-siri-new-session.ts
+grep -q 'ctx.ui.getEditorText().length === 0' ../../../.pi/extensions/04-siri-new-session.ts
+grep -q 'self.store(path, record, create=True)' terminald/siri_new_session.py
+reject_match 'Siri allocator must not reset, provision, or paste into a conversation' -qsE 'send_input\(|paste-buffer|send-keys|--continue|new-session|ensure_session\(' terminald/siri_new_session.py
 grep -q '#if os(watchOS)' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'static var openAppWhenRun: Bool { true }' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'static var openAppWhenRun: Bool { false }' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'JARVISSiriNavigation.requestTerminalPresentation()' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q 'JARVISSiriNavigation.requestTerminalPresentation(slot: slot)' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'struct OpenJARVISTerminalIntent: OpenIntent' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'opensIntent: OpenJARVISTerminalIntent(target: .terminal)' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q '@MainActor' HostAppIntents/JARVISSiriPromptIntent.swift
@@ -909,8 +919,8 @@ fi
 reject_match 'Siri terminal handoff must not use OpenURLIntent with a custom URL scheme' -qsF 'OpenURLIntent(' HostAppIntents/JARVISSiriPromptIntent.swift
 grep -q 'selection = \.pi' JARVIS/JARVISApp.swift
 grep -q 'selectedPage = \.terminal' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest()' JARVIS/JARVISApp.swift
-grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest()' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest(select:' JARVIS/JARVISApp.swift
+grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest(select:' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVIS/JARVISApp.swift
 grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVISWatch/Views/WatchConnectView.swift
 [[ ! -d SharedAppIntents ]]

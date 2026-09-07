@@ -92,6 +92,11 @@ public struct WatchTerminalConfiguration: Codable, Equatable, Sendable {
     }
 }
 
+public enum JARVISNewSessionError: LocalizedError, Equatable, Sendable {
+    case noAvailableSession
+    public var errorDescription: String? { "No unused New sessions are available. Existing conversations were left untouched." }
+}
+
 public enum WatchTerminalClientError: LocalizedError, Equatable, Sendable {
     case notConfigured
     case invalidResponse
@@ -536,6 +541,70 @@ public final class WatchTerminalClient: @unchecked Sendable {
             }
             // The request may have reached terminald. Never retry an ambiguous
             // POST and never select another route after transmission begins.
+            throw WatchTerminalClientError.submissionUnconfirmed
+        }
+    }
+
+    /// Discover capability without opening, creating, or inspecting any terminal pane.
+    public func preflightNewSessionPrompt() async throws {
+        guard configuration.isValid else { throw WatchTerminalClientError.notConfigured }
+        for baseURL in orderedBaseURLs() {
+            try Task.checkCancellation()
+            do {
+                let components = try endpointComponents(baseURL: baseURL, path: "health")
+                guard let url = components.url else { continue }
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 4
+                authorize(&request)
+                let (data, response) = try await session.data(for: request)
+                try validate(response: response, data: data)
+                guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      object["service"] as? String == "jarvis-terminald",
+                      let version = object["siriNewSessionVersion"] as? NSNumber,
+                      CFGetTypeID(version) != CFBooleanGetTypeID(), version.stringValue == "1" else { continue }
+                rememberActive(baseURL)
+                delegate.clearRejectedCertificate()
+                return
+            } catch is CancellationError { throw CancellationError() }
+            catch { continue }
+        }
+        if delegate.rejectedCertificate { throw WatchTerminalClientError.certificateRejected }
+        throw WatchTerminalClientError.offline // old hosts must never fall back to selected-slot input
+    }
+
+    /// One allocation+submission POST. Never retry or change endpoints after transmission.
+    public func sendToNewSession(_ prompt: String, requestID: UUID = UUID()) async throws -> JARVISTerminalSlot {
+        let normalized = try JARVISSpokenPrompt.normalize(prompt)
+        guard let baseURL = preferredBaseURL() else { throw WatchTerminalClientError.notConnected }
+        let components = try endpointComponents(baseURL: baseURL, path: "v2/terminal/new-session-prompt")
+        guard let url = components.url else { throw WatchTerminalClientError.notConfigured }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 6
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        authorize(&request)
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["requestID": requestID.uuidString, "prompt": normalized])
+        do {
+            try Task.checkCancellation()
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 409,
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               object["code"] as? String == "no_new_session" {
+                throw JARVISNewSessionError.noAvailableSession
+            }
+            try validate(response: response, data: data)
+            guard let ack = try? JSONDecoder().decode(TerminalInputAcknowledgement.self, from: data),
+                  ack.ok, ack.requestID == requestID.uuidString,
+                  let identifier = try? Self.canonicalSessionID(in: data),
+                  let slot = JARVISTerminalSlot(rawValue: identifier), ack.sessionID == identifier else {
+                throw WatchTerminalClientError.submissionUnconfirmed
+            }
+            return slot
+        } catch let error as JARVISNewSessionError { throw error }
+        catch let error as WatchTerminalClientError { throw error }
+        catch is CancellationError { throw CancellationError() }
+        catch {
+            if delegate.rejectedCertificate { throw WatchTerminalClientError.certificateRejected }
             throw WatchTerminalClientError.submissionUnconfirmed
         }
     }

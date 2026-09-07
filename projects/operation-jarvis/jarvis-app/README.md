@@ -1,4 +1,41 @@
-## New-session status candidate (not deployed)
+## Siri unused-New-slot candidate (not deployed)
+
+“Hey JARVIS” still asks for your prompt on iPhone and Watch. Each answer now
+uses the **lowest-numbered verified unused New slot among 1–9**, not the invoking
+device's selection. If none can be verified, Siri refuses: **“No unused New
+sessions are available. Existing conversations were left untouched.”** Idle,
+Running, Compacting, Unknown, offline, queued, open-prompt and nonempty-editor
+sessions are never substituted. A slot needs the new in-memory ingress; a cached
+Home badge, missing history file, or old heartbeat cannot authorize a prompt.
+
+The pinned terminal client probes host capability read-only, then sends one
+allocation/submission POST with no client-selected slot. terminald serializes
+allocation, verifies exact pane/PID/private IPC generation and probes slots in
+order. Pi rechecks admission on its own event loop, reserves synchronously,
+protects overlapping editor input before attachment consumption, and sends a
+literal user message (no slash-command expansion or automatic queue). Only the
+matching actual user-message event confirms delivery. The invoking app navigates
+to the acknowledged slot; a blocked navigation request is retained. Ordinary
+terminal input, attachments, task layout and the nine conversation identities
+remain unchanged.
+
+Read-only probes may skip unavailable slots; after dispatch begins there is no
+retry or fallback unless ingress explicitly proves it never dispatched. A private,
+fsynced request journal (IDs, prompt hashes and outcomes, not prompt text) blocks
+replays across daemon restarts. Unknown delivery is never reallocated. Pending
+or uncertain admission stays Running in lifecycle telemetry, blocking restart-all
+and premature completion; only owner-controlled reload clears an uncertain claim. Journal
+capacity exhaustion refuses safely rather than evicting dedupe evidence.
+
+**Rollout:** coordinate apps + terminald and the new `.pi/extensions/04-siri-new-session.ts`.
+Keep jarvisd/room audio, all nine Pi PIDs/history and credentials unchanged. Existing
+unused idle panes need an **owner-controlled `/reload`** to load the ingress; no
+Pi reload or service/device deployment has occurred during candidate preparation.
+Older apps retain their existing terminal APIs. New apps refuse against an older
+host rather than using legacy selected-slot input. Devices are disconnected;
+physical Siri phrase/refusal/navigation acceptance remains pending.
+
+## New-session status (Build 155)
 
 The iPhone Home session cards now present **New** (cyan), **Idle** (purple),
 **Running** (green), **Compacting** (blue), **Offline** (gray), and **Unknown**
@@ -176,7 +213,8 @@ to the user's unrelated global `.pi` directory.
 
 The nine-conversation design preserves Slots 1–6 and adds only `jarvis-ios-7`,
 `jarvis-ios-8`, and `jarvis-ios-9`. Selection remains independent on iPhone and
-Watch, Siri and iPhone attachments route to the invoking/active device slot, and
+Watch, iPhone attachments route to the active device slot, Siri uses an unused
+New slot (see the candidate contract above), and
 v1/no-session host compatibility remains Slot 1. See the
 [earlier six-session implementation contract](docs/README.md#six-fixed-mobile-pi-conversations);
 the nine-session candidate contract above supersedes its slot limits.
@@ -852,8 +890,9 @@ sequence, and physical gates are consolidated in the
   Host metadata contains no Siri plug entities, queries, or on/off intents. The
   answer is normalized to one logical line and submitted through the authenticated,
   certificate-pinned terminal client as one immediate, non-retried request with
-  `appendReturn=true`. The question is the only app-provided dialogue; completion
-  and failure results are silent. No greeting playback intent or bundled JARVIS WAV
+  host-side unused-slot allocation. No available New slot is an explicit Siri
+  refusal; confirmed delivery opens that exact slot. Other completion/failure
+  results remain silent. No greeting playback intent or bundled JARVIS WAV
   is present. Plug control remains available inside the iPhone and Watch apps.
 - **Widget catalogue** — each embedded WidgetKit extension publishes exactly
   two non-control widgets: Neural Core and Open JARVIS. All plug and purifier

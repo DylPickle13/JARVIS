@@ -56,6 +56,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   let lifecycle: LocalPiSessionLifecycle = "idle";
   let agentRunning = false;
   let promptActive = false;
+  let siriAdmissionPending = false;
   let hasConversation: boolean | undefined;
   let historyProbe: (() => readonly unknown[]) | undefined;
   let compacting = false;
@@ -121,6 +122,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
 
   function resolvedLifecycle(isIdle?: boolean): LocalPiSessionLifecycle {
     if (compacting) return "compacting";
+    if (siriAdmissionPending) return "running"; // admission/auth wait or quarantined unknown delivery
     // Removing the Waiting label must not make an open interactive prompt safe
     // for restart-all or premature completion notifications. It remains busy.
     if (promptActive || agentRunning || isIdle === false) return "running";
@@ -162,6 +164,11 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     lifecycle = resolvedLifecycle(isIdle);
     writeStatus(reason);
   }
+
+  const unsubscribeSiriAdmission = pi.events?.on("jarvis:siri-admission", (data: any) => {
+    siriAdmissionPending = data?.pending === true;
+    updateLifecycle("siri-admission", idleProbe?.());
+  });
 
   function removeStatus() {
     try {
@@ -272,6 +279,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    unsubscribeSiriAdmission?.();
     completionID = undefined;
     completionEligible = false;
     if (heartbeat) clearInterval(heartbeat);

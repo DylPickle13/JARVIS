@@ -9,6 +9,61 @@ final class WatchTerminalTests: XCTestCase {
         super.tearDown()
     }
 
+    func testSiriCapabilityProbeAndAtomicNewSlotSubmissionNeverUseSelectedSlot() async throws {
+        let posts = LockedBox(0)
+        TerminalURLProtocol.handler = { request in
+            if request.httpMethod == "GET" {
+                XCTAssertEqual(request.url?.path, "/health")
+                XCTAssertNil(request.url?.query)
+                return (200, Data(#"{"service":"jarvis-terminald","siriNewSessionVersion":1}"#.utf8))
+            }
+            posts.update { $0 += 1 }
+            XCTAssertEqual(request.url?.path, "/v2/terminal/new-session-prompt")
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: request.bodyData) as? [String: String])
+            XCTAssertEqual(Set(object.keys), ["prompt", "requestID"])
+            XCTAssertEqual(object["prompt"], "new only")
+            let id = try XCTUnwrap(object["requestID"])
+            return (200, Data("{\"ok\":true,\"requestID\":\"\(id)\",\"sessionID\":9}".utf8))
+        }
+        let client = fixtureClient(); defer { client.close() }
+        try await client.preflightNewSessionPrompt()
+        let slot = try await client.sendToNewSession("new only")
+        XCTAssertEqual(slot, .nine); XCTAssertEqual(posts.snapshot(), 1)
+    }
+
+    func testSiriNoCapacityAndUncertainResponseNeverRetryAnotherSlotOrRoute() async throws {
+        for responseSlot in ["none", "true", "10", "\"9\"", "timeout"] {
+            let posts = LockedBox(0)
+            TerminalURLProtocol.handler = { request in
+                if request.httpMethod == "GET" { return (200, Data(#"{"service":"jarvis-terminald","siriNewSessionVersion":1}"#.utf8)) }
+                posts.update { $0 += 1 }
+                if responseSlot == "none" { return (409, Data(#"{"ok":false,"code":"no_new_session"}"#.utf8)) }
+                if responseSlot == "timeout" { throw URLError(.timedOut) }
+                let object = try XCTUnwrap(JSONSerialization.jsonObject(with: request.bodyData) as? [String: String])
+                let id = try XCTUnwrap(object["requestID"])
+                return (200, Data("{\"ok\":true,\"requestID\":\"\(id)\",\"sessionID\":\(responseSlot)}".utf8))
+            }
+            let client = fixtureClient(); defer { client.close() }
+            try await client.preflightNewSessionPrompt()
+            do { _ = try await client.sendToNewSession("once"); XCTFail("must refuse") }
+            catch JARVISNewSessionError.noAvailableSession { XCTAssertEqual(responseSlot, "none") }
+            catch WatchTerminalClientError.submissionUnconfirmed { XCTAssertNotEqual(responseSlot, "none") }
+            XCTAssertEqual(posts.snapshot(), 1)
+        }
+    }
+
+    func testSiriOldHostCannotFallBackToLegacyTerminalInput() async throws {
+        let posts = LockedBox(0)
+        TerminalURLProtocol.handler = { request in
+            if request.httpMethod == "POST" { posts.update { $0 += 1 } }
+            return (200, Data(#"{"ok":true,"service":"jarvis-terminald","sessionIDs":[1,2,3,4,5,6,7,8,9]}"#.utf8))
+        }
+        let client = fixtureClient(); defer { client.close() }
+        do { try await client.preflightNewSessionPrompt(); XCTFail("old host lacks guarded admission") }
+        catch WatchTerminalClientError.offline { }
+        XCTAssertNil(client.selectedBaseURL); XCTAssertEqual(posts.snapshot(), 0)
+    }
+
     func testANSIParserMirrorsPiStylesWithoutSemanticReconstruction() {
         let lines = [
             "\u{1b}[3m\u{1b}[38;2;128;128;128mThinking\u{1b}[0m",

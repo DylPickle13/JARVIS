@@ -6,6 +6,11 @@ jarvis-mobile tmux sessions and has no hardware, service, scheduler, or JARVIS
 control-plane integration.
 """
 
+try:
+    from .siri_new_session import SiriNewSessionRouter, NewSessionError
+except ImportError:  # direct launchd script entry
+    from siri_new_session import SiriNewSessionRouter, NewSessionError
+
 import argparse
 import base64
 import hashlib
@@ -50,6 +55,7 @@ DEFAULT_PORT = 8792
 DEFAULT_CIDRS = "127.0.0.0/8,192.168.0.0/16,100.64.0.0/10"
 MAX_INPUT_BYTES = 4096
 MAX_BODY_BYTES = 8192
+MAX_SIRI_BODY_BYTES = 16 * 1024  # 4096 UTF-8 bytes plus JSON escaping/envelope
 MAX_SPEECH_REQUEST_BYTES = 1024
 MAX_SPEECH_MARKER_BYTES = 256 * 1024
 MAX_SPEECH_TEXT_BYTES = 32 * 1024
@@ -809,6 +815,28 @@ class TerminalHTTPServer(ThreadingHTTPServer):
         self.services = service_map
         self.token = token
         self.trusted_cidrs = trusted_cidrs
+        self.siri_router = SiriNewSessionRouter(
+            Path(os.environ.get("JARVIS_ROOT", str(Path.home() / "JARVIS"))) / ".pi/runtime/siri-new",
+            RUNTIME_DIR / "siri-requests",
+            self.siri_pane_identities,
+        )
+
+    def siri_pane_identities(self) -> Dict[int, int]:
+        output = self.service.runner.run([
+            TMUX, "-L", TMUX_SOCKET, "list-panes", "-a", "-F",
+            "#{session_name}|#{window_index}|#{pane_index}|#{pane_pid}|#{pane_dead}",
+        ], timeout=0.5).stdout.decode()
+        names = {name: slot for slot, name in TMUX_SESSIONS.items()}
+        result = {}
+        for line in output.splitlines():
+            parts = line.split("|")
+            if len(parts) != 5: continue
+            name, window, pane, pid, dead = parts
+            if name in names and window == "0" and pane == "0" and dead == "0" and pid.isdecimal():
+                slot = names[name]
+                if slot in result: raise NewSessionError("unconfirmed")
+                result[slot] = int(pid)
+        return result
 
     def service_for(self, session_id: int) -> TerminalService:
         service = self.services.get(session_id)
@@ -923,6 +951,7 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
                     "service": "jarvis-terminald",
                     "version": 2,
                     "sessionIDs": sorted(self.terminal_server.services),
+                    "siriNewSessionVersion": 1,
                 },
             )
             return
@@ -957,6 +986,18 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/v2/terminal/new-session-prompt":
+            if not self._require_authorization(): return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > MAX_SIRI_BODY_BYTES: raise NewSessionError("invalid_request")
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                self._write_json(HTTPStatus.OK, self.terminal_server.siri_router.submit(payload))
+            except NewSessionError as error:
+                self._write_json(HTTPStatus.CONFLICT, {"ok": False, "code": error.code, "error": "Siri new-session request refused."})
+            except (ValueError, OSError, subprocess.SubprocessError):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "code": "unconfirmed", "error": "Siri new-session request was not confirmed."})
+            return
         routes = {
             "/v1/terminal/input": (False, False),
             "/v1/terminal/speech": (False, True),

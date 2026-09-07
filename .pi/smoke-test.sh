@@ -324,6 +324,7 @@ expected_extension_roots=(
   .pi/extensions/01-omlx-provider-setup-and-recovery.ts
   .pi/extensions/03-codex-fast.ts
   .pi/extensions/04-delete-current-session.ts
+  .pi/extensions/04-siri-new-session.ts
   .pi/extensions/05-attach.ts
   .pi/extensions/10-jarvis-cron.ts
   .pi/extensions/30-google-access.ts
@@ -366,6 +367,8 @@ expected_extension_files=(
   .pi/scripts/pi-attach-picker
   .pi/scripts/pi-attach-picker.swift
   .pi/scripts/tests/local-pi-session-status.test.mjs
+  .pi/scripts/tests/siri-new-session.test.mjs
+  .pi/extensions/lib/siri-new-session.ts
   .pi/scripts/tests/jarvis-pi-ssh.test.mjs
   .pi/scripts/tests/pi-attach-bridge.test.mjs
   .pi/scripts/tests/pi-attach-core.test.mjs
@@ -538,6 +541,7 @@ fi
 
 section "Local Pi lifecycle telemetry checks"
 if command -v node >/dev/null 2>&1; then
+  run_check "Siri new-session admission tests" node --test .pi/scripts/tests/siri-new-session.test.mjs
   run_check "local Pi lifecycle event contract tests" node --test .pi/scripts/tests/local-pi-session-status.test.mjs
 fi
 

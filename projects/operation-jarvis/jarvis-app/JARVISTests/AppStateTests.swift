@@ -473,33 +473,28 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(app.watchCommandInFlight.isEmpty)
     }
 
-    func testSiriPromptNormalizesAndDeliversOneAtomicReturnRequest() async {
+    func testSiriPromptNormalizesAndUsesHostAllocatedNewSlot() async {
         let configuration = WatchTerminalConfiguration(
             endpoint: "https://fixture.invalid:8792",
             token: String(repeating: "a", count: 64),
             certificateSHA256: String(repeating: "ab", count: 32)
         )
         var deliveredConfiguration: WatchTerminalConfiguration?
-        var deliveredSlot: JARVISTerminalSlot?
-        var deliveredInput: WatchTerminalInput?
+        var deliveredPrompt: String?
 
         let outcome = await JARVISSiriPromptRuntime.submit(
             "  inspect this\r\nonce  ",
             configurationLoader: { .configured(configuration) },
-            slotLoader: { .three },
-            delivery: { value, slot, input in
+            delivery: { value, prompt in
                 deliveredConfiguration = value
-                deliveredSlot = slot
-                deliveredInput = input
+                deliveredPrompt = prompt
+                return .nine
             }
         )
 
-        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(outcome, .sent(.nine))
         XCTAssertEqual(deliveredConfiguration, configuration)
-        XCTAssertEqual(deliveredSlot, .three)
-        XCTAssertEqual(deliveredInput?.sessionID, 3)
-        XCTAssertEqual(deliveredInput?.data, Data("inspect this once".utf8))
-        XCTAssertEqual(deliveredInput?.appendReturn, true)
+        XCTAssertEqual(deliveredPrompt, "inspect this once")
     }
 
     func testSiriTerminalURLOnlyAcceptsTheTerminalDeepLink() {
@@ -524,13 +519,17 @@ final class AppStateTests: XCTestCase {
         defer { center.removeObserver(token) }
 
         JARVISSiriNavigation.requestTerminalPresentation(
+            slot: .nine,
             defaults: defaults,
             notificationCenter: center
         )
 
         wait(for: [posted], timeout: 1)
-        XCTAssertTrue(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults))
-        XCTAssertFalse(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults))
+        XCTAssertFalse(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in false }))
+        var selected: JARVISTerminalSlot?
+        XCTAssertTrue(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { selected = $0; return true }))
+        XCTAssertEqual(selected, .nine)
+        XCTAssertFalse(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in XCTFail(); return true }))
     }
 
     func testSiriPromptFailsBeforeNetworkAndMapsAmbiguousSend() async {
@@ -542,7 +541,7 @@ final class AppStateTests: XCTestCase {
                 loadedConfiguration = true
                 return .missing
             },
-            delivery: { _, _, _ in attemptedDelivery = true }
+            delivery: { _, _ in attemptedDelivery = true; return .one }
         )
         XCTAssertEqual(emptyOutcome, .empty)
         XCTAssertFalse(loadedConfiguration)
@@ -556,9 +555,21 @@ final class AppStateTests: XCTestCase {
         let uncertainOutcome = await JARVISSiriPromptRuntime.submit(
             "send once",
             configurationLoader: { .configured(configuration) },
-            delivery: { _, _, _ in throw WatchTerminalClientError.submissionUnconfirmed }
+            delivery: { _, _ in throw WatchTerminalClientError.submissionUnconfirmed }
         )
         XCTAssertEqual(uncertainOutcome, .unconfirmed)
+    }
+
+    func testSiriNoUnusedSessionIsAnExplicitRefusalWithoutFallback() async {
+        let configuration = WatchTerminalConfiguration(endpoint: "https://fixture.invalid:8792", token: String(repeating: "a", count: 64), certificateSHA256: String(repeating: "ab", count: 32))
+        var attempts = 0
+        let outcome = await JARVISSiriPromptRuntime.submit("new conversation only", configurationLoader: { .configured(configuration) }, delivery: { _, _ in
+            attempts += 1
+            throw JARVISNewSessionError.noAvailableSession
+        })
+        XCTAssertEqual(outcome, .noNewSession)
+        XCTAssertEqual(attempts, 1)
+        XCTAssertTrue(JARVISNewSessionError.noAvailableSession.localizedDescription.contains("No unused New sessions"))
     }
 
     func testFocusedResultFetchUsesExactCursorAndRejectsAnotherSequence() async throws {
