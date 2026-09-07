@@ -2,10 +2,18 @@ import XCTest
 @testable import JARVISKit
 
 final class WatchDashboardPageTests: XCTestCase {
-    func testJobsReturnsOnlyOnUpwardSwipe() {
-        XCTAssertEqual(WatchDashboardPage.jobs.destination(verticalTranslation: -52, horizontalTranslation: 0), .system)
-        XCTAssertNil(WatchDashboardPage.jobs.destination(verticalTranslation: 52, horizontalTranslation: 0))
-        XCTAssertNil(WatchDashboardPage.jobs.destination(verticalTranslation: 200, horizontalTranslation: 0))
+    func testJobsFollowsNormalOrderAndDoesNotWrapPastLastPage() {
+        XCTAssertNil(WatchDashboardPage.jobs.destination(verticalTranslation: -52, horizontalTranslation: 0))
+        XCTAssertNil(WatchDashboardPage.jobs.destination(verticalTranslation: -200, horizontalTranslation: 0))
+        XCTAssertEqual(WatchDashboardPage.jobs.destination(verticalTranslation: 52, horizontalTranslation: 0), .system)
+        XCTAssertEqual(WatchDashboardPage.jobs.destination(verticalTranslation: 200, horizontalTranslation: 0), .system)
+    }
+
+    func testForwardAndReverseRoutesAgreeForEveryNonTerminalPage() {
+        XCTAssertEqual(WatchDashboardPage.plugs.destination(verticalTranslation: -80, horizontalTranslation: 0), .system)
+        XCTAssertEqual(WatchDashboardPage.system.destination(verticalTranslation: 80, horizontalTranslation: 0), .plugs)
+        XCTAssertEqual(WatchDashboardPage.system.destination(verticalTranslation: -80, horizontalTranslation: 0), .jobs)
+        XCTAssertEqual(WatchDashboardPage.jobs.destination(verticalTranslation: 80, horizontalTranslation: 0), .system)
     }
 
     func testOtherPagesKeepTheirDirectionsAndTerminalOwnsItsGestures() {

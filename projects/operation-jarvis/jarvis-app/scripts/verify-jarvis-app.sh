@@ -716,7 +716,7 @@ pager = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 assert pager.index('.highPriorityGesture(') > pager.index('pageIndicator\n        }')
 PYCROWN
 
-grep -q 'case .jobs: return upward ? .system : nil' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
+grep -q 'case .jobs: return upward ? nil : .system' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
 grep -q 'alwaysOnInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'The shorter Plugs grid must not collapse the page before the bottom edge.' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'GeometryReader { geometry in' JARVISWatch/Views/WatchDashboardContent.swift

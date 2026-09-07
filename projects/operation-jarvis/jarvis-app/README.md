@@ -3449,3 +3449,15 @@ System; downward does not navigate. Short/horizontal drags stay put. Thread Back
 explicit Refresh, Crown bounds and accessibility scroll actions remain.
 No refresh, backend, connectivity, notification, or terminal transport changes.
 Physical acceptance is required; simulator input has not been conclusive.
+
+
+### Build 151 candidate — consistent Watch page order
+
+Owner clarified after Build150: Jobs should follow the same navigation as the
+other pages, superseding the earlier request for an upward return to System.
+The order is Terminal → Plugs → System → Jobs. Up advances; down returns;
+there is no wrap after Jobs. Jobs therefore returns to System on a downward
+swipe and stays put on an upward swipe. The special reversed Jobs rule is removed.
+The stable viewport/Crown implementation, refresh cadence, terminal input,
+notification routing, connectivity and backend remain unchanged. Physical150
+feedback remains preserved; this clarification is not retroactive acceptance.

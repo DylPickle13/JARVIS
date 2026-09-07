@@ -1,7 +1,7 @@
 import Foundation
 
-/// Direction policy for the Watch's custom pager. Jobs deliberately returns
-/// to System on an upward swipe, rather than following the other pages' order.
+/// Direction policy for the Watch's non-wrapping custom pager.
+/// Up advances; down returns. Terminal owns its editor gestures.
 public enum WatchDashboardPage: Hashable, CaseIterable {
     case terminal
     case plugs
@@ -20,7 +20,7 @@ public enum WatchDashboardPage: Hashable, CaseIterable {
         case .terminal: return nil // Terminal owns its editor gestures.
         case .plugs: return upward ? .system : .terminal
         case .system: return upward ? .jobs : .plugs
-        case .jobs: return upward ? .system : nil
+        case .jobs: return upward ? nil : .system
         }
     }
 }
