@@ -91,7 +91,7 @@ final class AppStateTests: XCTestCase {
             (.offline, "Offline", .offline),
             (.idle, "Idle", .idle),
             (.running, "Running", .running),
-            (.waiting, "Waiting", .waiting),
+            (.new, "New", .new),
             (.compacting, "Compacting", .compacting),
             (.unknown, "Unknown", .unknown),
         ]

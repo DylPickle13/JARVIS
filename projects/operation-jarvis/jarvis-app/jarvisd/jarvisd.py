@@ -244,8 +244,13 @@ MOBILE_PI_STATUS_MAX_AGE_SECONDS = min(
 MAX_MOBILE_PI_STATUS_BYTES = 16 * 1024
 MAX_MOBILE_PI_STATUS_FILES_PER_PID = 8
 MAX_MOBILE_TMUX_OUTPUT_BYTES = 64 * 1024
-MOBILE_PI_REPORTED_LIFECYCLES = frozenset({"idle", "running", "waiting", "compacting"})
-MOBILE_PI_ACTIVE_LIFECYCLES = frozenset({"running", "waiting", "compacting"})
+MOBILE_PI_REPORTED_LIFECYCLES = frozenset({"new", "idle", "running", "compacting", "unknown"})
+MOBILE_PI_ACTIVE_LIFECYCLES = frozenset({"running", "compacting"})
+# Read only an exact path reported by the fresh PID telemetry. Never search for
+# a latest history or mutate/reload live Pi processes to discover new sessions.
+PI_SESSION_HISTORY_ROOT = Path.home() / ".pi" / "agent" / "sessions"
+MAX_PI_HISTORY_PROBE_BYTES = 1024 * 1024
+MAX_PI_HISTORY_PROBE_LINES = 4096
 MOBILE_PI_PUBLIC_LIFECYCLES = MOBILE_PI_REPORTED_LIFECYCLES | {"offline", "unknown"}
 
 AUTH_MODES = {"trusted-network", "token"}
@@ -766,6 +771,58 @@ class _UnixSocketHTTPConnection(http.client.HTTPConnection):
         self.sock = sock
 
 
+def _pi_history_has_conversation(session_file: object) -> bool | None:
+    """Bounded legacy-process bridge: True=history, False=empty, None=unknown.
+
+    Only a complete, valid metadata-only JSONL is New. A missing, malformed,
+    changing, oversized or out-of-scope file never proves an untouched session.
+    Contents are neither logged nor returned to clients.
+    """
+    if not isinstance(session_file, str) or not session_file or len(session_file) > 4096:
+        return None
+    try:
+        path = Path(session_file)
+        if not path.is_absolute() or path.suffix != ".jsonl" or path.is_symlink():
+            return None
+        path = path.resolve(strict=True)
+        if not path.is_relative_to(PI_SESSION_HISTORY_ROOT.resolve()) or not path.is_file():
+            return None
+        with path.open("rb") as history:
+            before = os.fstat(history.fileno())
+            remaining = MAX_PI_HISTORY_PROBE_BYTES
+            for index in range(MAX_PI_HISTORY_PROBE_LINES):
+                line = history.readline(remaining + 1)
+                if not line:
+                    after = os.fstat(history.fileno())
+                    if index == 0 or (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                        return None
+                    return False
+                if len(line) > remaining or not line.endswith(b"\n"):
+                    return None
+                remaining -= len(line)
+                entry = json.loads(line)
+                if not isinstance(entry, dict):
+                    return None
+                kind = entry.get("type")
+                if index == 0:
+                    if kind != "session" or entry.get("version") not in {1, 2, 3}:
+                        return None
+                    continue
+                if kind in {"compaction", "branch_summary"}:
+                    return True
+                if kind == "message":
+                    message = entry.get("message")
+                    if not isinstance(message, dict) or not isinstance(message.get("role"), str):
+                        return None
+                    if message["role"] in {"user", "assistant"}:
+                        return True
+                elif kind not in {"model_change", "thinking_level_change", "custom", "custom_message", "label", "session_info"}:
+                    return None
+        return None
+    except (OSError, ValueError, TypeError, UnicodeError):
+        return None
+
+
 def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
     """Return one Pi process's fresh lifecycle, or None for unknown evidence."""
     if not PI_LOCAL_SESSIONS.is_dir():
@@ -783,12 +840,13 @@ def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
     except OSError:
         return None
 
-    freshest: tuple[dt.datetime, str] | None = None
+    freshest: tuple[dt.datetime, str, dict] | None = None
     for path in candidates:
         try:
             if path.is_symlink():
                 continue
-            raw = path.read_bytes()
+            with path.open("rb") as status_file:
+                raw = status_file.read(MAX_MOBILE_PI_STATUS_BYTES + 1)
             if len(raw) > MAX_MOBILE_PI_STATUS_BYTES:
                 continue
             payload = json.loads(raw)
@@ -800,7 +858,9 @@ def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
                 continue
 
             version = payload.get("version")
-            if version == 2 and payload.get("lifecycle") in MOBILE_PI_REPORTED_LIFECYCLES:
+            if version == 2 and payload.get("lifecycle") == "waiting":
+                lifecycle = "running"  # legacy telemetry: conservative busy mapping
+            elif version == 2 and payload.get("lifecycle") in MOBILE_PI_REPORTED_LIFECYCLES:
                 lifecycle = payload["lifecycle"]
             elif version == 1 and isinstance(payload.get("active"), bool):
                 # Preserve availability while live Build 142 Pi processes wait
@@ -820,10 +880,20 @@ def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
             if age < -5.0 or age > MOBILE_PI_STATUS_MAX_AGE_SECONDS:
                 continue
             if freshest is None or timestamp > freshest[0]:
-                freshest = (timestamp, lifecycle)
+                freshest = (timestamp, lifecycle, payload)
         except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
             continue
-    return freshest[1] if freshest is not None else None
+    if freshest is None:
+        return None
+    _, lifecycle, payload = freshest
+    if lifecycle in {"new", "idle"}:
+        # New extensions inspect the in-memory session tree (including ephemeral
+        # sessions). Their explicit evidence avoids any disk scan.
+        has_conversation = payload.get("hasConversation")
+        if type(has_conversation) is not bool:
+            has_conversation = _pi_history_has_conversation(payload.get("sessionFile"))
+        return "idle" if has_conversation is True else "new" if has_conversation is False else "unknown"
+    return lifecycle
 
 
 def _mobile_pi_state(session_id: int, lifecycle: str) -> dict:
@@ -833,7 +903,7 @@ def _mobile_pi_state(session_id: int, lifecycle: str) -> dict:
     active: bool | None
     if lifecycle in MOBILE_PI_ACTIVE_LIFECYCLES:
         active = True
-    elif lifecycle in {"idle", "offline"}:
+    elif lifecycle in {"new", "idle", "offline"}:
         active = False
     else:
         active = None
@@ -905,7 +975,7 @@ def _pi_sessions() -> dict:
                 if not isinstance(payload, dict):
                     continue
                 if payload.get("version") == 2:
-                    if payload.get("lifecycle") in MOBILE_PI_ACTIVE_LIFECYCLES:
+                    if payload.get("lifecycle") in MOBILE_PI_ACTIVE_LIFECYCLES | {"waiting"}:
                         active_local += 1
                 elif payload.get("version") == 1 and payload.get("active") is True:
                     active_local += 1

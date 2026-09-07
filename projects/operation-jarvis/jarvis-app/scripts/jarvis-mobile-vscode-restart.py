@@ -49,7 +49,9 @@ SLOT_NAMES = {
     8: "jarvis-ios-8",
     9: "jarvis-ios-9",
 }
-VALID_LIFECYCLES = frozenset({"idle", "running", "waiting", "compacting"})
+# Legacy Waiting remains busy/fail-closed during owner-controlled reloads.
+VALID_LIFECYCLES = frozenset({"new", "idle", "running", "waiting", "compacting", "unknown"})
+QUIESCENT_LIFECYCLES = frozenset({"new", "idle"})
 STATUS_SOURCE = "pi-extension-local-session-status"
 MAX_STATUS_BYTES = 16 * 1024
 MAX_STATUS_FILES_PER_PID = 8
@@ -321,7 +323,7 @@ def snapshots_from_panes(
     busy = [
         f"slot {snapshot.slot} ({snapshot.name}) is {snapshot.lifecycle}"
         for snapshot in snapshots
-        if snapshot.lifecycle != "idle"
+        if snapshot.lifecycle not in QUIESCENT_LIFECYCLES
     ]
     if busy:
         raise RestartError("refusing to restart non-idle Pi process: " + "; ".join(busy))
@@ -439,8 +441,8 @@ def _wait_for_ready(
             current = next(item for item in refreshed if item.slot == snapshot.slot)
             if current.session_file != snapshot.session_file:
                 raise RestartError("new Pi selected a different session file")
-            if current.lifecycle != "idle":
-                raise RestartError(f"new Pi is {current.lifecycle}, not idle")
+            if current.lifecycle not in QUIESCENT_LIFECYCLES:
+                raise RestartError(f"new Pi is {current.lifecycle}, not idle/new")
             return pane, current
         except (RestartError, KeyError, StopIteration) as error:
             last_problem = str(error)

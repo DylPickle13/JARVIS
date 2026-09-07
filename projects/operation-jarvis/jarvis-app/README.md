@@ -1,3 +1,36 @@
+## New-session status candidate (not deployed)
+
+The iPhone Home session cards now present **New** (cyan), **Idle** (purple),
+**Running** (green), **Compacting** (blue), **Offline** (gray), and **Unknown**
+(warning color). Waiting is retired; interactive prompts do not create a separate
+mode; an open interactive prompt is Running so it still blocks restart-all and
+premature completion notifications. Running and Compacting take precedence over
+an untouched conversation.
+Terminal selection dots, the exact 3×3 Home grid, and widgets are unchanged.
+
+New means no user prompt or assistant message has occurred in that session.
+Model/settings/extension metadata alone does not count. Any user/assistant message
+(including failed or cancelled first turns), restored/forked history, or stored
+compaction/branch summary makes an inactive session Idle, not New. This does not
+add unread-output tracking or claim that an Idle session has a successful reply.
+The extension uses `sessionManager.getEntries()` plus message lifecycle events,
+including for ephemeral sessions; history failures become Unknown, never New.
+
+For existing Pi processes, jarvisd maps legacy Waiting to Running and can distinguish
+Idle/New from a **bounded read of the exact history path in fresh PID telemetry**.
+It never searches for a latest conversation or writes any history. Missing,
+malformed, stale, out-of-scope, or inconclusive history becomes Unknown. A legacy
+process whose empty history has not been saved requires an owner-controlled reload
+to report New authoritatively; never infer New merely because a file is missing.
+New telemetry supplies the in-memory evidence, avoiding disk probes. The app also
+maps cached/older-host Waiting to Running and future unknown wire modes to Unknown.
+
+The manual restart helper accepts New and Idle as quiescent; all nine freshness,
+identity, exact-history and readiness guards remain. Legacy Waiting, Unknown,
+Running and Compacting still block the entire restart. **Do not run restart-all
+for deployment.** App/host deployment and physical owner acceptance remain pending;
+this candidate has not changed the pinned services, live sessions, or task layout.
+
 ## Nine-session candidate (Build 153)
 
 The iPhone Home Pi card is exactly **3 columns × 3 rows**: 1–3, 4–6,

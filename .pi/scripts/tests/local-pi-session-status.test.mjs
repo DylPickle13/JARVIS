@@ -26,7 +26,7 @@ async function statusPayload(root) {
   return JSON.parse(await readFile(join(dir, files[0]), "utf8"));
 }
 
-test("local Pi lifecycle remains running until settled and reports prompts and compaction", async () => {
+test("local Pi lifecycle remains running until settled without a separate Waiting mode", async () => {
   const root = await mkdtemp(join(tmpdir(), "jarvis-pi-lifecycle-"));
   await mkdir(join(root, ".pi"), { recursive: true });
   await mkdir(join(root, "projects"), { recursive: true });
@@ -47,6 +47,7 @@ test("local Pi lifecycle remains running until settled and reports prompts and c
     isIdle: () => idle,
     sessionManager: {
       getSessionFile: () => join(root, "session.jsonl"),
+      getEntries: () => [{ type: "message", message: { role: "user" } }],
     },
   };
   const emit = async (name, event = {}) => {
@@ -67,7 +68,7 @@ test("local Pi lifecycle remains running until settled and reports prompts and c
     assert.equal((await statusPayload(root)).reason, "agent-end-awaiting-settle");
 
     await emit("ui_prompt_start", { kind: "confirm" });
-    assert.equal((await statusPayload(root)).lifecycle, "waiting");
+    assert.equal((await statusPayload(root)).lifecycle, "running");
 
     await emit("ui_prompt_end", { kind: "confirm" });
     assert.equal((await statusPayload(root)).lifecycle, "running");
@@ -96,7 +97,9 @@ test("local Pi lifecycle remains running until settled and reports prompts and c
     assert.equal((await statusPayload(root)).lifecycle, "idle");
 
     await emit("ui_prompt_start", { kind: "select" });
-    assert.equal((await statusPayload(root)).lifecycle, "waiting");
+    assert.equal((await statusPayload(root)).lifecycle, "running");
+    await new Promise((resolve) => setTimeout(resolve, 2150));
+    assert.equal((await statusPayload(root)).lifecycle, "running", "open prompt must keep restart-all blocked");
     await emit("ui_prompt_end", { kind: "select" });
     assert.equal((await statusPayload(root)).lifecycle, "idle");
 
@@ -109,6 +112,112 @@ test("local Pi lifecycle remains running until settled and reports prompts and c
     const remaining = await readdir(join(root, ".pi", "runtime", "local-pi-sessions"));
     assert.deepEqual(remaining, []);
   } finally {
+    await emit("session_shutdown");
     await rm(root, { recursive: true, force: true });
   }
+});
+
+async function withSession(run) {
+  const root = await mkdtemp(join(tmpdir(), "jarvis-pi-new-status-"));
+  await mkdir(join(root, ".pi"), { recursive: true });
+  await mkdir(join(root, "projects"));
+  const handlers = new Map();
+  registerLocalPiSessionStatus({ on: (name, handler) => handlers.set(name, handler) });
+  const state = { idle: true, entries: [], failHistory: false, sessionFile: "" };
+  const ctx = {
+    cwd: root,
+    isIdle: () => state.idle,
+    sessionManager: {
+      getSessionFile: () => state.sessionFile,
+      getEntries: () => {
+        if (state.failHistory) throw new Error("history unavailable");
+        return state.entries;
+      },
+    },
+  };
+  const emit = async (name, event = {}) => handlers.get(name)?.(event, ctx);
+  try { await run({ state, emit, payload: () => statusPayload(root) }); }
+  finally {
+    await emit("session_shutdown");
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+test("new/resumed metadata-only sessions are New; conversation evidence is Idle", async () => {
+  await withSession(async ({ state, emit, payload }) => {
+    for (const [entries, expected] of [
+      [[], "new"],
+      [[{ type: "model_change" }, { type: "thinking_level_change" }, { type: "custom" }], "new"],
+      [[{ type: "message", message: { role: "user", content: "" } }], "idle"],
+      [[{ type: "message", message: { role: "assistant", stopReason: "error" } }], "idle"],
+      [[{ type: "compaction" }], "idle"],
+      [[{ type: "branch_summary" }], "idle"],
+    ]) {
+      state.entries = entries;
+      await emit("session_start", { reason: "resume" });
+      assert.equal((await payload()).lifecycle, expected);
+      assert.equal((await payload()).hasConversation, expected !== "new");
+    }
+    // A new session must not inherit the prior conversation's positive flag.
+    state.entries = [];
+    await emit("session_start", { reason: "new" });
+    assert.equal((await payload()).lifecycle, "new");
+  });
+});
+
+test("first prompt and failed/cancelled response never revert an ephemeral session to New", async () => {
+  await withSession(async ({ state, emit, payload }) => {
+    await emit("session_start", { reason: "new" });
+    assert.equal((await payload()).lifecycle, "new");
+    await emit("message_start", { message: { role: "user", content: "test" } });
+    assert.equal((await payload()).lifecycle, "idle");
+    state.idle = false;
+    await emit("agent_start");
+    assert.equal((await payload()).lifecycle, "running");
+    await emit("message_start", { message: { role: "assistant" } });
+    await emit("agent_end", { messages: [{ role: "assistant", stopReason: "aborted" }] });
+    state.idle = true;
+    await emit("agent_settled");
+    assert.equal((await payload()).lifecycle, "idle");
+    assert.equal((await payload()).hasConversation, true);
+    assert.equal((await payload()).sessionFile, "");
+  });
+});
+
+test("busy and compacting override New; unresolved history is Unknown rather than New", async () => {
+  await withSession(async ({ state, emit, payload }) => {
+    state.failHistory = true;
+    await emit("session_start");
+    assert.equal((await payload()).lifecycle, "unknown");
+    assert.equal((await payload()).hasConversation, null);
+    state.failHistory = false;
+    state.entries = null;
+    await emit("agent_settled");
+    assert.equal((await payload()).lifecycle, "unknown");
+    state.entries = [];
+    await emit("agent_settled");
+    assert.equal((await payload()).lifecycle, "new");
+    await emit("ui_prompt_start");
+    assert.equal((await payload()).lifecycle, "running");
+    await emit("ui_prompt_end");
+    assert.equal((await payload()).lifecycle, "new");
+    state.idle = false;
+    await emit("agent_start");
+    assert.equal((await payload()).lifecycle, "running");
+    await emit("session_before_compact");
+    assert.equal((await payload()).lifecycle, "compacting");
+    state.idle = true;
+    await emit("session_compact_failed");
+    assert.equal((await payload()).lifecycle, "new");
+  });
+});
+
+test("heartbeat reconciles imported conversation history without a new prompt", async () => {
+  await withSession(async ({ state, emit, payload }) => {
+    await emit("session_start");
+    assert.equal((await payload()).lifecycle, "new");
+    state.entries = [{ type: "message", message: { role: "assistant" } }];
+    await new Promise((resolve) => setTimeout(resolve, 2150));
+    assert.equal((await payload()).lifecycle, "idle");
+  });
 });

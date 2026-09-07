@@ -235,12 +235,13 @@ grep -q 'private func piSessionStatusSection(sessionID: Int, lifecycle: PiSessio
 grep -q 'label = "Offline"' JARVIS/Views/HomeView.swift
 grep -q 'label = "Idle"' JARVIS/Views/HomeView.swift
 grep -q 'label = "Running"' JARVIS/Views/HomeView.swift
-grep -q 'label = "Waiting"' JARVIS/Views/HomeView.swift
+grep -q 'label = "New"' JARVIS/Views/HomeView.swift
+reject_match 'retired Waiting mode must not be presented' -E 'case waiting|label = "Waiting"' JARVIS/Views/HomeView.swift JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'label = "Compacting"' JARVIS/Views/HomeView.swift
 grep -q 'label = "Unknown"' JARVIS/Views/HomeView.swift
 grep -q 'case \.running: return \.green' JARVIS/Views/HomeView.swift
 grep -q 'case \.idle: return \.purple' JARVIS/Views/HomeView.swift
-grep -q 'case \.waiting: return \.orange' JARVIS/Views/HomeView.swift
+grep -q 'case \.new: return \.cyan' JARVIS/Views/HomeView.swift
 grep -q 'case \.compacting: return \.blue' JARVIS/Views/HomeView.swift
 grep -q 'onOpenPiTerminal: { slot in' JARVIS/JARVISApp.swift
 grep -q '_ = piTerminal.selectSlot(slot)' JARVIS/JARVISApp.swift
@@ -253,7 +254,10 @@ grep -q 'public let mobileSessions: \[PiMobileSession\]?' JARVISKit/Sources/JARV
 grep -q 'public enum PiSessionLifecycle: String' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'public var resolvedLifecycle: PiSessionLifecycle' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'pi.on("agent_settled"' ../../../.pi/extensions/46-local-pi-session-status.ts
-grep -q 'pi.on("ui_prompt_start"' ../../../.pi/extensions/46-local-pi-session-status.ts
+grep -q 'pi.on("message_start"' ../../../.pi/extensions/46-local-pi-session-status.ts
+grep -q 'ctx.sessionManager.getEntries()' ../../../.pi/extensions/46-local-pi-session-status.ts
+grep -q 'hasConversation: hasConversation ?? null' ../../../.pi/extensions/46-local-pi-session-status.ts
+reject_match 'retired Waiting mode must not be emitted' -E 'waitingForPrompt|return "waiting"' ../../../.pi/extensions/46-local-pi-session-status.ts
 grep -q 'pi.on("session_before_compact"' ../../../.pi/extensions/46-local-pi-session-status.ts
 grep -q 'version: 2' ../../../.pi/extensions/46-local-pi-session-status.ts
 grep -q 'MOBILE_PI_REPORTED_LIFECYCLES' jarvisd/jarvisd.py

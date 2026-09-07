@@ -163,6 +163,7 @@ class DaemonUnitTests(unittest.TestCase):
                         "source": "pi-extension-local-session-status",
                         "pid": pid,
                         "lifecycle": lifecycle,
+                        "hasConversation": True,
                         "updatedAt": now.isoformat().replace("+00:00", "Z"),
                     }),
                     encoding="utf-8",
@@ -177,7 +178,7 @@ class DaemonUnitTests(unittest.TestCase):
                 {"sessionID": 1, "lifecycle": "running", "active": True},
                 {"sessionID": 2, "lifecycle": "offline", "active": False},
                 {"sessionID": 3, "lifecycle": "idle", "active": False},
-                {"sessionID": 4, "lifecycle": "waiting", "active": True},
+                {"sessionID": 4, "lifecycle": "running", "active": True},
                 {"sessionID": 5, "lifecycle": "compacting", "active": True},
                 {"sessionID": 6, "lifecycle": "unknown", "active": None},
                 {"sessionID": 7, "lifecycle": "offline", "active": False},
@@ -228,7 +229,7 @@ class DaemonUnitTests(unittest.TestCase):
             )
             with mock.patch.object(jarvisd, "PI_LOCAL_SESSIONS", status_dir):
                 self.assertEqual(jarvisd._fresh_local_pi_lifecycle(111, now=now), "running")
-                self.assertEqual(jarvisd._fresh_local_pi_lifecycle(222, now=now), "idle")
+                self.assertEqual(jarvisd._fresh_local_pi_lifecycle(222, now=now), "unknown")
                 self.assertIsNone(jarvisd._fresh_local_pi_lifecycle(333, now=now))
 
     def test_mobile_pi_session_states_fail_closed_for_stale_or_missing_activity(self):
@@ -296,7 +297,7 @@ class DaemonUnitTests(unittest.TestCase):
         expected = [
             {"sessionID": 1, "lifecycle": "running", "active": True},
             {"sessionID": 2, "lifecycle": "idle", "active": False},
-            {"sessionID": 3, "lifecycle": "waiting", "active": True},
+            {"sessionID": 3, "lifecycle": "new", "active": False},
             {"sessionID": 4, "lifecycle": "offline", "active": False},
             {"sessionID": 5, "lifecycle": "compacting", "active": True},
             {"sessionID": 6, "lifecycle": "unknown", "active": None},

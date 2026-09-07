@@ -10,7 +10,16 @@ const HEARTBEAT_MS = 2_000;
 const PRUNE_INTERVAL_MS = 60_000;
 const MAX_STATUS_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
-type LocalPiSessionLifecycle = "idle" | "running" | "waiting" | "compacting";
+type LocalPiSessionLifecycle = "new" | "idle" | "running" | "compacting" | "unknown";
+
+// Inspect session entries, not visible terminal text or file size. Metadata-only
+// sessions are new; restored/forked/compacted conversations are not.
+function sessionHasConversation(entries: readonly unknown[]): boolean {
+  return entries.some((entry: any) =>
+    entry?.type === "compaction" || entry?.type === "branch_summary" ||
+    (entry?.type === "message" && ["user", "assistant"].includes(entry.message?.role)),
+  );
+}
 
 function findProjectRoot(cwd: string): string {
   let current = resolve(cwd || process.cwd());
@@ -46,7 +55,9 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   let cwd = process.cwd();
   let lifecycle: LocalPiSessionLifecycle = "idle";
   let agentRunning = false;
-  let waitingForPrompt = false;
+  let promptActive = false;
+  let hasConversation: boolean | undefined;
+  let historyProbe: (() => readonly unknown[]) | undefined;
   let compacting = false;
   let idleProbe: (() => boolean) | undefined;
   let completionID: string | undefined;
@@ -110,9 +121,18 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
 
   function resolvedLifecycle(isIdle?: boolean): LocalPiSessionLifecycle {
     if (compacting) return "compacting";
-    if (waitingForPrompt) return "waiting";
-    if (agentRunning || isIdle === false) return "running";
-    return "idle";
+    // Removing the Waiting label must not make an open interactive prompt safe
+    // for restart-all or premature completion notifications. It remains busy.
+    if (promptActive || agentRunning || isIdle === false) return "running";
+    // Positive evidence is monotonic within a session, but resets on a switch.
+    // Failed history inspection must never manufacture a New badge.
+    if (hasConversation !== true) {
+      try {
+        const entries = historyProbe?.();
+        hasConversation = Array.isArray(entries) ? sessionHasConversation(entries) : undefined;
+      } catch { hasConversation = undefined; }
+    }
+    return hasConversation === true ? "idle" : hasConversation === false ? "new" : "unknown";
   }
 
   function writeStatus(reason: string) {
@@ -125,6 +145,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
         id: `local:${process.pid}`,
         pid: process.pid,
         lifecycle,
+        hasConversation: hasConversation ?? null,
         source: "pi-extension-local-session-status",
         reason,
         cwd,
@@ -178,12 +199,20 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     completionEligible = false; // session changes never replay the previous turn
     idleProbe = () => ctx.isIdle();
     agentRunning = !ctx.isIdle();
-    waitingForPrompt = false;
+    hasConversation = undefined;
+    promptActive = false;
+    historyProbe = () => ctx.sessionManager.getEntries();
     compacting = false;
     lifecycle = resolvedLifecycle(ctx.isIdle());
     pruneStatusDir(true);
     writeStatus("session-start");
     ensureHeartbeat();
+  });
+
+  pi.on("message_start", async (event, ctx) => {
+    if (event.message.role !== "user" && event.message.role !== "assistant") return;
+    hasConversation = true; // Includes cancelled/failed first turns and ephemeral sessions.
+    updateLifecycle("conversation-message-start", ctx.isIdle());
   });
 
   pi.on("agent_start", async (_event, ctx) => {
@@ -215,12 +244,13 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   });
 
   pi.on("ui_prompt_start", async () => {
-    waitingForPrompt = true;
+    promptActive = true;
     updateLifecycle("ui-prompt-start");
   });
 
   pi.on("ui_prompt_end", async (_event, ctx) => {
-    waitingForPrompt = false;
+    promptActive = false;
+    agentRunning = !ctx.isIdle();
     updateLifecycle("ui-prompt-end", ctx.isIdle());
   });
 

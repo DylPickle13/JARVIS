@@ -312,9 +312,16 @@ public enum PiSessionLifecycle: String, Codable, Equatable, Sendable {
     case offline
     case idle
     case running
-    case waiting
+    case new
     case compacting
     case unknown
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        // An older host/cache may still send Waiting. Preserve its busy meaning
+        // without exposing the retired mode or failing the entire state snapshot.
+        self = value == "waiting" ? .running : (Self(rawValue: value) ?? .unknown)
+    }
 }
 
 public struct PiMobileSession: Codable, Equatable, Sendable {

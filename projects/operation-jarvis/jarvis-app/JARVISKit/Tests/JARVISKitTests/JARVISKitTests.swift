@@ -18,6 +18,19 @@ final class JARVISKitTests: XCTestCase {
         XCTAssertFalse(CodexQuotaPresentationPolicy.isCritical(remainingPercent: 100))
     }
 
+    func testNewSessionAndLegacyWaitingLifecycleRoundTrip() throws {
+        let decoder = JSONDecoder()
+        for lifecycle in [PiSessionLifecycle.new, .idle, .running, .compacting, .offline, .unknown] {
+            let session = PiMobileSession(sessionID: 9, lifecycle: lifecycle, active: lifecycle == .running || lifecycle == .compacting)
+            let roundTrip = try decoder.decode(PiMobileSession.self, from: JSONEncoder().encode(session))
+            XCTAssertEqual(roundTrip, session)
+        }
+        let legacy = try decoder.decode(PiSessionLifecycle.self, from: Data(#""waiting""#.utf8))
+        XCTAssertEqual(legacy, .running)
+        XCTAssertEqual(String(data: try JSONEncoder().encode(legacy), encoding: .utf8), #""running""#)
+        XCTAssertEqual(try decoder.decode(PiSessionLifecycle.self, from: Data(#""future-mode""#.utf8)), .unknown)
+    }
+
     func testPiMobileSessionLifecyclesDecodeAndRemainBackwardCompatible() throws {
         let state = try JSONDecoder().decode(
             StateSnapshot.self,
@@ -32,7 +45,7 @@ final class JARVISKitTests: XCTestCase {
                 PiMobileSession(sessionID: 1, lifecycle: .running, active: true),
                 PiMobileSession(sessionID: 2, lifecycle: .idle, active: false),
                 PiMobileSession(sessionID: 3, lifecycle: .offline, active: false),
-                PiMobileSession(sessionID: 4, lifecycle: .waiting, active: true),
+                PiMobileSession(sessionID: 4, lifecycle: .running, active: true),
                 PiMobileSession(sessionID: 5, lifecycle: .compacting, active: true),
                 PiMobileSession(sessionID: 6, lifecycle: .unknown, active: nil),
             ]

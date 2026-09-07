@@ -70,6 +70,28 @@ class MobileVscodeRestartTests(unittest.TestCase):
         self.assertEqual([item.session_file for item in snapshots], [session_files[index] for index in range(1, 10)])
         self.assertTrue(all(item.lifecycle == "idle" for item in snapshots))
 
+    def test_new_sessions_are_quiescent_and_preserve_exact_history_paths(self):
+        root, status_dir, session_dir, now, pane_output, session_files = self.fixture(
+            lifecycle_by_slot={1: "new", 7: "new", 8: "new", 9: "new"})
+        snapshots = restart.snapshots_from_panes(
+            pane_output, project_root=root, status_dir=status_dir,
+            expected_session_dir=session_dir, now=now)
+        self.assertEqual([item.session_file for item in snapshots], list(session_files.values()))
+        self.assertEqual(snapshots[8].lifecycle, "new")
+
+    def test_legacy_waiting_and_unknown_still_block_restart(self):
+        root, status_dir, session_dir, now, pane_output, _ = self.fixture()
+        status_path = status_dir / "10009-session.json"
+        payload = json.loads(status_path.read_text())
+        for lifecycle in ("waiting", "unknown", "running", "compacting"):
+            with self.subTest(lifecycle=lifecycle):
+                payload["lifecycle"] = lifecycle
+                status_path.write_text(json.dumps(payload))
+                with self.assertRaisesRegex(restart.RestartError, "non-idle"):
+                    restart.snapshots_from_panes(
+                        pane_output, project_root=root, status_dir=status_dir,
+                        expected_session_dir=session_dir, now=now)
+
     def test_task_catalog_has_only_two_visible_actions_and_nine_hidden_attachments(self):
         catalog = json.loads((SCRIPT_PATH.parent.parent / "config/jarvis-mobile-vscode-tasks.json").read_text())
         tasks = {task["label"]: task for task in catalog["tasks"]}

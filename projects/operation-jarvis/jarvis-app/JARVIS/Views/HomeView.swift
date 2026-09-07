@@ -6,7 +6,7 @@ enum PiSessionIndicatorTone: Equatable {
     case offline
     case idle
     case running
-    case waiting
+    case new
     case compacting
     case unknown
 
@@ -15,7 +15,7 @@ enum PiSessionIndicatorTone: Equatable {
         case .offline: return .gray
         case .idle: return .purple
         case .running: return .green
-        case .waiting: return .orange
+        case .new: return .cyan
         case .compacting: return .blue
         case .unknown: return JarvisPalette.warning
         }
@@ -37,9 +37,9 @@ struct PiSessionIndicatorPresentation: Equatable {
         case .running:
             label = "Running"
             tone = .running
-        case .waiting:
-            label = "Waiting"
-            tone = .waiting
+        case .new:
+            label = "New"
+            tone = .new
         case .compacting:
             label = "Compacting"
             tone = .compacting
