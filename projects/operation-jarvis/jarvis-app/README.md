@@ -4,10 +4,10 @@ Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
 surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier, and
 status/telemetry), over LAN or Tailscale.
 
-**Status:** Build `0.3.0 (146)` is installed and launch-verified on the approved
-iPhone and Watch. Build 147 is the isolated follow-up candidate; no Build 147
-deployment or physical acceptance is claimed here. Current owner Pi changes are
-merged into this candidate, without resetting the main checkout. Checked-in
+**Status:** Build `0.3.0 (147)` is installed and launch-verified on the approved
+iPhone and Watch. Build 148 is the isolated follow-up candidate; no Build 148
+deployment or physical acceptance is claimed here. It starts from the owner's
+current main (including OBS/Pi updates), without modifying that checkout. Checked-in
 `project.yml` remains Build 127; release numbers/attachment flags are artifact-only.
 
 Build 147 changes:
@@ -21,7 +21,7 @@ Build 147 changes:
   no later settle callback arrives. Retries/queued continuations remain Running.
 - Future successful settled turns in the six fixed mobile Pi sessions can send
   content-free APNs alerts: “Session N finished.” No prompt/response/model/path is
-  sent. Alerts are informational (a tap opens JARVIS, not a Jobs result).
+  sent. Build 147 taps opened JARVIS; Build 148 routes them to the exact Pi terminal.
 - Completion dispatch is independently opt-in via the private
   `.pi/runtime/session-notifications/enabled` gate and also honors existing global
   APNs enablement/registrations. It never creates Jobs results or backfills history.
@@ -3397,3 +3397,12 @@ Repeat the same flow with Siri initiated on the Watch:
 - No prompt history, cloud sync, widget action, or offline queue.
 - No terminal access through `jarvisd`.
 - No automatic clearing or replacement of another client’s staged editor text.
+
+## Build 148 candidate — terminal notification destinations and compact Home
+
+- Default-action session-completion taps select the exact validated Pi slot (1–6) on iPhone and Watch, including cold launch. Foreground alerts never navigate. The bounded tap inbox coalesces duplicate callbacks; new Jobs/terminal requests supersede older work. Slot changes wait for attachment/trust or Watch input operations rather than interrupting them.
+- Home places connection/Tailscale status beside JARVIS. Air purifier is a 54-point normal-size row with direct power; tapping its label/readout opens all existing air-quality, mode, fan and confirmation controls in a sheet. Accessibility text may expand as needed.
+- The Room audio card appears between Pi sessions and Codex. Only foreground Home polls its bounded authenticated API, every two seconds. Fresh player telemetry distinguishes Idle, Processing, Talking and Stopping; unavailable/stale evidence is never presented as Idle. Stop captures the exact displayed turn ID, is single-flight, never retries automatically, and cannot cancel a newer turn.
+- Watch Jobs uses the Crown for list scrolling. A vertical swipe **up** returns to System (Codex/air purifier), without a return-page button. Thread Back and explicit Refresh remain; accessible Return to System is available.
+
+Deployment is intentionally pending owner approval. Room-audio functionality needs the coordinated jarvisd, Mac room-audio server, and Raspberry Pi client update described in the room-audio README—not just the device binaries. No running service or physical device is changed by preparing this candidate.

@@ -174,6 +174,20 @@ private struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: JARVISSiriNavigation.terminalRequestNotification)) { _ in
             openSiriTerminalIfRequested()
         }
+        .task(id: notifications.pendingTerminalRoute) {
+            guard let request = notifications.pendingTerminalRoute,
+                  let slot = JARVISTerminalSlot(rawValue: request.sessionID) else { return }
+            requestedJobRoute = nil
+            selection = .pi
+            // Preserve attachment/trust work; route only when switching is safe.
+            while !Task.isCancelled && notifications.pendingTerminalRoute == request {
+                if piTerminal.selectSlot(slot) {
+                    notifications.consumeTerminalRoute(request)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+        }
         .onChange(of: notifications.pendingRoute, initial: true) { _, route in
             guard let route else { return }
             selection = .jobs

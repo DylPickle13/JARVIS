@@ -19,11 +19,20 @@ struct WatchJobsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 24).onEnded { value in
+                guard value.translation.height <= -52,
+                      abs(value.translation.height) > abs(value.translation.width) else { return }
+                onPreviousPage()
+            }
+        )
+        .accessibilityAction(named: "Return to System", onPreviousPage)
     }
 
     private var jobsRoot: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 8) {
+        WatchJobsCrownList {
+            VStack(alignment: .leading, spacing: 8) {
                 pageHeader
 
                 if let pending = model.pendingRoute {
@@ -55,20 +64,11 @@ struct WatchJobsView: View {
             .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
-        .refreshable { await model.refresh() }
+
     }
 
     private var pageHeader: some View {
         HStack(spacing: 6) {
-            Button(action: onPreviousPage) {
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 9, weight: .bold))
-                    .frame(width: 24, height: 24)
-                    .background(Color.white.opacity(0.07), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Return to System")
-
             Image(systemName: "calendar.badge.clock")
                 .foregroundStyle(WatchJarvisStyle.accent)
             Text("Jobs")
@@ -82,21 +82,18 @@ struct WatchJobsView: View {
                     .background(WatchJarvisStyle.accent, in: Capsule())
                     .accessibilityLabel("\(model.unreadJobCount) unread job threads")
             }
+            Button { Task { await model.refresh() } } label: {
+                Image(systemName: "arrow.clockwise").frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .disabled(model.isRefreshing)
+            .accessibilityLabel("Refresh Jobs")
             if model.isRefreshing {
                 ProgressView()
                     .controlSize(.mini)
                     .accessibilityLabel("Refreshing Jobs")
             }
         }
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 24)
-                .onEnded { value in
-                    guard value.translation.height >= 52,
-                          abs(value.translation.height) > abs(value.translation.width) else { return }
-                    onPreviousPage()
-                }
-        )
     }
 
     private func threadSection(title: String, threads: [ScheduledJobThread]) -> some View {
@@ -333,10 +330,6 @@ private struct WatchJobThreadView: View {
                 .padding(.bottom, 14)
             }
             .scrollIndicators(.hidden)
-            .refreshable {
-                await model.refresh()
-                model.markSelectedThreadRead()
-            }
             .onAppear {
                 model.markSelectedThreadRead()
                 scrollToFocus(using: proxy)
@@ -500,4 +493,59 @@ private struct WatchJobMessage: View {
         guard let date else { return value }
         return date.formatted(date: .abbreviated, time: .shortened)
     }
+}
+
+/// Disable touch scrolling at the ScrollView itself. Crown movement scrolls
+/// explicit 20-point anchors; the outer page owns vertical swipes instead.
+private struct WatchJobsCrownList<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @State private var contentHeight: CGFloat = 0
+    @State private var crown = 0.0
+    @FocusState private var crownFocused: Bool
+
+    var body: some View {
+        GeometryReader { viewport in
+            let maximum = max(0, ceil((contentHeight - viewport.size.height) / 20))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    content()
+                        .background(GeometryReader { geometry in
+                            Color.clear.preference(key: JobsContentHeight.self, value: geometry.size.height)
+                        })
+                        .overlay(alignment: .top) {
+                            VStack(spacing: 0) {
+                                ForEach(0...Int(maximum), id: \.self) { index in
+                                    Color.clear.frame(height: 20).id("jobs-crown-\(index)")
+                                }
+                            }
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                        }
+                }
+                .scrollDisabled(true)
+                .focusable()
+                .focused($crownFocused)
+                .digitalCrownRotation($crown, from: 0, through: max(1, maximum), by: 1,
+                    sensitivity: .medium, isContinuous: false, isHapticFeedbackEnabled: true)
+                .onPreferenceChange(JobsContentHeight.self) { height in
+                    contentHeight = height
+                    crown = min(crown, max(0, ceil((height - viewport.size.height) / 20)))
+                }
+                .onChange(of: crown) { _, value in
+                    proxy.scrollTo("jobs-crown-\(Int(min(maximum, max(0, value)).rounded()))", anchor: .top)
+                }
+                .onAppear { crownFocused = true }
+                .accessibilityScrollAction { direction in
+                    let step = max(1, viewport.size.height / 20)
+                    if direction == .bottom { crown = min(maximum, crown + step) }
+                    if direction == .top { crown = max(0, crown - step) }
+                }
+            }
+        }
+    }
+}
+
+private struct JobsContentHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }

@@ -2,6 +2,20 @@ import XCTest
 @testable import JARVISKit
 
 final class ScheduledJobNotificationRouteTests: XCTestCase {
+    func testTerminalTapInboxIsBoundedExactAndDuplicateIdempotent() {
+        var inbox = PiTerminalNotificationInbox()
+        for slot in 1...6 {
+            XCTAssertEqual(inbox.receive(notificationID: "tap-\(slot)", sessionID: slot)?.sessionID, slot)
+        }
+        XCTAssertNil(inbox.receive(notificationID: "tap-1", sessionID: 1))
+        XCTAssertNil(inbox.receive(notificationID: "bad", sessionID: 7))
+        XCTAssertNil(inbox.receive(notificationID: "bad", sessionID: 0))
+        XCTAssertNil(inbox.receive(notificationID: "", sessionID: 1))
+        for index in 0..<100 { _ = inbox.receive(notificationID: "new-\(index)", sessionID: 6) }
+        XCTAssertNil(inbox.receive(notificationID: "new-99", sessionID: 6))
+        XCTAssertNotNil(inbox.receive(notificationID: "tap-1", sessionID: 1))
+    }
+
     private let base: [String: JSONValue] = [
         "route": .string("scheduled-job-result"),
         "routeVersion": .number(1),

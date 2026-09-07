@@ -5,6 +5,24 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testSessionTapsSupersedeJobsAndObsoleteConsumersCannotClearNewRoute() throws {
+        let coordinator = PushNotificationCoordinator.shared
+        coordinator.present(resultSequence: 100)
+        let id = UUID().uuidString
+        coordinator.presentSession(sessionID: 6, notificationID: id)
+        let first = try XCTUnwrap(coordinator.pendingTerminalRoute)
+        XCTAssertEqual(first.sessionID, 6)
+        XCTAssertNil(coordinator.pendingRoute)
+        coordinator.presentSession(sessionID: 6, notificationID: id)
+        XCTAssertEqual(coordinator.pendingTerminalRoute, first)
+        coordinator.presentSession(sessionID: 2, notificationID: UUID().uuidString)
+        coordinator.consumeTerminalRoute(first)
+        XCTAssertEqual(coordinator.pendingTerminalRoute?.sessionID, 2)
+        coordinator.present(resultSequence: 101)
+        XCTAssertNil(coordinator.pendingTerminalRoute)
+        if let route = coordinator.pendingRoute { coordinator.consumePendingRoute(route) }
+    }
+
     func testNotificationNavigationInboxCoalescesDuplicatesAndNewestResultWins() throws {
         let coordinator = PushNotificationCoordinator.shared
         if let pending = coordinator.pendingRoute {

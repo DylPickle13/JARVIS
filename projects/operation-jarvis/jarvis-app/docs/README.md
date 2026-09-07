@@ -1190,3 +1190,9 @@ requires separate authorization after the exact Build 146 archive is audited and
 - [Establishing a token-based connection to APNs](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns)
 - [Communicating with APNs using authentication tokens](https://developer.apple.com/help/account/capabilities/communicate-with-apns-using-authentication-tokens/)
 - [Enabling App ID capabilities and regenerating affected profiles](https://developer.apple.com/help/account/identifiers/enable-app-capabilities/)
+
+### Build 148 deployment boundary
+
+Prepare/test on an isolated branch. Preserve Build 147 rollback evidence and owner main. Do not install device apps or restart/roll out jarvisd, room audio or the Raspberry Pi listener until owner approval. Artifact-only release numbering/native attachment flags remain outside checked-in project configuration.
+
+Completion taps now use an exact-slot, process-local inbox on each target (no tokens/prompt/response persistence). Pending Jobs work is cancelled when a terminal tap supersedes it. Room-audio Stop uses a fixed authenticated jarvisd route and fixed loopback upstream, not arbitrary URLs, SSH commands or service termination. Live request playback acceptance must test both Processing and Talking and verify that a stale Stop cannot affect the next turn.

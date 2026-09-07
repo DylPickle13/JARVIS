@@ -769,6 +769,54 @@ class RoomAudioTurnController:
         self._turn_id = ""
         self._state = "IDLE"
         self._cancel_event: threading.Event | None = None
+        self._report_stop = threading.Event()
+        self._report_thread: threading.Thread | None = None
+        self._client_id = uuid.uuid4().hex
+        self._report_sequence = 0
+        self.capture_online = False
+
+    def start_reporting(self) -> None:
+        if not self.args.token or (self._report_thread and self._report_thread.is_alive()): return
+        self._report_stop = threading.Event()
+        self._report_thread = threading.Thread(target=self._report_loop, name="room-client-state", daemon=True)
+        self._report_thread.start()
+
+    def _report_once(self) -> None:
+        busy, turn, state = self.snapshot()
+        phase = {"PLAYING": "speaking", "GENERATING": "processing", "CANCELLING": "cancelling"}.get(state,
+                    "idle" if self.capture_online else "unavailable")
+        self._report_sequence += 1
+        payload = {"clientID": self._client_id, "sequence": self._report_sequence,
+                   "turnID": turn if busy else None, "phase": phase}
+        request = urllib.request.Request(self.args.server_url.rstrip("/") + "/client-state",
+            data=json.dumps(payload).encode(), method="POST",
+            headers={"Content-Type": "application/json", "x-jarvis-room-token": self.args.token})
+        with urllib.request.urlopen(request, timeout=2) as response:
+            result = json.loads(response.read(2048))
+        if busy and result.get("cancelTurnID") == turn:
+            self.cancel_local(turn)
+
+    def _report_loop(self) -> None:
+        while not self._report_stop.is_set():
+            try: self._report_once()
+            except Exception: pass  # Never log authentication headers or private voice data.
+            self._report_stop.wait(1)
+
+    def play_greeting(self) -> None:
+        turn, cancel = uuid.uuid4().hex, threading.Event()
+        with self._lock:
+            if self._turn_id: return
+            self._turn_id, self._state, self._cancel_event = turn, "GENERATING", cancel
+        try:
+            response = get_greeting(self.args.server_url, token=self.args.token, timeout=self.args.greeting_timeout)
+            self.set_state(turn, "PLAYING")
+            play_response_audio(response, device=self.args.playback_device,
+                drain_seconds=self.args.bt_playback_drain_seconds,
+                playback_controller=self.playback, cancel_event=cancel)
+        finally:
+            with self._lock:
+                if self._turn_id == turn:
+                    self._turn_id, self._state, self._cancel_event = "", "IDLE", None
 
     def snapshot(self) -> tuple[bool, str, str]:
         with self._lock:
@@ -913,6 +961,9 @@ class RoomAudioTurnController:
         return True
 
     def shutdown(self) -> None:
+        self.capture_online = False
+        self._report_stop.set()
+        if self._report_thread: self._report_thread.join(timeout=3)
         with self._lock:
             turn_id = self._turn_id
             cancel_event = self._cancel_event
@@ -1075,6 +1126,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
     greeting_pending = bool(args.startup_greeting)
 
     while True:
+        if turn_controller: turn_controller.capture_online = False
         if args.bluetooth_mac and not ensure_bluetooth_connected(args):
             if args.greeting_on_reconnect:
                 greeting_pending = True
@@ -1082,6 +1134,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
             continue
 
         proc = start_raw_arecord(device=args.device, rate=args.rate)
+        if turn_controller: turn_controller.start_reporting()
         if proc.stdout is None:
             raise RuntimeError("arecord stdout pipe was not created")
         fd = proc.stdout.fileno()
@@ -1108,6 +1161,8 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                     stderr = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr is not None else ""
                     raise RuntimeError(f"arecord stopped while reading VAD audio: {stderr.strip()}")
 
+                if turn_controller: turn_controller.capture_online = True
+
                 if greeting_pending:
                     greeting_pending = False
                     print("vad capture online; playing room-audio greeting", flush=True)
@@ -1115,7 +1170,8 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                     if args.bt_profile_settle_seconds > 0:
                         time.sleep(args.bt_profile_settle_seconds)
                     try:
-                        play_room_greeting(args)
+                        if turn_controller: turn_controller.play_greeting()
+                        else: play_room_greeting(args)
                     except Exception as exc:
                         print(f"room-audio greeting error: {exc}", flush=True)
                     break
@@ -1279,6 +1335,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                 turn_controller.shutdown()
             raise
         except Exception as exc:
+            if turn_controller: turn_controller.capture_online = False
             print(f"vad error: {exc}; restarting capture in {args.interval:.1f}s", flush=True)
             if args.greeting_on_reconnect:
                 greeting_pending = True

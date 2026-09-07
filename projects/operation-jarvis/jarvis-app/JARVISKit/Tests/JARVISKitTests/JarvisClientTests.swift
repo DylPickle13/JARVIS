@@ -24,6 +24,36 @@ final class JarvisClientTests: XCTestCase {
         super.tearDown()
     }
 
+    func testRoomAudioStatusAndStopAreBoundedAuthenticatedAndExact() async throws {
+        let turn = String(repeating: "a", count: 32)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            XCTAssertLessThanOrEqual(request.timeoutInterval, 4)
+            XCTAssertTrue(["/api/v1/room-audio", "/api/v1/room-audio/stop"].contains(request.url!.path))
+            return MockURLProtocol.response(request, status: 200,
+                body: #"{"ok":true,"clientOnline":true,"phase":"speaking","turnID":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","canStop":true,"ageSeconds":1}"#)
+        }
+        let status = try await client.roomAudioStatus(endpoint)
+        XCTAssertEqual(status.title, "Talking")
+        XCTAssertTrue(status.allowsStop)
+        _ = try await client.stopRoomAudio(endpoint, turnID: turn)
+        for invalid in ["", turn + "\n", "../other", String(repeating: "A", count: 32)] {
+            do { _ = try await client.stopRoomAudio(endpoint, turnID: invalid); XCTFail("must reject malformed turn") }
+            catch {}
+        }
+    }
+
+    func testRoomAudioUnknownOrStaleCannotBeStopped() throws {
+        for phase in ["idle", "unavailable", "cancelling", "invented"] {
+            let data = "{\"ok\":true,\"clientOnline\":true,\"phase\":\"\(phase)\",\"turnID\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"canStop\":true,\"ageSeconds\":1}".data(using: .utf8)!
+            XCTAssertFalse(try JSONDecoder().decode(RoomAudioStatus.self, from: data).allowsStop)
+        }
+        let data = #"{"ok":true,"clientOnline":true,"phase":"speaking","turnID":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","canStop":true,"ageSeconds":9}"#.data(using: .utf8)!
+        let stale = try JSONDecoder().decode(RoomAudioStatus.self, from: data)
+        XCTAssertFalse(stale.allowsStop)
+        XCTAssertEqual(stale.title, "Unavailable")
+    }
+
     func testHealthRequestUsesTokenAndDecodes() async throws {
         MockURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/health")

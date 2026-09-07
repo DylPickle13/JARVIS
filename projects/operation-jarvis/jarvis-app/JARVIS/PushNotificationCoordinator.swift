@@ -175,12 +175,26 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
         Task { await upload(registration) }
     }
 
+    @Published private(set) var pendingTerminalRoute: PiTerminalNotificationRequest?
+    private var terminalInbox = PiTerminalNotificationInbox()
+
+    func presentSession(sessionID: Int, notificationID: String) {
+        guard let request = terminalInbox.receive(notificationID: notificationID, sessionID: sessionID) else { return }
+        pendingRoute = nil
+        pendingTerminalRoute = request
+    }
+
+    func consumeTerminalRoute(_ request: PiTerminalNotificationRequest) {
+        if pendingTerminalRoute == request { pendingTerminalRoute = nil }
+    }
+
     func present(resultSequence: Int) {
         guard resultSequence > 0 else { return }
         // A single explicit notification action can surface through more than
         // one process-local lifecycle callback. Keep that signal idempotent,
         // while a tap for a different result always supersedes older work.
         if pendingRoute?.resultSequence == resultSequence { return }
+        pendingTerminalRoute = nil
         pendingRoute = ScheduledJobNavigationRequest(resultSequence: resultSequence)
     }
 
@@ -388,8 +402,18 @@ extension PushNotificationCoordinator: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let route = Self.route(from: response.notification.request.content.userInfo) else { return }
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let payload = response.notification.request.content.userInfo
+        if let terminal = PiSessionCompletionNotificationRoute(
+            route: payload["route"] as? String, version: payload["routeVersion"], sessionID: payload["sessionID"]
+        ) {
+            await MainActor.run {
+                PushNotificationCoordinator.shared.presentSession(sessionID: terminal.sessionID,
+                    notificationID: response.notification.request.identifier)
+            }
+            return
+        }
+        guard let route = Self.route(from: payload) else { return }
         await MainActor.run {
             PushNotificationCoordinator.shared.present(resultSequence: route.resultSequence)
         }

@@ -71,3 +71,24 @@ public struct PiSessionCompletionNotificationRoute: Equatable, Sendable {
         self.sessionID = validated.resultSequence
     }
 }
+
+/// A bounded, process-local tap inbox: no foreground navigation or persisted payload.
+public struct PiTerminalNotificationRequest: Hashable, Sendable {
+    public let notificationID: String
+    public let sessionID: Int
+    public init(notificationID: String, sessionID: Int) {
+        self.notificationID = notificationID
+        self.sessionID = sessionID
+    }
+}
+public struct PiTerminalNotificationInbox: Sendable {
+    private var seen: [String] = []
+    public init() {}
+    public mutating func receive(notificationID: String, sessionID: Int) -> PiTerminalNotificationRequest? {
+        guard (1...6).contains(sessionID), !notificationID.isEmpty,
+              !seen.contains(notificationID) else { return nil }
+        seen.append(notificationID)
+        if seen.count > 64 { seen.removeFirst(seen.count - 64) }
+        return PiTerminalNotificationRequest(notificationID: notificationID, sessionID: sessionID)
+    }
+}

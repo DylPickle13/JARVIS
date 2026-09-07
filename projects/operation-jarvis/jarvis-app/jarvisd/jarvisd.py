@@ -42,6 +42,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -2656,6 +2657,30 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):  # noqa: N802
         self._method_not_allowed()
 
+    def _room_audio(self, turn_id=None):
+        try:
+            request = urllib.request.Request(
+                "http://127.0.0.1:8791/control/" + ("stop" if turn_id is not None else "status"),
+                data=json.dumps({"turnID": turn_id}).encode() if turn_id is not None else None,
+                headers={"Content-Type": "application/json"})
+            # Fixed loopback transport, no environment proxy or redirects.
+            connection = http.client.HTTPConnection("127.0.0.1", 8791, timeout=2)
+            try:
+                connection.request(request.get_method(), urllib.parse.urlsplit(request.full_url).path,
+                                   body=request.data, headers=dict(request.header_items()))
+                response = connection.getresponse()
+                data = response.read(4097)
+                if len(data) > 4096 or response.status != 200: raise ValueError("unavailable")
+                value = json.loads(data)
+                if not isinstance(value, dict) or value.get("ok") is not True: raise ValueError("unavailable")
+                safe = {key: value.get(key) for key in ("ok", "clientOnline", "phase", "turnID", "canStop", "ageSeconds")}
+                if safe["phase"] not in {"idle", "processing", "speaking", "cancelling", "unavailable"}: raise ValueError("invalid phase")
+                self._send(200, safe)
+            finally:
+                connection.close()
+        except Exception:
+            self._send(503 if turn_id is None else 409, {"ok": False, "error": "Room audio unavailable or request changed."})
+
     def do_GET(self):  # noqa: N802
         self.request_id = uuid.uuid4().hex[:12]
         parsed = urllib.parse.urlparse(self.path)
@@ -2666,6 +2691,9 @@ class Handler(BaseHTTPRequestHandler):
             if self._reject_origin():
                 return
             self._send(200, {"ok": True, "version": VERSION, "uptimeSeconds": round(time.time() - START_TIME, 1)})
+            return
+        if path == "/api/v1/room-audio":
+            if self._auth_or_respond(): self._room_audio()
             return
         if path == "/api/v1/state":
             if not self._auth_or_respond():
@@ -2747,6 +2775,18 @@ class Handler(BaseHTTPRequestHandler):
         self.request_id = uuid.uuid4().hex[:12]
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        if path == "/api/v1/room-audio/stop":
+            if not self._auth_or_respond(): return
+            try:
+                payload = self._read_json()
+                turn = payload.get("turnID")
+                if set(payload) != {"turnID"} or not isinstance(turn, str) or not re.fullmatch(r"[a-f0-9]{32}", turn):
+                    raise ValueError("invalid turn")
+            except (RequestInputError, ValueError, TypeError):
+                self._send(400, {"ok": False, "error": "Exact room turn ID required."})
+                return
+            self._room_audio(turn)
+            return
         if path == "/api/jarvis/events":
             if not self._auth_or_respond("events"):
                 return

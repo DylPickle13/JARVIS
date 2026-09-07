@@ -58,8 +58,10 @@ struct HomeView: View {
         self.onOpenPiTerminal = onOpenPiTerminal
     }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
     @State private var fanLocal: Double = 2
     @State private var isDraggingFan = false
+    @State private var showsPurifierControls = false
 
     private var usesAccessibilityLayout: Bool { dynamicTypeSize.isAccessibilitySize }
     private var gridColumns: [GridItem] {
@@ -70,7 +72,10 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
-                    compactConnectionStrip
+                    HStack(spacing: 12) {
+                        Text("JARVIS").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+                        compactConnectionStrip
+                    }
 
                     if let operationError = app.operationErrorMessage {
                         OperationErrorCard(message: operationError)
@@ -83,6 +88,7 @@ struct HomeView: View {
                             loadingCard
                         } else {
                             piCard(state)
+                            roomAudioCard
                             codexQuotaCard(state)
                             plugsSection(state)
                             purifierSection(state)
@@ -96,8 +102,51 @@ struct HomeView: View {
             }
             .scrollIndicators(.hidden)
             .background(JarvisBackdrop())
-            .navigationTitle("JARVIS")
-            .refreshable { await app.refreshHome() }
+            .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showsPurifierControls) {
+                NavigationStack {
+                    ScrollView {
+                        if let state = app.lastState { purifierDetailSection(state).padding() }
+                    }
+                    .navigationTitle("Air purifier")
+                    .toolbar { ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showsPurifierControls = false }
+                    } }
+                }
+                .presentationDetents([.medium, .large])
+            }
+            .refreshable { await app.refreshHome(); await app.refreshRoomAudio() }
+            .task(id: scenePhase == .active && app.activeSection == .home) {
+                guard scenePhase == .active, app.activeSection == .home else { return }
+                while !Task.isCancelled {
+                    await app.refreshRoomAudio()
+                    do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                }
+            }
+        }
+    }
+
+    private var roomAudioCard: some View {
+        let status = app.roomAudio
+        let fresh = app.roomAudioUpdatedAt.map { Date().timeIntervalSince($0) <= 6 } ?? false
+        let title = fresh ? (status?.title ?? "Unavailable") : "Unavailable"
+        let tone: Color = title == "Talking" ? JarvisPalette.accent
+            : title == "Processing" || title == "Stopping" ? JarvisPalette.warning : .secondary
+        return MinimalCard {
+            HStack(spacing: 10) {
+                Label("Room audio", systemImage: "waveform").font(.subheadline.weight(.semibold))
+                Spacer(minLength: 4)
+                Circle().fill(tone).frame(width: 7, height: 7)
+                Text(title).font(.caption.weight(.medium)).foregroundStyle(tone)
+                Button { Task { await app.stopRoomAudio() } } label: {
+                    Image(systemName: "stop.fill").font(.caption)
+                        .frame(width: 32, height: 32)
+                        .background(tone.opacity(0.12), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!fresh || status?.allowsStop != true || app.roomAudioStopping)
+                .accessibilityLabel("Stop active room-audio request")
+            }
         }
     }
 
@@ -122,15 +171,7 @@ struct HomeView: View {
                     .accessibilityLabel("Refreshing JARVIS status")
             }
 
-            Text(freshnessLabel)
-                .font(.caption)
-                .foregroundStyle(
-                    app.isAwaitingFreshState || app.lastState?.stale == true
-                        ? JarvisPalette.warning
-                        : .secondary
-                )
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+
         }
         .padding(.horizontal, 12)
         .frame(minHeight: 42)
@@ -311,6 +352,35 @@ struct HomeView: View {
 
     @ViewBuilder
     private func purifierSection(_ state: StateSnapshot) -> some View {
+        let purifier = state.subsystems?.purifier
+        let busy = app.isOperationBusy("purifier") || purifier?.verificationPending == true
+        return MinimalCard(padding: 11) {
+            HStack(spacing: 8) {
+                Button { showsPurifierControls = true } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "wind").foregroundStyle(JarvisPalette.accent)
+                        Text("Air purifier").font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 0)
+                        Text(purifier?.pm25.map { "\($0) µg/m³" } ?? "—")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(purifierQualityColor(purifier?.pm25))
+                        Image(systemName: "slider.horizontal.3").foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 32)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens air quality, mode, fan speed and pending-change details")
+                if busy { ProgressView().controlSize(.small) }
+                Toggle("Air purifier power", isOn: powerBinding)
+                    .labelsHidden().tint(JarvisPalette.accent)
+                    .disabled(purifier?.ok != true || purifier?.isOn == nil || purifier?.stale == true || busy)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func purifierDetailSection(_ state: StateSnapshot) -> some View {
         if let purifier = state.subsystems?.purifier, purifier.ok == true {
             let isOn = purifier.isOn
             let mode = ["auto", "manual", "sleep", "pet"].contains(purifier.mode ?? "")

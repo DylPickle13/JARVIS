@@ -91,14 +91,16 @@ struct Card<Content: View>: View {
 /// decorative padding and shadows consuming the viewport.
 struct MinimalCard<Content: View>: View {
     @ViewBuilder var content: Content
+    let contentPadding: CGFloat
 
-    init(@ViewBuilder content: () -> Content) {
+    init(padding: CGFloat = 12, @ViewBuilder content: () -> Content) {
         self.content = content()
+        self.contentPadding = padding
     }
 
     var body: some View {
         content
-            .padding(12)
+            .padding(contentPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 JarvisPalette.surface,

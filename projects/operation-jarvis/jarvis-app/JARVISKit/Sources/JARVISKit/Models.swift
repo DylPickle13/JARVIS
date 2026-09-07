@@ -667,3 +667,28 @@ public enum JSONValue: Codable, Equatable, Sendable {
         return nil
     }
 }
+
+public struct RoomAudioStatus: Codable, Equatable, Sendable {
+    public let ok: Bool
+    public let clientOnline: Bool
+    public let phase: String
+    public let turnID: String?
+    public let canStop: Bool
+    public let ageSeconds: Double?
+    public var title: String {
+        guard ok, clientOnline, let ageSeconds, (0...6).contains(ageSeconds) else { return "Unavailable" }
+        switch phase {
+        case "idle": return "Idle"
+        case "processing": return "Processing"
+        case "speaking": return "Talking"
+        case "cancelling": return "Stopping"
+        default: return "Unknown"
+        }
+    }
+    public var allowsStop: Bool {
+        ok && clientOnline && canStop && ["processing", "speaking"].contains(phase)
+            && (ageSeconds.map { $0 >= 0 && $0 <= 6 } ?? false)
+            && turnID?.utf8.count == 32
+            && turnID?.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil
+    }
+}

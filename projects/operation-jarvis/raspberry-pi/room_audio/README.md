@@ -208,3 +208,20 @@ ssh -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes pi@<private-lan-ip> \
 ## Notes
 
 The VAD mode uses a continuous local voice approach: continuous PCM input, RMS voice gate, preroll, minimum voiced duration, silence-based utterance finalization, and max-duration cutoff. With `--local-wake-word`, the same PCM stream is resampled to 16 kHz and fed to openWakeWord in 80 ms chunks; idle utterances that never trigger the local `hey_jarvis` model are discarded without a network request. While a USB turn is busy, short VAD clips bypass only that wake gate and go to the configured Mac control ASR for exact `stop` matching. Once a normal locally wake-accepted utterance reaches the Mac, the server responds to the selected ASR transcript rather than checking for wake-word aliases again. Raspberry Pi hardware notes live in [`../README.md`](../README.md), with detailed hardware notes in [`../docs/audio-hardware.md`](../docs/audio-hardware.md).
+
+## Native Home status and exact-turn Stop (Build 148 candidate)
+
+The full-duplex `--interrupt-while-busy` listener sends one bounded content-free heartbeat per second to `/client-state`: a process-instance ID, monotonic sequence, opaque turn ID, and phase only. Processing includes upload/ASR/generation; Talking is reported around actual local acknowledgement/final/greeting WAV playback. Capture failure without an active turn reports Unavailable. No transcript, response, audio, model, device token, or credential is included in telemetry.
+
+This **requires a nonempty matching `JARVIS_ROOM_AUDIO_TOKEN` on both Mac and Pi**. The new telemetry endpoint fails closed without it (older optional-token voice behavior is unchanged). The current local configuration was checked only for presence, not logged; the token is not configured yet. At approved deployment, provision a cryptographically random shared token in the existing owner-only environment files on both machines, without command-line arguments, Git, logs or artifacts. Coordinate activation only after both sides have matching configuration.
+
+`GET /control/status` and `POST /control/stop` are loopback-only; jarvisd exposes authenticated `/api/v1/room-audio` and `/api/v1/room-audio/stop`. Six-second freshness is required for controls. Stop must name the current exact turn; no "stop latest" behavior. The server aborts only the matching Pi RPC turn and retains its cancellation for the player's next heartbeat, which stops local playback too. Cancellation arriving during upload/ASR is checked before generation. The single current cancellation survives a long in-flight call; older records are bounded to 256 and ten minutes after leaving that turn. Client instances and sequence checks reject replayed telemetry. Stopping remains visible until the actual worker/player settles.
+
+Rollback/deployment: wait for room audio to be idle; obtain owner approval before coordinated Mac jarvisd/room-audio and Raspberry Pi listener updates/restarts. Do not interrupt the six mobile Pi sessions or automatically `/reload` them. Before deployment, the new app safely shows Unavailable against an old server/client. Legacy non-full-duplex diagnostics do not fabricate player telemetry.
+
+Offline verification (no live playback, requests or service mutations):
+
+```sh
+cd projects/operation-jarvis/raspberry-pi/room_audio
+/path/to/JARVIS/.venv/bin/python -m unittest test_room_audio_control test_room_audio_interrupt
+```

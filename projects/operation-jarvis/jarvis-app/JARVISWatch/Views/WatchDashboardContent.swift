@@ -66,9 +66,12 @@ struct WatchDashboardContent: View {
             guard newValue != oldValue else { return }
             selectedPage = .terminal
         }
-        .onChange(of: requestedJobRoute, initial: true) { _, route in
-            guard let route else { return }
-            presentJobRoute(route)
+        .task(id: requestedJobRoute?.id) {
+            guard let route = requestedJobRoute else { return }
+            selectedPage = .jobs
+            if await model.resolveScheduledJobRoute(route), !Task.isCancelled {
+                onJobRouteConsumed(route)
+            }
         }
         .onDisappear {
             model.setJobsPageVisible(false)
@@ -122,15 +125,6 @@ struct WatchDashboardContent: View {
         if page == selectedPage { return .white }
         if page == .jobs, jobs.unreadJobCount > 0 { return WatchJarvisStyle.accent }
         return Color.secondary.opacity(0.55)
-    }
-
-    private func presentJobRoute(_ route: ScheduledJobNavigationRequest) {
-        selectedPage = .jobs
-        Task {
-            if await model.resolveScheduledJobRoute(route) {
-                onJobRouteConsumed(route)
-            }
-        }
     }
 
     private func pageDragGesture(

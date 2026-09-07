@@ -74,6 +74,8 @@ public protocol JarvisAPI: Sendable {
         limit: Int,
         jobId: String?
     ) async throws -> ScheduledJobResultsResponse
+    func roomAudioStatus(_ endpoint: JarvisEndpoint) async throws -> RoomAudioStatus
+    func stopRoomAudio(_ endpoint: JarvisEndpoint, turnID: String) async throws -> RoomAudioStatus
     func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult
     func signingRenewalStatus(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus
@@ -82,6 +84,13 @@ public protocol JarvisAPI: Sendable {
 }
 
 public extension JarvisAPI {
+    func roomAudioStatus(_ endpoint: JarvisEndpoint) async throws -> RoomAudioStatus {
+        throw JarvisError.transport("Room audio status unavailable.")
+    }
+    func stopRoomAudio(_ endpoint: JarvisEndpoint, turnID: String) async throws -> RoomAudioStatus {
+        throw JarvisError.transport("Room audio control unavailable.")
+    }
+
     func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus {
         throw JarvisError.transport("Notification status is unavailable.")
     }
@@ -326,6 +335,17 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .jarvisPathSegment) ?? name
         let body = try JSONSerialization.data(withJSONObject: ["action": action])
         return try await perform(endpoint, "/api/v1/services/\(encodedName)", method: "POST", body: body, as: ServiceActionResult.self)
+    }
+
+    public func roomAudioStatus(_ endpoint: JarvisEndpoint) async throws -> RoomAudioStatus {
+        try await perform(endpoint, "/api/v1/room-audio", requestTimeout: 3, as: RoomAudioStatus.self)
+    }
+    public func stopRoomAudio(_ endpoint: JarvisEndpoint, turnID: String) async throws -> RoomAudioStatus {
+        guard turnID.utf8.count == 32, turnID.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil else {
+            throw JarvisError.transport("Invalid room turn.")
+        }
+        return try await perform(endpoint, "/api/v1/room-audio/stop", method: "POST",
+            body: JSONEncoder().encode(["turnID": turnID]), requestTimeout: 4, as: RoomAudioStatus.self)
     }
 
     public func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus {

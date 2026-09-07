@@ -44,6 +44,48 @@ private struct WidgetReloadValue: Equatable {
 @MainActor
 public final class AppState: ObservableObject {
     public let store: EndpointStore
+    @Published public private(set) var roomAudio: RoomAudioStatus?
+    @Published public private(set) var roomAudioUpdatedAt: Date?
+    @Published public private(set) var roomAudioStopping = false
+    private var roomAudioGeneration = 0
+
+    public func refreshRoomAudio() async {
+        guard !roomAudioStopping else { return }
+        guard activeSection == .home, connectionState == .connected, let endpoint = activeEndpoint else {
+            roomAudio = nil
+            return
+        }
+        let generation = roomAudioGeneration
+        do {
+            let result = try await client.roomAudioStatus(endpoint)
+            guard !Task.isCancelled, generation == roomAudioGeneration,
+                  activeEndpoint == endpoint, activeSection == .home else { return }
+            roomAudio = result
+            roomAudioUpdatedAt = Date()
+        } catch {
+            if !Task.isCancelled, generation == roomAudioGeneration, activeEndpoint == endpoint { roomAudio = nil }
+        }
+    }
+
+    public func stopRoomAudio() async {
+        guard connectionState == .connected, !roomAudioStopping, let status = roomAudio, status.allowsStop,
+              let updated = roomAudioUpdatedAt, Date().timeIntervalSince(updated) <= 6,
+              let turn = status.turnID, let endpoint = activeEndpoint else { return }
+        roomAudioGeneration += 1
+        roomAudioStopping = true
+        defer { roomAudioStopping = false }
+        do {
+            let result = try await client.stopRoomAudio(endpoint, turnID: turn)
+            guard activeEndpoint == endpoint else { return }
+            roomAudio = result
+            roomAudioUpdatedAt = Date()
+        } catch {
+            // Never retry a possibly accepted stop or substitute a newer turn.
+            roomAudio = nil
+            operationErrorMessage = "Could not confirm room-audio Stop. Refresh status before trying again."
+        }
+    }
+
     public let client: any JarvisAPI
     let watchTerminalProvisioning: WatchTerminalProvisioningSettings
 

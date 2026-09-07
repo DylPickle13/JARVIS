@@ -1250,6 +1250,14 @@ class HTTPTests(unittest.TestCase):
         connection.close()
         return result
 
+    def test_room_audio_requires_api_auth_and_an_exact_turn(self):
+        with mock.patch.object(jarvisd.Handler, "_room_audio") as relay:
+            self.assertEqual(self.request("GET", "/api/v1/room-audio")[0], 401)
+            self.assertEqual(self.request("POST", "/api/v1/room-audio/stop", {"turnID": "a"*32})[0], 401)
+            for payload in [{}, {"turnID": True}, {"turnID": "a"*32+"\n"}, {"turnID":"a"*32,"extra":1}]:
+                self.assertEqual(self.request("POST", "/api/v1/room-audio/stop", payload, token="api-secret")[0], 400)
+            relay.assert_not_called()
+
     def test_token_scope_and_no_wildcard_cors(self):
         status, headers, _ = self.request("GET", "/health")
         self.assertEqual(status, 200)

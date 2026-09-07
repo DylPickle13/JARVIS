@@ -55,6 +55,8 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(VOICE_ROOT) not in sys.path:
     sys.path.insert(0, str(VOICE_ROOT))
 
+from room_audio_control import RoomAudioControl
+
 import config  # noqa: E402
 
 config.load_project_env(PROJECT_ROOT / ".env")
@@ -284,6 +286,7 @@ class RoomAudioBridge:
         self._active_pi_turn_id = ""
         self._jobs_lock = threading.Lock()
         self._jobs: dict[str, dict[str, Any]] = {}
+        self.control = RoomAudioControl()
         self._ack_lock = threading.Lock()
         self._ack_audio_b64: str | None = None
         self._model = model
@@ -769,6 +772,10 @@ class RoomAudioBridge:
                 "cancelEvent": cancel_event,
             }
 
+        # Cancellation may arrive while upload/ASR/ack synthesis is in flight.
+        control = getattr(self, "control", None)
+        if control is not None and control.is_cancelled(turn_id):
+            cancel_event.set()
         threading.Thread(
             target=self._finish_async_turn,
             args=(turn_id, job_wav_path, transcript, input_seconds, asr_seconds, started, cancel_event),
@@ -853,6 +860,12 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - stdlib method name
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        if path == "/control/status":
+            if not is_loopback_address(self.client_address[0]):
+                self._send_json({"ok": False, "error": "forbidden"}, HTTPStatus.FORBIDDEN)
+                return
+            self._send_json(self.server.bridge.control.status())
+            return
         if path == "/turn-result":
             if not self._authorized():
                 self._send_json({"ok": False, "error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
@@ -926,8 +939,33 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
             LOGGER.exception("Watch speech synthesis failed")
             self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
 
+    def _handle_control(self, path: str) -> None:
+        allowed = (is_loopback_address(self.client_address[0]) if path == "/control/stop"
+                   else bool(self.server.token) and self._authorized())
+        if not allowed:
+            self._send_json({"ok": False, "error": "forbidden"}, HTTPStatus.FORBIDDEN)
+            return
+        try:
+            length = int(self.headers.get("content-length", "0"))
+            if not 0 < length <= 1024: raise ValueError("invalid size")
+            payload = json.loads(self.rfile.read(length))
+            if path == "/client-state":
+                result = self.server.bridge.control.report(payload)
+                turn = result.get("cancelTurnID")
+                if turn: self.server.bridge.cancel_turn(turn)
+            else:
+                if not isinstance(payload, dict) or set(payload) != {"turnID"}: raise ValueError("invalid stop")
+                result = self.server.bridge.control.stop(payload["turnID"])
+                self.server.bridge.cancel_turn(payload["turnID"])
+            self._send_json(result)
+        except (ValueError, TypeError):
+            self._send_json({"ok": False, "error": "invalid or superseded request"}, HTTPStatus.CONFLICT)
+
     def do_POST(self) -> None:  # noqa: N802 - stdlib method name
         path = urlparse(self.path).path.rstrip("/") or "/"
+        if path in {"/client-state", "/control/stop"}:
+            self._handle_control(path)
+            return
         if path == "/synthesize":
             self._handle_watch_speech()
             return

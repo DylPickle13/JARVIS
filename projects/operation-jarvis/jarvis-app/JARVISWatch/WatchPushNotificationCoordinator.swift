@@ -122,11 +122,25 @@ final class WatchPushNotificationCoordinator: NSObject, ObservableObject {
         send(registration)
     }
 
+    @Published private(set) var pendingTerminalRoute: PiTerminalNotificationRequest?
+    private var terminalInbox = PiTerminalNotificationInbox()
+
+    func presentSession(sessionID: Int, notificationID: String) {
+        guard let request = terminalInbox.receive(notificationID: notificationID, sessionID: sessionID) else { return }
+        pendingRoute = nil
+        pendingTerminalRoute = request
+    }
+
+    func consumeTerminalRoute(_ request: PiTerminalNotificationRequest) {
+        if pendingTerminalRoute == request { pendingTerminalRoute = nil }
+    }
+
     func present(resultSequence: Int) {
         guard resultSequence > 0 else { return }
         // Coalesce duplicate callbacks for one explicit action. A different
         // result sequence remains a newer action and supersedes this route.
         if pendingRoute?.resultSequence == resultSequence { return }
+        pendingTerminalRoute = nil
         pendingRoute = ScheduledJobNavigationRequest(resultSequence: resultSequence)
     }
 
@@ -211,8 +225,18 @@ extension WatchPushNotificationCoordinator: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let route = Self.route(from: response.notification.request.content.userInfo) else { return }
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let payload = response.notification.request.content.userInfo
+        if let terminal = PiSessionCompletionNotificationRoute(
+            route: payload["route"] as? String, version: payload["routeVersion"], sessionID: payload["sessionID"]
+        ) {
+            await MainActor.run {
+                WatchPushNotificationCoordinator.shared.presentSession(sessionID: terminal.sessionID,
+                    notificationID: response.notification.request.identifier)
+            }
+            return
+        }
+        guard let route = Self.route(from: payload) else { return }
         await MainActor.run {
             WatchPushNotificationCoordinator.shared.present(resultSequence: route.resultSequence)
         }

@@ -43,6 +43,19 @@ struct WatchConnectView: View {
             guard JARVISSiriNavigation.isTerminalURL(url) else { return }
             siriTerminalRequestSequence += 1
         }
+        .task(id: notifications.pendingTerminalRoute) {
+            guard let request = notifications.pendingTerminalRoute,
+                  let slot = JARVISTerminalSlot(rawValue: request.sessionID) else { return }
+            _ = model.jobs.dismissPendingRoute()
+            while !Task.isCancelled && notifications.pendingTerminalRoute == request {
+                if model.terminal.selectSlot(slot) {
+                    siriTerminalRequestSequence += 1
+                    notifications.consumeTerminalRoute(request)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
@@ -261,6 +274,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         if !jobs.containsResult(sequence: route.resultSequence), store.endpoint == nil {
             await refresh()
         }
+        guard !Task.isCancelled else { return false }
         return await jobs.resolve(route)
     }
 

@@ -154,10 +154,16 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
 
     @discardableResult
     func selectAdjacentSlot(_ direction: Int) -> Bool {
-        guard direction == -1 || direction == 1,
-              !isSending, pendingBackspaceCount == 0 else { return false }
+        guard direction == -1 || direction == 1 else { return false }
         let target = direction < 0 ? selectedSlot.previous : selectedSlot.next
-        guard let target, target != selectedSlot else { return false }
+        guard let target else { return false }
+        return selectSlot(target)
+    }
+
+    @discardableResult
+    func selectSlot(_ target: JARVISTerminalSlot) -> Bool {
+        guard !isSending, pendingBackspaceCount == 0 else { return false }
+        guard target != selectedSlot else { return true }
         // Clear slot-bound prepared audio before persisting the new identity so
         // even process termination between steps cannot restore cross-slot WAVs.
         stopSpeech()
