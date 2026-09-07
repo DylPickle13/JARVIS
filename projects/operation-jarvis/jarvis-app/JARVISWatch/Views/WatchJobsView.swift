@@ -488,8 +488,8 @@ private struct WatchJobMessage: View {
     }
 }
 
-/// Disable touch scrolling at the ScrollView itself. Crown movement scrolls
-/// explicit 20-point anchors; the outer page owns vertical swipes instead.
+/// A clipped Crown-controlled viewport, deliberately not a ScrollView.
+/// No native pan recognizer competes with the dashboard's screen-space swipe.
 private struct WatchJobsCrownList<Content: View>: View {
     @ViewBuilder let content: () -> Content
     @State private var contentHeight: CGFloat = 0
@@ -499,40 +499,31 @@ private struct WatchJobsCrownList<Content: View>: View {
     var body: some View {
         GeometryReader { viewport in
             let maximum = max(0, ceil((contentHeight - viewport.size.height) / 20))
-            ScrollViewReader { proxy in
-                ScrollView {
-                    content()
-                        .background(GeometryReader { geometry in
-                            Color.clear.preference(key: JobsContentHeight.self, value: geometry.size.height)
-                        })
-                        .overlay(alignment: .top) {
-                            VStack(spacing: 0) {
-                                ForEach(0...Int(maximum), id: \.self) { index in
-                                    Color.clear.frame(height: 20).id("jobs-crown-\(index)")
-                                }
-                            }
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                        }
-                }
-                .scrollDisabled(true)
-                .focusable()
-                .focused($crownFocused)
-                .digitalCrownRotation($crown, from: 0, through: max(1, maximum), by: 1,
-                    sensitivity: .medium, isContinuous: false, isHapticFeedbackEnabled: true)
-                .onPreferenceChange(JobsContentHeight.self) { height in
-                    contentHeight = height
-                    crown = min(crown, max(0, ceil((height - viewport.size.height) / 20)))
-                }
-                .onChange(of: crown) { _, value in
-                    proxy.scrollTo("jobs-crown-\(Int(min(maximum, max(0, value)).rounded()))", anchor: .top)
-                }
-                .onAppear { crownFocused = true }
-                .accessibilityScrollAction { direction in
-                    let step = max(1, viewport.size.height / 20)
-                    if direction == .bottom { crown = min(maximum, crown + step) }
-                    if direction == .top { crown = max(0, crown - step) }
-                }
+            ZStack(alignment: .topLeading) {
+                content()
+                    .frame(width: viewport.size.width, alignment: .topLeading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(GeometryReader { geometry in
+                        Color.clear.preference(key: JobsContentHeight.self, value: geometry.size.height)
+                    })
+                    .offset(y: -CGFloat(min(maximum, max(0, crown))) * 20)
+            }
+            .frame(width: viewport.size.width, height: viewport.size.height, alignment: .topLeading)
+            .clipped()
+            .contentShape(Rectangle())
+            .focusable()
+            .focused($crownFocused)
+            .digitalCrownRotation($crown, from: 0, through: max(1, maximum), by: 1,
+                sensitivity: .medium, isContinuous: false, isHapticFeedbackEnabled: true)
+            .onPreferenceChange(JobsContentHeight.self) { height in
+                contentHeight = height
+                crown = min(crown, max(0, ceil((height - viewport.size.height) / 20)))
+            }
+            .onAppear { crownFocused = true }
+            .accessibilityScrollAction { direction in
+                let step = max(1, viewport.size.height / 20)
+                if direction == .bottom { crown = min(maximum, crown + step) }
+                if direction == .top { crown = max(0, crown - step) }
             }
         }
     }

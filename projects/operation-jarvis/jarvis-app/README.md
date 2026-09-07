@@ -3435,3 +3435,17 @@ The Home freshness accessibility description explicitly says **oldest source**:
 jarvisd's aggregate age is the maximum critical-subsystem age, not time since the
 app last checked. Network metadata can still be up to 60 seconds old while Pi and
 controls have newer readings. This is not hidden by resetting timestamps.
+
+
+### Build 150 candidate — stable Watch swipe viewport
+
+Owner reports physical Build149 still navigates Jobs downward, not upward.
+Installed149 independently rechecked. The prior pure direction tests did not prove
+physical gesture delivery. The recognizer now lives on the stable outer viewport,
+outside page identity/transition, and uses global screen coordinates. The Jobs root
+uses a clipped, offset Crown viewport instead of a native ScrollView, eliminating
+its native pan recognizer. Direction policy is unchanged: Jobs upward returns to
+System; downward does not navigate. Short/horizontal drags stay put. Thread Back,
+explicit Refresh, Crown bounds and accessibility scroll actions remain.
+No refresh, backend, connectivity, notification, or terminal transport changes.
+Physical acceptance is required; simulator input has not been conclusive.

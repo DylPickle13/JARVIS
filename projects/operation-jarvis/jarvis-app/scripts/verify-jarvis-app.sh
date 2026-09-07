@@ -707,6 +707,15 @@ PYCODE
 grep -q '@State private var selectedPage: WatchDashboardPage = .terminal' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'pageDragGesture(page: selectedPage)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'guard selectedPage == page' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'DragGesture(minimumDistance: 24, coordinateSpace: .global)' JARVISWatch/Views/WatchDashboardContent.swift
+python3 - <<'PYCROWN'
+from pathlib import Path
+s = Path('JARVISWatch/Views/WatchJobsView.swift').read_text().split('private struct WatchJobsCrownList', 1)[1]
+assert 'ScrollView' not in s and '.digitalCrownRotation' in s and '.clipped()' in s
+pager = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
+assert pager.index('.highPriorityGesture(') > pager.index('pageIndicator\n        }')
+PYCROWN
+
 grep -q 'case .jobs: return upward ? .system : nil' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
 grep -q 'alwaysOnInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'The shorter Plugs grid must not collapse the page before the bottom edge.' JARVISWatch/Views/WatchDashboardContent.swift

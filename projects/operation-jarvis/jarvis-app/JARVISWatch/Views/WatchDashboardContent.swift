@@ -27,13 +27,6 @@ struct WatchDashboardContent: View {
                 .ignoresSafeArea()
 
             selectedPageContent
-                // One pager recognizer, not competing recognizers on outgoing
-                // and incoming pages during the opacity transition. Terminal
-                // retains its own editor/page gesture handling.
-                .highPriorityGesture(
-                    pageDragGesture(page: selectedPage),
-                    including: selectedPage == .terminal ? .subviews : .all
-                )
                 .id(selectedPage)
                 .transition(.opacity)
 
@@ -42,6 +35,13 @@ struct WatchDashboardContent: View {
         // Keep the gradient sized to the full status-bar-free Watch canvas.
         // The shorter Plugs grid must not collapse the page before the bottom edge.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        // The recognizer belongs to this stable viewport, outside the changing
+        // page identity and its scroll/layout coordinate spaces.
+        .highPriorityGesture(
+            pageDragGesture(page: selectedPage),
+            including: selectedPage == .terminal ? .subviews : .all
+        )
         .tint(WatchJarvisStyle.accent)
         .animation(.easeInOut(duration: 0.16), value: selectedPage)
         .onAppear {
@@ -126,7 +126,7 @@ struct WatchDashboardContent: View {
     }
 
     private func pageDragGesture(page: WatchDashboardPage) -> some Gesture {
-        DragGesture(minimumDistance: 24)
+        DragGesture(minimumDistance: 24, coordinateSpace: .global)
             .onEnded { value in
                 // An outgoing view must never navigate the newly selected page.
                 guard selectedPage == page,
