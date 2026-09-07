@@ -37,6 +37,20 @@ final class ScheduledJobNotificationRouteTests: XCTestCase {
         XCTAssertNil(ScheduledJobNotificationRoute(payload: base.merging(["output": .string("private")]) { _, new in new }))
     }
 
+    func testPiCompletionRoutesRejectMalformedOrOutOfRangeSlots() {
+        XCTAssertEqual(PiSessionCompletionNotificationRoute(
+            route: "pi-session-completed", version: 1, sessionID: 6)?.sessionID, 6)
+        let invalidValues: [Any] = [true, 0, 7, 1.5, "other"]
+        for invalid in invalidValues {
+            XCTAssertNil(PiSessionCompletionNotificationRoute(
+                route: "pi-session-completed", version: 1, sessionID: invalid))
+        }
+        XCTAssertNil(PiSessionCompletionNotificationRoute(
+            route: "pi-session-completed", version: true, sessionID: 1))
+        XCTAssertNil(PiSessionCompletionNotificationRoute(
+            route: "scheduled-job-result", version: 1, sessionID: 1))
+    }
+
     func testRegistrationEnvelopeRejectsInvalidTokensAndDeactivationTokens() throws {
         let installation = "123e4567-e89b-42d3-a456-426614174000"
         let registration = try XCTUnwrap(

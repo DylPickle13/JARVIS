@@ -71,13 +71,33 @@ final class WatchJobsModelTests: XCTestCase {
         model.closeThread()
         try FileManager.default.removeItem(at: harness.readStateURL)
         let restored = harness.model(api: api)
-        XCTAssertEqual(restored.unreadJobCount, 1)
+        XCTAssertEqual(restored.unreadJobCount, 0, "unknown schedules must not create a visible unread badge")
 
         await restored.refresh()
 
         XCTAssertEqual(api.resultRequests.last, .init(after: nil, limit: 100, jobID: nil))
         XCTAssertEqual(restored.results.map(\.sequence), Array((70...80).reversed()))
         XCTAssertEqual(restored.unreadJobCount, 0, "the complete first sync, not an older focused lookup, owns the baseline")
+    }
+
+    func testDisabledAndArchivedJobsStayHiddenIncludingNotificationDestinations() async throws {
+        let harness = try Harness()
+        defer { harness.removeFiles() }
+        let api = WatchJobsAPI(results: [
+            try Self.result(sequence: 91, jobID: "job_other"),
+            try Self.result(sequence: 92, jobID: "job_removed"),
+        ])
+        let model = harness.model(api: api)
+        await model.refresh()
+        XCTAssertFalse(model.sections.scheduled.contains { $0.id == "job_other" })
+        XCTAssertTrue(model.sections.archived.isEmpty)
+        XCTAssertEqual(model.results.count, 2, "hiding must not delete history")
+        let route = try XCTUnwrap(ScheduledJobNavigationRequest(resultSequence: 91))
+        let resolved = await model.resolve(route)
+        XCTAssertFalse(resolved)
+        XCTAssertNil(model.selectedThread)
+        XCTAssertEqual(model.pendingRoute, route)
+        XCTAssertEqual(model.unreadJobCount, 0)
     }
 
     func testMissingExactRouteStaysPendingForRetryAndNeverOpensAnotherResult() async throws {

@@ -57,3 +57,17 @@ public struct ScheduledJobNotificationRoute: Equatable, Sendable {
         }
     }
 }
+
+/// Content-free completion alerts are informational, not Jobs-result routes.
+public struct PiSessionCompletionNotificationRoute: Equatable, Sendable {
+    public let sessionID: Int
+
+    public init?(route: String?, version: Any?, sessionID: Any?) {
+        guard route == "pi-session-completed",
+              let validated = ScheduledJobNotificationRoute(
+                route: ScheduledJobNotificationRoute.name, version: version,
+                resultSequence: sessionID),
+              (1...6).contains(validated.resultSequence) else { return nil }
+        self.sessionID = validated.resultSequence
+    }
+}

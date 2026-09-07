@@ -15,7 +15,7 @@ struct JobsView: View {
     @State private var routeErrorMessage: String?
 
     private var sections: ScheduledJobThreadSections {
-        JobsPresentation.threads(
+        JobsPresentation.visibleThreads(
             jobs: app.lastScheduledJobs,
             results: app.lastScheduledJobResults
         )
@@ -214,6 +214,10 @@ struct JobsView: View {
                 ?? "The exact retained result could not be loaded."
             return
         }
+        guard app.lastScheduledJobs.contains(where: { $0.id == result.jobId && $0.enabled }) else {
+            routeErrorMessage = "This job is disabled, archived, or its current schedule is unavailable."
+            return
+        }
         path = [.thread(jobID: result.jobId, focusedSequence: result.sequence)]
         requestedRoute = nil
         routeErrorMessage = nil
@@ -312,7 +316,7 @@ private struct JobThreadView: View {
     let focusedSequence: Int?
 
     private var thread: ScheduledJobThread? {
-        let sections = JobsPresentation.threads(
+        let sections = JobsPresentation.visibleThreads(
             jobs: app.lastScheduledJobs,
             results: app.lastScheduledJobResults
         )

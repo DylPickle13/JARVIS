@@ -1,3 +1,10 @@
+> Build 147 candidate update: Jobs surfaces show enabled schedules only (no
+> archived/disabled root rows or badges); retained data is not deleted. Watch
+> supports Pi 0.85 decorated editor borders/full live footer. Lifecycle heartbeats
+> reconcile current `ctx.isIdle()` after compaction. New content-free successful
+> session-completion APNs use a separate opt-in gate/receipt DB, never Jobs results.
+> Existing Pi `/reload` remains owner-controlled. See the app README for scope.
+
 # JARVIS app implementation documentation
 
 This is the canonical documentation index under `jarvis-app/docs`. It consolidates the native APNs notification plan, iPhone terminal keyboard-avoidance plan, and native Photos/Files attachment plans into one navigable document. The broader app architecture, operations, deployment, recovery, and historical plans remain in the [app README](../README.md).

@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -46,6 +48,29 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   let agentRunning = false;
   let waitingForPrompt = false;
   let compacting = false;
+  let idleProbe: (() => boolean) | undefined;
+  let completionID: string | undefined;
+  let completionEligible = false;
+
+  function notifySuccessfulCompletion() {
+    if (lifecycle !== "idle" || !completionID || !completionEligible) return;
+    const eventID = completionID;
+    completionID = undefined; // consume before I/O; heartbeat/settled coalesce
+    completionEligible = false;
+    const pane = process.env.TMUX_PANE || "";
+    if (!/^%[0-9]+$/.test(pane)) return;
+    if (!existsSync(join(root, ".pi", "runtime", "session-notifications", "enabled"))) return;
+    // No prompt, output, path, or credentials in arguments. The fixed helper
+    // independently checks this PID belongs to one of the six approved panes.
+    try {
+      const child = spawn("/opt/homebrew/bin/python3", [
+        join(root, ".pi", "scheduler", "session_completion.py"),
+        pane, String(process.pid), eventID,
+      ], { stdio: "ignore", detached: true });
+      child.on("error", () => {});
+      child.unref();
+    } catch { /* completion notifications are best-effort and content-free */ }
+  }
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let lastPruneMs = 0;
 
@@ -127,7 +152,18 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
 
   function ensureHeartbeat() {
     if (heartbeat) return;
-    heartbeat = setInterval(() => writeStatus(`heartbeat-${lifecycle}`), HEARTBEAT_MS);
+    heartbeat = setInterval(() => {
+      // A compaction callback can run before Pi clears its internal busy flag.
+      // Reconcile from the current documented isIdle() contract rather than
+      // refreshing a latched Running state indefinitely. Queued continuation
+      // and automatic retries keep isIdle() false, so no false idle is emitted.
+      if (!compacting && idleProbe) {
+        agentRunning = !idleProbe();
+        lifecycle = resolvedLifecycle(!agentRunning);
+      }
+      writeStatus(`heartbeat-${lifecycle}`);
+      notifySuccessfulCompletion();
+    }, HEARTBEAT_MS);
     heartbeat.unref?.();
   }
 
@@ -138,6 +174,9 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     sessionFile = ctx.sessionManager.getSessionFile() || "";
     const suffix = sessionFile ? safeFileName(sessionFile) : "ephemeral";
     statusPath = join(statusDir, `${process.pid}-${suffix}.json`);
+    completionID = undefined;
+    completionEligible = false; // session changes never replay the previous turn
+    idleProbe = () => ctx.isIdle();
     agentRunning = !ctx.isIdle();
     waitingForPrompt = false;
     compacting = false;
@@ -150,6 +189,8 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   pi.on("agent_start", async (_event, ctx) => {
     cwd = ctx.cwd || cwd;
     sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
+    completionID = randomUUID();
+    completionEligible = false;
     agentRunning = true;
     updateLifecycle("agent-start", false);
     ensureHeartbeat();
@@ -157,7 +198,9 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
 
   // agent_end is not idle: Pi may still retry, compact, or continue. Only
   // agent_settled authoritatively marks the end of automatic agent activity.
-  pi.on("agent_end", async (_event, ctx) => {
+  pi.on("agent_end", async (event, ctx) => {
+    const lastAssistant = [...event.messages].reverse().find((message) => message.role === "assistant");
+    completionEligible = lastAssistant?.stopReason === "stop";
     cwd = ctx.cwd || cwd;
     sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
     updateLifecycle("agent-end-awaiting-settle", false);
@@ -168,6 +211,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
     agentRunning = !ctx.isIdle();
     updateLifecycle("agent-settled", ctx.isIdle());
+    notifySuccessfulCompletion();
   });
 
   pi.on("ui_prompt_start", async () => {
@@ -187,15 +231,19 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
 
   pi.on("session_compact", async (_event, ctx) => {
     compacting = false;
+    agentRunning = !ctx.isIdle();
     updateLifecycle("session-compact", ctx.isIdle());
   });
 
   pi.on("session_compact_failed", async (_event, ctx) => {
     compacting = false;
+    agentRunning = !ctx.isIdle();
     updateLifecycle("session-compact-failed", ctx.isIdle());
   });
 
   pi.on("session_shutdown", async () => {
+    completionID = undefined;
+    completionEligible = false;
     if (heartbeat) clearInterval(heartbeat);
     heartbeat = undefined;
     removeStatus();

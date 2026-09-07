@@ -4,13 +4,35 @@ Native iOS + watchOS app for Operation JARVIS — phone and Apple Watch control
 surface for the JARVIS stack on `mac-mini-64` (plugs, air purifier, and
 status/telemetry), over LAN or Tailscale.
 
-**Status:** Exact audited Build `0.3.0 (145)` remains owner-accepted and immutable
-on the allowlisted iPhone and Watch, with future-only APNs dispatch active. Build 146 is
-an isolated candidate for integrated Watch Jobs and hardened exact-result routing; no
-Build 146 deployment or physical acceptance is implied until its exact audited archive
-is frozen and the owner connects the two approved devices. Checked-in `project.yml`
-intentionally remains Build 127; candidate build numbers and the iPhone-only attachment
-flag remain artifact-only.
+**Status:** Build `0.3.0 (146)` is installed and launch-verified on the approved
+iPhone and Watch. Build 147 is the isolated follow-up candidate; no Build 147
+deployment or physical acceptance is claimed here. Current owner Pi changes are
+merged into this candidate, without resetting the main checkout. Checked-in
+`project.yml` remains Build 127; release numbers/attachment flags are artifact-only.
+
+Build 147 changes:
+- Jobs roots and unread-thread badges show **enabled schedules only** on both
+  devices. Disabled/archived result history stays protected and retained, not deleted.
+  Old notification destinations for hidden jobs remain unavailable rather than
+  navigating to a hidden thread. Unknown schedules fail closed until refreshed.
+- Watch recognizes Pi 0.85's decorated Working editor border and retains the full
+  nonblank footer instead of assuming a fixed two-row footer.
+- Pi lifecycle heartbeats reconcile `ctx.isIdle()` after compaction, including when
+  no later settle callback arrives. Retries/queued continuations remain Running.
+- Future successful settled turns in the six fixed mobile Pi sessions can send
+  content-free APNs alerts: “Session N finished.” No prompt/response/model/path is
+  sent. Alerts are informational (a tap opens JARVIS, not a Jobs result).
+- Completion dispatch is independently opt-in via the private
+  `.pi/runtime/session-notifications/enabled` gate and also honors existing global
+  APNs enablement/registrations. It never creates Jobs results or backfills history.
+  Protected receipts contain no device tokens; platforms have independent APNs IDs,
+  retries are definite-transient-only and bounded, crashes/ambiguous sends are not
+  replayed, and 403 closes the completion gate before another topic is attempted.
+- Existing Pi processes require **owner-controlled `/reload`** to load the lifecycle
+  extension; deployment must never restart or interrupt them automatically.
+
+The following describes the Build 146 baseline; its archived-root presentation is
+superseded by Build 147's enabled-only visibility policy.
 
 Build 146 adds a fourth full-screen Watch dashboard page in the fixed order
 **Terminal → Plugs → System → Jobs**. The Watch now keeps its own protected, bounded

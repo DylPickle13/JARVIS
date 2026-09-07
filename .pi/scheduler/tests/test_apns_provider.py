@@ -74,6 +74,26 @@ class APNsProviderTests(unittest.TestCase):
             environment=environment,
         )
 
+    def testSessionCompletionPayloadIsStaticBoundedAndAppOnly(self):
+        transport = FakeTransport(response=self.apns.APNsResponse(200, {}, b""))
+        provider = self.apns.APNsProvider(self.configuration(), signer=FakeSigner(), transport=transport)
+        result = provider.send_session_completion(
+            topic=self.apns.IPHONE_APNS_TOPIC, device_token="ab" * 32,
+            session_id=3, apns_id=str(uuid.uuid4()),
+        )
+        self.assertEqual(result.outcome, "accepted")
+        payload = json.loads(transport.requests[0].body)
+        self.assertEqual(payload["aps"]["alert"]["body"], "Session 3 finished.")
+        self.assertEqual(payload["route"], "pi-session-completed")
+        self.assertNotIn("badge", payload["aps"])
+        self.assertLessEqual(len(transport.requests[0].body), 1024)
+        for slot in [True, 0, 7, 1.5, "1"]:
+            with self.assertRaises(self.apns.APNsConfigurationError):
+                provider.send_session_completion(
+                    topic=self.apns.IPHONE_APNS_TOPIC, device_token="ab" * 32,
+                    session_id=slot, apns_id=str(uuid.uuid4()),
+                )
+
     def send(
         self,
         provider,

@@ -706,7 +706,10 @@ public final class AppState: ObservableObject {
     }
 
     public var unreadScheduledJobCount: Int {
-        Set(lastScheduledJobResults.lazy.filter(isScheduledJobResultUnread).map(\.jobId)).count
+        let enabledIDs = Set(lastScheduledJobs.filter(\.enabled).map(\.id))
+        return Set(lastScheduledJobResults.lazy
+            .filter { enabledIDs.contains($0.jobId) && self.isScheduledJobResultUnread($0) }
+            .map(\.jobId)).count
     }
 
     public var unreadScheduledJobResultCount: Int {

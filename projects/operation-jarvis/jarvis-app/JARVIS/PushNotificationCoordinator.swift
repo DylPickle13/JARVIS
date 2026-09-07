@@ -370,6 +370,11 @@ extension PushNotificationCoordinator: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
+        let payload = notification.request.content.userInfo
+        if PiSessionCompletionNotificationRoute(
+            route: payload["route"] as? String, version: payload["routeVersion"],
+            sessionID: payload["sessionID"]
+        ) != nil { return [.banner, .sound] }
         guard let route = Self.route(from: notification.request.content.userInfo) else { return [] }
         await MainActor.run {
             PushNotificationCoordinator.shared.receivedForegroundResult(

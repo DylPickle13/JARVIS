@@ -88,7 +88,7 @@ final class WatchJobsModel: ObservableObject {
     }
 
     var sections: ScheduledJobThreadSections {
-        JobsPresentation.threads(jobs: scheduledJobs, results: results)
+        JobsPresentation.visibleThreads(jobs: scheduledJobs, results: results)
     }
 
     var selectedThread: ScheduledJobThread? {
@@ -97,7 +97,8 @@ final class WatchJobsModel: ObservableObject {
     }
 
     var unreadJobCount: Int {
-        Set(results.lazy.filter(isUnread).map(\.jobId)).count
+        let enabledIDs = Set(scheduledJobs.filter(\.enabled).map(\.id))
+        return Set(results.lazy.filter { enabledIDs.contains($0.jobId) && self.isUnread($0) }.map(\.jobId)).count
     }
 
     var isInitiallyLoading: Bool {
@@ -213,6 +214,19 @@ final class WatchJobsModel: ObservableObject {
         }
 
         do {
+            if !scheduledJobsLoaded {
+                // Schedule identity is required to distinguish an enabled job
+                // from retained archived output on a cold notification launch.
+                let schedules = try await client.scheduledJobs(endpoint)
+                guard pendingRoute?.id == route.id else { return false }
+                guard schedules.ok else {
+                    routeErrorMessage = "Current job schedules are unavailable. Try again."
+                    return false
+                }
+                scheduledJobs = schedules.jobs
+                scheduledJobsLoaded = true
+                if openCachedResult(for: route) { return true }
+            }
             let response = try await client.scheduledJobResults(
                 endpoint,
                 after: route.resultSequence - 1,
@@ -236,7 +250,7 @@ final class WatchJobsModel: ObservableObject {
                 preserving: route.resultSequence
             )
             guard openCachedResult(for: route) else {
-                routeErrorMessage = "Result #\(route.resultSequence) is no longer retained."
+                routeErrorMessage = "This job is disabled, archived, or its schedule is unavailable."
                 return false
             }
             return true
@@ -431,7 +445,8 @@ final class WatchJobsModel: ObservableObject {
 
     private func openCachedResult(for route: ScheduledJobNavigationRequest) -> Bool {
         guard pendingRoute?.id == route.id,
-              let result = results.first(where: { $0.sequence == route.resultSequence }) else { return false }
+              let result = results.first(where: { $0.sequence == route.resultSequence }),
+              scheduledJobs.contains(where: { $0.id == result.jobId && $0.enabled }) else { return false }
         selectedJobID = result.jobId
         focusedResultSequence = result.sequence
         markRead(jobID: result.jobId)

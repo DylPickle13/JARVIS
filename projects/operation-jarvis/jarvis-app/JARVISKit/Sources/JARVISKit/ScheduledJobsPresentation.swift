@@ -29,6 +29,16 @@ public struct ScheduledJobThreadSections: Sendable {
 
 /// Pure Jobs grouping and presentation policy shared by iPhone and Apple Watch.
 public enum JobsPresentation {
+    /// The Jobs surface contains only currently enabled schedules. Retained
+    /// history is not deleted, but absent/disabled jobs never become root rows.
+    public static func visibleThreads(
+        jobs: [ScheduledJob], results: [ScheduledJobResult]
+    ) -> ScheduledJobThreadSections {
+        let enabled = jobs.filter(\.enabled)
+        let ids = Set(enabled.map(\.id))
+        return threads(jobs: enabled, results: results.filter { ids.contains($0.jobId) })
+    }
+
     public static func threads(
         jobs: [ScheduledJob],
         results: [ScheduledJobResult]

@@ -89,6 +89,20 @@ final class WatchTerminalTests: XCTestCase {
         XCTAssertEqual(frame.localANSILines(inAbsoluteRange: 0..<2), ["history-0", "history-1"])
     }
 
+    func testCurrentPiWorkingBorderKeepsWholeEditorAndAdditionalFooter() {
+        let divider = String(repeating: "─", count: 48)
+        let lines = ["response", "── ⠋ Working… " + String(repeating: "─", count: 34),
+                     "prompt", divider, "directory", "tokens", "extra status", ""]
+        let frame = WatchTerminalFrame(
+            sequence: 5, paneID: "%7", columns: 48, rows: 8,
+            cursorColumn: 2, cursorRow: 2, alternateScreen: false,
+            mouseMode: false, historySize: 0, screenStart: 0,
+            lines: lines, ansiLines: lines
+        )
+        XCTAssertEqual(frame.liveEditorRange, 1..<7)
+        XCTAssertEqual(frame.liveOutputEndIndex, 1)
+    }
+
     func testHistoryPageIsBoundedAndSlicesAbsoluteRows() throws {
         let page = WatchTerminalHistoryPage(
             paneID: "%7",

@@ -198,6 +198,11 @@ extension WatchPushNotificationCoordinator: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
+        let payload = notification.request.content.userInfo
+        if PiSessionCompletionNotificationRoute(
+            route: payload["route"] as? String, version: payload["routeVersion"],
+            sessionID: payload["sessionID"]
+        ) != nil { return [.banner, .sound] }
         guard Self.route(from: notification.request.content.userInfo) != nil else { return [] }
         return [.banner, .sound]
     }

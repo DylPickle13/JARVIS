@@ -78,6 +78,18 @@ final class ScheduledJobsTests: XCTestCase {
         XCTAssertEqual(store.load(), state)
     }
 
+    func testVisibleThreadsExcludeDisabledAndArchivedWithoutDeletingHistory() throws {
+        let jobs = [try job(id: "enabled", enabled: true), try job(id: "disabled", enabled: false)]
+        let results = [try result(sequence: 1, jobID: "enabled"),
+                       try result(sequence: 2, jobID: "disabled"),
+                       try result(sequence: 3, jobID: "removed")]
+        let visible = JobsPresentation.visibleThreads(jobs: jobs, results: results)
+        XCTAssertEqual(visible.scheduled.map(\.id), ["enabled"])
+        XCTAssertTrue(visible.archived.isEmpty)
+        XCTAssertEqual(results.count, 3)
+        XCTAssertTrue(JobsPresentation.visibleThreads(jobs: [], results: results).scheduled.isEmpty)
+    }
+
     func testSharedPresentationKeepsRowsPreviewFreeAndArchivesRemovedJobs() throws {
         let scheduled = try job(id: "job_alpha", enabled: true)
         let results = [

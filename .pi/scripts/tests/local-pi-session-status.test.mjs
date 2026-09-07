@@ -62,7 +62,7 @@ test("local Pi lifecycle remains running until settled and reports prompts and c
     await emit("agent_start");
     assert.equal((await statusPayload(root)).lifecycle, "running");
 
-    await emit("agent_end");
+    await emit("agent_end", { messages: [] });
     assert.equal((await statusPayload(root)).lifecycle, "running");
     assert.equal((await statusPayload(root)).reason, "agent-end-awaiting-settle");
 
@@ -77,6 +77,19 @@ test("local Pi lifecycle remains running until settled and reports prompts and c
 
     await emit("session_compact", { reason: "threshold" });
     assert.equal((await statusPayload(root)).lifecycle, "running");
+
+    // Compaction may finish before its busy flag clears, with no later
+    // agent_settled signal. Heartbeat must reconcile without requiring a run.
+    idle = true;
+    await new Promise((resolve) => setTimeout(resolve, 2150));
+    assert.equal((await statusPayload(root)).lifecycle, "idle");
+
+    idle = false;
+    await emit("agent_start");
+    await emit("session_before_compact", { reason: "overflow", willRetry: true });
+    await emit("session_compact", { reason: "overflow", willRetry: true });
+    await new Promise((resolve) => setTimeout(resolve, 2150));
+    assert.equal((await statusPayload(root)).lifecycle, "running", "automatic continuation stays busy");
 
     idle = true;
     await emit("agent_settled");

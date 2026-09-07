@@ -573,13 +573,43 @@ class APNsProvider:
         apns_id: str,
         expiration: int | None = None,
     ) -> APNsSendResult:
+        if not JOB_ID_RE.fullmatch(job_id):
+            raise APNsConfigurationError("APNs job identifier is invalid")
+        payload = build_alert_payload(
+            result_sequence,
+            job_name=job_name,
+            status=status,
+            summary=summary,
+        )
+        return self._send_payload(topic=topic, device_token=device_token,
+                                  payload=payload, collapse_key=job_id,
+                                  apns_id=apns_id, expiration=expiration)
+
+    def send_session_completion(
+        self, *, topic: str, device_token: str, session_id: int,
+        apns_id: str, expiration: int | None = None,
+    ) -> APNsSendResult:
+        if type(session_id) is not int or not 1 <= session_id <= 6:
+            raise APNsConfigurationError("Pi session slot is invalid")
+        # Static text only: no prompt, response, model, path, or session filename.
+        payload = json.dumps({"aps": {"alert": {
+            "title": "JARVIS Pi", "body": f"Session {session_id} finished."},
+            "sound": "default"}, "route": "pi-session-completed",
+            "routeVersion": 1, "sessionID": session_id},
+            separators=(",", ":")).encode("utf-8")
+        return self._send_payload(topic=topic, device_token=device_token,
+                                  payload=payload, collapse_key=f"pi-session-{session_id}",
+                                  apns_id=apns_id, expiration=expiration)
+
+    def _send_payload(
+        self, *, topic: str, device_token: str, payload: bytes,
+        collapse_key: str, apns_id: str, expiration: int | None,
+    ) -> APNsSendResult:
         self.configuration.validate_for_send()
         if topic not in APNS_TOPICS:
             raise APNsConfigurationError("APNs topic is not an allowed JARVIS app topic")
         if not DEVICE_TOKEN_RE.fullmatch(device_token):
             raise APNsConfigurationError("APNs device token is invalid")
-        if not JOB_ID_RE.fullmatch(job_id):
-            raise APNsConfigurationError("APNs job identifier is invalid")
         if not APNS_ID_RE.fullmatch(apns_id):
             raise APNsConfigurationError("APNs request identifier is invalid")
 
@@ -587,14 +617,8 @@ class APNsProvider:
         resolved_expiration = expiration if expiration is not None else now + DEFAULT_EXPIRATION_SECONDS
         if isinstance(resolved_expiration, bool) or not now < resolved_expiration <= now + DEFAULT_EXPIRATION_SECONDS:
             raise APNsConfigurationError("APNs expiration is invalid")
-        payload = build_alert_payload(
-            result_sequence,
-            job_name=job_name,
-            status=status,
-            summary=summary,
-        )
         provider_token = self._token(now)
-        collapse_id = "jarvis-" + hashlib.sha256(job_id.encode("utf-8")).hexdigest()[:32]
+        collapse_id = "jarvis-" + hashlib.sha256(collapse_key.encode("utf-8")).hexdigest()[:32]
         request = APNsRequest(
             host=self.configuration.host,
             path=f"/3/device/{device_token}",

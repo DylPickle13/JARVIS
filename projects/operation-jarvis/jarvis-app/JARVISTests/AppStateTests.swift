@@ -727,6 +727,11 @@ final class AppStateTests: XCTestCase {
             resultReadStateURL: readStateURL
         )
 
+        app.lastScheduledJobs = try ["job_alpha", "job_beta"].map { id in
+            try JSONDecoder().decode(ScheduledJob.self, from: Data(
+                #"{"id":"\#(id)","name":"fixture","kind":"interval","schedule":"5m","enabled":true,"nextRunAt":null,"lastRunAt":null,"lastStatus":"success","runCount":1,"description":null}"#.utf8
+            ))
+        }
         XCTAssertEqual(app.unreadScheduledJobCount, 0, "Build 144 cache history must migrate as read")
         XCTAssertEqual(app.unreadScheduledJobResultCount, 0)
 
@@ -762,7 +767,7 @@ final class AppStateTests: XCTestCase {
         )
         XCTAssertFalse(restored.hasUnreadScheduledJobResults(for: "job_alpha"))
         XCTAssertTrue(restored.hasUnreadScheduledJobResults(for: "job_beta"))
-        XCTAssertEqual(restored.unreadScheduledJobCount, 1)
+        XCTAssertEqual(restored.unreadScheduledJobCount, 0, "unknown schedules are hidden")
     }
 
     func testJobsPollingRefreshesJobsWithoutPollingHomeState() async throws {

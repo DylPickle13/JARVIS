@@ -954,8 +954,13 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
             Self.isEditorDivider(lines[$0], terminalColumns: columns)
         }
         guard let upper, let lower, upper < cursor, cursor < lower else { return nil }
-        // Include the lower divider plus Pi's path and token/model footer rows.
-        return upper..<min(screenEnd, lower + 3)
+        // Pi 0.85 embeds Working in the upper border and may append extra
+        // status rows beneath the editor. Keep the complete nonblank live tail,
+        // not a fixed two-row footer. Never include scrollback or trailing blanks.
+        let tailEnd = (lower..<screenEnd).last {
+            !lines[$0].trimmingCharacters(in: .whitespaces).isEmpty
+        }.map { $0 + 1 } ?? (lower + 1)
+        return upper..<tailEnd
     }
 
     public var liveOutputEndIndex: Int {
@@ -983,7 +988,14 @@ public struct WatchTerminalFrame: Codable, Equatable, Sendable {
         let minimumLength = max(12, min(terminalColumns / 2, 24))
         guard trimmed.count >= minimumLength else { return false }
         let dividers = CharacterSet(charactersIn: "-_=~─━═")
-        return trimmed.unicodeScalars.allSatisfy { dividers.contains($0) }
+        if trimmed.unicodeScalars.allSatisfy({ dividers.contains($0) }) { return true }
+        // Current Pi renders `── <spinner> Working… ─────` in the top border.
+        // Require both border anchors and substantial trailing rule geometry;
+        // arbitrary text mentioning Working is not an editor divider.
+        guard trimmed.hasPrefix("── ") else { return false }
+        let trailingRule = trimmed.reversed().prefix { $0 == "─" }.count
+        return trailingRule >= max(4, minimumLength / 2)
+
     }
 
     /// Exact captured grid rows around the live Pi view, offset toward tmux
