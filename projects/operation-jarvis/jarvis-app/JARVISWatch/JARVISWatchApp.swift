@@ -75,9 +75,12 @@ struct JARVISWatchApp: App {
     var body: some Scene {
         WindowGroup {
             WatchConnectView()
-                .onChange(of: scenePhase) { _, phase in
+                .onChange(of: scenePhase, initial: true) { _, phase in
                     if phase == .active {
+                        WatchPushNotificationCoordinator.shared.sceneDidBecomeActive()
                         WatchNeuralCoreWidgetReloadCoordinator.reloadIfDue()
+                    } else {
+                        WatchPushNotificationCoordinator.shared.sceneWillResignActive()
                     }
                 }
         }

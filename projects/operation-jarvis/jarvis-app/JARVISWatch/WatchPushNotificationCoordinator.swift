@@ -14,6 +14,11 @@ final class WatchPushNotificationCoordinator: NSObject, ObservableObject {
     @Published var showPermissionExplanation = false
     @Published private(set) var errorMessage: String?
 
+    private let completionCleanup = CompletionNotificationCleanup.live()
+
+    func sceneDidBecomeActive() { completionCleanup.sceneDidBecomeActive() }
+    func sceneWillResignActive() { completionCleanup.sceneWillResignActive() }
+
     private let defaults = UserDefaults.standard
     private let desiredKey = "jarvis.notifications.watch-desired-enabled.v1"
     private let installationKey = "jarvis.notifications.watch-installation-id.v1"

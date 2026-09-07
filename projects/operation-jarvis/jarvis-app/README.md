@@ -3461,3 +3461,21 @@ swipe and stays put on an upward swipe. The special reversed Jobs rule is remove
 The stable viewport/Crown implementation, refresh cadence, terminal input,
 notification routing, connectivity and backend remain unchanged. Physical150
 feedback remains preserved; this clarification is not retroactive acceptance.
+
+
+### Build 152 candidate — foreground completion-alert housekeeping
+
+Each app independently removes only validated delivered `pi-session-completed`
+alerts present when that app becomes active. While active, newly delivered
+completion alerts are removed at about 30 seconds of age. A single local sweep
+checks for new deliveries at most every 5 seconds and schedules known deadlines
+sooner. There is no remote polling, task per alert, or stored payload history.
+Inactive/background scenes (including dimmed Watch) stop cleanup; the next
+activation clears retained completions. iOS/watchOS scheduling can delay removal;
+this is not a guaranteed 30-second expiry while JARVIS is closed.
+
+Scheduled-job alerts, unknown/malformed routes, pending notifications, Jobs read
+state, and the exact-session tap inbox are untouched. Cleanup uses a fresh list,
+not an identifier retained across a delay; foreground banners remain informational.
+Late list callbacks from an inactive/older activation are discarded. App-only
+change: no APNs provider, badge, collapse key, backend, or terminal modifications.

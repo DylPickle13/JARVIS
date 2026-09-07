@@ -1137,6 +1137,24 @@ watch-quicklook-216.png:216
 watch-marketing-1024.png:1024
 ICONS
 
+printf '%s\n' '== target-local completion notification cleanup =='
+python3 - <<'PYCLEANUP'
+from pathlib import Path
+cleanup = Path('JARVISKit/Sources/JARVISKit/CompletionNotificationCleanup.swift').read_text()
+for marker in ['PiSessionCompletionNotificationRoute(', 'removeDeliveredNotifications(withIdentifiers:', 'requestGeneration == generation', 'age >= 30', 'notification.deliveredAt <= openedAt']:
+    assert marker in cleanup
+for forbidden in ['removeAllDeliveredNotifications', 'removePendingNotificationRequests', 'removeAllPendingNotificationRequests', 'pendingTerminalRoute', 'markRead']:
+    assert forbidden not in cleanup
+for path in ['JARVIS/PushNotificationCoordinator.swift', 'JARVISWatch/WatchPushNotificationCoordinator.swift']:
+    text = Path(path).read_text()
+    assert 'CompletionNotificationCleanup.live()' in text
+    assert 'completionCleanup.sceneDidBecomeActive()' in text
+    assert 'completionCleanup.sceneWillResignActive()' in text
+for path in ['JARVIS/JARVISApp.swift', 'JARVISWatch/JARVISWatchApp.swift']:
+    text = Path(path).read_text()
+    assert 'sceneDidBecomeActive()' in text and 'sceneWillResignActive()' in text
+PYCLEANUP
+
 printf '%s\n' '== JARVISKit tests (live tests opt-in) =='
 if [[ "${JARVIS_LIVE_TESTS:-0}" == "1" ]]; then
   JARVIS_LIVE_TESTS=1 swift test --package-path JARVISKit

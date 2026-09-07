@@ -19,6 +19,11 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private weak var app: AppState?
+    private let completionCleanup = CompletionNotificationCleanup.live()
+
+    func sceneDidBecomeActive() { completionCleanup.sceneDidBecomeActive() }
+    func sceneWillResignActive() { completionCleanup.sceneWillResignActive() }
+
     private let defaults = UserDefaults.standard
     private let desiredKey = "jarvis.notifications.desired-enabled.v1"
     private let installationKey = "jarvis.notifications.iphone-installation-id.v1"
