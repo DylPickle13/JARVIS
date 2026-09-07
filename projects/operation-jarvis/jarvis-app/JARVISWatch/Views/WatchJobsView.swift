@@ -20,13 +20,6 @@ struct WatchJobsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 24).onEnded { value in
-                guard value.translation.height <= -52,
-                      abs(value.translation.height) > abs(value.translation.width) else { return }
-                onPreviousPage()
-            }
-        )
         .accessibilityAction(named: "Return to System", onPreviousPage)
     }
 

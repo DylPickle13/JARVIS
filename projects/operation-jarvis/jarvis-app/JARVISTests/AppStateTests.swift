@@ -5,6 +5,13 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testFreshnessDescribesOldestSourceNotLastNetworkCheck() {
+        XCTAssertEqual(JarvisFormat.freshness(ageSeconds: nil), "Waiting for status")
+        XCTAssertEqual(JarvisFormat.freshness(ageSeconds: 0), "Oldest source updated now")
+        XCTAssertEqual(JarvisFormat.freshness(ageSeconds: 40), "Oldest source 40s old")
+        XCTAssertEqual(JarvisFormat.freshness(ageSeconds: 120), "Oldest source 2m old")
+    }
+
     func testSessionTapsSupersedeJobsAndObsoleteConsumersCannotClearNewRoute() throws {
         let coordinator = PushNotificationCoordinator.shared
         coordinator.present(resultSequence: 100)

@@ -95,7 +95,7 @@ grep -q 'return STATE_COORDINATOR.snapshot(client_active=True)' jarvisd/jarvisd.
 reject_match 'fixed 250-millisecond jarvisd scheduler polling was restored' -Fq 'self._stop.wait(0.25)' jarvisd/jarvisd.py
 
 printf '%s\n' '== responsive scoped foreground state =='
-grep -q 'controlActiveInterval: Duration = .seconds(5)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
+grep -q 'controlActiveInterval: Duration = .seconds(3)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'visibleCodexRefreshInterval: TimeInterval = 60' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'staleConvergenceInterval: Duration = .milliseconds(500)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'staleConvergenceAttempts = 8' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
@@ -695,19 +695,20 @@ grep -q 'private let keyboardResponder = PiTerminalKeyboardResponder()' JARVIS/T
 grep -q 'override func deleteBackward()' JARVIS/Terminal/PiSSHTransport.swift
 reject_match 'SwiftTerm must not regain the marked repeat sentinel' -qsF 'setMarkedText(sentinel' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'WatchTerminalView(' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'private enum WatchDashboardPage: Hashable, CaseIterable' JARVISWatch/Views/WatchDashboardContent.swift
-[[ "$(sed -n '/private enum WatchDashboardPage/,/^}/p' JARVISWatch/Views/WatchDashboardContent.swift | grep -c '^    case ')" == "4" ]]
-python3 - <<'PY'
+grep -q 'public enum WatchDashboardPage: Hashable, CaseIterable' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
+python3 - <<'PYCODE'
 from pathlib import Path
-source = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text(encoding='utf-8')
-block = source.split('private enum WatchDashboardPage', 1)[1].split('\n}', 1)[0]
+source = Path('JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift').read_text(encoding='utf-8')
+block = source.split('public enum WatchDashboardPage', 1)[1].split('public func destination', 1)[0]
 assert [line.strip() for line in block.splitlines() if line.strip().startswith('case ')] == [
     'case terminal', 'case plugs', 'case system', 'case jobs'
 ]
-PY
+PYCODE
 grep -q '@State private var selectedPage: WatchDashboardPage = .terminal' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'pageDragGesture(previous: .terminal, next: .system)' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'pageDragGesture(previous: .plugs, next: .jobs)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'pageDragGesture(page: selectedPage)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'guard selectedPage == page' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'case .jobs: return upward ? .system : nil' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
+grep -q 'alwaysOnInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'The shorter Plugs grid must not collapse the page before the bottom edge.' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'GeometryReader { geometry in' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'let tileHeight = max(72, (geometry.size.height - rowSpacing) / CGFloat(rowCount))' JARVISWatch/Views/WatchDashboardContent.swift
@@ -813,7 +814,7 @@ grep -q 'JarvisEndpointURLPolicy.normalize(candidate)' JARVISKit/Sources/JARVISK
 reject_match 'endpoint bridges must not restore permissive scheme-and-host-only checks' -RqsF 'url.scheme != nil, url.host != nil' JARVIS JARVISWatch
 
 printf '%s\n' '== native refresh and Tailscale contract =='
-grep -q 'activeInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
+grep -q 'activeInterval: Duration = .seconds(5)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q "A lightweight cached state read keeps jarvisd's active" JARVIS/AppState.swift
 grep -q 'async let state: Void = self.fetchState()' JARVIS/AppState.swift
 grep -q 'testCachedStateAndJobsPollingContinueAcrossActiveTabsWithoutServicesPolling' JARVISTests/AppStateTests.swift
@@ -830,7 +831,8 @@ grep -q 'self.activeSection == .home' JARVIS/AppState.swift
 grep -q '? self.controlRefreshInterval' JARVIS/AppState.swift
 grep -q 'try await Task.sleep(for: interval)' JARVIS/AppState.swift
 grep -q 'homeControlPollsSinceResources >= 3' JARVIS/AppState.swift
-grep -q 'Task.sleep(for: self.activeRefreshInterval)' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'Task.sleep(for: self.appIsInteractive' JARVISWatch/Views/WatchConnectView.swift
+grep -q '? self.activeRefreshInterval : JARVISRefreshPolicy.alwaysOnInterval' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'client.resolveState(' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'private var cachedAuthenticationToken: String?' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'if let cachedAuthenticationToken { return cachedAuthenticationToken }' JARVISWatch/Views/WatchConnectView.swift

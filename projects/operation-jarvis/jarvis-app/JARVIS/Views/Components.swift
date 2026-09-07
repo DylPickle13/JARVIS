@@ -273,10 +273,10 @@ enum JarvisFormat {
     static func freshness(ageSeconds: Double?) -> String {
         guard let ageSeconds else { return "Waiting for status" }
         let seconds = max(0, Int(ageSeconds))
-        if seconds < 5 { return "Updated now" }
-        if seconds < 60 { return "Updated \(seconds)s ago" }
-        if seconds < 3_600 { return "Updated \(seconds / 60)m ago" }
-        return "Updated \(seconds / 3_600)h ago"
+        if seconds < 5 { return "Oldest source updated now" }
+        if seconds < 60 { return "Oldest source \(seconds)s old" }
+        if seconds < 3_600 { return "Oldest source \(seconds / 60)m old" }
+        return "Oldest source \(seconds / 3_600)h old"
     }
 
     // MARK: - Time

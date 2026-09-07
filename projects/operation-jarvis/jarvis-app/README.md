@@ -3406,3 +3406,32 @@ Repeat the same flow with Siri initiated on the Watch:
 - Watch Jobs uses the Crown for list scrolling. A vertical swipe **up** returns to System (Codex/air purifier), without a return-page button. Thread Back and explicit Refresh remain; accessible Return to System is available.
 
 Deployment is intentionally pending owner approval. Room-audio functionality needs the coordinated jarvisd, Mac room-audio server, and Raspberry Pi client update described in the room-audio README—not just the device binaries. No running service or physical device is changed by preparing this candidate.
+
+
+### Build 149 candidate — Watch gesture ownership and foreground freshness
+
+Prepared after Build148 physical feedback; not a deployment/physical acceptance record.
+One dashboard-owned pager gesture now routes non-terminal pages. Jobs returns to
+System only on an upward dominant drag of at least 52 points; downward, horizontal,
+and short drags do not navigate. Outgoing transition callbacks are ignored if their
+captured page is no longer selected. Terminal/editor gestures, Crown root scrolling,
+thread Back, and accessible Return to System are preserved.
+
+Foreground state polling is 3 seconds for controls and 5 seconds elsewhere, with
+existing immediate open/resume refresh and single-flight/cancellation guards.
+The dimmed frontmost Watch uses 15 seconds; background polling remains stopped.
+Host active collection is 2 seconds for Pi, 5 seconds for plugs/services, and 15 seconds
+for purifier cloud reads. Idle hardware cadence stays 10/45 seconds; quota collection
+stays 60 seconds active / 300 seconds idle. Polling a cached snapshot does not reset its
+source timestamps or imply freshly collected device data. These are target intervals,
+not latency guarantees during network/provider failures.
+
+No Watch independence, endpoint, Tailscale, phone-relay, or terminal transport changes.
+The backend interval changes require a separately audited jarvisd deployment; merely
+installing an app cannot accelerate an older pinned daemon. Physical Jobs direction
+and Crown checks remain necessary. Existing signed Build148 artifacts are untouched.
+
+The Home freshness accessibility description explicitly says **oldest source**:
+jarvisd's aggregate age is the maximum critical-subsystem age, not time since the
+app last checked. Network metadata can still be up to 60 seconds old while Pi and
+controls have newer readings. This is not hidden by resetting timestamps.

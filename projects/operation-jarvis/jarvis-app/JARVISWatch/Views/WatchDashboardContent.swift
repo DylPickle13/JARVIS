@@ -2,13 +2,6 @@ import Foundation
 import SwiftUI
 import JARVISKit
 
-private enum WatchDashboardPage: Hashable, CaseIterable {
-    case terminal
-    case plugs
-    case system
-    case jobs
-}
-
 struct WatchDashboardContent: View {
     @ObservedObject var model: WatchConnectModel
     @ObservedObject var jobs: WatchJobsModel
@@ -34,6 +27,13 @@ struct WatchDashboardContent: View {
                 .ignoresSafeArea()
 
             selectedPageContent
+                // One pager recognizer, not competing recognizers on outgoing
+                // and incoming pages during the opacity transition. Terminal
+                // retains its own editor/page gesture handling.
+                .highPriorityGesture(
+                    pageDragGesture(page: selectedPage),
+                    including: selectedPage == .terminal ? .subviews : .all
+                )
                 .id(selectedPage)
                 .transition(.opacity)
 
@@ -91,12 +91,10 @@ struct WatchDashboardContent: View {
             resolvedPlugsPage
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
-                .gesture(pageDragGesture(previous: .terminal, next: .system))
         case .system:
             resolvedSystemPage
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
-                .gesture(pageDragGesture(previous: .plugs, next: .jobs))
         case .jobs:
             WatchJobsView(
                 model: jobs,
@@ -127,19 +125,16 @@ struct WatchDashboardContent: View {
         return Color.secondary.opacity(0.55)
     }
 
-    private func pageDragGesture(
-        previous: WatchDashboardPage?,
-        next: WatchDashboardPage?
-    ) -> some Gesture {
+    private func pageDragGesture(page: WatchDashboardPage) -> some Gesture {
         DragGesture(minimumDistance: 24)
             .onEnded { value in
-                guard abs(value.translation.height) > abs(value.translation.width),
-                      abs(value.translation.height) >= 52 else { return }
-                if value.translation.height < 0, let next {
-                    selectedPage = next
-                } else if value.translation.height > 0, let previous {
-                    selectedPage = previous
-                }
+                // An outgoing view must never navigate the newly selected page.
+                guard selectedPage == page,
+                      let destination = page.destination(
+                        verticalTranslation: Double(value.translation.height),
+                        horizontalTranslation: Double(value.translation.width)
+                      ) else { return }
+                selectedPage = destination
             }
     }
 

@@ -1673,10 +1673,12 @@ class StateCoordinator:
 
     NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})
     DEFAULT_INTERVALS = {
-        "pi": 5.0,
-        "plugs": 10.0,
-        "services": 15.0,
-        "purifier": 45.0,
+        # Foreground clients read this shared single-flight cache, never fan
+        # out to hardware per request. Cloud purifier reads remain bounded.
+        "pi": 2.0,
+        "plugs": 5.0,
+        "services": 5.0,
+        "purifier": 15.0,
         "network": 60.0,
         "codexQuota": 60.0,
     }

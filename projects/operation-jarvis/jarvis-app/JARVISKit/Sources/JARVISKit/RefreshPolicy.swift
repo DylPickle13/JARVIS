@@ -3,11 +3,15 @@ import Foundation
 /// Shared foreground refresh behavior for the native iPhone and Apple Watch apps.
 public enum JARVISRefreshPolicy {
     /// Non-control pages keep a modest foreground cadence.
-    public static let activeInterval: Duration = .seconds(15)
+    public static let activeInterval: Duration = .seconds(5)
 
     /// Visible control pages read jarvisd's cheap warm cache frequently. Device
     /// collection remains independently bounded on the always-on host.
-    public static let controlActiveInterval: Duration = .seconds(5)
+    public static let controlActiveInterval: Duration = .seconds(3)
+
+    /// A dimmed frontmost Watch keeps a modest cadence; wrist raise refreshes
+    /// immediately. Background scenes do not poll.
+    public static let alwaysOnInterval: Duration = .seconds(15)
 
     /// A visible Codex panel may request one immediate read per minute rather
     /// than waiting for the host's idle quota cadence.

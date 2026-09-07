@@ -379,8 +379,9 @@ final class JARVISKitTests: XCTestCase {
     }
 
     func testNativeAppsUseFastVisibleControlsAndModestBackgroundPages() {
-        XCTAssertEqual(JARVISRefreshPolicy.activeInterval, .seconds(15))
-        XCTAssertEqual(JARVISRefreshPolicy.controlActiveInterval, .seconds(5))
+        XCTAssertEqual(JARVISRefreshPolicy.activeInterval, .seconds(5))
+        XCTAssertEqual(JARVISRefreshPolicy.controlActiveInterval, .seconds(3))
+        XCTAssertEqual(JARVISRefreshPolicy.alwaysOnInterval, .seconds(15))
         XCTAssertEqual(JARVISRefreshPolicy.visibleCodexRefreshInterval, 60)
     }
 

@@ -128,6 +128,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
     private var debugRelaySmokeDidRun = false
     private var appIsForeground = false
+    private var appIsInteractive = false
     private var refreshGeneration = 0
     private var refreshLoopTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
@@ -219,6 +220,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     func sceneDidBecomeActive() {
+        appIsInteractive = true
         appIsForeground = true
         jobs.sceneDidBecomeInteractive()
         // A wrist raise must immediately refresh buttons and re-establish the
@@ -228,6 +230,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     func sceneDidEnterAlwaysOn() {
+        appIsInteractive = false
         let resumedAsFrontmost = !appIsForeground
         appIsForeground = true
         // Always forward active -> inactive wrist-down transitions. The terminal
@@ -241,6 +244,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     func sceneDidEnterBackground() {
+        appIsInteractive = false
         appIsForeground = false
         refreshLoopTask?.cancel()
         refreshLoopTask = nil
@@ -306,7 +310,8 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             await self.refresh()
             while !Task.isCancelled, self.appIsForeground {
                 do {
-                    try await Task.sleep(for: self.activeRefreshInterval)
+                    try await Task.sleep(for: self.appIsInteractive
+                        ? self.activeRefreshInterval : JARVISRefreshPolicy.alwaysOnInterval)
                 } catch {
                     return
                 }
