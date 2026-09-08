@@ -36,7 +36,7 @@ Shared helpers live under `.pi/extensions/lib/` and are imported by project-loca
 - `58-reaper-bridge.ts` — live REAPER inline-Lua bridge.
 - `60-pdf-read-result.ts` — PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `98-slim-provider-payload.ts` — deterministic provider payload/schema slimming, including OpenAI deferred `tool_search_output` schemas.
-- `99-lazy-tools.ts` — additive lazy optional tool activation using Pi's native deferred-loading protocol where supported.
+- `99-lazy-tools.ts` — additive lazy optional tool activation, plus opt-in direct-call auto-loading on the patched JARVIS Pi runtime.
 
 ## Current tool surface
 
@@ -63,7 +63,9 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 
 The provider-visible `load_tools` description, prompt snippet, parameter help, and `/load-tools` usage are generated from the canonical registry in `99-lazy-tools.ts`. Model-called `load_tools` activation is purely additive: Pi records the added tool names on the tool result and, on capable providers such as GPT-5.6, anchors their definitions there with native deferred loading instead of changing the initial cached tool prefix. Other providers use Pi's normal full-tool fallback. Manual `/load-tools` remains available but has no tool-result anchor, so it may refresh the provider cache once.
 
-Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full group playbooks are returned by model-called `load_tools` and remain in conversation context. Manual `/load-tools` queues the same hidden playbook for the next user turn. `98-slim-provider-payload.ts` preserves the registry-generated top-level `load_tools` description and also slims deferred schemas nested in OpenAI `tool_search_output` items. The smoke test checks these invariants for drift.
+On the [JARVIS lazy-execution runtime](PI_LAZY_EXECUTION.md), valid direct calls to registered lazy tools automatically activate their group and execute once through normal validation and safety hooks. Unknown, removed, and CLI/SDK-excluded tools stay unavailable. Initial schemas remain lean; a directly called tool may refresh the provider prefix once because Pi preserves its existing prior-use/deferred-schema safeguard. Explicit `load_tools` remains preferred for discovering unfamiliar schemas and for native deferred loading. Stock Pi falls back to explicit loading.
+
+Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full group playbooks are returned by model-called `load_tools` (or appended to the original direct call's result after auto-loading) and remain in conversation context. Manual `/load-tools` queues the same hidden playbook for the next user turn. `98-slim-provider-payload.ts` preserves the registry-generated top-level `load_tools` description and also slims deferred schemas nested in OpenAI `tool_search_output` items. The smoke test checks these invariants for drift.
 
 Durable memory is explicit-only. Loading the `memory` group preserves search/remember/update/forget/list/status functionality without performing prompt-time recall or changing the system prompt between user turns.
 
@@ -71,7 +73,7 @@ Prior Pi/JARVIS sessions are searched directly with baseline coding tools. The p
 
 The `jarvis` group includes Operation JARVIS actions for Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
 
-Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: load `minecraft_jarvis` before calling `minecraft_jarvis`, or load `github` before calling `github_cli`. Ordinary local `git` operations continue to use the baseline coding shell.
+Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: discover their schemas by loading `minecraft_jarvis` or `github`. Known valid direct calls also auto-load on the JARVIS runtime. Ordinary local `git` operations continue to use the baseline coding shell.
 
 ## Native file attachments
 

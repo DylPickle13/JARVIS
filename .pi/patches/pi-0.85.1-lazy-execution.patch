@@ -1,0 +1,494 @@
+diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
+index 193e3fa..8453e9c 100644
+--- a/packages/agent/src/agent-loop.ts
++++ b/packages/agent/src/agent-loop.ts
+@@ -19,6 +19,7 @@ import type {
+ 	AgentTool,
+ 	AgentToolCall,
+ 	AgentToolResult,
++	BeforeToolCallResult,
+ 	PrepareNextTurnContext,
+ 	StreamFn,
+ } from "./types.ts";
+@@ -415,7 +416,7 @@ async function executeToolCalls(
+ ): Promise<ExecutedToolCallBatch> {
+ 	const toolCalls = assistantMessage.content.filter((c) => c.type === "toolCall");
+ 	const hasSequentialToolCall = toolCalls.some(
+-		(tc) => currentContext.tools?.find((t) => t.name === tc.name)?.executionMode === "sequential",
++		(tc) => findExecutionTool(currentContext, config, tc.name)?.executionMode === "sequential",
+ 	);
+ 	if (config.toolExecution === "sequential" || hasSequentialToolCall) {
+ 		return executeToolCallsSequential(currentContext, assistantMessage, toolCalls, config, signal, emit);
+@@ -521,7 +522,7 @@ async function executeToolCallsParallel(
+ 			if (signal?.aborted) {
+ 				const finalized = {
+ 					toolCall,
+-					result: createErrorToolResult("Operation aborted"),
++					result: applyPreflightResult(createErrorToolResult("Operation aborted"), preparation.preflightResult),
+ 					isError: true,
+ 				} satisfies FinalizedToolCallOutcome;
+ 				await emitToolExecutionEnd(finalized, emit);
+@@ -565,6 +566,7 @@ type PreparedToolCall = {
+ 	toolCall: AgentToolCall;
+ 	tool: AgentTool<any>;
+ 	args: unknown;
++	preflightResult?: BeforeToolCallResult;
+ };
+ 
+ type ImmediateToolCallOutcome = {
+@@ -604,6 +606,20 @@ function prepareToolCallArguments(tool: AgentTool<any>, toolCall: AgentToolCall)
+ 	};
+ }
+ 
++function findExecutionTool(context: AgentContext, config: AgentLoopConfig, name: string): AgentTool<any> | undefined {
++	const tool = context.tools?.find((tool) => tool.name === name) ?? config.resolveTool?.(name);
++	return tool?.name === name ? tool : undefined;
++}
++
++function applyPreflightResult(result: AgentToolResult<any>, preflight?: BeforeToolCallResult): AgentToolResult<any> {
++	if (!preflight?.addedToolNames?.length && !preflight?.toolResultContent?.length) return result;
++	return {
++		...result,
++		content: [...(result.content ?? []), ...(preflight.toolResultContent ?? [])],
++		addedToolNames: [...new Set([...(result.addedToolNames ?? []), ...(preflight.addedToolNames ?? [])])],
++	};
++}
++
+ async function prepareToolCall(
+ 	currentContext: AgentContext,
+ 	assistantMessage: AssistantMessage,
+@@ -611,7 +627,7 @@ async function prepareToolCall(
+ 	config: AgentLoopConfig,
+ 	signal: AbortSignal | undefined,
+ ): Promise<PreparedToolCall | ImmediateToolCallOutcome> {
+-	const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
++	const tool = findExecutionTool(currentContext, config, toolCall.name);
+ 	if (!tool) {
+ 		return {
+ 			kind: "immediate",
+@@ -620,11 +636,18 @@ async function prepareToolCall(
+ 		};
+ 	}
+ 
++	let preflightResult: BeforeToolCallResult | undefined;
++	const fail = (message: string): ImmediateToolCallOutcome => ({
++		kind: "immediate",
++		result: applyPreflightResult(createErrorToolResult(message), preflightResult),
++		isError: true,
++	});
+ 	try {
++		if (signal?.aborted) return fail("Operation aborted");
+ 		const preparedToolCall = prepareToolCallArguments(tool, toolCall);
+ 		const validatedArgs = validateToolArguments(tool, preparedToolCall);
+ 		if (config.beforeToolCall) {
+-			const beforeResult = await config.beforeToolCall(
++			preflightResult = await config.beforeToolCall(
+ 				{
+ 					assistantMessage,
+ 					toolCall,
+@@ -633,44 +656,23 @@ async function prepareToolCall(
+ 				},
+ 				signal,
+ 			);
+-			if (signal?.aborted) {
+-				return {
+-					kind: "immediate",
+-					result: createErrorToolResult("Operation aborted"),
+-					isError: true,
+-				};
++			if (signal?.aborted) return fail("Operation aborted");
++			if (preflightResult?.block) {
++				const outcome = fail(preflightResult.reason || "Tool execution was blocked");
++				if (preflightResult.terminate === true) outcome.result.terminate = true;
++				return outcome;
+ 			}
+-			if (beforeResult?.block) {
+-				const result = createErrorToolResult(beforeResult.reason || "Tool execution was blocked");
+-				if (beforeResult.terminate === true) {
+-					result.terminate = true;
+-				}
+-				return {
+-					kind: "immediate",
+-					result,
+-					isError: true,
+-				};
+-			}
+-		}
+-		if (signal?.aborted) {
+-			return {
+-				kind: "immediate",
+-				result: createErrorToolResult("Operation aborted"),
+-				isError: true,
+-			};
+ 		}
++		if (signal?.aborted) return fail("Operation aborted");
+ 		return {
+ 			kind: "prepared",
+ 			toolCall,
+ 			tool,
+ 			args: validatedArgs,
++			preflightResult,
+ 		};
+ 	} catch (error) {
+-		return {
+-			kind: "immediate",
+-			result: createErrorToolResult(error instanceof Error ? error.message : String(error)),
+-			isError: true,
+-		};
++		return fail(error instanceof Error ? error.message : String(error));
+ 	}
+ }
+ 
+@@ -759,7 +761,7 @@ async function finalizeExecutedToolCall(
+ 
+ 	return {
+ 		toolCall: prepared.toolCall,
+-		result,
++		result: applyPreflightResult(result, prepared.preflightResult),
+ 		isError,
+ 	};
+ }
+diff --git a/packages/agent/src/agent.ts b/packages/agent/src/agent.ts
+index 0de7edd..e6f8b74 100644
+--- a/packages/agent/src/agent.ts
++++ b/packages/agent/src/agent.ts
+@@ -96,6 +96,8 @@ function createMutableAgentState(
+ 
+ /** Options for constructing an {@link Agent}. */
+ export interface AgentOptions {
++	/** Pure opt-in lookup for hidden tools; does not expose their schemas. */
++	resolveTool?: AgentLoopConfig["resolveTool"];
+ 	initialState?: Partial<Omit<AgentState, "pendingToolCalls" | "isStreaming" | "streamingMessage" | "errorMessage">>;
+ 	convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
+ 	transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
+@@ -182,6 +184,7 @@ export class Agent {
+ 	public getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
+ 	public onPayload?: SimpleStreamOptions["onPayload"];
+ 	public onResponse?: SimpleStreamOptions["onResponse"];
++	public resolveTool?: AgentLoopConfig["resolveTool"];
+ 	public beforeToolCall?: (
+ 		context: BeforeToolCallContext,
+ 		signal?: AbortSignal,
+@@ -223,6 +226,7 @@ export class Agent {
+ 		this.getApiKey = runtimeOptions.getApiKey;
+ 		this.onPayload = runtimeOptions.onPayload;
+ 		this.onResponse = runtimeOptions.onResponse;
++		this.resolveTool = runtimeOptions.resolveTool;
+ 		this.beforeToolCall = runtimeOptions.beforeToolCall;
+ 		this.afterToolCall = runtimeOptions.afterToolCall;
+ 		this.shouldStopAfterTurn = runtimeOptions.shouldStopAfterTurn;
+@@ -455,6 +459,7 @@ export class Agent {
+ 			thinkingBudgets: this.thinkingBudgets,
+ 			maxRetryDelayMs: this.maxRetryDelayMs,
+ 			toolExecution: this.toolExecution,
++			resolveTool: this.resolveTool,
+ 			beforeToolCall: this.beforeToolCall,
+ 			afterToolCall: this.afterToolCall,
+ 			shouldStopAfterTurn: shouldStopAfterTurn
+diff --git a/packages/agent/src/types.ts b/packages/agent/src/types.ts
+index eebb5dc..4378cf9 100644
+--- a/packages/agent/src/types.ts
++++ b/packages/agent/src/types.ts
+@@ -59,6 +59,10 @@ export type AgentToolCall = Extract<AssistantMessage["content"][number], { type:
+  * `reason` becomes the text shown in that error result. If omitted, a default blocked message is used.
+  */
+ export interface BeforeToolCallResult {
++	/** Additive tool activations performed during preflight, anchored even on errors/blocks. */
++	addedToolNames?: string[];
++	/** Guidance appended to the final result, without replacing the tool output. */
++	toolResultContent?: (TextContent | ImageContent)[];
+ 	block?: boolean;
+ 	reason?: string;
+ 	/**
+@@ -147,6 +151,10 @@ export interface AgentLoopTurnUpdate {
+ export interface PrepareNextTurnContext extends ShouldStopAfterTurnContext {}
+ 
+ export interface AgentLoopConfig extends SimpleStreamOptions {
++	/** Opt-in lookup for hidden executable tools. Must be synchronous, pure, and not throw.
++	 * Used for scheduling as well as validation; never changes provider-visible tools.
++	 */
++	resolveTool?: (name: string) => AgentTool<any> | undefined;
+ 	model: Model<any>;
+ 
+ 	/**
+diff --git a/packages/agent/test/agent.test.ts b/packages/agent/test/agent.test.ts
+index 672c4a6..802f106 100644
+--- a/packages/agent/test/agent.test.ts
++++ b/packages/agent/test/agent.test.ts
+@@ -808,3 +808,87 @@ describe("Agent", () => {
+ 		expect(receivedSessionId).toBe("session-def");
+ 	});
+ });
++
++describe("opt-in hidden tool execution", () => {
++	async function runHidden(options: { resolve?: boolean; invalid?: boolean; block?: boolean; fail?: boolean }) {
++		let executions = 0;
++		const requests: string[][] = [];
++		const hidden: AgentTool = {
++			name: "hidden",
++			label: "Hidden",
++			description: "Not advertised",
++			parameters: Type.Object({ value: Type.String() }),
++			execute: async () => {
++				executions++;
++				if (options.fail) throw new Error("operation failed");
++				return { content: [{ type: "text", text: "real output" }], details: { preserved: true } };
++			},
++		};
++		const agent = new Agent({
++			resolveTool: options.resolve ? (name) => (name === hidden.name ? hidden : undefined) : undefined,
++			beforeToolCall: async () => ({
++				block: options.block,
++				reason: "permission denied",
++				addedToolNames: ["hidden"],
++				toolResultContent: [{ type: "text", text: "lazy guidance" }],
++			}),
++			streamFn: (_model, context) => {
++				requests.push((context.tools ?? []).map((tool) => tool.name));
++				const message =
++					requests.length === 1
++						? createAssistantToolUseMessage([
++								{
++									type: "toolCall",
++									id: "hidden_call",
++									name: "hidden",
++									arguments: options.invalid ? {} : { value: "ok" },
++								},
++							])
++						: createAssistantMessage("done");
++				const stream = new MockAssistantStream();
++				queueMicrotask(() =>
++					stream.push({ type: "done", reason: message.stopReason as "stop" | "toolUse", message }),
++				);
++				return stream;
++			},
++		});
++		await agent.prompt("call hidden");
++		const result = agent.state.messages.find((message) => message.role === "toolResult");
++		return { executions, result, requests };
++	}
++
++	it("does not resolve hidden tools by default", async () => {
++		const { result, executions } = await runHidden({});
++		expect(executions).toBe(0);
++		expect(result).toMatchObject({ isError: true, content: [{ type: "text", text: "Tool hidden not found" }] });
++	});
++
++	it("executes an opted-in hidden tool once without advertising it", async () => {
++		const { result, executions, requests } = await runHidden({ resolve: true });
++		expect(executions).toBe(1);
++		expect(requests.every((tools) => tools.length === 0)).toBe(true);
++		expect(result).toMatchObject({
++			isError: false,
++			addedToolNames: ["hidden"],
++			details: { preserved: true },
++			content: [
++				{ type: "text", text: "real output" },
++				{ type: "text", text: "lazy guidance" },
++			],
++		});
++	});
++
++	it("validates arguments before preflight or execution", async () => {
++		const { result, executions } = await runHidden({ resolve: true, invalid: true });
++		expect(executions).toBe(0);
++		expect(result).toMatchObject({ isError: true });
++		expect(result).not.toHaveProperty("addedToolNames");
++	});
++
++	it.each([{ block: true }, { fail: true }])("retains preflight annotations on failure: %j", async (options) => {
++		const { result, executions } = await runHidden({ resolve: true, ...options });
++		expect(executions).toBe(options.block ? 0 : 1);
++		expect(result).toMatchObject({ isError: true, addedToolNames: ["hidden"] });
++		if (result?.role === "toolResult") expect(result.content.at(-1)).toEqual({ type: "text", text: "lazy guidance" });
++	});
++});
+diff --git a/packages/coding-agent/docs/extensions.md b/packages/coding-agent/docs/extensions.md
+index ce13db6..6a941f8 100644
+--- a/packages/coding-agent/docs/extensions.md
++++ b/packages/coding-agent/docs/extensions.md
+@@ -3021,3 +3021,33 @@ All examples in [examples/extensions/](../examples/extensions/).
+ | `inline-bash.ts` | Inline bash in tool calls | `on("tool_call")` |
+ | `bash-spawn-hook.ts` | Adjust bash command, cwd, and env before execution | `createBashTool`, `spawnHook` |
+ | `with-deps/` | Extension with npm dependencies | Package structure with `package.json` |
++
++### JARVIS patch: hidden tool execution (Pi 0.85.1)
++
++`pi.setLazyTools(names)` opts registered, allowed tools into execution while their
++schemas are inactive. It replaces an explicit allowlist, independently of
++`setActiveTools`; it does not expose schemas. Call it in `session_start` after
++registration. The allowlist is cleared when the extension runtime is rebuilt.
++To disable hidden execution, call `setLazyTools([])`; merely hiding a designated
++lazy tool with `setActiveTools` does not revoke its lazy designation. CLI/SDK
++allowlists and exclusions still apply and cannot be overridden by this API.
++
++Agent core's optional `resolveTool(name)` is a pure synchronous execution lookup,
++used both for batch scheduling and argument validation. It must not throw or
++perform side effects. Resolved tools retain their normal wrappers, execution
++mode, permission hooks, cancellation, and result processing. Unknown names are
++not resolved. No implicit retries or extra provider requests are introduced.
++
++An extension's normal `tool_call` hook can add its group with `setActiveTools`
++after argument validation. Pi records additive preflight activations on the
++original result (including blocked, failed, and cancelled calls). The hook can
++return `toolResultContent` to append a group playbook without replacing real tool
++output. This content is accumulated across handlers and preserved if a later
++handler returns a block. A throwing handler fails closed; activation metadata is
++retained, although guidance returned by an earlier handler may be unavailable.
++
++Explicit loading keeps the existing native deferred-loading path. Direct calls
++retain Pi's conservative prior-use safeguard: a tool used before its schema
++marker remains an immediate definition on later requests and may refresh the
++provider prefix once. Unused group siblings can still be deferred. This patch
++does not weaken that safeguard or hide schemas by rewriting provider payloads.
+diff --git a/packages/coding-agent/src/core/agent-session.ts b/packages/coding-agent/src/core/agent-session.ts
+index ac2bd4b..900f6b4 100644
+--- a/packages/coding-agent/src/core/agent-session.ts
++++ b/packages/coding-agent/src/core/agent-session.ts
+@@ -372,6 +372,7 @@ export class AgentSession {
+ 
+ 	// Tool registry for extension getTools/setTools
+ 	private _toolRegistry: Map<string, AgentTool> = new Map();
++	private _lazyToolNames = new Set<string>();
+ 	private _toolDefinitions: Map<string, ToolDefinitionEntry> = new Map();
+ 	private _toolPromptSnippets: Map<string, string> = new Map();
+ 	private _toolPromptGuidelines: Map<string, string[]> = new Map();
+@@ -484,25 +485,33 @@ export class AgentSession {
+ 	 * happens here instead of in wrappers.
+ 	 */
+ 	private _installAgentToolHooks(): void {
++		this.agent.resolveTool = (name) => (this._lazyToolNames.has(name) ? this._toolRegistry.get(name) : undefined);
+ 		this.agent.beforeToolCall = async ({ toolCall, args }) => {
++			const activeBefore = this.getActiveToolNames();
+ 			const runner = this._extensionRunner;
+ 			if (!runner.hasHandlers("tool_call")) {
+ 				return undefined;
+ 			}
+ 
++			let result: Awaited<ReturnType<typeof runner.emitToolCall>>;
+ 			try {
+-				return await runner.emitToolCall({
++				result = await runner.emitToolCall({
+ 					type: "tool_call",
+ 					toolName: toolCall.name,
+ 					toolCallId: toolCall.id,
+ 					input: args as Record<string, unknown>,
+ 				});
+ 			} catch (err) {
+-				if (err instanceof Error) {
+-					throw err;
+-				}
+-				throw new Error(`Extension failed, blocking execution: ${String(err)}`);
++				result = {
++					block: true,
++					reason: err instanceof Error ? err.message : `Extension failed, blocking execution: ${String(err)}`,
++				};
+ 			}
++			const activeAfter = this.getActiveToolNames();
++			const addedToolNames = activeBefore.every((name) => activeAfter.includes(name))
++				? activeAfter.filter((name) => !activeBefore.includes(name))
++				: [];
++			return addedToolNames.length ? { ...result, addedToolNames } : result;
+ 		};
+ 
+ 		this.agent.afterToolCall = async ({ toolCall, args, result, isError }) => {
+@@ -2609,6 +2618,9 @@ export class AgentSession {
+ 				getActiveTools: () => this.getActiveToolNames(),
+ 				getAllTools: () => this.getAllTools(),
+ 				setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
++				setLazyTools: (toolNames) => {
++					this._lazyToolNames = new Set(toolNames.filter((name) => this._toolRegistry.has(name)));
++				},
+ 				refreshTools: () => this._refreshToolRegistry(),
+ 				getCommands,
+ 				setModel: async (model) => {
+@@ -2766,6 +2778,7 @@ export class AgentSession {
+ 		flagValues?: Map<string, boolean | string>;
+ 		includeAllExtensionTools?: boolean;
+ 	}): void {
++		this._lazyToolNames.clear();
+ 		const autoResizeImages = this.settingsManager.getImageAutoResize();
+ 		const shellCommandPrefix = this.settingsManager.getShellCommandPrefix();
+ 		const shellPath = this.settingsManager.getShellPath();
+diff --git a/packages/coding-agent/src/core/extensions/loader.ts b/packages/coding-agent/src/core/extensions/loader.ts
+index 32ca6c9..e98019a 100644
+--- a/packages/coding-agent/src/core/extensions/loader.ts
++++ b/packages/coding-agent/src/core/extensions/loader.ts
+@@ -196,6 +196,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
+ 		getActiveTools: notInitialized,
+ 		getAllTools: notInitialized,
+ 		setActiveTools: notInitialized,
++		setLazyTools: notInitialized,
+ 		// registerTool() is valid during extension load; refresh is only needed post-bind.
+ 		refreshTools: () => {},
+ 		getCommands: notInitialized,
+@@ -402,6 +403,11 @@ function createExtensionAPI(
+ 			return runtime.getAllTools();
+ 		},
+ 
++		setLazyTools(toolNames: string[]): void {
++			assertActive();
++			if (!runtime.setLazyTools) throw new Error("This runtime does not support lazy tool execution");
++			runtime.setLazyTools(toolNames);
++		},
+ 		setActiveTools(toolNames: string[]): void {
+ 			assertActive();
+ 			runtime.setActiveTools(toolNames);
+diff --git a/packages/coding-agent/src/core/extensions/runner.ts b/packages/coding-agent/src/core/extensions/runner.ts
+index 3346645..e0babd6 100644
+--- a/packages/coding-agent/src/core/extensions/runner.ts
++++ b/packages/coding-agent/src/core/extensions/runner.ts
+@@ -333,6 +333,7 @@ export class ExtensionRunner {
+ 		this.runtime.getActiveTools = actions.getActiveTools;
+ 		this.runtime.getAllTools = actions.getAllTools;
+ 		this.runtime.setActiveTools = actions.setActiveTools;
++		this.runtime.setLazyTools = actions.setLazyTools;
+ 		this.runtime.refreshTools = actions.refreshTools;
+ 		this.runtime.getCommands = actions.getCommands;
+ 		this.runtime.setModel = actions.setModel;
+@@ -991,7 +992,11 @@ export class ExtensionRunner {
+ 				const handlerResult = await handler(event, ctx);
+ 
+ 				if (handlerResult) {
+-					result = handlerResult as ToolCallEventResult;
++					const next = handlerResult as ToolCallEventResult;
++					result = {
++						...next,
++						toolResultContent: [...(result?.toolResultContent ?? []), ...(next.toolResultContent ?? [])],
++					};
+ 					if (result.block) {
+ 						return result;
+ 					}
+diff --git a/packages/coding-agent/src/core/extensions/types.ts b/packages/coding-agent/src/core/extensions/types.ts
+index eaff3a8..a1bd710 100644
+--- a/packages/coding-agent/src/core/extensions/types.ts
++++ b/packages/coding-agent/src/core/extensions/types.ts
+@@ -1123,6 +1123,8 @@ export interface ContextEventResult {
+ export type BeforeProviderRequestEventResult = unknown;
+ 
+ export interface ToolCallEventResult {
++	/** Guidance appended to this call's final result, including blocked/error outcomes. */
++	toolResultContent?: (TextContent | ImageContent)[];
+ 	/** Block tool execution. To modify arguments, mutate `event.input` in place instead. */
+ 	block?: boolean;
+ 	reason?: string;
+@@ -1404,6 +1406,11 @@ export interface ExtensionAPI {
+ 
+ 	/** Set the active tools by name. */
+ 	setActiveTools(toolNames: string[]): void;
++	/** Replace the explicit allowlist of registered tools callable while hidden.
++	 * Does not activate schemas. Clear this list to disable hidden execution.
++	 * Call after initialization (e.g. session_start); resets on runtime reload.
++	 */
++	setLazyTools(toolNames: string[]): void;
+ 
+ 	/** Get available slash commands in the current session. */
+ 	getCommands(): SlashCommandInfo[];
+@@ -1703,6 +1710,7 @@ export interface ExtensionActions {
+ 	getActiveTools: GetActiveToolsHandler;
+ 	getAllTools: GetAllToolsHandler;
+ 	setActiveTools: SetActiveToolsHandler;
++	setLazyTools?: SetActiveToolsHandler;
+ 	refreshTools: RefreshToolsHandler;
+ 	getCommands: GetCommandsHandler;
+ 	setModel: SetModelHandler;

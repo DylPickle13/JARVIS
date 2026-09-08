@@ -467,6 +467,12 @@ for (const required of [
   'const addedToolNames = unlockedToolNames.filter((name) => !activeBefore.includes(name));',
   'pi.setActiveTools(activeTools);',
   'buildGuidanceSection(expandedGroups, "JARVIS loaded-tool guidance")',
+  'typeof lazyAPI.setLazyTools === "function"',
+  'process.env.JARVIS_PI_LAZY_AUTOCALL !== "0"',
+  'lazyAPI.setLazyTools?.(autoLoadEnabled',
+  'configureLazyExecution();',
+  'toolResultContent:',
+  'if (!existingToolNames(pi).has(event.toolName))',
 ]) {
   if (!lazy.includes(required)) throw new Error(`Missing canonical description wiring: ${required}`);
 }
@@ -537,6 +543,15 @@ for (const path of optionalToolFiles) {
 
 console.log(`canonical lazy groups (${toolGroups.length}): ${toolGroups.join(', ')}, all; additive deferred loading enabled; cache-prefix hooks audited`);
 NODE
+fi
+
+section "Lazy tool execution runtime checks"
+if command -v node >/dev/null 2>&1; then
+  if [ -f .pi/runtime/pi-lazy-tools/build.json ]; then
+    run_check "built SDK/bundle/RPC hidden-tool execution regression tests (offline mocks only)" node .pi/scripts/pi-lazy-runtime.mjs test
+  else
+    warn "custom lazy-execution runtime not built; stock Pi requires explicit load_tools (see .pi/docs/PI_LAZY_EXECUTION.md)"
+  fi
 fi
 
 section "Local Pi lifecycle telemetry checks"

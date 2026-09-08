@@ -334,7 +334,7 @@ The owner-only database retains at most 500 sanitized output-producing successes
 | Symptom | First check |
 |---|---|
 | Pi does not see custom tools | Run `pi list`, then `/reload`; verify files under `.pi/extensions/`, `.pi/extensions/50-browser/node_modules`, and package installs under `.pi/npm/node_modules/`. |
-| Optional tool hidden | Call `load_tools({ groups: ["<group>"] })` or `/load-tools <group>`. |
+| Optional tool hidden | Call `load_tools({ groups: ["<group>"] })` or `/load-tools <group>`. For automatic direct-call activation, build/install the [version-pinned lazy-execution runtime](PI_LAZY_EXECUTION.md). |
 | Web search unavailable | Run `/web-access-config`; check Exa MCP/package availability, optional `EXA_API_KEY`, and JARVIS's scoped `.pi/runtime/pi-web-access/web-search.json`. JARVIS does not use global `~/.pi/web-search.json`. |
 | Maps unavailable | Check `GOOGLE_MAPS_API_KEY`; confirm Places API (New), Geocoding API, and Routes API are enabled for the key. |
 | Browser tools unavailable | Run `npm install` in `.pi/extensions/50-browser`; check Google Chrome path or set `PI_BROWSER_CHROME_PATH`. |

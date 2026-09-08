@@ -24,7 +24,7 @@ function compactInstructions(instructions: string, payload: any): string {
       "- Ask one clarification only if required.",
       "- Memory: load `memory` first; stable facts only; no secrets/sensitive data.",
       "- Web: `web_search` discover, `fetch_content` text/pages, `get_search_content` stored; load `browser` for rendered/interactive/logged-in/forms/screenshots/open-use-check sites.",
-      "- Optional tool schemas require `load_tools`; its schema description is the canonical group inventory. Lights/plugs/switches/Cast/purifier => load `jarvis` and use `smart_plug`/`jarvis`, no shell/file fallback unless the tool fails; cron checks use `jarvis_cron` unless OS cron/launchd is explicit.",
+      "- Discover optional schemas with `load_tools`; its description is the canonical group inventory. Known valid direct calls auto-load registered lazy tools on the JARVIS runtime. Lights/plugs/switches/Cast/purifier => use `smart_plug`/`jarvis` (load `jarvis` if needed), no shell/file fallback unless the tool fails; cron checks use `jarvis_cron` unless OS cron/launchd is explicit.",
       "- Be concise; show paths.",
       "",
     ].join("\n"),

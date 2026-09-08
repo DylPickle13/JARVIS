@@ -81,7 +81,7 @@ const GROUP_NAMES = Object.keys(TOOL_GROUPS) as ConcreteToolGroup[];
 const GROUP_NAMES_WITH_ALL_TEXT = [...GROUP_NAMES, "all"].join(", ");
 const LOADABLE_GROUPS_TEXT = `${GROUP_NAMES.map((name) => `${name}=${GROUP_SUMMARIES[name]}`).join("; ")}; all=all loadable groups`;
 const BASELINE_TOOLS_TEXT = "coding, ssh, web_search/fetch_content/get_search_content, maps";
-const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name. Always-on baseline: ${BASELINE_TOOLS_TEXT}. Available groups: ${LOADABLE_GROUPS_TEXT}. Optional schemas stay visible for this Pi session after loading.`;
+const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name. Always-on baseline: ${BASELINE_TOOLS_TEXT}. Available groups: ${LOADABLE_GROUPS_TEXT}. Optional schemas stay visible for this Pi session after loading. On the JARVIS lazy-execution runtime, valid direct calls to registered lazy tools also auto-load their group; use this loader to discover unfamiliar schemas.`;
 const LOAD_TOOLS_PROMPT_SNIPPET = `Load optional tool groups by exact name: ${GROUP_NAMES_WITH_ALL_TEXT}.`;
 
 const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly string[] }> = {
@@ -113,7 +113,7 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   jarvis: {
     skill: "operation-jarvis",
     lines: [
-      "For any home-control request (lights/plugs/switches/power, Cast/TV/speakers, air purifier), first call `load_tools({ groups: [\"jarvis\"] })`; then use the exact unlocked `jarvis` or `smart_plug` tool. Do not read files, run shell/CLI, SSH, or guess commands unless the JARVIS tool fails.",
+      "For any home-control request (lights/plugs/switches/power, Cast/TV/speakers, air purifier), use the exact `jarvis` or `smart_plug` tool; discover unfamiliar schemas with `load_tools({ groups: [\"jarvis\"] })`. Do not read files, run shell/CLI, SSH, or guess commands unless the JARVIS tool fails.",
       "Safe checks: `jarvis({ action: \"help\" })`, `jarvis({ action: \"status\", noCast: true })`, `jarvis({ action: \"cast-status\", device: \"speakers\" })`, `smart_plug({ action: \"list\" })`, or `jarvis({ action: \"purifier-status\" })`.",
       "Cast actions: `jarvis({ action: \"speak\", text: \"JARVIS online.\", device: \"speakers\" })`, `jarvis({ action: \"cast-status\", device: \"tv\" })`, `jarvis({ action: \"cast-volume\", level: 25 })`, `jarvis({ action: \"cast-youtube\", query: \"relaxing jazz\", device: \"tv\" })`, and related `cast-mute`, `cast-stop`, `cast-play-url` actions. `cast-stop` quits the Cast app by default.",
       "Spotify actions include `cast-spotify-devices`, play/resume with `cast-spotify`, pause/next/previous/volume, queue read/add, seek, shuffle, and repeat. Use `device: \"tv\"`/`\"speakers\"` for configured aliases or an exact `spotifyDeviceName`; prefer names over changing IDs and never expose credentials.",
@@ -125,7 +125,7 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   minecraft_jarvis: {
     skill: "minecraft-jarvis",
     lines: [
-      "Use `minecraft_jarvis` only after loading the `minecraft_jarvis` group when the user wants to command or talk to the Minecraft jarvis bot from this Pi session instead of typing in Minecraft.",
+      "Use `minecraft_jarvis` (load its group to discover the schema if needed) when the user wants to command or talk to the Minecraft jarvis bot from this Pi session instead of typing in Minecraft.",
       "Pass the user's plain-language instruction in `message`; do not pre-interpret it into Minecraft bot tools. The configured local Pi RPC agent decides whether to respond or act within its safe Mineflayer toolset.",
       "Keep messages short and non-destructive. The local Minecraft Pi agent currently starts with safe tools only: chat, observe/status, players, inventory, movement/follow/stop, block search, simple mining, and simple crafting.",
       "Do not substitute SSH, shell, or slash commands for `minecraft_jarvis`.",
@@ -155,7 +155,7 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   reaper: {
     skill: "live REAPER inline Lua bridge",
     lines: [
-      "Use `reaper_ping` and `reaper_lua` only after loading the `reaper` group; these tools talk to the live REAPER instance on mac-mini-16.",
+      "Use `reaper_ping` and `reaper_lua` (load `reaper` to discover their schemas if needed); these tools talk to the live REAPER instance on mac-mini-16.",
       "Use `reaper_lua` for live-session inspection or edits by sending inline Lua only. Do not save temporary task scripts for REAPER work.",
       "For edits, write any desired `reaper.Undo_BeginBlock()` / `reaper.Undo_EndBlock()` directly in the Lua snippet; the bridge intentionally has no hardcoded action wrappers.",
       "Return JSON-safe Lua tables from `reaper_lua` so results are easy to inspect.",
@@ -168,7 +168,7 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
   apple_notes: {
     skill: "Apple Notes",
     lines: [
-      "For Apple Notes requests, first call `load_tools({ groups: [\"apple_notes\"] })`, then use the exact unlocked `apple_notes_*` tool; do not use SQLite, Shortcuts, JXA, shell scripts, or guessed Notes commands.",
+      "For Apple Notes requests, use the exact `apple_notes_*` tool; discover unfamiliar schemas with `load_tools({ groups: [\"apple_notes\"] })`; do not use SQLite, Shortcuts, JXA, shell scripts, or guessed Notes commands.",
       "The tools use macOS Notes automation with iCloud → Notes as the write default. Search/read may omit `folder` to scan non-deleted iCloud folders.",
       "Use `apple_notes_read` before updating or deleting when the note id is unknown. Prefer stable note ids over title fallbacks; ambiguous titles fail safely.",
       "`apple_notes_update` requires an explicit `mode`: `replace` preserves the title and replaces the body; `append` adds plaintext after the current note.",
@@ -302,16 +302,26 @@ function buildGuidanceSection(groups: readonly GuidanceGroup[], heading = "JARVI
 }
 
 export default function lazyTools(pi: ExtensionAPI) {
+  // Feature-detect so stock Pi still works with explicit loading. Hidden execution
+  // is opt-in, not a fallback for every inactive/disabled registered tool.
+  const lazyAPI = pi as ExtensionAPI & { setLazyTools?: (names: string[]) => void };
+  const autoLoadEnabled = typeof lazyAPI.setLazyTools === "function" && process.env.JARVIS_PI_LAZY_AUTOCALL !== "0";
+  function configureLazyExecution() {
+    lazyAPI.setLazyTools?.(autoLoadEnabled
+      ? selectAvailableTools(pi, GROUP_NAMES.flatMap((group) => TOOL_GROUPS[group]))
+      : []);
+  }
+
   pi.registerTool({
     name: "load_tools",
     label: "Load Tools",
     description: LOAD_TOOLS_DESCRIPTION,
     promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET,
     promptGuidelines: [
-      "Call load_tools before any optional group listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Apple Notes => load `apple_notes`, then use the exact unlocked `apple_notes_*` tool. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
+      "Use load_tools to discover unfamiliar schemas in optional groups listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Apple Notes => load `apple_notes`, then use the exact unlocked `apple_notes_*` tool. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `jarvis_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Web: `web_search`=discover (`provider: \"youtube\"` for YouTube), `fetch_content`=static, `get_search_content`=stored. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
-      "After load_tools succeeds, use the exact unlocked tool and returned playbook. If a required tool is unavailable, say so; if a tool was listed as unlocked but is not callable, report schema refresh failure rather than substituting another tool.",
+      "Use load_tools to discover unfamiliar optional schemas. On the JARVIS lazy-execution runtime, a valid direct call to a registered lazy tool auto-loads its group and executes once with normal safety checks. Unknown, removed, or excluded tools remain unavailable. After loading, use the exact tool and returned playbook; do not substitute shell commands for unavailable tools.",
     ],
     parameters: Type.Object({
       groups: Type.Array(GroupName, {
@@ -377,6 +387,7 @@ export default function lazyTools(pi: ExtensionAPI) {
   pi.on("session_start", () => {
     resetLoadedGroups();
     applyBaselineToolSet(pi);
+    configureLazyExecution();
   });
 
   pi.on("tool_call", (event) => {
@@ -390,10 +401,30 @@ export default function lazyTools(pi: ExtensionAPI) {
 
     if (isAlwaysOnToolName(event.toolName)) return;
     const groups = groupsForToolName(event.toolName);
-    if (groups.length === 0 || groups.some((group) => loadedGroups.has(group))) return;
+    if (groups.length === 0 || (groups.some((group) => loadedGroups.has(group)) && pi.getActiveTools().includes(event.toolName))) return;
+    if (!autoLoadEnabled) {
+      return {
+        block: true,
+        reason: `${event.toolName} is hidden until one of its optional groups is loaded. Call load_tools({ groups: ["${groups[0]}"] }) first, then retry with the exact unlocked tool. Valid group(s): ${groups.map((group) => `"${group}"`).join(", ")}.`,
+      };
+    }
+    if (!existingToolNames(pi).has(event.toolName)) {
+      return { block: true, reason: `${event.toolName} is not registered or is excluded in this session.` };
+    }
+    // Pi resolves the allowlisted wrapped tool and validates arguments before this
+    // hook. Activation remains additive; Pi anchors the preflight additions and
+    // this guidance on the original call's result, even if a later guard blocks it.
+    const group = groups[0];
+    const activation = activateToolGroups(pi, [group]);
     return {
-      block: true,
-      reason: `${event.toolName} is hidden until one of its optional groups is loaded. Call load_tools({ groups: ["${groups[0]}"] }) first, then retry with the exact unlocked tool. Valid group(s): ${groups.map((group) => `"${group}"`).join(", ")}.`,
+      toolResultContent: [{
+        type: "text" as const,
+        text: [
+          `Auto-loaded: ${summarizeGroups([group])}.`,
+          `Newly activated schemas: ${activation.addedToolNames.join(", ") || "(none)"}.`,
+          buildGuidanceSection([group], "JARVIS auto-loaded-tool guidance"),
+        ].join("\n\n"),
+      }],
     };
   });
 
@@ -402,7 +433,7 @@ export default function lazyTools(pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       const activeTools = pi.getActiveTools();
       ctx.ui.notify(
-        `Lazy tool groups: ${LOADABLE_GROUPS_TEXT}\nLoaded groups: ${summarizeGroups(loadedGroupsArray())}\nLoaded tools: ${loadedTools(pi).join(", ")}\nActive tools: ${activeTools.join(", ")}`,
+        `Lazy tool groups: ${LOADABLE_GROUPS_TEXT}\nDirect-call auto-loading: ${autoLoadEnabled ? "enabled" : "unavailable or disabled; use load_tools"}\nLoaded groups: ${summarizeGroups(loadedGroupsArray())}\nLoaded tools: ${loadedTools(pi).join(", ")}\nActive tools: ${activeTools.join(", ")}`,
         "info",
       );
     },
@@ -444,6 +475,7 @@ export default function lazyTools(pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       resetLoadedGroups();
       const selected = applyBaselineToolSet(pi);
+      configureLazyExecution();
       ctx.ui.notify(`Reset active tools: ${selected.join(", ")}`, "info");
     },
   });
