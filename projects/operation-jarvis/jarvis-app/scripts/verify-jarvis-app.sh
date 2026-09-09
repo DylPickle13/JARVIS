@@ -119,13 +119,27 @@ grep -q 'JARVISD_LOG_MAX_BYTES' jarvisd/jarvisd.py
 grep -q 'JARVISD_LOG_BACKUP_COUNT' jarvisd/jarvisd.py
 grep -q 'MAX_LOG_LINE_CHARS = 4096' jarvisd/jarvisd.py
 grep -q 'class RoutineRequestLogGate' jarvisd/jarvisd.py
-grep -q 'ROUTINE_REQUEST_LOG_PATHS = {"/health", "/api/v1/state"}' jarvisd/jarvisd.py
+grep -q 'ROUTINE_REQUEST_LOG_PATHS = {"/health", "/api/v1/state", "/api/v1/omlx"}' jarvisd/jarvisd.py
 grep -q 'and status == 200' jarvisd/jarvisd.py
 grep -q 'and not parsed.query' jarvisd/jarvisd.py
 grep -q 'log_writer = configure_bounded_stderr()' jarvisd/jarvisd.py
 grep -q '^JARVISD_LOG_MAX_BYTES=1048576$' ../../../.env.example
 grep -q '^JARVISD_LOG_BACKUP_COUNT=3$' ../../../.env.example
 grep -q '^JARVISD_ROUTINE_REQUEST_LOG_INTERVAL=60$' ../../../.env.example
+
+printf '%s\n' '== iPhone-only read-only oMLX activity contract =='
+python3 - <<'PY'
+from pathlib import Path
+home = Path('JARVIS/Views/HomeView.swift').read_text()
+assert home.index('purifierSection(state)') < home.index('OMLXStatusCard(client: app.client')
+assert 'active: scenePhase == .active && app.activeSection == .home' in home
+host = Path('jarvisd/jarvisd.py').read_text().split('# Read-only oMLX activity', 1)[1].split('STATE_COORDINATOR = StateCoordinator()', 1)[0]
+assert 'OMLX_COORDINATOR = StateCoordinator(' in host
+assert 'connection.request("GET", "/admin/api/activity"' in host
+assert '/api/stats' not in host and '"POST"' not in host
+for folder in ['JARVISWatch', 'JARVISWidget', 'JARVISWatchWidget']:
+    assert not any('OMLXStatusCard' in p.read_text() or '.omlxStatus(' in p.read_text() for p in Path(folder).rglob('*.swift'))
+PY
 
 printf '%s\n' '== semantic Watch speech selection =='
 node --experimental-strip-types --input-type=module <<'NODE'
@@ -1321,8 +1335,9 @@ if [[ "${JARVIS_RUN_IOS_TESTS:-0}" == "1" ]]; then
     -project JARVIS.xcodeproj \
     -scheme JARVIS \
     -configuration Debug \
-    -destination 'platform=iOS Simulator,name=JARVIS iPhone 11,OS=26.5' \
+    -destination "${JARVIS_IOS_TEST_DESTINATION:-platform=iOS Simulator,name=JARVIS iPhone 11,OS=26.5}" \
     -derivedDataPath "$DERIVED_DATA_PATH" \
+    -resultBundlePath "${JARVIS_IOS_TEST_RESULT_BUNDLE:-$DERIVED_DATA_PATH/ios-tests.xcresult}" \
     CODE_SIGNING_ALLOWED=NO \
     test
 fi

@@ -377,7 +377,7 @@ class RoutineRequestLogGate:
             return False, 0
 
 
-ROUTINE_REQUEST_LOG_PATHS = {"/health", "/api/v1/state"}
+ROUTINE_REQUEST_LOG_PATHS = {"/health", "/api/v1/state", "/api/v1/omlx"}
 ROUTINE_REQUEST_LOG_GATE = RoutineRequestLogGate(ROUTINE_REQUEST_LOG_INTERVAL)
 
 
@@ -2281,6 +2281,206 @@ def _collect_network() -> dict:
     return {"ok": True, "macLanIp": _lan_ip(), "tailscaleIp": _tailscale_ip()}
 
 
+# --------------------------------------------------------------------------- #
+# Read-only oMLX activity (separate cache/lease from Home controls and Watch)
+# --------------------------------------------------------------------------- #
+
+OMLX_SERVER_IDS = ("mac-mini-64", "mac-mini-16")
+OMLX_MAX_BODY = 256 * 1024
+OMLX_FRESH_SECONDS = 6.0
+
+
+def _omlx_number(value: Any, *, integer: bool = False) -> int | float | None:
+    # JSON booleans, NaN, infinities, negatives and impractically large counters
+    # are not measurements. Missing data remains absent, never a fabricated 0.
+    if type(value) not in (int, float) or not 0 <= value <= 2**53:
+        return None
+    if integer:
+        return int(value) if int(value) == value else None
+    return value
+
+
+def _omlx_activity(raw: Any) -> dict:
+    """Allowlist dashboard counters only; never forward arbitrary admin JSON."""
+    activity = raw.get("active_models") if isinstance(raw, dict) else None
+    if not isinstance(activity, dict) or not isinstance(activity.get("models"), list):
+        raise ValueError("unsupported activity schema")
+    if len(activity["models"]) > 128:
+        raise ValueError("too many models")
+    models = []
+    seen = set()
+    for model in activity["models"]:
+        if not isinstance(model, dict):
+            raise ValueError("invalid model")
+        model_id = model.get("id")
+        active = _omlx_number(model.get("active_requests"), integer=True)
+        queued = _omlx_number(model.get("waiting_requests"), integer=True)
+        loading = model.get("is_loading")
+        if (not isinstance(model_id, str) or not model_id or len(model_id) > 512
+                or any(ord(c) < 32 for c in model_id) or model_id in seen
+                or active is None or queued is None or type(loading) is not bool):
+            raise ValueError("incomplete model state")
+        seen.add(model_id)
+        requests = []
+        for source, phase, fields in (
+            ("prefilling", "prefill", {"processed": "processedTokens", "total": "totalTokens",
+                "speed": "tokensPerSecond", "elapsed": "elapsedSeconds"}),
+            ("generating", "generating", {"generated_tokens": "generatedTokens",
+                "tokens_per_second": "tokensPerSecond", "elapsed_seconds": "elapsedSeconds",
+                "last_activity_age_seconds": "lastActivityAgeSeconds"}),
+            ("activities", "processing", {"elapsed_seconds": "elapsedSeconds",
+                "last_activity_age_seconds": "lastActivityAgeSeconds"}),
+            ("waiting", "queued", {"queue_position": "queuePosition", "elapsed_seconds": "elapsedSeconds"}),
+        ):
+            entries = model.get(source, [])
+            if not isinstance(entries, list) or len(entries) > 512:
+                raise ValueError("invalid request list")
+            for index, entry in enumerate(entries):
+                if not isinstance(entry, dict):
+                    raise ValueError("invalid request")
+                # Local ordinal, not the raw request ID, prompt, filenames,
+                # arbitrary activity detail, output, or backend paths.
+                request = {"id": f"{phase}-{index}", "phase": phase}
+                for original, target in fields.items():
+                    request[target] = _omlx_number(entry.get(original), integer=target.endswith("Tokens") or target == "queuePosition")
+                requests.append(request)
+        models.append({
+            "id": model_id, "isLoading": loading,
+            "activeRequests": active, "queuedRequests": queued, "requests": requests,
+            "estimatedBytes": _omlx_number(model.get("estimated_size")),
+            "observedBytes": _omlx_number(model.get("actual_size")),
+            "loadingElapsedSeconds": _omlx_number(model.get("loading_elapsed_seconds")),
+        })
+    # Aggregate counters are built from this same list by oMLX. Missing or
+    # contradictory evidence (especially an empty list with active work) is not
+    # proof of Ready after an upstream schema change.
+    for upstream, field in (("total_active_requests", "activeRequests"),
+                            ("total_waiting_requests", "queuedRequests")):
+        count = _omlx_number(activity.get(upstream), integer=True)
+        if count is None or count != sum(model[field] for model in models):
+            raise ValueError("incomplete aggregate state")
+    pressure = activity.get("memory_pressure")
+    pressure = pressure if isinstance(pressure, dict) else {}
+    enabled = pressure.get("enabled") is True
+    level = pressure.get("pressure_level") if enabled else None
+    return {
+        "ok": True, "models": sorted(models, key=lambda m: m["id"].casefold()),
+        "memoryUsedBytes": _omlx_number(activity.get("model_memory_used")),
+        "memoryLimitBytes": _omlx_number(activity.get("model_memory_max")),
+        "memoryKind": "process" if enabled else "models",
+        "memoryPressure": level if level in {"ok", "soft", "hard", "critical"} else None,
+    }
+
+
+def _omlx_collect(server_id: str) -> dict:
+    """Bounded GET to two operator-configured private IPs. No login, redirects,
+    inference, automatic model loading or other writes, including on failure.
+    """
+    suffix = {"mac-mini-64": "64", "mac-mini-16": "16"}[server_id]
+    host = os.environ.get(f"JARVISD_OMLX_{suffix}_HOST", "127.0.0.1" if suffix == "64" else "192.168.21.30")
+    connection = None
+    response = None
+    timeout_guard = None
+    try:
+        address = ipaddress.ip_address(host)  # literals: no unbounded DNS lookup
+        if not (address.is_private or address.is_loopback) or address.is_unspecified or address.is_multicast:
+            return {"ok": False, "error": "Invalid oMLX host configuration."}
+        headers = {"Accept": "application/json"}
+        cookie_file = os.environ.get(f"JARVISD_OMLX_{suffix}_COOKIE_FILE")
+        if cookie_file:
+            # Optional session cookie provisioned by the owner. Current servers
+            # allow the read without one. Never log its value or transmit it to
+            # a redirect destination; no credential appears in app snapshots.
+            cookie_path = Path(cookie_file)
+            stat = cookie_path.lstat()
+            if cookie_path.is_symlink() or not cookie_path.is_file() or stat.st_uid != os.getuid() or stat.st_mode & 0o077:
+                raise ValueError("insecure cookie file")
+            with cookie_path.open("rb") as stream:
+                cookie = stream.read(4097).decode("ascii").strip()
+            if not cookie or len(cookie) > 4096 or "\r" in cookie or "\n" in cookie:
+                raise ValueError("invalid cookie file")
+            headers["Cookie"] = cookie
+        deadline = time.monotonic() + 2.0
+        connection = http.client.HTTPConnection(host, 8000, timeout=2.0)
+        connection.connect()
+        transport = connection.sock
+        def expire():
+            try:
+                transport.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        # A socket timeout alone restarts on every header byte. Enforce the
+        # whole-read deadline too, so even a dripping header cannot pin a worker.
+        timeout_guard = threading.Timer(max(0.001, deadline - time.monotonic()), expire)
+        timeout_guard.daemon = True
+        timeout_guard.start()
+        transport.settimeout(max(0.001, deadline - time.monotonic()))
+        connection.request("GET", "/admin/api/activity", headers=headers)
+        transport.settimeout(max(0.001, deadline - time.monotonic()))
+        response = connection.getresponse()
+        if response.status in (401, 403):
+            return {"ok": False, "error": "Authentication required."}
+        if response.status != 200:
+            return {"ok": False, "error": "oMLX activity unavailable."}
+        chunks = []
+        size = 0
+        while not response.isclosed():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError()
+            # read1 avoids waiting for a full buffer from a slow/drip peer.
+            # Keep our socket reference if HTTPConnection clears its own after
+            # reading a Connection: close response (the response still owns it).
+            transport.settimeout(remaining)
+            chunk = response.read1(min(16384, OMLX_MAX_BODY + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            if size > OMLX_MAX_BODY:
+                raise ValueError("oversized activity")
+        return _omlx_activity(json.loads(b"".join(chunks)))
+    except Exception:
+        # Never expose exception strings, response bodies, cookies or paths.
+        return {"ok": False, "error": "oMLX activity unavailable."}
+    finally:
+        if timeout_guard is not None:
+            timeout_guard.cancel()
+        if response is not None:
+            response.close()
+        if connection is not None:
+            connection.close()
+
+
+OMLX_COORDINATOR = StateCoordinator(
+    collectors={server: (lambda server=server: _omlx_collect(server)) for server in OMLX_SERVER_IDS},
+    intervals={server: 2.0 for server in OMLX_SERVER_IDS},
+    idle_intervals={server: 60.0 for server in OMLX_SERVER_IDS},
+    freshness_limits={server: OMLX_FRESH_SECONDS for server in OMLX_SERVER_IDS},
+    active_lease_seconds=6.0,
+)
+
+
+def collect_omlx() -> dict:
+    # A distinct lease: Watch/state/widget traffic cannot enable fast oMLX
+    # collection. Cold reads return immediately, then independent workers fill
+    # each server's last-good cache. Polling never waits for an upstream read.
+    snapshot = OMLX_COORDINATOR.snapshot(client_active=True)
+    servers = []
+    for server_id in OMLX_SERVER_IDS:
+        data = snapshot["subsystems"][server_id]
+        meta = snapshot["subsystemsMeta"][server_id]
+        servers.append({
+            **data, "id": server_id, "ageSeconds": meta["ageSeconds"],
+            "lastSuccessAt": meta["updatedAt"],
+            # Unlike control grace periods, a failed activity probe must not
+            # keep last-known generation looking live even for six seconds.
+            "stale": meta["stale"] or meta["error"] is not None,
+            "error": meta["error"],
+        })
+    return {"ok": True, "version": 1, "servers": servers}
+
+
 STATE_COORDINATOR = StateCoordinator()
 
 
@@ -2767,6 +2967,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, {"ok": True, "version": VERSION, "uptimeSeconds": round(time.time() - START_TIME, 1)})
             return
+        if path == "/api/v1/omlx":
+            if self._auth_or_respond(): self._send(200, collect_omlx())
+            return
         if path == "/api/v1/room-audio":
             if self._auth_or_respond(): self._room_audio()
             return
@@ -2961,6 +3164,7 @@ def main() -> int:
     finally:
         server.server_close()
         STATE_COORDINATOR.stop()
+        OMLX_COORDINATOR.stop()
         if log_writer is not None:
             log_writer.flush()
     return 0

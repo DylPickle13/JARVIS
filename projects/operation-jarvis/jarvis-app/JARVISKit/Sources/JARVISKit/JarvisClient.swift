@@ -74,6 +74,7 @@ public protocol JarvisAPI: Sendable {
         limit: Int,
         jobId: String?
     ) async throws -> ScheduledJobResultsResponse
+    func omlxStatus(_ endpoint: JarvisEndpoint) async throws -> OMLXSnapshot
     func roomAudioStatus(_ endpoint: JarvisEndpoint) async throws -> RoomAudioStatus
     func stopRoomAudio(_ endpoint: JarvisEndpoint, turnID: String) async throws -> RoomAudioStatus
     func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus
@@ -84,6 +85,10 @@ public protocol JarvisAPI: Sendable {
 }
 
 public extension JarvisAPI {
+    func omlxStatus(_ endpoint: JarvisEndpoint) async throws -> OMLXSnapshot {
+        throw JarvisError.transport("oMLX status unavailable.")
+    }
+
     func roomAudioStatus(_ endpoint: JarvisEndpoint) async throws -> RoomAudioStatus {
         throw JarvisError.transport("Room audio status unavailable.")
     }
@@ -335,6 +340,10 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .jarvisPathSegment) ?? name
         let body = try JSONSerialization.data(withJSONObject: ["action": action])
         return try await perform(endpoint, "/api/v1/services/\(encodedName)", method: "POST", body: body, as: ServiceActionResult.self)
+    }
+
+    public func omlxStatus(_ endpoint: JarvisEndpoint) async throws -> OMLXSnapshot {
+        try await perform(endpoint, "/api/v1/omlx", requestTimeout: 3, as: OMLXSnapshot.self)
     }
 
     public func roomAudioStatus(_ endpoint: JarvisEndpoint) async throws -> RoomAudioStatus {

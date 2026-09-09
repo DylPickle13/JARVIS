@@ -92,6 +92,9 @@ struct HomeView: View {
                             codexQuotaCard(state)
                             plugsSection(state)
                             purifierSection(state)
+                            OMLXStatusCard(client: app.client,
+                                endpoint: app.currentEndpoint.map { JarvisEndpoint(baseURL: $0, token: app.store.token ?? "") },
+                                active: scenePhase == .active && app.activeSection == .home)
                         }
                     } else {
                         compactOfflineCard

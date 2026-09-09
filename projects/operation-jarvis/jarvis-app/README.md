@@ -1,3 +1,63 @@
+## iPhone Home oMLX monitoring candidate (not deployed)
+
+A native, read-only **oMLX** card follows Air Purifier. Fixed sections identify
+`mac-mini-64` and `mac-mini-16`. All busy/loading models remain visible; idle
+loaded models collapse to a count. Tapping either section opens a live detail
+sheet with full model names, individual request metrics and approximate
+observed/estimated model memory. Dynamic Type may grow the card vertically.
+
+Loaded is not generating: labels distinguish Ready, Loading, Processing prompt,
+Generating, Processing, Queued, Unknown and stale/unavailable telemetry. Prefill
+progress uses actual processed/total tokens only. Generation speed is explicitly
+labelled a per-request generation average; rates from concurrent requests are
+not summed or averaged. Loading has elapsed time, never a guessed percentage.
+Missing metrics remain unavailable. The footer distinguishes process versus
+model memory and the oMLX budget from physical RAM; observed per-model memory
+is approximate, not an exact allocation measurement.
+
+**Transport:** authenticated/trusted-network `GET /api/v1/omlx` returns version
+1 and exactly two fixed server identities. A separate `StateCoordinator` gives
+each server an independent last-good cache/worker and single-flight collection.
+HTTP handlers only read the cache. Home renews a six-second active lease for
+approximately two-second collection; idle host collection is once per minute.
+The iPhone's cancellable Home-only task targets two-second reads. A local 1 Hz
+freshness clock expires source data even without a successful response. Source
+age includes elapsed client time/round-trip allowance; six seconds or any failed
+probe marks activity stale. Stale rates/progress disappear immediately, retaining
+only last-update metadata and clearly historical model names in the detail sheet.
+
+Upstream reads use **only `/admin/api/activity`**, never `/admin/api/stats` (which
+can expose credentials), inference, model controls or automatic login. Private
+IP literals default to loopback for this Mac and `192.168.21.30` for mac-mini-16,
+port 8000. See `JARVISD_OMLX_{64,16}_HOST` in the root `.env.example` for explicit
+operator overrides. Each read has a two-second deadline, a 256 KiB body limit,
+bounded arrays, strict required-state validation, no redirects/proxies and a
+field allowlist. Prompts, outputs, request IDs, activity detail/filenames, engine
+paths and credentials are not forwarded. Errors are fixed safe strings.
+
+Current servers already permit this activity read. If authentication is enabled,
+the owner can provision a Cookie header in an owner-only regular mode-0600 file
+and set `JARVISD_OMLX_{64,16}_COOKIE_FILE` on jarvisd. No cookie goes to the phone;
+401/403 becomes Authentication required, never an auth bypass or login attempt.
+Do not enable anonymous access for this feature. Upstream HTTP remains confined
+to the existing trusted private network; do not expose port 8000 publicly.
+
+This is **iPhone UI + jarvisd only**. No new listeners, Watch/widget polling,
+AppState snapshot persistence, terminald/Siri/attachment changes, Pi reloads,
+model load/unload, inference probes or production deployment are part of candidate
+implementation. New clients show unavailable on old hosts; old clients ignore
+the new endpoint. A later approved rollout must preserve the exact nine session
+and attachment identities and existing daemon configuration/credentials.
+
+Verification includes Python sanitizer/transport/cache/auth/deadline regressions,
+Kit decoding/freshness/client tests, iOS cancellation/endpoint-generation/failure
+and rendering tests (normal, accessibility and partial outage), source contracts,
+and both simulator builds. Run `scripts/verify-jarvis-app.sh`; optionally set
+`JARVIS_RUN_IOS_TESTS=1`, `JARVIS_IOS_TEST_DESTINATION='platform=iOS Simulator,id=…'`
+and `JARVIS_IOS_TEST_RESULT_BUNDLE=/tmp/unique-result.xcresult` to retain iOS
+rendering attachments on an isolated simulator. Physical device acceptance and
+signed deployment remain separate from these implementation checks.
+
 ## Siri unused-New-slot candidate (not deployed)
 
 “Hey JARVIS” still asks for your prompt on iPhone and Watch. Each answer now

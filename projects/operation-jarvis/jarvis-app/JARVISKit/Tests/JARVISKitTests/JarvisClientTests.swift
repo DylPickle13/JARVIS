@@ -24,6 +24,26 @@ final class JarvisClientTests: XCTestCase {
         super.tearDown()
     }
 
+    func testOMLXUsesOneBoundedAuthenticatedReadAndFailsClosedOnOldHosts() async throws {
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/omlx")
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertNil(request.httpBody)
+            XCTAssertEqual(request.timeoutInterval, 3)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            return MockURLProtocol.response(request, status: 200,
+                body: #"{"ok":true,"version":1,"servers":[{"id":"mac-mini-64"},{"id":"mac-mini-16"}]}"#)
+        }
+        let result = try await client.omlxStatus(endpoint)
+        XCTAssertEqual(result.servers.count, 2)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/omlx", "never fall back to inference/admin APIs")
+            return MockURLProtocol.response(request, status: 404, body: "")
+        }
+        do { _ = try await client.omlxStatus(endpoint); XCTFail("old host must fail closed") }
+        catch let JarvisError.http(status, _) { XCTAssertEqual(status, 404) }
+    }
+
     func testRoomAudioStatusAndStopAreBoundedAuthenticatedAndExact() async throws {
         let turn = String(repeating: "a", count: 32)
         MockURLProtocol.handler = { request in
