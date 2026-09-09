@@ -73,16 +73,28 @@ final class OMLXSummaryTests: XCTestCase {
 
     func testVisibleInteractiveWatchSurfaceCadenceAndModalCoverage() {
         let endpoint = JarvisEndpoint(baseURL: URL(string: "http://jarvis.test:8790")!, token: "test")
-        for (surface, interval) in [(OMLXRefreshSurface.iPhoneHome, 2.0), (.watchSystem, 5), (.watchDetails, 3)] {
+        for (surface, interval) in [(OMLXRefreshSurface.iPhoneHome, 2.0), (.watchSystem, 5)] {
             XCTAssertEqual(OMLXPollConfiguration(endpoint: endpoint, surface: surface, visible: true, interactive: true).interval, interval)
             for (visible, interactive, covered) in [(false, true, false), (true, false, false), (true, true, true)] {
                 XCTAssertNil(OMLXPollConfiguration(endpoint: endpoint, surface: surface, visible: visible, interactive: interactive, covered: covered).endpoint)
             }
         }
         let a = OMLXPollConfiguration(endpoint: endpoint, surface: .watchSystem, visible: true, interactive: true)
-        let b = OMLXPollConfiguration(endpoint: endpoint, surface: .watchDetails, visible: true, interactive: true)
+        let b = OMLXPollConfiguration(endpoint: endpoint, surface: .iPhoneHome, visible: true, interactive: true)
         XCTAssertNotEqual(a, b)
         XCTAssertEqual(Set([a, a]).count, 1)
+    }
+
+    func testMeasuredBottomClearanceLeavesLastCardAboveViewportEdge() {
+        for viewport in [190.0, 224, 260] {
+            for content in [180.0, 340, 600] {
+                let clearance = 18.0
+                let measured = content + clearance
+                let end = CrownViewportBounds.maximum(content: measured, viewport: viewport)
+                let cardBottom = content - end
+                XCTAssertLessThanOrEqual(cardBottom, viewport - clearance)
+            }
+        }
     }
 
     func testCrownBoundsClampAtBothEndsAndAfterContentOrViewportChanges() {

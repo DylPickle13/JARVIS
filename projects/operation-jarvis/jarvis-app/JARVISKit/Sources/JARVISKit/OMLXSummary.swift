@@ -58,12 +58,11 @@ public struct OMLXServerSummary: Equatable, Identifiable, Sendable {
 }
 
 public enum OMLXRefreshSurface: Sendable {
-    case iPhoneHome, watchSystem, watchDetails
+    case iPhoneHome, watchSystem
     public var interval: TimeInterval {
         switch self {
         case .iPhoneHome: return 2
         case .watchSystem: return 5
-        case .watchDetails: return 3
         }
     }
 }

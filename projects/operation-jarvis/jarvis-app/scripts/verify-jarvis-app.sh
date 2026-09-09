@@ -141,9 +141,14 @@ for folder in ['JARVISWidget', 'JARVISWatchWidget']:
     assert not any('OMLXStatusCard' in p.read_text() or '.omlxStatus(' in p.read_text() for p in Path(folder).rglob('*.swift'))
 phone = Path('JARVIS/Views/OMLXStatusCard.swift').read_text()
 assert 'MinimalCard(padding: 11)' in phone and 'OMLXSummaryContent(rows:' in phone
-assert 'OMLXServerContent(' not in phone.split('.sheet(',1)[0]
+watch_card = Path('JARVISWatch/Views/WatchOMLXCard.swift').read_text()
+for card in [phone, watch_card]:
+    for forbidden in ['Button', '.sheet(', 'accessibilityHint', 'OMLXServerContent']:
+        assert forbidden not in card
+assert 'watchDetails' not in Path('JARVISKit/Sources/JARVISKit/OMLXSummary.swift').read_text()
 summary = Path('JARVISKit/Sources/JARVISKit/OMLXSummaryContent.swift').read_text()
-for forbidden in ['modelRow', 'ProgressView', 'memoryUsedBytes', 'cpu', 'ScrollView']:
+assert 'Image(systemName: "cpu")' in summary and 'chevron.right' not in summary
+for forbidden in ['modelRow', 'ProgressView', 'memoryUsedBytes', 'ScrollView']:
     assert forbidden not in summary
 watch = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 for name, end in [('private var systemPage:', 'private var purifierPanel:'),
@@ -156,6 +161,7 @@ assert 'guard selectedPage == page, !overlayOwnsInput' in watch
 assert 'WatchSystemCrownViewport(active: systemInteractive && !overlayOwnsInput)' in watch
 viewport = Path('JARVISWatch/Views/WatchSystemCrownViewport.swift').read_text().split('var body:',1)[1]
 assert '.digitalCrownRotation' in viewport and '.clipped()' in viewport
+assert '.padding(.bottom, max(18, viewport.safeAreaInsets.bottom))' in viewport
 assert '.focused($crownFocused)' in viewport and '.onChange(of: active' in viewport
 assert 'ScrollView' not in viewport and 'DragGesture' not in viewport
 connect = Path('JARVISWatch/Views/WatchConnectView.swift').read_text()

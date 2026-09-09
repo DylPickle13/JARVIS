@@ -5,7 +5,6 @@ struct OMLXStatusCard: View {
     let endpoint: JarvisEndpoint?
     let active: Bool
     @StateObject private var model: OMLXStatusModel
-    @State private var showsDetails = false
 
     init(client: any JarvisAPI, endpoint: JarvisEndpoint?, active: Bool) {
         self.endpoint = endpoint
@@ -21,42 +20,14 @@ struct OMLXStatusCard: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1, paused: !active)) { context in
-            Button { showsDetails = true } label: {
-                MinimalCard(padding: 11) {
-                    OMLXSummaryContent(rows: OMLXSnapshot.serverIDs.map { id in
-                        OMLXServerSummary(id: id, server: model.snapshot?.servers.first { $0.id == id },
-                            now: context.date, requestStartedAt: model.requestStartedAt,
-                            available: available, checking: checking)
-                    })
-                }
-                .contentShape(Rectangle())
+            MinimalCard(padding: 11) {
+                OMLXSummaryContent(rows: OMLXSnapshot.serverIDs.map { id in
+                    OMLXServerSummary(id: id, server: model.snapshot?.servers.first { $0.id == id },
+                        now: context.date, requestStartedAt: model.requestStartedAt,
+                        available: available, checking: checking)
+                })
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("Show read-only oMLX model details")
         }
         .task(id: poll) { await model.run(endpoint: poll.endpoint, interval: poll.interval) }
-        .sheet(isPresented: $showsDetails) {
-            NavigationStack {
-                ScrollView {
-                    TimelineView(.animation(minimumInterval: 1, paused: !active)) { context in
-                        VStack(alignment: .leading, spacing: 20) {
-                            ForEach(OMLXSnapshot.serverIDs, id: \.self) { id in
-                                if id != OMLXSnapshot.serverIDs.first { Divider() }
-                                OMLXServerContent(id: id, server: model.snapshot?.servers.first { $0.id == id },
-                                    now: context.date, requestStartedAt: model.requestStartedAt,
-                                    available: available, checking: checking)
-                            }
-                        }
-                        .padding()
-                    }
-                }
-                .background(JarvisBackdrop())
-                .navigationTitle("oMLX details")
-                .toolbar { ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { showsDetails = false }
-                } }
-            }
-            .presentationDetents([.medium, .large])
-        }
     }
 }

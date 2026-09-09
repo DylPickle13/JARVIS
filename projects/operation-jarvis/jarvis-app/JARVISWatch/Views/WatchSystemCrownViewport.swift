@@ -15,6 +15,9 @@ struct WatchSystemCrownViewport<Content: View>: View {
             let maximum = CrownViewportBounds.maximum(content: contentHeight, viewport: viewport.size.height)
             ZStack(alignment: .topLeading) {
                 content()
+                    // Measured scrollable clearance, not extra card padding:
+                    // at the Crown end stop the last card clears rounded glass.
+                    .padding(.bottom, max(18, viewport.safeAreaInsets.bottom))
                     .frame(width: viewport.size.width, alignment: .topLeading)
                     .fixedSize(horizontal: false, vertical: true)
                     .background(GeometryReader { geometry in

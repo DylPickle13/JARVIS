@@ -75,7 +75,8 @@ final class OMLXStatusModelTests: XCTestCase {
                 content = AnyView(OMLXSummaryContent(rows: rows, compact: true)
                     .padding(.horizontal, 8).padding(.vertical, 6)
                     .frame(minHeight: 44)
-                    .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 13)))
+                    .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 13))
+                    .overlay { RoundedRectangle(cornerRadius: 13).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5) })
             } else {
                 content = AnyView(MinimalCard(padding: 11) { OMLXSummaryContent(rows: rows) })
             }
@@ -85,8 +86,8 @@ final class OMLXStatusModelTests: XCTestCase {
             let image = try XCTUnwrap(renderer.uiImage)
             XCTAssertEqual(image.size.width, width)
             if size == .large {
-                XCTAssertGreaterThanOrEqual(image.size.height, compact ? 44 : 75)
-                XCTAssertLessThanOrEqual(image.size.height, compact ? 70 : 100)
+                XCTAssertEqual(image.size.height, compact ? 58 : 89, accuracy: 0.5,
+                    "approved normal card height must remain unchanged")
             }
             if name == "watch-minimal" { smallWatchHeight = image.size.height }
             if name == "watch-mixed" {
@@ -124,20 +125,20 @@ final class OMLXStatusModelTests: XCTestCase {
         XCTAssertEqual(after, 1)
     }
 
-    func testWatchSheetHasOneOwnerAndLateCoveredRequestCannotPublish() async throws {
+    func testWatchEndpointChangeHasOneOwnerAndLateRequestCannotPublish() async throws {
         let gate = OMLXFetchGate()
         let model = OMLXStatusModel(fetch: { _ in try await gate.fetch() })
         let summary = OMLXPollConfiguration(endpoint: endpoint, surface: .watchSystem, visible: true, interactive: true)
-        let detail = OMLXPollConfiguration(endpoint: endpoint, surface: .watchDetails, visible: true, interactive: true)
+        let replacement = OMLXPollConfiguration(endpoint: JarvisEndpoint(baseURL: URL(string: "http://replacement.test:8790")!, token: "test"), surface: .watchSystem, visible: true, interactive: true)
         model.configure(summary)
         await waitFor { await gate.count == 1 }
-        model.configure(detail)
+        model.configure(replacement)
         await waitFor { await gate.count == 2 }
         await gate.succeed(try snapshot("obsolete summary"))
-        await gate.succeed(try snapshot("detail"))
+        await gate.succeed(try snapshot("replacement"))
         await waitFor { model.snapshot != nil }
-        XCTAssertEqual(model.snapshot?.servers[0].models?[0].id, "detail")
-        model.configure(.init(endpoint: endpoint, surface: .watchDetails, visible: true, interactive: false))
+        XCTAssertEqual(model.snapshot?.servers[0].models?[0].id, "replacement")
+        model.configure(.init(endpoint: endpoint, surface: .watchSystem, visible: true, interactive: false))
         XCTAssertTrue(model.unavailable)
         XCTAssertFalse(model.isPolling)
     }
@@ -145,9 +146,9 @@ final class OMLXStatusModelTests: XCTestCase {
     func testConfiguredWatchStopsAnUncooperativePendingReadSynchronously() async throws {
         let gate = OMLXFetchGate()
         let model = OMLXStatusModel(fetch: { _ in try await gate.fetch() })
-        model.configure(.init(endpoint: endpoint, surface: .watchDetails, visible: true, interactive: true))
+        model.configure(.init(endpoint: endpoint, surface: .watchSystem, visible: true, interactive: true))
         await waitFor { await gate.count == 1 }
-        model.configure(.init(endpoint: endpoint, surface: .watchDetails, visible: false, interactive: true))
+        model.configure(.init(endpoint: endpoint, surface: .watchSystem, visible: false, interactive: true))
         XCTAssertFalse(model.isPolling)
         await gate.succeed(try snapshot("late"))
         try await Task.sleep(for: .milliseconds(30))

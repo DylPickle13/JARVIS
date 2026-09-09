@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// The same minimal two-row design at phone and Watch densities. Details live
-/// behind the containing button, never in this summary's layout tree.
+/// Display-only, fixed two-row status at phone and Watch densities.
 public struct OMLXSummaryContent: View {
     private let rows: [OMLXServerSummary]
     private let compact: Bool
@@ -15,11 +14,15 @@ public struct OMLXSummaryContent: View {
     }
     public var body: some View {
         VStack(alignment: .leading, spacing: compact ? 3 : 6) {
-            HStack {
-                Text("oMLX").font(compact ? .system(size: watchHeadingSize, weight: .semibold) : .subheadline.weight(.semibold))
+            HStack(spacing: compact ? 4 : 5) {
+                Image(systemName: "cpu")
+                    .font(.system(size: compact ? watchHeadingSize - 1 : 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text("oMLX")
+                    .font(compact ? .system(size: watchHeadingSize, weight: .semibold) : .subheadline.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 4)
-                Image(systemName: "chevron.right").font(.system(size: compact ? 8 : 10, weight: .semibold))
-                    .foregroundStyle(.secondary).accessibilityHidden(true)
             }
             ForEach(rows) { row in
                 ViewThatFits(in: .horizontal) {
@@ -37,8 +40,8 @@ public struct OMLXSummaryContent: View {
                     } else {
                         // At ordinary sizes keep exactly two rows, even on a
                         // small Watch. Identity/state outrank an optional metric
-                        // that will not fit; its full value remains in details
-                        // and VoiceOver. Only larger text may grow vertically.
+                        // that will not fit; its full value remains in
+                        // VoiceOver. Only larger text may grow vertically.
                         HStack(spacing: compact ? 4 : 7) {
                             host(row)
                             state(row)
@@ -63,7 +66,7 @@ public struct OMLXSummaryContent: View {
         let tone: Color = row.fresh ? OMLXFormat.tone(row.phase) : .secondary
         return HStack(spacing: compact ? 3 : 4) {
             Circle().fill(tone).frame(width: compact ? 4 : 5, height: compact ? 4 : 5).accessibilityHidden(true)
-            Text(row.status).foregroundStyle(tone)
+            Text(row.status).foregroundStyle(row.fresh && row.phase != .ready ? tone : .secondary)
         }
     }
 }

@@ -1,15 +1,13 @@
-## Minimal iPhone and Watch oMLX candidate (not deployed)
+## Display-only oMLX polish candidate (not deployed)
 
-Build 157 provides the existing iPhone/backend monitoring. This apps-only
-candidate replaces the large iPhone sections with **one compact card, two fixed
-server rows**, and adds that same summary below Codex on Watch System:
-**Purifier → Codex → oMLX**. Each row shows 64 GB / 16 GB, a truthful state and
-at most one trailing metric. At ordinary text sizes a too-wide optional metric
-is omitted rather than adding lines; identity/state take priority, with the full
-value retained in details and VoiceOver. It never adds model rows as activity increases.
-Tapping opens details for both servers: model names, individual request metrics
-and approximate observed/estimated model memory. Normal-size targets are
-80–100 pt on iPhone and 55–65 pt on Watch; larger text may grow/wrap naturally.
+Build158 is deployed on iPhone and Watch. This apps-only follow-up preserves
+its compact two-row cards and **Purifier → Codex → oMLX** Watch placement.
+A small CPU title icon, quiet typography, monospaced metrics and a fine Watch
+border refine the presentation without increasing card padding or row density.
+Cards are display-only: no tap action, chevron, detail screen or detail poller.
+At ordinary text sizes a too-wide metric is omitted, with its full spoken value
+retained in VoiceOver. Larger text may grow naturally. Normal card heights are
+kept at the approved approximately89pt iPhone /58pt Watch footprint.
 
 Queued work gets one queue count. Multiple busy models or concurrent requests
 get a count instead of an arbitrary/combined generation rate or prompt progress.
@@ -19,17 +17,17 @@ prefill percentage. These cards monitor existing activity; they never cause it.
 Watch retains **Terminal → Plugs → System → Jobs**, with non-wrapping vertical
 page swipes. System uses measured, clipped Crown scrolling when content does
 not fit, without a native touch scroller competing with page swipes. Controls
-keep their existing sizes. Detail sheets own native scrolling/Crown focus;
-the underlying pager and System Crown relinquish input while covered.
+keep their existing sizes. Measured bottom clearance (at least18pt) lets the
+last card scroll above the rounded Watch screen corners without enlarging it.
+The pager and System Crown relinquish input while covered by other dialogs.
 
 Loaded is not generating: labels distinguish Ready, Loading, Processing prompt,
 Generating, Processing, Queued, Unknown and stale/unavailable telemetry. Prefill
 progress uses actual processed/total tokens only. Generation speed is explicitly
 labelled a per-request generation average; rates from concurrent requests are
-not summed or averaged. Loading has elapsed time, never a guessed percentage.
-Missing metrics remain unavailable. The footer distinguishes process versus
-model memory and the oMLX budget from physical RAM; observed per-model memory
-is approximate, not an exact allocation measurement.
+not summed or averaged. Loading never shows a guessed percentage. Model,
+request and memory detail views have been removed; backend fields remain
+unchanged for compatibility.
 
 **Transport:** authenticated/trusted-network `GET /api/v1/omlx` returns version
 1 and exactly two fixed server identities. A separate `StateCoordinator` gives
@@ -37,7 +35,7 @@ each server an independent last-good cache/worker and single-flight collection.
 HTTP handlers only read the cache. Visible monitoring renews a six-second active
 lease for approximately two-second collection; idle host collection is once per
 minute. iPhone Home reads about every two seconds. Watch has one model-owned
-poller, reading about every five seconds on System or three seconds in details.
+poller, reading about every five seconds on System.
 It stops off System, under other dialogs, in background and in dimmed/AOD state.
 Endpoint changes invalidate the old request owner. Ordinary Watch state refresh
 cannot restart that poller, and no widget requests oMLX telemetry. Watch reuses
@@ -45,8 +43,8 @@ the trusted jarvisd endpoint and existing phone/Tailscale networking; it has no
 direct credentialed oMLX connection or new relay protocol. A local foreground
 1 Hz freshness clock expires source data even without a successful response. Source
 age includes elapsed client time/round-trip allowance; six seconds or any failed
-probe marks activity stale. Stale rates/progress disappear immediately, retaining
-only last-update metadata and clearly historical model names in the detail sheet.
+probe marks activity stale. Stale rates/progress disappear immediately; the card never labels cached
+activity as live.
 
 Upstream reads use **only `/admin/api/activity`**, never `/admin/api/stats` (which
 can expose credentials), inference, model controls or automatic login. Private

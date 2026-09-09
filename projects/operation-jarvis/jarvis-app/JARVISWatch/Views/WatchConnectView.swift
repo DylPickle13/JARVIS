@@ -140,7 +140,6 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     let jobs: WatchJobsModel
     let omlx: OMLXStatusModel
     private var omlxSystemVisible = false
-    private var omlxDetailsVisible = false
     private var omlxCovered = false
     let snapshotStore = SnapshotStore()
     let terminal = WatchTerminalController()
@@ -267,9 +266,8 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         terminal.sceneDidEnterBackground()
     }
 
-    func setOMLXPresentation(systemVisible: Bool, detailsVisible: Bool, covered: Bool) {
+    func setOMLXPresentation(systemVisible: Bool, covered: Bool) {
         omlxSystemVisible = systemVisible
-        omlxDetailsVisible = detailsVisible
         omlxCovered = covered
         updateOMLXPolling()
     }
@@ -280,7 +278,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         // protocol is introduced. Unreachable telemetry remains unavailable.
         let endpoint = store.endpointURL.map { JarvisEndpoint(baseURL: $0, token: authenticationToken) }
         omlx.configure(.init(endpoint: endpoint,
-            surface: omlxDetailsVisible ? .watchDetails : .watchSystem,
+            surface: .watchSystem,
             visible: omlxSystemVisible, interactive: appIsForeground && appIsInteractive,
             covered: omlxCovered))
     }

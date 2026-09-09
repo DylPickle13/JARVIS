@@ -24,8 +24,8 @@ public final class OMLXStatusModel: ObservableObject {
         self.sleep = sleep
     }
 
-    /// Watch uses one model-owned task so presenting its detail sheet cannot
-    /// accidentally cancel the network owner along with the underlying view.
+    /// Watch uses one model-owned task, deduplicated across state updates.
+    /// Page, coverage and scene changes cancel it synchronously.
     public func configure(_ next: OMLXPollConfiguration) {
         guard configuration != next else { return }
         configuration = next

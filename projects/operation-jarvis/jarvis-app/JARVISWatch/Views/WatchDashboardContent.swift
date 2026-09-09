@@ -14,10 +14,9 @@ struct WatchDashboardContent: View {
     @State private var selectedPage: WatchDashboardPage = .terminal
     @State private var showsPurifierModeChoices = false
     @State private var showsPurifierFanChoices = false
-    @State private var showsOMLXDetails = false
 
     private var overlayOwnsInput: Bool {
-        showsOMLXDetails || showsPurifierModeChoices || showsPurifierFanChoices || isDashboardCovered
+        showsPurifierModeChoices || showsPurifierFanChoices || isDashboardCovered
     }
     private var systemInteractive: Bool { scenePhase == .active && selectedPage == .system }
 
@@ -65,7 +64,6 @@ struct WatchDashboardContent: View {
         }
         .onChange(of: selectedPage) { _, page in
             model.setJobsPageVisible(page == .jobs)
-            if page != .system { showsOMLXDetails = false }
             updateOMLXPresentation()
             if page == .system {
                 Task { await model.refreshCodexQuotaWhenVisible() }
@@ -73,13 +71,9 @@ struct WatchDashboardContent: View {
                 model.cancelCodexQuotaViewRefresh()
             }
         }
-        .onChange(of: showsOMLXDetails) { _, _ in updateOMLXPresentation() }
         .onChange(of: showsPurifierModeChoices) { _, _ in updateOMLXPresentation() }
         .onChange(of: showsPurifierFanChoices) { _, _ in updateOMLXPresentation() }
         .onChange(of: isDashboardCovered) { _, _ in updateOMLXPresentation() }
-        .sheet(isPresented: $showsOMLXDetails) {
-            WatchOMLXDetails(model: model.omlx, active: systemInteractive && !isDashboardCovered)
-        }
         .onChange(of: siriTerminalRequestSequence) { oldValue, newValue in
             guard newValue != oldValue else { return }
             selectedPage = .terminal
@@ -93,18 +87,12 @@ struct WatchDashboardContent: View {
         }
         .onDisappear {
             model.setJobsPageVisible(false)
-            // watchOS can hide the presenting view behind its full-screen
-            // sheet. Keep that sheet's single model-owned poller alive; scene
-            // lifecycle still stops it immediately for dim/background states.
-            if !showsOMLXDetails {
-                model.setOMLXPresentation(systemVisible: false, detailsVisible: false, covered: true)
-            }
+            model.setOMLXPresentation(systemVisible: false, covered: true)
         }
     }
 
     private func updateOMLXPresentation() {
         model.setOMLXPresentation(systemVisible: selectedPage == .system,
-            detailsVisible: showsOMLXDetails,
             covered: showsPurifierModeChoices || showsPurifierFanChoices || isDashboardCovered)
     }
 
@@ -573,9 +561,7 @@ struct WatchDashboardContent: View {
     }
 
     private var omlxCard: some View {
-        WatchOMLXCard(model: model.omlx, active: systemInteractive && !overlayOwnsInput) {
-            showsOMLXDetails = true
-        }
+        WatchOMLXCard(model: model.omlx, active: systemInteractive && !overlayOwnsInput)
     }
 
     private var accessibilitySystemPage: some View {
