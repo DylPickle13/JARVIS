@@ -25,6 +25,7 @@ enum PiSessionIndicatorTone: Equatable {
 struct PiSessionIndicatorPresentation: Equatable {
     let label: String
     let tone: PiSessionIndicatorTone
+    var animatesIcon: Bool { tone == .running || tone == .compacting }
 
     init(lifecycle: PiSessionLifecycle) {
         switch lifecycle {
@@ -47,6 +48,42 @@ struct PiSessionIndicatorPresentation: Equatable {
             label = "Unknown"
             tone = .unknown
         }
+    }
+}
+
+/// One independent, full-target card; routing remains on the enclosing button.
+struct PiSessionCardContent: View {
+    let sessionID: Int
+    let lifecycle: PiSessionLifecycle
+    let motionActive: Bool
+
+    var body: some View {
+        let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
+        let color = presentation.tone.color
+        MinimalCard(padding: 8) {
+            VStack(spacing: 5) {
+                HStack(spacing: 5) {
+                    Image(systemName: "terminal.fill")
+                        .font(.caption2.weight(.bold))
+                        .activityIconPulse(active: motionActive && presentation.animatesIcon)
+                        .accessibilityHidden(true)
+                    Text("Pi \(sessionID)")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(color)
+                HStack(spacing: 4) {
+                    Circle().fill(color).frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                    Text(presentation.label)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 42)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Pi session \(sessionID), \(presentation.label.lowercased())")
     }
 }
 
@@ -94,7 +131,7 @@ struct HomeView: View {
                             purifierSection(state)
                             OMLXStatusCard(client: app.client,
                                 endpoint: app.currentEndpoint.map { JarvisEndpoint(baseURL: $0, token: app.store.token ?? "") },
-                                active: scenePhase == .active && app.activeSection == .home)
+                                active: scenePhase == .active && app.activeSection == .home && !showsPurifierControls)
                         }
                     } else {
                         compactOfflineCard
@@ -129,15 +166,35 @@ struct HomeView: View {
         }
     }
 
+    private var homeMotionActive: Bool {
+        scenePhase == .active && app.activeSection == .home && !showsPurifierControls
+    }
+
     private var roomAudioCard: some View {
+        // A bounded freshness clock, not an animation or network polling loop.
+        TimelineView(.animation(minimumInterval: 1, paused: !homeMotionActive)) { context in
+            roomAudioContent(now: context.date)
+        }
+    }
+
+    private func roomAudioContent(now: Date) -> some View {
         let status = app.roomAudio
-        let fresh = app.roomAudioUpdatedAt.map { Date().timeIntervalSince($0) <= 6 } ?? false
+        let fresh = app.roomAudioUpdatedAt.map { now.timeIntervalSince($0) <= 6 } ?? false
+        let pulses = homeMotionActive && !app.roomAudioStopping
+            && ActivityMotionGate.roomAudioActive(status, receivedAt: app.roomAudioUpdatedAt, now: now)
         let title = fresh ? (status?.title ?? "Unavailable") : "Unavailable"
         let tone: Color = title == "Talking" ? JarvisPalette.accent
             : title == "Processing" || title == "Stopping" ? JarvisPalette.warning : .secondary
         return MinimalCard {
             HStack(spacing: 10) {
-                Label("Room audio", systemImage: "waveform").font(.subheadline.weight(.semibold))
+                Label {
+                    Text("Room audio")
+                } icon: {
+                    Image(systemName: "waveform")
+                        .activityIconPulse(active: pulses)
+                        .accessibilityHidden(true)
+                }
+                .font(.subheadline.weight(.semibold))
                 Spacer(minLength: 4)
                 Circle().fill(tone).frame(width: 7, height: 7)
                 Text(title).font(.caption.weight(.medium)).foregroundStyle(tone)
@@ -609,26 +666,22 @@ struct HomeView: View {
         }
 
         let isStale = pi.stale == true
-        let content = MinimalCard {
-            VStack(spacing: 0) {
-                piSessionStatusRow(
-                    sessionIDs: [1, 2, 3],
-                    sessions: pi.mobileSessions,
-                    isStale: isStale
-                )
-                Divider()
-                piSessionStatusRow(
-                    sessionIDs: [4, 5, 6],
-                    sessions: pi.mobileSessions,
-                    isStale: isStale
-                )
-                Divider()
-                piSessionStatusRow(
-                    sessionIDs: [7, 8, 9],
-                    sessions: pi.mobileSessions,
-                    isStale: isStale
-                )
-            }
+        let content = VStack(spacing: 8) {
+            piSessionStatusRow(
+                sessionIDs: [1, 2, 3],
+                sessions: pi.mobileSessions,
+                isStale: isStale
+            )
+            piSessionStatusRow(
+                sessionIDs: [4, 5, 6],
+                sessions: pi.mobileSessions,
+                isStale: isStale
+            )
+            piSessionStatusRow(
+                sessionIDs: [7, 8, 9],
+                sessions: pi.mobileSessions,
+                isStale: isStale
+            )
         }
 
         if isStale {
@@ -642,12 +695,8 @@ struct HomeView: View {
         sessions: [PiMobileSession]?,
         isStale: Bool
     ) -> some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 8) {
             ForEach(sessionIDs, id: \.self) { sessionID in
-                if sessionID != sessionIDs.first {
-                    Divider()
-                        .frame(height: 42)
-                }
                 Button {
                     guard let slot = JARVISTerminalSlot(rawValue: sessionID) else { return }
                     onOpenPiTerminal(slot)
@@ -664,32 +713,9 @@ struct HomeView: View {
     }
 
     private func piSessionStatusSection(sessionID: Int, lifecycle: PiSessionLifecycle) -> some View {
-        let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
-        let status = presentation.label
-        let color = presentation.tone.color
-
-        return VStack(spacing: 5) {
-            HStack(spacing: 5) {
-                Image(systemName: "terminal.fill")
-                    .font(.caption2.weight(.bold))
-                Text("Pi \(sessionID)")
-                    .font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(color)
-
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(color)
-                    .frame(width: 6, height: 6)
-                Text(status)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 42)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Pi session \(sessionID), \(status.lowercased())")
+        PiSessionCardContent(sessionID: sessionID, lifecycle: lifecycle,
+            motionActive: scenePhase == .active && app.activeSection == .home
+                && !showsPurifierControls && !app.isAwaitingFreshState)
     }
 
     private func codexQuotaCard(_ state: StateSnapshot) -> AnyView {

@@ -148,6 +148,14 @@ for card in [phone, watch_card]:
 assert 'watchDetails' not in Path('JARVISKit/Sources/JARVISKit/OMLXSummary.swift').read_text()
 summary = Path('JARVISKit/Sources/JARVISKit/OMLXSummaryContent.swift').read_text()
 assert 'Image(systemName: "cpu")' in summary and 'chevron.right' not in summary
+assert 'motionActive: active' in phone and 'motionActive: active' in watch_card
+for marker in ['accessibilityReduceMotion', 'isLuminanceReduced', 'scenePhase == .active',
+               '.activityIconPulse(active: motion.pulsesCPU)', '.contentTransition(.opacity)',
+               'transaction.disablesAnimations = true']:
+    assert marker in summary
+for forbidden in ['Timer', 'TimelineView', 'repeatForever', 'Task.sleep', 'numericText']:
+    assert forbidden not in summary
+
 for forbidden in ['modelRow', 'ProgressView', 'memoryUsedBytes', 'ScrollView']:
     assert forbidden not in summary
 watch = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
@@ -1214,6 +1222,24 @@ import re
 text = Path('JARVIS/Views/HomeView.swift').read_text()
 card = text.split('private func piCard(', 1)[1].split('private func piSessionStatusRow(', 1)[0]
 assert re.findall(r'sessionIDs: \[([^\]]+)\]', card) == ['1, 2, 3', '4, 5, 6', '7, 8, 9']
+assert 'let content = VStack(spacing: 8)' in card and 'Divider()' not in card
+rows = text.split('private func piSessionStatusRow(',1)[1].split('private func piSessionStatusSection(',1)[0]
+assert 'HStack(alignment: .top, spacing: 8)' in rows and 'Divider()' not in rows
+assert 'onOpenPiTerminal(slot)' in rows and 'JARVISTerminalSlot(rawValue: sessionID)' in rows
+assert 'PiSessionLifecycle.unknown' in rows and 'isStale' in rows
+assert 'MinimalCard(padding: 8)' in text
+assert 'ActivityMotionGate.roomAudioActive(status, receivedAt: app.roomAudioUpdatedAt, now: now)' in text
+assert '.activityIconPulse(active: pulses)' in text and 'homeMotionActive && !app.roomAudioStopping' in text
+assert 'minimumInterval: 1, paused: !homeMotionActive' in text
+assert '.disabled(!fresh || status?.allowsStop != true || app.roomAudioStopping)' in text
+
+assert '.activityIconPulse(active: motionActive && presentation.animatesIcon)' in text
+motion = Path('JARVISKit/Sources/JARVISKit/ActivityIconMotion.swift').read_text()
+assert '.symbolEffect(.pulse, options: .repeating.speed(0.45)' in motion
+assert '.symbolEffectsRemoved(!enabled)' in motion
+for marker in ['accessibilityReduceMotion', 'isLuminanceReduced', 'scenePhase == .active']:
+    assert marker in motion
+
 PYGRID
 
 printf '%s\n' '== target-local completion notification cleanup =='

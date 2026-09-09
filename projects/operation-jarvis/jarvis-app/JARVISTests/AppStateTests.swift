@@ -100,6 +100,7 @@ final class AppStateTests: XCTestCase {
             let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
             XCTAssertEqual(presentation.label, label)
             XCTAssertEqual(presentation.tone, tone)
+            XCTAssertEqual(presentation.animatesIcon, lifecycle == .running || lifecycle == .compacting)
         }
     }
 

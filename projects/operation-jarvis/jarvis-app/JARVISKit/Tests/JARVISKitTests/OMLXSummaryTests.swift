@@ -15,6 +15,60 @@ final class OMLXSummaryTests: XCTestCase {
         .init(id: server.id, server: server, now: now ?? self.now, requestStartedAt: self.now, available: available)
     }
 
+    func testRoomAudioPulseRequiresActiveFreshOnlineStatus() {
+        for phase in ["processing", "speaking", "idle", "cancelling", "unknown"] {
+            for online in [false, true] {
+                let status = RoomAudioStatus(ok: true, clientOnline: online, phase: phase,
+                    turnID: nil, canStop: false, ageSeconds: 1)
+                XCTAssertEqual(ActivityMotionGate.roomAudioActive(status, receivedAt: now, now: now),
+                    online && ["processing", "speaking"].contains(phase))
+            }
+        }
+        XCTAssertFalse(ActivityMotionGate.roomAudioActive(nil, receivedAt: now, now: now))
+        let failed = RoomAudioStatus(ok: false, clientOnline: true, phase: "speaking",
+            turnID: nil, canStop: false, ageSeconds: 0)
+        XCTAssertFalse(ActivityMotionGate.roomAudioActive(failed, receivedAt: now, now: now))
+    }
+
+    func testRoomAudioPulseExpiresUsingSourceAndReceiptAge() {
+        for age in [Double.nan, .infinity, -1, 7] {
+            let status = RoomAudioStatus(ok: true, clientOnline: true, phase: "speaking",
+                turnID: nil, canStop: false, ageSeconds: age)
+            XCTAssertFalse(ActivityMotionGate.roomAudioActive(status, receivedAt: now, now: now))
+        }
+        let status = RoomAudioStatus(ok: true, clientOnline: true, phase: "speaking",
+            turnID: nil, canStop: false, ageSeconds: 5)
+        XCTAssertTrue(ActivityMotionGate.roomAudioActive(status, receivedAt: now, now: now.addingTimeInterval(1)))
+        XCTAssertFalse(ActivityMotionGate.roomAudioActive(status, receivedAt: now, now: now.addingTimeInterval(1.1)))
+        XCTAssertFalse(ActivityMotionGate.roomAudioActive(status, receivedAt: nil, now: now))
+        XCTAssertFalse(ActivityMotionGate.roomAudioActive(status, receivedAt: now.addingTimeInterval(1), now: now))
+    }
+
+    func testDecorativeMotionRequiresLiveGenerationAndEveryLifecycleGate() throws {
+        let generating = summary(try server([model(active: 1,
+            requests: "[{\"id\":\"r\",\"phase\":\"generating\",\"tokensPerSecond\":32}]")]))
+        let ready = summary(try server([model()]))
+        let stale = summary(try server([model()], stale: true))
+        for (active, sceneActive, reduced, dimmed) in [
+            (false, true, false, false), (true, false, false, false),
+            (true, true, true, false), (true, true, false, true)
+        ] {
+            let policy = OMLXMotionPolicy(rows: [generating], active: active,
+                sceneActive: sceneActive, reduceMotion: reduced, luminanceReduced: dimmed)
+            XCTAssertFalse(policy.pulsesCPU)
+            XCTAssertFalse(policy.transitionsMetric(for: generating))
+        }
+        let live = OMLXMotionPolicy(rows: [generating, stale], active: true,
+            sceneActive: true, reduceMotion: false, luminanceReduced: false)
+        XCTAssertTrue(live.pulsesCPU)
+        XCTAssertTrue(live.transitionsMetric(for: generating))
+        XCTAssertFalse(live.transitionsMetric(for: stale))
+        for rows in [[], [ready], [stale], [summary(try server([model(loading: true)]))]] {
+            XCTAssertFalse(OMLXMotionPolicy(rows: rows, active: true,
+                sceneActive: true, reduceMotion: false, luminanceReduced: false).pulsesCPU)
+        }
+    }
+
     func testOneFixedSummaryRowEvenWhenManyModelsAreLoaded() throws {
         let value = summary(try server((0..<20).map { model("private-long-model-\($0)") }))
         XCTAssertEqual(value.serverLabel, "64 GB")

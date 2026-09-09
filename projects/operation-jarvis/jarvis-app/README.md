@@ -1,6 +1,6 @@
-## Display-only oMLX polish candidate (not deployed)
+## Subtle activity motion and individual Pi cards candidate (not deployed)
 
-Build158 is deployed on iPhone and Watch. This apps-only follow-up preserves
+Build159 is deployed on iPhone and Watch. This apps-only follow-up preserves
 its compact two-row cards and **Purifier → Codex → oMLX** Watch placement.
 A small CPU title icon, quiet typography, monospaced metrics and a fine Watch
 border refine the presentation without increasing card padding or row density.
@@ -8,6 +8,29 @@ Cards are display-only: no tap action, chevron, detail screen or detail poller.
 At ordinary text sizes a too-wide metric is omitted, with its full spoken value
 retained in VoiceOver. Larger text may grow naturally. Normal card heights are
 kept at the approved approximately89pt iPhone /58pt Watch footprint.
+
+The CPU icon uses a slow, fixed SF Symbols brightness pulse only while a fresh
+server summary reports Generating. Metric text crossfades real samples over
+250ms (no interpolated invented values). Ready/loading/queued alone do not pulse.
+Motion is decorative, independent of throughput, and disabled off-page, under
+Watch dialogs, outside the active scene, in dimmed/AOD, and under Reduce Motion.
+Each stale row drops its metric immediately; a separate fresh generating host
+may still animate the shared title icon. No animation timers, network reads, widgets,
+border animations, or status-dot animations are introduced. Deployment is separate.
+
+The iPhone Pi overview now has nine independent rounded cards with8pt gutters,
+retaining the ordered3×3 grid and exact-session terminal routing. Running and
+Compacting terminal icons use the same shared pulse modifier as oMLX. All other
+states are static. Stale Pi data maps to Unknown as before; motion also stops
+while awaiting fresh state, under purifier controls, off Home, in inactive scenes,
+and with Reduce Motion. Labels, colours, session histories, grouped selectors,
+Siri admission, Watch terminal layout and backend processes are unchanged.
+
+Room audio uses the same waveform-icon pulse for fresh Processing/Talking only.
+It stops on cancellation/Stop, idle, unavailable, off Home, covered or reduced
+motion. Source age plus elapsed receipt time must stay within6s; a paused-outside-
+Home1Hz freshness clock expires cached activity without additional network reads.
+The Stop action, exact-turn validation and eligibility checks remain unchanged.
 
 Queued work gets one queue count. Multiple busy models or concurrent requests
 get a count instead of an arbitrary/combined generation rate or prompt progress.

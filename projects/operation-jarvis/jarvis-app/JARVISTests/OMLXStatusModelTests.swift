@@ -43,6 +43,34 @@ final class OMLXStatusModelTests: XCTestCase {
         XCTFail("condition did not become true")
     }
 
+    func testNineIndividualPiCardsRenderNormalAndLargerText() throws {
+        let states: [PiSessionLifecycle] = [.running, .compacting, .new, .idle,
+            .offline, .unknown, .running, .compacting, .new]
+        for size in [DynamicTypeSize.large, .accessibility3] {
+            let grid = VStack(spacing: 8) {
+                ForEach(0..<3) { row in
+                    HStack(alignment: .top, spacing: 8) {
+                        ForEach(0..<3) { column in
+                            let index = row * 3 + column
+                            PiSessionCardContent(sessionID: index + 1, lifecycle: states[index], motionActive: false)
+                        }
+                    }
+                }
+            }
+            let renderer = ImageRenderer(content: grid.frame(width: 358)
+                .environment(\.colorScheme, .dark).environment(\.dynamicTypeSize, size))
+            renderer.scale = 2
+            let image = try XCTUnwrap(renderer.uiImage)
+            XCTAssertEqual(image.size.width, 358)
+            if size == .large { XCTAssertEqual(image.size.height, 190, accuracy: 0.5) }
+            else { XCTAssertGreaterThan(image.size.height, 190) }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = size == .large ? "pi-nine-cards-normal" : "pi-nine-cards-accessibility"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+
     func testCardRenderingNormalAccessibilityAndPartialOutage() throws {
         let now = Date(timeIntervalSince1970: 100)
         let json = #"{"id":"mac-mini-64","ok":true,"stale":false,"ageSeconds":0,"models":[{"id":"Qwen3.6-35B-A3B-4bit","isLoading":false,"activeRequests":1,"queuedRequests":0,"requests":[{"id":"r","phase":"generating","generatedTokens":846,"tokensPerSecond":32.4,"elapsedSeconds":26}]}],"memoryUsedBytes":26628797235,"memoryLimitBytes":51539607552,"memoryKind":"process","memoryPressure":"ok"}"#

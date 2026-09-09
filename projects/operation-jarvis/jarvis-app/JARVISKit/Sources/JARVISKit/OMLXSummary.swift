@@ -83,3 +83,20 @@ public struct OMLXPollConfiguration: Hashable, Sendable {
         hasher.combine(interval)
     }
 }
+
+/// Decorative motion never encodes throughput or progress and never owns a timer.
+public struct OMLXMotionPolicy: Equatable, Sendable {
+    public let enabled: Bool
+    public let pulsesCPU: Bool
+
+    public init(rows: [OMLXServerSummary], active: Bool, sceneActive: Bool,
+                reduceMotion: Bool, luminanceReduced: Bool) {
+        enabled = ActivityMotionGate.allows(active: active, sceneActive: sceneActive,
+            reduceMotion: reduceMotion, luminanceReduced: luminanceReduced)
+        pulsesCPU = enabled && rows.contains { $0.fresh && $0.phase == .generating }
+    }
+
+    public func transitionsMetric(for row: OMLXServerSummary) -> Bool {
+        enabled && row.fresh && row.metric != nil
+    }
+}

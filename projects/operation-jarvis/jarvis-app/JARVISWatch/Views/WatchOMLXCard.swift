@@ -12,7 +12,7 @@ struct WatchOMLXCard: View {
                         now: context.date, requestStartedAt: model.requestStartedAt,
                         available: active && model.isPolling && !model.unavailable,
                         checking: model.snapshot == nil && model.isPolling && !model.unavailable)
-                }, compact: true)
+                }, compact: true, motionActive: active)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)

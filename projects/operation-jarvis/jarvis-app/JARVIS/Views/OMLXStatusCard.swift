@@ -25,7 +25,7 @@ struct OMLXStatusCard: View {
                     OMLXServerSummary(id: id, server: model.snapshot?.servers.first { $0.id == id },
                         now: context.date, requestStartedAt: model.requestStartedAt,
                         available: available, checking: checking)
-                })
+                }, motionActive: active)
             }
         }
         .task(id: poll) { await model.run(endpoint: poll.endpoint, interval: poll.interval) }
