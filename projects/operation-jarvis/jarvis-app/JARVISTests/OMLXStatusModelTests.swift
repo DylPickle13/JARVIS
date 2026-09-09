@@ -43,6 +43,41 @@ final class OMLXStatusModelTests: XCTestCase {
         XCTFail("condition did not become true")
     }
 
+    func testDecorativeOverlayKeepsLayoutUnderPolicyGates() throws {
+        for (name, active, allowed, reduced, dimmed, scene) in [
+            ("active", true, true, false, false, ScenePhase.active),
+            ("idle", false, true, false, false, .active),
+            ("stale", false, false, false, false, .active),
+            ("reduce-motion", true, true, true, false, .active),
+            ("dimmed", true, true, false, true, .active),
+            ("background", true, true, false, false, .background)
+        ] {
+            // Accessibility/luminance environment values are read-only. Exercise
+            // their shared policy here; physical OS-setting acceptance is separate.
+            let eligible = allowed && ActivityMotionGate.allows(active: true,
+                sceneActive: scene == .active, reduceMotion: reduced, luminanceReduced: dimmed)
+            let card = MinimalCard(padding: 8) {
+                HStack {
+                    Circle().fill(.green).frame(width: 6, height: 6)
+                        .activityStatusBreath(active: active && eligible)
+                    Text("Activity")
+                }.frame(height: 42)
+            }.frame(width: 114)
+                .activityCardEdge(active: active, allowed: eligible)
+                .environment(\.scenePhase, scene)
+                .environment(\.colorScheme, .dark)
+            let renderer = ImageRenderer(content: card)
+            renderer.scale = 2
+            let image = try XCTUnwrap(renderer.uiImage)
+            XCTAssertEqual(image.size.width, 114)
+            XCTAssertEqual(image.size.height, 58)
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "edge-gate-" + name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+
     func testNineIndividualPiCardsRenderNormalAndLargerText() throws {
         let states: [PiSessionLifecycle] = [.running, .compacting, .new, .idle,
             .offline, .unknown, .running, .compacting, .new]
@@ -109,6 +144,9 @@ final class OMLXStatusModelTests: XCTestCase {
                 content = AnyView(MinimalCard(padding: 11) { OMLXSummaryContent(rows: rows) })
             }
             let renderer = ImageRenderer(content: content.frame(width: width)
+                .activityCardEdge(active: rows.contains(where: \.hasActiveWork),
+                    allowed: OMLXServerSummary.allowsEdge(rows), cornerRadius: compact ? 13 : 14, compact: compact)
+                .environment(\.scenePhase, .active)
                 .environment(\.colorScheme, .dark).environment(\.dynamicTypeSize, size))
             renderer.scale = 2
             let image = try XCTUnwrap(renderer.uiImage)

@@ -15,6 +15,40 @@ final class OMLXSummaryTests: XCTestCase {
         .init(id: server.id, server: server, now: now ?? self.now, requestStartedAt: self.now, available: available)
     }
 
+    func testTravellingEdgeWrapsWithoutBecomingAFullOutline() {
+        for time in [-10.2, 0, 0.5, 4.9, 5, 5000] {
+            let ranges = ActivityEdgeGeometry.ranges(time: time)
+            XCTAssertTrue((1...2).contains(ranges.count))
+            XCTAssertEqual(ranges.reduce(0) { $0 + $1.upperBound - $1.lowerBound }, 0.13, accuracy: 0.000001)
+            for range in ranges {
+                XCTAssertGreaterThanOrEqual(range.lowerBound, 0)
+                XCTAssertLessThanOrEqual(range.upperBound, 1)
+            }
+        }
+        for (time, period) in [(Double.nan, 5.0), (.infinity, 5), (1, 0), (1, -1), (Double.greatestFiniteMagnitude, Double.leastNonzeroMagnitude)] {
+            XCTAssertTrue(ActivityEdgeGeometry.ranges(time: time, period: period).isEmpty)
+        }
+        XCTAssertEqual(ActivityEdgeGeometry.fadeDuration, 0.45)
+    }
+
+    func testOMLXEdgeCompletionRequiresKnownFreshIdleAndLoadingOnlyBreathes() throws {
+        let idle = summary(try server([model()]))
+        let busy = summary(try server([model(active: 1, requests: "[{\"id\":\"r\",\"phase\":\"generating\"}]")]))
+        let stale = summary(try server([model()], stale: true))
+        let loading = summary(try server([model(loading: true)]))
+        XCTAssertTrue(busy.hasActiveWork)
+        XCTAssertTrue(busy.breathesStatus)
+        XCTAssertTrue(loading.breathesStatus)
+        XCTAssertFalse(loading.hasActiveWork)
+        XCTAssertFalse(idle.breathesStatus)
+        XCTAssertFalse(stale.breathesStatus)
+        XCTAssertTrue(OMLXServerSummary.allowsEdge([busy, stale]))
+        XCTAssertTrue(OMLXServerSummary.allowsEdge([idle, idle]))
+        XCTAssertFalse(OMLXServerSummary.allowsEdge([idle, stale]))
+        XCTAssertFalse(OMLXServerSummary.allowsEdge([loading]))
+        XCTAssertFalse(OMLXServerSummary.allowsEdge([]))
+    }
+
     func testRoomAudioPulseRequiresActiveFreshOnlineStatus() {
         for phase in ["processing", "speaking", "idle", "cancelling", "unknown"] {
             for online in [false, true] {

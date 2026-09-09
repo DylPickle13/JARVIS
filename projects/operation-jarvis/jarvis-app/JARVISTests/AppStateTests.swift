@@ -101,6 +101,7 @@ final class AppStateTests: XCTestCase {
             XCTAssertEqual(presentation.label, label)
             XCTAssertEqual(presentation.tone, tone)
             XCTAssertEqual(presentation.animatesIcon, lifecycle == .running || lifecycle == .compacting)
+            XCTAssertEqual(presentation.allowsActivityEdge, [.running, .compacting, .idle].contains(lifecycle))
         }
     }
 

@@ -10,6 +10,16 @@ public struct OMLXServerSummary: Equatable, Identifiable, Sendable {
     public let phase: OMLXPhase
     public let fresh: Bool
 
+    public var hasActiveWork: Bool { fresh && [.generating, .prefill, .processing].contains(phase) }
+    public var breathesStatus: Bool { hasActiveWork || (fresh && phase == .loading) }
+
+    /// An unhealthy peer never suppresses a genuinely active healthy server,
+    /// but uncertain disappearance must not be presented as a completion fade.
+    public static func allowsEdge(_ rows: [Self]) -> Bool {
+        rows.contains(where: \.hasActiveWork)
+            || (!rows.isEmpty && rows.allSatisfy { $0.fresh && $0.phase == .ready })
+    }
+
     public init(id: String, server: OMLXServerStatus?, now: Date, requestStartedAt: Date?,
                 available: Bool, checking: Bool = false) {
         self.id = id

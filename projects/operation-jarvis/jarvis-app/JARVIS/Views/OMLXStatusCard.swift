@@ -20,13 +20,16 @@ struct OMLXStatusCard: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1, paused: !active)) { context in
-            MinimalCard(padding: 11) {
-                OMLXSummaryContent(rows: OMLXSnapshot.serverIDs.map { id in
+            let rows = OMLXSnapshot.serverIDs.map { id in
                     OMLXServerSummary(id: id, server: model.snapshot?.servers.first { $0.id == id },
                         now: context.date, requestStartedAt: model.requestStartedAt,
                         available: available, checking: checking)
-                }, motionActive: active)
+                }
+            MinimalCard(padding: 11) {
+                OMLXSummaryContent(rows: rows, motionActive: active)
             }
+            .activityCardEdge(active: rows.contains(where: \.hasActiveWork),
+                allowed: active && OMLXServerSummary.allowsEdge(rows))
         }
         .task(id: poll) { await model.run(endpoint: poll.endpoint, interval: poll.interval) }
     }

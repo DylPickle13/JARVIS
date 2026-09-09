@@ -7,12 +7,13 @@ struct WatchOMLXCard: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1, paused: !active)) { context in
-            OMLXSummaryContent(rows: OMLXSnapshot.serverIDs.map { id in
+            let rows = OMLXSnapshot.serverIDs.map { id in
                     OMLXServerSummary(id: id, server: model.snapshot?.servers.first { $0.id == id },
                         now: context.date, requestStartedAt: model.requestStartedAt,
                         available: active && model.isPolling && !model.unavailable,
                         checking: model.snapshot == nil && model.isPolling && !model.unavailable)
-                }, compact: true, motionActive: active)
+                }
+            OMLXSummaryContent(rows: rows, compact: true, motionActive: active)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -21,6 +22,8 @@ struct WatchOMLXCard: View {
                     RoundedRectangle(cornerRadius: 13, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
                 }
+                .activityCardEdge(active: rows.contains(where: \.hasActiveWork),
+                    allowed: active && OMLXServerSummary.allowsEdge(rows), cornerRadius: 13, compact: true)
         }
     }
 }

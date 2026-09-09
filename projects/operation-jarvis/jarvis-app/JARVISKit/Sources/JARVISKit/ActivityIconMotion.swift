@@ -4,8 +4,12 @@ import SwiftUI
 public enum ActivityMotionGate {
     /// Source age plus elapsed receipt time; cached activity must not pulse forever.
     public static func roomAudioActive(_ status: RoomAudioStatus?, receivedAt: Date?, now: Date) -> Bool {
+        guard let status, ["processing", "speaking"].contains(status.phase) else { return false }
+        return roomAudioFresh(status, receivedAt: receivedAt, now: now)
+    }
+
+    public static func roomAudioFresh(_ status: RoomAudioStatus?, receivedAt: Date?, now: Date) -> Bool {
         guard let status, status.ok, status.clientOnline,
-              ["processing", "speaking"].contains(status.phase),
               let age = status.ageSeconds, age.isFinite, age >= 0,
               let receivedAt else { return false }
         let elapsed = now.timeIntervalSince(receivedAt)

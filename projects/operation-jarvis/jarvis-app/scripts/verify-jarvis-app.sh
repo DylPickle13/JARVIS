@@ -149,6 +149,15 @@ assert 'watchDetails' not in Path('JARVISKit/Sources/JARVISKit/OMLXSummary.swift
 summary = Path('JARVISKit/Sources/JARVISKit/OMLXSummaryContent.swift').read_text()
 assert 'Image(systemName: "cpu")' in summary and 'chevron.right' not in summary
 assert 'motionActive: active' in phone and 'motionActive: active' in watch_card
+assert '.activityCardEdge(' in phone and '.activityCardEdge(' in watch_card
+edge = Path('JARVISKit/Sources/JARVISKit/ActivityCardMotion.swift').read_text()
+for marker in ['.id(eligible)', '.allowsHitTesting(false)', '.accessibilityHidden(true)',
+               'if eligible && active', 'compact ? 0.1 : 0.05', 'compact ? 0.28 : 0.42',
+               'rect = CGRect', '.phaseAnimator', 'slow ? 1.8 : 1.1']:
+    assert marker in edge
+for forbidden in ['Timer(', 'Task.sleep', '.rotationEffect', 'repeatForever', 'omlxStatus(']:
+    assert forbidden not in edge
+
 for marker in ['accessibilityReduceMotion', 'isLuminanceReduced', 'scenePhase == .active',
                '.activityIconPulse(active: motion.pulsesCPU)', '.contentTransition(.opacity)',
                'transaction.disablesAnimations = true']:

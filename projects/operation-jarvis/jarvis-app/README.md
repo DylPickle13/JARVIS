@@ -1,6 +1,28 @@
-## Subtle activity motion and individual Pi cards candidate (not deployed)
+## Layered activity animation candidate (not deployed)
 
-Build159 is deployed on iPhone and Watch. This apps-only follow-up preserves
+Build160 remains deployed. This apps-only follow-up adds a short travelling
+silver highlight, breathing status dots and450ms completion fade to the existing
+icon pulses and metric crossfades. No card dimensions, routing or control sizes change.
+
+The highlight covers13% of an inset rounded perimeter, never a whole glowing
+outline. It travels at a fixed decorative5s cycle on iPhone and6s on Watch.
+Foreground drawing is capped at20fps phone /10fps Watch; Watch uses a dimmer,
+thinner stroke and shallower dot breathing. No inference, rate-based animation,
+network changes, glow/blur or rotating card geometry. All overlays ignore input
+and accessibility, leaving labels, Stop controls and Pi buttons unchanged.
+
+Fresh oMLX generation/prefill/processing activates the edge and dot; loading gets
+only slower dot breathing, not invented progress. Queued alone is static.
+Pi Running/Compacting and Room Audio Processing/Talking use the same effects.
+Only known fresh idle completion fades the edge out; status text updates immediately.
+Stale/unknown/offline, explicit Room Audio Stop, off-page/covered, inactive/AOD
+and Reduce Motion remove the decorative subtree immediately, including any fade
+already underway. Rendering exists only during activity or its bounded completion
+fade. Deployment and physical motion/energy acceptance remain separate.
+
+## Build160 activity motion and individual Pi cards baseline
+
+Build160 is deployed on iPhone and Watch. This apps-only follow-up preserves
 its compact two-row cards and **Purifier → Codex → oMLX** Watch placement.
 A small CPU title icon, quiet typography, monospaced metrics and a fine Watch
 border refine the presentation without increasing card padding or row density.
@@ -16,7 +38,7 @@ Motion is decorative, independent of throughput, and disabled off-page, under
 Watch dialogs, outside the active scene, in dimmed/AOD, and under Reduce Motion.
 Each stale row drops its metric immediately; a separate fresh generating host
 may still animate the shared title icon. No animation timers, network reads, widgets,
-border animations, or status-dot animations are introduced. Deployment is separate.
+border animations, or status-dot animations were introduced in Build160; the follow-up above adds them.
 
 The iPhone Pi overview now has nine independent rounded cards with8pt gutters,
 retaining the ordered3×3 grid and exact-session terminal routing. Running and

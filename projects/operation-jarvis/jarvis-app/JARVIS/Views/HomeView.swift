@@ -26,6 +26,7 @@ struct PiSessionIndicatorPresentation: Equatable {
     let label: String
     let tone: PiSessionIndicatorTone
     var animatesIcon: Bool { tone == .running || tone == .compacting }
+    var allowsActivityEdge: Bool { animatesIcon || tone == .idle }
 
     init(lifecycle: PiSessionLifecycle) {
         switch lifecycle {
@@ -73,6 +74,8 @@ struct PiSessionCardContent: View {
                 .foregroundStyle(color)
                 HStack(spacing: 4) {
                     Circle().fill(color).frame(width: 6, height: 6)
+                        .activityStatusBreath(active: motionActive && presentation.animatesIcon,
+                            slow: lifecycle == .compacting)
                         .accessibilityHidden(true)
                     Text(presentation.label)
                         .font(.caption2.weight(.medium))
@@ -81,6 +84,8 @@ struct PiSessionCardContent: View {
             }
             .frame(maxWidth: .infinity, minHeight: 42)
         }
+        .activityCardEdge(active: presentation.animatesIcon,
+            allowed: motionActive && presentation.allowsActivityEdge)
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Pi session \(sessionID), \(presentation.label.lowercased())")
@@ -182,6 +187,9 @@ struct HomeView: View {
         let fresh = app.roomAudioUpdatedAt.map { now.timeIntervalSince($0) <= 6 } ?? false
         let pulses = homeMotionActive && !app.roomAudioStopping
             && ActivityMotionGate.roomAudioActive(status, receivedAt: app.roomAudioUpdatedAt, now: now)
+        let edgeAllowed = homeMotionActive && !app.roomAudioStopping
+            && ActivityMotionGate.roomAudioFresh(status, receivedAt: app.roomAudioUpdatedAt, now: now)
+            && ["processing", "speaking", "idle"].contains(status?.phase ?? "")
         let title = fresh ? (status?.title ?? "Unavailable") : "Unavailable"
         let tone: Color = title == "Talking" ? JarvisPalette.accent
             : title == "Processing" || title == "Stopping" ? JarvisPalette.warning : .secondary
@@ -197,6 +205,8 @@ struct HomeView: View {
                 .font(.subheadline.weight(.semibold))
                 Spacer(minLength: 4)
                 Circle().fill(tone).frame(width: 7, height: 7)
+                    .activityStatusBreath(active: pulses, slow: status?.phase == "processing")
+                    .accessibilityHidden(true)
                 Text(title).font(.caption.weight(.medium)).foregroundStyle(tone)
                 Button { Task { await app.stopRoomAudio() } } label: {
                     Image(systemName: "stop.fill").font(.caption)
@@ -208,6 +218,7 @@ struct HomeView: View {
                 .accessibilityLabel("Stop active room-audio request")
             }
         }
+        .activityCardEdge(active: pulses, allowed: edgeAllowed)
     }
 
     // MARK: - Compact overview

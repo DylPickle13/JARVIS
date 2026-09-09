@@ -95,7 +95,10 @@ public struct OMLXSummaryContent: View {
     private func state(_ row: OMLXServerSummary) -> some View {
         let tone: Color = row.fresh ? OMLXFormat.tone(row.phase) : .secondary
         return HStack(spacing: compact ? 3 : 4) {
-            Circle().fill(tone).frame(width: compact ? 4 : 5, height: compact ? 4 : 5).accessibilityHidden(true)
+            Circle().fill(tone).frame(width: compact ? 4 : 5, height: compact ? 4 : 5)
+                .activityStatusBreath(active: motion.enabled && row.breathesStatus,
+                    slow: row.phase == .loading, compact: compact)
+                .accessibilityHidden(true)
             Text(row.status).foregroundStyle(row.fresh && row.phase != .ready ? tone : .secondary)
         }
     }
