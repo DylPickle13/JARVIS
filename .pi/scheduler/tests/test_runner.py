@@ -117,6 +117,49 @@ class SchedulerTests(unittest.TestCase):
             self.runner.MAX_RESULT_BYTES,
         )
 
+    def test_scraper_alerts_once_per_outage_but_retains_all_errors(self) -> None:
+        from unittest.mock import patch
+
+        job_id = self.add_direct_job(name="apple_refurb_scraper")
+        with closing(self.runner.connect()) as conn:
+            # Intentionally reuse a stale snapshot to exercise the DB counter.
+            job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            now = self.runner.utcnow()
+            with patch.object(self.runner, "enqueue_notification_for_result") as enqueue:
+                for index, (status, output, expected_alerts) in enumerate([
+                    ("error", "503", 1),
+                    ("error", "503", 1),
+                    ("error", "different failure", 1),
+                    ("success", "", 1),
+                    ("error", "503", 2),
+                    ("success", "New inventory", 3),
+                    ("error", "503", 4),
+                ]):
+                    self.runner.persist_completion(
+                        conn, job=job, run_id=f"run_outage_{index}",
+                        output_kind="direct", started=now, finished=now,
+                        status=status, exit_code=1 if status == "error" else 0,
+                        output=output, error=output if status == "error" else None,
+                    )
+                    self.assertEqual(enqueue.call_count, expected_alerts)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM results WHERE status='error'").fetchone()[0], 5)
+
+    def test_other_jobs_still_notify_on_each_failure(self) -> None:
+        from unittest.mock import patch
+
+        job_id = self.add_direct_job()
+        with closing(self.runner.connect()) as conn:
+            job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            now = self.runner.utcnow()
+            with patch.object(self.runner, "enqueue_notification_for_result") as enqueue:
+                for index in range(2):
+                    self.runner.persist_completion(
+                        conn, job=job, run_id=f"run_other_{index}",
+                        output_kind="direct", started=now, finished=now,
+                        status="error", exit_code=1, output="", error="failure",
+                    )
+                self.assertEqual(enqueue.call_count, 2)
+
     def test_result_output_is_utf8_bounded_and_marked(self) -> None:
         job_id = self.add_direct_job()
         with closing(self.runner.connect()) as conn:

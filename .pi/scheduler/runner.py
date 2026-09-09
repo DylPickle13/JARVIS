@@ -1002,11 +1002,23 @@ def persist_completion(
                 ),
             )
             sequence = int(cursor.lastrowid)
-            enqueue_notification_for_result(
-                conn,
-                result_sequence=sequence,
-                created_at=iso(finished),
+            # Keep every failure in history, but alert only once per outage for
+            # the minute-by-minute Apple scraper. Read the updated counter from
+            # SQLite rather than the potentially stale job snapshot. Any success
+            # (including a silent check) resets it and re-arms the next alert.
+            repeat_scraper_error = (
+                job["name"] == "apple_refurb_scraper"
+                and status == "error"
+                and conn.execute(
+                    "SELECT consecutive_errors FROM jobs WHERE id=?", (job["id"],)
+                ).fetchone()[0] > 1
             )
+            if not repeat_scraper_error:
+                enqueue_notification_for_result(
+                    conn,
+                    result_sequence=sequence,
+                    created_at=iso(finished),
+                )
             conn.execute(
                 "DELETE FROM results WHERE sequence IN (SELECT sequence FROM results ORDER BY sequence DESC LIMIT -1 OFFSET ?)",
                 (MAX_RESULTS,),
