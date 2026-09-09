@@ -5,13 +5,21 @@ import JARVISKit
 struct WatchDashboardContent: View {
     @ObservedObject var model: WatchConnectModel
     @ObservedObject var jobs: WatchJobsModel
+    let isDashboardCovered: Bool
     let siriTerminalRequestSequence: Int
     let requestedJobRoute: ScheduledJobNavigationRequest?
     let onJobRouteConsumed: (ScheduledJobNavigationRequest) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedPage: WatchDashboardPage = .terminal
     @State private var showsPurifierModeChoices = false
     @State private var showsPurifierFanChoices = false
+    @State private var showsOMLXDetails = false
+
+    private var overlayOwnsInput: Bool {
+        showsOMLXDetails || showsPurifierModeChoices || showsPurifierFanChoices || isDashboardCovered
+    }
+    private var systemInteractive: Bool { scenePhase == .active && selectedPage == .system }
 
     private static let iso8601 = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
 
@@ -40,7 +48,7 @@ struct WatchDashboardContent: View {
         // page identity and its scroll/layout coordinate spaces.
         .highPriorityGesture(
             pageDragGesture(page: selectedPage),
-            including: selectedPage == .terminal ? .subviews : .all
+            including: overlayOwnsInput ? .none : (selectedPage == .terminal ? .subviews : .all)
         )
         .tint(WatchJarvisStyle.accent)
         .animation(.easeInOut(duration: 0.16), value: selectedPage)
@@ -53,14 +61,24 @@ struct WatchDashboardContent: View {
             }
             #endif
             model.setJobsPageVisible(selectedPage == .jobs)
+            updateOMLXPresentation()
         }
         .onChange(of: selectedPage) { _, page in
             model.setJobsPageVisible(page == .jobs)
+            if page != .system { showsOMLXDetails = false }
+            updateOMLXPresentation()
             if page == .system {
                 Task { await model.refreshCodexQuotaWhenVisible() }
             } else {
                 model.cancelCodexQuotaViewRefresh()
             }
+        }
+        .onChange(of: showsOMLXDetails) { _, _ in updateOMLXPresentation() }
+        .onChange(of: showsPurifierModeChoices) { _, _ in updateOMLXPresentation() }
+        .onChange(of: showsPurifierFanChoices) { _, _ in updateOMLXPresentation() }
+        .onChange(of: isDashboardCovered) { _, _ in updateOMLXPresentation() }
+        .sheet(isPresented: $showsOMLXDetails) {
+            WatchOMLXDetails(model: model.omlx, active: systemInteractive && !isDashboardCovered)
         }
         .onChange(of: siriTerminalRequestSequence) { oldValue, newValue in
             guard newValue != oldValue else { return }
@@ -75,7 +93,19 @@ struct WatchDashboardContent: View {
         }
         .onDisappear {
             model.setJobsPageVisible(false)
+            // watchOS can hide the presenting view behind its full-screen
+            // sheet. Keep that sheet's single model-owned poller alive; scene
+            // lifecycle still stops it immediately for dim/background states.
+            if !showsOMLXDetails {
+                model.setOMLXPresentation(systemVisible: false, detailsVisible: false, covered: true)
+            }
         }
+    }
+
+    private func updateOMLXPresentation() {
+        model.setOMLXPresentation(systemVisible: selectedPage == .system,
+            detailsVisible: showsOMLXDetails,
+            covered: showsPurifierModeChoices || showsPurifierFanChoices || isDashboardCovered)
     }
 
     @ViewBuilder
@@ -129,7 +159,7 @@ struct WatchDashboardContent: View {
         DragGesture(minimumDistance: 24, coordinateSpace: .global)
             .onEnded { value in
                 // An outgoing view must never navigate the newly selected page.
-                guard selectedPage == page,
+                guard selectedPage == page, !overlayOwnsInput,
                       let destination = page.destination(
                         verticalTranslation: Double(value.translation.height),
                         horizontalTranslation: Double(value.translation.width)
@@ -149,10 +179,12 @@ struct WatchDashboardContent: View {
 
     @ViewBuilder
     private var resolvedSystemPage: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            accessibilitySystemPage
-        } else {
-            systemPage
+        WatchSystemCrownViewport(active: systemInteractive && !overlayOwnsInput) {
+            if dynamicTypeSize.isAccessibilitySize {
+                accessibilitySystemPage
+            } else {
+                systemPage
+            }
         }
     }
 
@@ -212,6 +244,7 @@ struct WatchDashboardContent: View {
             pageHeader("System", symbol: "waveform.path.ecg")
             purifierPanel
             codexQuotaPanel
+            omlxCard
 
             if model.shouldShowRetry {
                 retryButton
@@ -539,24 +572,27 @@ struct WatchDashboardContent: View {
         }
     }
 
-    private var accessibilitySystemPage: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                pageHeader("System", symbol: "waveform.path.ecg")
-                purifierPanel
-                codexQuotaPanel
-                if model.shouldShowRetry {
-                    retryButton
-                }
-                if let message = model.errorMessage, !message.isEmpty {
-                    Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(WatchJarvisStyle.warning)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+    private var omlxCard: some View {
+        WatchOMLXCard(model: model.omlx, active: systemInteractive && !overlayOwnsInput) {
+            showsOMLXDetails = true
         }
+    }
+
+    private var accessibilitySystemPage: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            pageHeader("System", symbol: "waveform.path.ecg")
+            purifierPanel
+            codexQuotaPanel
+            omlxCard
+            if model.shouldShowRetry { retryButton }
+            if let message = model.errorMessage, !message.isEmpty {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(WatchJarvisStyle.warning)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 
     private func accessiblePlugButton(_ name: String) -> some View {

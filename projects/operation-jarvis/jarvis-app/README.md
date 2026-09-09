@@ -1,10 +1,26 @@
-## iPhone Home oMLX monitoring candidate (not deployed)
+## Minimal iPhone and Watch oMLX candidate (not deployed)
 
-A native, read-only **oMLX** card follows Air Purifier. Fixed sections identify
-`mac-mini-64` and `mac-mini-16`. All busy/loading models remain visible; idle
-loaded models collapse to a count. Tapping either section opens a live detail
-sheet with full model names, individual request metrics and approximate
-observed/estimated model memory. Dynamic Type may grow the card vertically.
+Build 157 provides the existing iPhone/backend monitoring. This apps-only
+candidate replaces the large iPhone sections with **one compact card, two fixed
+server rows**, and adds that same summary below Codex on Watch System:
+**Purifier → Codex → oMLX**. Each row shows 64 GB / 16 GB, a truthful state and
+at most one trailing metric. At ordinary text sizes a too-wide optional metric
+is omitted rather than adding lines; identity/state take priority, with the full
+value retained in details and VoiceOver. It never adds model rows as activity increases.
+Tapping opens details for both servers: model names, individual request metrics
+and approximate observed/estimated model memory. Normal-size targets are
+80–100 pt on iPhone and 55–65 pt on Watch; larger text may grow/wrap naturally.
+
+Queued work gets one queue count. Multiple busy models or concurrent requests
+get a count instead of an arbitrary/combined generation rate or prompt progress.
+Only a single unambiguous request gets its average generation speed or real
+prefill percentage. These cards monitor existing activity; they never cause it.
+
+Watch retains **Terminal → Plugs → System → Jobs**, with non-wrapping vertical
+page swipes. System uses measured, clipped Crown scrolling when content does
+not fit, without a native touch scroller competing with page swipes. Controls
+keep their existing sizes. Detail sheets own native scrolling/Crown focus;
+the underlying pager and System Crown relinquish input while covered.
 
 Loaded is not generating: labels distinguish Ready, Loading, Processing prompt,
 Generating, Processing, Queued, Unknown and stale/unavailable telemetry. Prefill
@@ -18,10 +34,16 @@ is approximate, not an exact allocation measurement.
 **Transport:** authenticated/trusted-network `GET /api/v1/omlx` returns version
 1 and exactly two fixed server identities. A separate `StateCoordinator` gives
 each server an independent last-good cache/worker and single-flight collection.
-HTTP handlers only read the cache. Home renews a six-second active lease for
-approximately two-second collection; idle host collection is once per minute.
-The iPhone's cancellable Home-only task targets two-second reads. A local 1 Hz
-freshness clock expires source data even without a successful response. Source
+HTTP handlers only read the cache. Visible monitoring renews a six-second active
+lease for approximately two-second collection; idle host collection is once per
+minute. iPhone Home reads about every two seconds. Watch has one model-owned
+poller, reading about every five seconds on System or three seconds in details.
+It stops off System, under other dialogs, in background and in dimmed/AOD state.
+Endpoint changes invalidate the old request owner. Ordinary Watch state refresh
+cannot restart that poller, and no widget requests oMLX telemetry. Watch reuses
+the trusted jarvisd endpoint and existing phone/Tailscale networking; it has no
+direct credentialed oMLX connection or new relay protocol. A local foreground
+1 Hz freshness clock expires source data even without a successful response. Source
 age includes elapsed client time/round-trip allowance; six seconds or any failed
 probe marks activity stale. Stale rates/progress disappear immediately, retaining
 only last-update metadata and clearly historical model names in the detail sheet.
@@ -42,16 +64,17 @@ and set `JARVISD_OMLX_{64,16}_COOKIE_FILE` on jarvisd. No cookie goes to the pho
 Do not enable anonymous access for this feature. Upstream HTTP remains confined
 to the existing trusted private network; do not expose port 8000 publicly.
 
-This is **iPhone UI + jarvisd only**. No new listeners, Watch/widget polling,
-AppState snapshot persistence, terminald/Siri/attachment changes, Pi reloads,
-model load/unload, inference probes or production deployment are part of candidate
-implementation. New clients show unavailable on old hosts; old clients ignore
-the new endpoint. A later approved rollout must preserve the exact nine session
-and attachment identities and existing daemon configuration/credentials.
+This candidate needs **no backend restart or configuration changes**. It does
+not change listeners, widget behavior, AppState persistence, terminald/Siri,
+attachments, Pi sessions, model controls or inference. Implementation is not
+deployment authorization: install only separately approved, signed and sealed
+products. Preserve nine exact conversations/attachments, Jobs, room audio,
+notifications, daemon configuration and credentials during any later rollout.
 
 Verification includes Python sanitizer/transport/cache/auth/deadline regressions,
 Kit decoding/freshness/client tests, iOS cancellation/endpoint-generation/failure
-and rendering tests (normal, accessibility and partial outage), source contracts,
+and rendering tests (normal, accessibility and partial outage), summary/concurrency
+policy, Watch polling ownership/cancellation, Crown bounds, source contracts,
 and both simulator builds. Run `scripts/verify-jarvis-app.sh`; optionally set
 `JARVIS_RUN_IOS_TESTS=1`, `JARVIS_IOS_TEST_DESTINATION='platform=iOS Simulator,id=…'`
 and `JARVIS_IOS_TEST_RESULT_BUNDLE=/tmp/unique-result.xcresult` to retain iOS
@@ -830,7 +853,8 @@ hardware/status/service API control plane. The iPhone JARVIS tab uses a separate
 SSH terminal data plane; the Watch reaches that same tmux pane through the
 independent token- and certificate-protected `jarvis-terminald` HTTPS bridge.
 APNs push + Live Activities are out (free Apple ID can't do
-APNs); oMLX is out of app scope entirely. The widget catalogue is Neural Core
+APNs). This historical v5 restriction is superseded by the current scope below,
+including native APNs and read-only oMLX monitoring. The widget catalogue is Neural Core
 and Open JARVIS.
 
 **Everything lives in this folder** — the Swift app targets, shared
@@ -855,11 +879,12 @@ sequence, and physical gates are consolidated in the
   the iPhone SSH-backed Pi terminal with private native Photos/Files attachment
   staging in enabled signed candidates, the foreground-only Watch view of that
   same persistent terminal over the private HTTPS bridge, and generic native
-  APNs scheduled-result alerts on iPhone and Watch, with LAN and Tailscale access.
+  APNs scheduled-result alerts on iPhone and Watch, read-only dual-server oMLX
+  monitoring on iPhone Home and Watch System, with LAN and Tailscale access.
 - **Out:** Cast (all TV/speaker control), Spotify, camera, in-app voice/wake
   word, Raspberry Pi room endpoint, scheduler process mutation and scheduled-
-  job mutation, Live Activities, silent push/background fetch, **oMLX**
-  (nothing), room-display HUD, and phone-voice PWA.
+  job mutation, Live Activities, silent push/background fetch, oMLX inference or
+  model controls, room-display HUD, and phone-voice PWA.
 
 ## Devices & distribution
 

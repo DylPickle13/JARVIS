@@ -48,32 +48,110 @@ final class OMLXStatusModelTests: XCTestCase {
         let json = #"{"id":"mac-mini-64","ok":true,"stale":false,"ageSeconds":0,"models":[{"id":"Qwen3.6-35B-A3B-4bit","isLoading":false,"activeRequests":1,"queuedRequests":0,"requests":[{"id":"r","phase":"generating","generatedTokens":846,"tokensPerSecond":32.4,"elapsedSeconds":26}]}],"memoryUsedBytes":26628797235,"memoryLimitBytes":51539607552,"memoryKind":"process","memoryPressure":"ok"}"#
         let busy = try JSONDecoder().decode(OMLXServerStatus.self, from: Data(json.utf8))
         let ready = try snapshot().servers[1]
-        for (name, size, available) in [("normal", DynamicTypeSize.large, true),
-            ("accessibility", .accessibility3, true), ("partial-outage", .large, false)] {
-            let content = MinimalCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("oMLX", systemImage: "cpu").font(.subheadline.weight(.semibold))
-                    OMLXServerContent(id: busy.id, server: busy, now: now, requestStartedAt: now,
-                        available: true, checking: false, expanded: false)
-                    Divider()
-                    OMLXServerContent(id: ready.id, server: ready, now: now, requestStartedAt: now,
-                        available: available, checking: false, expanded: false)
-                }
+        var mixedJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        var models = try XCTUnwrap(mixedJSON["models"] as? [[String: Any]])
+        var second = models[0]
+        second["id"] = "second-model"
+        second["requests"] = [["id": "p", "phase": "prefill", "processedTokens": 42, "totalTokens": 100]]
+        models.append(second)
+        mixedJSON["models"] = models
+        let mixed = try JSONDecoder().decode(OMLXServerStatus.self, from: JSONSerialization.data(withJSONObject: mixedJSON))
+        var smallWatchHeight: CGFloat?
+        for (name, size, available, compact, width) in [
+            ("phone-minimal", DynamicTypeSize.large, true, false, 358.0),
+            ("phone-accessibility", .accessibility3, true, false, 358),
+            ("phone-outage", .large, false, false, 358),
+            ("watch-minimal", .large, true, true, 160),
+            ("watch-mixed", .large, true, true, 160),
+            ("watch-accessibility", .accessibility3, true, true, 188)
+        ] {
+            let primary = name == "watch-mixed" ? mixed : busy
+            let rows = [
+                OMLXServerSummary(id: primary.id, server: primary, now: now, requestStartedAt: now, available: true),
+                OMLXServerSummary(id: ready.id, server: ready, now: now, requestStartedAt: now, available: available)
+            ]
+            let content: AnyView
+            if compact {
+                content = AnyView(OMLXSummaryContent(rows: rows, compact: true)
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .frame(minHeight: 44)
+                    .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 13)))
+            } else {
+                content = AnyView(MinimalCard(padding: 11) { OMLXSummaryContent(rows: rows) })
             }
-            .padding(16).frame(width: 390)
-            .background(JarvisBackdrop())
-            .environment(\.colorScheme, .dark).environment(\.dynamicTypeSize, size)
-            let renderer = ImageRenderer(content: content)
+            let renderer = ImageRenderer(content: content.frame(width: width)
+                .environment(\.colorScheme, .dark).environment(\.dynamicTypeSize, size))
             renderer.scale = 2
             let image = try XCTUnwrap(renderer.uiImage)
-            XCTAssertEqual(image.size.width, 390)
-            XCTAssertGreaterThan(image.size.height, 100)
-            if size == .large { XCTAssertLessThan(image.size.height, 500) }
+            XCTAssertEqual(image.size.width, width)
+            if size == .large {
+                XCTAssertGreaterThanOrEqual(image.size.height, compact ? 44 : 75)
+                XCTAssertLessThanOrEqual(image.size.height, compact ? 70 : 100)
+            }
+            if name == "watch-minimal" { smallWatchHeight = image.size.height }
+            if name == "watch-mixed" {
+                XCTAssertEqual(image.size.height, try XCTUnwrap(smallWatchHeight), accuracy: 0.5,
+                    "concurrent activity must not grow the normal-size card")
+            }
             let attachment = XCTAttachment(image: image)
-            attachment.name = "omlx-card-\(name)"
+            attachment.name = "omlx-\(name)"
             attachment.lifetime = .keepAlways
             add(attachment)
         }
+    }
+
+    func testWatchConfiguredOwnerDeduplicatesStateRefreshAndStopsForDimmedCoveredOrOffPage() async throws {
+        let gate = OMLXFetchGate()
+        let model = OMLXStatusModel(fetch: { _ in try await gate.fetch() })
+        let active = OMLXPollConfiguration(endpoint: endpoint, surface: .watchSystem, visible: true, interactive: true)
+        model.configure(active)
+        await waitFor { await gate.count == 1 }
+        let good = try snapshot()
+        await gate.succeed(good)
+        await waitFor { model.snapshot != nil }
+        for _ in 0..<10 { model.configure(active) }
+        let count = await gate.count
+        XCTAssertEqual(count, 1, "ordinary Watch state publication must not restart the oMLX task")
+        for (visible, interactive, covered) in [(true, false, false), (true, true, true), (false, true, false)] {
+            model.configure(.init(endpoint: endpoint, surface: .watchSystem,
+                visible: visible, interactive: interactive, covered: covered))
+            XCTAssertFalse(model.isPolling)
+            XCTAssertTrue(model.unavailable)
+            XCTAssertEqual(model.snapshot, good, "retain last-good data only as stale")
+        }
+        try await Task.sleep(for: .milliseconds(30))
+        let after = await gate.count
+        XCTAssertEqual(after, 1)
+    }
+
+    func testWatchSheetHasOneOwnerAndLateCoveredRequestCannotPublish() async throws {
+        let gate = OMLXFetchGate()
+        let model = OMLXStatusModel(fetch: { _ in try await gate.fetch() })
+        let summary = OMLXPollConfiguration(endpoint: endpoint, surface: .watchSystem, visible: true, interactive: true)
+        let detail = OMLXPollConfiguration(endpoint: endpoint, surface: .watchDetails, visible: true, interactive: true)
+        model.configure(summary)
+        await waitFor { await gate.count == 1 }
+        model.configure(detail)
+        await waitFor { await gate.count == 2 }
+        await gate.succeed(try snapshot("obsolete summary"))
+        await gate.succeed(try snapshot("detail"))
+        await waitFor { model.snapshot != nil }
+        XCTAssertEqual(model.snapshot?.servers[0].models?[0].id, "detail")
+        model.configure(.init(endpoint: endpoint, surface: .watchDetails, visible: true, interactive: false))
+        XCTAssertTrue(model.unavailable)
+        XCTAssertFalse(model.isPolling)
+    }
+
+    func testConfiguredWatchStopsAnUncooperativePendingReadSynchronously() async throws {
+        let gate = OMLXFetchGate()
+        let model = OMLXStatusModel(fetch: { _ in try await gate.fetch() })
+        model.configure(.init(endpoint: endpoint, surface: .watchDetails, visible: true, interactive: true))
+        await waitFor { await gate.count == 1 }
+        model.configure(.init(endpoint: endpoint, surface: .watchDetails, visible: false, interactive: true))
+        XCTAssertFalse(model.isPolling)
+        await gate.succeed(try snapshot("late"))
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(model.snapshot)
     }
 
     func testInactiveHomeDoesNotRequestAnything() async {

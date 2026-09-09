@@ -90,6 +90,7 @@ struct WatchConnectView: View {
         WatchDashboardContent(
             model: model,
             jobs: model.jobs,
+            isDashboardCovered: notifications.showPermissionExplanation,
             siriTerminalRequestSequence: siriTerminalRequestSequence,
             requestedJobRoute: notifications.pendingRoute,
             onJobRouteConsumed: notifications.consumePendingRoute
@@ -137,6 +138,10 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     let store: EndpointStore
     let client: JarvisClient
     let jobs: WatchJobsModel
+    let omlx: OMLXStatusModel
+    private var omlxSystemVisible = false
+    private var omlxDetailsVisible = false
+    private var omlxCovered = false
     let snapshotStore = SnapshotStore()
     let terminal = WatchTerminalController()
 
@@ -146,6 +151,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         self.store = store
         self.client = client
         self.jobs = WatchJobsModel(store: store, client: client)
+        self.omlx = OMLXStatusModel(fetch: { try await client.omlxStatus($0) })
         self.activeRefreshInterval = activeRefreshInterval
         #if DEBUG
         let arguments = CommandLine.arguments
@@ -222,6 +228,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     func sceneDidBecomeActive() {
         appIsInteractive = true
         appIsForeground = true
+        updateOMLXPolling()
         jobs.sceneDidBecomeInteractive()
         // A wrist raise must immediately refresh buttons and re-establish the
         // terminal long poll in case watchOS suspended work while dimmed.
@@ -233,6 +240,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         appIsInteractive = false
         let resumedAsFrontmost = !appIsForeground
         appIsForeground = true
+        updateOMLXPolling()
         // Always forward active -> inactive wrist-down transitions. The terminal
         // must know the scene is inactive so a suspended long poll is retained
         // as the last live frame instead of being reported as a disconnect.
@@ -246,6 +254,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     func sceneDidEnterBackground() {
         appIsInteractive = false
         appIsForeground = false
+        updateOMLXPolling()
         refreshLoopTask?.cancel()
         refreshLoopTask = nil
         refreshGeneration += 1
@@ -256,6 +265,24 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         isRefreshing = false
         jobs.sceneDidEnterBackground()
         terminal.sceneDidEnterBackground()
+    }
+
+    func setOMLXPresentation(systemVisible: Bool, detailsVisible: Bool, covered: Bool) {
+        omlxSystemVisible = systemVisible
+        omlxDetailsVisible = detailsVisible
+        omlxCovered = covered
+        updateOMLXPolling()
+    }
+
+    private func updateOMLXPolling() {
+        // Reuse the trusted jarvisd endpoint and existing phone/Tailscale path.
+        // No oMLX-specific credentials, direct port-8000 route or Watch relay
+        // protocol is introduced. Unreachable telemetry remains unavailable.
+        let endpoint = store.endpointURL.map { JarvisEndpoint(baseURL: $0, token: authenticationToken) }
+        omlx.configure(.init(endpoint: endpoint,
+            surface: omlxDetailsVisible ? .watchDetails : .watchSystem,
+            visible: omlxSystemVisible, interactive: appIsForeground && appIsInteractive,
+            covered: omlxCovered))
     }
 
     func connect() async { await refresh() }
@@ -435,6 +462,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     private func acceptDirectState(_ state: StateSnapshot) {
+        updateOMLXPolling()
         lastState = state
         snapshotStore.save(state)
         cachedAt = Date()
@@ -615,6 +643,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             guard let self, !self.forceEndpointForTesting,
                   let url = JarvisEndpointURLPolicy.parse(endpoint) else { return }
             self.store.endpointURLString = url.absoluteString
+            self.updateOMLXPolling()
         }
     }
 

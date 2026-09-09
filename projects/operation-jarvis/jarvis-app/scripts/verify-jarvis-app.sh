@@ -127,8 +127,8 @@ grep -q '^JARVISD_LOG_MAX_BYTES=1048576$' ../../../.env.example
 grep -q '^JARVISD_LOG_BACKUP_COUNT=3$' ../../../.env.example
 grep -q '^JARVISD_ROUTINE_REQUEST_LOG_INTERVAL=60$' ../../../.env.example
 
-printf '%s\n' '== iPhone-only read-only oMLX activity contract =='
-python3 - <<'PY'
+printf '%s\n' '== minimal phone and Watch read-only oMLX contract =='
+python3 - <<'PYCONTRACT'
 from pathlib import Path
 home = Path('JARVIS/Views/HomeView.swift').read_text()
 assert home.index('purifierSection(state)') < home.index('OMLXStatusCard(client: app.client')
@@ -137,9 +137,34 @@ host = Path('jarvisd/jarvisd.py').read_text().split('# Read-only oMLX activity',
 assert 'OMLX_COORDINATOR = StateCoordinator(' in host
 assert 'connection.request("GET", "/admin/api/activity"' in host
 assert '/api/stats' not in host and '"POST"' not in host
-for folder in ['JARVISWatch', 'JARVISWidget', 'JARVISWatchWidget']:
+for folder in ['JARVISWidget', 'JARVISWatchWidget']:
     assert not any('OMLXStatusCard' in p.read_text() or '.omlxStatus(' in p.read_text() for p in Path(folder).rglob('*.swift'))
-PY
+phone = Path('JARVIS/Views/OMLXStatusCard.swift').read_text()
+assert 'MinimalCard(padding: 11)' in phone and 'OMLXSummaryContent(rows:' in phone
+assert 'OMLXServerContent(' not in phone.split('.sheet(',1)[0]
+summary = Path('JARVISKit/Sources/JARVISKit/OMLXSummaryContent.swift').read_text()
+for forbidden in ['modelRow', 'ProgressView', 'memoryUsedBytes', 'cpu', 'ScrollView']:
+    assert forbidden not in summary
+watch = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
+for name, end in [('private var systemPage:', 'private var purifierPanel:'),
+                  ('private var accessibilitySystemPage:', 'private func accessiblePlugButton')]:
+    block = watch.split(name,1)[1].split(end,1)[0]
+    assert block.index('purifierPanel') < block.index('codexQuotaPanel') < block.index('omlxCard')
+    assert 'ScrollView' not in block
+assert 'including: overlayOwnsInput ? .none' in watch
+assert 'guard selectedPage == page, !overlayOwnsInput' in watch
+assert 'WatchSystemCrownViewport(active: systemInteractive && !overlayOwnsInput)' in watch
+viewport = Path('JARVISWatch/Views/WatchSystemCrownViewport.swift').read_text().split('var body:',1)[1]
+assert '.digitalCrownRotation' in viewport and '.clipped()' in viewport
+assert '.focused($crownFocused)' in viewport and '.onChange(of: active' in viewport
+assert 'ScrollView' not in viewport and 'DragGesture' not in viewport
+connect = Path('JARVISWatch/Views/WatchConnectView.swift').read_text()
+for name in ['sceneDidBecomeActive', 'sceneDidEnterAlwaysOn', 'sceneDidEnterBackground']:
+    assert 'updateOMLXPolling()' in connect.split('func '+name+'()',1)[1].split('\n    func ',1)[0]
+assert 'interactive: appIsForeground && appIsInteractive' in connect
+assert 'client.omlxStatus($0)' in connect
+assert not Path('JARVIS/OMLXStatusModel.swift').exists()
+PYCONTRACT
 
 printf '%s\n' '== semantic Watch speech selection =='
 node --experimental-strip-types --input-type=module <<'NODE'
