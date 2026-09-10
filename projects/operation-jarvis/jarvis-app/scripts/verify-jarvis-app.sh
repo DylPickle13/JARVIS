@@ -1237,6 +1237,15 @@ assert 'HStack(alignment: .top, spacing: 8)' in rows and 'Divider()' not in rows
 assert 'onOpenPiTerminal(slot)' in rows and 'JARVISTerminalSlot(rawValue: sessionID)' in rows
 assert 'PiSessionLifecycle.unknown' in rows and 'isStale' in rows
 assert 'MinimalCard(padding: 8)' in text
+pi_content = text.split('struct PiSessionCardContent: View', 1)[1].split('struct HomeView: View', 1)[0]
+assert 'Image(systemName: presentation.symbol)' in pi_content
+assert 'presentation.allowsActivityEdge, muted: true' in pi_content
+assert text.count('muted: true') == 1
+assert 'Text("\\(sessionID)")' in pi_content
+assert 'Circle()' not in pi_content and 'Text("Pi ' not in pi_content
+assert 'minHeight: 42' in pi_content and 'MinimalCard(padding: 8)' in pi_content
+assert '.accessibilityLabel("Pi session ' in pi_content
+
 assert 'ActivityMotionGate.roomAudioActive(status, receivedAt: app.roomAudioUpdatedAt, now: now)' in text
 assert '.activityIconPulse(active: pulses)' in text and 'homeMotionActive && !app.roomAudioStopping' in text
 assert 'minimumInterval: 1, paused: !homeMotionActive' in text

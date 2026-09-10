@@ -25,6 +25,16 @@ enum PiSessionIndicatorTone: Equatable {
 struct PiSessionIndicatorPresentation: Equatable {
     let label: String
     let tone: PiSessionIndicatorTone
+    var symbol: String {
+        switch tone {
+        case .running: return "waveform"
+        case .compacting: return "arrow.down.right.and.arrow.up.left"
+        case .idle: return "pause.fill"
+        case .new: return "plus"
+        case .offline: return "bolt.slash.fill"
+        case .unknown: return "questionmark"
+        }
+    }
     var animatesIcon: Bool { tone == .running || tone == .compacting }
     var allowsActivityEdge: Bool { animatesIcon || tone == .idle }
 
@@ -58,34 +68,39 @@ struct PiSessionCardContent: View {
     let lifecycle: PiSessionLifecycle
     let motionActive: Bool
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .caption) private var numberSize = 12.0
+    @ScaledMetric(relativeTo: .body) private var iconSize = 18.0
+    @ScaledMetric(relativeTo: .subheadline) private var statusSize = 14.0
+
     var body: some View {
         let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
         let color = presentation.tone.color
         MinimalCard(padding: 8) {
-            VStack(spacing: 5) {
-                HStack(spacing: 5) {
-                    Image(systemName: "terminal.fill")
-                        .font(.caption2.weight(.bold))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("\(sessionID)")
+                        .font(.system(size: numberSize, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Image(systemName: presentation.symbol)
+                        .font(.system(size: iconSize, weight: .semibold))
+                        // Normalize SF Symbol line boxes; glyph choice must not resize a card.
+                        .frame(height: iconSize)
+                        .foregroundStyle(color)
                         .activityIconPulse(active: motionActive && presentation.animatesIcon)
                         .accessibilityHidden(true)
-                    Text("Pi \(sessionID)")
-                        .font(.caption.weight(.semibold))
                 }
-                .foregroundStyle(color)
-                HStack(spacing: 4) {
-                    Circle().fill(color).frame(width: 6, height: 6)
-                        .activityStatusBreath(active: motionActive && presentation.animatesIcon,
-                            slow: lifecycle == .compacting)
-                        .accessibilityHidden(true)
-                    Text(presentation.label)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
+                Text(presentation.label)
+                    .font(.system(size: statusSize, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.85)
             }
-            .frame(maxWidth: .infinity, minHeight: 42)
+            .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
         }
         .activityCardEdge(active: presentation.animatesIcon,
-            allowed: motionActive && presentation.allowsActivityEdge)
+            allowed: motionActive && presentation.allowsActivityEdge, muted: true)
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Pi session \(sessionID), \(presentation.label.lowercased())")

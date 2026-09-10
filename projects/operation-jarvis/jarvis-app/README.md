@@ -3737,3 +3737,19 @@ network requests, timers or backend changes. Existing reduced-motion/AOD/scene,
 freshness, overlay, completion, routing and Crown constraints remain unchanged.
 Physical visibility, timing and energy still require owner acceptance; automated
 policy/layout tests are not a substitute. This revision is local, not deployed.
+
+### Pi session card typography (local candidate)
+
+Same normal58pt card height,3×3 order and8pt gutters. Small monospaced session
+number replaces “Pi x”; the upper-right18pt icon reflects actual lifecycle:
+waveform=Running, inward arrows=Compacting, pause=Idle, plus=New, crossed-out
+lightning=Offline, question mark=Unknown.14pt semibold primary status uses the
+full lower row; the redundant status dot is removed. Running/Compacting icons
+retain their gated pulse and travelling edge. No new telemetry, routing or
+session operations. VoiceOver still says “Pi session N, status”; normal typography
+fits the original footprint, while accessibility Dynamic Type can grow vertically.
+Physical appearance/VoiceOver acceptance remains pending; not deployed yet.
+
+Owner refinement: only Pi cards use muted active edges (white65%,1.75pt instead
+of95%,2.5pt). Travel speed, segment length, completion and invalidation remain
+unchanged. oMLX and Room Audio keep the stronger Build163 edge styling.

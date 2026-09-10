@@ -96,6 +96,24 @@ final class OMLXStatusModelTests: XCTestCase {
         }
     }
 
+    func testPiStatusSymbolsExistAndEveryNormalCardKeepsItsFootprint() throws {
+        let states: [PiSessionLifecycle] = [.running, .compacting, .idle, .new, .offline, .unknown]
+        let symbols = ["waveform", "arrow.down.right.and.arrow.up.left", "pause.fill", "plus", "bolt.slash.fill", "questionmark"]
+        for (state, symbol) in zip(states, symbols) {
+            let presentation = PiSessionIndicatorPresentation(lifecycle: state)
+            XCTAssertEqual(presentation.symbol, symbol)
+            XCTAssertNotNil(UIImage(systemName: symbol), symbol)
+            for width: CGFloat in [96, 114] {
+                let card = PiSessionCardContent(sessionID: 9, lifecycle: state, motionActive: false)
+                    .frame(width: width)
+                    .environment(\.dynamicTypeSize, .large)
+                let image = try XCTUnwrap(ImageRenderer(content: card).uiImage)
+                XCTAssertEqual(image.size.width, width)
+                XCTAssertEqual(image.size.height, 58, accuracy: 0.5)
+            }
+        }
+    }
+
     func testNineIndividualPiCardsRenderNormalAndLargerText() throws {
         let states: [PiSessionLifecycle] = [.running, .compacting, .new, .idle,
             .offline, .unknown, .running, .compacting, .new]

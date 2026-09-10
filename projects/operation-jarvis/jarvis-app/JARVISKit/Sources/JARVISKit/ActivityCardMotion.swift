@@ -18,9 +18,9 @@ public extension View {
     /// Callers permit a fade only for a known, fresh completion. Loss of trust,
     /// visibility or accessibility eligibility destroys the animation subtree.
     func activityCardEdge(active: Bool, allowed: Bool, cornerRadius: CGFloat = 14,
-                          compact: Bool = false) -> some View {
+                          compact: Bool = false, muted: Bool = false) -> some View {
         modifier(ActivityCardEdge(active: active, allowed: allowed,
-            cornerRadius: cornerRadius, compact: compact))
+            cornerRadius: cornerRadius, compact: compact, muted: muted))
     }
 
     func activityStatusBreath(active: Bool, slow: Bool = false, compact: Bool = false) -> some View {
@@ -33,6 +33,7 @@ private struct ActivityCardEdge: ViewModifier {
     let allowed: Bool
     let cornerRadius: CGFloat
     let compact: Bool
+    let muted: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isLuminanceReduced) private var luminanceReduced
@@ -43,7 +44,7 @@ private struct ActivityCardEdge: ViewModifier {
         content.overlay {
             ZStack {
                 if eligible && active {
-                    ActivityEdgeHighlight(cornerRadius: cornerRadius, compact: compact)
+                    ActivityEdgeHighlight(cornerRadius: cornerRadius, compact: compact, muted: muted)
                         .transition(.opacity)
                 }
             }
@@ -63,6 +64,7 @@ private struct ActivityCardEdge: ViewModifier {
 private struct ActivityEdgeHighlight: View {
     let cornerRadius: CGFloat
     let compact: Bool
+    let muted: Bool
     var body: some View {
         // Mounted only during eligible activity or its bounded650ms completion fade.
         // No network requests, unbounded tasks, glow/blur or rotating card geometry.
@@ -74,8 +76,8 @@ private struct ActivityEdgeHighlight: View {
                 for range in ActivityEdgeGeometry.ranges(time: context.date.timeIntervalSinceReferenceDate,
                                                          period: compact ? 3.2 : 2.8) {
                     graphics.stroke(path.trimmedPath(from: range.lowerBound, to: range.upperBound),
-                        with: .color(.white.opacity(compact ? 0.9 : 0.95)),
-                        style: StrokeStyle(lineWidth: compact ? 2 : 2.5, lineCap: .round))
+                        with: .color(.white.opacity(muted ? 0.65 : (compact ? 0.9 : 0.95))),
+                        style: StrokeStyle(lineWidth: muted ? 1.75 : (compact ? 2 : 2.5), lineCap: .round))
                 }
             }
         }
