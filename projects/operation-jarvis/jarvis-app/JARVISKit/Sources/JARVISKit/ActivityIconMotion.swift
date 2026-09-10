@@ -40,7 +40,7 @@ private struct ActivityIconPulse: ViewModifier {
         // macOS13 remains supported for shared-package tests; apps target iOS17/watchOS10.
         if #available(iOS 17, watchOS 10, macOS 14, *) {
             content
-                .symbolEffect(.pulse, options: .repeating.speed(0.45), isActive: enabled)
+                .symbolEffect(.pulse, options: .repeating.speed(0.9), isActive: enabled)
                 .symbolEffectsRemoved(!enabled)
         } else {
             content

@@ -35,7 +35,7 @@ struct WatchDashboardContent: View {
 
             selectedPageContent
                 .id(selectedPage)
-                .transition(.opacity.combined(with: .scale(scale: 0.99)))
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
 
             pageIndicator
         }
@@ -50,7 +50,7 @@ struct WatchDashboardContent: View {
             including: overlayOwnsInput ? .none : (selectedPage == .terminal ? .subviews : .all)
         )
         .tint(WatchJarvisStyle.accent)
-        .interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.18)
+        .interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.32)
         .onAppear {
             #if DEBUG && targetEnvironment(simulator)
             if CommandLine.arguments.contains("-jarvisOpenWatchSystem") {

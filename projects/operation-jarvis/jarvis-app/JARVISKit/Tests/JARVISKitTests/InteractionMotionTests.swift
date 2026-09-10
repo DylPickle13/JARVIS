@@ -11,7 +11,7 @@ final class InteractionMotionTests: XCTestCase {
                             reduceMotion: reduced, luminanceReduced: dimmed)
                         XCTAssertEqual(InteractionMotionPolicy.pressScale(pressed: false, allowed: allowed), 1)
                         XCTAssertEqual(InteractionMotionPolicy.pressScale(pressed: true, allowed: allowed),
-                            active && foreground && !reduced && !dimmed ? 0.98 : 1)
+                            active && foreground && !reduced && !dimmed ? 0.94 : 1)
                     }
                 }
             }

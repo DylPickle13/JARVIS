@@ -3720,3 +3720,20 @@ swipes, measured Crown clearance or scroll coordinates. All custom transitions
 honour scene, Reduce Motion and luminance gates; no added polling or workloads.
 Unit/policy and layout checks do not prove physical timing, energy or native OS
 setting behaviour; those remain acceptance checks before calling them verified.
+
+### Noticeable motion revision (supersedes the restrained tuning above)
+
+Owner found Build162 motion too faint on BOTH devices. Activity edges now cover24%
+of the perimeter at95% white/2.5pt on phone and90% white/2pt on Watch, travelling
+in2.8s/3.2s respectively. Insets keep strokes inside existing card bounds. Requested
+render intervals are30fps phone/20fps Watch (not guaranteed frame rates); no glow,
+full glowing outline or telemetry-driven speed. Completion decoration fades650ms.
+Dots visibly breathe between35–100% opacity and85–145% scale; each half-cycle lasts
+800ms, or1.3s for loading/compacting/processing. Existing symbol pulses run at0.9x.
+Pressed buttons shrink to94% and brighten by0.12 with160ms ease-out; release still
+submits immediately. Reported-state colours/status crossfades last350ms. Watch
+pages use320ms opacity/94% scale settling. No new gestures, state prediction,
+network requests, timers or backend changes. Existing reduced-motion/AOD/scene,
+freshness, overlay, completion, routing and Crown constraints remain unchanged.
+Physical visibility, timing and energy still require owner acceptance; automated
+policy/layout tests are not a substitute. This revision is local, not deployed.

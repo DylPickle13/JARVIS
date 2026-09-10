@@ -19,7 +19,7 @@ final class OMLXSummaryTests: XCTestCase {
         for time in [-10.2, 0, 0.5, 4.9, 5, 5000] {
             let ranges = ActivityEdgeGeometry.ranges(time: time)
             XCTAssertTrue((1...2).contains(ranges.count))
-            XCTAssertEqual(ranges.reduce(0) { $0 + $1.upperBound - $1.lowerBound }, 0.13, accuracy: 0.000001)
+            XCTAssertEqual(ranges.reduce(0) { $0 + $1.upperBound - $1.lowerBound }, 0.24, accuracy: 0.000001)
             for range in ranges {
                 XCTAssertGreaterThanOrEqual(range.lowerBound, 0)
                 XCTAssertLessThanOrEqual(range.upperBound, 1)
@@ -28,7 +28,7 @@ final class OMLXSummaryTests: XCTestCase {
         for (time, period) in [(Double.nan, 5.0), (.infinity, 5), (1, 0), (1, -1), (Double.greatestFiniteMagnitude, Double.leastNonzeroMagnitude)] {
             XCTAssertTrue(ActivityEdgeGeometry.ranges(time: time, period: period).isEmpty)
         }
-        XCTAssertEqual(ActivityEdgeGeometry.fadeDuration, 0.45)
+        XCTAssertEqual(ActivityEdgeGeometry.fadeDuration, 0.65)
     }
 
     func testOMLXEdgeCompletionRequiresKnownFreshIdleAndLoadingOnlyBreathes() throws {

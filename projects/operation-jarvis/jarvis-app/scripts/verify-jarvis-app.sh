@@ -152,8 +152,8 @@ assert 'motionActive: active' in phone and 'motionActive: active' in watch_card
 assert '.activityCardEdge(' in phone and '.activityCardEdge(' in watch_card
 edge = Path('JARVISKit/Sources/JARVISKit/ActivityCardMotion.swift').read_text()
 for marker in ['.id(eligible)', '.allowsHitTesting(false)', '.accessibilityHidden(true)',
-               'if eligible && active', 'compact ? 0.1 : 0.05', 'compact ? 0.28 : 0.42',
-               'rect = CGRect', '.phaseAnimator', 'slow ? 1.8 : 1.1']:
+               'if eligible && active', 'compact ? 0.05 : (1.0 / 30)', 'compact ? 0.9 : 0.95', 'compact ? 2 : 2.5', 'compact ? 3.2 : 2.8', 'dimmed ? 0.35 : 1', '.scaleEffect(dimmed ? 0.85 : 1.45)',
+               'rect = CGRect', '.phaseAnimator', 'slow ? 1.3 : 0.8']:
     assert marker in edge
 for forbidden in ['Timer(', 'Task.sleep', '.rotationEffect', 'repeatForever', 'omlxStatus(']:
     assert forbidden not in edge
@@ -1244,7 +1244,7 @@ assert '.disabled(!fresh || status?.allowsStop != true || app.roomAudioStopping)
 
 assert '.activityIconPulse(active: motionActive && presentation.animatesIcon)' in text
 motion = Path('JARVISKit/Sources/JARVISKit/ActivityIconMotion.swift').read_text()
-assert '.symbolEffect(.pulse, options: .repeating.speed(0.45)' in motion
+assert '.symbolEffect(.pulse, options: .repeating.speed(0.9)' in motion
 assert '.symbolEffectsRemoved(!enabled)' in motion
 for marker in ['accessibilityReduceMotion', 'isLuminanceReduced', 'scenePhase == .active']:
     assert marker in motion
@@ -1441,7 +1441,7 @@ watch = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 assert '.buttonStyle(JarvisPressStyle())' in home and '.buttonStyle(JarvisPressStyle())' in watch
 assert 'isStale: item.stale' in home
 assert 'allowed: !stale && !model.isPurifierVerificationPending && isOn != nil' in watch
-assert '.interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.18)' in watch
+assert '.interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.32)' in watch
 assert '.contentTransition(.opacity)' in Path('JARVIS/Views/Components.swift').read_text()
 print('PASS: bounded input/confirmed presentation motion and lifecycle gates')
 MOTION
