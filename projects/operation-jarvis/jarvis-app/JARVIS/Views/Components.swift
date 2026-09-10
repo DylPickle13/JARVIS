@@ -28,6 +28,8 @@ struct ConnectionBadge: View {
                 .frame(width: 9, height: 9)
                 .padding(.top, 6)
             Text(detail)
+                .contentTransition(.opacity)
+                .interactionTransition(value: detail, allowed: state == .connected)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

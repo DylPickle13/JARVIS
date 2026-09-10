@@ -43,6 +43,24 @@ final class OMLXStatusModelTests: XCTestCase {
         XCTFail("condition did not become true")
     }
 
+    func testInteractionStylesKeepControlBoundsAcrossConfirmedAndUnavailableStates() throws {
+        for state: Bool? in [true, false, nil] {
+            for stale in [false, true] {
+                let button = Button {} label: {
+                    PlugCard(name: "lamp", isOn: state, isBusy: false, isStale: stale)
+                }
+                .buttonStyle(JarvisPressStyle())
+                .disabled(stale || state == nil)
+                .frame(width: 175)
+                .environment(\.scenePhase, .active)
+                .environment(\.colorScheme, .dark)
+                let image = try XCTUnwrap(ImageRenderer(content: button).uiImage)
+                XCTAssertEqual(image.size.width, 175)
+                XCTAssertEqual(image.size.height, 54)
+            }
+        }
+    }
+
     func testDecorativeOverlayKeepsLayoutUnderPolicyGates() throws {
         for (name, active, allowed, reduced, dimmed, scene) in [
             ("active", true, true, false, false, ScenePhase.active),

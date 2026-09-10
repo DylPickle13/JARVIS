@@ -35,7 +35,7 @@ struct WatchDashboardContent: View {
 
             selectedPageContent
                 .id(selectedPage)
-                .transition(.opacity)
+                .transition(.opacity.combined(with: .scale(scale: 0.99)))
 
             pageIndicator
         }
@@ -50,7 +50,7 @@ struct WatchDashboardContent: View {
             including: overlayOwnsInput ? .none : (selectedPage == .terminal ? .subviews : .all)
         )
         .tint(WatchJarvisStyle.accent)
-        .animation(.easeInOut(duration: 0.16), value: selectedPage)
+        .interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.18)
         .onAppear {
             #if DEBUG && targetEnvironment(simulator)
             if CommandLine.arguments.contains("-jarvisOpenWatchSystem") {
@@ -218,7 +218,7 @@ struct WatchDashboardContent: View {
                 minimumHeight: minimumHeight
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(JarvisPressStyle())
         .disabled(state == nil || stale || model.busyPlug != nil)
         .accessibilityLabel("\(WatchFormat.displayName(name)) plug")
         .accessibilityValue(busy ? "updating" : (stale ? "stale" : (state.map { $0 ? "on" : "off" } ?? "unavailable")))
@@ -316,18 +316,20 @@ struct WatchDashboardContent: View {
             ZStack {
                 Circle()
                     .fill((isOn == true ? WatchJarvisStyle.accent : Color.secondary).opacity(0.16))
+                    .interactionTransition(value: isOn, allowed: !stale && !model.isPurifierVerificationPending && isOn != nil)
                 if model.purifierBusy || model.isPurifierVerificationPending {
                     ProgressView().controlSize(.mini)
                 } else {
                     Image(systemName: "power")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(isOn == true ? WatchJarvisStyle.accent : .secondary)
+                        .interactionTransition(value: isOn, allowed: !stale && !model.isPurifierVerificationPending && isOn != nil)
                 }
             }
             .frame(width: 27, height: 27)
             .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(JarvisPressStyle())
         .disabled(isOn == nil || stale || model.purifierBusy)
         .accessibilityLabel("Air purifier power")
         .accessibilityValue(
@@ -355,11 +357,12 @@ struct WatchDashboardContent: View {
             }
             .font(.system(size: 7.5, weight: .bold))
             .foregroundStyle(isOn == true ? WatchJarvisStyle.accent : .secondary)
+                        .interactionTransition(value: isOn, allowed: !stale && !model.isPurifierVerificationPending && isOn != nil)
             .padding(.horizontal, 5)
             .frame(height: 21)
             .background(Color.white.opacity(0.07), in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(JarvisPressStyle())
         .disabled(isOn != true || stale || model.purifierBusy)
         .confirmationDialog(
             "Air purifier mode",
@@ -399,7 +402,7 @@ struct WatchDashboardContent: View {
             .frame(height: 21)
             .background(Color.white.opacity(0.07), in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(JarvisPressStyle())
         .disabled(isOn != true || mode != "manual" || stale || model.purifierBusy)
         .confirmationDialog(
             "Air purifier fan",
@@ -606,7 +609,7 @@ struct WatchDashboardContent: View {
             .padding(10)
             .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(JarvisPressStyle())
         .disabled(state == nil || stale || model.busyPlug != nil)
     }
 
@@ -752,12 +755,14 @@ private struct WatchPlugTile: View {
                 ZStack {
                     Circle()
                         .fill(iconColor.opacity(0.16))
+                        .interactionTransition(value: isOn, allowed: !isStale && isOn != nil)
                     if isBusy {
                         ProgressView().controlSize(.mini)
                     } else {
                         Image(systemName: WatchJarvisStyle.plugSymbol(name))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(iconColor)
+                            .interactionTransition(value: isOn, allowed: !isStale && isOn != nil)
                     }
                 }
                 .frame(width: 29, height: 29)

@@ -1427,4 +1427,23 @@ WATCH_HOST_BINARY="$DERIVED_DATA_PATH/Build/Products/Debug-watchsimulator/JARVIS
   && WATCH_HOST_BINARY="$DERIVED_DATA_PATH/Build/Products/Debug-watchsimulator/JARVISWatch.app/JARVISWatch.debug.dylib"
 reject_match 'SSH terminal code leaked into the Watch host' -aFq 'PiTerminalConfiguration' "$WATCH_HOST_BINARY"
 
+printf '%s\n' '== Interaction motion source contracts =='
+python3 - <<'MOTION'
+from pathlib import Path
+shared = Path('JARVISKit/Sources/JARVISKit/InteractionMotion.swift').read_text()
+for marker in ['configuration.isPressed', 'ActivityMotionGate.allows', 'accessibilityReduceMotion',
+               'isLuminanceReduced', '$0.disablesAnimations = true']:
+    assert marker in shared, marker
+for forbidden in ['Task {', 'Timer', 'URLSession', 'onTapGesture', 'repeatForever']:
+    assert forbidden not in shared, forbidden
+home = Path('JARVIS/Views/HomeView.swift').read_text()
+watch = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
+assert '.buttonStyle(JarvisPressStyle())' in home and '.buttonStyle(JarvisPressStyle())' in watch
+assert 'isStale: item.stale' in home
+assert 'allowed: !stale && !model.isPurifierVerificationPending && isOn != nil' in watch
+assert '.interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.18)' in watch
+assert '.contentTransition(.opacity)' in Path('JARVIS/Views/Components.swift').read_text()
+print('PASS: bounded input/confirmed presentation motion and lifecycle gates')
+MOTION
+
 printf '%s\n' '== complete =='

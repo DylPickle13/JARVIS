@@ -3706,3 +3706,17 @@ state, and the exact-session tap inbox are untouched. Cleanup uses a fresh list,
 not an identifier retained across a delay; foreground banners remain informational.
 Late list callbacks from an inactive/older activation are discarded. App-only
 change: no APNs provider, badge, collapse key, backend, or terminal modifications.
+
+### Interaction motion (local candidate)
+
+Plain Home and Watch dashboard buttons use a98% pressed scale with100ms release,
+without delaying actions or adding gestures/haptics. Disabled, Reduce Motion,
+background and dimmed states remain unscaled. Native toggles/pickers retain their
+OS interaction. Plug icon colours and purifier power icons ease over200ms on fresh
+reported power changes, not tap intent; pending purifier state is not animated.
+Connection detail uses an opacity content transition (including partial-data recovery).
+Watch pages settle with180ms opacity/99% scale without changing page order, boundary
+swipes, measured Crown clearance or scroll coordinates. All custom transitions
+honour scene, Reduce Motion and luminance gates; no added polling or workloads.
+Unit/policy and layout checks do not prove physical timing, energy or native OS
+setting behaviour; those remain acceptance checks before calling them verified.

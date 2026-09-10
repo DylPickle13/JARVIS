@@ -213,7 +213,7 @@ struct HomeView: View {
                         .frame(width: 32, height: 32)
                         .background(tone.opacity(0.12), in: Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(JarvisPressStyle())
                 .disabled(!fresh || status?.allowsStop != true || app.roomAudioStopping)
                 .accessibilityLabel("Stop active room-audio request")
             }
@@ -383,10 +383,11 @@ struct HomeView: View {
                             PlugCard(
                                 name: item.name,
                                 isOn: item.isOn,
-                                isBusy: app.isOperationBusy("plug:\(item.name)")
+                                isBusy: app.isOperationBusy("plug:\(item.name)"),
+                                isStale: item.stale
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(JarvisPressStyle())
                         .disabled(
                             item.isOn == nil || item.stale || app.isOperationBusy("plug:\(item.name)")
                         )
@@ -428,7 +429,10 @@ struct HomeView: View {
             HStack(spacing: 8) {
                 Button { showsPurifierControls = true } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "wind").foregroundStyle(JarvisPalette.accent)
+                        Image(systemName: "wind")
+                            .foregroundStyle(purifier?.isOn == true ? JarvisPalette.accent : .secondary)
+                            .interactionTransition(value: purifier?.isOn,
+                                allowed: purifier?.ok == true && purifier?.stale != true && !busy)
                         Text("Air purifier").font(.subheadline.weight(.semibold))
                         Spacer(minLength: 0)
                         Text(purifier?.pm25.map { "\($0) µg/m³" } ?? "—")
@@ -439,7 +443,7 @@ struct HomeView: View {
                     .frame(minHeight: 32)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(JarvisPressStyle())
                 .accessibilityHint("Opens air quality, mode, fan speed and pending-change details")
                 if busy { ProgressView().controlSize(.small) }
                 Toggle("Air purifier power", isOn: powerBinding)
@@ -466,7 +470,13 @@ struct HomeView: View {
             MinimalCard {
                 VStack(spacing: 9) {
                     HStack(spacing: 10) {
-                        Label("Air purifier", systemImage: "wind")
+                        Label {
+                            Text("Air purifier")
+                        } icon: {
+                            Image(systemName: "wind")
+                                .foregroundStyle(isOn == true ? JarvisPalette.accent : .secondary)
+                                .interactionTransition(value: isOn, allowed: !stale && !busy && isOn != nil)
+                        }
                             .font(.subheadline.weight(.semibold))
                         Spacer(minLength: 6)
                         purifierReading(purifier)
@@ -717,7 +727,7 @@ struct HomeView: View {
                         : sessions?.first(where: { $0.sessionID == sessionID })?.resolvedLifecycle ?? .unknown
                     piSessionStatusSection(sessionID: sessionID, lifecycle: lifecycle)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(JarvisPressStyle())
                 .accessibilityHint("Opens Pi \(sessionID)'s terminal on the JARVIS tab")
             }
         }
@@ -916,17 +926,20 @@ struct PlugCard: View {
     let name: String
     let isOn: Bool?
     let isBusy: Bool
+    var isStale: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
             ZStack {
                 Circle().fill(iconColor.opacity(0.12))
+                    .interactionTransition(value: isOn, allowed: isOn != nil && !isStale)
                 if isBusy {
                     ProgressView().controlSize(.mini)
                 } else {
                     Image(systemName: JarvisFormat.plugSymbol(name))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(iconColor)
+                        .interactionTransition(value: isOn, allowed: isOn != nil && !isStale)
                 }
             }
             .frame(width: 30, height: 30)
