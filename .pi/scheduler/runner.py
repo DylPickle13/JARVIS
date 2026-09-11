@@ -239,6 +239,9 @@ def init_db(conn: sqlite3.Connection) -> None:
     for name, declaration in additions.items():
         if name not in columns:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {declaration}")
+    result_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(results)")}
+    if "notification_summary" not in result_columns:
+        conn.execute("ALTER TABLE results ADD COLUMN notification_summary TEXT")
     conn.commit()
 
 
@@ -685,7 +688,7 @@ def drain_notifications(conn: sqlite3.Connection) -> dict[str, Any]:
         rows = conn.execute(
             """
             SELECT d.id AS delivery_id,d.outbox_id,d.platform,d.apns_id,d.attempt_count,d.created_at,
-                   o.result_sequence,r.job_id,r.job_name,r.status AS result_status,r.summary,
+                   o.result_sequence,r.job_id,r.job_name,r.status AS result_status,r.summary,r.notification_summary,r.output,r.error,
                    nd.topic,nd.environment,nd.device_token
               FROM notification_deliveries d
               JOIN notification_outbox o ON o.id=d.outbox_id
@@ -729,7 +732,10 @@ def drain_notifications(conn: sqlite3.Connection) -> dict[str, Any]:
                 job_id=str(row["job_id"]),
                 job_name=str(row["job_name"]),
                 status=str(row["result_status"]),
-                summary=str(row["summary"]),
+                summary=row["notification_summary"] or notification_summary(
+                    str(row["job_name"]), str(row["result_status"]),
+                    str(row["output"] or row["summary"]), str(row["error"] or ""),
+                ),
                 apns_id=str(row["apns_id"]),
                 expiration=int(created_at.timestamp()) + APNS_DELIVERY_EXPIRY_SECONDS,
             )
@@ -918,6 +924,100 @@ def summarize(text: str, fallback: str) -> str:
     return clean if len(clean) <= MAX_RESULT_SUMMARY_CHARS else clean[: MAX_RESULT_SUMMARY_CHARS - 1].rstrip() + "…"
 
 
+def notification_summary(job_name: str, status: str, output: str, error: str = "") -> str:
+    """Deterministic Lock Screen digest; full output remains separate in history.
+
+    Parse the scripts' known text contracts conservatively. Unknown formats use
+    a bounded first line, never guesses about availability or successful backup.
+    APNs still applies its stricter privacy filter before sending.
+    """
+    def compact(text: str, maximum: int = 140) -> str:
+        text = " ".join(text.split())
+        if len(text) <= maximum:
+            return text
+        prefix = text[:maximum - 1]
+        return (prefix.rsplit(" ", 1)[0] if " " in prefix else prefix).rstrip(" ,;:") + "…"
+
+    text = sanitize_text(error or output) if status == "error" else sanitize_text(output)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if status == "error":
+        # Python exceptions end with the cause; backup errors have an Error: line.
+        causes = [line for line in lines if re.match(r"(?:[\w.]*Error|[\w.]*Exception):", line)]
+        cause = causes[-1] if causes else (lines[0] if lines else "See details in Jobs.")
+        return compact(cause, 131)  # Reserve space for the APNs failure prefix.
+
+    if job_name == "projects-drive-backup":
+        if lines and lines[0] == "Projects Drive Backup: completed":
+            count = re.search(r"(?m)^Projects: (\d+)", text)
+            size = re.search(r"(?m)^Archive: .*\(([\d.]+ [KMGT]?B)\)$", text)
+            replaced = re.search(r"(?m)^Replaced: (\d+) previous", text)
+            if count and size:
+                digest = f"Backup complete: {count[1]} projects, {size[1]}."
+                if replaced and int(replaced[1]):
+                    digest += f" {replaced[1]} previous backup(s) replaced."
+                return compact(digest)
+        if lines and lines[0] == "Projects Drive Backup: skipped":
+            return "Backup skipped: another backup is already running."
+        if lines and lines[0] == "Projects Drive Backup: dry run":
+            return "Backup dry run complete. Google Drive not modified."
+
+    if job_name == "apple_refurb_scraper":
+        if "CANADA — BUYABLE refurb stock changed" in text:
+            ca_text = text.split("🇺🇸 US early signal", 1)[0]
+            products = re.findall(r"(?m)^• (.+?)(?: — (.+))?$", ca_text)
+            counts = re.search(r"\((\d+) matching models? currently found\)", ca_text)
+            # Prefer the watched M4 Pro mini; price is scoped to that family.
+            minis = [(name, price) for name, price in products
+                     if "Mac mini" in name and "M4 Pro" in name]
+            prices = [float(match[1].replace(",", "")) for _, price in minis
+                      if (match := re.fullmatch(r"\$([\d,]+\.\d{2}) CAD", price))]
+            if prices:
+                price = f"{min(prices):,.2f}".removesuffix(".00")
+                digest = f"Canada: M4 Pro Mac mini available from CA${price}."
+                digest += f" {len(products)} new/updated listings."
+                if "🇺🇸 US early signal" in text:
+                    digest += " US changes also detected."
+                return compact(digest)
+            if counts:
+                return compact(f"Canada: {len(products)} new/updated listings; {counts[1]} matching models in stock. See Jobs for prices.")
+        if text.startswith("🇺🇸 US early signal"):
+            parts = text.rsplit(":", 1)[-1].split(",")
+            if all(re.fullmatch(r"[A-Z0-9]+/A", part.strip()) for part in parts):
+                return compact(f"US only: {len(parts)} new M4 Pro Mac mini variant(s). Not shippable to Canada.")
+
+    if job_name == "gear-hunter":
+        heading = re.search(r"--- New Gear Hunter Listings \((\d+)\) ---", text)
+        items = re.findall(r"(?m)^Gear: (.+)\nPrice: (\$[\d,.]+)[^\n]*(?:\nLocation: ([^\n]+))?", text)
+        if heading and items:
+            digest = f"{heading[1]} new: "
+            included = 0
+            for name, price, _ in items:
+                name = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", name)
+                name = name.replace("AlphaTheta - ", "").replace(" - ", " ")
+                item = f"{name} {price.removesuffix('.00')}"
+                candidate = digest + ("; " if included else "") + item
+                remaining = int(heading[1]) - included - 1
+                suffix = f"; +{remaining} more. See Jobs." if remaining > 0 else "."
+                if len(candidate + suffix) > 140:
+                    break
+                digest = candidate
+                included += 1
+            if included:
+                remaining = int(heading[1]) - included
+                digest += f"; +{remaining} more. See Jobs." if remaining > 0 else "."
+                locations = {location for _, _, location in items}
+                if not remaining and len(locations) == 1 and "" not in locations:
+                    location = next(iter(locations)).replace(", Alberta", ", AB").replace(", Ontario", ", ON")
+                    if len(digest + f" All in {location}.") <= 140:
+                        digest += f" All in {location}."
+                return compact(digest)
+            return compact(f"{heading[1]} new gear listings. See Jobs for prices and locations.")
+
+    first_line = lines[0] if lines else "Result details are ready in Jobs."
+    first_line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", first_line)
+    return compact(first_line)
+
+
 def persist_completion(
     conn: sqlite3.Connection,
     *,
@@ -980,8 +1080,8 @@ def persist_completion(
                 """
                 INSERT INTO results(
                   id,job_id,job_name,status,output_kind,started_at,finished_at,
-                  duration_seconds,exit_code,title,summary,output,error,truncated,created_at
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                  duration_seconds,exit_code,title,summary,output,error,truncated,created_at,notification_summary
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     run_id,
@@ -999,6 +1099,7 @@ def persist_completion(
                     bounded_error or None,
                     1 if output_truncated or error_truncated else 0,
                     iso(finished),
+                    notification_summary(job["name"], status, safe_output, safe_error),
                 ),
             )
             sequence = int(cursor.lastrowid)

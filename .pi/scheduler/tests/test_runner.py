@@ -90,6 +90,57 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(result["output"], "hello-from-job")
         self.assertEqual(result["id"], run["run_id"])
 
+    def test_notification_digest_is_separate_and_migration_is_idempotent(self) -> None:
+        job_id = self.add_direct_job(prompt="/bin/echo hello-from-job")
+        self.runner.run_one(argparse.Namespace(job_id=job_id))
+        with closing(self.runner.connect()) as conn:
+            row = conn.execute("SELECT * FROM results").fetchone()
+            self.assertEqual(row["notification_summary"], "hello-from-job")
+            self.assertEqual(row["output"], "hello-from-job")
+            self.runner.init_db(conn)
+            self.assertEqual(conn.execute("SELECT count(*) FROM results").fetchone()[0], 1)
+            # Simulate a database from before the new column existed.
+            conn.execute("ALTER TABLE results DROP COLUMN notification_summary")
+            self.runner.init_db(conn)
+            row = conn.execute("SELECT * FROM results").fetchone()
+            self.assertIsNone(row["notification_summary"])
+            self.assertEqual(row["output"], "hello-from-job")
+
+    def test_job_specific_notification_digests(self) -> None:
+        digest = self.runner.notification_summary
+        backup = ("Projects Drive Backup: completed\nProjects: 9 (one, two)\n"
+                  "Archive: archive.tar.gz (449.9 MB)\nReplaced: 1 previous backup file(s)")
+        self.assertEqual(digest("projects-drive-backup", "success", backup),
+                         "Backup complete: 9 projects, 449.9 MB. 1 previous backup(s) replaced.")
+        self.assertIn("not modified", digest("projects-drive-backup", "success",
+                      "Projects Drive Backup: dry run\nProjects: 9"))
+        self.assertIn("skipped", digest("projects-drive-backup", "success",
+                      "Projects Drive Backup: skipped\nReason: another backup is already running."))
+        apple = ("🇨🇦 CANADA — BUYABLE refurb stock changed (25 matching models currently found)\n"
+                 "New models:\n• Refurbished Mac mini Apple M4 Pro Chip — $1,949.00 CAD\n"
+                 "  Specs: 24GB unified memory, 512GB SSD\n"
+                 "• Refurbished Mac mini Apple M4 Chip — $999.00 CAD")
+        self.assertEqual(digest("apple_refurb_scraper", "success", apple),
+                         "Canada: M4 Pro Mac mini available from CA$1,949. 2 new/updated listings.")
+        us = ("🇺🇸 US early signal — new M4 Pro Mac mini part(s) appeared in the US store "
+              "(not shippable to Canada; watching for a Canadian arrival): FCX44LL/A, G1JV1LL/A")
+        self.assertEqual(digest("apple_refurb_scraper", "success", us),
+                         "US only: 2 new M4 Pro Mac mini variant(s). Not shippable to Canada.")
+        self.assertIn("US changes", digest("apple_refurb_scraper", "success", apple + "\n\n" + us))
+        gear = "--- New Gear Hunter Listings (3) ---\n" + "\n------------------------------\n".join(
+            f"Gear: [{name}](https://example.com/item)\nPrice: ${price}.00 sale (regular $999.00)\nLocation: Grande Prairie, Alberta"
+            for name, price in [("AlphaTheta - DDJ-GRV6", 799), ("BOSS - TU-3", 99), ("Hermida Reverb 2", 149)]
+        )
+        self.assertEqual(digest("gear-hunter", "success", gear),
+                         "3 new: DDJ-GRV6 $799; BOSS TU-3 $99; Hermida Reverb 2 $149. All in Grande Prairie, AB.")
+        many = gear.replace("(3)", "(30)")
+        self.assertIn("+27 more", digest("gear-hunter", "success", many))
+        for job in ["apple_refurb_scraper", "gear-hunter", "projects-drive-backup", "unknown"]:
+            self.assertLessEqual(len(digest(job, "success", "word " * 200)), 140)
+            self.assertEqual(digest(job, "error", "", "Traceback (most recent call last):\n  internal\nValueError: bad response"),
+                             "ValueError: bad response")
+        self.assertNotIn("supersecret", digest("unknown", "error", "", "TOKEN=supersecret"))
+
     def test_failure_is_always_persisted_and_sanitized(self) -> None:
         old_secret = os.environ.get("JARVIS_TEST_API_KEY")
         os.environ["JARVIS_TEST_API_KEY"] = "raw-environment-secret"
@@ -348,6 +399,38 @@ class SchedulerTests(unittest.TestCase):
                 output="private result remains local",
                 error=None,
             )
+
+    def test_delivery_uses_digest_and_legacy_fallback_for_both_devices(self) -> None:
+        from unittest.mock import patch
+
+        self.prepare_dual_notification_delivery()
+        for stored in ("Short notification.", None):
+            with self.subTest(stored=stored):
+                calls = []
+
+                class Provider:
+                    def __init__(self, configuration):
+                        pass
+
+                    def send_alert(self, **kwargs):
+                        calls.append(kwargs)
+                        return types.SimpleNamespace(
+                            outcome="accepted", status_code=200, reason="accepted",
+                            retry_after_seconds=None, invalidate_token=False,
+                            invalidation_timestamp=None,
+                        )
+
+                with closing(self.runner.connect()) as conn:
+                    conn.execute("UPDATE notification_deliveries SET status='pending', attempt_count=0")
+                    conn.execute("UPDATE notification_outbox SET status='pending'")
+                    conn.execute("UPDATE results SET notification_summary=?, output=?",
+                                 (stored, "Useful first line.\nLong detailed report."))
+                    conn.commit()
+                    with patch.dict("sys.modules", {"apns_provider": types.SimpleNamespace(APNsProvider=Provider)}):
+                        self.runner.drain_notifications(conn)
+                self.assertEqual(len(calls), 2)
+                self.assertEqual({call["summary"] for call in calls},
+                                 {stored or "Useful first line."})
 
     def test_definite_retry_then_ambiguous_send_never_retries_again(self) -> None:
         self.prepare_dual_notification_delivery()

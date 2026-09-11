@@ -181,10 +181,10 @@ class APNsProviderTests(unittest.TestCase):
             self.assertEqual(payload["route"], "scheduled-job-result")
             self.assertEqual(payload["routeVersion"], 1)
             self.assertEqual(payload["resultSequence"], "41")
-            self.assertEqual(payload["aps"]["alert"]["title"], "Apple Refurb Scraper")
+            self.assertEqual(payload["aps"]["alert"]["title"], "Apple Refurb")
             self.assertEqual(
                 payload["aps"]["alert"]["body"],
-                "Completed — Found two matching refurbished Mac mini listings.",
+                "Found two matching refurbished Mac mini listings.",
             )
             self.assertEqual(
                 set(payload),
@@ -244,7 +244,7 @@ class APNsProviderTests(unittest.TestCase):
                 payload = json.loads(transport.requests[-1].body)
                 self.assertEqual(
                     payload["aps"]["alert"]["body"],
-                    "Completed — Result details are ready in Jobs.",
+                    "Result details are ready in Jobs.",
                 )
                 serialized = transport.requests[-1].body.decode("utf-8")
                 self.assertNotIn(summary, serialized)
@@ -278,7 +278,7 @@ class APNsProviderTests(unittest.TestCase):
         ascii_decoded = json.loads(ascii_payload)
         self.assertLessEqual(
             len(ascii_decoded["aps"]["alert"]["body"]),
-            len("Completed — ") + self.apns.MAX_ALERT_PREVIEW_CHARACTERS,
+            self.apns.MAX_ALERT_PREVIEW_CHARACTERS,
         )
         self.assertLessEqual(len(ascii_payload), self.apns.MAX_PAYLOAD_BYTES)
 

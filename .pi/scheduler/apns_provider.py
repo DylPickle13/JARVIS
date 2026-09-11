@@ -39,7 +39,7 @@ MAX_PROVIDER_TOKEN_AGE_SECONDS = 50 * 60
 DEFAULT_EXPIRATION_SECONDS = 5 * 60
 MAX_PAYLOAD_BYTES = 1024
 MAX_ALERT_TITLE_BYTES = 120
-MAX_ALERT_PREVIEW_CHARACTERS = 240
+MAX_ALERT_PREVIEW_CHARACTERS = 140
 MAX_ALERT_BODY_BYTES = 640
 MARKDOWN_LINK_RE = re.compile(r"\[([^\]\n]{1,160})\]\([^)\s]+\)")
 URL_RE = re.compile(r"\b(?:[a-z][a-z0-9+.-]{1,15}://|www\.)[^\s<>()]+", re.IGNORECASE)
@@ -457,6 +457,8 @@ def _plain_notification_text(value: str, *, replace_links: bool) -> str:
 
 
 def _display_job_name(value: str) -> str:
+    value = {"apple_refurb_scraper": "Apple Refurb", "gear-hunter": "Gear Hunter",
+             "projects-drive-backup": "Projects Backup"}.get(value, value)
     clean = _plain_notification_text(value, replace_links=True)
     words = clean.replace("-", " ").replace("_", " ").split()
     display = " ".join(word[:1].upper() + word[1:] for word in words)
@@ -478,7 +480,8 @@ def build_alert_payload(
     preview = _plain_notification_text(summary, replace_links=True) or FALLBACK_ALERT_BODY
     preview = _truncate_characters(preview, MAX_ALERT_PREVIEW_CHARACTERS)
     status_label = "Failed" if status == "error" else "Completed"
-    body = _truncate_utf8(f"{status_label} — {preview}", MAX_ALERT_BODY_BYTES)
+    body = f"Failed — {preview}" if status == "error" else preview
+    body = _truncate_utf8(_truncate_characters(body, MAX_ALERT_PREVIEW_CHARACTERS), MAX_ALERT_BODY_BYTES)
     payload = {
         "aps": {
             "alert": {"title": title, "body": body},
