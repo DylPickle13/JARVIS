@@ -44,7 +44,7 @@ Pi supplies the agent runtime. JARVIS supplies the native interfaces, integratio
 
 ## Local visual candidate
 
-[Neural Core C2 / Dendrites](docs/neural-core-c2-candidate.md) preserves the silver-white palette and central focus, adds subtle organic sides, and strengthens central highlights. This is an implementation candidate, not a deployment claim.
+[Neural Core C2 / Dendrites](docs/neural-core-c2-candidate.md) preserves the silver-white palette and central focus, adds subtle organic sides, and strengthens central highlights. The local beam-motion follow-up adds outward-travelling pulses while retaining the central focus. This is an implementation candidate, not a deployment claim.
 
 ## Verification
 

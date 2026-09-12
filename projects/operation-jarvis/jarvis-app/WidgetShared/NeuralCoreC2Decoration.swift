@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Approved C2: subdued dendritic sides, with the dense central shell remaining
-/// dominant. These bounded, phase-independent layers are rendered once outside
-/// the existing selector stack, not repeated in its 48 authored motion frames.
-/// They carry no telemetry, new motion clock, or intentional Always-On dimming.
+/// dominant. Static branches and shell are hoisted outside the 48-frame stack.
+/// Twelve short outward pulses share its existing phase; no new motion clock,
+/// telemetry dependency, blur pass or intentional Always-On dimming is added.
 /// Owner-requested extra vibrancy is confined to central-shell contrast and
 /// silver highlights; side-beam brightness and all RGB palette values stay fixed.
 enum JARVISNeuralCoreC2Decoration {
@@ -36,6 +36,70 @@ enum JARVISNeuralCoreC2Decoration {
         )
     }
 
+    private struct Beam {
+        let start: CGPoint
+        let control1: CGPoint
+        let control2: CGPoint
+        let end: CGPoint
+
+        func point(at progress: CGFloat) -> CGPoint {
+            JARVISNeuralCoreC2Decoration.cubic(start, control1, control2, end, progress)
+        }
+    }
+
+    /// Shared by the static dendrite and its moving light so they cannot drift.
+    private static func beam(index: Int, side: Int, size: CGSize, radius r: CGFloat) -> Beam {
+        let c = CGPoint(x: size.width / 2, y: size.height / 2)
+        let u = r / 50, sign = CGFloat(side)
+        let seed = index + (side == -1 ? 500 : 900)
+        let offset = (noise(seed) * 2 - 1) * 0.78
+        let start = CGPoint(x: c.x + sign*r*0.45, y: c.y + offset*r*0.22)
+        let reach = (size.width/2 - 8*u) * (0.80 + 0.20*noise(seed+2))
+        let end = CGPoint(x: c.x + sign*reach, y: c.y + offset*r)
+        return Beam(start: start,
+                    control1: CGPoint(x: c.x + sign*r*1.05, y: c.y - offset*r*0.38),
+                    control2: CGPoint(x: c.x + sign*reach*0.74, y: end.y + (noise(seed+11)-0.5)*r*0.75),
+                    end: end)
+    }
+
+    /// Decorative pulses are never progress or throughput. The outer widget
+    /// policy supplies a fixed phase for Reduce Motion, AOD and static fallback.
+    static func drawImpulses(context: inout GraphicsContext, size: CGSize, radius r: CGFloat, palette: Palette, phase: CGFloat) {
+        guard r > 0, phase.isFinite else { return }
+        let u = r / 50
+        let normalizedPhase = phase - phase.rounded(.down)
+        for side in [-1, 1] {
+            for index in [0, 4, 8, 12, 16, 20] {
+                let shape = beam(index: index, side: side, size: size, radius: r)
+                let seed = index + (side == -1 ? 500 : 900)
+                let shifted = normalizedPhase + noise(seed+2020)
+                let progress = shifted - shifted.rounded(.down)
+                // Smooth wrap: fade before the head returns to its root.
+                let envelope = Double(min(1, progress/0.14, (1-progress)/0.14))
+                let t = 0.16 + progress*0.76
+                let tailT = max(0.12, t-0.12)
+                let head = shape.point(at: t)
+                let tail = shape.point(at: tailT)
+                var path = Path()
+                path.move(to: tail)
+                for segment in 1...6 {
+                    path.addLine(to: shape.point(at: tailT + (t-tailT)*CGFloat(segment)/6))
+                }
+                // A bounded soft under-stroke avoids per-frame blur filters.
+                context.stroke(path, with: .color(palette.pale.opacity(0.055*envelope)), lineWidth: 2.1*u)
+                context.stroke(path, with: .linearGradient(Gradient(colors: [.clear, palette.bright.opacity(0.68*envelope)]), startPoint: tail, endPoint: head), lineWidth: 0.80*u)
+                dot(head, radius: 0.95*u, color: palette.bright.opacity(0.72*envelope), context: &context)
+                // The glints sit on the exact parent/fork junctions.
+                for junction in [CGFloat(0.42), 0.55, 0.68] {
+                    let glint = Double(max(0, 1-abs(t-junction)/0.045)) * envelope
+                    if glint > 0.001 {
+                        dot(shape.point(at: junction), radius: 1.25*u, color: palette.bright.opacity(0.45*glint), context: &context)
+                    }
+                }
+            }
+        }
+    }
+
     static func drawBeams(context: inout GraphicsContext, size: CGSize, radius r: CGFloat, palette: Palette) {
         guard r > 0 else { return }
         let c = CGPoint(x: size.width / 2, y: size.height / 2)
@@ -44,14 +108,11 @@ enum JARVISNeuralCoreC2Decoration {
             let sign = CGFloat(side)
             for i in 0..<24 {
                 let seed = i + (side == -1 ? 500 : 900)
-                let offset = (noise(seed) * 2 - 1) * 0.78
-                let start = CGPoint(x: c.x + sign*r*0.45, y: c.y + offset*r*0.22)
-                let reach = (size.width/2 - 8*u) * (0.80 + 0.20*noise(seed+2))
-                let end = CGPoint(x: c.x + sign*reach, y: c.y + offset*r)
+                let shape = beam(index: i, side: side, size: size, radius: r)
+                let start = shape.start, end = shape.end
+                let p1 = shape.control1, p2 = shape.control2
                 let major = i % 5 == 0
                 let alpha = 0.35 * (major ? 1 : Double(0.30 + noise(seed+9)*0.35))
-                let p1 = CGPoint(x: c.x + sign*r*1.05, y: c.y - offset*r*0.38)
-                let p2 = CGPoint(x: c.x + sign*reach*0.74, y: end.y + (noise(seed+11)-0.5)*r*0.75)
                 var path = Path()
                 path.move(to: start)
                 path.addCurve(to: end, control1: p1, control2: p2)

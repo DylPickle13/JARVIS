@@ -71,6 +71,22 @@ import JARVISKit
                 let b = render(JARVISNeuralCoreFrameArtwork(telemetry: states[1], layout: layout, motionPhase: 0.81, layerSet: layer), size: size)
                 check(pixels(a) == pixels(b), "Hoisted C2 decoration must not vary with phase or freshness")
             }
+            let pulseA = render(Impulses(phase: 0), size: size)
+            let pulseB = render(Impulses(phase: 0.25), size: size)
+            let pulseLoop = render(Impulses(phase: 1), size: size)
+            let aBytes = pixels(pulseA), bBytes = pixels(pulseB)
+            check(aBytes != bBytes, "Side pulses must actually change with selected phase")
+            check(aBytes == pixels(pulseLoop), "Beam motion must loop continuously")
+            for range in [0..<pulseA.width/3, pulseA.width*2/3..<pulseA.width] {
+                var changes = 0
+                for y in 0..<pulseA.height { for x in range {
+                    let index = (y*pulseA.width+x)*4
+                    if aBytes[index] != bBytes[index] { changes += 1 }
+                } }
+                check(changes > 10, "Motion must reach each visible outer side")
+            }
+            try save(pulseA, name + "-beam-phase-a")
+            try save(pulseB, name + "-beam-phase-b")
             // Dominance concerns the full visible core, not just its added shell.
             let visibleCore = render(ZStack {
                 Color.black
@@ -104,7 +120,7 @@ import JARVISKit
                 check(sides > 0.01 && centre > sides*3, "Centre must dominate non-empty sides")
             }
         }
-        print("PASS: \(assertions) Neural Core native-render assertions; footprints, layers, static fallback, phase/freshness invariance, monochrome palette and centre dominance. Native OS/animation/energy acceptance remains separate.")
+        print("PASS: \(assertions) Neural Core native-render assertions; footprints, layers, static fallback, phase/freshness invariance, monochrome palette and centre dominance. Beam phases differ on both sides and loop; native OS/animation/energy acceptance remains separate.")
     }
 }
 
@@ -122,6 +138,22 @@ private struct Decoration: View {
                 } else {
                     JARVISNeuralCoreC2Decoration.drawBeams(context: &context, size: size, radius: r, palette: palette)
                 }
+            }
+        }
+    }
+}
+
+private struct Impulses: View {
+    let phase: CGFloat
+    var body: some View {
+        ZStack {
+            Color.black
+            Canvas { context, size in
+                JARVISNeuralCoreC2Decoration.drawImpulses(
+                    context: &context, size: size,
+                    radius: min(size.height*0.325, size.width*0.22),
+                    palette: .init(usesFullColor: true), phase: phase
+                )
             }
         }
     }

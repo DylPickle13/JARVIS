@@ -1125,7 +1125,10 @@ phase_block = source[phase_start:phase_end]
 assert static_block.count("drawHalo(") == 1
 assert "drawHalo(" not in phase_block
 assert static_block.count("JARVISNeuralCoreC2Decoration.drawBeams(") == 1
-assert "JARVISNeuralCoreC2Decoration" not in phase_block
+assert "JARVISNeuralCoreC2Decoration.drawBeams(" not in phase_block
+assert "JARVISNeuralCoreC2Decoration.drawShell(" not in phase_block
+assert phase_block.count("JARVISNeuralCoreC2Decoration.drawImpulses(") == 1
+assert source.count("JARVISNeuralCoreC2Decoration.drawImpulses(") == 2
 assert source.count("JARVISNeuralCoreC2Decoration.drawBeams(") == 2
 assert source.count("JARVISNeuralCoreC2Decoration.drawShell(") == 2
 continuous = Path("WidgetShared/NeuralCoreContinuousAnimation.swift").read_text().split("private struct JARVISNeuralCoreSelectorGeneration", 1)[0]
@@ -1135,8 +1138,15 @@ assert continuous.index("layerSet: .staticForeground") < continuous.index("JARVI
 c2 = Path("WidgetShared/NeuralCoreC2Decoration.swift").read_text()
 for bounded in ["for i in 0..<24", "for j in 0..<3", "for i in 0..<18", "for i in 0..<112"]:
     assert bounded in c2
-for forbidden in ["telemetry", "phase", "Date(", "Timer("]:
+for forbidden in ["telemetry", "Date(", "Timer("]:
     assert forbidden not in c2[c2.index("enum JARVISNeuralCoreC2Decoration"):]
+static_decor = c2.split("static func drawBeams(", 1)[1]
+assert "phase" not in static_decor
+impulses = c2.split("static func drawImpulses(", 1)[1].split("static func drawBeams(", 1)[0]
+assert "for index in [0, 4, 8, 12, 16, 20]" in impulses
+assert "for segment in 1...6" in impulses
+assert "addFilter" not in impulses and ".blur(" not in impulses
+assert "beam(index: index, side: side" in impulses
 assert "let alpha = 0.35" in c2
 assert "Double(0.26 + noise(i+99)*0.28)" in c2
 ordered = [
