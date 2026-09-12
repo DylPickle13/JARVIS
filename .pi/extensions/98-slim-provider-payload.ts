@@ -48,10 +48,7 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   ls: "List a directory; optional path/limit.",
   ssh: "Run SSH command on trusted host.",
   memory: "Durable project memory: search/remember/update/forget/list/status. No secrets.",
-  web_search: "Cited web search/research; discovery only. Do not use includeContent; batch selected URLs with fetch_content.",
   code_search: "Search external code/docs/API examples.",
-  fetch_content: "Fetch/extract URL(s)/GitHub/YouTube/local video; batch selected research URLs in one urls array.",
-  get_search_content: "Retrieve stored search/fetch content by responseId.",
   maps: "Ask Google Maps about places, addresses, coordinates, routes, travel time, or local searches.",
   // Keep load_tools out of this override map: 99-lazy-tools.ts generates its
   // provider-visible description from the canonical group registry.
@@ -84,21 +81,6 @@ function stripNestedSchemaMetadata(value: any): any {
   for (const [key, child] of Object.entries(value)) {
     if (key === "description" || key === "title" || key === "$comment" || key === "examples" || key === "additionalProperties") continue;
     copy[key] = stripNestedSchemaMetadata(child);
-  }
-  return copy;
-}
-
-function stripEnumValue(value: any, enumValue: string): any {
-  if (Array.isArray(value)) return value.map((child) => stripEnumValue(child, enumValue));
-  if (!value || typeof value !== "object") return value;
-
-  const copy: any = { ...value };
-  if (Array.isArray(copy.enum)) {
-    copy.enum = copy.enum.filter((item: unknown) => item !== enumValue);
-  }
-  for (const [key, child] of Object.entries(copy)) {
-    if (key === "enum") continue;
-    copy[key] = stripEnumValue(child, enumValue);
   }
   return copy;
 }
@@ -144,6 +126,8 @@ const SCHEMA_STRIP_TOOLS = new Set([
 function compactTool(tool: any): any {
   if (!tool || typeof tool !== "object") return tool;
   const name = toolName(tool);
+  // Keep pi-web-access's upstream descriptions and schemas intact.
+  if (["web_search", "source_check", "fetch_content", "get_search_content"].includes(name ?? "")) return tool;
   if (!name || !SCHEMA_STRIP_TOOLS.has(name)) return tool;
 
   const copy: any = { ...tool };
@@ -154,16 +138,11 @@ function compactTool(tool: any): any {
 
   if (copy.parameters) copy.parameters = stripNestedSchemaMetadata(copy.parameters);
   if (copy.input_schema) copy.input_schema = stripNestedSchemaMetadata(copy.input_schema);
-  if (name === "web_search") {
-    if (copy.parameters) copy.parameters = stripEnumValue(copy.parameters, "gemini");
-    if (copy.input_schema) copy.input_schema = stripEnumValue(copy.input_schema, "gemini");
-  }
   if (copy.function && typeof copy.function === "object") {
     copy.function = { ...copy.function };
     if (override && typeof copy.function.description === "string") copy.function.description = override;
     if (copy.function.strict === false) delete copy.function.strict;
     if (copy.function.parameters) copy.function.parameters = stripNestedSchemaMetadata(copy.function.parameters);
-    if (name === "web_search" && copy.function.parameters) copy.function.parameters = stripEnumValue(copy.function.parameters, "gemini");
   }
 
   return copy;

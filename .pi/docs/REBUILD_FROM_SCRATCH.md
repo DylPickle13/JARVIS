@@ -158,7 +158,7 @@ npm install
 
 ## 6. Reinstall Pi packages/extensions
 
-The ignored project package config lives in `.pi/settings.json`; its safe tracked template is [`.pi/settings.example.json`](../settings.example.json). Both specify the reviewed `pi-web-access` release exactly. They intentionally filter out the package's direct extension autoload: `.pi/extensions/00-web-access-env.ts` imports it through a project-scoped configuration bootstrap so JARVIS never rewrites or consumes another Pi project's global `~/.pi/web-search.json`. Reinstall that exact package version:
+The private package configuration is `.pi/settings.json`; start from [`.pi/settings.example.json`](../settings.example.json) if needed. Both pin the reviewed `pi-web-access` release and enable its stock extension directly. The former JARVIS wrapper is archived outside extension discovery in `.pi/disabled-extensions/00-web-access-env.ts.disabled`. Reinstall the pinned version:
 
 ```bash
 cd /path/to/JARVIS
@@ -173,9 +173,9 @@ npm:pi-web-access@0.28.0
 pi-web-access@0.28.0
 ```
 
-Do not replace the exact version with a range or unversioned source during a rebuild. Keep `"extensions": []` on the package entry; removing that filter would load a second copy against shared global configuration. Pi packages execute with full system access, so review an upgrade before intentionally changing the pinned version in both settings files.
+Keep the exact version, not a range or unversioned package. Do not add `"extensions": []` to this package: that disables its stock extension. Pi packages have full system access, so review upgrades before changing the pin in both settings files.
 
-JARVIS generates its private web-access configuration at `.pi/runtime/pi-web-access/web-search.json`. That file is ignored runtime state and may be recreated automatically. Provider/workflow policy belongs in `.pi/extensions/00-web-access-env.ts`; secrets remain in `.env`. Other Pi projects may independently use `~/.pi/web-search.json`, which JARVIS leaves untouched.
+Web access now uses upstream defaults and its ordinary configuration lookup (normally `~/.pi/web-search.json`, with upstream environment/XDG overrides). The former scoped config is archived as `.pi/runtime/pi-web-access/web-search.json.disabled` and is not used. The wrapper's `.env` credential loading, forced routing/workflows, and notification filtering no longer apply. Restart Pi after migration to clear cached modules and wrapper mutations.
 
 ## 7. Restore optional runtime databases
 
@@ -335,7 +335,7 @@ The owner-only database retains at most 500 sanitized output-producing successes
 |---|---|
 | Pi does not see custom tools | Run `pi list`, then `/reload`; verify files under `.pi/extensions/`, `.pi/extensions/50-browser/node_modules`, and package installs under `.pi/npm/node_modules/`. |
 | Optional tool hidden | Call `load_tools({ groups: ["<group>"] })` or `/load-tools <group>`. For automatic direct-call activation, build/install the [version-pinned lazy-execution runtime](PI_LAZY_EXECUTION.md). |
-| Web search unavailable | Run `/web-access-config`; check Exa MCP/package availability, optional `EXA_API_KEY`, and JARVIS's scoped `.pi/runtime/pi-web-access/web-search.json`. JARVIS does not use global `~/.pi/web-search.json`. |
+| Web search unavailable | Check stock pi-web-access package loading, provider availability, and upstream configuration (normally `~/.pi/web-search.json`). The custom `/web-access-config` command is retired. |
 | Maps unavailable | Check `GOOGLE_MAPS_API_KEY`; confirm Places API (New), Geocoding API, and Routes API are enabled for the key. |
 | Browser tools unavailable | Run `npm install` in `.pi/extensions/50-browser`; check Google Chrome path or set `PI_BROWSER_CHROME_PATH`. |
 | PDF reads fail | Check local oMLX `OMLX_PDF_*` settings first; ensure `pdftotext` from `poppler` is installed for fallback. |

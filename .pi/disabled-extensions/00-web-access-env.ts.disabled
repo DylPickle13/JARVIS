@@ -14,7 +14,7 @@ const FETCH_STATUS_RE = /^Content fetched for \d+\/\d+ URLs \[[^\]]+\]\. Full pa
 const WEB_RESEARCH_WORKFLOW_PROMPT =
 	"Web: `web_search` for snippets only (no includeContent); batch selected pages with `fetch_content({ urls })`; wait for fetch and ignore delayed web-search-content-ready notices.";
 const GEMINI_DISABLED_PROMPT =
-	"Web policy: Gemini web is disabled; never suggest GEMINI_API_KEY/Gemini login. Default Exa; use provider:'youtube' only for YouTube metadata/search.";
+	"Web policy: Gemini web is disabled; never suggest GEMINI_API_KEY/Gemini login. Use provider:'auto' or omit provider for automatic keyless failover: Exa → Parallel MCP → DuckDuckGo → AnySearch. Explicit named providers bypass failover; use provider:'youtube' only for YouTube metadata/search.";
 function loadScopedWebSearchConfig(): Record<string, unknown> {
 	if (!existsSync(WEB_SEARCH_CONFIG_PATH)) return {};
 	try {
@@ -45,13 +45,13 @@ function sanitizeGeminiFallbackText(text: string): SanitizeResult<string> {
 		.replace(/Could not extract YouTube video content\. Sign into Google in Chrome for automatic access, or set GEMINI_API_KEY\.?/gi, "Could not extract YouTube video content with the non-Gemini fallbacks available.")
 		.replace(/Full video understanding requires Gemini access\. Set GEMINI_API_KEY or sign into Google in Chrome\.?/gi, "Full video understanding is disabled in this JARVIS web-access setup.")
 		.replace(/Video analysis requires Gemini access\. Either:/gi, "Video analysis is disabled in this JARVIS web-access setup.")
-		.replace(/Gemini search unavailable\. Either:/gi, "Gemini search is disabled in this JARVIS web-access setup. Use provider:'exa'.")
+		.replace(/Gemini search unavailable\. Either:/gi, "Gemini search is disabled in this JARVIS web-access setup. Use provider:'auto' for configured keyless failover.")
 		.replace(/No search provider available\. Either:/gi, "No search provider available. Zero-config Exa MCP is attempted automatically; if it fails, check network access to https://mcp.exa.ai/mcp. Optional fallbacks:");
 
 	const filteredLines = output.split(/\r?\n/).filter((line) => !GEMINI_FALLBACK_LINE_RE.test(line));
 	output = filteredLines.join("\n")
 		.replace(/\n{3,}/g, "\n\n")
-		.replace(/Fallback options:\s*\n\s*$/g, "Fallback options:\n  • Verify the URL/DNS and try again\n  • Use web_search with provider:'exa' to find content about this topic")
+		.replace(/Fallback options:\s*\n\s*$/g, "Fallback options:\n  • Verify the URL/DNS and try again\n  • Use web_search with provider:'auto' to find content about this topic")
 		.trimEnd();
 
 	return { value: output, changed: output !== text };
@@ -171,14 +171,20 @@ function configureWebAccess(cwd: string): { configPath: string; envPath?: string
 	const existingConfig = loadScopedWebSearchConfig();
 	const nextConfig: Record<string, unknown> = {
 		...existingConfig,
-		provider: "exa",
-		searchProvider: "exa",
+		searchRouting: {
+			providers: ["exa", "parallel-mcp", "duckduckgo", "anysearch"],
+			fallbackOn: ["transient", "quota", "network", "invalid-response", "unsupported"],
+		},
 		workflow: "none",
 		allowBrowserCookies: false,
 	};
 
-	// Remove all Gemini-specific pi-web-access configuration. Exa is the default
-	// search provider; YouTube may still use GOOGLE_API_KEY/YOUTUBE_API_KEY.
+	// Single-provider settings take precedence over routing; remove legacy pins.
+	delete nextConfig.provider;
+	delete nextConfig.searchProvider;
+
+	// Remove Gemini-specific configuration. The explicit route stays non-Gemini;
+	// YouTube may still use GOOGLE_API_KEY/YOUTUBE_API_KEY.
 	delete nextConfig.geminiApiKey;
 	delete nextConfig.geminiBaseUrl;
 	delete nextConfig.cloudflareApiKey;
@@ -249,12 +255,12 @@ export default async function registerPiWebAccessEnv(pi: ExtensionAPI) {
 			return;
 		}
 
-		// Never allow Gemini-backed search through pi-web-access. Use Exa by default
-		// and avoid the extension's auto fallback chain reaching Gemini. This also
-		// covers source_check, which was added after the original wrapper.
+		// Automatic calls use our explicit non-Gemini route. Preserve deliberate
+		// named-provider overrides, but redirect Gemini to the safe route.
+		// This also covers source_check.
 		const provider = typeof input.provider === "string" ? input.provider.trim().toLowerCase() : "";
 		if (!provider || provider === "auto" || provider === "gemini") {
-			input.provider = "exa";
+			input.provider = "auto";
 		}
 
 		if (event.toolName === "source_check") return;
@@ -282,11 +288,11 @@ export default async function registerPiWebAccessEnv(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("web-access-config", {
-		description: "Show pi-web-access Exa search configuration status",
+		description: "Show pi-web-access automatic search failover configuration status",
 		handler: async (_args, ctx) => {
 			const status = configureWebAccess(ctx.cwd);
 			ctx.ui.notify(
-				`pi-web-access: provider=exa, Gemini disabled, project config=${status.configPath}, Exa key=${status.hasExaApiKey ? "configured" : "not configured; using zero-config Exa MCP fallback"}, YouTube key=${status.hasYouTubeApiKey ? "loaded" : "missing"}`,
+				`pi-web-access: route=exa → parallel-mcp → duckduckgo → anysearch, Gemini disabled, project config=${status.configPath}, Exa key=${status.hasExaApiKey ? "configured" : "not configured; using zero-config Exa MCP fallback"}, YouTube key=${status.hasYouTubeApiKey ? "loaded" : "missing"}`,
 				"success",
 			);
 		},

@@ -320,7 +320,6 @@ fi
 section "Extension inventory"
 expected_extension_roots=(
   .pi/extensions/00-private-permissions.ts
-  .pi/extensions/00-web-access-env.ts
   .pi/extensions/01-omlx-provider-setup-and-recovery.ts
   .pi/extensions/03-codex-fast.ts
   .pi/extensions/04-delete-current-session.ts
@@ -504,7 +503,6 @@ if (memory.includes('pi.on("before_agent_start"')) {
 // making every existing prompt token uncached.
 const allExtensionSources = extensionSources('.pi/extensions');
 assertExactHookOwners(allExtensionSources, 'before_agent_start', [
-  '.pi/extensions/00-web-access-env.ts',
   '.pi/extensions/98-slim-provider-payload.ts',
 ]);
 assertExactHookOwners(allExtensionSources, 'before_provider_request', [
@@ -514,7 +512,6 @@ assertExactHookOwners(allExtensionSources, 'before_provider_request', [
 assertExactHookOwners(allExtensionSources, 'before_provider_headers', []);
 assertExactHookOwners(allExtensionSources, 'context', []);
 for (const path of [
-  '.pi/extensions/00-web-access-env.ts',
   '.pi/extensions/03-codex-fast.ts',
   '.pi/extensions/98-slim-provider-payload.ts',
 ]) {
