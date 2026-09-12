@@ -67,6 +67,21 @@ Before enabling or testing notifications, obtain approval to request device cons
 
 Notification privacy contracts changed across historical builds. Read the [architecture summary](architecture.md#notifications-and-privacy) and the [implementation record](implementation-history.md#native-iphone-and-apple-watch-apns-scheduled-job-notifications), including later addenda, rather than adopting the earliest plan.
 
+## Siri phrase troubleshooting
+
+The app advertises **“Hey JARVIS”** through its built-in App Shortcut, **Talk to JARVIS**. A personal shortcut is not required. Activate Siri first (for example, hold the iPhone side button or Watch Digital Crown), then say the phrase; JARVIS does not replace Apple's Siri wake phrase.
+
+If Siri answers with its built-in “Mr Stark” joke rather than asking for a prompt:
+
+1. On iPhone, open **Shortcuts**, find **JARVIS** in the app shortcuts, tap its heading, then the **ⓘ** information button.
+2. Check **Siri / Use in Siri**. Enable it if disabled. Its exact label can vary with the OS version. An app's packaged phrase metadata does not prove this user-controlled setting is enabled.
+3. Activate Siri and say **“Hey JARVIS.”** For a routing-only test, cancel after the prompt question; do not supply a test prompt that would consume an unused New session.
+4. Test Watch separately when it is available. An iPhone success does not establish Watch registration or end-to-end prompt delivery.
+
+On 2026-09-12, the owner found this Siri toggle disabled and confirmed that enabling it restored the iPhone phrase. No source fix, rebuild, personal shortcut or Siri reset was needed. Watch recovery was not confirmed. If the setting is already enabled or JARVIS is missing from the catalogue, investigate that device's registration and permissions before changing code or resetting Siri.
+
+Phrase recognition and terminal admission are separate checks. The existing prompt action still submits at most once to an eligible unused New session, or refuses when none is available. Never reload/reset a Pi session or retry an uncertain submission merely to troubleshoot phrase recognition.
+
 ## Diagnostics and recovery
 
 Start with read-only checks to narrow down the problem: connection trust, endpoint availability, compatible versions, signing, Watch registration, or app behavior. Do not bypass host-key or certificate checks, or broaden network access, to get past an error.

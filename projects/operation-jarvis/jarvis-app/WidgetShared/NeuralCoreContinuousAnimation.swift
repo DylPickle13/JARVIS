@@ -159,6 +159,16 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                             }
                         }
 
+                        // The approved C2 foreground is static decoration. Hoist it
+                        // once, after all existing moving layers on either platform.
+                        JARVISNeuralCoreAnimationFrame(
+                            telemetry: telemetry,
+                            layout: layout,
+                            motionPhase: basePhase,
+                            layerSet: .staticForeground
+                        )
+                        .accessibilityHidden(true)
+
                         // Both surfaces draw the phase-independent wordmark once at
                         // the same final z-position as the complete artwork.
                         JARVISNeuralCoreWordmark(layout: layout)

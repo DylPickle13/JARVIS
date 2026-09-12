@@ -50,6 +50,10 @@ Pi runs the agent on the Mac. The apps connect to it rather than running a separ
 | [`project.yml`](project.yml) | XcodeGen project specification. |
 | [`scripts/`](scripts/) | Verification, packaging, and guarded deployment helpers. |
 
+## Neural Core artwork
+
+[Neural Core C2 / Dendrites and beam motion](docs/neural-core-c2-candidate.md) preserve the silver-white palette and central focus, with subtle organic branches, brighter central highlights, and outward-travelling pulses. Build166 was installed and visually accepted on iPhone; Watch deployment of these changes remains unconfirmed. See the linked implementation record for verification and device-acceptance limits.
+
 ## Verification
 
 On a configured Mac with the required Xcode components and dependencies, run from this directory in an **isolated development checkout**:
