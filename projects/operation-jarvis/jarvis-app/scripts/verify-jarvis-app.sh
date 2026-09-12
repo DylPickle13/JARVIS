@@ -1103,7 +1103,8 @@ grep -q '.frame(width: geometry.size.width, height: geometry.size.height)' Widge
 [[ "$(grep -c 'JARVISNeuralCoreAnimationFrame(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "5" ]]
 grep -q 'layerSet: .staticBackground' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'layerSet: .phaseArtwork' WidgetShared/NeuralCoreContinuousAnimation.swift
-grep -q 'includesWordmark: false' WidgetShared/NeuralCoreContinuousAnimation.swift
+# Lightweight live frames contain no wordmark; the continuous parent owns it once.
+python3 -c 'from pathlib import Path; s=Path("WidgetShared/NeuralCoreArtwork.swift").read_text().split("struct JARVISNeuralCoreFrameArtwork",1)[1].split("struct JARVISNeuralCoreWordmark",1)[0]; assert "JARVISNeuralCoreWordmark(" not in s'
 grep -q 'case staticBackground' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'case phaseArtwork' WidgetShared/NeuralCoreArtwork.swift
 reject_match 'Watch and phone must not use visually divergent Canvas layer sets' -Eq 'case watchStatic|case watchMotion|layerSet: \.watch' WidgetShared/NeuralCoreArtwork.swift WidgetShared/NeuralCoreContinuousAnimation.swift
