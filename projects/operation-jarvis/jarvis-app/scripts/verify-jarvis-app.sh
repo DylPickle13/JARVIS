@@ -1096,10 +1096,11 @@ grep -q 'layout.curveSegments(watch: 10, phone: 10)' WidgetShared/NeuralCoreArtw
 grep -q 'layout.curveSegments(watch: 12, phone: 12)' WidgetShared/NeuralCoreArtwork.swift
 reject_match 'phone Cathedral curves must retain archive-safe physical tessellation' -Eq 'layout == \.watch \? (34 : 64|30 : 56|46 : 82|38 : 72|24 : 46|9 : 14)' WidgetShared/NeuralCoreArtwork.swift
 grep -q 'JARVISNeuralCoreWordmark(layout: layout)' WidgetShared/NeuralCoreContinuousAnimation.swift
-# The Watch branch retains its full wrapper for the common static halo and every
-# complete motion phase; the third occurrence is the accessible static branch.
-# Phone live phases remain Canvas-only.
-[[ "$(grep -c 'JARVISNeuralCoreArtwork(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "3" ]]
+# The complete wrapper is retained for the frozen fallback. Live frames reuse
+# outer policy/geometry; Watch supplies explicit dimensions and interpolation.
+[[ "$(grep -c 'JARVISNeuralCoreArtwork(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "1" ]]
+grep -q '.frame(width: geometry.size.width, height: geometry.size.height)' WidgetShared/NeuralCoreContinuousAnimation.swift
+[[ "$(grep -c 'JARVISNeuralCoreAnimationFrame(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "5" ]]
 grep -q 'layerSet: .staticBackground' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'layerSet: .phaseArtwork' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'includesWordmark: false' WidgetShared/NeuralCoreContinuousAnimation.swift
