@@ -8,6 +8,14 @@ JARVIS extends the [Pi coding agent](https://github.com/earendil-works/pi-coding
 
 [Explore the architecture](https://dylpickle13.github.io/) · [Native apps](projects/operation-jarvis/jarvis-app/README.md) · [Setup and operation](docs/runtime-guide.md)
 
+## See the native apps
+
+![JARVIS iPhone Home and Apple Watch System screens captured in simulators with clearly labeled sample data](docs/media/jarvis-simulator-overview.png)
+
+[Watch the 8-second simulator showcase](docs/media/jarvis-simulator-showcase.mp4) · [Full-size screenshots and capture details](docs/media/README.md)
+
+Actual simulator rendering with synthetic telemetry. The clip shows interface motion, not live inference or device actions.
+
 ## What I implemented
 
 - **Agent extensions:** persistent memory, browser automation, web research, and integrations with software services and connected devices. Optional tool schemas load when needed rather than all at once.

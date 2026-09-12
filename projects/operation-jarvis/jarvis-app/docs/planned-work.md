@@ -24,11 +24,11 @@ This is a reconciliation register, not a promise to implement or deploy features
 
 Some of these items may already have been deployed. They are unresolved **in the documentation review**, not asserted to be unfinished engineering work.
 
-## Portfolio media awaiting approval
+## Portfolio media and future captures
 
-A real, sanitized iPhone/Watch screenshot pair and a short demonstration would help the public overview. No media was captured, fabricated, or published as part of this change.
+The owner-approved [simulator showcase](../../../../docs/media/README.md) contains four actual app screenshots, a combined overview, and an eight-second interface-motion video. The isolated simulator builds use synthetic read-only data, no live integrations, and labels embedded in the exports. This is not an end-to-end task demo or a physical-device capture.
 
-Before adding media:
+Before adding or replacing media:
 
 1. Choose an approved build and harmless demonstration content.
 2. Capture only the relevant app surfaces, without issuing unapproved device commands or modifying live conversations.

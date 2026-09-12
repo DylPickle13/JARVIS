@@ -6,6 +6,14 @@ The app makes persistent Pi terminal sessions, room-device controls, system tele
 
 [Project overview](../../../README.md) · [Architecture](docs/architecture.md) · [Build and operations](docs/operations.md) · [Documentation index](docs/README.md)
 
+## Simulator preview
+
+![JARVIS iPhone and Watch interfaces using sample data in Apple simulators](../../../docs/media/jarvis-simulator-overview.png)
+
+[Short simulator video](../../../docs/media/jarvis-simulator-showcase.mp4) · [Full-size Home, System, and Jobs screenshots](../../../docs/media/README.md)
+
+These are real app renders with synthetic read-only data, not a live execution demo or physical-device acceptance evidence.
+
 ## Capabilities
 
 | Surface | Purpose |
