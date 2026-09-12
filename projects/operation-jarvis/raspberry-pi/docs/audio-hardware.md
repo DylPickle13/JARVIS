@@ -1,10 +1,10 @@
 # Raspberry Pi Audio Hardware for Operation JARVIS
 
-This note tracks the Anker PowerConf room-audio hardware used by the Raspberry Pi endpoint.
+The room endpoint uses an Anker PowerConf for both microphone capture and speaker playback. These notes cover the recorded USB setup, Bluetooth limitations, and tests for diagnosing hardware trouble.
 
 ## Current deployed configuration
 
-The active room endpoint uses the Anker PowerConf over USB at 48 kHz. The recovered/replacement hardware path supports simultaneous microphone capture and speaker playback, which is required for voice barge-in.
+The documented setup uses USB audio at 48 kHz. The recovered/replacement hardware supports capture and playback at the same time, which lets a spoken `stop` interrupt JARVIS's response.
 
 | Role | Current device/profile |
 |---|---|
@@ -12,7 +12,9 @@ The active room endpoint uses the Anker PowerConf over USB at 48 kHz. The recove
 | Speaker | USB ALSA, `plughw:CARD=PowerConf,DEV=0` |
 | Listener | `jarvis-room-audio.service` running `/home/pi/jarvis-room-audio-client.py --vad-loop --interrupt-while-busy` |
 
-The boot-time listener keeps USB capture running while the processing acknowledgement and final response play. Idle commands still require local `hey_jarvis`; while a turn is busy, short speech clips are sent to on-device Apple DictationTranscriber, and only an exact normalized `stop` transcript cancels generation/playback. Ordinary turns use on-device Apple SpeechTranscriber. Bluetooth BlueALSA SCO/A2DP remains a fallback transport, but it cannot support barge-in because the PowerConf does not reliably hold SCO capture and A2DP playback simultaneously.
+The listener keeps USB capture running during acknowledgement and response playback. Idle turns need the local `hey_jarvis` wake word. While busy, short clips go to on-device Apple DictationTranscriber; only an exact normalized `stop` cancels generation and playback. Ordinary turns use on-device Apple SpeechTranscriber.
+
+Bluetooth BlueALSA SCO/A2DP remains a fallback, but the PowerConf cannot reliably capture with SCO and play with A2DP at the same time. That rules out voice interruption on the Bluetooth path.
 
 See [`../room_audio/README.md`](../room_audio/README.md) for the current server and listener commands.
 
@@ -27,16 +29,16 @@ Recommended hub characteristics:
 - Stable with USB audio devices.
 - Sufficient current budget for the PowerConf and any future peripherals.
 
-USB is still preferable long-term because it provides simultaneous mic input and speaker output without Bluetooth profile switching.
+USB avoids Bluetooth profile switching and supports the simultaneous input and output needed here.
 
 ## PowerConf hardware recommendation
 
-Recommended budget “buy once” speakerphone:
+Speakerphone options for this setup:
 
 - **Primary pick:** Anker PowerConf **A3301**.
 - **Close alternative:** Anker PowerConf **S3 / A3302** if prices are close.
 
-Why it fits JARVIS:
+Useful features for room audio:
 
 - 6-mic 360° room pickup.
 - Echo cancellation / noise reduction.

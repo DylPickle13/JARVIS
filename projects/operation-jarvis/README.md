@@ -1,18 +1,18 @@
 # Operation JARVIS
 
-Operation JARVIS is the physical-world and native-client layer of the local JARVIS stack.
+This directory connects JARVIS to the things around the house: plugs, the air purifier, speakers, and a Raspberry Pi microphone. It also contains the iPhone and Watch apps and their backend services.
 
 ## Components
 
-1. **jarvisd** — authenticated native API on port `8790` for health, state, services, scheduled jobs/results, and closed hardware commands.
-2. **terminald** — isolated mobile terminal relay on port `8792` for the protected `jarvis-mobile` tmux session.
-3. **Room audio** — Raspberry Pi microphone/speaker client with Mac-side Apple SpeechTranscriber turn ASR, Apple DictationTranscriber busy-only `stop` ASR, neutral Pi RPC, and Piper speech on port `8791`.
-4. **Native Apple app** — iPhone, Watch, and two widgets per platform.
-5. **Smart plugs** — local TP-Link Kasa control through a closed plug catalogue.
-6. **Air purifier** — VeSync/Levoit Vital 200S-P status and guarded writes.
-7. **Media** — Google Cast, YouTube, Spotify Connect, and short room speech.
-8. **Provider quotas** — read-only Codex/Copilot telemetry for jarvisd and native clients.
-9. **Private jobs** — generic local scheduler plus bounded owner-only result history exposed read-only to iPhone Jobs.
+- **jarvisd:** native API on port `8790` for health, state, services, job results, and allowlisted device commands. Network allowlisting and token authentication are separate modes.
+- **terminald:** mobile terminal relay on port `8792`, restricted to the protected `jarvis-mobile` tmux sessions.
+- **Room audio:** Raspberry Pi capture/playback with Mac-side Apple SpeechTranscriber for ordinary turns, DictationTranscriber for busy-only `stop`, Pi RPC, and Piper speech on port `8791`.
+- **Apple apps:** iPhone, Watch, and two widgets per platform.
+- **Smart plugs:** local TP-Link Kasa control through a fixed plug catalogue.
+- **Air purifier:** VeSync/Levoit Vital 200S-P status and validated controls.
+- **Media:** Google Cast, YouTube, Spotify Connect, and short room speech.
+- **Provider quotas:** read-only Codex/Copilot status for `jarvisd` and the apps.
+- **Private jobs:** the local scheduler and its limited, owner-only result history, shown read-only in Jobs.
 
 ## Layout
 
@@ -28,7 +28,7 @@ projects/operation-jarvis/
 └── jarvis-cli                  # stable executable wrapper
 ```
 
-Shared neutral Pi RPC lives at repository root in [`../../pi_rpc.py`](../../pi_rpc.py). Scheduled jobs live at [`../../.pi/scheduler/`](../../.pi/scheduler/).
+The shared Pi RPC code is at [`../../pi_rpc.py`](../../pi_rpc.py). The scheduler is at [`../../.pi/scheduler/`](../../.pi/scheduler/).
 
 ## Safe status checks
 
@@ -41,16 +41,16 @@ curl -fsS http://127.0.0.1:8790/health | python3 -m json.tool
 curl -fsS http://127.0.0.1:8791/health | python3 -m json.tool
 ```
 
-Do not run hardware-write commands as a smoke test. Native plug and purifier writes require fresh authoritative state and exact confirmed outcomes.
+Do not switch devices as a smoke test. Plug and purifier changes require fresh device state and confirmation of the requested result.
 
 ## Native app
 
 See [`jarvis-app/README.md`](jarvis-app/README.md). The app provides:
 
-- **Home** — live system, plug, purifier, service, and quota state;
-- **JARVIS** — protected Pi terminal;
-- **Jobs** — read-only retained result inbox, schedules, details, unread state, and safe HTTP(S) links;
-- **Settings** — connection, terminal, and fixed private signing renewal.
+- **Home:** system, plug, purifier, service, and quota status, including freshness;
+- **JARVIS:** the protected Pi terminal;
+- **Jobs:** read-only saved results, schedules, details, unread markers, and safe HTTP(S) links;
+- **Settings:** connection and terminal preferences. Signing-renewal controls depend on the build; see the [signing notes](jarvis-app/scripts/README.md).
 
 The Watch preserves native plug/purifier controls and terminal behavior. Each widget platform exposes only Neural Core and Open JARVIS.
 
@@ -62,7 +62,7 @@ The generic scheduler stores its database at `.pi/scheduler/scheduler.sqlite` un
 - a successful run with output creates one result;
 - every failure creates one result;
 - prompt, model, command line, credentials, and local paths are not exposed by jarvisd;
-- notification delivery is dormant until direct Watch APNs is explicitly activated after paid enrollment.
+- notifications need paid-program signing and explicit activation; check the [notification setup notes](jarvis-app/docs/architecture.md#notifications-and-privacy) rather than assuming they are active or dormant.
 
 Read-only status:
 
@@ -74,9 +74,9 @@ cd /path/to/JARVIS
 
 ## Room audio
 
-The Mac service in [`raspberry-pi/room_audio/room_audio_server.py`](raspberry-pi/room_audio/room_audio_server.py) imports the transport-neutral [`voice/voice_pipeline.py`](voice/voice_pipeline.py), native [`voice/apple_asr/`](voice/apple_asr/) helper, and root `pi_rpc.py` modules. The Pi client owns USB capture, VAD, local wake detection, playback, and exact busy-only `stop` interruption.
+The [Mac room-audio server](raspberry-pi/room_audio/room_audio_server.py) uses the [voice pipeline](voice/voice_pipeline.py), [Apple ASR helper](voice/apple_asr/), and root `pi_rpc.py`. The Pi client handles USB capture, voice activity detection (VAD), local wake detection, playback, and exact busy-only `stop` interruption.
 
-The room service does not own the protected mobile tmux session. Restart it only as an announced controlled step, then validate `GET /health` before continuing.
+Keep room-service work separate from the protected mobile tmux sessions. Announce and obtain approval for a restart, then check `GET /health` before continuing.
 
 ## Development
 

@@ -2,7 +2,7 @@
 
 Updated: 2026-06-24 EDT
 
-This note records how to measure a Pi agent system-prompt footprint for future slimming work.
+Use this guide to see how much of a Pi request comes from instructions, tool schemas, and conversation text. Run payload captures only in an isolated development checkout: the temporary extension deliberately stops Pi before sending the request.
 
 ## What is being measured
 
@@ -12,13 +12,13 @@ A Pi provider request usually contains:
 - `tools`: provider-visible tool schemas.
 - `input` / messages: the user prompt and conversation context.
 
-Provider `usage.input` is the closest exact token count, but it includes the user message and any conversation context. For a fresh first turn, the user message is usually small, so `usage.input` is a good practical measure of the static prompt/tool overhead.
+Provider usage reports count tokens for the whole request, including the user message and conversation. For a fresh first turn with a short message, that gives a useful estimate of prompt and tool overhead. Check cache-read and cache-write counts as well as `usage.input`.
 
-For breakdowns, capture the provider payload before it is sent, then inspect char sizes for `instructions`, `tools`, and individual schemas. Char counts are not exact tokens, but `chars / 4` is a useful rough estimate.
+To break the request down, capture the payload before sending it and measure the characters in `instructions`, `tools`, and individual schemas. `chars / 4` is a rough token estimate, not an exact count.
 
-## Method A — exact first-turn usage from session logs
+## Method A: exact first-turn usage from session logs
 
-Use this after a real first turn has completed.
+Use this after a real first turn has completed. The example selects the most recently modified session for the current working directory; confirm it is the session you intended to measure.
 
 ```bash
 python3 - <<'PY'
@@ -61,13 +61,13 @@ Notes:
 - `effectiveInput = input + cacheRead + cacheWrite` is useful when prompt caching is active.
 - This is exact provider-reported usage, but it includes the user message and any prior conversation context.
 
-## Method B — capture provider payload for component breakdown
+## Method B: capture provider payload for component breakdown
 
-Use this to see what is making the prompt large.
+Use this to find which parts of the request take the most space.
 
-Create a temporary capture extension **inside `.pi/extensions` with a late lexicographic name** so it runs after slimming/filtering extensions such as `98-slim-provider-payload.ts` and `99-lazy-tools.ts`.
+In the isolated checkout, create a temporary extension **inside `.pi/extensions` with a name that sorts last**. It must run after filters such as `98-slim-provider-payload.ts` and `99-lazy-tools.ts`.
 
-> Important: this extension intentionally exits Pi before the provider request is sent. Remove it immediately after the capture or all future Pi requests will abort.
+> The extension exits Pi before sending the request. Remove it immediately afterward or subsequent requests will also abort. Do not load it into live conversations.
 
 ```bash
 cat > .pi/extensions/zzzz-capture-provider-payload.ts <<'TS'
@@ -200,6 +200,8 @@ For this project, the relevant slimming files have been:
 - `.pi/extensions/99-lazy-tools.ts`
 - `.pi/APPEND_SYSTEM.md`
 - `.pi/extensions/01-omlx-provider-setup-and-recovery.ts` for local model/provider registration and recovery behavior
+
+The measurements and tool-group description below are historical. For the maintained inventory, use [Pi extensions](PI_EXTENSIONS.md); rerun the measurement when comparing new changes.
 
 ## Last recorded reference point from 2026-06-19
 

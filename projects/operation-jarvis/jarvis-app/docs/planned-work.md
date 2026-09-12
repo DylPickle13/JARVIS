@@ -1,16 +1,18 @@
-# Pending work and status reconciliation
+# Build and deployment notes to check
 
 [App overview](../README.md) · [Documentation index](README.md) · [Operations](operations.md)
 
-This is a reconciliation register, not a promise to implement or deploy features. The previous documentation contains overlapping "installed", "candidate", and "not deployed" claims. No live host, signed archive, or physical-device audit was performed during this documentation reorganization.
+Some older notes disagree about which builds and features were installed. This page collects those questions so they can be checked against the actual setup. The documentation review did not inspect live hosts, signed archives, or physical devices.
 
 ## Status vocabulary
 
-- **Implemented:** behavior exists in checked-in source. This alone does not show that tests pass or the feature is enabled.
-- **Verified:** a named verification run passed against an exact source/artifact. A historical run does not verify a later edit.
-- **Deployed:** an exact audited artifact or host revision was installed, supported by owner-controlled evidence.
-- **Accepted:** the relevant physical behavior was checked on approved devices.
-- **Proposed or unresolved:** a plan or conflicting status that needs reconciliation before being represented as shipped.
+These terms describe different steps, not interchangeable claims:
+
+- **Implemented:** the behavior is in source, but may not be tested or enabled.
+- **Verified:** a recorded test run passed for a specific revision or build, not later edits.
+- **Deployed:** the audited build or host revision was installed, with a private owner record.
+- **Accepted:** the behavior was checked on the approved physical devices.
+- **Proposed or unresolved:** a plan, or a status that still needs checking.
 
 ## Items requiring reconciliation
 
@@ -22,11 +24,11 @@ This is a reconciliation register, not a promise to implement or deploy features
 | Installed native build | The archive opens with Build 160 claims but also retains Build 147, Build 126, and source Build 127 status text. | Exact current installed products and private acceptance evidence. No single historical heading resolves this. |
 | Notifications | [APNs plan and later addenda](implementation-history.md#native-iphone-and-apple-watch-apns-scheduled-job-notifications) document evolving privacy and routing contracts. | Current signed capabilities, owner permissions, registration, dispatch gates, and accepted behavior. Code presence does not imply activation. |
 
-Some of these items may already have been deployed. They are unresolved **in the documentation review**, not asserted to be unfinished engineering work.
+Some items may already be installed and working. An open question here means the documentation is unclear, not necessarily that the feature is unfinished.
 
 ## Portfolio media and future captures
 
-The owner-approved [simulator showcase](../../../../docs/media/README.md) contains four actual app screenshots, a combined overview, and an eight-second interface-motion video. The isolated simulator builds use synthetic read-only data, no live integrations, and labels embedded in the exports. This is not an end-to-end task demo or a physical-device capture.
+The approved [simulator showcase](../../../../docs/media/README.md) includes four screenshots, an overview image, and an eight-second UI animation video. It uses isolated simulator builds and read-only sample data, labeled in each export. No live integrations or physical devices were used.
 
 Before adding or replacing media:
 
@@ -34,6 +36,6 @@ Before adding or replacing media:
 2. Capture only the relevant app surfaces, without issuing unapproved device commands or modifying live conversations.
 3. Remove or obscure contact data, job results, prompts, credentials, network/device identifiers, and notification content. Check the exported files and metadata, not only the visible crop.
 4. Obtain owner approval of the exact public assets.
-5. Add descriptive alt text and identify the demonstrated build; label staged/sample content honestly.
+5. Add descriptive alt text, identify the build, and label any sample data.
 
-Do not use an architecture diagram as if it were a screenshot or imply that an interactive diagram is a live public demo.
+Keep diagrams, simulator captures, and live demos clearly distinguished.

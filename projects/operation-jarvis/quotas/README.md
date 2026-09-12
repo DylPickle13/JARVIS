@@ -1,8 +1,8 @@
 # Operation JARVIS Provider Quotas
 
-Operation JARVIS quota and model-availability subsystem for Pi providers backed by OpenAI Codex and GitHub Copilot.
+Check the remaining quota and available models for Pi's OpenAI Codex and GitHub Copilot accounts.
 
-The checker reads Pi's saved OAuth credentials, refreshes tokens when needed, queries provider quota/model endpoints, and can save the latest result for local Pi and native JARVIS surfaces.
+The checker uses Pi's saved OAuth credentials and refreshes tokens when needed. It queries the providers' quota and model endpoints, then optionally saves a report for Pi and the native apps.
 
 ## Project files
 
@@ -26,7 +26,6 @@ Read-only checks:
   - 5-hour Codex usage/reset tracking and its separate enforcement status
   - weekly Codex usage/reset
 
-As announced on July 12, 2026, OpenAI temporarily removed five-hour enforcement for Plus, Pro, and Business plans. The report marks `primary_limit.enforced=false` rather than presenting an upstream slot as an active five-hour limit. Windows are classified by duration because OpenAI currently places the surviving seven-day window in `primary_window`; stable `five_hour` and `weekly` fields avoid confusing API slot names with limit types. Set `QUOTAS_CODEX_5H_LIMIT_STATUS=active` when enforcement returns.
   - Codex credit balance when present
   - banked rate-limit reset credit count when present
 - `GET https://chatgpt.com/backend-api/wham/rate-limit-reset-credits`
@@ -35,13 +34,15 @@ As announced on July 12, 2026, OpenAI temporarily removed five-hour enforcement 
 - `GET https://chatgpt.com/backend-api/codex/models?client_version=...`
   - Codex model catalog available to the account
 
-Optional probe checks send a real Pi prompt and may consume quota.
+The checker was adjusted for OpenAI's July 12, 2026 removal of five-hour enforcement on Plus, Pro, and Business plans. In that configuration, `primary_limit.enforced=false`. It identifies windows by duration because the seven-day window can appear in `primary_window`; use the stable `five_hour` and `weekly` fields rather than relying on upstream slot names. Set `QUOTAS_CODEX_5H_LIMIT_STATUS=active` if five-hour enforcement returns.
+
+Optional probes send a real Pi prompt and may consume quota.
 
 ### GitHub Copilot
 
 Uses the GitHub account authenticated through Pi's `github-copilot` login.
 
-As of June 1, 2026, Copilot usage-based billing is measured in **GitHub AI Credits** instead of premium request units for most plans. The checker now reports Copilot as `billing_model: ai_credits` when GitHub's internal quota snapshots indicate token-based billing. Legacy annual Pro/Pro+ accounts may still appear as premium-request based until their annual plan expires.
+Copilot moved most plans to **GitHub AI Credits** on June 1, 2026. The checker reports `billing_model: ai_credits` when GitHub's internal quota snapshot indicates token-based billing. Legacy annual Pro/Pro+ accounts may still report premium requests until renewal.
 
 Read-only checks:
 
@@ -137,28 +138,28 @@ Use probes only when you need to verify end-to-end model execution, not just quo
 
 Environment variables:
 
-- `PI_AUTH_PATH` — override the Pi auth file path. Default: `~/.pi/agent/auth.json`.
-- `QUOTAS_TZ` — timezone for local reset timestamps. Default: `America/New_York`.
-- `QUOTAS_CODEX_5H_LIMIT_STATUS` — operational override for five-hour enforcement; currently defaults to `temporarily_suspended`. Set to `active` when OpenAI restores it.
-- `CODEX_CLIENT_VERSION` — Codex model catalog client version. Default: `1.0.0`.
-- `QUOTAS_GITHUB_BILLING_TOKEN` — optional GitHub token for official Copilot AI Credits billing usage. Requires billing/plan permissions for the selected account level.
-- `QUOTAS_COPILOT_BILLING_SCOPE` — `auto`, `none`, `user`, `org`, or `enterprise`. Default: `auto`.
-- `QUOTAS_COPILOT_USERNAME` — username for user-level billing usage. If omitted and a billing token is present, the checker calls `GET /user`.
-- `QUOTAS_GITHUB_ORG` — organization for org-level billing usage.
-- `QUOTAS_GITHUB_ENTERPRISE` — enterprise slug for enterprise-level billing usage.
-- `QUOTAS_COPILOT_BILLING_COST_CENTER_ID` — optional enterprise cost-center filter.
-- `QUOTAS_COPILOT_BILLING_YEAR`, `QUOTAS_COPILOT_BILLING_MONTH`, `QUOTAS_COPILOT_BILLING_DAY` — optional billing usage period. Defaults to the current UTC month.
-- `QUOTAS_GITHUB_API_BASE_URL` — GitHub REST API base URL. Default: `https://api.github.com`.
-- `QUOTAS_GITHUB_API_VERSION` — GitHub REST API version. Default: `2026-03-10`.
-- `QUOTAS_COPILOT_MODELS_API_VERSION` — Copilot model-catalog API version. Default: `2026-06-01`.
+- `PI_AUTH_PATH`: override the Pi auth file path. Default: `~/.pi/agent/auth.json`.
+- `QUOTAS_TZ`: timezone for local reset timestamps. Default: `America/New_York`.
+- `QUOTAS_CODEX_5H_LIMIT_STATUS`: operational override for five-hour enforcement; currently defaults to `temporarily_suspended`. Set to `active` when OpenAI restores it.
+- `CODEX_CLIENT_VERSION`: Codex model catalog client version. Default: `1.0.0`.
+- `QUOTAS_GITHUB_BILLING_TOKEN`: optional GitHub token for official Copilot AI Credits billing usage. Requires billing/plan permissions for the selected account level.
+- `QUOTAS_COPILOT_BILLING_SCOPE`: `auto`, `none`, `user`, `org`, or `enterprise`. Default: `auto`.
+- `QUOTAS_COPILOT_USERNAME`: username for user-level billing usage. If omitted and a billing token is present, the checker calls `GET /user`.
+- `QUOTAS_GITHUB_ORG`: organization for org-level billing usage.
+- `QUOTAS_GITHUB_ENTERPRISE`: enterprise slug for enterprise-level billing usage.
+- `QUOTAS_COPILOT_BILLING_COST_CENTER_ID`: optional enterprise cost-center filter.
+- `QUOTAS_COPILOT_BILLING_YEAR`, `QUOTAS_COPILOT_BILLING_MONTH`, `QUOTAS_COPILOT_BILLING_DAY`: optional billing usage period. Defaults to the current UTC month.
+- `QUOTAS_GITHUB_API_BASE_URL`: GitHub REST API base URL. Default: `https://api.github.com`.
+- `QUOTAS_GITHUB_API_VERSION`: GitHub REST API version. Default: `2026-03-10`.
+- `QUOTAS_COPILOT_MODELS_API_VERSION`: Copilot model-catalog API version. Default: `2026-06-01`.
 
 CLI flags:
 
-- `--auth-path PATH` — auth file path.
-- `--data-dir DIR` — save directory for `latest.json`.
-- `--no-refresh` — do not refresh expired OAuth/IDE tokens.
-- `--json` — emit JSON.
-- `--save` — write the latest report to disk.
+- `--auth-path PATH`: auth file path.
+- `--data-dir DIR`: save directory for `latest.json`.
+- `--no-refresh`: do not refresh expired OAuth/IDE tokens.
+- `--json`: emit JSON.
+- `--save`: write the latest report to disk.
 
 ## Pi session cost summary
 
@@ -227,7 +228,7 @@ Notes:
 }
 ```
 
-Provider payloads mirror upstream responses where practical, so downstream consumers should tolerate missing/new fields and prefer the stable `ok`, `*_error`, `usage`, `models`, and `required_models` keys.
+Some fields follow the provider's response and can change. Code that reads the report should tolerate missing or new fields and use the stable `ok`, `*_error`, `usage`, `models`, and `required_models` keys where possible.
 
 ## Failure modes
 
@@ -252,7 +253,7 @@ Refresh it explicitly with:
 python3 projects/operation-jarvis/quotas/quotas.py check --json --save
 ```
 
-Native clients receive only the sanitized read-only jarvisd projection.
+The native apps receive a sanitized, read-only subset through `jarvisd`.
 
 ## Security notes
 

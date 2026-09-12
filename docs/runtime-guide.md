@@ -2,7 +2,7 @@
 
 [Project overview](../README.md) · [Native app operations](../projects/operation-jarvis/jarvis-app/docs/operations.md)
 
-JARVIS is a personal deployment with separately configured components. These commands are for a development setup, not an instruction to recreate or restart an existing live system. Keep credentials and runtime state outside Git.
+Set up only the components you plan to use. Work in a development checkout, leave existing live services alone, and keep credentials and runtime state out of Git.
 
 ## Initial setup
 
@@ -19,7 +19,7 @@ npm install --prefix .pi/extensions/lib
 npm install --prefix .pi/extensions/50-browser
 ```
 
-Copy `.env.example` only during initial setup; do not overwrite an existing private configuration. Install Pi and project packages using the [detailed rebuild instructions](../.pi/docs/REBUILD_FROM_SCRATCH.md). Integration credentials, model providers, host mappings, and devices must be configured for the components you intend to use.
+Copy `.env.example` only for a new setup; do not overwrite an existing configuration. Follow the [rebuild instructions](../.pi/docs/REBUILD_FROM_SCRATCH.md) to install Pi and the project packages, then configure your model provider, credentials, hosts, and devices.
 
 On a configured host, the documented read-only smoke test is:
 
@@ -27,7 +27,7 @@ On a configured host, the documented read-only smoke test is:
 .pi/smoke-test.sh
 ```
 
-Read its scope before running it against a live environment. This documentation change did not run runtime smoke tests, contact devices, or restart services.
+Check the script's scope before running it against a live environment. The documentation review did not run it or restart any services.
 
 ## Component map
 
@@ -51,15 +51,15 @@ Read-only inventory:
 .venv/bin/python .pi/scheduler/runner.py --json list
 ```
 
-The private database is `.pi/scheduler/scheduler.sqlite`; directory/file modes are `0700/0600`. Retention is bounded to 500 results, each capped at 64 KiB. Silent successful checks update health without creating a result; output-producing successes and failures are retained. Native Jobs reads expose sanitized bounded results, not prompts, models, command lines, credentials, or private runtime paths.
+The scheduler uses `.pi/scheduler/scheduler.sqlite`, with directory/file permissions of `0700/0600`. It keeps up to 500 results, each at most 64 KiB. A successful check with no output updates health without adding a result; successes with output and failures are saved. The native Jobs view receives sanitized results, without prompts, models, command lines, credentials, or private paths.
 
-Inside Pi, load the optional `cron` tool group and use `jarvis_cron`. Native Jobs is intentionally read-only. Installing or changing the scheduler is a separate owner-authorized operation. For initial host setup only, after that authorization, the installation command is:
+Inside Pi, load `cron` and use `jarvis_cron`. The native Jobs view is read-only. Installing or changing the scheduler requires owner approval. Once approved, use this command for initial host setup:
 
 ```bash
 .venv/bin/python .pi/scheduler/runner.py --json install
 ```
 
-That command installs the periodic launchd runner; it is not a status check. Notification implementation and activation are separate. Do not infer that APNs is dormant or active from old README wording; consult the [notification boundaries](../projects/operation-jarvis/jarvis-app/docs/architecture.md#notifications-and-privacy).
+This installs the periodic launchd runner; it is not a status check. Notifications also need their own configuration and approval. See [notification setup and privacy](../projects/operation-jarvis/jarvis-app/docs/architecture.md#notifications-and-privacy) rather than relying on old APNs activation notes.
 
 ## Native app
 
@@ -70,7 +70,7 @@ cd projects/operation-jarvis/jarvis-app
 ./scripts/verify-jarvis-app.sh
 ```
 
-The verifier includes XcodeGen project generation and writes build artifacts. Read [operations](../projects/operation-jarvis/jarvis-app/docs/operations.md) for prerequisites, test opt-ins, signing, and physical deployment gates. Never rebuild between archive audit and installation; use only separately authorized exact audited products and approved devices.
+The verifier regenerates the Xcode project and writes build artifacts. See [operations](../projects/operation-jarvis/jarvis-app/docs/operations.md) for dependencies, optional tests, signing, and device installation. Install only the approved, audited build on approved devices. Do not rebuild it between audit and installation.
 
 ## Room audio
 
@@ -82,13 +82,13 @@ Read-only health on a configured Mac host:
 curl -fsS http://127.0.0.1:8791/health | python3 -m json.tool
 ```
 
-See the [room-audio README](../projects/operation-jarvis/raspberry-pi/room_audio/README.md) for backend-specific setup. Health access is not permission to start, stop, install, or reconfigure audio services.
+See the [room-audio README](../projects/operation-jarvis/raspberry-pi/room_audio/README.md) for backend-specific setup. A health check does not authorize starting, stopping, installing, or reconfiguring audio services.
 
 ## Pi tool loading
 
 Always-on tools cover coding, SSH, web research/fetch, Maps, and `load_tools`. Optional groups include `memory`, `code_docs`, `jarvis`, `minecraft_jarvis`, `github`, `google`, `cron`, `browser`, and `reaper`.
 
-Load only the group needed for a task. Hardware actions remain explicit and bounded; scheduler and Jobs reads are separate from device actions. See [Pi extension documentation](../.pi/docs/PI_EXTENSIONS.md).
+Load only the group you need. Reading Jobs or scheduler status does not authorize device actions. See the [Pi extension guide](../.pi/docs/PI_EXTENSIONS.md).
 
 ## Runtime safety
 

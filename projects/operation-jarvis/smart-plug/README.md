@@ -2,11 +2,11 @@
 
 Local control for TP-Link Kasa HS103 smart plugs used around the house by Operation JARVIS.
 
-**Local/private operations note:** this README intentionally contains local plug names, LAN IPs, and credential-loading paths. Keep it private; do not publish without review.
+The examples use placeholders for LAN addresses. Keep your actual plug addresses and credentials in private configuration, and review local copies of these notes before sharing them.
 
 **Appliance safety:** avoid unattended automation for heating or high-risk devices.
 
-Current configured plugs:
+Recorded plug configuration, with addresses removed:
 
 ```text
 <configured-plug-name> -> <private-lan-ip>    label: configured room light, verified locally controllable
@@ -17,7 +17,7 @@ tv -> <private-lan-ip>              label: TV, verified locally controllable
 
 ## Preferred JARVIS control
 
-For Pi/local-model tool use, load the JARVIS tool group and use the dedicated `smart_plug` tool. The normal schema is intentionally small: `action` is required, and `plug` is only needed for `status`, `on`, `off`, or `toggle`.
+In Pi, load the `jarvis` tool group and use `smart_plug`. Every call needs an `action`; add `plug` only for `status`, `on`, `off`, or `toggle`.
 
 Before turning on a plug attached to an appliance, confirm the attached device is safe to energize and supervised.
 
@@ -91,7 +91,7 @@ If the Kasa app was originally using Google/Apple/social login, set a real TP-Li
 
 Third-Party Compatibility must remain enabled in the Kasa/Tapo app for local third-party control. TP-Link disables this by default on newer firmware; when it was disabled, the plugs were discoverable but rejected local KLAP authentication.
 
-If plugs were genuinely onboarded before and after a TP-Link password change, their device-local KLAP credentials may differ. Add extra passwords locally; JARVIS will try them in order:
+Plugs set up before and after a TP-Link password change may retain different local KLAP credentials. Add alternate passwords to your private configuration; JARVIS tries them in order:
 
 ```env
 KASA_USERNAME=your_tp_link_email@example.com
@@ -101,7 +101,7 @@ KASA_PASSWORD_2=alternate_password
 
 ## Setup from scratch
 
-The main Operation JARVIS virtualenv may use Python 3.9 for older voice/Cast dependencies. This smart-plug subsystem intentionally has its own Python 3.11+ virtualenv because HS103 hardware v5 needs a newer `python-kasa` KLAP v2 auth path.
+Use a separate Python 3.11+ virtual environment for smart plugs. HS103 hardware v5 needs the newer `python-kasa` KLAP v2 authentication support; the main Operation JARVIS environment may use Python 3.9 for older voice/Cast dependencies.
 
 ```bash
 cd /path/to/JARVIS/projects/operation-jarvis/smart-plug
@@ -142,7 +142,7 @@ This project installs a `python-kasa` PR build because the normal PyPI build fai
 
 ## Discovery
 
-Discovery runs natively on the LAN. If a device still does not answer discovery, direct IP control works once it is listed in `plugs.json`.
+Discovery runs on the local network. A plug that does not answer discovery can still be controlled by IP once it is listed in `plugs.json`.
 
 From Operation JARVIS:
 

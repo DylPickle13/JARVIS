@@ -1,19 +1,25 @@
-# scripts/
+# App scripts
 
-Build and deployment helpers. The iPhone SwiftTerm renderer requires Xcode's
-optional Metal component; install it once with
-`xcodebuild -downloadComponent MetalToolchain` if needed.
+These scripts build, verify, package, and install the Apple apps and terminal service.
+Read the [operations guide](../docs/operations.md) before running installers or
+signing helpers. The Personal Team procedures below are retained for reference;
+they do not establish the current signing setup or authorize a device installation.
 
-- `redeploy-jarvis-app.sh` — builds and installs the free-provisioned iPhone
+The iPhone SwiftTerm renderer needs Xcode's optional Metal component. Install it
+once with `xcodebuild -downloadComponent MetalToolchain` if needed.
+
+## Signing and packaging
+
+- `redeploy-jarvis-app.sh`: builds and installs the free-provisioned iPhone
   app through CoreDevice. This is appropriate for iPhone-only iteration, but
   iOS records a `skip watch app install` flag for this route. Do not use it as
   evidence of companion registration or transfer.
-- `redeploy-jarvis-watch.sh` — builds and directly installs the Watch product
-  against the paired physical Watch. This is the permitted Personal Team
-  developer-install route. A direct install is authoritative only after the
-  corrected parent package is registered on the iPhone and both installed
-  flags are checked.
-- `renew-free-signing.sh` — a retained fixed, argument-free manual recovery
+- `redeploy-jarvis-watch.sh`: builds and directly installs the Watch product
+  against the paired physical Watch. This is the retained Personal Team
+  developer-install route. Register the corrected parent package on the iPhone
+  first, then check both installed flags before treating the companion install
+  as complete.
+- `renew-free-signing.sh`: a retained fixed, argument-free manual recovery
   action. Build 144 removes the obsolete iPhone Developer Signing destination
   after paid-program enrollment. The script reads a private mode-600 allowlist from
   `$HOME/Library/Application Support/JARVIS/signing-renewal/config.env`, asks
@@ -25,10 +31,12 @@ optional Metal component; install it once with
   phase and retains only the allowlisted phase that failed. Progress is written
   atomically to `status.json`; a duplicate run is locked out. The
   script never uninstalls, unpairs, reboots, or accepts a client command/path.
-- `patch-watch-embedding.sh` — keeps XcodeGen's `Embed Watch Content` phase at
+- `patch-watch-embedding.sh`: keeps XcodeGen's `Embed Watch Content` phase at
   `JARVIS.app/Watch/` (`dstSubfolderSpec = 16`), the Xcode 26 layout accepted by
   the corrected iPhone/Watch target relationship.
-- `jarvis-mobile-terminal.sh` — macOS SSH bootstrap for the phone terminal. It
+## Terminal scripts
+
+- `jarvis-mobile-terminal.sh`: macOS SSH bootstrap for the phone terminal. It
   supplies Homebrew's PATH and maps only fixed slots `1...9` to `jarvis-ios`
   through `jarvis-ios-9`. It creates the selected session detached
   when absent, tolerates concurrent creation, launches Pi's regular main-screen
@@ -37,7 +45,7 @@ optional Metal component; install it once with
   issuing a resize, and then attaches the phone PTY. No arguments retain Slot 1
   compatibility; `--slot 1|2|3|4|5|6 --ensure-only` lets the Watch bridge create a
   fixed session without attaching another client or changing its dimensions.
-- `install-jarvis-terminald.sh` — installs and starts the separate authenticated
+- `install-jarvis-terminald.sh`: installs and starts the separate authenticated
   HTTPS Watch/Siri terminal bridge on TCP `8792`. Build 39 captures a bounded
   ANSI-styled tmux-history grid for local Crown scrolling; build 40 atomically
   pastes a Siri prompt and its Return in one ordered buffer. Build 54 adds a
@@ -49,12 +57,14 @@ optional Metal component; install it once with
   invocation; concurrent long polls share samples, and confirmed input triggers
   an immediate refresh. It does not infer Pi concepts from ANSI, accept arbitrary
   speech text, control hardware, or route through `jarvisd`.
-- `jarvis-terminal-provisioning.sh` — prints the private, certificate-pinned
+- `jarvis-terminal-provisioning.sh`: prints the private, certificate-pinned
   setup code that is pasted once into iPhone Settings and transferred to the
   paired Watch through WatchConnectivity. Existing LAN setup codes also derive
   stable MagicDNS and current Tailscale bridge fallbacks in build 34; no secret
   retransmission is required. Never commit or post the code's output.
-- `verify-jarvis-app.sh` — runs project-contained daemon and package tests,
+## Verification
+
+- `verify-jarvis-app.sh`: runs the local daemon and package tests,
   plist/shell checks, opaque icon validation, combined iOS/embedded-Watch
   simulator verification, and the standalone watchOS simulator build. Its Watch
   contracts require the exact ANSI mirror, Crown-only read-only viewport, direct
@@ -76,21 +86,18 @@ optional Metal component; install it once with
   retried, replayed, or delivered after mouse mode/disconnection. iOS and live
   integration tests remain opt-in.
 
-For initial companion registration under free provisioning:
+## Historical free-provisioning procedure
+
+For reference, initial companion registration under free provisioning used these steps:
 
 1. archive/export a signed debugging IPA with Xcode;
 2. install the parent IPA through `ideviceinstaller` so CoreDevice's skip-Watch
    option is not used;
-3. do **not** rely on **My Watch → Available Apps → Install** — watchOS rejects
+3. do **not** rely on **My Watch → Available Apps → Install**: watchOS rejects
    free-profile apps from that source with `MIInstallerErrorDomain Code=111`;
 4. install the exact `JARVIS.app/Watch/JARVISWatch.app` from the same archive
    through Xcode/CoreDevice's Watch developer service;
 5. verify both installed flags and then test reachability.
 
-Start with the current safety gates and links to retained signing, identity,
-diagnostics, and non-destructive recovery procedures in:
-
-[`../docs/operations.md`](../docs/operations.md)
-
-Historical Personal Team procedures above are not a statement of current signing
-configuration or authorization to install on a device.
+For current build checks, installation approval, and recovery, use the
+[operations guide](../docs/operations.md), not this historical procedure alone.

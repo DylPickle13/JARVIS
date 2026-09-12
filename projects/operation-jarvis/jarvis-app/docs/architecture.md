@@ -2,7 +2,7 @@
 
 [App overview](../README.md) · [Documentation index](README.md) · [Operations](operations.md)
 
-This is an implementation overview, not a live deployment audit. Historical contracts and build-specific exceptions remain in the [development archive](development-history.md) and [implementation archive](implementation-history.md).
+Pi sessions run on the Mac. The apps connect to those sessions and use separate APIs for device controls and status. Earlier designs and build-specific notes are in the [development archive](development-history.md) and [implementation archive](implementation-history.md).
 
 ## Components and ownership
 
@@ -24,21 +24,21 @@ Source entry points: [app root](../JARVIS/JARVISApp.swift), [shared package](../
 
 The iPhone terminal uses SwiftTerm and SwiftNIO SSH to attach to fixed Mac-side Pi sessions. Watch and Siri use the separate terminal relay. Pi owns conversation continuity and invokes configured models and tools. Clients reconnect to persistent sessions instead of treating every app launch as a new conversation.
 
-The current source supports nine fixed mobile slots. Older six-slot and three-slot notes describe earlier checkpoints, not the current source interface. This count does not prove how many processes are running on a live host.
+The source supports nine fixed mobile slots; older notes describe three- and six-slot versions. Check the host to see which sessions are actually running.
 
 ### Direct native controls
 
-A native plug or purifier action goes to `jarvisd`, not through an LLM. The daemon validates the action and parameters and delegates to the existing JARVIS device-control implementation. Per-resource state, concurrency, and freshness checks prevent an unrelated stale subsystem from being treated as authority for a command.
+Plug and purifier buttons call `jarvisd` directly, without an LLM. The daemon validates the request, then calls the existing device adapter. Each resource has its own state, concurrency, and freshness checks, so a command cannot rely on stale state from another subsystem.
 
 ### State and results
 
-Background collectors populate cached state. HTTP handlers read that cache rather than starting expensive device probes for every UI request. Last-good values carry freshness/error information; cached data must not be labeled live after its freshness window expires. Authoritative command results must not be overwritten by older in-flight reads.
+Background collectors update a cache so each UI request does not need a fresh device probe. Saved values include their freshness and any errors. Once stale, they must no longer appear live. An older read that finishes late must not overwrite a confirmed command result.
 
-Native Jobs surfaces consume bounded scheduler inventory and retained results. They do not expose prompts, model configuration, command lines, private database paths, or schedule mutation. Notification delivery, when explicitly configured, is separate from reading durable results.
+Jobs reads the scheduler's limited inventory and saved results. It cannot edit schedules and does not expose prompts, model configuration, command lines, or private database paths. Notifications are configured separately; reading a result does not send one.
 
 ### Room audio
 
-The Raspberry Pi endpoint and Mac voice pipeline belong to the wider JARVIS project. Native room-audio state and its bounded Stop route do not make the app a microphone/wake-word engine. See the [room-audio documentation](../../raspberry-pi/room_audio/README.md).
+The Raspberry Pi handles microphone capture and wake detection; the Mac handles transcription and responses. The app shows room-audio status and can stop the current turn. See the [room-audio guide](../../raspberry-pi/room_audio/README.md).
 
 ## Security and trust boundaries
 
@@ -53,12 +53,12 @@ The Raspberry Pi endpoint and Mac voice pipeline belong to the wider JARVIS proj
 
 ## Notifications and privacy
 
-The repository implements notification registration, delivery, and routing, but a checked-in implementation does not prove that host dispatch or device permissions are enabled. Source support, signed capabilities, owner opt-in, registration, and host activation are independent gates.
+Notifications need more than app code: the signed build must have the right capabilities, the owner must opt in, devices must register, and the host must enable dispatch. Check each step before assuming alerts are active.
 
-Historical Build 144 notes specified generic-only job alerts; later Build 145 notes changed that contract to bounded sanitized job-name/result previews. Do not use the older generic-only language as a blanket current privacy promise. Full output is read through Jobs, not placed in the notification payload. See the [notification implementation history](implementation-history.md#native-iphone-and-apple-watch-apns-scheduled-job-notifications) and its [privacy addendum](implementation-history.md#build-145-privacy-contract-addendum) before changing this boundary.
+Build 144 used generic job alerts. Build 145 added short, sanitized job names and result previews, so the earlier generic-only description no longer covers the notification format. Full output stays in Jobs. Read the [notification history](implementation-history.md#native-iphone-and-apple-watch-apns-scheduled-job-notifications) and [privacy update](implementation-history.md#build-145-privacy-contract-addendum) before changing payload contents.
 
 ## Limits and evidence
 
-The clients depend on compatible host services, configured integrations, and platform permissions. Local-first agent access can still invoke external model providers and services. Native state/command APIs and model providers have different trust boundaries.
+The apps need compatible host services, configured integrations, and platform permissions. Agent requests can use external model providers even though the sessions run locally; device APIs and model providers have separate access rules.
 
-The [daemon tests](../jarvisd/tests/), [terminal tests](../terminald/tests/), and [Swift tests](../JARVISKit/Tests/JARVISKitTests/) provide implementation evidence. Their presence is not a claim of a fresh passing run, public security certification, or live-device acceptance.
+Tests cover the [daemon](../jarvisd/tests/), [terminal relay](../terminald/tests/), and [shared Swift code](../JARVISKit/Tests/JARVISKitTests/). See [operations](operations.md#verification) for running them. Passing tests does not replace checking the signed build and its behavior on the intended devices.

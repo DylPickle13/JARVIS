@@ -2,7 +2,7 @@
 
 Updated: 2026-08-30 EDT
 
-This runbook rebuilds the JARVIS repo, Pi extensions, local scheduler, and local tool surface from a fresh machine or fresh clone. It assumes you have access to the private secrets that are intentionally not stored in git.
+Use this guide for a new machine or fresh clone. It covers the repository, Pi extensions, scheduler, and optional tools. You will need your private credentials and configuration backups; Git does not contain them. Do not use the setup commands to overwrite an existing live installation.
 
 ## 0. What must be backed up separately
 
@@ -53,7 +53,7 @@ npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 pi --version
 ```
 
-Authenticate Pi with `/login` or provide API keys in `.env`/shell. For local Pi RPC operation, the important setting is that the `pi` command on `PATH` works from this repo.
+Authenticate with Pi's `/login` or supply the selected provider's API keys through `.env` or the shell. Pi RPC needs a working `pi` command on `PATH` when run from this repository.
 
 ## 2. Clone the repo
 
@@ -86,7 +86,7 @@ Customize these ignored local files before starting Pi:
 - `.pi/APPEND_SYSTEM.md`: restore preferred address, timezone, aliases, local operating rules, and the project-specific Pi session JSONL directory for direct historical lookup.
 - `.pi/ssh-hosts.json`: replace example hosts with only explicitly trusted machines and narrow allowed directory prefixes.
 
-If private backups exist, restore them instead of copying the templates, then run `chmod 600` on the four local files and `chmod 700` on the private directories shown above. Do not commit the resulting local files. The templates are deliberately safe and cannot reproduce private host addresses, usernames, key locations, device aliases, or personal preferences without customization.
+If you have private backups, restore those instead of copying templates. Set the four local files to `chmod 600` and the private directories to `chmod 700`. Keep them out of Git. The templates contain placeholders; fill in your own host addresses, usernames, key locations, device aliases, and preferences.
 
 `.pi/extensions/00-private-permissions.ts` reapplies these owner-only modes whenever Pi starts, including mode `0700` on `attachments/` and mode `0600` on loose attachment files. The memory and scheduler runners also enforce mode `0600` on their SQLite databases and sidecars, with mode `0700` on their default data directories.
 
@@ -193,16 +193,16 @@ If you restored old Pi session JSONL files, record their project-specific direct
 
 ## 8. Smoke-test the extension/tool stack
 
-Run the one-command, non-mutating smoke test first:
+Start with the read-only smoke test:
 
 ```bash
 cd /path/to/JARVIS
 .pi/smoke-test.sh
 ```
 
-That script is intentionally read-only: it checks files, local package installs, command availability, CLI `--help` paths, env key names, runtime-data presence, and doc links. It does **not** start services, call LLMs, launch Chrome, touch Apple devices, control Cast/Spotify/Kasa, call oMLX/Google APIs, or open SQLite status commands that could initialize databases.
+It checks files, installed packages, commands and CLI `--help`, environment key names, runtime-data presence, and documentation links. It does not start services, call models or oMLX/Google APIs, launch Chrome, touch Apple devices, control Cast/Spotify/Kasa, or open SQLite status commands that could create databases.
 
-Deeper local status checks, if you intentionally want to open/read the local SQLite-backed runners:
+For more detail, these status commands open the local SQLite-backed runners:
 
 ```bash
 cd /path/to/JARVIS
@@ -265,7 +265,7 @@ A simple Pi session should show baseline tools plus `load_tools`. Inside Pi, che
 
 ```text
 /lazy-tools
-/load-tools memory,sessions,browser
+/load-tools memory,browser
 /reset-tools
 ```
 
@@ -275,7 +275,9 @@ The project also exposes exactly one parameterless attachment command:
 /attach
 ```
 
-On a directly operated Mac this opens the native picker. From another Mac, start the SSH shell from a JARVIS checkout with `.pi/scripts/jarvis-pi-ssh <host>` before launching Pi; plain SSH intentionally cannot open a dialog on the client computer. Selected files are stored directly under ignored `attachments/` with owner-only modes; the staged queue is memory-only and resets when Pi exits. Run its non-GUI tests without opening a picker:
+On the local Mac, `/attach` opens the native file picker. From another Mac, connect with `.pi/scripts/jarvis-pi-ssh <host>` from a JARVIS checkout before starting Pi. Plain SSH cannot open a picker on the client computer.
+
+Selected files go into ignored `attachments/` with owner-only permissions. The unsent queue stays in memory and clears when Pi exits. To test without opening a picker:
 
 ```bash
 node --test .pi/scripts/tests/pi-attach-*.test.mjs .pi/scripts/tests/jarvis-pi-ssh.test.mjs
@@ -306,7 +308,7 @@ On macOS, install the one-minute launchd runner explicitly:
 .venv/bin/python .pi/scheduler/runner.py --json install
 ```
 
-The owner-only database retains at most 500 sanitized output-producing successes and failures. Silent successful checks update job health without creating inbox records.
+The owner-only database keeps up to 500 sanitized results from successes with output and from failures. A successful check with no output updates job health without adding an inbox item.
 
 ## 10. Post-rebuild verification checklist
 

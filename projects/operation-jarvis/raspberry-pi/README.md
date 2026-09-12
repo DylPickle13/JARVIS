@@ -1,10 +1,8 @@
 # Raspberry Pi
 
-Operation JARVIS Raspberry Pi endpoint documentation and helper scripts.
+The Raspberry Pi handles room microphone capture, wake detection, and speaker playback. This folder contains its client scripts, service setup, and hardware troubleshooting notes.
 
-**Local/private operations note:** this README intentionally contains LAN IPs, SSH users/keys, Bluetooth MACs, service names, and recovery commands. Keep it private; do not publish without review.
-
-Project folder: `projects/operation-jarvis/raspberry-pi/`
+Network addresses are placeholders. Keep your actual addresses, credentials, and device identifiers in private configuration, and review local copies before sharing them. The recorded setup below is a reference, not a fresh check of the live Pi.
 
 ## Recovery quick actions
 
@@ -18,7 +16,7 @@ Project folder: `projects/operation-jarvis/raspberry-pi/`
 
 ## Quick status
 
-| Item | Current value |
+| Item | Recorded setup |
 |---|---|
 | Hostname | `raspberrypi` |
 | LAN IP | `<private-lan-ip>` |
@@ -34,20 +32,20 @@ Project folder: `projects/operation-jarvis/raspberry-pi/`
 
 ## Purpose
 
-1. **Operation JARVIS room audio endpoint** — microphone and speaker bridge for the room.
-2. **Headless Pi services** — lightweight CLI-only support processes.
-3. **Hardware test bed** — audio, display, and small automation experiments.
+- Room microphone and speaker for JARVIS.
+- Lightweight, headless support services.
+- Audio, display, and small automation experiments.
 
 ## Important docs
 
-- [`room_audio/README.md`](./room_audio/README.md) — current room-audio bridge, VAD, Bluetooth profile-switching, and server/client commands.
-- [`docs/audio-hardware.md`](./docs/audio-hardware.md) — Anker PowerConf USB/Bluetooth hardware notes.
-- [`docs/display-hdmi-console.md`](./docs/display-hdmi-console.md) — known-good HDMI terminal state and recovery commands.
-- [`docs/upgrade-log-20260517.md`](./docs/upgrade-log-20260517.md) — detailed fresh Bookworm install and troubleshooting log.
+- [`room_audio/README.md`](./room_audio/README.md): current room-audio bridge, VAD, Bluetooth profile-switching, and server/client commands.
+- [`docs/audio-hardware.md`](./docs/audio-hardware.md): Anker PowerConf USB/Bluetooth hardware notes.
+- [`docs/display-hdmi-console.md`](./docs/display-hdmi-console.md): known-good HDMI terminal state and recovery commands.
+- [`docs/upgrade-log-20260517.md`](./docs/upgrade-log-20260517.md): detailed fresh Bookworm install and troubleshooting log.
 
 ## SSH access
 
-From this JARVIS coding-agent environment:
+From a configured Mac, using your private host address:
 
 ```bash
 ssh -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes pi@<private-lan-ip>
@@ -82,9 +80,9 @@ From JARVIS, use the SSH tool with explicit host `raspberrypi`; no VM or jump ho
 
 ## Room audio
 
-The active room-audio endpoint is documented in [`room_audio/README.md`](./room_audio/README.md).
+The [room-audio guide](./room_audio/README.md) covers server and client setup.
 
-Current deployed shape:
+Recorded audio path:
 
 ```text
 PowerConf USB mic/speaker
@@ -98,7 +96,7 @@ PowerConf USB mic/speaker
   -> full-duplex USB playback
 ```
 
-Important current details:
+Audio setup notes:
 
 - Capture/playback: Anker PowerConf USB ALSA at 48 kHz (`plughw:CARD=PowerConf,DEV=0`).
 - Persistent listener service: `jarvis-room-audio.service`.
@@ -111,7 +109,7 @@ Use a good powered USB hub if electrical instability returns.
 
 ## Pi-side client deployment
 
-Current client destination on the Pi:
+Client destination in this setup:
 
 ```text
 /home/pi/jarvis-room-audio-client.py
@@ -125,9 +123,9 @@ scp -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes \
   pi@<private-lan-ip>:/home/pi/jarvis-room-audio-client.py
 ```
 
-Current listener command is in [`room_audio/README.md`](./room_audio/README.md).
+The listener command is in the [room-audio guide](./room_audio/README.md).
 
-Install or refresh the boot-time service from this repo. The installer intentionally requires the Pi target and Mac room-audio URL:
+With approval to change the Pi service, install or refresh it from this repo. The installer requires both the Pi target and Mac room-audio URL:
 
 ```bash
 PI_HOST=raspberrypi \
@@ -144,7 +142,7 @@ ssh -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes pi@<private-lan-ip> \
 
 ## HDMI display / monitor recovery
 
-The Pi monitor is intentionally left in safe console mode because starting LightDM/X made the monitor go blank after boot. The working state is:
+Starting LightDM/X made the monitor go blank after boot, so the recorded setup uses console mode:
 
 - `/boot/firmware/cmdline.txt` contains `video=HDMI-A-1:1024x768@60D`.
 - Boot target is `multi-user.target`.
@@ -188,13 +186,13 @@ projects/operation-jarvis/raspberry-pi/scripts/check-pi.sh
 
 ## Backup and image locations
 
-configured host backup path:
+Example backup location:
 
 ```text
 /path/to/JARVIS-Backups/raspberry-pi/20260517-145635-EDT
 ```
 
-configured host image cache:
+Example image cache:
 
 ```text
 /path/to/JARVIS-Backups/raspberry-pi/image-cache/

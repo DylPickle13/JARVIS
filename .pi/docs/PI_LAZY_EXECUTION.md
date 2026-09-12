@@ -2,10 +2,10 @@
 
 ## Behavior
 
-Optional schemas start hidden. `load_tools` still discovers and activates groups.
-On the patched JARVIS runtime, a valid direct call to a registered lazy tool also
-activates its group and executes the original call once—no retry or additional
-model round trip.
+Optional tool schemas start hidden. Use `load_tools` to discover and activate a
+group. The patched JARVIS runtime can also handle a valid direct call to a
+registered optional tool: it loads the group and runs that call once, without a
+retry or another model round trip.
 
 - Only tools in `.pi/extensions/99-lazy-tools.ts`'s `TOOL_GROUPS` are opted in.
 - Unknown, removed, unlisted inactive, and CLI/SDK-excluded tools do not resolve.
@@ -23,12 +23,12 @@ model round trip.
 
 ### Cache behavior
 
-No broad tool-schema advertising or provider-payload hiding is introduced.
-Explicit loading retains Pi's native deferred-tool markers. Pi deliberately keeps
-an already-used tool immediate rather than declaring its schema after first use:
-a direct call can therefore refresh the prefix once. Unused sibling tools can
-still be deferred. Non-native providers retain the full-active-tools fallback.
-The system prompt does not change when these optional tools are activated.
+This does not advertise all optional schemas or hide provider payloads. Explicit
+loading keeps Pi's native deferred-tool markers. A directly called tool may refresh
+the prefix once because Pi keeps an already-used tool's schema immediate, rather
+than declaring it after first use. Unused tools in the same group can still be
+deferred. Providers without native support receive the full active-tool list.
+Activating optional tools does not change the system prompt.
 
 ## Core changes
 
@@ -44,8 +44,8 @@ commit `d981de1229ef899957bbe968bc8dcda02a21f477`.
 2. `ExtensionAPI.setLazyTools(names)` replaces an explicit hidden-execution
    allowlist. It resolves only allowed entries in the wrapped session registry;
    it neither registers tools nor activates schemas. Runtime rebuild clears it.
-3. JARVIS sets this allowlist in `session_start`. Its validated `tool_call` hook
-   activates the canonical group instead of returning “load first, then retry.”
+3. JARVIS sets the allowlist in `session_start`. After validation, its `tool_call`
+   hook activates the registered group instead of asking the model to load it and retry.
 4. AgentSession records additive preflight activations. Agent core carries those
    markers and appended guidance into success, error, block, and cancellation
    results. Existing tool execution wrappers are not bypassed.
@@ -56,7 +56,7 @@ CLI/SDK exclusion. Do not treat merely hiding a lazy tool as a permission gate.
 
 ## Build, test, activate
 
-From `/Users/dylanrapanan/JARVIS`:
+From the repository root, in a development checkout:
 
 ```bash
 node .pi/scripts/pi-lazy-runtime.mjs build
@@ -84,20 +84,19 @@ verified build. Existing completed builds are reused only after regression tests
 An incomplete build is not overwritten automatically: inspect/move its directory
 before retrying. Keep release artifacts while their runtime is installed.
 
-Activation atomically changes the global npm `bin/pi` symlink to the tested
-release. **The stock global package is not edited or removed.** The original link
-is recorded in `.pi/runtime/pi-lazy-tools/installation.json` for rollback. Both
-normal `pi` and `pi --mode rpc` use the new bundle. SDK consumers importing the
-stock global package remain stock; import the release package identified by
-`build.json.runtime` when the patched SDK is needed.
+Installation atomically points the global npm `bin/pi` symlink at the tested
+release. It leaves the stock package untouched and saves the original link in
+`.pi/runtime/pi-lazy-tools/installation.json` for rollback. Both `pi` and
+`pi --mode rpc` then use the new bundle. SDK imports from the stock package still
+use stock Pi; import the release named in `build.json.runtime` for the patched SDK.
 
 **Restart Pi processes to use the new core. `/reload` alone cannot upgrade an
 already running Pi core.** Existing sessions are not killed or restarted by the
 installer. This installation is local to mac-mini-64, not the remote hosts.
 
-A future global npm upgrade can replace `bin/pi`. Check `status` afterward. The
-installer refuses to overwrite an unexpected executable or silently downgrade a
-newer stock Pi version; review/rebase the patch when upgrading.
+A global npm upgrade can replace `bin/pi`, so check `status` afterward. The
+installer will not overwrite an unexpected executable or silently downgrade a
+newer stock Pi. Review and rebase the patch when upgrading.
 
 ## Rollback
 

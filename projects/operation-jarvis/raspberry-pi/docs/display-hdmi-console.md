@@ -2,13 +2,13 @@
 
 Date documented: 2026-05-20 EDT
 
-This note captures the working display state discovered while testing the Pi on the Dell P1913 monitor. The symptom was:
+During testing with a Dell P1913 monitor, the Pi showed boot output but lost the display when the desktop started:
 
 1. The monitor showed the Pi boot messages.
 2. The terminal appeared briefly.
 3. As soon as the graphical desktop / LightDM took over, the monitor went blank.
 
-SSH continued to work the entire time, so the Pi was healthy; this was an HDMI/KMS/X desktop display issue.
+SSH kept working, which pointed to the HDMI/KMS/X display setup rather than a failed boot. The configuration and session notes below are from that test, not a new check of the live Pi.
 
 ## Known-good visible state
 
@@ -27,14 +27,14 @@ The known-good state is **console-only safe mode**:
 | Active terminal | `tty1` |
 | Kernel mode override | `video=HDMI-A-1:1024x768@60D` |
 
-Current boot command-line setting on the Pi:
+Boot command line recorded during the test:
 
 ```txt
 /boot/firmware/cmdline.txt
 ... console=tty1 root=PARTUUID=44f56462-02 rootfstype=ext4 fsck.repair=yes rootwait cfg80211.ieee80211_regdom=CA video=HDMI-A-1:1024x768@60D
 ```
 
-Current systemd/package state:
+Recorded systemd/package state:
 
 ```bash
 sudo systemctl set-default multi-user.target
@@ -53,9 +53,9 @@ That service switches to `tty1`, disables console blanking, and draws a bright f
 
 ## Do not start the desktop blindly
 
-Starting LightDM/X made the monitor blank again, even after the safe HDMI mode was forced. LightDM has now been removed, so graphical desktop work should be treated as a deliberate reinstall/debug task, not a casual service start.
+LightDM/X blanked the monitor even with the safe HDMI mode forced. LightDM was removed in this setup. Bringing the desktop back needs a planned reinstall and debugging session, not just a service start.
 
-If the display goes blank after experimenting with graphics, restore console mode with the commands below.
+The commands below restore console mode. Check the target Pi and obtain approval before changing its boot settings, services, or rebooting it.
 
 ## Print text directly to the monitor terminal
 

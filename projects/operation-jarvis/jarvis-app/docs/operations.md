@@ -2,14 +2,14 @@
 
 [App overview](../README.md) · [Architecture](architecture.md) · [Documentation index](README.md)
 
-This guide is an entry point and safety checklist. It does not authorize deployment or establish which build is installed. Historical commands are retained in the linked archives; revalidate their versions, device selectors, and signing assumptions before use.
+Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.
 
 ## Prerequisites
 
 - A compatible Mac/Xcode toolchain, XcodeGen, Python, Node, and the project's resolved dependencies.
 - Xcode's optional Metal toolchain for the SwiftTerm renderer, if not already installed.
-- Configured Pi and host services for live integration. Reading source and running isolated tests do not require permission to control the live system.
-- Appropriate Apple signing and explicitly approved physical devices for installation.
+- Configured Pi and host services for live integration. You can read source and run isolated tests without controlling the live system.
+- Apple signing configured for the intended build, and owner-approved devices for installation.
 
 Start with the repository's [runtime guide](../../../../docs/runtime-guide.md) and [rebuild instructions](../../../../.pi/docs/REBUILD_FROM_SCRATCH.md). Prefer an isolated development checkout so project generation and test artifacts cannot disrupt the live workspace.
 
@@ -21,7 +21,7 @@ From `projects/operation-jarvis/jarvis-app/` in the isolated checkout:
 ./scripts/verify-jarvis-app.sh
 ```
 
-The verifier regenerates the Xcode project, checks the locked package resolution, runs Python/Node/Swift tests and source/asset contracts, and builds iOS/watchOS simulator products. It writes build artifacts and may need configured simulator destinations. It is not a read-only health command and was not run as part of this documentation reorganization.
+The verifier regenerates the Xcode project, checks locked dependencies, runs Python/Node/Swift tests and source/asset checks, and builds iOS/watchOS simulator apps. It writes build artifacts and may need configured simulator destinations. It is not a read-only health check; the documentation review did not run it.
 
 The `JARVIS_RUN_IOS_TESTS=1` flag enables additional iOS testing; `JARVIS_IOS_TEST_DESTINATION` can select the intended isolated simulator. Live integration uses a separate `JARVIS_LIVE_TESTS=1` opt-in and requires explicit permission to access the configured host. Do not enable live tests merely to review documentation.
 
@@ -32,17 +32,17 @@ git diff --check
 git status --short
 ```
 
-These check formatting and scope, not runtime correctness. Simulator verification, signed archive auditing, and physical acceptance are separate gates.
+These check formatting and changed files, not runtime behavior. Test the simulator build, audit the signed archive, and check the app on its intended devices separately.
 
 ## Signing and deployment
 
-1. Record the exact source commit, dependency locks, owner-approved feature flags, and intended version. Do not infer an installed version from `project.yml` or a historical README heading.
-2. Verify in isolation. Preserve existing conversations, session identities, private configuration, credentials, and rollback evidence.
-3. Obtain separate authorization for portal changes, signing, service rollout, or installation on allowlisted devices.
-4. Produce and audit the exact archive: bundle hierarchy, signatures, entitlements, provisioning profiles, embedded Watch product, and exclusion of private files.
-5. Freeze the audited products. Do not rebuild between audit and installation.
-6. Install only those products on the explicitly approved devices, then perform bounded physical acceptance. A build command or launch success does not establish gesture, Siri, attachment, or notification acceptance.
-7. Keep an exact rollback artifact and record what was actually deployed in private operational evidence.
+1. Record the source commit, dependency locks, approved feature flags, and intended version. Check the installed app directly rather than guessing from `project.yml` or an old README.
+2. Test in isolation. Preserve existing conversations, session identities, private configuration, credentials, and rollback records.
+3. Obtain approval for Apple portal changes, signing, service updates, and installation on the allowlisted devices.
+4. Audit the archive's bundle layout, signatures, entitlements, provisioning profiles, embedded Watch app, and exclusion of private files.
+5. Keep that exact archive. Do not rebuild between audit and installation.
+6. Install only the audited products on the approved devices. Check gestures, Siri, attachments, and notifications on the devices; a successful build or launch does not test those behaviors.
+7. Keep the exact rollback build and a private record of what was installed.
 
 Older documents mix Personal Team/free provisioning and paid-program signing. Do not run the retained free-signing helper by default or assume an old Team ID, device identity, or profile applies today.
 
@@ -63,13 +63,13 @@ Detailed retained procedures:
 
 ## Notifications
 
-Changing app code is not permission to request device consent, read provider keys, activate dispatch, or send a test alert. Verify signing capabilities, per-device opt-in, registrations, provider configuration, payload privacy, and the host activation gate separately. Do not backfill historical notifications or retry ambiguous delivery as though it had definitely failed.
+Before enabling or testing notifications, obtain approval to request device consent, access provider keys, and send alerts. Check signing capabilities, each device's opt-in and registration, provider settings, payload privacy, and host activation. Do not send old notifications as a backfill or retry a delivery whose outcome is unknown.
 
 Notification privacy contracts changed across historical builds. Read the [architecture summary](architecture.md#notifications-and-privacy) and the [implementation record](implementation-history.md#native-iphone-and-apple-watch-apns-scheduled-job-notifications), including later addenda, rather than adopting the earliest plan.
 
 ## Diagnostics and recovery
 
-Begin with read-only state and the exact failed boundary: connection trust, endpoint availability, source/build compatibility, signing, companion registration, or application behavior. Do not weaken host-key/certificate checks or broaden network trust as a shortcut.
+Start with read-only checks to narrow down the problem: connection trust, endpoint availability, compatible versions, signing, Watch registration, or app behavior. Do not bypass host-key or certificate checks, or broaden network access, to get past an error.
 
 Retained references:
 

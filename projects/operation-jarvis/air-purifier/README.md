@@ -1,8 +1,6 @@
 # Operation JARVIS Air Purifier
 
-Standalone VeSync/Levoit air purifier control utilities for Operation JARVIS.
-
-This subsystem provides a clean CLI and Python package. It is wired into Operation JARVIS through `projects/operation-jarvis/jarvis.py`, `jarvisd`, and the optional Pi `jarvis` tool group as `purifier-status` and `purifier-set`.
+Read the air purifier's status or change its settings from a CLI, Python, or JARVIS. The adapter connects to `jarvis.py`, `jarvisd`, and Pi's optional `jarvis` tool group through `purifier-status` and `purifier-set`.
 
 Target device: **Levoit Vital 200S-P / Vital 200S**, VeSync model family `LAP-V201S`.
 
@@ -14,7 +12,7 @@ Target device: **Levoit Vital 200S-P / Vital 200S**, VeSync model family `LAP-V2
 
 ## Setup
 
-`pyvesync 3.4.2` requires Python 3.11+. The main Operation JARVIS venv may be older, so this subsystem should have its own venv, like `smart-plug/`.
+`pyvesync 3.4.2` needs Python 3.11+. Use a separate virtual environment, as in `smart-plug/`, so it does not depend on the main Operation JARVIS environment's Python version.
 
 ```bash
 cd /path/to/JARVIS/projects/operation-jarvis/air-purifier
@@ -39,7 +37,7 @@ JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS=150
 
 The CLI caches VeSync's access token in the ignored `air-purifier/.vesync_auth` file and reuses it across JARVIS tool and `jarvisd` processes. Set `JARVIS_AIR_PURIFIER_AUTH_PATH` to override that private path. This avoids repeated password logins and VeSync's `REQUEST_HIGH` throttle; never commit the token file.
 
-VeSync writes may take several seconds, and occasionally more than a minute, to appear in status polling. The CLI waits up to `JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS` after write commands so returned status is less likely to be stale. If VeSync accepts a write but status is still stale at the deadline, the command exits successfully with `verification_pending: true` instead of treating the accepted write as a hard failure.
+A VeSync change can take several seconds, and sometimes more than a minute, to appear in status. The CLI waits up to `JARVIS_AIR_PURIFIER_WRITE_WAIT_SECONDS` for confirmation. If VeSync accepts the change but status has not caught up by then, the command exits successfully with `verification_pending: true`. That means accepted, not yet confirmed.
 
 ## Safe local check
 
@@ -94,7 +92,7 @@ If multiple purifiers are on the account, pass a device name/CID/model:
 ./purifier-cli mode sleep "Bedroom Air Purifier"
 ```
 
-## Supported Vital 200S features exposed
+## Vital 200S controls and readings
 
 - Power on/off/toggle
 - Status
@@ -117,4 +115,4 @@ After loading the optional Pi tool group with `load_tools({ groups: ["jarvis"] }
 - `jarvis({ action: "purifier-set", setting: "speed", level: 1 })` for manual fan speed 1-4.
 - `jarvis({ action: "purifier-set", setting: "display", value: "off" })` for display control.
 
-For accepted-but-not-yet-verified writes, report the pending state and check status later rather than immediately issuing fallback commands.
+If a change is still pending, say so and check status later. Do not immediately send another command to compensate.
