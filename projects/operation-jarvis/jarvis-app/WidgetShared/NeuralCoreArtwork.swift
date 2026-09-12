@@ -47,6 +47,7 @@ enum JARVISNeuralCoreArtworkLayerSet {
     case complete
     case staticBackground
     case phaseArtwork
+    case staticForeground
 }
 
 /// One complete native-vector frame for the iPhone medium widget and Watch
@@ -242,8 +243,10 @@ private struct JARVISMonochromeCathedralPalette {
     let quotaNormal: Color
     let quotaBoundary: Color
     let critical: Color
+    let c2: JARVISNeuralCoreC2Decoration.Palette
 
     init(usesFullColor: Bool) {
+        c2 = JARVISNeuralCoreC2Decoration.Palette(usesFullColor: usesFullColor)
         if usesFullColor {
             bright = Color(white: 0.98)
             pale = Color(white: 0.80)
@@ -283,6 +286,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
 
             switch layerSet {
             case .complete:
+                JARVISNeuralCoreC2Decoration.drawBeams(context: &context, size: size, radius: radius, palette: palette.c2)
                 drawHalo(context: &context, center: center, radius: radius)
                 drawCathedralArchitecture(context: &context, center: center, radius: radius)
                 drawWireframe(context: &context, center: center, radius: radius)
@@ -294,9 +298,10 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 drawSegmentedQuotaRing(context: &context, center: center, radius: radius)
                 drawReactorDischarges(context: &context, center: center, radius: radius)
                 drawCore(context: &context, center: center, radius: radius)
+                JARVISNeuralCoreC2Decoration.drawShell(context: &context, center: center, radius: radius, palette: palette.c2)
             case .staticBackground:
-                // The halo is phase-independent and originally rendered first.
-                // Hoisting exactly this layer preserves both pixels and ordering.
+                // C2 beams precede the halo and are hoisted once on both devices.
+                JARVISNeuralCoreC2Decoration.drawBeams(context: &context, size: size, radius: radius, palette: palette.c2)
                 drawHalo(context: &context, center: center, radius: radius)
             case .phaseArtwork:
                 // Preserve every phase-driven operation in its original order.
@@ -310,6 +315,9 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 drawSegmentedQuotaRing(context: &context, center: center, radius: radius)
                 drawReactorDischarges(context: &context, center: center, radius: radius)
                 drawCore(context: &context, center: center, radius: radius)
+            case .staticForeground:
+                // The C2 shell follows the moving core, but precedes the wordmark.
+                JARVISNeuralCoreC2Decoration.drawShell(context: &context, center: center, radius: radius, palette: palette.c2)
             }
         }
     }

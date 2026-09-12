@@ -408,7 +408,8 @@ reject_match 'obsolete duplicate notification route bus must stay removed' -RqsE
 reject_match 'foreground banners must not auto-navigate' -qE 'present\(resultSequence:' < <(sed -n '/willPresent notification:/,/return \[.banner, .sound\]/p' JARVIS/PushNotificationCoordinator.swift)
 reject_match 'foreground Watch banners must not auto-navigate' -qE 'present\(resultSequence:' < <(sed -n '/willPresent notification:/,/return \[.banner, .sound\]/p' JARVISWatch/WatchPushNotificationCoordinator.swift)
 grep -q 'Show Previews' JARVIS/Views/NotificationSettingsView.swift JARVISWatch/Views/WatchConnectView.swift
-grep -q 'MAX_ALERT_PREVIEW_CHARACTERS = 240' ../../../.pi/scheduler/apns_provider.py
+# Match the already-committed notification-summary cap (a810484); no backend change here.
+grep -q 'MAX_ALERT_PREVIEW_CHARACTERS = 140' ../../../.pi/scheduler/apns_provider.py
 grep -q 'SENSITIVE_CONTEXT_RE' ../../../.pi/scheduler/apns_provider.py
 grep -q 'FALLBACK_ALERT_BODY' ../../../.pi/scheduler/apns_provider.py
 grep -q 'DELETE FROM notification_devices' ../../../.pi/scheduler/runner.py
@@ -1115,11 +1116,29 @@ from pathlib import Path
 source = Path("WidgetShared/NeuralCoreArtwork.swift").read_text()
 static_start = source.index("case .staticBackground:")
 phase_start = source.index("case .phaseArtwork:", static_start)
-phase_end = source.index("\n            }\n        }\n    }", phase_start)
+phase_end = source.index("case .staticForeground:", phase_start)
+foreground_end = source.index("\n            }\n        }\n    }", phase_end)
+foreground_block = source[phase_end:foreground_end]
+assert foreground_block.count("JARVISNeuralCoreC2Decoration.drawShell(") == 1
 static_block = source[static_start:phase_start]
 phase_block = source[phase_start:phase_end]
 assert static_block.count("drawHalo(") == 1
 assert "drawHalo(" not in phase_block
+assert static_block.count("JARVISNeuralCoreC2Decoration.drawBeams(") == 1
+assert "JARVISNeuralCoreC2Decoration" not in phase_block
+assert source.count("JARVISNeuralCoreC2Decoration.drawBeams(") == 2
+assert source.count("JARVISNeuralCoreC2Decoration.drawShell(") == 2
+continuous = Path("WidgetShared/NeuralCoreContinuousAnimation.swift").read_text().split("private struct JARVISNeuralCoreSelectorGeneration", 1)[0]
+assert continuous.count("layerSet: .staticForeground") == 1
+assert continuous.index("layerSet: .staticForeground") > continuous.rindex(".mask {")
+assert continuous.index("layerSet: .staticForeground") < continuous.index("JARVISNeuralCoreWordmark(layout: layout)")
+c2 = Path("WidgetShared/NeuralCoreC2Decoration.swift").read_text()
+for bounded in ["for i in 0..<24", "for j in 0..<3", "for i in 0..<18", "for i in 0..<112"]:
+    assert bounded in c2
+for forbidden in ["telemetry", "phase", "Date(", "Timer("]:
+    assert forbidden not in c2[c2.index("enum JARVISNeuralCoreC2Decoration"):]
+assert "let alpha = 0.35" in c2
+assert "Double(0.26 + noise(i+99)*0.28)" in c2
 ordered = [
     "drawCathedralArchitecture(", "drawWireframe(", "drawFilaments(",
     "drawColumns(", "drawRadialCrown(", "drawParticles(",
@@ -1284,6 +1303,9 @@ if [[ "${JARVIS_LIVE_TESTS:-0}" == "1" ]]; then
 else
   swift test --package-path JARVISKit
 fi
+
+printf '%s\n' '== Neural Core C2 artwork render contracts =='
+bash scripts/verify-neural-core-artwork.sh
 
 printf '%s\n' '== iOS simulator build =='
 xcodebuild \

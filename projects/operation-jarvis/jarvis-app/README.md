@@ -42,6 +42,10 @@ Pi supplies the agent runtime. JARVIS supplies the native interfaces, integratio
 | [`project.yml`](project.yml) | XcodeGen project specification. |
 | [`scripts/`](scripts/) | Verification, packaging, and guarded deployment helpers. |
 
+## Local visual candidate
+
+[Neural Core C2 / Dendrites](docs/neural-core-c2-candidate.md) preserves the silver-white palette and central focus, adds subtle organic sides, and strengthens central highlights. This is an implementation candidate, not a deployment claim.
+
 ## Verification
 
 On a configured Mac with the required Xcode components and dependencies, run from this directory in an **isolated development checkout**:
