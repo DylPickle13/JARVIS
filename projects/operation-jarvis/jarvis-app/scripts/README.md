@@ -87,7 +87,10 @@ For initial companion registration under free provisioning:
    through Xcode/CoreDevice's Watch developer service;
 5. verify both installed flags and then test reachability.
 
-Follow the complete procedure, trust step, identity rules, diagnostics, and
-non-destructive recovery order in:
+Start with the current safety gates and links to retained signing, identity,
+diagnostics, and non-destructive recovery procedures in:
 
-[`../README.md`](../README.md)
+[`../docs/operations.md`](../docs/operations.md)
+
+Historical Personal Team procedures above are not a statement of current signing
+configuration or authorization to install on a device.

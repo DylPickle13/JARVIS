@@ -1,113 +1,81 @@
 # JARVIS
 
-JARVIS is a private local automation and control stack built around the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent). It combines persistent Pi RPC sessions, bounded scheduled-job history, durable memory, browser and Google tooling, Cast/Spotify media, smart plugs, a Levoit air purifier, Raspberry Pi room audio, and native iOS/watchOS clients through `jarvisd`.
+**A personal, local-first AI automation system with native iPhone and Apple Watch clients.**
 
-## Architecture
+I built JARVIS to access a persistent AI workspace from my Mac, phone, Watch, and a Raspberry Pi room-audio endpoint, and connect that workspace to software tools and household devices. It brings terminal access, tool integrations, device controls, and scheduled-job results into one system.
 
-- **Pi** — local coding-agent UI, RPC process management, extensions, tools, and model selection.
-- **Private scheduler** — [`.pi/scheduler/runner.py`](.pi/scheduler/runner.py) executes four preserved jobs and stores sanitized output-producing successes plus every failure in an owner-only bounded SQLite database.
-- **Native Apple clients** — [`projects/operation-jarvis/jarvis-app/`](projects/operation-jarvis/jarvis-app/) provides Home, JARVIS terminal, Jobs, and Settings on iPhone plus guarded Watch controls and widgets.
-- **jarvisd** — authenticated read-only state/results APIs and closed, validated native hardware commands on port `8790`.
-- **terminald** — isolated mobile terminal relay on port `8792`, bound to the protected `jarvis-mobile` tmux session.
-- **Room audio** — Raspberry Pi microphone/speaker endpoint → on-device Apple SpeechTranscriber for turns and DictationTranscriber for busy-only `stop` → neutral Pi RPC → Piper speech through the Mac service on port `8791`.
-- **Operation JARVIS tools** — Cast, Spotify, local Kasa plugs, and VeSync/Levoit purifier control.
+JARVIS extends the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent). Pi provides the underlying agent runtime and model interaction; this repository contains my extensions, integration services, and native clients. It does not contain a foundation model trained from scratch.
 
-## Repository map
+[Explore the architecture](https://dylpickle13.github.io/) · [Native apps](projects/operation-jarvis/jarvis-app/README.md) · [Setup and operation](docs/runtime-guide.md)
 
-| Path | Purpose |
+## What I implemented
+
+- **Agent extensions:** persistent memory, browser automation, web research, and integrations with software services and connected devices. Optional tool schemas load when needed rather than all at once.
+- **Native Apple clients:** SwiftUI iPhone and Apple Watch interfaces for persistent terminal sessions, device controls, telemetry, and read-only scheduled-job results.
+- **Backend services:** separate Python services for native state and control APIs, the mobile terminal relay, and room audio.
+- **Cross-device access:** Mac-hosted Pi sessions, an SSH-backed iPhone terminal, a protected Watch terminal bridge, and Raspberry Pi audio capture/playback.
+- **Reliability boundaries:** bounded history, stale-state handling, validated commands, and explicit handling of uncertain delivery rather than blindly repeating device actions.
+
+These components integrate existing libraries, model providers, and device APIs. The engineering work is in how they communicate, retain state, handle failures, and expose controls across devices.
+
+## Example workflows
+
+| Workflow | What happens |
 |---|---|
-| [`pi_rpc.py`](pi_rpc.py) | Neutral Pi CLI/RPC process management and persistent local sessions. |
-| [`.pi/extensions/`](.pi/extensions/) | Project-local tools, lazy schemas, native attachment picker, memory, scheduler, browser, Google, Maps, GitHub, SSH, REAPER, and Operation JARVIS integrations. |
-| [`.pi/scheduler/`](.pi/scheduler/) | Generic scheduler, bounded results, dormant fail-closed APNs provider scaffold, and tests. |
-| [`.pi/memory/`](.pi/memory/) | Explicit owner-only durable memory. |
-| [`projects/operation-jarvis/`](projects/operation-jarvis/) | Physical-world control, room audio, quotas, and native app. |
-| [`projects/operation-jarvis/voice/`](projects/operation-jarvis/voice/) | Transport-neutral ASR, response, normalization, streaming, interruption, and Piper pipeline. |
-| [`projects/operation-jarvis/jarvis-app/`](projects/operation-jarvis/jarvis-app/) | Native iPhone, Watch, widgets, JARVISKit, jarvisd, and terminald. |
+| Continue a conversation away from the Mac | Open a persistent Pi terminal from the iPhone or Watch without creating a separate chatbot history. |
+| Use an agent tool | Ask Pi to research a page or use a configured integration. Pi chooses from the tool schemas available to that session. |
+| Control a room device | Use native plug or purifier controls through the validated backend command API. Direct native controls do not pass through an LLM. |
+| Check scheduled work | Read retained job results on the phone or Watch. The native Jobs interface does not edit schedules or run arbitrary commands. |
+| Speak in the room | The Raspberry Pi handles microphone/speaker transport; Mac-side transcription, Pi RPC, and speech output complete the turn. |
 
-## Setup
+These describe configured workflows, not a hosted public demo. The [interactive architecture map](https://dylpickle13.github.io/) illustrates request paths; its buttons do not control live devices.
 
-```bash
-cd /path/to/JARVIS
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-chmod 600 .env
-npm install --prefix .pi/extensions/lib
-npm install --prefix .pi/extensions/50-browser
+## Architecture at a glance
+
+```text
+Mac / iPhone / Watch terminal ──────────┐
+Raspberry Pi audio → transcription ─────┤
+                                       ▼
+                              Pi sessions on Mac
+                                       │
+                           Local or cloud model provider
+                                       │
+                          Custom tools and integrations
+
+Native iPhone / Watch controls → jarvisd → validated device commands
+Watch / Siri terminal access   → terminald → protected Pi sessions
 ```
 
-Install Pi and project packages as documented in [`.pi/docs/REBUILD_FROM_SCRATCH.md`](.pi/docs/REBUILD_FROM_SCRATCH.md), then run the read-only smoke test:
+**Local-first does not mean fully offline.** Sessions and supporting services run on owned hardware, but cloud models, web research, Google services, and some device integrations require external services. Availability and privacy depend on the selected provider and configured integration. Network access is intended for a trusted LAN or Tailscale, not public internet exposure.
 
-```bash
-.pi/smoke-test.sh
-```
+## Explore the implementation
 
-## Private scheduled jobs
+| Area | Start here | Supporting tests |
+|---|---|---|
+| Persistent sessions and voice | [`pi_rpc.py`](pi_rpc.py), [voice pipeline](projects/operation-jarvis/voice/voice_pipeline.py) | [RPC tests](projects/operation-jarvis/voice/test_pi_rpc.py), [voice tests](projects/operation-jarvis/voice/test_voice_pipeline.py) |
+| Tool loading, memory, browser | [lazy tools](.pi/extensions/99-lazy-tools.ts), [memory](.pi/extensions/35-memory.ts), [browser](.pi/extensions/50-browser/) | [tool-loading tests](.pi/scripts/tests/pi-lazy-tools.test.mjs) |
+| Scheduled results | [scheduler](.pi/scheduler/runner.py) | [scheduler tests](.pi/scheduler/tests/) |
+| Native state and control | [`jarvisd`](projects/operation-jarvis/jarvis-app/jarvisd/jarvisd.py) | [API and state tests](projects/operation-jarvis/jarvis-app/jarvisd/tests/) |
+| Apple clients and shared models | [SwiftUI app](projects/operation-jarvis/jarvis-app/JARVIS/), [JARVISKit](projects/operation-jarvis/jarvis-app/JARVISKit/) | [shared Swift tests](projects/operation-jarvis/jarvis-app/JARVISKit/Tests/JARVISKitTests/) |
 
-```bash
-# Read-only status/list
-.venv/bin/python .pi/scheduler/runner.py --json status
-.venv/bin/python .pi/scheduler/runner.py --json list
+**Stack:** Python, TypeScript/JavaScript, Swift/SwiftUI, SQLite, SSH/tmux, macOS, iOS/watchOS, and Raspberry Pi.
 
-# Install the one-minute launchd runner
-.venv/bin/python .pi/scheduler/runner.py --json install
-```
+## Setup and limitations
 
-The database is `.pi/scheduler/scheduler.sqlite` with directory/file modes `0700/0600`. Retention is 500 results, each capped at 64 KiB. Successful checks with no output update health only. Output-producing successes and all failures appear in the native Jobs inbox. The native API never exposes prompts, models, command lines, credentials, or local paths.
+This is a personal deployment, not a one-click consumer application. Full reproduction needs a Mac host, Pi, integration credentials, and the relevant devices. Native Apple builds require Xcode and appropriate signing; room audio needs a configured Raspberry Pi endpoint. You can inspect the components and tests without granting access to a live system.
 
-Inside Pi, load the optional `cron` group and use `jarvis_cron` for scheduler management. The iPhone Jobs surface is intentionally read-only.
-
-## Native app
-
-The app project is generated from `projects/operation-jarvis/jarvis-app/project.yml`:
-
-```bash
-cd projects/operation-jarvis/jarvis-app
-xcodegen generate
-./scripts/verify-jarvis-app.sh
-```
-
-Physical deployment uses the fixed private signing-renewal script and allowlisted devices. Do not rebuild between archive audit and installation. See the app [README](projects/operation-jarvis/jarvis-app/README.md) for deployment and safety contracts.
-
-## Room audio
-
-The Mac service uses:
-
-- [`pi_rpc.py`](pi_rpc.py) for neutral persistent Pi RPC;
-- [`voice_pipeline.py`](projects/operation-jarvis/voice/voice_pipeline.py) and [`asr_backends.py`](projects/operation-jarvis/voice/asr_backends.py) for pluggable Apple/oMLX ASR and Piper TTS;
-- [`room_audio_server.py`](projects/operation-jarvis/raspberry-pi/room_audio/room_audio_server.py) for the bounded LAN bridge.
-
-Read-only health:
-
-```bash
-curl -fsS http://127.0.0.1:8791/health | python3 -m json.tool
-```
-
-The Raspberry Pi capture/playback client and service installer remain under [`projects/operation-jarvis/raspberry-pi/room_audio/`](projects/operation-jarvis/raspberry-pi/room_audio/).
-
-## Pi tool loading
-
-Always-on tools cover coding, SSH, web research/fetch, Maps, and `load_tools`. Optional groups include:
-
-`memory`, `code_docs`, `jarvis`, `minecraft_jarvis`, `github`, `google`, `cron`, `browser`, and `reaper`.
-
-Load only the group needed for the current task. Hardware operations remain explicit and bounded; scheduler and native Jobs reads are separate from hardware actions.
-
-## Security and runtime rules
-
-- Never commit `.env`, API credentials, device selectors, APNs keys, tokens, runtime databases, or private archives.
-- Keep `.env`, SQLite files, and sidecars mode `0600`; private runtime directories use `0700`.
-- The future APNs `.p8` key must live outside Git in an owner-only `0700/0600` location.
-- Do not expose JARVIS services publicly. Trusted LAN/Tailscale access and endpoint policy remain fail-closed.
-- Hardware writes require fresh authoritative state and are never queued, inferred, replayed, or retried after ambiguous delivery.
-- Do not disturb terminald or the protected `jarvis-mobile` tmux session while changing unrelated services.
-- Use exact audited archive products for physical Apple-device deployment.
-
-## Documentation
-
+- [Setup and runtime guide](docs/runtime-guide.md)
+- [Detailed rebuild instructions](.pi/docs/REBUILD_FROM_SCRATCH.md)
 - [Pi extensions](.pi/docs/PI_EXTENSIONS.md)
-- [Rebuild from scratch](.pi/docs/REBUILD_FROM_SCRATCH.md)
-- [Operation JARVIS](projects/operation-jarvis/README.md)
-- [Native app](projects/operation-jarvis/jarvis-app/README.md)
+- [Native app architecture, verification, and operations](projects/operation-jarvis/jarvis-app/docs/README.md)
 - [Room audio](projects/operation-jarvis/raspberry-pi/room_audio/README.md)
+
+Tests are included, but this README does not claim a fresh passing test run, measured production performance, or physical-device acceptance. Source implementation, signed builds, and live deployment are separate checkpoints.
+
+## Safety and privacy
+
+Do not publish credentials, conversation history, runtime databases, device identifiers, signing artifacts, or unreviewed screenshots. Native hardware writes use explicit validated actions and must not be queued or replayed after ambiguous delivery. `jarvisd` supports trusted-network and token modes; network allowlisting is not per-user authentication. See the [security boundaries](projects/operation-jarvis/jarvis-app/docs/architecture.md#security-and-trust-boundaries) before operating services.
+
+## License and attribution
+
+JARVIS is [MIT-licensed](LICENSE). Pi and other dependencies retain their own licenses. The native-app documentation includes [retained third-party license material](projects/operation-jarvis/jarvis-app/docs/third-party/).
