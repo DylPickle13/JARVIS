@@ -44,6 +44,15 @@ import JARVISKit
             ("watch", .watch, CGSize(width: 172, height: 76)),
             ("watch-small", .watch, CGSize(width: 150, height: 64))
         ] {
+            for fullColor in [false, true] {
+                for index in 0..<48 {
+                    let phase = CGFloat(index)/48
+                    let original = render(SharedRampComparison(phase: phase, shared: false, fullColor: fullColor), size: size)
+                    let shared = render(SharedRampComparison(phase: phase, shared: true, fullColor: fullColor), size: size)
+                    let delta = difference(pixels(original), pixels(shared))
+                    check(delta < 0.1, "Shared ramp must preserve all 48 authored pulse frames: \(name)/\(index) delta=\(delta)")
+                }
+            }
             for (stateIndex, telemetry) in states.enumerated() {
                 for phase in [0.0, 0.19, 0.50, 0.81] {
                     let complete = render(ZStack {
@@ -155,6 +164,19 @@ private struct Impulses: View {
                     palette: .init(usesFullColor: true), phase: phase
                 )
             }
+        }
+    }
+}
+
+private struct SharedRampComparison: View {
+    let phase: CGFloat
+    let shared: Bool
+    let fullColor: Bool
+    var body: some View {
+        Canvas { context, size in
+            JARVISNeuralCoreC2Decoration.drawImpulses(context: &context, size: size,
+                radius: min(size.height*0.325, size.width*0.22),
+                palette: .init(usesFullColor: fullColor), phase: phase, sharesPulseShading: shared)
         }
     }
 }

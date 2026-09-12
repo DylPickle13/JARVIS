@@ -1161,7 +1161,9 @@ canvas_start = source.index("private struct JARVISMonochromeCathedralCanvas")
 canvas_end = source.index("private struct JARVISCathedralFilament", canvas_start)
 canvas = source[canvas_start:canvas_end]
 assert "layout == .phone" not in canvas
-assert "layout == .watch" not in canvas
+# Only pulse gradient resource sharing may differ; geometry/density/cadence do not.
+assert canvas.count("sharesPulseShading: layout == .watch") == 2
+assert "layout == .watch" not in canvas.replace("sharesPulseShading: layout == .watch", "sharesPulseShading: resourcePolicy")
 wordmark_start = source.index("struct JARVISNeuralCoreWordmark")
 wordmark_end = source.index("enum JARVISNeuralCoreAccessibility", wordmark_start)
 wordmark = source[wordmark_start:wordmark_end]
