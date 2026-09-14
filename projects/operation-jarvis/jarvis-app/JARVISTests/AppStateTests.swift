@@ -1069,7 +1069,8 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(multiTapRecognizers.isEmpty)
         XCTAssertFalse(longPressRecognizers.isEmpty)
         XCTAssertTrue(multiTapRecognizers.allSatisfy { !$0.isEnabled })
-        XCTAssertTrue(longPressRecognizers.allSatisfy { !$0.isEnabled })
+        XCTAssertEqual(longPressRecognizers.filter { $0.isEnabled }.map(\.name), ["jarvis.inline-selection.long-press"])
+        XCTAssertTrue(longPressRecognizers.filter { $0.name != "jarvis.inline-selection.long-press" }.allSatisfy { !$0.isEnabled })
 
         var outboundBytes: [UInt8] = []
         terminalView.outboundBytesObserver = { outboundBytes.append(contentsOf: $0) }

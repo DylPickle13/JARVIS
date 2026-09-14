@@ -70,6 +70,23 @@ struct PiTerminalView: View {
                 secondaryButton: .cancel { terminal.rejectPendingHost() }
             )
         }
+        .alert("Review paste", isPresented: Binding(
+            get: { terminal.pasteReview != nil },
+            set: { if !$0 { terminal.pasteReview = nil } }
+        ), presenting: terminal.pasteReview) { review in
+            if review.supportsMultiline {
+                Button("Paste text") { terminal.confirmPaste(id: review.id, singleLine: false) }
+            }
+            Button("Paste as one line") { terminal.confirmPaste(id: review.id, singleLine: true) }
+            Button("Cancel", role: .cancel) { terminal.cancelPaste() }
+        } message: { review in
+            Text((review.supportsMultiline ? "Enter will not be appended.\n\n" : "Safe multiline paste is unavailable; choose one line.\n\n") + review.preview)
+        }
+        .alert("Cannot paste", isPresented: Binding(
+            get: { terminal.pasteError != nil }, set: { if !$0 { terminal.pasteError = nil } }
+        )) {
+            Button("OK", role: .cancel) { terminal.pasteError = nil }
+        } message: { Text(terminal.pasteError ?? "") }
         .sheet(isPresented: Binding(
             get: { terminal.isAttachmentSheetPresented },
             set: { presented in
@@ -261,6 +278,7 @@ struct PiTerminalKeyBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 key("Esc", label: "Escape", bytes: [0x1b])
                 Button {
@@ -280,7 +298,13 @@ struct PiTerminalKeyBar: View {
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 5)
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            PiTerminalPasteControl { controller.receivePasteProviders($0) }
+                .frame(width: 44, height: 44)
+                .allowsHitTesting(controller.canSendTerminalInput)
+                .opacity(controller.canSendTerminalInput ? 1 : 0.4)
 
             Divider()
                 .frame(height: 30)
