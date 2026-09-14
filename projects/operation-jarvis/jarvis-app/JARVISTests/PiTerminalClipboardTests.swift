@@ -78,6 +78,28 @@ final class PiTerminalClipboardTests: XCTestCase {
         }
     }
 
+    func testToolbarAccentContrastOnOpaqueSurface() {
+        func rgb(_ color: UIColor, traits: UITraitCollection) -> [Double] {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            XCTAssertTrue(color.resolvedColor(with: traits).getRed(&r, green: &g, blue: &b, alpha: &a))
+            return [Double(r), Double(g), Double(b)]
+        }
+        func luminance(_ rgb: [Double]) -> Double {
+            let linear = rgb.map { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
+            return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+        }
+        for style: UIUserInterfaceStyle in [.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            let accent = rgb(UIColor(JarvisPalette.accent), traits: traits)
+            let surface = rgb(.secondarySystemBackground, traits: traits)
+            let keySurface = zip(accent, surface).map { $0 * 0.10 + $1 * 0.90 }
+            for background in [surface, keySurface] {
+                let a = luminance(accent), b = luminance(background)
+                XCTAssertGreaterThanOrEqual((max(a, b) + 0.05) / (min(a, b) + 0.05), 4.5)
+            }
+        }
+    }
+
     func testCompactToolbarWidthBudgetKeepsEveryControlVisible() {
         for width: CGFloat in [320, 375, 390, 414, 768, 844] {
             for attachments in [false, true] {

@@ -377,7 +377,7 @@ struct PiTerminalToolbarContent: View {
         .frame(height: PiTerminalToolbarMetrics.height)
         .tint(JarvisPalette.accent)
         .buttonStyle(PiTerminalToolbarButtonStyle())
-        .background(.ultraThinMaterial)
+        .background(Color(uiColor: .secondarySystemBackground))
     }
 
     private func key(_ title: String, label: String, action: PiTerminalToolbarAction, metrics: PiTerminalToolbarMetrics) -> some View {
