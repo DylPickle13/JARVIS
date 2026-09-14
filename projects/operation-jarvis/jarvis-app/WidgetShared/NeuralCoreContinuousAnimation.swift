@@ -84,9 +84,9 @@ struct JARVISNeuralCoreContinuousArtwork: View {
 
                     ZStack(alignment: .topLeading) {
                         if layout == .watch {
-                            // Keep 48 nominal-24-FPS selector scenes, but reuse the
+                            // Keep 40 nominal-20-FPS selector scenes, but reuse the
                             // outer geometry/motion/accessibility policy instead of
-                            // serializing 48 redundant full-artwork wrappers. Each
+                            // serializing redundant full-artwork wrappers. Each
                             // Watch scene receives explicit size before its mask.
                             JARVISNeuralCoreAnimationFrame(
                                 telemetry: telemetry,

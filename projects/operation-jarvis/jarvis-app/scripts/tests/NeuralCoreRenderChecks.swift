@@ -45,12 +45,14 @@ import JARVISKit
             ("watch-small", .watch, CGSize(width: 150, height: 64))
         ] {
             for fullColor in [false, true] {
-                for index in 0..<48 {
-                    let phase = CGFloat(index)/48
+                for frameCount in [JARVISNeuralCoreMotion.phoneContinuousFrameCount, JARVISNeuralCoreMotion.watchContinuousFrameCount] {
+                for index in 0..<frameCount {
+                    let phase = CGFloat(index)/CGFloat(frameCount)
                     let original = render(SharedRampComparison(phase: phase, shared: false, fullColor: fullColor), size: size)
                     let shared = render(SharedRampComparison(phase: phase, shared: true, fullColor: fullColor), size: size)
                     let delta = difference(pixels(original), pixels(shared))
-                    check(delta < 0.1, "Shared ramp must preserve all 48 authored pulse frames: \(name)/\(index) delta=\(delta)")
+                    check(delta < 0.1, "Shared ramp must preserve every authored pulse frame: \(name)/\(index) delta=\(delta)")
+                }
                 }
             }
             for (stateIndex, telemetry) in states.enumerated() {

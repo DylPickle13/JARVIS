@@ -1057,7 +1057,7 @@ grep -q 'case luminanceReduced' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swi
 grep -q 'case reduceMotion' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'case fontUnavailable' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'phoneContinuousFrameCount = 48' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
-grep -q 'watchContinuousFrameCount = 48' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
+grep -q 'watchContinuousFrameCount = 40' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 grep -q 'continuousSynchronizedBasePhase: Double = 0' JARVISKit/Sources/JARVISKit/NeuralCoreMotion.swift
 [[ "$(grep -c 'basePhase: JARVISNeuralCoreMotion.continuousSynchronizedBasePhase' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "2" ]]
 grep -q 'JARVISWidgetTimerAnimationFont.register()' JARVISWidget/NeuralCoreWidget.swift
@@ -1073,7 +1073,7 @@ reject_match 'live Neural Core must not retain an unmasked frame-zero fallback' 
 # duplicates a frame's mask as the rejected build-71 replacement did.
 [[ "$(grep -c 'JARVISWidgetTimerFrameWindow(' WidgetShared/NeuralCoreContinuousAnimation.swift)" == "2" ]]
 grep -q 'if layout == .watch' WidgetShared/NeuralCoreContinuousAnimation.swift
-grep -q '48 nominal-24-FPS selector scenes' WidgetShared/NeuralCoreContinuousAnimation.swift
+grep -q '40 nominal-20-FPS selector scenes' WidgetShared/NeuralCoreContinuousAnimation.swift
 reject_match 'phone Neural Core motion must not be disabled by a host rendering-mode classification' -qsF 'layout != .phone || renderingMode == .fullColor' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q 'JARVISNeuralCoreFrameArtwork' WidgetShared/NeuralCoreContinuousAnimation.swift
 grep -q '.widgetAccentable(true)' WidgetShared/NeuralCoreArtwork.swift
