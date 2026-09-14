@@ -158,7 +158,7 @@ npm install
 
 ## 6. Reinstall Pi packages/extensions
 
-The private package configuration is `.pi/settings.json`; start from [`.pi/settings.example.json`](../settings.example.json) if needed. Both pin the reviewed `pi-web-access` release and enable its stock extension directly. The former JARVIS wrapper is archived outside extension discovery in `.pi/disabled-extensions/00-web-access-env.ts.disabled`. Reinstall the pinned version:
+The private package configuration is `.pi/settings.json`; start from [`.pi/settings.example.json`](../settings.example.json) if needed. Both pin the reviewed `pi-web-access` release and enable its stock extension directly. Reinstall the pinned version:
 
 ```bash
 cd /path/to/JARVIS
