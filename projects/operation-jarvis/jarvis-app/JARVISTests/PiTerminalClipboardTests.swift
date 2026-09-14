@@ -1,17 +1,81 @@
 import XCTest
 import UIKit
+import SwiftUI
 import SwiftTerm
 @testable import JARVIS
 
 @MainActor
 final class PiTerminalClipboardTests: XCTestCase {
-    func testPasteStyleMatchesAccentControlsWithoutReplacingNativePaste() {
-        let configuration = PiTerminalPasteControl.buttonConfiguration()
-        XCTAssertEqual(configuration.displayMode, .iconOnly)
-        XCTAssertEqual(configuration.baseBackgroundColor, .clear)
-        XCTAssertEqual(configuration.baseForegroundColor, UIColor(JarvisPalette.accent))
-        let native = UIPasteControl(configuration: configuration)
-        XCTAssertEqual(native.configuration.baseForegroundColor, UIColor(JarvisPalette.accent))
+    func testPasteIconExists() {
+        XCTAssertNotNil(UIImage(systemName: "doc.on.clipboard"))
+    }
+
+    func testPlainPasteButtonRendersWithoutBlackPlatter() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        for dark in [false, true] {
+            for enabled in [false, true] {
+                let window = UIWindow(windowScene: scene)
+                window.frame = CGRect(x: 0, y: 0, width: 160, height: 100)
+                let configuration = UIPasteControl.Configuration()
+                configuration.displayMode = .iconOnly
+                configuration.baseForegroundColor = UIColor(JarvisPalette.accent)
+                configuration.baseBackgroundColor = .clear
+                let old = UIPasteControl(configuration: configuration)
+                old.backgroundColor = .clear
+                old.isOpaque = false
+                let receiver = UIView(frame: .zero)
+                receiver.pasteConfiguration = UIPasteConfiguration(forAccepting: NSString.self)
+                old.target = receiver
+                var taps = 0
+                let host = UIHostingController(rootView:
+                    HStack(spacing: 24) {
+                        PasteRenderFixture(control: old).frame(width: 46, height: 46)
+                        PiTerminalPasteControl { taps += 1 }
+                            .disabled(!enabled).opacity(enabled ? 1 : 0.4)
+                    }.padding(.leading, 16).padding(.top, 20)
+                     .frame(width: 160, height: 100, alignment: .topLeading)
+                     .background(Color(white: 0.25)).ignoresSafeArea()
+                )
+                host.overrideUserInterfaceStyle = dark ? .dark : .light
+                window.rootViewController = host
+                window.makeKeyAndVisible()
+                defer { window.isHidden = true }
+                host.view.layoutIfNeeded()
+                try await Task.sleep(nanoseconds: 100_000_000)
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                format.preferredRange = .standard
+                let image = UIGraphicsImageRenderer(size: window.bounds.size, format: format).image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                }
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "native-left-plain-right-dark-\(dark)-enabled-\(enabled)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+                let cg = try XCTUnwrap(image.cgImage)
+                XCTAssertEqual(cg.bitsPerPixel, 32)
+                let bytes = try XCTUnwrap(cg.dataProvider?.data) as Data
+                func pixel(_ x: Int, _ y: Int) -> [UInt8] {
+                    Array(bytes[(y * cg.bytesPerRow + x * 4)..<(y * cg.bytesPerRow + x * 4 + 4)])
+                }
+                // All perimeter pixels, not just a rounded corner, must expose
+                // the unchanged toolbar. The centre must contain a real glyph.
+                for y in 20..<66 {
+                    XCTAssertEqual(pixel(88, y), pixel(4, y))
+                    XCTAssertEqual(pixel(129, y), pixel(4, y))
+                }
+                for x in 86..<132 {
+                    XCTAssertEqual(pixel(x, 22), pixel(4, 22))
+                    XCTAssertEqual(pixel(x, 63), pixel(4, 63))
+                }
+                let changed = (20..<66).reduce(0) { count, y in
+                    count + (86..<132).filter { pixel($0, y) != pixel(4, y) }.count
+                }
+                XCTAssertGreaterThan(changed, 20, "Reject an empty render")
+                XCTAssertLessThan(changed, 500, "Only the icon should be drawn, not a filled platter")
+                XCTAssertEqual(taps, 0, "Rendering cannot read or paste clipboard contents")
+            }
+        }
     }
 
     private func terminal() -> PiTerminalHostView {
@@ -198,4 +262,10 @@ final class PiTerminalClipboardTests: XCTestCase {
         }
     }
 
+}
+
+private struct PasteRenderFixture: UIViewRepresentable {
+    let control: UIPasteControl
+    func makeUIView(context: Context) -> UIPasteControl { control }
+    func updateUIView(_ uiView: UIPasteControl, context: Context) {}
 }

@@ -301,9 +301,9 @@ struct PiTerminalKeyBar: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            PiTerminalPasteControl { controller.receivePasteProviders($0) }
+            PiTerminalPasteControl { controller.pasteIntoTerminal() }
                 .frame(width: 46, height: 46)
-                .allowsHitTesting(controller.canSendTerminalInput)
+                .disabled(!controller.canSendTerminalInput)
                 .opacity(controller.canSendTerminalInput ? 1 : 0.4)
 
             Divider()
