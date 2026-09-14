@@ -31,7 +31,7 @@ final class PiTerminalClipboardTests: XCTestCase {
                     HStack(spacing: 24) {
                         PasteRenderFixture(control: old).frame(width: 46, height: 46)
                         PiTerminalPasteControl { taps += 1 }
-                            .disabled(!enabled).opacity(enabled ? 1 : 0.4)
+                            .disabled(!enabled)
                     }.padding(.leading, 16).padding(.top, 20)
                      .frame(width: 160, height: 100, alignment: .topLeading)
                      .background(Color(white: 0.25)).ignoresSafeArea()
@@ -74,6 +74,90 @@ final class PiTerminalClipboardTests: XCTestCase {
                 XCTAssertGreaterThan(changed, 20, "Reject an empty render")
                 XCTAssertLessThan(changed, 500, "Only the icon should be drawn, not a filled platter")
                 XCTAssertEqual(taps, 0, "Rendering cannot read or paste clipboard contents")
+            }
+        }
+    }
+
+    func testCompactToolbarWidthBudgetKeepsEveryControlVisible() {
+        for width: CGFloat in [320, 375, 390, 414, 768, 844] {
+            for attachments in [false, true] {
+                let metrics = PiTerminalToolbarMetrics(availableWidth: width, showsAttachments: attachments)
+                XCTAssertEqual(metrics.actions.count, attachments ? 9 : 8)
+                let total = metrics.actions.reduce(CGFloat.zero) { $0 + metrics.width(for: $1) }
+                    + CGFloat(metrics.actions.count - 1) * PiTerminalToolbarMetrics.spacing
+                    + 2 * PiTerminalToolbarMetrics.inset
+                XCTAssertEqual(total, width, accuracy: 0.001)
+                for action in metrics.actions {
+                    XCTAssertGreaterThanOrEqual(metrics.width(for: action), 26)
+                }
+                XCTAssertGreaterThan(metrics.width(for: .control), 37)
+            }
+        }
+        XCTAssertEqual(PiTerminalToolbarMetrics.height, 46)
+    }
+
+    func testCompactToolbarRendersAllNineControlsInOneRow() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        for width in [320, 375, 414, 768] {
+            for dark in [false, true] {
+                for state in 0..<4 {
+                    let enabled = state != 2
+                    let latched = state == 1
+                    let shown = state == 1 || state == 3
+                    var actions: [PiTerminalToolbarAction] = []
+                    let window = UIWindow(windowScene: scene)
+                    window.frame = CGRect(x: 0, y: 0, width: width, height: 100)
+                    let host = UIHostingController(rootView:
+                        PiTerminalToolbarContent(showsAttachments: true, canSend: enabled,
+                            canAttach: enabled && state != 3, controlLatched: latched, keyboardShown: shown) {
+                                actions.append($0)
+                            }
+                            .frame(width: CGFloat(width), height: 46)
+                            .frame(width: CGFloat(width), height: 100, alignment: .topLeading)
+                            .background(Color.black).ignoresSafeArea()
+                    )
+                    host.overrideUserInterfaceStyle = dark ? .dark : .light
+                    window.rootViewController = host
+                    window.makeKeyAndVisible()
+                    defer { window.isHidden = true }
+                    host.view.layoutIfNeeded()
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                    let format = UIGraphicsImageRendererFormat()
+                    format.scale = 1
+                    format.preferredRange = .standard
+                    let image = UIGraphicsImageRenderer(size: window.bounds.size, format: format).image { _ in
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                    }
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "compact-toolbar-\(width)-dark-\(dark)-state-\(state)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                    let cg = try XCTUnwrap(image.cgImage)
+                    XCTAssertEqual(cg.bitsPerPixel, 32)
+                    let bytes = try XCTUnwrap(cg.dataProvider?.data) as Data
+                    func pixel(_ x: Int, _ y: Int) -> [Int] {
+                        let start = y * cg.bytesPerRow + x * 4
+                        return bytes[start..<(start + 3)].map(Int.init)
+                    }
+                    let metrics = PiTerminalToolbarMetrics(availableWidth: CGFloat(width), showsAttachments: true)
+                    var x = PiTerminalToolbarMetrics.inset
+                    for action in metrics.actions {
+                        let cellWidth = metrics.width(for: action)
+                        let baseline = pixel(Int(x + cellWidth / 2), 9)
+                        var glyphPixels = 0
+                        for px in Int(x + 4)..<Int(x + cellWidth - 4) {
+                            for py in 14..<33 {
+                                let color = pixel(px, py)
+                                if zip(color, baseline).reduce(0, { $0 + abs($1.0 - $1.1) }) > 25 {
+                                    glyphPixels += 1
+                                }
+                            }
+                        }
+                        XCTAssertGreaterThan(glyphPixels, 10, "Missing/clipped \(action) at \(width), dark=\(dark), state=\(state)")
+                        x += cellWidth + PiTerminalToolbarMetrics.spacing
+                    }
+                    XCTAssertTrue(actions.isEmpty, "Layout must never activate a terminal action")
+                }
             }
         }
     }
