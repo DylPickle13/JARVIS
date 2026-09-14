@@ -17,11 +17,17 @@ struct PiTerminalPasteControl: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Receiver { Receiver(frame: .zero) }
-    func makeUIView(context: Context) -> UIPasteControl {
+    static func buttonConfiguration() -> UIPasteControl.Configuration {
         let configuration = UIPasteControl.Configuration()
         configuration.displayMode = .iconOnly
         configuration.cornerStyle = .capsule
-        let control = UIPasteControl(configuration: configuration)
+        configuration.baseForegroundColor = UIColor(JarvisPalette.accent)
+        configuration.baseBackgroundColor = .clear
+        return configuration
+    }
+
+    func makeUIView(context: Context) -> UIPasteControl {
+        let control = UIPasteControl(configuration: Self.buttonConfiguration())
         context.coordinator.receive = receive
         control.target = context.coordinator
         control.accessibilityLabel = "Paste into terminal"

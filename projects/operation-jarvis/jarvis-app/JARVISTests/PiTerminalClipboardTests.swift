@@ -5,6 +5,15 @@ import SwiftTerm
 
 @MainActor
 final class PiTerminalClipboardTests: XCTestCase {
+    func testPasteStyleMatchesAccentControlsWithoutReplacingNativePaste() {
+        let configuration = PiTerminalPasteControl.buttonConfiguration()
+        XCTAssertEqual(configuration.displayMode, .iconOnly)
+        XCTAssertEqual(configuration.baseBackgroundColor, .clear)
+        XCTAssertEqual(configuration.baseForegroundColor, UIColor(JarvisPalette.accent))
+        let native = UIPasteControl(configuration: configuration)
+        XCTAssertEqual(native.configuration.baseForegroundColor, UIColor(JarvisPalette.accent))
+    }
+
     private func terminal() -> PiTerminalHostView {
         let view = PiTerminalHostView(frame: CGRect(x: 0, y: 0, width: 390, height: 300))
         view.layoutIfNeeded()
