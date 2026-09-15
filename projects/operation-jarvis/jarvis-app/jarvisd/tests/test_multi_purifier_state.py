@@ -64,6 +64,17 @@ class MultiPurifierStateTests(unittest.TestCase):
         self.complete()
         self.assertTrue(self.snapshot()['devices'][self.b]['verificationPending'])
 
+    def test_expired_pending_does_not_permanently_lock_out_fresh_device(self):
+        self.complete()
+        self.c.apply_purifier_result({'cid':'private-b','is_on':True,'verification_pending':True},{'isOn':False})
+        self.clock += 91
+        self.complete()
+        row=self.snapshot()['devices'][self.b]
+        self.assertFalse(row['verificationPending'])
+        self.assertFalse(row['stale'])
+        self.assertTrue(row['isOn'])
+        self.assertIn('could not be confirmed', row['lastError'])
+
     def test_stale_inflight_batch_cannot_overwrite_command(self):
         self.complete()
         revision=self.c._records['purifier']['revision']

@@ -2067,7 +2067,7 @@ class StateCoordinator:
                 state.update(deviceID=device_id, updatedAt=_iso_now(), stale=pending, refreshing=False)
                 state["verificationPending"] = pending
                 if pending:
-                    record.setdefault("itemPending", {})[device_id] = copy.deepcopy(expected)
+                    record.setdefault("itemPending", {})[device_id] = {"expected": copy.deepcopy(expected), "deadline": self._now() + 90.0}
                     state["pendingCommand"] = _purifier_pending_command(expected)
                 else:
                     record.setdefault("itemPending", {}).pop(device_id, None)
@@ -2159,12 +2159,15 @@ class StateCoordinator:
                 item = copy.deepcopy(item)
                 item.update(stale=False, updatedAt=_iso_now(), refreshing=False)
                 record["itemLastGoodAt"][device_id] = now
-                expected = pending.get(device_id)
-                if expected and not _purifier_matches(item, expected):
+                pending_info = pending.get(device_id) or {}
+                expected = pending_info.get("expected")
+                if expected and not _purifier_matches(item, expected) and now < pending_info.get("deadline", 0):
                     item.update(verificationPending=True, stale=True, pendingCommand=_purifier_pending_command(expected))
                 else:
                     pending.pop(device_id, None)
                     item["verificationPending"] = False
+                    if expected and not _purifier_matches(item, expected):
+                        item["lastError"] = "Previous change could not be confirmed; current reading shown."
             else:
                 item = {**copy.deepcopy(previous.get(device_id, {})), **item,
                         "stale": True, "lastError": item.get("error", "Refresh failed")}
