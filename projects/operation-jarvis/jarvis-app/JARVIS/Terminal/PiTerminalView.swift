@@ -32,12 +32,9 @@ struct PiTerminalView: View {
             Color.black.ignoresSafeArea()
 
             if configurationReady, !editingLogin {
-                VStack(spacing: 0) {
-                    PiTerminalContainer(controller: terminal)
-                        .background(Color.black)
-                        .accessibilityLabel("Pi terminal")
-                    PiTerminalKeyBar(controller: terminal)
-                }
+                PiTerminalContainer(controller: terminal)
+                    .background(Color.black)
+                    .accessibilityLabel("Pi terminal")
             } else {
                 setupView
             }
@@ -411,30 +408,66 @@ struct PiTerminalToolbarContent: View {
     }
 }
 
-private struct PiTerminalContainer: UIViewRepresentable {
+// The keyboard belongs to the UIKit proxy, not a SwiftUI TextField. Keep the
+// terminal and key bar in the same native layout, so their bounds follow the
+// actual docked keyboard even if TabView does not propagate keyboard safe area.
+// No keyboard-height notifications/padding: those double-inset when SwiftUI
+// already shrinks its proposal and drift during interactive dismissal/rotation.
+struct PiTerminalContainer: UIViewControllerRepresentable {
     let controller: PiTerminalController
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(controller: controller)
+    func makeUIViewController(context: Context) -> PiTerminalViewportController {
+        PiTerminalViewportController(controller: controller)
     }
 
-    func makeUIView(context: Context) -> PiTerminalHostView {
-        let view = PiTerminalHostView(frame: .zero)
-        context.coordinator.controller.attach(view)
-        return view
+    func updateUIViewController(_ uiViewController: PiTerminalViewportController, context: Context) {}
+
+    static func dismantleUIViewController(_ uiViewController: PiTerminalViewportController, coordinator: ()) {
+        uiViewController.disconnectView()
+    }
+}
+
+final class PiTerminalViewportController: UIViewController {
+    let terminalView = PiTerminalHostView(frame: .zero)
+    let toolbar: UIHostingController<PiTerminalKeyBar>
+    private let controller: PiTerminalController
+
+    init(controller: PiTerminalController) {
+        self.controller = controller
+        toolbar = UIHostingController(rootView: PiTerminalKeyBar(controller: controller))
+        super.init(nibName: nil, bundle: nil)
     }
 
-    func updateUIView(_ uiView: PiTerminalHostView, context: Context) {}
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    static func dismantleUIView(_ uiView: PiTerminalHostView, coordinator: Coordinator) {
-        coordinator.controller.detach(uiView)
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        view.clipsToBounds = true
+        terminalView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(terminalView)
+        addChild(toolbar)
+        toolbar.view.backgroundColor = .clear
+        toolbar.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(toolbar.view)
+        toolbar.didMove(toParent: self)
+        view.keyboardLayoutGuide.followsUndockedKeyboard = false
+        NSLayoutConstraint.activate([
+            terminalView.topAnchor.constraint(equalTo: view.topAnchor),
+            terminalView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            terminalView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            terminalView.bottomAnchor.constraint(equalTo: toolbar.view.topAnchor),
+            toolbar.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            toolbar.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            toolbar.view.heightAnchor.constraint(equalToConstant: PiTerminalToolbarMetrics.height),
+            toolbar.view.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
+        ])
+        // Attach exactly once; a keyboard layout change only resizes the existing
+        // SwiftTerm view (and its existing SSH PTY), never replaces a session.
+        controller.attach(terminalView)
     }
 
-    @MainActor
-    final class Coordinator {
-        let controller: PiTerminalController
-        init(controller: PiTerminalController) { self.controller = controller }
-    }
+    func disconnectView() { controller.detach(terminalView) }
 }
 
 #Preview {

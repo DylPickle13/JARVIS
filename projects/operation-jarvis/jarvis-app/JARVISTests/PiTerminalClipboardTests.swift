@@ -7,6 +7,94 @@ import JARVISKit
 
 @MainActor
 final class PiTerminalClipboardTests: XCTestCase {
+    func testTerminalViewportTracksSafeAreaAndKeepsExistingTerminal() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "keyboard-layout-\(UUID())"))
+        let controller = PiTerminalController(settings: PiTerminalSettings(defaults: defaults), slotDefaults: defaults)
+        let viewport = PiTerminalViewportController(controller: controller)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = viewport
+        window.makeKeyAndVisible()
+        defer { viewport.disconnectView(); window.isHidden = true }
+        let terminal = viewport.terminalView
+        var bytes: [[UInt8]] = []
+        terminal.outboundBytesObserver = { bytes.append($0) }
+        for size in [CGSize(width: 390, height: 844), CGSize(width: 844, height: 390)] {
+            window.frame.size = size
+            viewport.additionalSafeAreaInsets.bottom = 0
+            window.layoutIfNeeded(); viewport.view.layoutIfNeeded()
+            let fullHeight = terminal.bounds.height
+            let fullRows = terminal.getTerminal().rows
+            for inset: CGFloat in [160, 220, 0] {
+                viewport.additionalSafeAreaInsets.bottom = inset
+                window.layoutIfNeeded(); viewport.view.layoutIfNeeded()
+                XCTAssertEqual(terminal.bounds.height, fullHeight - inset, accuracy: 1)
+                XCTAssertEqual(viewport.toolbar.view.frame.height, 46, accuracy: 0.5)
+                XCTAssertEqual(terminal.frame.maxY, viewport.toolbar.view.frame.minY, accuracy: 0.5)
+                XCTAssertEqual(viewport.toolbar.view.frame.maxY, viewport.view.keyboardLayoutGuide.layoutFrame.minY, accuracy: 0.5)
+                XCTAssertTrue(terminal === viewport.terminalView)
+                if inset > 0 { XCTAssertLessThan(terminal.getTerminal().rows, fullRows) }
+                else { XCTAssertEqual(terminal.getTerminal().rows, fullRows) }
+            }
+        }
+        XCTAssertTrue(bytes.isEmpty, "Layout cannot emit terminal input")
+        XCTAssertEqual(controller.selectedSlot, .one)
+    }
+
+    func testTerminalViewportFollowsProxyKeyboardAndRestoresOnHide() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "keyboard-proxy-layout-\(UUID())"))
+        let controller = PiTerminalController(settings: PiTerminalSettings(defaults: defaults), slotDefaults: defaults)
+        let host = UIHostingController(rootView: TabView {
+            PiTerminalContainer(controller: controller)
+                .tabItem { Label("JARVIS", systemImage: "terminal.fill") }
+        })
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host; window.makeKeyAndVisible()
+        try await Task.sleep(for: .milliseconds(300))
+        func findViewport(_ parent: UIViewController) -> PiTerminalViewportController? {
+            if let viewport = parent as? PiTerminalViewportController { return viewport }
+            return parent.children.compactMap { findViewport($0) }.first
+        }
+        let viewport = try XCTUnwrap(findViewport(host))
+        defer { window.endEditing(true); viewport.disconnectView(); window.isHidden = true }
+        window.layoutIfNeeded(); viewport.view.layoutIfNeeded()
+        let terminal = viewport.terminalView
+        let originalHeight = terminal.bounds.height
+        let originalRows = terminal.getTerminal().rows
+        let proxy = try XCTUnwrap(terminal.subviews.compactMap { $0 as? PiTerminalKeyboardResponder }.first)
+        // Exercise the real responder/keyboard guide without enabling SSH input,
+        // configuring credentials or connecting to any live terminal session.
+        let input = UIInputView(frame: CGRect(x: 0, y: 0, width: window.bounds.width, height: 260), inputViewStyle: .keyboard)
+        input.allowsSelfSizing = true
+        input.heightAnchor.constraint(equalToConstant: 260).isActive = true
+        proxy.inputView = input
+        for cycle in 0..<2 {
+            // A fixed input view keeps this deterministic even when the
+            // simulator routes normal typing to a connected hardware keyboard.
+            XCTAssertTrue(proxy.becomeFirstResponder())
+            try await Task.sleep(for: .milliseconds(700))
+            viewport.view.layoutIfNeeded()
+            XCTAssertLessThan(terminal.bounds.height, originalHeight - 100)
+            XCTAssertLessThan(terminal.getTerminal().rows, originalRows)
+            XCTAssertTrue(findViewport(host) === viewport)
+            XCTAssertEqual(viewport.toolbar.view.frame.maxY, viewport.view.keyboardLayoutGuide.layoutFrame.minY, accuracy: 1)
+            XCTAssertEqual(viewport.toolbar.view.frame.height, 46, accuracy: 0.5)
+            let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "terminal-keyboard-tabview-cycle-\(cycle)"
+            attachment.lifetime = .keepAlways; add(attachment)
+            XCTAssertTrue(proxy.resignFirstResponder())
+            try await Task.sleep(for: .milliseconds(700))
+            viewport.view.layoutIfNeeded()
+            XCTAssertEqual(terminal.bounds.height, originalHeight, accuracy: 1)
+            XCTAssertEqual(terminal.getTerminal().rows, originalRows)
+        }
+    }
+
     func testWatchTwoPurifierRowsKeep68PointFootprint() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let a = String(repeating: "a", count: 24), b = String(repeating: "b", count: 24)
