@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 AIR_PURIFIER_ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,7 @@ class Settings:
     default_device: str | None
     write_wait_seconds: float
     auth_path: Path
+    aliases: dict[str, str] = field(default_factory=dict)
 
     @property
     def has_credentials(self) -> bool:
@@ -97,7 +99,17 @@ def load_settings() -> Settings:
         or None
     )
 
+    aliases = json.loads(os.environ.get("JARVIS_AIR_PURIFIER_ALIASES", "{}"))
+    if not isinstance(aliases, dict) or any(
+        not isinstance(k, str) or not normalize_name(k) or not isinstance(v, str) or not v.strip()
+        for k, v in aliases.items()
+    ):
+        raise ValueError("JARVIS_AIR_PURIFIER_ALIASES must map nonempty aliases to CIDs")
+    normalized = {normalize_name(k): v.strip() for k, v in aliases.items()}
+    if len(normalized) != len(aliases):
+        raise ValueError("Duplicate normalized purifier aliases")
     return Settings(
+        aliases=normalized,
         username=username,
         password=password,
         country_code=(os.environ.get("VESYNC_COUNTRY_CODE") or "CA").upper(),

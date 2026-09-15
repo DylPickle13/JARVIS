@@ -77,7 +77,7 @@ Memory is explicit: loading `memory` makes search, remember, update, forget, lis
 
 Prior Pi/JARVIS sessions are searched directly with baseline coding tools. The project-specific JSONL directory and raw-search workflow belong in ignored `.pi/APPEND_SYSTEM.md`; use `rg -l` to shortlist files, then parse/read only the relevant records.
 
-The `jarvis` group includes Operation JARVIS actions for Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
+The `jarvis` group includes Operation JARVIS actions for Cast/Spotify workflows, smart plugs, and Levoit/VeSync purifiers. `purifier-list` discovers CID-keyed devices without refreshing readings; `purifier-status-all` explicitly reads all devices in one cloud session. `purifier-status` and `purifier-set` select one device using its configured alias, unique name or exact CID. Ambiguous shared models/names are rejected. `retryCooldown` permits only an owner-authorized recovery read, never a write or automatic retry. Existing sessions need a future tool reload to expose new schema actions; do not reset live sessions for this.
 
 Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: discover their schemas by loading `minecraft_jarvis` or `github`. Known valid direct calls also auto-load on the JARVIS runtime. Ordinary local `git` operations continue to use the baseline coding shell.
 

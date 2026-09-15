@@ -373,7 +373,7 @@ public final class AppState: ObservableObject {
             connectionState = .connected
             errorMessage = nil
             if activeSection == .home {
-                await refreshHomeResources(refreshHealth: false)
+                await refreshHome()
             } else {
                 await refreshJobs()
             }
@@ -993,6 +993,9 @@ public final class AppState: ObservableObject {
     // MARK: - Polling
 
     public func refreshHome() async {
+        if appIsActive, let endpoint = activeEndpoint {
+            _ = try? await client.stateRefreshingPurifier(endpoint)
+        }
         await refreshHomeResources(refreshHealth: true)
     }
 
@@ -1056,7 +1059,7 @@ public final class AppState: ObservableObject {
                 if self.activeSection == .home {
                     self.homeControlPollsSinceResources += 1
                     if self.homeControlPollsSinceResources >= 3 {
-                        await self.refreshHome()
+                        await self.refreshHomeResources(refreshHealth: true)
                     } else {
                         await self.refreshVisibleControlState()
                     }

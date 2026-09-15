@@ -104,7 +104,7 @@ class DaemonUnitTests(unittest.TestCase):
             calls.append((argv, timeout, env))
             if argv[-1] == "plug-list":
                 return {"ok": True, "plugs": {}}
-            return {"ok": True, "airPurifier": {"data": {}}}
+            return {"ok": True, "purifiers": {}}
 
         with mock.patch.object(jarvisd, "run_cli_json", side_effect=fake_run):
             self.assertTrue(jarvisd._plugs()["ok"])
@@ -336,10 +336,10 @@ class DaemonUnitTests(unittest.TestCase):
         self.assertEqual(coordinator.DEFAULT_INTERVALS["pi"], 2.0)
         self.assertEqual(coordinator.DEFAULT_INTERVALS["plugs"], 5.0)
         self.assertEqual(coordinator.DEFAULT_INTERVALS["services"], 5.0)
-        self.assertEqual(coordinator.DEFAULT_INTERVALS["purifier"], 15.0)
+        self.assertEqual(coordinator.DEFAULT_INTERVALS["purifier"], float("inf"))
         self.assertEqual(coordinator.DEFAULT_INTERVALS["codexQuota"], 60.0)
         self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["plugs"], 10.0)
-        self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["purifier"], 45.0)
+        self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["purifier"], float("inf"))
         self.assertEqual(coordinator.DEFAULT_IDLE_INTERVALS["codexQuota"], 300.0)
         self.assertEqual(coordinator.DEFAULT_FRESHNESS_LIMITS["plugs"], 30.0)
         self.assertEqual(coordinator.DEFAULT_FRESHNESS_LIMITS["purifier"], 90.0)
@@ -630,6 +630,28 @@ class DaemonUnitTests(unittest.TestCase):
             coordinator._records["plugs"]["pending"] = {"expected": {}}
             self.assertEqual(coordinator._interval_locked("plugs", clock[0]), 10)
 
+    def test_purifier_only_refreshes_explicitly_and_debounces(self):
+        clock = [100.0]
+        coordinator = jarvisd.StateCoordinator(
+            collectors={"purifier": lambda: {"ok": True}}, now=lambda: clock[0])
+        coordinator.start = lambda: None
+        record = coordinator._records["purifier"]
+        self.assertEqual(record["nextDue"], float("inf"))
+        coordinator.activate_client()
+        self.assertEqual(record["nextDue"], float("inf"))
+        coordinator.request_refresh("purifier")
+        self.assertEqual(record["nextDue"], 0.0)
+        future = jarvisd.concurrent.futures.Future()
+        future.set_result({"ok": True})
+        coordinator._complete("purifier", future, 0)
+        self.assertEqual(record["nextDue"], float("inf"))
+        clock[0] += 59
+        coordinator.request_refresh("purifier")
+        self.assertEqual(record["nextDue"], float("inf"))
+        clock[0] += 1
+        coordinator.request_refresh("purifier")
+        self.assertEqual(record["nextDue"], 0.0)
+
     def test_idle_activation_refreshes_old_controls_before_returning(self):
         now = time.time
         calls = {"plugs": 0, "purifier": 0}
@@ -662,11 +684,11 @@ class DaemonUnitTests(unittest.TestCase):
         try:
             coordinator.activate_client()
             snapshot = coordinator.snapshot()
-            self.assertEqual(calls, {"plugs": 1, "purifier": 1})
+            self.assertEqual(calls, {"plugs": 1, "purifier": 0})
             self.assertEqual(snapshot["subsystems"]["plugs"]["source"], "plugs")
-            self.assertEqual(snapshot["subsystems"]["purifier"]["source"], "purifier")
+            self.assertEqual(snapshot["subsystems"]["purifier"]["source"], "old")
             self.assertFalse(snapshot["subsystems"]["plugs"]["stale"])
-            self.assertFalse(snapshot["subsystems"]["purifier"]["stale"])
+            self.assertTrue(snapshot["subsystems"]["purifier"]["stale"])
         finally:
             coordinator.stop()
 

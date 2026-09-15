@@ -30,6 +30,7 @@ import datetime as dt
 import hmac
 import http.client
 import ipaddress
+import hashlib
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -450,6 +451,16 @@ def _purifier_set_args(params: dict) -> list[str]:
     if setting not in PURIFIER_SETTINGS:
         raise CommandError(f"unsupported purifier setting {setting!r}")
     args = ["purifier-set", setting]
+    if "deviceID" in params:
+        device_id = _require_str(params, "deviceID")
+        with _PURIFIER_SELECTOR_LOCK:
+            selector = _PURIFIER_SELECTORS.get(device_id)
+        if selector is None:
+            raise CommandError("Unknown purifier; refresh the device list first")
+        item = STATE_COORDINATOR.snapshot().get("subsystems", {}).get("purifier", {}).get("devices", {}).get(device_id, {})
+        if item.get("ok") is not True or item.get("stale") is not False or item.get("verificationPending") is True:
+            raise CommandError("Fresh selected-purifier readings are required before a change")
+        args += ["--purifier", selector]
 
     value = params.get("value")
     if value is not None:
@@ -1068,12 +1079,41 @@ def _purifier_state(data: dict) -> dict:
     }
 
 
-def _purifier() -> dict:
-    result = run_cli_json([str(JARVIS_CLI), "--json", "purifier-status"], timeout=12, env=COLLECTOR_ENV)
-    data = result.get("airPurifier", {}).get("data") if isinstance(result, dict) else None
-    if not isinstance(data, dict):
-        return {"ok": False, "error": "purifier-status failed"}
-    return _purifier_state(data)
+_PURIFIER_SELECTORS: dict[str, str] = {}
+_PURIFIER_SELECTOR_LOCK = threading.RLock()
+
+
+def _purifier_id(cid: str) -> str:
+    # Public app identity is stable, but never exposes the raw VeSync CID.
+    return hashlib.sha256(("jarvis-purifier-v1:" + cid).encode()).hexdigest()[:24]
+
+
+def _purifier(retry: bool = False) -> dict:
+    args = [str(JARVIS_CLI), "--json", "purifier-status-all"]
+    if retry:
+        args.append("--retry-cooldown")
+    result = run_cli_json(args, timeout=25, env=COLLECTOR_ENV)
+    incoming = result.get("purifiers") if isinstance(result, dict) else None
+    if not isinstance(incoming, dict):
+        return {"ok": False, "error": _safe_error(result.get("error") or "Purifier refresh unavailable")}
+    devices, selectors = {}, {}
+    default_id = None
+    for cid, entry in incoming.items():
+        if not isinstance(cid, str) or not cid or not isinstance(entry, dict):
+            continue
+        device_id = _purifier_id(cid)
+        selectors[device_id] = cid
+        data = entry.get("status")
+        state = _purifier_state(data) if entry.get("ok") is True and isinstance(data, dict) else {
+            "ok": False, "name": entry.get("name"), "error": "Device refresh unavailable"}
+        state["deviceID"] = device_id
+        devices[device_id] = state
+        if entry.get("isDefault") is True:
+            default_id = device_id
+    with _PURIFIER_SELECTOR_LOCK:
+        _PURIFIER_SELECTORS.clear()
+        _PURIFIER_SELECTORS.update(selectors)
+    return {"ok": True, "devices": devices, "defaultDeviceID": default_id}
 
 
 def _launchctl_target(label: str) -> str:
@@ -1751,7 +1791,7 @@ class StateCoordinator:
         "pi": 2.0,
         "plugs": 5.0,
         "services": 5.0,
-        "purifier": 15.0,
+        "purifier": float("inf"),  # Explicit app refreshes only.
         "network": 60.0,
         "codexQuota": 60.0,
     }
@@ -1761,7 +1801,7 @@ class StateCoordinator:
         # client is visible. These are bounded host reads, not app polling.
         "plugs": 10.0,
         "services": 300.0,
-        "purifier": 45.0,
+        "purifier": float("inf"),
         "network": 600.0,
         "codexQuota": 300.0,
     }
@@ -1811,7 +1851,8 @@ class StateCoordinator:
                 "error": None,
                 "stale": True,
                 "refreshing": False,
-                "nextDue": 0.0,
+                "nextDue": float("inf") if name == "purifier" else 0.0,
+                "lastRequestedAt": None,
                 "revision": 0,
                 "completionCount": 0,
                 "pending": None,
@@ -1922,8 +1963,9 @@ class StateCoordinator:
             self._active_until = max(self._active_until, now + self.active_lease_seconds)
             if not was_active:
                 for name, record in self._records.items():
-                    record["nextDue"] = 0.0
-                    if name in self.CONTROL_SUBSYSTEMS and self._record_is_stale(name, record, now):
+                    if name != "purifier":
+                        record["nextDue"] = 0.0
+                    if name == "plugs" and self._record_is_stale(name, record, now):
                         targets[name] = int(record.get("completionCount", 0))
             self._condition.notify_all()
         self.start()
@@ -1946,11 +1988,20 @@ class StateCoordinator:
                     return
                 self._condition.wait(timeout=remaining)
 
-    def request_refresh(self, name: str) -> None:
+    def request_refresh(self, name: str, *, retry_cooldown: bool = False) -> None:
         now = self._now()
         with self._condition:
             if name in self._records:
-                self._records[name]["nextDue"] = 0.0
+                record = self._records[name]
+                if name == "purifier":
+                    last = record.get("lastRecoveryRequestedAt" if retry_cooldown else "lastRequestedAt")
+                    if record["refreshing"] or (last is not None and now - last < 60.0):
+                        return
+                    record["lastRequestedAt"] = now
+                    record["retryCooldown"] = bool(retry_cooldown)
+                    if retry_cooldown:
+                        record["lastRecoveryRequestedAt"] = now
+                record["nextDue"] = 0.0
             self._active_until = max(self._active_until, now + self.active_lease_seconds)
             self._condition.notify_all()
         self.start()
@@ -1963,7 +2014,7 @@ class StateCoordinator:
         record["lastGoodAt"] = now
         record["error"] = None
         record["stale"] = False
-        record["nextDue"] = 0.0
+        record["nextDue"] = float("inf") if name == "purifier" else 0.0
         record["revision"] += 1
 
     def apply_plug_result(self, plug: Any) -> bool:
@@ -2006,15 +2057,36 @@ class StateCoordinator:
             record = self._records.get("purifier")
             if record is None:
                 return False
+            collection = record.get("data") or {}
+            cid = data.get("cid")
+            device_id = _purifier_id(cid) if isinstance(cid, str) else None
+            if isinstance(collection.get("devices"), dict):
+                if device_id not in collection["devices"]:
+                    return False
+                pending = data.get("verification_pending") is True and bool(expected)
+                state.update(deviceID=device_id, updatedAt=_iso_now(), stale=pending, refreshing=False)
+                state["verificationPending"] = pending
+                if pending:
+                    record.setdefault("itemPending", {})[device_id] = {"expected": copy.deepcopy(expected), "deadline": self._now() + 90.0}
+                    state["pendingCommand"] = _purifier_pending_command(expected)
+                else:
+                    record.setdefault("itemPending", {}).pop(device_id, None)
+                collection["devices"][device_id] = state
+                record["itemLastGoodAt"][device_id] = self._now()
+                record["revision"] += 1
+                record["nextDue"] = float("inf")
+                self._sync_purifier_default_locked()
+                self._condition.notify_all()
+                return True
             if data.get("verification_pending") is True and expected:
                 # VeSync accepted the write but returned old cloud state. Keep
-                # that data visible only as stale and poll quickly until the
-                # desired state is observed; controls remain disabled meanwhile.
+                # that data visible only as stale until an explicit refresh;
+                # do not start a background verification loop.
                 record["data"] = copy.deepcopy(state)
                 record["updatedAt"] = _iso_now()
                 record["error"] = None
                 record["stale"] = True
-                record["nextDue"] = self._now() + 2.0
+                record["nextDue"] = float("inf")
                 record["pending"] = {
                     "expected": copy.deepcopy(expected),
                     "deadline": self._now() + 90.0,
@@ -2057,13 +2129,52 @@ class StateCoordinator:
                     # a callback. Yield on the condition rather than spinning.
                     self._condition.wait(timeout=0.01)
                 else:
-                    self._condition.wait(timeout=wait_seconds)
+                    self._condition.wait(timeout=min(wait_seconds, 60.0))
 
     def _collect_one(self, name: str) -> dict:
         try:
+            if name == "purifier" and self.collectors[name] is _purifier:
+                with self._condition:
+                    retry = self._records[name].pop("retryCooldown", False)
+                return _purifier(retry=retry)
             return self.collectors[name]()
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": _safe_error(exc)}
+
+    def _sync_purifier_default_locked(self) -> None:
+        record = self._records["purifier"]
+        data = record["data"]
+        devices = data.get("devices", {})
+        default_id = data.get("defaultDeviceID")
+        default = copy.deepcopy(devices.get(default_id, {"ok": False, "error": "Default purifier unavailable"}))
+        record["data"] = {**default, "devices": devices, "defaultDeviceID": default_id}
+
+    def _complete_purifier_collection_locked(self, result: dict, now: float) -> None:
+        record = self._records["purifier"]
+        previous = (record.get("data") or {}).get("devices", {})
+        pending = record.setdefault("itemPending", {})
+        merged = {}
+        for device_id, item in result["devices"].items():
+            if item.get("ok") is True:
+                item = copy.deepcopy(item)
+                item.update(stale=False, updatedAt=_iso_now(), refreshing=False)
+                record["itemLastGoodAt"][device_id] = now
+                pending_info = pending.get(device_id) or {}
+                expected = pending_info.get("expected")
+                if expected and not _purifier_matches(item, expected) and now < pending_info.get("deadline", 0):
+                    item.update(verificationPending=True, stale=True, pendingCommand=_purifier_pending_command(expected))
+                else:
+                    pending.pop(device_id, None)
+                    item["verificationPending"] = False
+                    if expected and not _purifier_matches(item, expected):
+                        item["lastError"] = "Previous change could not be confirmed; current reading shown."
+            else:
+                item = {**copy.deepcopy(previous.get(device_id, {})), **item,
+                        "stale": True, "lastError": item.get("error", "Refresh failed")}
+            merged[device_id] = item
+        record["data"] = {"devices": merged, "defaultDeviceID": result.get("defaultDeviceID")}
+        self._sync_purifier_default_locked()
+        record.update(updatedAt=_iso_now(), lastGoodAt=now, stale=False, error=None, nextDue=float("inf"))
 
     def _complete_plug_collection_locked(self, result: dict[str, Any], now: float) -> None:
         """Merge aggregate plug reads without letting one device poison peers."""
@@ -2137,12 +2248,16 @@ class StateCoordinator:
                 # A command supplied newer authoritative data while this
                 # collection was in flight. Discard the old read and collect
                 # again rather than reverting the UI to pre-command state.
-                record["nextDue"] = 0.0
+                record["nextDue"] = float("inf") if name == "purifier" else 0.0
                 self._condition.notify_all()
                 return
             if name == "plugs" and isinstance(result, dict) and isinstance(result.get("plugs"), dict):
                 record["nextDue"] = now + self._interval_locked(name, now)
                 self._complete_plug_collection_locked(result, now)
+                self._condition.notify_all()
+                return
+            if name == "purifier" and isinstance(result, dict) and isinstance(result.get("devices"), dict):
+                self._complete_purifier_collection_locked(result, now)
                 self._condition.notify_all()
                 return
             pending = record.get("pending")
@@ -2160,7 +2275,7 @@ class StateCoordinator:
                     record["updatedAt"] = _iso_now()
                     record["error"] = None
                     record["stale"] = True
-                    record["nextDue"] = now + 3.0
+                    record["nextDue"] = float("inf")
                     self._condition.notify_all()
                     return
                 else:
@@ -2224,7 +2339,21 @@ class StateCoordinator:
                 data["updatedAt"] = record["updatedAt"]
             if record["error"]:
                 data["lastError"] = record["error"]
-            if name == "purifier":
+            if name == "purifier" and isinstance(data.get("devices"), dict):
+                for device_id, item in data["devices"].items():
+                    last_good = record["itemLastGoodAt"].get(device_id)
+                    item["stale"] = (item.get("ok") is not True or item.get("stale") is True
+                                     or last_good is None or now - last_good > self._freshness_limit("purifier")
+                                     or item.get("verificationPending") is True)
+                    item["refreshing"] = bool(record["refreshing"])
+                    if record["error"]:
+                        item["lastError"] = record["error"]
+                        item["stale"] = True
+                default = data["devices"].get(data.get("defaultDeviceID"), {"ok": False, "stale": True})
+                data = {**default, "devices": data["devices"], "defaultDeviceID": data.get("defaultDeviceID")}
+                effective_stale[name] = data.get("stale", True)
+                stale = effective_stale[name]
+            if name == "purifier" and not isinstance(data.get("devices"), dict):
                 pending = record.get("pending")
                 if isinstance(pending, dict):
                     data["verificationPending"] = True
@@ -2236,6 +2365,9 @@ class StateCoordinator:
                     data.pop("pendingCommand", None)
             subsystems[name] = data
             age = None if record["lastGoodAt"] is None else max(0.0, now - record["lastGoodAt"])
+            if name == "purifier" and isinstance(data.get("devices"), dict):
+                default_last_good = record["itemLastGoodAt"].get(data.get("defaultDeviceID"))
+                age = None if default_last_good is None else max(0.0, now - default_last_good)
             metadata[name] = {
                 "ok": data.get("ok") is True,
                 "updatedAt": record["updatedAt"],
@@ -2980,8 +3112,12 @@ class Handler(BaseHTTPRequestHandler):
             # read-only Codex usage collector. The response remains the fast
             # current snapshot; clients can observe `refreshing` and poll the
             # ordinary state endpoint for completion.
-            if query.get("refresh") == ["codexQuota"]:
-                STATE_COORDINATOR.request_refresh("codexQuota")
+            for subsystem in query.get("refresh", []):
+                if subsystem in {"codexQuota", "purifier"}:
+                    if subsystem == "purifier":
+                        STATE_COORDINATOR.request_refresh(subsystem, retry_cooldown=query.get("retryCooldown") == ["true"])
+                    else:
+                        STATE_COORDINATOR.request_refresh(subsystem)
             self._send(200, collect_state())
             return
         if path == "/api/v1/events":
@@ -3117,7 +3253,6 @@ class Handler(BaseHTTPRequestHandler):
                     _purifier_command_data(raw_result),
                     _purifier_expectation(params) if action == "purifier-set" else None,
                 )
-                STATE_COORDINATOR.request_refresh("purifier")
             # Return only the native-client contract, never argv, local paths,
             # adapter stdout, or private device identifiers.
             self._send(200, _public_command_result(action, raw_result))

@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Iterable
 
 from .config import Settings, normalize_name
+from .cooldown import cloud_request, CooldownError, is_rate_limit
 
 SUPPORTED_VITAL_200S_MODELS = {
     "LAP-V201S-AASR",
@@ -115,18 +116,58 @@ class PurifierStatus:
 
 
 class AirPurifierController:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, *, retry_cooldown: bool = False):
         self.settings = settings
+        self.retry_cooldown = retry_cooldown
 
     async def list(self) -> dict[str, PurifierStatus]:
         async with self._session() as manager:
             purifiers = await self._purifiers(manager)
-            return {status.name: status for status in map(_status_from_device, purifiers)}
+            self._validate_ids(purifiers)
+            return {device.cid: _status_from_device(device) for device in purifiers}
+
+    @staticmethod
+    def _validate_ids(devices: list[Any]) -> None:
+        ids = [getattr(device, "cid", None) for device in devices]
+        if any(not isinstance(cid, str) or not cid.strip() for cid in ids) or len(set(ids)) != len(ids):
+            raise AirPurifierError("Discovery returned missing or duplicate purifier CIDs")
+
+    async def status_all(self) -> dict[str, Any]:
+        # Explicit only: one login/discovery session, sequential bounded device reads.
+        async with self._session() as manager:
+            devices = await self._purifiers(manager)
+            self._validate_ids(devices)
+            result = {}
+            for device in devices:
+                try:
+                    if await device.update() is False:
+                        raise AirPurifierError("Device did not confirm status refresh")
+                    result[device.cid] = {"ok": True, "status": _status_from_device(device).as_dict()}
+                except Exception as exc:
+                    if is_rate_limit(exc):
+                        raise  # Stop the batch and persist account-wide backoff.
+                    result[device.cid] = {"ok": False, "name": device.device_name,
+                                          "error": "Device status refresh failed"}
+            selector = self.settings.default_device
+            if selector:
+                alias = self.settings.aliases.get(normalize_name(selector))
+                matches = [d for d in devices if d.cid == (alias or selector)]
+                if not alias and not matches:
+                    matches = [d for d in devices if normalize_name(selector) in {
+                        normalize_name(getattr(d, attr, None)) for attr in ("device_name", "device_type", "model")
+                    }]
+            else:
+                matches = devices if len(devices) == 1 else []
+            default_cid = matches[0].cid if len(matches) == 1 else None
+            for cid, entry in result.items():
+                entry["isDefault"] = cid == default_cid
+            return result
 
     async def status(self, device: str | None = None) -> PurifierStatus:
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            await target.update()
+            if await target.update() is False:
+                raise AirPurifierError("Device did not confirm status refresh")
             return _status_from_device(target)
 
     async def set_power(self, on: bool, device: str | None = None) -> PurifierStatus:
@@ -329,16 +370,20 @@ class AirPurifierController:
             names = ", ".join(getattr(device, "device_name", "<unknown>") for device in purifiers)
             raise AirPurifierError(f"Multiple air purifiers found; pass a device name/CID. Found: {names}")
 
-        clean_selector = normalize_name(selector)
-        for device in purifiers:
-            candidates = {
-                normalize_name(getattr(device, "device_name", None)),
-                normalize_name(getattr(device, "cid", None)),
-                normalize_name(getattr(device, "device_type", None)),
-                normalize_name(getattr(device, "model", None)),
-            }
-            if clean_selector in candidates:
-                return device
+        alias = self.settings.aliases.get(normalize_name(selector))
+        # A configured alias is CID-only: never fall back to a renamed device/model.
+        exact = [d for d in purifiers if getattr(d, "cid", None) == (alias or selector)]
+        if alias or exact:
+            matches = exact
+        else:
+            matches = [d for d in purifiers if normalize_name(selector) in {
+                normalize_name(getattr(d, attr, None))
+                for attr in ("device_name", "device_type", "model")
+            }]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise AirPurifierError(f"Ambiguous purifier {selector!r}; use a unique name or CID")
         names = ", ".join(getattr(device, "device_name", "<unknown>") for device in purifiers)
         raise AirPurifierError(f"Could not find air purifier {selector!r}. Found: {names or 'none'}")
 
@@ -353,6 +398,15 @@ class AirPurifierController:
 
     @asynccontextmanager
     async def _session(self):
+        try:
+            with cloud_request(self.settings.auth_path, retry=self.retry_cooldown):
+                async with self._cloud_session() as manager:
+                    yield manager
+        except CooldownError as exc:
+            raise AirPurifierError(str(exc)) from exc
+
+    @asynccontextmanager
+    async def _cloud_session(self):
         manager = self._manager()
         async with manager as active_manager:
             # CLI calls are short-lived, so persist VeSync's token between processes.
@@ -504,7 +558,7 @@ def _clean_value(value: Any) -> Any:
 def statuses_to_dict(statuses: Iterable[PurifierStatus] | dict[str, PurifierStatus]) -> dict[str, Any]:
     if isinstance(statuses, dict):
         return {key: status.as_dict() for key, status in statuses.items()}
-    return {status.name: status.as_dict() for status in statuses}
+    return {status.cid: status.as_dict() for status in statuses}
 
 
 def run(coro: Any) -> Any:

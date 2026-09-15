@@ -639,6 +639,8 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
                 "cast-spotify-repeat": {"required": [], "defaultDevice": "speakers", "states": ["off", "context", "track", "toggle"], "example": {"action": "cast-spotify-repeat", "device": "speakers", "repeatState": "toggle"}},
             },
             "purifierActions": {
+                "purifier-list": {"required": [], "note": "Discovery only; CID-keyed, readings not refreshed"},
+                "purifier-status-all": {"required": [], "note": "Explicit single-session batch read; per-device errors"},
                 "purifier-status": {"required": [], "example": {"action": "purifier-status"}},
                 "purifier-set": {
                     "required": ["setting"],
@@ -1126,9 +1128,23 @@ def _purifier_set_cli_args(args: argparse.Namespace) -> list[str]:
     raise JarvisError(f"Unsupported purifier setting {setting!r}")
 
 
+def handle_purifier_collection(args: argparse.Namespace) -> dict[str, Any]:
+    command = "list" if args.command == "purifier-list" else "status-all"
+    cli_args = (["--retry-cooldown"] if getattr(args, "retry_cooldown", False) else []) + [command]
+    result = run_air_purifier_command(cli_args, timeout=args.purifier_timeout)
+    devices = result["data"]
+    return {"ok": True, "action": args.command, "purifiers": devices,
+            "discoveryOnly": command == "list",
+            "summary": f"{len(devices)} purifiers: " + "; ".join(
+                f"{entry.get('status', entry).get('name', cid)}: " +
+                ("discovered (readings not refreshed)" if command == "list" else
+                 purifier_summary(entry["status"]) if entry.get("ok") else "refresh failed")
+                for cid, entry in devices.items())}
+
+
 def handle_purifier_status(args: argparse.Namespace) -> dict[str, Any]:
     result = run_air_purifier_command(
-        ["status", *_purifier_device_args(args)],
+        (["--retry-cooldown"] if getattr(args, "retry_cooldown", False) else []) + ["status", *_purifier_device_args(args)],
         timeout=args.purifier_timeout,
     )
     status = result.get("data") if isinstance(result.get("data"), dict) else {}
@@ -1392,6 +1408,13 @@ def build_parser() -> argparse.ArgumentParser:
     purifier_status = subparsers.add_parser("purifier-status", help="Show Levoit/VeSync air purifier status")
     add_air_purifier_options(purifier_status)
     purifier_status.set_defaults(func=handle_purifier_status)
+    purifier_status.add_argument("--retry-cooldown", action="store_true")
+    for action in ("purifier-list", "purifier-status-all"):
+        collection = subparsers.add_parser(action, help="Discover or explicitly refresh all purifiers")
+        collection.add_argument("--purifier-timeout", type=float, default=DEFAULT_AIR_PURIFIER_TIMEOUT)
+        if action == "purifier-status-all":
+            collection.add_argument("--retry-cooldown", action="store_true")
+        collection.set_defaults(func=handle_purifier_collection)
 
     purifier_set = subparsers.add_parser("purifier-set", help="Set one air purifier setting")
     add_air_purifier_options(purifier_set)

@@ -63,6 +63,7 @@ public struct ResolvedJarvisState: Equatable, Sendable {
 public protocol JarvisAPI: Sendable {
     func health(_ endpoint: JarvisEndpoint) async throws -> HealthResponse
     func state(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
+    func stateRefreshingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
     func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult
     func events(_ endpoint: JarvisEndpoint, since: Int?, limit: Int) async throws -> EventsResponse
@@ -103,6 +104,10 @@ public extension JarvisAPI {
     /// Test doubles and compatibility clients may treat an explicit quota read
     /// as an ordinary state read. JarvisClient overrides this with the bounded
     /// `refresh=codexQuota` request.
+    func stateRefreshingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        try await state(endpoint)
+    }
+
     func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         try await state(endpoint)
     }
@@ -292,6 +297,10 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
     /// Requests one immediate refresh of jarvisd's read-only Codex quota
     /// collector and returns the current state snapshot. Completion remains
     /// observable through subsequent ordinary state reads.
+    public func stateRefreshingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        try await perform(endpoint, "/api/v1/state?refresh=purifier", as: StateSnapshot.self)
+    }
+
     public func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         try await perform(endpoint, "/api/v1/state?refresh=codexQuota", as: StateSnapshot.self)
     }
