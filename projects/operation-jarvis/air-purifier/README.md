@@ -127,8 +127,44 @@ An already running cloud request cannot be cancelled by backgrounding the app.
 Commands still perform their existing bounded inline confirmation, but do not
 start a daemon verification loop. Cached values retain their age/stale markers.
 
-A detected VeSync rate-limit exception pauses adapter calls for 24 hours, persisted
-in `.vesync_cooldown` beside the authentication cache. This is a conservative
-local cooldown, not a claim about VeSync's reset time. Expiry does not trigger a
-request: the next explicit request tries again. The native app must be rebuilt
-and installed to send the new refresh signal; older clients only see cached state.
+A detected rate-limit exception starts local backoff at 5 minutes, doubling on
+successive failures up to 1 hour. Structured `retry_after` guidance, when exposed
+by an exception, is honoured if longer. These are conservative client delays,
+not a claim about VeSync's reset time. Legacy epoch-only cooldown files remain
+readable and retain their deadline until expiry or an explicit successful probe.
+No expiry schedules a request. Owner-authorized `--retry-cooldown status` can
+probe recovery once; writes cannot bypass cooldown. A successful cloud session
+clears it. Invalid cooldown files fail closed even for recovery probes.
+
+### Multiple purifiers
+
+- `./purifier-cli --json list` discovers CID-keyed devices; its readings are NOT
+  freshly queried. Duplicate display names no longer overwrite each other.
+- `./purifier-cli --json status-all` explicitly reads devices sequentially in
+  one session. Each CID has `ok` and `status` or an error. An ordinary device
+  failure does not hide another device; rate limiting stops the whole batch.
+- A unique name, exact CID or configured alias can select one purifier. Shared
+  model names and duplicate names are rejected, including for writes.
+- Set `JARVIS_AIR_PURIFIER_ALIASES` in private `.env` to a JSON object, for example
+  `{"dylan":"<first CID>","bran":"<second CID>"}`. Replace placeholders using
+  discovery. Aliases are CID-only, so a rename cannot retarget a command.
+- The existing configured default remains supported. Set it to an alias or CID
+  for rename-stable targeting. No implicit all-device writes are supported.
+- One nonblocking file lock, beside the auth cache, serializes cloud sessions
+  across daemon/CLI processes. Concurrent requests fail without a cloud call.
+  Cooldown updates are atomic and mode 0600. Processes using different auth
+  paths do not share a lock; keep one auth path for the same account.
+
+Operation adapter actions: `purifier-list`, `purifier-status-all`, existing
+`purifier-status --purifier <alias/CID/name>` and `purifier-set`. Explicit read
+recovery uses `--retry-cooldown`; the Pi tool exposes `retryCooldown: true` only
+for owner-approved status recovery, never automatic retries. Live Pi sessions
+need a future tool reload to see new actions; do not reset sessions to activate.
+The iPhone/Watch multi-device API/UI is separate work; this does not change its
+single-purifier snapshot or enable background cloud polling.
+
+Offline verification (no VeSync login or hardware writes):
+```sh
+python3 -m unittest discover -s projects/operation-jarvis/air-purifier/tests -v
+node --test .pi/scripts/tests/jarvis-purifiers.test.mjs
+```

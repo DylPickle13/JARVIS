@@ -40,6 +40,8 @@ const ACTIONS = [
   "plug-toggle",
   "plug-discover",
   "plug-save-discovery",
+  "purifier-list",
+  "purifier-status-all",
   "purifier-status",
   "purifier-set",
 ] as const;
@@ -100,6 +102,7 @@ type JarvisParams = {
   discoveryTarget?: string;
   plugTimeout?: number;
   purifier?: string;
+  retryCooldown?: boolean;
   setting?: PurifierSetting;
   value?: string;
   minutes?: number;
@@ -502,8 +505,19 @@ function buildJarvisArgs(params: JarvisParams): string[] {
     return args;
   }
 
+  if (params.retryCooldown && action !== "purifier-status" && action !== "purifier-status-all") {
+    throw new Error("retryCooldown is only allowed for explicit status reads, never writes");
+  }
+  if (action === "purifier-list" || action === "purifier-status-all") {
+    if (params.purifier) throw new Error("Collection actions do not accept a purifier selector");
+    const args = [action];
+    add(args, "--purifier-timeout", params.purifierTimeout);
+    if (params.retryCooldown) args.push("--retry-cooldown");
+    return args;
+  }
   if (action === "purifier-status") {
     const args = ["purifier-status"];
+    if (params.retryCooldown) args.push("--retry-cooldown");
     add(args, "--purifier", params.purifier);
     add(args, "--purifier-timeout", params.purifierTimeout);
     return args;
@@ -600,6 +614,8 @@ function timeoutMs(params: JarvisParams): number {
     case "plug-discover":
     case "plug-save-discovery":
       return Math.ceil(((params.plugTimeout ?? 30) + 90) * 1000);
+    case "purifier-list":
+    case "purifier-status-all":
     case "purifier-status":
       return Math.ceil(((params.purifierTimeout ?? 150) + 30) * 1000);
     case "purifier-set":
@@ -690,7 +706,8 @@ export default function registerJarvis(pi: ExtensionAPI) {
       plugConfig: Type.Optional(Type.String({ description: "Optional smart-plug plugs.json path override." })),
       discoveryTarget: Type.Optional(Type.String({ description: "Optional Kasa discovery broadcast target, e.g. a LAN broadcast address." })),
       plugTimeout: Type.Optional(Type.Number({ description: "Smart-plug command timeout seconds." })),
-      purifier: Type.Optional(Type.String({ description: "Optional VeSync air purifier name/CID/model override. Usually omit; default is configured locally in air-purifier/.env." })),
+      retryCooldown: Type.Optional(Type.Boolean({ description: "Owner-authorized single recovery read despite local cooldown. Only purifier-status/status-all; never retry automatically or use for writes." })),
+      purifier: Type.Optional(Type.String({ description: "Purifier alias, unique name or exact CID. Shared model names are ambiguous and rejected. Omit to use the configured default; never infer all-device writes." })),
       setting: Type.Optional(StringEnum(PURIFIER_SETTINGS, { description: "Required for purifier-set. Choose one setting: power, mode, speed, display, child-lock, light-detection, auto-preference, or timer." })),
       value: Type.Optional(Type.String({ description: "purifier-set value. Examples: power on/off/toggle; mode auto/manual/sleep/pet; display on/off; child-lock on/off; light-detection on/off; auto-preference default/quiet/efficient; timer clear." })),
       minutes: Type.Optional(Type.Number({ description: "purifier-set setting=timer: timer minutes, 1..1440." })),

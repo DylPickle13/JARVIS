@@ -9,3 +9,6 @@ __pycache__/
 .ruff_cache/
 
 .vesync_cooldown
+
+.vesync_request.lock
+.vesync_cooldown.*

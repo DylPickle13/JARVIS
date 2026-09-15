@@ -115,7 +115,7 @@ def _print_doctor(as_json: bool = False) -> None:
     print(f"credentials: {'configured' if payload['credentials_configured'] else 'missing'}")
     print(f"country: {payload['country_code']}  timezone: {payload['time_zone']}")
     print(f"write wait: {payload['write_wait_seconds']}s")
-    print(f"default device: {payload['default_device'] or '<first discovered purifier>'}")
+    print(f"default device: {payload['default_device'] or '<only discovered purifier; otherwise specify one>'}")
     print(f"env file: {payload['env_path']}")
     print(f"cached auth token: {'present' if payload['auth_token_cached'] else 'missing'} ({payload['auth_path']})")
 
@@ -126,14 +126,16 @@ def build_parser() -> argparse.ArgumentParser:
         description="Control VeSync/Levoit air purifiers for Operation JARVIS.",
     )
     parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--retry-cooldown", action="store_true", help="One owner-requested read despite local cooldown; never for writes")
 
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("doctor", help="Check local setup without contacting VeSync")
-    sub.add_parser("list", help="List VeSync air purifiers on the account")
+    sub.add_parser("list", help="Discover purifiers by CID; sensor values may be cached")
+    sub.add_parser("status-all", help="Explicitly refresh all purifiers in one cloud session")
 
     status = sub.add_parser("status", help="Show purifier status")
-    status.add_argument("device", nargs="?", help="Device name, CID, or model; defaults to configured/first purifier")
+    status.add_argument("device", nargs="?", help="Device name, CID, or model; defaults to configured/only purifier")
 
     filter_cmd = sub.add_parser("filter", help="Show purifier filter life")
     filter_cmd.add_argument("device", nargs="?", help="Device name, CID, or model")
@@ -185,12 +187,15 @@ def main(argv: list[str] | None = None) -> int:
         _print_doctor(args.json)
         return 0
 
-    settings = load_settings()
-    controller = AirPurifierController(settings)
-
+    if args.retry_cooldown and args.command not in {"status", "status-all"}:
+        parser.error("--retry-cooldown is only allowed for status/status-all")
     try:
+        settings = load_settings()
+        controller = AirPurifierController(settings, retry_cooldown=args.retry_cooldown)
         if args.command == "list":
             _print_many(run(controller.list()), args.json)
+        elif args.command == "status-all":
+            _print_json(run(controller.status_all()))
         elif args.command == "status":
             _print_status(run(controller.status(args.device)), args.json)
         elif args.command == "filter":

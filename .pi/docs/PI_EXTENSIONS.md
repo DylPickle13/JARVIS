@@ -17,7 +17,7 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 ## Extension roots covered by smoke test
 
 - `00-private-permissions.ts`: enforces owner-only permissions on ignored local configuration and private runtime directories.
-- `pi-web-access`: stock pinned npm extension, loaded directly through `.pi/settings.json`. The old wrapper is archived at `.pi/disabled-extensions/00-web-access-env.ts.disabled`; its scoped config and policy overrides no longer apply after restarting Pi.
+- `pi-web-access`: stock pinned npm extension, loaded directly through `.pi/settings.json`.
 - `01-omlx-provider-setup-and-recovery.ts`: non-blocking local oMLX provider registration plus prompt-too-long/prefill-memory recovery. Startup uses static seeds or the private last-known context-window cache at `.pi/runtime/omlx-context-windows.json`; live oMLX discovery refreshes the provider registry and cache after `session_start`, and the provider's native `refreshModels` callback reads the active server values whenever Pi refreshes `/model`. Unreachable providers silently retain their cached models and retry on the next refresh.
 - `04-delete-current-session.ts`: current-session cleanup command.
 - `04-siri-new-session.ts`: private, exact-mobile-Pi ingress for Siri. Uses in-memory conversation evidence, busy/compaction/prompt/queue and empty-editor guards. Claims a New slot synchronously, guards overlapping input before attachment consumption, submits a literal user message and acknowledges only its message-start event. No history reset, PTY paste, runtime reload, exposed tool, or queued fallback. Existing Pi processes need an owner-controlled `/reload` after rollout to advertise this capability.
@@ -77,7 +77,7 @@ Memory is explicit: loading `memory` makes search, remember, update, forget, lis
 
 Prior Pi/JARVIS sessions are searched directly with baseline coding tools. The project-specific JSONL directory and raw-search workflow belong in ignored `.pi/APPEND_SYSTEM.md`; use `rg -l` to shortlist files, then parse/read only the relevant records.
 
-The `jarvis` group includes Operation JARVIS actions for Cast/Spotify workflows, smart plugs, and the Levoit/VeSync air purifier via `purifier-status` and `purifier-set`.
+The `jarvis` group includes Operation JARVIS actions for Cast/Spotify workflows, smart plugs, and Levoit/VeSync purifiers. `purifier-list` discovers CID-keyed devices without refreshing readings; `purifier-status-all` explicitly reads all devices in one cloud session. `purifier-status` and `purifier-set` select one device using its configured alias, unique name or exact CID. Ambiguous shared models/names are rejected. `retryCooldown` permits only an owner-authorized recovery read, never a write or automatic retry. Existing sessions need a future tool reload to expose new schema actions; do not reset live sessions for this.
 
 Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: discover their schemas by loading `minecraft_jarvis` or `github`. Known valid direct calls also auto-load on the JARVIS runtime. Ordinary local `git` operations continue to use the baseline coding shell.
 
