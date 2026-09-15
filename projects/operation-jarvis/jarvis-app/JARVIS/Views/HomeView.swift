@@ -1026,31 +1026,52 @@ struct PlugCard: View {
 
 
 struct CompactPurifierCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let purifier: PurifierSubsystem?
     var isBusy: (String?) -> Bool = { _ in false }
     let select: (String?) -> Void
 
     var body: some View {
-        MinimalCard(padding: 5) {
-            VStack(spacing: 0) {
-                if let purifier, !purifier.compactDevices.isEmpty {
-                    ForEach(Array(purifier.compactDevices.prefix(2)), id: \.id) { item in
-                        Button {
-                            select(purifier.devices == nil ? nil : item.id)
-                        } label: {
-                            row(item.state, busy: isBusy(purifier.devices == nil ? nil : item.id))
-                        }
-                        .buttonStyle(.plain)
+        VStack(spacing: 0) {
+            if let purifier, !purifier.compactDevices.isEmpty {
+                ForEach(Array(purifier.compactDevices.prefix(2)), id: \.id) { item in
+                    Button {
+                        select(purifier.devices == nil ? nil : item.id)
+                    } label: {
+                        row(item.state, busy: isBusy(purifier.devices == nil ? nil : item.id))
                     }
-                } else {
-                    Button { select(nil) } label: {
-                        Label("Purifier readings unavailable", systemImage: "wind")
-                            .font(.caption)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }.buttonStyle(.plain)
+                    .buttonStyle(JarvisPressStyle())
                 }
+            } else {
+                Button { select(nil) } label: {
+                    Label("Purifier readings unavailable", systemImage: "wind")
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }.buttonStyle(.plain)
             }
-            .frame(height: 44)
+        }
+        .frame(height: 44)
+        .overlay {
+            if (purifier?.compactDevices.count ?? 0) > 1 {
+                Rectangle().fill(JarvisPalette.accent.opacity(0.12))
+                    .frame(height: 0.5).padding(.leading, 28).padding(.trailing, 5)
+                    .allowsHitTesting(false)
+            }
+        }
+        .padding(5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(JarvisPalette.surface)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(LinearGradient(colors: [JarvisPalette.accent.opacity(0.10),
+                                             JarvisPalette.accent.opacity(0.015)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(JarvisPalette.accent.opacity(0.20), lineWidth: 0.75)
+                .allowsHitTesting(false)
         }
     }
 
@@ -1060,16 +1081,57 @@ struct CompactPurifierCard: View {
         let status = busy ? "Working" : item.verificationPending == true ? "Pending" : item.refreshing == true ? "Loading" :
             item.ok != true ? "Offline" : item.stale == true ? "Stale" :
             item.isOn == false ? "Off" : item.mode?.capitalized ?? "—"
-        return HStack(spacing: 6) {
-            Text(compactName).fontWeight(.semibold).frame(maxWidth: .infinity, alignment: .leading)
-            Text(status).foregroundStyle(.secondary)
-            Text("PM₂.₅ \(item.pm25.map(String.init) ?? "—")")
-                .monospacedDigit()
-            Text("Filter \(item.filterLife.map { "\($0)%" } ?? "—")")
-                .monospacedDigit().foregroundStyle(.secondary)
-            Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+        let fresh = item.ok == true && item.stale != true && item.verificationPending != true && !busy
+        let warningColor = colorScheme == .dark
+            ? Color(red: 1, green: 0.73, blue: 0.40) : Color(red: 0.55, green: 0.25, blue: 0.04)
+        let dangerColor = colorScheme == .dark
+            ? Color(red: 1, green: 0.58, blue: 0.60) : Color(red: 0.65, green: 0.10, blue: 0.18)
+        let qualityColor: Color = !fresh || item.pm25 == nil ? Color.primary.opacity(0.68) :
+            (item.pm25 ?? 0) <= 12 ? JarvisPalette.accent : (item.pm25 ?? 0) <= 35 ? .primary : (item.pm25 ?? 0) <= 55 ? warningColor : dangerColor
+        let activeColor: Color = fresh && item.isOn == true ? JarvisPalette.accent : Color.primary.opacity(0.68)
+        let filterFraction = min(1, max(0, Double(item.filterLife ?? 0) / 100))
+        return HStack(spacing: 5) {
+            Image(systemName: "wind")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(activeColor)
+                .frame(width: 18, height: 18)
+                .background(activeColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+            Text(compactName).font(.system(size: 12, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(status.uppercased())
+                .font(.system(size: 8, weight: .semibold))
+                .tracking(0.2)
+                .foregroundStyle(activeColor)
+                .padding(.horizontal, 5).frame(height: 15)
+                .background(activeColor.opacity(0.07), in: Capsule())
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text("PM₂.₅").font(.system(size: 8, weight: .medium))
+                Text(item.pm25.map(String.init) ?? "—")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(qualityColor)
+            .padding(.horizontal, 6).frame(height: 18)
+            .background(qualityColor.opacity(0.08), in: Capsule())
+            HStack(spacing: 3) {
+                ZStack {
+                    Circle().stroke(JarvisPalette.accent.opacity(0.15), lineWidth: 1.5)
+                    Circle().trim(from: 0, to: filterFraction)
+                        .stroke(item.filterLife.map { $0 <= 15 } == true ? warningColor : activeColor,
+                                style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }.frame(width: 12, height: 12)
+                VStack(spacing: -1) {
+                    Text("FILTER").font(.system(size: 7, weight: .medium)).foregroundStyle(Color.primary.opacity(0.65))
+                    Text(item.filterLife.map { "\($0)%" } ?? "—")
+                        .font(.system(size: 10, weight: .medium)).monospacedDigit()
+                        .fixedSize(horizontal: true, vertical: false)
+                }.frame(width: 36)
+            }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 7, weight: .semibold)).foregroundStyle(.secondary)
         }
-        .font(.system(size: 12))
+        .padding(.horizontal, 4)
         .lineLimit(1)
         .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
         .contentShape(Rectangle())

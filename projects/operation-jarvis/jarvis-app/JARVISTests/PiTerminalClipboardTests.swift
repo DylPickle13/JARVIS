@@ -7,15 +7,23 @@ import JARVISKit
 
 @MainActor
 final class PiTerminalClipboardTests: XCTestCase {
+    func testFullFilterPercentageFitsCompactColumn() {
+        let font = UIFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        for percent in 0...100 {
+            XCTAssertLessThanOrEqual(("\(percent)%" as NSString).size(withAttributes: [.font: font]).width, 36)
+        }
+    }
+
     func testTwoPurifiersFitOriginalCardFootprint() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let a = String(repeating: "a", count: 24), b = String(repeating: "b", count: 24)
         for width: CGFloat in [320, 375, 414] {
             for dark in [false, true] {
                 for large in [false, true] {
+                  for scenario in 0..<3 {
                     let data = try JSONSerialization.data(withJSONObject: ["defaultDeviceID": a, "devices": [
-                        a: ["name": "Dylan's Air Purifier", "deviceID": a, "ok": true, "isOn": true, "mode": "auto", "pm25": 1, "filterLife": 69],
-                        b: ["name": "Bran's Air Purifier", "deviceID": b, "ok": true, "isOn": true, "mode": "auto", "pm25": 2, "filterLife": 100]
+                        a: ["name": "Dylan's Air Purifier", "deviceID": a, "ok": true, "isOn": scenario != 2, "mode": "auto", "pm25": scenario == 2 ? 150 : 1, "filterLife": scenario == 2 ? 9 : 69, "stale": scenario == 1],
+                        b: ["name": "Bran's Air Purifier", "deviceID": b, "ok": true, "isOn": true, "mode": "auto", "pm25": scenario == 2 ? 45 : 2, "filterLife": 100, "verificationPending": scenario == 1]
                     ]])
                     let purifier = try JSONDecoder().decode(PurifierSubsystem.self, from: data)
                     let card = CompactPurifierCard(purifier: purifier) { _ in }
@@ -35,10 +43,11 @@ final class PiTerminalClipboardTests: XCTestCase {
                         window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
                     }
                     let attachment = XCTAttachment(image: image)
-                    attachment.name = "two-purifiers-width-\(Int(width))-dark-\(dark)-accessibility-\(large)"
+                    attachment.name = "two-purifiers-width-\(Int(width))-dark-\(dark)-accessibility-\(large)-scenario-\(scenario)"
                     attachment.lifetime = .keepAlways
                     add(attachment)
                     window.isHidden = true
+                  }
                 }
             }
         }
