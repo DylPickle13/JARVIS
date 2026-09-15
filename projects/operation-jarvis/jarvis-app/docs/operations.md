@@ -11,7 +11,7 @@ Use this guide to build, test, and prepare the app for installation. Installing 
 - Configured Pi and host services for live integration. You can read source and run isolated tests without controlling the live system.
 - Apple signing configured for the intended build, and owner-approved devices for installation.
 
-Start with the repository's [runtime guide](../../../../docs/runtime-guide.md) and [rebuild instructions](../../../../.pi/docs/REBUILD_FROM_SCRATCH.md). Prefer an isolated development checkout so project generation and test artifacts cannot disrupt the live workspace.
+Start with the repository's [runtime guide](../../docs/runtime-guide.md) and [rebuild instructions](../../../../.pi/docs/REBUILD_FROM_SCRATCH.md). Prefer an isolated development checkout so project generation and test artifacts cannot disrupt the live workspace.
 
 ## Verification
 

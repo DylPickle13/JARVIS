@@ -1,6 +1,6 @@
 # JARVIS setup and runtime guide
 
-[Project overview](../README.md) · [Native app operations](../projects/operation-jarvis/jarvis-app/docs/operations.md)
+[Project overview](../../../README.md) · [Operation JARVIS](../README.md) · [Native app operations](../jarvis-app/docs/operations.md)
 
 Set up only the components you plan to use. Work in a development checkout, leave existing live services alone, and keep credentials and runtime state out of Git.
 
@@ -19,7 +19,7 @@ npm install --prefix .pi/extensions/lib
 npm install --prefix .pi/extensions/50-browser
 ```
 
-Copy `.env.example` only for a new setup; do not overwrite an existing configuration. Follow the [rebuild instructions](../.pi/docs/REBUILD_FROM_SCRATCH.md) to install Pi and the project packages, then configure your model provider, credentials, hosts, and devices.
+Copy `.env.example` only for a new setup; do not overwrite an existing configuration. Follow the [rebuild instructions](../../../.pi/docs/REBUILD_FROM_SCRATCH.md) to install Pi and the project packages, then configure your model provider, credentials, hosts, and devices.
 
 On a configured host, the documented read-only smoke test is:
 
@@ -33,14 +33,14 @@ Check the script's scope before running it against a live environment. The docum
 
 | Component | Location |
 |---|---|
-| Pi CLI/RPC process management and persistent sessions | [`pi_rpc.py`](../pi_rpc.py) |
-| Tools, lazy schemas, attachments, and integrations | [`.pi/extensions/`](../.pi/extensions/) |
-| Explicit durable memory | [`.pi/memory/`](../.pi/memory/) |
-| Private scheduler and retained results | [`.pi/scheduler/`](../.pi/scheduler/) |
-| Native apps, `jarvisd`, and `terminald` | [`jarvis-app/`](../projects/operation-jarvis/jarvis-app/) |
-| Mac-side voice processing | [`voice/`](../projects/operation-jarvis/voice/) |
-| Raspberry Pi capture/playback transport | [`room_audio/`](../projects/operation-jarvis/raspberry-pi/room_audio/) |
-| Device control, media, and related integrations | [`operation-jarvis/`](../projects/operation-jarvis/) |
+| Pi CLI/RPC process management and persistent sessions | [`pi_rpc.py`](../../../pi_rpc.py) |
+| Tools, lazy schemas, attachments, and integrations | [`.pi/extensions/`](../../../.pi/extensions/) |
+| Explicit durable memory | [`.pi/memory/`](../../../.pi/memory/) |
+| Private scheduler and retained results | [`.pi/scheduler/`](../../../.pi/scheduler/) |
+| Native apps, `jarvisd`, and `terminald` | [`jarvis-app/`](../jarvis-app/) |
+| Mac-side voice processing | [`voice/`](../voice/) |
+| Raspberry Pi capture/playback transport | [`room_audio/`](../raspberry-pi/room_audio/) |
+| Device control, media, and related integrations | [`operation-jarvis/`](../) |
 
 ## Private scheduled jobs
 
@@ -59,22 +59,22 @@ Inside Pi, load `cron` and use `jarvis_cron`. The native Jobs view is read-only.
 .venv/bin/python .pi/scheduler/runner.py --json install
 ```
 
-This installs the periodic launchd runner; it is not a status check. Notifications also need their own configuration and approval. See [notification setup and privacy](../projects/operation-jarvis/jarvis-app/docs/architecture.md#notifications-and-privacy) rather than relying on old APNs activation notes.
+This installs the periodic launchd runner; it is not a status check. Notifications also need their own configuration and approval. See [notification setup and privacy](../jarvis-app/docs/architecture.md#notifications-and-privacy) rather than relying on old APNs activation notes.
 
 ## Native app
 
-The Xcode project is generated from [`project.yml`](../projects/operation-jarvis/jarvis-app/project.yml). In an isolated Mac development checkout:
+The Xcode project is generated from [`project.yml`](../jarvis-app/project.yml). In an isolated Mac development checkout:
 
 ```bash
 cd projects/operation-jarvis/jarvis-app
 ./scripts/verify-jarvis-app.sh
 ```
 
-The verifier regenerates the Xcode project and writes build artifacts. See [operations](../projects/operation-jarvis/jarvis-app/docs/operations.md) for dependencies, optional tests, signing, and device installation. Install only the approved, audited build on approved devices. Do not rebuild it between audit and installation.
+The verifier regenerates the Xcode project and writes build artifacts. See [operations](../jarvis-app/docs/operations.md) for dependencies, optional tests, signing, and device installation. Install only the approved, audited build on approved devices. Do not rebuild it between audit and installation.
 
 ## Room audio
 
-The Mac service uses [Pi RPC](../pi_rpc.py), the [voice pipeline](../projects/operation-jarvis/voice/voice_pipeline.py), [ASR backends](../projects/operation-jarvis/voice/asr_backends.py), and the [LAN bridge](../projects/operation-jarvis/raspberry-pi/room_audio/room_audio_server.py). Raspberry Pi capture/playback and its service installer remain separate.
+The Mac service uses [Pi RPC](../../../pi_rpc.py), the [voice pipeline](../voice/voice_pipeline.py), [ASR backends](../voice/asr_backends.py), and the [LAN bridge](../raspberry-pi/room_audio/room_audio_server.py). Raspberry Pi capture/playback and its service installer remain separate.
 
 Read-only health on a configured Mac host:
 
@@ -82,13 +82,13 @@ Read-only health on a configured Mac host:
 curl -fsS http://127.0.0.1:8791/health | python3 -m json.tool
 ```
 
-See the [room-audio README](../projects/operation-jarvis/raspberry-pi/room_audio/README.md) for backend-specific setup. A health check does not authorize starting, stopping, installing, or reconfiguring audio services.
+See the [room-audio README](../raspberry-pi/room_audio/README.md) for backend-specific setup. A health check does not authorize starting, stopping, installing, or reconfiguring audio services.
 
 ## Pi tool loading
 
 Always-on tools cover coding, SSH, web research/fetch, Maps, and `load_tools`. Optional groups include `memory`, `code_docs`, `jarvis`, `minecraft_jarvis`, `github`, `google`, `cron`, `browser`, and `reaper`.
 
-Load only the group you need. Reading Jobs or scheduler status does not authorize device actions. See the [Pi extension guide](../.pi/docs/PI_EXTENSIONS.md).
+Load only the group you need. Reading Jobs or scheduler status does not authorize device actions. See the [Pi extension guide](../../../.pi/docs/PI_EXTENSIONS.md).
 
 ## Runtime safety
 

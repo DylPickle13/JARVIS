@@ -28,7 +28,7 @@ Some items may already be installed and working. An open question here means the
 
 ## Portfolio media and future captures
 
-The approved [simulator showcase](../../../../docs/media/README.md) includes four screenshots, an overview image, and an eight-second UI animation video. It uses isolated simulator builds and read-only sample data, labeled in each export. No live integrations or physical devices were used.
+The approved [simulator showcase](../../docs/media/README.md) includes four screenshots, an overview image, and an eight-second UI animation video. It uses isolated simulator builds and read-only sample data, labeled in each export. No live integrations or physical devices were used.
 
 Before adding or replacing media:
 

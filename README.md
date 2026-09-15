@@ -6,13 +6,13 @@ I built JARVIS to keep a Mac-hosted AI workspace within reach from my iPhone, Ap
 
 It runs on the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent), which handles the agent loop and model interaction. My work is in the custom tools, backend services, and native apps that connect it all.
 
-[Explore the architecture](https://dylpickle13.github.io/) · [Native apps](projects/operation-jarvis/jarvis-app/README.md) · [Setup and operation](docs/runtime-guide.md)
+[Explore the architecture](https://dylpickle13.github.io/) · [Native apps](projects/operation-jarvis/jarvis-app/README.md) · [Setup and operation](projects/operation-jarvis/docs/runtime-guide.md)
 
 ## See the native apps
 
-![JARVIS iPhone Home and Apple Watch System screens captured in simulators with clearly labeled sample data](docs/media/jarvis-simulator-overview.png)
+![JARVIS iPhone Home and Apple Watch System screens captured in simulators with clearly labeled sample data](projects/operation-jarvis/docs/media/jarvis-simulator-overview.png)
 
-[Watch the 8-second simulator showcase](docs/media/jarvis-simulator-showcase.mp4) · [Full-size screenshots and capture details](docs/media/README.md)
+[Watch the 8-second simulator showcase](projects/operation-jarvis/docs/media/jarvis-simulator-showcase.mp4) · [Full-size screenshots and capture details](projects/operation-jarvis/docs/media/README.md)
 
 Captured in the iPhone and Watch simulators with sample data. The short clip shows the UI animations.
 
@@ -67,7 +67,7 @@ The [interactive architecture map](https://dylpickle13.github.io/) walks through
 
 This is my personal setup, not a one-click installer. To run it, you need a Mac host, the Pi coding agent, and credentials for whichever integrations you choose. The Apple apps need Xcode and appropriate signing; room audio also needs a Raspberry Pi. The guides cover each component separately.
 
-- [Setup and runtime guide](docs/runtime-guide.md)
+- [Setup and runtime guide](projects/operation-jarvis/docs/runtime-guide.md)
 - [Detailed rebuild instructions](.pi/docs/REBUILD_FROM_SCRATCH.md)
 - [Pi extensions](.pi/docs/PI_EXTENSIONS.md)
 - [Native app architecture, verification, and operations](projects/operation-jarvis/jarvis-app/docs/README.md)
@@ -77,7 +77,7 @@ This is my personal setup, not a one-click installer. To run it, you need a Mac 
 
 Keep services on a trusted LAN or Tailscale, and keep credentials, conversations, and runtime data out of Git. `jarvisd` supports network allowlisting and token authentication; allowlisting is not per-user authentication.
 
-Read the [runtime safety notes](docs/runtime-guide.md#runtime-safety) and [app security guide](projects/operation-jarvis/jarvis-app/docs/architecture.md#security-and-trust-boundaries) before connecting devices. Build, test, and installation procedures are in the [operations guide](projects/operation-jarvis/jarvis-app/docs/operations.md).
+Read the [runtime safety notes](projects/operation-jarvis/docs/runtime-guide.md#runtime-safety) and [app security guide](projects/operation-jarvis/jarvis-app/docs/architecture.md#security-and-trust-boundaries) before connecting devices. Build, test, and installation procedures are in the [operations guide](projects/operation-jarvis/jarvis-app/docs/operations.md).
 
 ## License and attribution
 

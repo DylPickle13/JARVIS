@@ -8,9 +8,9 @@ I built these apps to reach my Mac-hosted Pi sessions and room controls from my 
 
 ## Simulator preview
 
-![JARVIS iPhone and Watch interfaces using sample data in Apple simulators](../../../docs/media/jarvis-simulator-overview.png)
+![JARVIS iPhone and Watch interfaces using sample data in Apple simulators](../docs/media/jarvis-simulator-overview.png)
 
-[Short simulator video](../../../docs/media/jarvis-simulator-showcase.mp4) · [Full-size Home, System, and Jobs screenshots](../../../docs/media/README.md)
+[Short simulator video](../docs/media/jarvis-simulator-showcase.mp4) · [Full-size Home, System, and Jobs screenshots](../docs/media/README.md)
 
 Captured in Apple simulators with sample data. The video shows the UI animations.
 
