@@ -42,6 +42,19 @@ final class PiTerminalClipboardTests: XCTestCase {
                     let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
                         window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
                     }
+                    // Sample empty top padding, away from the purple icons/border.
+                    // The shared card surface is neutral (at most a tiny system blue bias).
+                    let sample = try XCTUnwrap(image.cgImage?.cropping(to: CGRect(
+                        x: (width / 2 * image.scale).rounded(), y: (19 * image.scale).rounded(), width: 1, height: 1)))
+                    var rgba = [UInt8](repeating: 0, count: 4)
+                    try rgba.withUnsafeMutableBytes { bytes in
+                        let context = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: 1, height: 1,
+                            bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue))
+                        context.draw(sample, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+                    }
+                    let rgb = rgba.prefix(3).map(Int.init)
+                    XCTAssertLessThanOrEqual(rgb.max()! - rgb.min()!, 3, "Card surface must not have a purple tint")
                     let attachment = XCTAttachment(image: image)
                     attachment.name = "two-purifiers-width-\(Int(width))-dark-\(dark)-accessibility-\(large)-scenario-\(scenario)"
                     attachment.lifetime = .keepAlways

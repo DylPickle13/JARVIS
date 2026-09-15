@@ -1063,10 +1063,6 @@ struct CompactPurifierCard: View {
         .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(JarvisPalette.surface)
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(LinearGradient(colors: [JarvisPalette.accent.opacity(0.10),
-                                             JarvisPalette.accent.opacity(0.015)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
         }
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
