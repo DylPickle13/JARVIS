@@ -10,6 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import puppeteer from 'puppeteer-core';
+import { ExtensionBrowserBackend } from './extension-browser-backend.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = process.env.JARVIS_PROJECT_DIR || resolve(__dirname, '../../..');
@@ -88,6 +89,15 @@ const automationMarkerUrl = `data:text/html;charset=utf-8,${encodeURIComponent(`
   <script>window.name = ${JSON.stringify(automationAnchorName)};<\/script>
 </body>
 </html>`)}`;
+
+const backendConfigPath = join(homedir(), '.jarvis', 'browser-backend.json');
+const backendConfig = existsSync(backendConfigPath) ? JSON.parse(readFileSync(backendConfigPath, 'utf8')) : {};
+const backendMode = envValue('PI_BROWSER_BACKEND', backendConfig.backend || 'cdp');
+if (!['cdp', 'extension'].includes(backendMode)) throw new Error('Invalid browser backend');
+const extensionBackend = backendMode === 'extension' ? new ExtensionBrowserBackend({
+  profileDir, profileDirectory: backendConfig.extensionProfileDirectory,
+  chromePath: join(__dirname, 'launch-extension-in-automation-window.py'),
+}) : null;
 
 let authToken = '';
 let browser = null;
@@ -998,6 +1008,14 @@ async function route(req, res) {
 
   try {
     const url = new URL(req.url || '/', `http://${host}:${port}`);
+    if (extensionBackend) {
+      const allowed = ['/status','/connect','/open','/tabs','/extract','/screenshot','/click','/type','/upload','/key','/scroll','/wait','/close'];
+      if (!allowed.includes(url.pathname) || !['GET','POST'].includes(req.method) || (req.method === 'GET' && !['/status','/tabs'].includes(url.pathname))) return send(res, 404, {ok:false,error:'Not found'});
+      const body = req.method === 'POST' ? await readJson(req) : (url.pathname === '/tabs' ? {action:'list'} : {});
+      const result = await extensionBackend.handle(url.pathname, body);
+      if (result.daemon) Object.assign(result.daemon, {host,port,tokenFile});
+      return send(res,200,{ok:true,result});
+    }
     if (req.method === 'GET' && url.pathname === '/status') return send(res, 200, { ok: true, result: await statusObject() });
     if (req.method === 'POST' && url.pathname === '/connect') return send(res, 200, { ok: true, result: await statusObject(await connectBrowser()) });
 
@@ -1026,14 +1044,17 @@ const server = createServer((req, res) => void route(req, res));
 server.listen(port, host, () => {
   log(`Chrome bridge daemon listening on http://${host}:${port}`);
   log(`Token file: ${tokenFile}`);
-  void connectBrowser().catch(() => undefined);
+  if (extensionBackend) void extensionBackend.handle('/connect').catch(() => undefined);
+  else void connectBrowser().catch(() => undefined);
 });
 
 process.on('SIGINT', async () => {
   await browser?.disconnect?.().catch(() => undefined);
+  await extensionBackend?.reset().catch(() => undefined);
   process.exit(0);
 });
 process.on('SIGTERM', async () => {
   await browser?.disconnect?.().catch(() => undefined);
+  await extensionBackend?.reset().catch(() => undefined);
   process.exit(0);
 });

@@ -3,9 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "daemon": "node chrome-bridge-daemon.mjs"
+    "daemon": "node chrome-bridge-daemon.mjs",
+    "postinstall": "node patch-playwright-background.mjs",
+    "test": "node --test test-extension-backend.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@playwright/mcp": "0.0.81",
     "puppeteer-core": "^25.2.1",
     "typebox": "^1.2.14"
   }

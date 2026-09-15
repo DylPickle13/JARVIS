@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-type BrowserLaunchMode = "managed" | "cdp";
+type BrowserLaunchMode = "managed" | "cdp" | "extension";
 
 export type BrowserStatus = {
   launchMode: BrowserLaunchMode;
@@ -94,6 +94,12 @@ export class DaemonBrowserManager {
   }
 
   get currentLaunchMode(): BrowserLaunchMode {
+    const override = envValue("PI_BROWSER_BACKEND");
+    if (override === "extension" || override === "cdp") return override;
+    try {
+      const config = JSON.parse(readFileSync(join(homedir(), ".jarvis", "browser-backend.json"), "utf8"));
+      if (config.backend === "extension") return "extension";
+    } catch { /* The daemon reports configuration/startup errors. */ }
     return "cdp";
   }
 
