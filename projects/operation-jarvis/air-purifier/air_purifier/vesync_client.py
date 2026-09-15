@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib.metadata
 import sys
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from typing import Any, Iterable
@@ -353,6 +354,29 @@ class AirPurifierController:
 
     @asynccontextmanager
     async def _session(self):
+        # Shared by daemon and CLI; survives process and daemon restarts.
+        cooldown = self.settings.auth_path.with_name(".vesync_cooldown")
+        try:
+            until = float(cooldown.read_text())
+        except FileNotFoundError:
+            until = 0.0
+        except (OSError, ValueError) as exc:
+            raise AirPurifierError("Cannot read VeSync cooldown; refusing cloud calls") from exc
+        if time.time() < until:
+            raise AirPurifierError("VeSync requests paused after rate limiting; try again after the 24-hour cooldown")
+        try:
+            async with self._cloud_session() as manager:
+                yield manager
+        except Exception as exc:
+            message = str(exc).lower()
+            if any(term in message for term in ("rate limit", "request_high", "-11003000")):
+                cooldown.parent.mkdir(parents=True, exist_ok=True)
+                cooldown.write_text(str(time.time() + 24 * 60 * 60))
+                cooldown.chmod(0o600)
+            raise
+
+    @asynccontextmanager
+    async def _cloud_session(self):
         manager = self._manager()
         async with manager as active_manager:
             # CLI calls are short-lived, so persist VeSync's token between processes.

@@ -373,7 +373,7 @@ public final class AppState: ObservableObject {
             connectionState = .connected
             errorMessage = nil
             if activeSection == .home {
-                await refreshHomeResources(refreshHealth: false)
+                await refreshHome()
             } else {
                 await refreshJobs()
             }
@@ -993,6 +993,9 @@ public final class AppState: ObservableObject {
     // MARK: - Polling
 
     public func refreshHome() async {
+        if appIsActive, !Task.isCancelled, let endpoint = activeEndpoint {
+            _ = try? await client.stateRefreshingPurifier(endpoint)
+        }
         await refreshHomeResources(refreshHealth: true)
     }
 
@@ -1056,15 +1059,15 @@ public final class AppState: ObservableObject {
                 if self.activeSection == .home {
                     self.homeControlPollsSinceResources += 1
                     if self.homeControlPollsSinceResources >= 3 {
-                        await self.refreshHome()
+                        await self.refreshHomeResources(refreshHealth: true)
                     } else {
                         await self.refreshVisibleControlState()
                     }
                 } else {
                     // A lightweight cached state read keeps jarvisd's active
-                    // client lease alive on JARVIS, Jobs, and Settings. Plug and
-                    // purifier collectors therefore remain current when Home is
-                    // reopened without restoring the removed Services polling.
+                    // client lease alive on JARVIS, Jobs, and Settings. These reads
+                    // do not trigger purifier cloud polling; Home entry or an
+                    // explicit refresh requests that separately.
                     async let state: Void = self.fetchState()
                     async let jobs: Void = self.refreshJobs()
                     _ = await (state, jobs)

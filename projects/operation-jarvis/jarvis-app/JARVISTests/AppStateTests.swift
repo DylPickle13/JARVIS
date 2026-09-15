@@ -287,6 +287,35 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(app.isStateLoading)
     }
 
+    func testPurifierCloudRefreshOnlyOnForegroundEntryAndExplicitRefresh() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.purifier.\(UUID().uuidString)")!
+        let app = AppState(store: EndpointStore(defaults: defaults), client: api,
+                           activeRefreshInterval: .milliseconds(50),
+                           controlRefreshInterval: .milliseconds(50))
+        app.endpointDraft = "http://fake.jarvis:8790"
+        app.sceneDidBecomeActive()
+        defer { app.sceneWillResignActive() }
+        for _ in 0..<40 where api.purifierRefreshCalls == 0 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertEqual(api.purifierRefreshCalls, 1)
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertGreaterThan(api.stateCalls, 3)
+        XCTAssertEqual(api.purifierRefreshCalls, 1, "Recurring visible-state polls are cache-only")
+        await app.refreshHome()
+        XCTAssertEqual(api.purifierRefreshCalls, 2)
+        app.sceneWillResignActive()
+        await app.refreshHome()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(api.purifierRefreshCalls, 2, "No cloud request while backgrounded")
+        app.sceneDidBecomeActive()
+        for _ in 0..<40 where api.purifierRefreshCalls < 3 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertEqual(api.purifierRefreshCalls, 3)
+    }
+
     func testCachedStateAndJobsPollingContinueAcrossActiveTabsWithoutServicesPolling() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
@@ -1121,6 +1150,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var commands: [String] = []
     var commandParams: [[String: JSONValue]] = []
     var stateCalls = 0
+    var purifierRefreshCalls = 0
     var codexRefreshCalls = 0
     var healthCalls = 0
     var servicesCalls = 0
@@ -1173,6 +1203,11 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         stateCalls += 1
         if let stateDelay { try await Task.sleep(for: stateDelay) }
         if !stateResponses.isEmpty { return stateResponses.removeFirst() }
+        return state
+    }
+
+    func stateRefreshingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        purifierRefreshCalls += 1
         return state
     }
 

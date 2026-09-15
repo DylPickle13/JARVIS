@@ -1751,7 +1751,7 @@ class StateCoordinator:
         "pi": 2.0,
         "plugs": 5.0,
         "services": 5.0,
-        "purifier": 15.0,
+        "purifier": float("inf"),  # Explicit app refreshes only.
         "network": 60.0,
         "codexQuota": 60.0,
     }
@@ -1761,7 +1761,7 @@ class StateCoordinator:
         # client is visible. These are bounded host reads, not app polling.
         "plugs": 10.0,
         "services": 300.0,
-        "purifier": 45.0,
+        "purifier": float("inf"),
         "network": 600.0,
         "codexQuota": 300.0,
     }
@@ -1811,7 +1811,8 @@ class StateCoordinator:
                 "error": None,
                 "stale": True,
                 "refreshing": False,
-                "nextDue": 0.0,
+                "nextDue": float("inf") if name == "purifier" else 0.0,
+                "lastRequestedAt": None,
                 "revision": 0,
                 "completionCount": 0,
                 "pending": None,
@@ -1922,8 +1923,9 @@ class StateCoordinator:
             self._active_until = max(self._active_until, now + self.active_lease_seconds)
             if not was_active:
                 for name, record in self._records.items():
-                    record["nextDue"] = 0.0
-                    if name in self.CONTROL_SUBSYSTEMS and self._record_is_stale(name, record, now):
+                    if name != "purifier":
+                        record["nextDue"] = 0.0
+                    if name == "plugs" and self._record_is_stale(name, record, now):
                         targets[name] = int(record.get("completionCount", 0))
             self._condition.notify_all()
         self.start()
@@ -1950,7 +1952,13 @@ class StateCoordinator:
         now = self._now()
         with self._condition:
             if name in self._records:
-                self._records[name]["nextDue"] = 0.0
+                record = self._records[name]
+                if name == "purifier":
+                    last = record.get("lastRequestedAt")
+                    if record["refreshing"] or (last is not None and now - last < 60.0):
+                        return
+                    record["lastRequestedAt"] = now
+                record["nextDue"] = 0.0
             self._active_until = max(self._active_until, now + self.active_lease_seconds)
             self._condition.notify_all()
         self.start()
@@ -1963,7 +1971,7 @@ class StateCoordinator:
         record["lastGoodAt"] = now
         record["error"] = None
         record["stale"] = False
-        record["nextDue"] = 0.0
+        record["nextDue"] = float("inf") if name == "purifier" else 0.0
         record["revision"] += 1
 
     def apply_plug_result(self, plug: Any) -> bool:
@@ -2008,13 +2016,13 @@ class StateCoordinator:
                 return False
             if data.get("verification_pending") is True and expected:
                 # VeSync accepted the write but returned old cloud state. Keep
-                # that data visible only as stale and poll quickly until the
-                # desired state is observed; controls remain disabled meanwhile.
+                # that data visible only as stale until an explicit refresh;
+                # do not start a background verification loop.
                 record["data"] = copy.deepcopy(state)
                 record["updatedAt"] = _iso_now()
                 record["error"] = None
                 record["stale"] = True
-                record["nextDue"] = self._now() + 2.0
+                record["nextDue"] = float("inf")
                 record["pending"] = {
                     "expected": copy.deepcopy(expected),
                     "deadline": self._now() + 90.0,
@@ -2057,7 +2065,7 @@ class StateCoordinator:
                     # a callback. Yield on the condition rather than spinning.
                     self._condition.wait(timeout=0.01)
                 else:
-                    self._condition.wait(timeout=wait_seconds)
+                    self._condition.wait(timeout=min(wait_seconds, 60.0))
 
     def _collect_one(self, name: str) -> dict:
         try:
@@ -2137,7 +2145,7 @@ class StateCoordinator:
                 # A command supplied newer authoritative data while this
                 # collection was in flight. Discard the old read and collect
                 # again rather than reverting the UI to pre-command state.
-                record["nextDue"] = 0.0
+                record["nextDue"] = float("inf") if name == "purifier" else 0.0
                 self._condition.notify_all()
                 return
             if name == "plugs" and isinstance(result, dict) and isinstance(result.get("plugs"), dict):
@@ -2160,7 +2168,7 @@ class StateCoordinator:
                     record["updatedAt"] = _iso_now()
                     record["error"] = None
                     record["stale"] = True
-                    record["nextDue"] = now + 3.0
+                    record["nextDue"] = float("inf")
                     self._condition.notify_all()
                     return
                 else:
@@ -2980,8 +2988,9 @@ class Handler(BaseHTTPRequestHandler):
             # read-only Codex usage collector. The response remains the fast
             # current snapshot; clients can observe `refreshing` and poll the
             # ordinary state endpoint for completion.
-            if query.get("refresh") == ["codexQuota"]:
-                STATE_COORDINATOR.request_refresh("codexQuota")
+            for subsystem in query.get("refresh", []):
+                if subsystem in {"codexQuota", "purifier"}:
+                    STATE_COORDINATOR.request_refresh(subsystem)
             self._send(200, collect_state())
             return
         if path == "/api/v1/events":
@@ -3117,7 +3126,6 @@ class Handler(BaseHTTPRequestHandler):
                     _purifier_command_data(raw_result),
                     _purifier_expectation(params) if action == "purifier-set" else None,
                 )
-                STATE_COORDINATOR.request_refresh("purifier")
             # Return only the native-client contract, never argv, local paths,
             # adapter stdout, or private device identifiers.
             self._send(200, _public_command_result(action, raw_result))

@@ -116,3 +116,19 @@ After loading the optional Pi tool group with `load_tools({ groups: ["jarvis"] }
 - `jarvis({ action: "purifier-set", setting: "display", value: "off" })` for display control.
 
 If a change is still pending, say so and check status later. Do not immediately send another command to compensate.
+
+### On-demand app refreshes
+
+jarvisd no longer schedules purifier reads at startup, while idle, or while the
+app remains open. The updated iPhone app requests `GET /api/v1/state?refresh=purifier`
+on Home activation and pull-to-refresh. Ordinary state/widget requests only read
+the cache. Explicit refreshes are single-flight and debounced for 60 seconds.
+An already running cloud request cannot be cancelled by backgrounding the app.
+Commands still perform their existing bounded inline confirmation, but do not
+start a daemon verification loop. Cached values retain their age/stale markers.
+
+A detected VeSync rate-limit exception pauses adapter calls for 24 hours, persisted
+in `.vesync_cooldown` beside the authentication cache. This is a conservative
+local cooldown, not a claim about VeSync's reset time. Expiry does not trigger a
+request: the next explicit request tries again. The native app must be rebuilt
+and installed to send the new refresh signal; older clients only see cached state.
