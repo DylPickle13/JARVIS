@@ -112,6 +112,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     @Published var cachedAt: Date?
     @Published var busyPlug: String?
     @Published var purifierBusy = false
+    @Published private(set) var busyPurifierDeviceID: String?
     @Published var selectedPurifierID: String?
     @Published private(set) var purifierRefreshing = false
 
@@ -218,11 +219,12 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         selectedPurifier?.verificationPending == true
     }
 
-    var isPurifierStateStale: Bool {
-        connectionState != .connected
-            || cachedStateExpired
-            || selectedPurifier?.ok != true
-            || selectedPurifier?.stale == true
+    var isPurifierStateStale: Bool { isPurifierStateStale(deviceID: selectedPurifierID) }
+
+    func isPurifierStateStale(deviceID: String?) -> Bool {
+        let purifier = lastState?.subsystems?.purifier?.selected(deviceID)
+        return connectionState != .connected || cachedStateExpired
+            || purifier?.ok != true || purifier?.stale == true || purifier?.verificationPending == true
     }
 
     var shouldShowRetry: Bool {
@@ -551,30 +553,31 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         }
     }
 
-    func setPurifierPower(_ isOn: Bool) async {
-        await setPurifier(.power(isOn))
+    func setPurifierPower(_ isOn: Bool, deviceID: String?) async {
+        await setPurifier(.power(isOn), deviceID: deviceID)
     }
 
-    func setPurifierMode(_ mode: String) async {
+    func setPurifierMode(_ mode: String, deviceID: String?) async {
         guard let command = WatchPurifierCommand.mode(mode) else {
             errorMessage = "That air-purifier mode is unavailable."
             return
         }
-        await setPurifier(command)
+        await setPurifier(command, deviceID: deviceID)
     }
 
-    func setPurifierFan(_ level: Int) async {
+    func setPurifierFan(_ level: Int, deviceID: String?) async {
         guard let command = WatchPurifierCommand.speed(level) else {
             errorMessage = "The air-purifier fan level must be between 1 and 4."
             return
         }
-        await setPurifier(command)
+        await setPurifier(command, deviceID: deviceID)
     }
 
-    private func setPurifier(_ command: WatchPurifierCommand) async {
+    private func setPurifier(_ command: WatchPurifierCommand, deviceID: String?) async {
         guard !purifierBusy else { return }
-        let command = command.targeting(selectedPurifier?.deviceID)
-        guard !isPurifierStateStale, let purifier = selectedPurifier else {
+        let purifier = lastState?.subsystems?.purifier?.selected(deviceID)
+        let command = command.targeting(deviceID ?? purifier?.deviceID)
+        guard !isPurifierStateStale(deviceID: deviceID), let purifier else {
             errorMessage = isPurifierVerificationPending
                 ? "Waiting for the air purifier to confirm the previous change."
                 : "Air-purifier data is stale; choose Refresh readings."
@@ -586,7 +589,8 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         }
 
         purifierBusy = true
-        defer { purifierBusy = false }
+        busyPurifierDeviceID = command.deviceID
+        defer { purifierBusy = false; busyPurifierDeviceID = nil }
 
         if isViaPhone || store.endpointURL == nil {
             guard WatchBridge.shared.isPhoneReachable else {
@@ -618,7 +622,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
                 errorMessage = nil
                 return
             }
-            guard !isPurifierStateStale,
+            guard !isPurifierStateStale(deviceID: command.deviceID),
                   let confirmed = lastState?.subsystems?.purifier?.selected(command.deviceID),
                   command.matches(confirmed) else {
                 errorMessage = "The air-purifier result could not be confirmed."

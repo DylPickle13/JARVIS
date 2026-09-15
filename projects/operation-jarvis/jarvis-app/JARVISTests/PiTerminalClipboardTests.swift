@@ -7,6 +7,40 @@ import JARVISKit
 
 @MainActor
 final class PiTerminalClipboardTests: XCTestCase {
+    func testWatchTwoPurifierRowsKeep68PointFootprint() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let a = String(repeating: "a", count: 24), b = String(repeating: "b", count: 24)
+        for width: CGFloat in [162, 184, 208] {
+            for large in [false, true] {
+                for scenario in 0..<4 {
+                    let data = try JSONSerialization.data(withJSONObject: ["defaultDeviceID": a, "devices": [
+                        a: ["name": "Dylan's Air Purifier", "deviceID": a, "ok": true, "isOn": scenario != 2, "mode": "manual", "pm25": scenario == 2 ? 150 : 1, "stale": scenario == 1],
+                        b: ["name": "Bran's Air Purifier", "deviceID": b, "ok": scenario != 3, "isOn": true, "mode": "auto", "pm25": 2, "verificationPending": scenario == 1]
+                    ]])
+                    let state = try JSONDecoder().decode(PurifierSubsystem.self, from: data)
+                    let card = CompactWatchPurifierCard(purifier: state, unavailable: false, busyDeviceID: nil,
+                        accent: Color(red: 209/255, green: 131/255, blue: 232/255), surface: Color.white.opacity(0.075)) { _ in }
+                        .environment(\.dynamicTypeSize, large ? .accessibility5 : .large)
+                    let measurement = UIHostingController(rootView: card)
+                    XCTAssertEqual(measurement.sizeThatFits(in: CGSize(width: width - 16, height: 1000)).height, 68, accuracy: 0.5)
+                    let window = UIWindow(windowScene: scene)
+                    window.frame = CGRect(x: 0, y: 0, width: width, height: 88)
+                    let host = UIHostingController(rootView: card.padding(.horizontal, 8).padding(.top, 10)
+                        .frame(width: width, height: 88, alignment: .top).background(Color.black).ignoresSafeArea())
+                    host.overrideUserInterfaceStyle = .dark
+                    window.rootViewController = host; window.makeKeyAndVisible(); host.view.layoutIfNeeded()
+                    try await Task.sleep(for: .milliseconds(50))
+                    let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                    }
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "watch-purifier-rows-width-\(Int(width))-large-\(large)-scenario-\(scenario)"
+                    attachment.lifetime = .keepAlways; add(attachment); window.isHidden = true
+                }
+            }
+        }
+    }
+
     func testFullFilterPercentageFitsCompactColumn() {
         let font = UIFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
         for percent in 0...100 {
