@@ -630,7 +630,7 @@ class DaemonUnitTests(unittest.TestCase):
             coordinator._records["plugs"]["pending"] = {"expected": {}}
             self.assertEqual(coordinator._interval_locked("plugs", clock[0]), 10)
 
-    def test_purifier_only_refreshes_explicitly_and_debounces(self):
+    def test_purifier_foreground_refreshes_and_manual_refresh_share_debounce(self):
         clock = [100.0]
         coordinator = jarvisd.StateCoordinator(
             collectors={"purifier": lambda: {"ok": True}}, now=lambda: clock[0])
@@ -638,7 +638,7 @@ class DaemonUnitTests(unittest.TestCase):
         record = coordinator._records["purifier"]
         self.assertEqual(record["nextDue"], float("inf"))
         coordinator.activate_client()
-        self.assertEqual(record["nextDue"], float("inf"))
+        self.assertEqual(record["nextDue"], 0.0)
         coordinator.request_refresh("purifier")
         self.assertEqual(record["nextDue"], 0.0)
         future = jarvisd.concurrent.futures.Future()
@@ -646,11 +646,30 @@ class DaemonUnitTests(unittest.TestCase):
         coordinator._complete("purifier", future, 0)
         self.assertEqual(record["nextDue"], float("inf"))
         clock[0] += 59
+        coordinator.activate_client()
         coordinator.request_refresh("purifier")
         self.assertEqual(record["nextDue"], float("inf"))
         clock[0] += 1
-        coordinator.request_refresh("purifier")
+        coordinator.activate_client()
         self.assertEqual(record["nextDue"], 0.0)
+        self.assertEqual(record["lastRequestedAt"], 160.0)
+        coordinator.activate_client()  # A second client does not duplicate it.
+        self.assertEqual(record["lastRequestedAt"], 160.0)
+        record["refreshing"] = True
+        clock[0] += 60
+        coordinator.activate_client()
+        self.assertEqual(record["lastRequestedAt"], 160.0)
+        record["refreshing"] = False
+        failed = jarvisd.concurrent.futures.Future()
+        failed.set_result({"ok": False, "error": "cooldown"})
+        coordinator._complete("purifier", failed, 0)
+        self.assertEqual(record["nextDue"], float("inf"))
+        clock[0] += 600
+        coordinator.snapshot()  # Background cache reads never schedule polling.
+        self.assertEqual(record["nextDue"], float("inf"))
+        coordinator.activate_client()
+        self.assertEqual(record["nextDue"], 0.0)
+        self.assertFalse(record.get("retryCooldown", False))
 
     def test_idle_activation_refreshes_old_controls_before_returning(self):
         now = time.time
@@ -680,6 +699,8 @@ class DaemonUnitTests(unittest.TestCase):
                 "stale": False,
                 "nextDue": now() + 300,
             })
+        # A recent purifier request remains debounced even on idle activation.
+        coordinator._records["purifier"]["lastRequestedAt"] = now()
         coordinator._active_until = 0
         try:
             coordinator.activate_client()

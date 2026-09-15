@@ -1791,7 +1791,7 @@ class StateCoordinator:
         "pi": 2.0,
         "plugs": 5.0,
         "services": 5.0,
-        "purifier": float("inf"),  # Explicit app refreshes only.
+        "purifier": float("inf"),  # Foreground requests schedule bounded reads below.
         "network": 60.0,
         "codexQuota": 60.0,
     }
@@ -1961,6 +1961,16 @@ class StateCoordinator:
         with self._condition:
             was_active = self._is_active_locked(now)
             self._active_until = max(self._active_until, now + self.active_lease_seconds)
+            # App foreground state reads drive one shared cloud refresh per
+            # minute. No timer/lease tail polls VeSync after clients stop reading.
+            # Use the explicit-refresh debounce too, including failed attempts;
+            # automatic reads never bypass the VeSync cooldown.
+            purifier = self._records.get("purifier")
+            if purifier is not None:
+                last = purifier.get("lastRequestedAt")
+                if not purifier["refreshing"] and (last is None or now - last >= 60.0):
+                    purifier["lastRequestedAt"] = now
+                    purifier["nextDue"] = 0.0
             if not was_active:
                 for name, record in self._records.items():
                     if name != "purifier":
