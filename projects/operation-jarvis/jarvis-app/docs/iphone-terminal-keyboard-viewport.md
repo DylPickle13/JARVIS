@@ -1,22 +1,21 @@
 # iPhone terminal keyboard viewport
 
-The owner reported that opening the Pi keyboard (button or gesture) covered the terminal on iOS 27 instead of reducing its viewport.
+## Build180 regression — do not redeploy
 
-## Fix
+The owner reported that opening the Pi keyboard covered the terminal on iOS27. Build180 attempted a native keyboard-layout-guide constraint. Although its iOS26.5 simulator tests passed, the owner reported the terminal invisible and the purple toolbar at the top after physical installation. Build180 is rejected for further deployment. The exact OS27 layout failure was not reproduced on the26.5 simulator, including a subsequent ZStack/TabView regression attempt; passing simulator tests did not establish physical acceptance.
 
-`JARVIS/Terminal/PiTerminalView.swift` now embeds the terminal and the existing 46pt key bar in one `UIViewControllerRepresentable`. The key bar's bottom is constrained to UIKit's `keyboardLayoutGuide.topAnchor`; the terminal ends at the key bar's top. This does not depend on SwiftUI `TabView` propagating a keyboard safe-area change from the terminal's invisible UIKit text responder.
+## Correction
 
-- Docked keyboard: terminal bounds/row count shrink above the toolbar.
-- Dismissal/external keyboard: the guide returns to the available bottom safe area.
-- Rotation/ancestor safe-area changes: native constraints recalculate, without cached keyboard heights or duplicate SwiftUI padding.
-- Floating keyboards do not shrink the entire terminal unnecessarily.
-- Existing terminal/controller identity is retained. Normal SwiftTerm size callbacks resize the existing SSH PTY; no session replacement/reconnect or terminal input is introduced.
-- Toolbar controls, clipboard safeguards, attachment flag, keyboard button/gestures, responder lifecycle, SSH implementation and Watch source are unchanged.
+`JARVIS/Terminal/PiTerminalView.swift` explicitly fills the SwiftUI parent proposal using GeometryReader and representable sizeThatFits. It no longer uses keyboardLayoutGuide or a keyboard-dependent Auto Layout chain to determine terminal height.
+
+The native viewport lays out the existing terminal and46pt toolbar from bounded view dimensions. Keyboard frame notifications are converted from the screen coordinate space into this viewport; only a full-width docked keyboard intersecting its bottom reduces available height. Parent resizing therefore does not subtract the keyboard height twice. Hidden/empty/invalid full-screen frames and floating keyboards do not collapse the terminal. The child toolbar hosting controller has its own safe-area avoidance disabled so it cannot independently move the buttons. Notification animation duration/curve are respected; keyboard dismissal and ancestor layout recalculate bounds.
+
+The same terminal/controller is retained. No SSH/session replacement, terminal input, clipboard-policy changes, or Watch-source changes. Existing attachment compile flag and toolbar controls remain intact.
 
 ## Qualification
 
-102 iOS tests passed, including the existing toolbar/clipboard and Watch-card regressions. Two new tests verify portrait/landscape available-space changes, reduced/restored row counts, constant toolbar height, no emitted bytes, retained terminal identity, and two keyboard show/hide cycles inside a SwiftUI TabView using the real keyboard proxy with a deterministic 260pt custom input view. No test connects to a live Pi session.
+103 iOS tests pass with Xcode27/SDK27 on iOS26.5 simulator. Coverage includes safe-area/portrait/landscape bounds, bounded keyboard intersections, zero/hidden/floating/full-screen frames, no double inset, constant46pt toolbar, row shrink/restoration and retained identity/no emitted bytes. Real proxy show/hide is exercised twice with a deterministic260pt custom input view in ZStack/TabView; the terminal must initially exceed500pt and remain above200pt when open. A retained screenshot shows local fixture text above the bottom toolbar (no live terminal contents or SSH connection).
 
-Tests run with Xcode 27 / SDK 27 on an iOS 26.5 simulator, not iOS 27. A separate attempt with the normal software keyboard produced no displayed keyboard in this simulator session (terminal remained full-height); its failed result is retained outside Git. The repeatable regression uses a custom input view rather than treating that attempt as a passing software-keyboard test.
+Normal software keyboard and physical iOS27 acceptance are still required: visible terminal and bottom toolbar before opening, keyboard button and pull-up gesture, typing/backspace, dismissal, rotation, external keyboard, selection/paste/attachments. The simulator custom input view is not physical keyboard acceptance.
 
-Physical iOS 27 verification remains required: keyboard button and pull-up gesture, typing/backspace, interactive dismissal, rotation, external keyboard, session switching, selection/paste and attachments. Devices remain disconnected and deployment is paused. Watch179's sealed payload is unchanged; a new iPhone candidate is required for this fix. Signing/deployment evidence is stored separately from source.
+Build/signing/deployment evidence is kept separately. Preserve rejected180 evidence and use new immutable candidate/continuation baselines. Watch deployment remains paused while correcting the iPhone regression.

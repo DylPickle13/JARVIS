@@ -7,6 +7,23 @@ import JARVISKit
 
 @MainActor
 final class PiTerminalClipboardTests: XCTestCase {
+    func testKeyboardIntersectionDoesNotCollapseOrDoubleInsetTerminal() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 800)
+        func bottom(_ keyboard: CGRect?, _ height: CGFloat = 800) -> CGFloat {
+            PiTerminalViewportController.contentBottom(bounds: CGRect(x: 0, y: 0, width: 390, height: height),
+                safeAreaBottom: 34, keyboard: keyboard)
+        }
+        XCTAssertEqual(bottom(nil), 766)
+        XCTAssertEqual(bottom(.zero), 766)
+        XCTAssertEqual(bottom(bounds), 766, "Reject invalid full-screen keyboard frames rather than collapse the terminal")
+        XCTAssertEqual(bottom(CGRect(x: 0, y: 540, width: 390, height: 300)), 540)
+        XCTAssertEqual(bottom(CGRect(x: 0, y: 540, width: 390, height: 300), 540), 506,
+            "Already resized parent must not subtract the keyboard again")
+        XCTAssertEqual(bottom(CGRect(x: 0, y: 800, width: 390, height: 300)), 766)
+        XCTAssertEqual(bottom(CGRect(x: 40, y: 450, width: 250, height: 240)), 766, "Floating keyboard")
+        XCTAssertEqual(bottom(CGRect(x: 0, y: 0, width: 390, height: 0)), 766, "Hidden guide-like zero frame")
+    }
+
     func testTerminalViewportTracksSafeAreaAndKeepsExistingTerminal() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "keyboard-layout-\(UUID())"))
@@ -32,7 +49,7 @@ final class PiTerminalClipboardTests: XCTestCase {
                 XCTAssertEqual(terminal.bounds.height, fullHeight - inset, accuracy: 1)
                 XCTAssertEqual(viewport.toolbar.view.frame.height, 46, accuracy: 0.5)
                 XCTAssertEqual(terminal.frame.maxY, viewport.toolbar.view.frame.minY, accuracy: 0.5)
-                XCTAssertEqual(viewport.toolbar.view.frame.maxY, viewport.view.keyboardLayoutGuide.layoutFrame.minY, accuracy: 0.5)
+                XCTAssertEqual(viewport.toolbar.view.frame.maxY, viewport.view.bounds.height - viewport.view.safeAreaInsets.bottom, accuracy: 0.5)
                 XCTAssertTrue(terminal === viewport.terminalView)
                 if inset > 0 { XCTAssertLessThan(terminal.getTerminal().rows, fullRows) }
                 else { XCTAssertEqual(terminal.getTerminal().rows, fullRows) }
@@ -47,8 +64,12 @@ final class PiTerminalClipboardTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "keyboard-proxy-layout-\(UUID())"))
         let controller = PiTerminalController(settings: PiTerminalSettings(defaults: defaults), slotDefaults: defaults)
         let host = UIHostingController(rootView: TabView {
-            PiTerminalContainer(controller: controller)
-                .tabItem { Label("JARVIS", systemImage: "terminal.fill") }
+            ZStack {
+                Color.black.ignoresSafeArea()
+                PiTerminalContainer(controller: controller)
+                    .background(Color.black)
+            }
+            .tabItem { Label("JARVIS", systemImage: "terminal.fill") }
         })
         let window = UIWindow(windowScene: scene)
         window.rootViewController = host; window.makeKeyAndVisible()
@@ -61,8 +82,10 @@ final class PiTerminalClipboardTests: XCTestCase {
         defer { window.endEditing(true); viewport.disconnectView(); window.isHidden = true }
         window.layoutIfNeeded(); viewport.view.layoutIfNeeded()
         let terminal = viewport.terminalView
+        terminal.feed(text: "JARVIS local layout fixture — no SSH connection\r\nTerminal must remain above the purple toolbar.\r\n")
         let originalHeight = terminal.bounds.height
         let originalRows = terminal.getTerminal().rows
+        XCTAssertGreaterThan(originalHeight, 500, "Terminal must fill the tab, not collapse to toolbar intrinsic height")
         let proxy = try XCTUnwrap(terminal.subviews.compactMap { $0 as? PiTerminalKeyboardResponder }.first)
         // Exercise the real responder/keyboard guide without enabling SSH input,
         // configuring credentials or connecting to any live terminal session.
@@ -76,10 +99,11 @@ final class PiTerminalClipboardTests: XCTestCase {
             XCTAssertTrue(proxy.becomeFirstResponder())
             try await Task.sleep(for: .milliseconds(700))
             viewport.view.layoutIfNeeded()
+            XCTAssertGreaterThan(terminal.bounds.height, 200)
             XCTAssertLessThan(terminal.bounds.height, originalHeight - 100)
             XCTAssertLessThan(terminal.getTerminal().rows, originalRows)
             XCTAssertTrue(findViewport(host) === viewport)
-            XCTAssertEqual(viewport.toolbar.view.frame.maxY, viewport.view.keyboardLayoutGuide.layoutFrame.minY, accuracy: 1)
+            XCTAssertEqual(terminal.frame.maxY, viewport.toolbar.view.frame.minY, accuracy: 1)
             XCTAssertEqual(viewport.toolbar.view.frame.height, 46, accuracy: 0.5)
             let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
                 window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)

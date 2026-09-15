@@ -32,9 +32,12 @@ struct PiTerminalView: View {
             Color.black.ignoresSafeArea()
 
             if configurationReady, !editingLogin {
-                PiTerminalContainer(controller: terminal)
-                    .background(Color.black)
-                    .accessibilityLabel("Pi terminal")
+                GeometryReader { geometry in
+                    PiTerminalContainer(controller: terminal)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .background(Color.black)
+                        .accessibilityLabel("Pi terminal")
+                }
             } else {
                 setupView
             }
@@ -408,11 +411,8 @@ struct PiTerminalToolbarContent: View {
     }
 }
 
-// The keyboard belongs to the UIKit proxy, not a SwiftUI TextField. Keep the
-// terminal and key bar in the same native layout, so their bounds follow the
-// actual docked keyboard even if TabView does not propagate keyboard safe area.
-// No keyboard-height notifications/padding: those double-inset when SwiftUI
-// already shrinks its proposal and drift during interactive dismissal/rotation.
+// Explicitly fill the parent's proposal. The terminal is not an intrinsic-height
+// control: its toolbar must never determine the height of the whole viewport.
 struct PiTerminalContainer: UIViewControllerRepresentable {
     let controller: PiTerminalController
 
@@ -421,6 +421,12 @@ struct PiTerminalContainer: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: PiTerminalViewportController, context: Context) {}
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiViewController: PiTerminalViewportController, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height,
+              width.isFinite, height.isFinite else { return nil }
+        return CGSize(width: max(0, width), height: max(0, height))
+    }
 
     static func dismantleUIViewController(_ uiViewController: PiTerminalViewportController, coordinator: ()) {
         uiViewController.disconnectView()
@@ -431,6 +437,7 @@ final class PiTerminalViewportController: UIViewController {
     let terminalView = PiTerminalHostView(frame: .zero)
     let toolbar: UIHostingController<PiTerminalKeyBar>
     private let controller: PiTerminalController
+    private var keyboardFrameInScreen: CGRect?
 
     init(controller: PiTerminalController) {
         self.controller = controller
@@ -444,28 +451,59 @@ final class PiTerminalViewportController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .black
         view.clipsToBounds = true
-        terminalView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(terminalView)
         addChild(toolbar)
+        // This fixed-height child must not independently avoid the keyboard.
+        toolbar.safeAreaRegions = []
         toolbar.view.backgroundColor = .clear
-        toolbar.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(toolbar.view)
         toolbar.didMove(toParent: self)
-        view.keyboardLayoutGuide.followsUndockedKeyboard = false
-        NSLayoutConstraint.activate([
-            terminalView.topAnchor.constraint(equalTo: view.topAnchor),
-            terminalView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            terminalView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            terminalView.bottomAnchor.constraint(equalTo: toolbar.view.topAnchor),
-            toolbar.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            toolbar.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            toolbar.view.heightAnchor.constraint(equalToConstant: PiTerminalToolbarMetrics.height),
-            toolbar.view.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
-        ])
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
+            name: UIResponder.keyboardWillHideNotification, object: nil)
         // Attach exactly once; a keyboard layout change only resizes the existing
         // SwiftTerm view (and its existing SSH PTY), never replaces a session.
         controller.attach(terminalView)
     }
+
+    // Intersect the actual keyboard with this viewport, not a cached keyboard
+    // height. If SwiftUI already reduced the viewport this adds no second inset.
+    static func contentBottom(bounds: CGRect, safeAreaBottom: CGFloat, keyboard: CGRect?) -> CGFloat {
+        let safeBottom = max(0, bounds.height - safeAreaBottom)
+        guard let keyboard, !keyboard.isNull, !keyboard.isEmpty,
+              keyboard.minY > bounds.minY,
+              keyboard.maxY >= bounds.maxY - 1,
+              keyboard.intersection(bounds).width >= bounds.width - 1 else { return safeBottom }
+        return min(safeBottom, max(0, keyboard.minY - bounds.minY))
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let keyboard: CGRect? = keyboardFrameInScreen.flatMap { frame in
+            guard let window = view.window, let screen = window.windowScene?.screen else { return nil }
+            return view.convert(window.convert(frame, from: screen.coordinateSpace), from: window)
+        }
+        let bottom = Self.contentBottom(bounds: view.bounds,
+            safeAreaBottom: view.safeAreaInsets.bottom, keyboard: keyboard)
+        let height = min(PiTerminalToolbarMetrics.height, bottom)
+        terminalView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: max(0, bottom - height))
+        toolbar.view.frame = CGRect(x: 0, y: bottom - height, width: view.bounds.width, height: height)
+    }
+
+    @objc private func keyboardChanged(_ notification: Notification) {
+        keyboardFrameInScreen = notification.name == UIResponder.keyboardWillHideNotification
+            ? nil : (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
+        let curve = (notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 0
+        view.setNeedsLayout()
+        UIView.animate(withDuration: duration, delay: 0,
+            options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState]) {
+            self.view.layoutIfNeeded()
+        }
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
 
     func disconnectView() { controller.detach(terminalView) }
 }
