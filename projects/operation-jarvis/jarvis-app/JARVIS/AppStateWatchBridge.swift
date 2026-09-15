@@ -105,6 +105,22 @@ extension AppState: WatchBridgeDelegate {
         }
     }
 
+    public nonisolated func watchBridgeDidReceivePurifierRefresh(_ bridge: WatchBridge, retry: Bool, requestID: String) {
+        Task { @MainActor [weak self] in
+            guard let self, !requestID.isEmpty else { return }
+            if let cached = self.watchCommandResponses[requestID] {
+                sendWatchCommandResponse(cached, bridge: bridge, requestID: requestID)
+                return
+            }
+            guard self.watchCommandInFlight.insert(requestID).inserted else { return }
+            defer { self.watchCommandInFlight.remove(requestID) }
+            let result = await self.executeWatchPurifierRefresh(retry: retry)
+            let entry = WatchCommandCacheEntry(result: result.ok ? result : nil, error: result.ok ? nil : result.error)
+            self.rememberWatchCommand(requestID, entry: entry)
+            sendWatchCommandResponse(entry, bridge: bridge, requestID: requestID)
+        }
+    }
+
     public nonisolated func watchBridgeDidReceiveCommandResult(
         _ bridge: WatchBridge,
         requestID: String,

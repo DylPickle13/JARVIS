@@ -148,6 +148,19 @@ class AirPurifierController:
                         raise  # Stop the batch and persist account-wide backoff.
                     result[device.cid] = {"ok": False, "name": device.device_name,
                                           "error": "Device status refresh failed"}
+            selector = self.settings.default_device
+            if selector:
+                alias = self.settings.aliases.get(normalize_name(selector))
+                matches = [d for d in devices if d.cid == (alias or selector)]
+                if not alias and not matches:
+                    matches = [d for d in devices if normalize_name(selector) in {
+                        normalize_name(getattr(d, attr, None)) for attr in ("device_name", "device_type", "model")
+                    }]
+            else:
+                matches = devices if len(devices) == 1 else []
+            default_cid = matches[0].cid if len(matches) == 1 else None
+            for cid, entry in result.items():
+                entry["isDefault"] = cid == default_cid
             return result
 
     async def status(self, device: str | None = None) -> PurifierStatus:

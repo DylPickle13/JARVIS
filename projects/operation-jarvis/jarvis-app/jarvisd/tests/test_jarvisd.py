@@ -104,7 +104,7 @@ class DaemonUnitTests(unittest.TestCase):
             calls.append((argv, timeout, env))
             if argv[-1] == "plug-list":
                 return {"ok": True, "plugs": {}}
-            return {"ok": True, "airPurifier": {"data": {}}}
+            return {"ok": True, "purifiers": {}}
 
         with mock.patch.object(jarvisd, "run_cli_json", side_effect=fake_run):
             self.assertTrue(jarvisd._plugs()["ok"])

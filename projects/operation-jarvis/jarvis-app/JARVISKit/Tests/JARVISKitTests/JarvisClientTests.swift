@@ -107,6 +107,17 @@ final class JarvisClientTests: XCTestCase {
         }
     }
 
+    func testPurifierRecoveryIsAnExplicitAuthenticatedRead() async throws {
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertNil(request.httpBody)
+            XCTAssertEqual(request.url?.query, "refresh=purifier&retryCooldown=true")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            return MockURLProtocol.response(request, status: 200, body: #"{"ok":true}"#)
+        }
+        _ = try await client.stateRetryingPurifier(endpoint)
+    }
+
     func testPurifierRefreshIsExplicitAuthenticatedStateRead() async throws {
         var calls = 0
         MockURLProtocol.handler = { request in

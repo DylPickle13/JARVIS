@@ -628,10 +628,11 @@ public final class AppState: ObservableObject {
         guard command.isValid else {
             return CommandResult(ok: false, action: action, error: "The air-purifier command was invalid.")
         }
-        guard beginOperation("purifier") else {
+        let operationKey = command.deviceID.map { "purifier:\($0)" } ?? "purifier"
+        guard beginOperation(operationKey) else {
             return CommandResult(ok: false, action: action, error: "An air-purifier operation is already in progress.")
         }
-        defer { endOperation("purifier") }
+        defer { endOperation(operationKey) }
 
         // As with plug relays, only a fresh phone-side snapshot may authorize a
         // Watch write. Cached Watch state is presentation data, not authority.
@@ -640,7 +641,7 @@ public final class AppState: ObservableObject {
               connectionState == .connected,
               stateErrorMessage == nil,
               let snapshot = lastState,
-              let purifier = snapshot.subsystems?.purifier,
+              let purifier = snapshot.subsystems?.purifier?.selected(command.deviceID),
               purifier.ok == true,
               purifier.stale != true else {
             return CommandResult(ok: false, action: action, error: "Fresh air-purifier status is unavailable.")
@@ -666,7 +667,7 @@ public final class AppState: ObservableObject {
         await fetchState()
         guard connectionState == .connected,
               stateErrorMessage == nil,
-              let confirmed = lastState?.subsystems?.purifier,
+              let confirmed = lastState?.subsystems?.purifier?.selected(command.deviceID),
               confirmed.ok == true,
               confirmed.stale != true,
               command.matches(confirmed) else {
@@ -696,27 +697,51 @@ public final class AppState: ObservableObject {
         _ = await setPlug(name, isOn: !state)
     }
 
-    public func setPurifierPower(_ on: Bool) async {
+    func executeWatchPurifierRefresh(retry: Bool) async -> CommandResult {
+        guard let endpoint = activeEndpoint, !Task.isCancelled else {
+            return CommandResult(ok: false, action: "purifier-refresh", error: "No connected endpoint")
+        }
+        do {
+            if retry { _ = try await client.stateRetryingPurifier(endpoint) }
+            else { _ = try await client.stateRefreshingPurifier(endpoint) }
+            await fetchState()
+            return CommandResult(ok: true, action: "purifier-refresh")
+        } catch {
+            return CommandResult(ok: false, action: "purifier-refresh", error: error.localizedDescription)
+        }
+    }
+
+    public func retryPurifierReadings() async {
+        guard appIsActive, !Task.isCancelled, let endpoint = activeEndpoint else { return }
+        do {
+            _ = try await client.stateRetryingPurifier(endpoint)
+            await refreshHomeResources(refreshHealth: true)
+        } catch {
+            operationErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func setPurifierPower(_ on: Bool, deviceID: String? = nil) async {
         _ = await runCommand(
-            key: "purifier",
+            key: deviceID.map { "purifier:\($0)" } ?? "purifier",
             action: "purifier-set",
-            params: ["setting": .string("power"), "value": .string(on ? "on" : "off")]
+            params: (deviceID.map { ["deviceID": JSONValue.string($0)] } ?? [:]).merging(["setting": .string("power"), "value": .string(on ? "on" : "off")]) { _, new in new }
         )
     }
 
-    public func setPurifierMode(_ mode: String) async {
+    public func setPurifierMode(_ mode: String, deviceID: String? = nil) async {
         _ = await runCommand(
-            key: "purifier",
+            key: deviceID.map { "purifier:\($0)" } ?? "purifier",
             action: "purifier-set",
-            params: ["setting": .string("mode"), "value": .string(mode)]
+            params: (deviceID.map { ["deviceID": JSONValue.string($0)] } ?? [:]).merging(["setting": .string("mode"), "value": .string(mode)]) { _, new in new }
         )
     }
 
-    public func setPurifierFan(_ level: Int) async {
+    public func setPurifierFan(_ level: Int, deviceID: String? = nil) async {
         _ = await runCommand(
-            key: "purifier",
+            key: deviceID.map { "purifier:\($0)" } ?? "purifier",
             action: "purifier-set",
-            params: ["setting": .string("speed"), "level": .number(Double(level))]
+            params: (deviceID.map { ["deviceID": JSONValue.string($0)] } ?? [:]).merging(["setting": .string("speed"), "level": .number(Double(level))]) { _, new in new }
         )
     }
 

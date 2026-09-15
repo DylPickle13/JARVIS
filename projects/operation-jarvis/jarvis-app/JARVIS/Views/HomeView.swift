@@ -119,6 +119,8 @@ struct HomeView: View {
     @State private var fanLocal: Double = 2
     @State private var isDraggingFan = false
     @State private var showsPurifierControls = false
+    @State private var selectedPurifierID: String?
+    @State private var confirmsPurifierRecovery = false
 
     private var usesAccessibilityLayout: Bool { dynamicTypeSize.isAccessibilitySize }
     private var gridColumns: [GridItem] {
@@ -166,9 +168,28 @@ struct HomeView: View {
             .sheet(isPresented: $showsPurifierControls) {
                 NavigationStack {
                     ScrollView {
-                        if let state = app.lastState { purifierDetailSection(state).padding() }
+                        VStack(spacing: 12) {
+                            if let state = app.lastState { purifierDetailSection(state) }
+                            if let item = selectedPurifier {
+                                Text("PM2.5: \(item.pm25.map(String.init) ?? "—") µg/m³")
+                                Text("Filter life: \(item.filterLife.map { "\($0)%" } ?? "—")")
+                                if item.ok == true, let error = item.lastError {
+                                    Text(error).font(.footnote).foregroundStyle(.secondary)
+                                }
+                            }
+                            Button("Refresh readings") { Task { await app.refreshHome() } }
+                            if (selectedPurifier?.lastError ?? selectedPurifier?.error ?? "").localizedCaseInsensitiveContains("backoff") {
+                                Button("Try reading again") { confirmsPurifierRecovery = true }
+                                    .confirmationDialog("Try one read despite the local cooldown?", isPresented: $confirmsPurifierRecovery, titleVisibility: .visible) {
+                                        Button("Try one read") { Task { await app.retryPurifierReadings() } }
+                                        Button("Cancel", role: .cancel) {}
+                                    } message: {
+                                        Text("This only checks readings. Another rate limit will restore backoff; purifier settings will not change.")
+                                    }
+                            }
+                        }.padding()
                     }
-                    .navigationTitle("Air purifier")
+                    .navigationTitle(selectedPurifier?.name ?? "Air purifier")
                     .toolbar { ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { showsPurifierControls = false }
                     } }
@@ -437,47 +458,34 @@ struct HomeView: View {
 
     // MARK: - Purifier
 
+    private var selectedPurifier: PurifierSubsystem? {
+        app.lastState?.subsystems?.purifier?.selected(selectedPurifierID)
+    }
+
+    private var selectedPurifierBusy: Bool {
+        app.isOperationBusy(selectedPurifierID.map { "purifier:\($0)" } ?? "purifier")
+    }
+
     private func purifierSection(_ state: StateSnapshot) -> some View {
-        let purifier = state.subsystems?.purifier
-        let busy = app.isOperationBusy("purifier") || purifier?.verificationPending == true
-        return MinimalCard(padding: 11) {
-            HStack(spacing: 8) {
-                Button { showsPurifierControls = true } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "wind")
-                            .foregroundStyle(purifier?.isOn == true ? JarvisPalette.accent : .secondary)
-                            .interactionTransition(value: purifier?.isOn,
-                                allowed: purifier?.ok == true && purifier?.stale != true && !busy)
-                        Text("Air purifier").font(.subheadline.weight(.semibold))
-                        Spacer(minLength: 0)
-                        Text(purifier?.pm25.map { "\($0) µg/m³" } ?? "—")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(purifierQualityColor(purifier?.pm25))
-                        Image(systemName: "slider.horizontal.3").foregroundStyle(.secondary)
-                    }
-                    .frame(minHeight: 32)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(JarvisPressStyle())
-                .accessibilityHint("Opens air quality, mode, fan speed and pending-change details")
-                if busy { ProgressView().controlSize(.small) }
-                Toggle("Air purifier power", isOn: powerBinding)
-                    .labelsHidden().tint(JarvisPalette.accent)
-                    .disabled(purifier?.ok != true || purifier?.isOn == nil || purifier?.stale == true || busy)
-            }
+        CompactPurifierCard(purifier: state.subsystems?.purifier, isBusy: { id in
+            app.isOperationBusy(id.map { "purifier:\($0)" } ?? "purifier")
+        }) { id in
+            selectedPurifierID = id
+            isDraggingFan = false
+            showsPurifierControls = true
         }
     }
 
     @ViewBuilder
     private func purifierDetailSection(_ state: StateSnapshot) -> some View {
-        if let purifier = state.subsystems?.purifier, purifier.ok == true {
+        if let purifier = selectedPurifier, purifier.ok == true {
             let isOn = purifier.isOn
             let mode = ["auto", "manual", "sleep", "pet"].contains(purifier.mode ?? "")
                 ? (purifier.mode ?? "auto")
                 : "auto"
             let fan = purifier.fanSetLevel ?? purifier.fanLevel
             let pending = purifier.verificationPending == true
-            let busy = app.isOperationBusy("purifier") || pending
+            let busy = selectedPurifierBusy || pending
             // Purifier controls depend only on purifier-scoped freshness.
             let stale = purifier.stale == true
             let refreshing = stale && purifier.refreshing == true
@@ -486,7 +494,7 @@ struct HomeView: View {
                 VStack(spacing: 9) {
                     HStack(spacing: 10) {
                         Label {
-                            Text("Air purifier")
+                            Text(purifier.name ?? "Air purifier")
                         } icon: {
                             Image(systemName: "wind")
                                 .foregroundStyle(isOn == true ? JarvisPalette.accent : .secondary)
@@ -535,7 +543,7 @@ struct HomeView: View {
                 MinimalCard {
                     compactUnavailableRow(
                         title: "Air purifier unavailable",
-                        detail: state.subsystems?.purifier?.lastError ?? state.subsystems?.purifier?.error
+                        detail: selectedPurifier?.lastError ?? selectedPurifier?.error ?? "Refresh Home to retrieve this device."
                     )
                 }
             }
@@ -683,7 +691,8 @@ struct HomeView: View {
             isDraggingFan = editing
             if !editing {
                 let level = Int(fanLocal.rounded())
-                Task { await app.setPurifierFan(level) }
+                let id = selectedPurifierID
+                Task { await app.setPurifierFan(level, deviceID: id) }
             }
         }
         .tint(JarvisPalette.accent)
@@ -921,18 +930,18 @@ struct HomeView: View {
 
     private var powerBinding: Binding<Bool> {
         Binding(
-            get: { app.lastState?.subsystems?.purifier?.isOn ?? false },
-            set: { value in Task { await app.setPurifierPower(value) } }
+            get: { selectedPurifier?.isOn ?? false },
+            set: { value in let id = selectedPurifierID; Task { await app.setPurifierPower(value, deviceID: id) } }
         )
     }
 
     private var modeBinding: Binding<String> {
         Binding(
             get: {
-                let value = app.lastState?.subsystems?.purifier?.mode ?? "auto"
+                let value = selectedPurifier?.mode ?? "auto"
                 return ["auto", "manual", "sleep", "pet"].contains(value) ? value : "auto"
             },
-            set: { value in Task { await app.setPurifierMode(value) } }
+            set: { value in let id = selectedPurifierID; Task { await app.setPurifierMode(value, deviceID: id) } }
         )
     }
 }
@@ -1013,4 +1022,59 @@ struct PlugCard: View {
 
 #Preview {
     HomeView().environmentObject(AppState())
+}
+
+
+struct CompactPurifierCard: View {
+    let purifier: PurifierSubsystem?
+    var isBusy: (String?) -> Bool = { _ in false }
+    let select: (String?) -> Void
+
+    var body: some View {
+        MinimalCard(padding: 5) {
+            VStack(spacing: 0) {
+                if let purifier, !purifier.compactDevices.isEmpty {
+                    ForEach(Array(purifier.compactDevices.prefix(2)), id: \.id) { item in
+                        Button {
+                            select(purifier.devices == nil ? nil : item.id)
+                        } label: {
+                            row(item.state, busy: isBusy(purifier.devices == nil ? nil : item.id))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } else {
+                    Button { select(nil) } label: {
+                        Label("Purifier readings unavailable", systemImage: "wind")
+                            .font(.caption)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }.buttonStyle(.plain)
+                }
+            }
+            .frame(height: 44)
+        }
+    }
+
+    private func row(_ item: PurifierSubsystem, busy: Bool) -> some View {
+        let name = item.name ?? "Air purifier"
+        let compactName = name.replacingOccurrences(of: " Air Purifier", with: "", options: .caseInsensitive)
+        let status = busy ? "Working" : item.verificationPending == true ? "Pending" : item.refreshing == true ? "Loading" :
+            item.ok != true ? "Offline" : item.stale == true ? "Stale" :
+            item.isOn == false ? "Off" : item.mode?.capitalized ?? "—"
+        return HStack(spacing: 6) {
+            Text(compactName).fontWeight(.semibold).frame(maxWidth: .infinity, alignment: .leading)
+            Text(status).foregroundStyle(.secondary)
+            Text("PM₂.₅ \(item.pm25.map(String.init) ?? "—")")
+                .monospacedDigit()
+            Text("Filter \(item.filterLife.map { "\($0)%" } ?? "—")")
+                .monospacedDigit().foregroundStyle(.secondary)
+            Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+        }
+        .font(.system(size: 12))
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(name), \(status), PM2.5 \(item.pm25.map(String.init) ?? "unavailable") micrograms per cubic meter, filter \(item.filterLife.map { "\($0) percent" } ?? "unavailable")")
+        .accessibilityHint("Opens this purifier's controls and full-size readings")
+    }
 }

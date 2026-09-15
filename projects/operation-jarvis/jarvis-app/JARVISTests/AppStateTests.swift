@@ -5,6 +5,31 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testPhonePurifierControlsCarryExplicitDeviceID() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.dual.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        let id = String(repeating: "b", count: 24)
+        await app.setPurifierPower(true, deviceID: id)
+        await app.setPurifierMode("auto", deviceID: id)
+        await app.setPurifierFan(2, deviceID: id)
+        XCTAssertEqual(api.commands, Array(repeating: "purifier-set", count: 3))
+        XCTAssertTrue(api.commandParams.allSatisfy { $0["deviceID"] == .string(id) })
+    }
+
+    func testWatchSelectedDeviceCannotFallBackToLegacyDefault() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.dual.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        let result = await app.executeWatchPurifierCommand(.power(true).targeting(String(repeating: "b", count: 24)))
+        XCTAssertFalse(result.ok)
+        XCTAssertTrue(api.commands.isEmpty)
+    }
+
     func testFreshnessDescribesOldestSourceNotLastNetworkCheck() {
         XCTAssertEqual(JarvisFormat.freshness(ageSeconds: nil), "Waiting for status")
         XCTAssertEqual(JarvisFormat.freshness(ageSeconds: 0), "Oldest source updated now")

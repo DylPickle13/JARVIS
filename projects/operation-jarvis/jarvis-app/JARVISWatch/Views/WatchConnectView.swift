@@ -112,6 +112,31 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     @Published var cachedAt: Date?
     @Published var busyPlug: String?
     @Published var purifierBusy = false
+    @Published var selectedPurifierID: String?
+    @Published private(set) var purifierRefreshing = false
+
+    var selectedPurifier: PurifierSubsystem? {
+        lastState?.subsystems?.purifier?.selected(selectedPurifierID)
+    }
+
+    /// Called only on explicit System-page entry, selection or Refresh.
+    /// Neither the cached polling loop nor wrist/AOD lifecycle calls this.
+    func refreshPurifierReadings(retry: Bool = false) async {
+        guard appIsForeground, appIsInteractive, !Task.isCancelled, !purifierRefreshing else { return }
+        purifierRefreshing = true
+        defer { purifierRefreshing = false }
+        if isViaPhone || store.endpoint == nil {
+            let response = await WatchBridge.shared.requestPurifierRefresh(retry: retry)
+            guard !Task.isCancelled, acceptRelayResult(response, failureMessage: "Purifier refresh unavailable") else { return }
+            WatchBridge.shared.requestState()
+        } else if let endpoint = store.endpoint {
+            do {
+                let state = retry ? try await client.stateRetryingPurifier(endpoint) : try await client.stateRefreshingPurifier(endpoint)
+                guard !Task.isCancelled, appIsForeground else { return }
+                acceptDirectState(state)
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
     @Published var pendingRelay = false
     @Published private(set) var isRefreshing = false
 
@@ -190,14 +215,14 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     var isPurifierVerificationPending: Bool {
-        lastState?.subsystems?.purifier?.verificationPending == true
+        selectedPurifier?.verificationPending == true
     }
 
     var isPurifierStateStale: Bool {
         connectionState != .connected
             || cachedStateExpired
-            || lastState?.subsystems?.purifier?.ok != true
-            || lastState?.subsystems?.purifier?.stale == true
+            || selectedPurifier?.ok != true
+            || selectedPurifier?.stale == true
     }
 
     var shouldShowRetry: Bool {
@@ -548,10 +573,11 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
 
     private func setPurifier(_ command: WatchPurifierCommand) async {
         guard !purifierBusy else { return }
-        guard !isPurifierStateStale, let purifier = lastState?.subsystems?.purifier else {
+        let command = command.targeting(selectedPurifier?.deviceID)
+        guard !isPurifierStateStale, let purifier = selectedPurifier else {
             errorMessage = isPurifierVerificationPending
                 ? "Waiting for the air purifier to confirm the previous change."
-                : "Air-purifier data is stale; waiting for an automatic refresh."
+                : "Air-purifier data is stale; choose Refresh readings."
             return
         }
         if command.matches(purifier) {
@@ -593,7 +619,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
                 return
             }
             guard !isPurifierStateStale,
-                  let confirmed = lastState?.subsystems?.purifier,
+                  let confirmed = lastState?.subsystems?.purifier?.selected(command.deviceID),
                   command.matches(confirmed) else {
                 errorMessage = "The air-purifier result could not be confirmed."
                 return

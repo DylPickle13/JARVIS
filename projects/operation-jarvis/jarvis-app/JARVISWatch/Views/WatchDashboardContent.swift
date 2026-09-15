@@ -14,9 +14,10 @@ struct WatchDashboardContent: View {
     @State private var selectedPage: WatchDashboardPage = .terminal
     @State private var showsPurifierModeChoices = false
     @State private var showsPurifierFanChoices = false
+    @State private var showsPurifierDeviceChoices = false
 
     private var overlayOwnsInput: Bool {
-        showsPurifierModeChoices || showsPurifierFanChoices || isDashboardCovered
+        showsPurifierModeChoices || showsPurifierFanChoices || showsPurifierDeviceChoices || isDashboardCovered
     }
     private var systemInteractive: Bool { scenePhase == .active && selectedPage == .system }
 
@@ -67,12 +68,14 @@ struct WatchDashboardContent: View {
             updateOMLXPresentation()
             if page == .system {
                 Task { await model.refreshCodexQuotaWhenVisible() }
+                Task { await model.refreshPurifierReadings() }
             } else {
                 model.cancelCodexQuotaViewRefresh()
             }
         }
         .onChange(of: showsPurifierModeChoices) { _, _ in updateOMLXPresentation() }
         .onChange(of: showsPurifierFanChoices) { _, _ in updateOMLXPresentation() }
+        .onChange(of: showsPurifierDeviceChoices) { _, _ in updateOMLXPresentation() }
         .onChange(of: isDashboardCovered) { _, _ in updateOMLXPresentation() }
         .onChange(of: siriTerminalRequestSequence) { oldValue, newValue in
             guard newValue != oldValue else { return }
@@ -93,7 +96,7 @@ struct WatchDashboardContent: View {
 
     private func updateOMLXPresentation() {
         model.setOMLXPresentation(systemVisible: selectedPage == .system,
-            covered: showsPurifierModeChoices || showsPurifierFanChoices || isDashboardCovered)
+            covered: showsPurifierModeChoices || showsPurifierFanChoices || showsPurifierDeviceChoices || isDashboardCovered)
     }
 
     @ViewBuilder
@@ -252,7 +255,7 @@ struct WatchDashboardContent: View {
     }
 
     private var purifierPanel: some View {
-        let purifier = model.lastState?.subsystems?.purifier
+        let purifier = model.selectedPurifier
         let pm25 = purifier?.pm25
         let isOn = purifier?.isOn
         let mode = normalizedPurifierMode(purifier?.mode)
@@ -281,7 +284,24 @@ struct WatchDashboardContent: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    Text("AIR PURIFIER")
+                    Button { showsPurifierDeviceChoices = true } label: {
+                        Text((purifier?.name ?? "Air purifier").replacingOccurrences(of: " Air Purifier", with: "", options: .caseInsensitive))
+                    }
+                        .buttonStyle(.plain)
+                        .disabled(model.purifierBusy)
+                        .confirmationDialog("Select purifier or refresh readings", isPresented: $showsPurifierDeviceChoices, titleVisibility: .visible) {
+                            ForEach(model.lastState?.subsystems?.purifier?.compactDevices ?? [], id: \.id) { item in
+                                Button(item.state.name ?? "Air purifier") {
+                                    model.selectedPurifierID = item.state.deviceID
+                                    Task { await model.refreshPurifierReadings() }
+                                }
+                            }
+                            Button("Refresh readings") { Task { await model.refreshPurifierReadings() } }
+                            if (purifier?.lastError ?? "").localizedCaseInsensitiveContains("backoff") {
+                                Button("Read once despite local cooldown") { Task { await model.refreshPurifierReadings(retry: true) } }
+                            }
+                            Button("Cancel", role: .cancel) {}
+                        }
                         .font(.system(size: 8, weight: .bold))
                         .tracking(0.7)
                         .foregroundStyle(stale || pending ? WatchJarvisStyle.warning : .secondary)
@@ -340,7 +360,7 @@ struct WatchDashboardContent: View {
         .accessibilityHint(
             model.isPurifierVerificationPending
                 ? "Wait for the previous change to be confirmed"
-                : (stale ? "Wait for automatic refresh before changing the air purifier" : "Double tap to set the opposite state")
+                : (stale ? "Choose Refresh readings before changing this purifier" : "Double tap to set the opposite state")
         )
     }
 
@@ -695,7 +715,7 @@ struct WatchDashboardContent: View {
     }
 
     private var purifierSummary: String {
-        guard let purifier = model.lastState?.subsystems?.purifier else { return "Status unavailable" }
+        guard let purifier = model.selectedPurifier else { return "Status unavailable" }
         let power = purifier.isOn.map { $0 ? "On" : "Off" } ?? "Unknown"
         if let mode = purifier.mode, !mode.isEmpty { return "\(power) · \(mode.capitalized)" }
         return power

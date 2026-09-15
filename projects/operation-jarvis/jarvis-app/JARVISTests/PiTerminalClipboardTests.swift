@@ -2,10 +2,48 @@ import XCTest
 import UIKit
 import SwiftUI
 import SwiftTerm
+import JARVISKit
 @testable import JARVIS
 
 @MainActor
 final class PiTerminalClipboardTests: XCTestCase {
+    func testTwoPurifiersFitOriginalCardFootprint() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let a = String(repeating: "a", count: 24), b = String(repeating: "b", count: 24)
+        for width: CGFloat in [320, 375, 414] {
+            for dark in [false, true] {
+                for large in [false, true] {
+                    let data = try JSONSerialization.data(withJSONObject: ["defaultDeviceID": a, "devices": [
+                        a: ["name": "Dylan's Air Purifier", "deviceID": a, "ok": true, "isOn": true, "mode": "auto", "pm25": 1, "filterLife": 69],
+                        b: ["name": "Bran's Air Purifier", "deviceID": b, "ok": true, "isOn": true, "mode": "auto", "pm25": 2, "filterLife": 100]
+                    ]])
+                    let purifier = try JSONDecoder().decode(PurifierSubsystem.self, from: data)
+                    let card = CompactPurifierCard(purifier: purifier) { _ in }
+                        .environment(\.dynamicTypeSize, large ? .accessibility5 : .large)
+                    let measurement = UIHostingController(rootView: card)
+                    XCTAssertEqual(measurement.sizeThatFits(in: CGSize(width: width - 28, height: 1000)).height, 54, accuracy: 0.5)
+                    let window = UIWindow(windowScene: scene)
+                    window.frame = CGRect(x: 0, y: 0, width: width, height: 90)
+                    let host = UIHostingController(rootView: card.padding(.horizontal, 14).padding(.top, 16)
+                        .frame(width: width, height: 90, alignment: .top).background(Color(uiColor: .systemBackground)).ignoresSafeArea())
+                    host.overrideUserInterfaceStyle = dark ? .dark : .light
+                    window.rootViewController = host
+                    window.makeKeyAndVisible()
+                    host.view.layoutIfNeeded()
+                    try await Task.sleep(for: .milliseconds(50))
+                    let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                    }
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "two-purifiers-width-\(Int(width))-dark-\(dark)-accessibility-\(large)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                    window.isHidden = true
+                }
+            }
+        }
+    }
+
     func testPasteIconExists() {
         XCTAssertNotNil(UIImage(systemName: "doc.on.clipboard"))
     }
