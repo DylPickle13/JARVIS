@@ -22,6 +22,11 @@ assert 'await finishInput(results)' in view
 assert 'guard !completion.consumed else { return }' in view
 assert 'guard let value = completion.consume(results) else {' in view
 assert 'inputPresented = true' in view
+assert '.sheet(isPresented: $showTalkPrompt)' not in route
+assert 'WatchTalkPromptView(onCancel:' in route
+assert 'NavigationStack {' not in view
+assert 'TextFieldLink("Open input"' in view
+assert '_ = completion.consume(nil)' in view
 assert view.count('JARVISPromptRuntime.submit(') == 1
 assert 'case .unconfirmed:' in view and 'submissionUnconfirmed = true' in view
 assert '.interactiveDismissDisabled(sending)' in view

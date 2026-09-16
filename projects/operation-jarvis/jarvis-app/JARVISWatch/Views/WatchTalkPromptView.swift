@@ -1,50 +1,61 @@
 import SwiftUI
 import WatchKit
+import OSLog
 import JARVISKit
 
 /// Native Done confirms one submission. Cancellation and partial input never send.
 struct WatchTalkPromptView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var inputPresented = false
     @State private var completion = JARVISTalkInputCompletion()
     @State private var sending = false
     @State private var message: String?
     @State private var submissionUnconfirmed = false
+    private let logger = Logger(subsystem: "com.operation-jarvis.jarvis.watchkitapp", category: "TalkInput")
+    let onCancel: () -> Void
     let onSent: (JARVISTerminalSlot) -> Void
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if sending {
-                        ProgressView("Sending…")
-                    } else if let message {
-                        Text(message).font(.caption)
-                    } else {
-                        Text("Finish native input to send to the first available New session.")
-                            .font(.caption)
-                    }
-                    Button(submissionUnconfirmed ? "Close" : "Cancel") { dismiss() }
-                        .disabled(sending)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if sending {
+                    ProgressView("Sending…")
+                } else if let message {
+                    Text(message).font(.caption)
+                } else {
+                    Text("Opening input…").font(.caption)
                 }
-                .padding()
+                if !sending && !completion.consumed {
+                    // Recovery only: the root-host automatic presentation is
+                    // the normal route. This control can never submit partial input.
+                    TextFieldLink("Open input", prompt: Text("What would you like to send?")) { value in
+                        Task { @MainActor in await finishInput([value]) }
+                    }
+                    .disabled(!inputPresented)
+                }
+                Button(submissionUnconfirmed ? "Close" : "Cancel") {
+                    _ = completion.consume(nil)
+                    onCancel()
+                }
+                    .disabled(sending)
             }
-            .navigationTitle("Talk to JARVIS")
+            .padding()
         }
         .interactiveDismissDisabled(sending)
         .task(id: scenePhase) {
             guard scenePhase == .active, !inputPresented else { return }
-            // Let the SwiftUI sheet finish presenting before asking WatchKit
-            // to present its native input controller. No permission resets.
+            // This view is a root overlay, NOT a sheet or NavigationStack.
+            // Allow the active host to settle before presenting native input.
             do { try await Task.sleep(for: .milliseconds(400)) }
             catch { return }
             guard !Task.isCancelled, !inputPresented else { return }
             guard let controller = WKApplication.shared().visibleInterfaceController else {
-                message = "Native input is unavailable. Close and open Talk to JARVIS again."
+                inputPresented = true
+                message = "Automatic input is unavailable. Tap Open input to continue."
                 return
             }
             inputPresented = true
+            logger.notice("Requesting native input from root host")
             controller.presentTextInputController(withSuggestions: nil, allowedInputMode: .plain) { results in
                 Task { @MainActor in
                     await finishInput(results)
@@ -56,8 +67,9 @@ struct WatchTalkPromptView: View {
     @MainActor
     private func finishInput(_ results: [Any]?) async {
         guard !completion.consumed else { return }
+        logger.notice("Native input completed; result present: \(results != nil)")
         guard let value = completion.consume(results) else {
-            dismiss()
+            onCancel()
             return
         }
         sending = true

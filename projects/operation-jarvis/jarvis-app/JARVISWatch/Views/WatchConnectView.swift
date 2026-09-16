@@ -13,7 +13,19 @@ struct WatchConnectView: View {
         // TimelineView gives frontmost Always On snapshots a supported periodic
         // redraw. watchOS may reduce this cadence to minutes while dimmed.
         TimelineView(.periodic(from: .now, by: 15)) { _ in
-            rootContent
+            ZStack {
+                rootContent
+                    .allowsHitTesting(!showTalkPrompt)
+                    .accessibilityHidden(showTalkPrompt)
+                if showTalkPrompt {
+                    WatchTalkPromptView(onCancel: { showTalkPrompt = false }) { slot in
+                        JARVISPromptNavigation.requestTerminalPresentation(slot: slot)
+                        showTalkPrompt = false
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(WatchJarvisStyle.background)
+                }
+            }
         }
         // watchOS exposes status-bar suppression through this watch-only
         // SwiftUI modifier. Reclaim both the former clock strip and the
@@ -39,12 +51,6 @@ struct WatchConnectView: View {
         }
         .sheet(isPresented: $notifications.showPermissionExplanation) {
             WatchNotificationPermissionView(notifications: notifications)
-        }
-        .sheet(isPresented: $showTalkPrompt) {
-            WatchTalkPromptView { slot in
-                JARVISPromptNavigation.requestTerminalPresentation(slot: slot)
-                showTalkPrompt = false
-            }
         }
         .onChange(of: showTalkPrompt) { _, showing in
             if !showing { openTerminalIfRequested() }

@@ -38,3 +38,11 @@ No physical acceptance or device installation is implied by source checks or an 
 ## Automatic-input revision
 
 Native input uses `WKInterfaceController.presentTextInputController` from the visible controller after the SwiftUI sheet appears. Physical cold/warm-launch presentation, input method choice, cancellation, and end-to-end delivery require owner acceptance. Native Done is the authorization boundary; speech silence is not used to trigger submission.
+
+## Build186 physical rejection and root-host correction
+
+The owner reported that Build186 displayed its waiting text without opening native input. Compilation and deployment did not establish successful input presentation.
+
+The correction removes the Talk SwiftUI sheet and nested NavigationStack. A root overlay keeps the dashboard mounted while native WatchKit input is requested from the root host. Done-to-send, cancellation, duplicate suppression, and first-available-New-slot routing remain unchanged. A native TextFieldLink provides explicit manual recovery if automatic presentation still fails; that fallback is not acceptance of the requested zero-extra-tap flow. Public logs record only presentation/completion events, never prompt text.
+
+Physical cold/warm-launch tests must demonstrate automatic native input presentation. If only Open input appears, automatic presentation remains unresolved. Cancel once to verify no submission, then deliberately complete input for the end-to-end test.
