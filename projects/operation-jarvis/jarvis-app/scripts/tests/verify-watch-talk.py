@@ -52,4 +52,14 @@ for forbidden in ['JARVISWidgetTimer', 'ResonanceFrame(', 'movingOnly', 'allowsM
                   'Timer(', 'TimelineView(', 'URLSession', 'repeatForever',
                   'reloadTimelines', '.animation(', '.mask', 'Date(', 'phase:']:
     assert forbidden not in art, forbidden
-print('Resonance is a single static Canvas without timer masks or an animation-font dependency.')
+assert 'func triangle(_ insetScale: CGFloat) -> Path' in art
+assert 'CGPoint(x: -39, y: -34), CGPoint(x: 39, y: -34)' in art
+assert 'CGPoint(x: 42, y: -29), CGPoint(x: 3, y: 37)' in art
+assert 'path.closeSubpath()' in art
+assert 'context.stroke(triangle(1)' in art
+assert 'context.stroke(triangle(0.84)' in art
+assert 'context.fill(triangle(simplified ? 0.62 : 0.65)' in art
+assert 'if !simplified {' in art
+for forbidden in ['ellipseIn:', 'addArc(', 'chevron', 'underscore', 'waveform', 'Color(red:', '.blur(']:
+    assert forbidden not in art, forbidden
+print('Triangular arc reactor is a single static monochrome Canvas with layered rims and an inverted emitter.')

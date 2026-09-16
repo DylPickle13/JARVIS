@@ -66,3 +66,21 @@ Owner requested complete removal of Talk animation while retaining a more detail
 Talk now renders one static Canvas, with no timer selectors, timer masks, animated frame stack, or animation-font registration. This removes its former24frames/48masks. Neural Core's implementation and accepted native Done-to-send input are unchanged. The icon is never a microphone indicator.
 
 Battery benefit is **unmeasured**: two power-profiler attempts and an unlocked retry timed out before recording. Source simplification is not proof that animation caused the reported drain. Spotify remains removed. Physical visual acceptance and a matched normal-use battery comparison remain pending.
+
+## Terminal Spark replacement (source candidate)
+
+The owner selected the earlier monochrome Terminal Spark concept, replacing its right-side signal with a second chevron: `>_>`. Two rounded white chevrons flank a subdued steel-white underscore. The mark uses one static Canvas and preserves the complete glyph in reduced luminance; widget accenting remains supported. Legacy artwork type/file names are retained for integration compatibility.
+
+This supersedes Build192's engraved artwork only. Native input, one-shot Done submission, first eligible New-session routing, widget identifiers, and Neural Core remain unchanged. Source/render checks are not physical Watch acceptance or energy measurements. Not yet deployed.
+
+## Mini arc reactor replacement (source candidate)
+
+Supersedes the deployed Build193 Terminal Spark icon at the owner's request. The static monochrome reactor has ten broad segmented coils, radial supports, a thin outer housing, and a bright circular emitter. At reduced luminance it omits the fine inner ring and slightly reduces the emitter and coil intensity. It retains one accentable Canvas, with no timers, blur, animation, or network work.
+
+Only artwork and its source contracts changed. Talk input/submission and Neural Core remain untouched. This candidate is not yet deployed; rendered previews do not establish physical Watch acceptance or battery impact.
+
+## Triangular Mark VI-inspired replacement (current source candidate)
+
+The owner clarified the intended reactor is the inverted triangular Mark VI design, not the earlier circular reactor. This supersedes the circular candidate above: a bright clipped-tip inverted triangle sits inside two separated steel-white triangular rims. Reduced luminance omits the fine top bevel and slightly shrinks the emitter. No color, blur, animation, or additional rendering layer is introduced.
+
+Reference: https://www.xenom0rph.com/2018/03/hot-toys-iron-man-mark-vi-16-mms378-d17.html (Mark VI replica photographs). Geometry is drawn locally, not a bundled reference photograph. Existing artwork names, widget routing, native input, and Neural Core are unchanged. Deployed as Build194; physical visual acceptance remains pending.
