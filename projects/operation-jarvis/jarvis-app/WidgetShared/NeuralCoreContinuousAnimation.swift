@@ -84,21 +84,19 @@ struct JARVISNeuralCoreContinuousArtwork: View {
 
                     ZStack(alignment: .topLeading) {
                         if layout == .watch {
-                            // Keep the complete-view wrapper that physically animates
-                            // on Watch. Every authored phase-driven layer remains in
-                            // each of the 48 nominal-24-FPS selector scenes.
-                            JARVISNeuralCoreArtwork(
+                            // Keep 40 nominal-20-FPS selector scenes, but reuse the
+                            // outer geometry/motion/accessibility policy instead of
+                            // serializing redundant full-artwork wrappers. Each
+                            // Watch scene receives explicit size before its mask.
+                            JARVISNeuralCoreAnimationFrame(
                                 telemetry: telemetry,
                                 layout: layout,
                                 motionPhase: basePhase,
-                                allowsMotion: true,
-                                hidesAccessibility: true,
-                                layerSet: .staticBackground,
-                                includesWordmark: false
+                                layerSet: .staticBackground
                             )
 
                             ForEach(0..<layout.continuousFrameCount, id: \.self) { index in
-                                JARVISNeuralCoreArtwork(
+                                JARVISNeuralCoreAnimationFrame(
                                     telemetry: telemetry,
                                     layout: layout,
                                     motionPhase: JARVISNeuralCoreMotion.continuousPhase(
@@ -106,11 +104,10 @@ struct JARVISNeuralCoreContinuousArtwork: View {
                                         frameIndex: index,
                                         frameCount: layout.continuousFrameCount
                                     ),
-                                    allowsMotion: true,
-                                    hidesAccessibility: true,
-                                    layerSet: .phaseArtwork,
-                                    includesWordmark: false
+                                    layerSet: .phaseArtwork
                                 )
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .contentTransition(.interpolate)
                                 .mask {
                                     JARVISWidgetTimerFrameWindow(
                                         frameIndex: index,
@@ -253,7 +250,8 @@ private struct JARVISNeuralCoreAnimationFrame: View {
     }
 }
 
-private struct JARVISWidgetTimerFrameWindow: View {
+// Shared with the lightweight Talk artwork; existing selector behavior is unchanged.
+struct JARVISWidgetTimerFrameWindow: View {
     let frameIndex: Int
     let frameCount: Int
     let extent: CGFloat

@@ -6,7 +6,7 @@ struct WatchDashboardContent: View {
     @ObservedObject var model: WatchConnectModel
     @ObservedObject var jobs: WatchJobsModel
     let isDashboardCovered: Bool
-    let siriTerminalRequestSequence: Int
+    let terminalRequestSequence: Int
     let requestedJobRoute: ScheduledJobNavigationRequest?
     let onJobRouteConsumed: (ScheduledJobNavigationRequest) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -14,9 +14,14 @@ struct WatchDashboardContent: View {
     @State private var selectedPage: WatchDashboardPage = .terminal
     @State private var showsPurifierModeChoices = false
     @State private var showsPurifierFanChoices = false
+    private struct PurifierDetailRoute: Identifiable {
+        let deviceID: String?
+        var id: String { deviceID ?? "legacy" }
+    }
+    @State private var purifierDetail: PurifierDetailRoute?
 
     private var overlayOwnsInput: Bool {
-        showsPurifierModeChoices || showsPurifierFanChoices || isDashboardCovered
+        showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered
     }
     private var systemInteractive: Bool { scenePhase == .active && selectedPage == .system }
 
@@ -67,14 +72,17 @@ struct WatchDashboardContent: View {
             updateOMLXPresentation()
             if page == .system {
                 Task { await model.refreshCodexQuotaWhenVisible() }
+                Task { await model.refreshPurifierReadings() }
             } else {
                 model.cancelCodexQuotaViewRefresh()
             }
         }
         .onChange(of: showsPurifierModeChoices) { _, _ in updateOMLXPresentation() }
         .onChange(of: showsPurifierFanChoices) { _, _ in updateOMLXPresentation() }
+        .onChange(of: purifierDetail?.id) { _, _ in updateOMLXPresentation() }
+        .sheet(item: $purifierDetail) { route in purifierDetailView(route) }
         .onChange(of: isDashboardCovered) { _, _ in updateOMLXPresentation() }
-        .onChange(of: siriTerminalRequestSequence) { oldValue, newValue in
+        .onChange(of: terminalRequestSequence) { oldValue, newValue in
             guard newValue != oldValue else { return }
             selectedPage = .terminal
         }
@@ -93,7 +101,7 @@ struct WatchDashboardContent: View {
 
     private func updateOMLXPresentation() {
         model.setOMLXPresentation(systemVisible: selectedPage == .system,
-            covered: showsPurifierModeChoices || showsPurifierFanChoices || isDashboardCovered)
+            covered: showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered)
     }
 
     @ViewBuilder
@@ -252,177 +260,74 @@ struct WatchDashboardContent: View {
     }
 
     private var purifierPanel: some View {
-        let purifier = model.lastState?.subsystems?.purifier
-        let pm25 = purifier?.pm25
-        let isOn = purifier?.isOn
+        CompactWatchPurifierCard(
+            purifier: model.lastState?.subsystems?.purifier,
+            unavailable: model.connectionState != .connected || model.isStale,
+            busyDeviceID: model.busyPurifierDeviceID,
+            accent: WatchJarvisStyle.accent, surface: WatchJarvisStyle.surface
+        ) { deviceID in
+            model.selectedPurifierID = deviceID
+            purifierDetail = PurifierDetailRoute(deviceID: deviceID)
+        }
+    }
+
+    private func purifierDetailView(_ route: PurifierDetailRoute) -> some View {
+        let purifier = model.lastState?.subsystems?.purifier?.selected(route.deviceID)
+        let stale = model.isPurifierStateStale(deviceID: route.deviceID)
         let mode = normalizedPurifierMode(purifier?.mode)
-        let fan = purifier?.fanSetLevel ?? purifier?.fanLevel
-        let stale = model.isPurifierStateStale
-        let pending = model.isPurifierVerificationPending
-
-        return HStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .stroke(airQualityColor(pm25).opacity(0.22), lineWidth: 5)
-                Circle()
-                    .trim(from: 0, to: airQualityProgress(pm25))
-                    .stroke(
-                        airQualityColor(pm25),
-                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                Text(pm25.map(String.init) ?? "—")
-                    .font(.caption.weight(.bold))
-                    .monospacedDigit()
+        return NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(purifier?.name ?? "Purifier unavailable").font(.headline)
+                    Text("PM₂.₅ \(purifier?.pm25.map(String.init) ?? "—") µg/m³")
+                        .font(.title3).monospacedDigit()
+                    Text("Filter life: \(purifier?.filterLife.map { "\($0)%" } ?? "unavailable")")
+                    if purifier?.verificationPending == true {
+                        Text(purifierPendingSummary(purifier?.pendingCommand)).foregroundStyle(WatchJarvisStyle.warning)
+                    } else if stale {
+                        Text("Readings unavailable or stale. Refresh before changing settings.").foregroundStyle(.secondary)
+                    }
+                    if let error = purifier?.lastError, !error.isEmpty {
+                        Text(error).font(.caption).foregroundStyle(WatchJarvisStyle.warning)
+                    }
+                    Button(purifier?.isOn == true ? "Turn off" : "Turn on", systemImage: "power") {
+                        guard let isOn = purifier?.isOn else { return }
+                        Task { await model.setPurifierPower(!isOn, deviceID: route.deviceID) }
+                    }
+                    .disabled(stale || model.purifierBusy || purifier?.isOn == nil)
+                    Button("Mode: \(mode.capitalized)", systemImage: "dial.medium") { showsPurifierModeChoices = true }
+                        .disabled(stale || model.purifierBusy || purifier?.isOn != true)
+                        .confirmationDialog("Purifier mode", isPresented: $showsPurifierModeChoices, titleVisibility: .visible) {
+                            ForEach(WatchPurifierCommand.supportedModes, id: \.self) { option in
+                                Button(option.capitalized) { Task { await model.setPurifierMode(option, deviceID: route.deviceID) } }
+                            }
+                        }
+                    Button("Fan: \((purifier?.fanSetLevel ?? purifier?.fanLevel).map(String.init) ?? "—")", systemImage: "fan.fill") {
+                        showsPurifierFanChoices = true
+                    }
+                    .disabled(stale || model.purifierBusy || purifier?.isOn != true || mode != "manual")
+                    .confirmationDialog("Fan level", isPresented: $showsPurifierFanChoices, titleVisibility: .visible) {
+                        ForEach(1...4, id: \.self) { level in
+                            Button("Fan \(level)") { Task { await model.setPurifierFan(level, deviceID: route.deviceID) } }
+                        }
+                    }
+                    Button("Refresh readings", systemImage: "arrow.clockwise") {
+                        Task { await model.refreshPurifierReadings() }
+                    }.disabled(model.purifierBusy)
+                    if (purifier?.lastError ?? "").localizedCaseInsensitiveContains("backoff") {
+                        Button("Read once despite local cooldown") {
+                            Task { await model.refreshPurifierReadings(retry: true) }
+                        }.disabled(model.purifierBusy)
+                    }
+                    if let message = model.errorMessage, !message.isEmpty {
+                        Text(message).font(.caption).foregroundStyle(WatchJarvisStyle.warning)
+                    }
+                }.padding(.horizontal, 8).padding(.bottom, 12)
             }
-            .frame(width: 46, height: 46)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Air quality \(airQualityLabel(pm25)), PM2.5 \(pm25.map(String.init) ?? "unavailable")")
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
-                    Text("AIR PURIFIER")
-                        .font(.system(size: 8, weight: .bold))
-                        .tracking(0.7)
-                        .foregroundStyle(stale || pending ? WatchJarvisStyle.warning : .secondary)
-                    Spacer(minLength: 2)
-                    purifierPowerButton(isOn: isOn, stale: stale)
-                }
-
-                Text(pending ? purifierPendingSummary(purifier?.pendingCommand) : "\(airQualityLabel(pm25)) · \(purifierSummary)")
-                    .font(.system(size: 9.5, weight: .semibold))
-                    .foregroundStyle(pending ? WatchJarvisStyle.warning : Color.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-
-                HStack(spacing: 5) {
-                    purifierModeControl(isOn: isOn, mode: mode, stale: stale)
-                    purifierFanControl(isOn: isOn, mode: mode, fan: fan, stale: stale)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .navigationTitle("Purifier")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { purifierDetail = nil } } }
+            .onDisappear { showsPurifierModeChoices = false; showsPurifierFanChoices = false }
         }
-        .padding(.horizontal, 9)
-        .frame(maxWidth: .infinity, minHeight: 68)
-        .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .accessibilityElement(children: .contain)
-    }
-
-    private func purifierPowerButton(isOn: Bool?, stale: Bool) -> some View {
-        Button {
-            guard let isOn else { return }
-            Task { await model.setPurifierPower(!isOn) }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill((isOn == true ? WatchJarvisStyle.accent : Color.secondary).opacity(0.16))
-                    .interactionTransition(value: isOn, allowed: !stale && !model.isPurifierVerificationPending && isOn != nil)
-                if model.purifierBusy || model.isPurifierVerificationPending {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: "power")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(isOn == true ? WatchJarvisStyle.accent : .secondary)
-                        .interactionTransition(value: isOn, allowed: !stale && !model.isPurifierVerificationPending && isOn != nil)
-                }
-            }
-            .frame(width: 27, height: 27)
-            .contentShape(Circle())
-        }
-        .buttonStyle(JarvisPressStyle())
-        .disabled(isOn == nil || stale || model.purifierBusy)
-        .accessibilityLabel("Air purifier power")
-        .accessibilityValue(
-            model.isPurifierVerificationPending
-                ? "waiting for confirmation"
-                : (model.purifierBusy ? "updating" : (isOn.map { $0 ? "on" : "off" } ?? "unavailable"))
-        )
-        .accessibilityHint(
-            model.isPurifierVerificationPending
-                ? "Wait for the previous change to be confirmed"
-                : (stale ? "Wait for automatic refresh before changing the air purifier" : "Double tap to set the opposite state")
-        )
-    }
-
-    private func purifierModeControl(isOn: Bool?, mode: String, stale: Bool) -> some View {
-        Button {
-            showsPurifierModeChoices = true
-        } label: {
-            HStack(spacing: 2) {
-                Image(systemName: "dial.medium")
-                Text(mode.uppercased())
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 6, weight: .bold))
-            }
-            .font(.system(size: 7.5, weight: .bold))
-            .foregroundStyle(isOn == true ? WatchJarvisStyle.accent : .secondary)
-                        .interactionTransition(value: isOn, allowed: !stale && !model.isPurifierVerificationPending && isOn != nil)
-            .padding(.horizontal, 5)
-            .frame(height: 21)
-            .background(Color.white.opacity(0.07), in: Capsule())
-        }
-        .buttonStyle(JarvisPressStyle())
-        .disabled(isOn != true || stale || model.purifierBusy)
-        .confirmationDialog(
-            "Air purifier mode",
-            isPresented: $showsPurifierModeChoices,
-            titleVisibility: .visible
-        ) {
-            ForEach(WatchPurifierCommand.supportedModes, id: \.self) { option in
-                Button(option == mode ? "✓ \(option.capitalized)" : option.capitalized) {
-                    Task { await model.setPurifierMode(option) }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
-        .accessibilityLabel("Air purifier mode")
-        .accessibilityValue(mode.capitalized)
-        .accessibilityHint(
-            model.isPurifierVerificationPending
-                ? "Wait for the previous change to be confirmed"
-                : "Double tap to choose Auto, Manual, Sleep, or Pet mode"
-        )
-    }
-
-    private func purifierFanControl(isOn: Bool?, mode: String, fan: Int?, stale: Bool) -> some View {
-        Button {
-            showsPurifierFanChoices = true
-        } label: {
-            HStack(spacing: 2) {
-                Image(systemName: "fan.fill")
-                Text(fan.map(String.init) ?? "—")
-                    .monospacedDigit()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 6, weight: .bold))
-            }
-            .font(.system(size: 7.5, weight: .bold))
-            .foregroundStyle(mode == "manual" && isOn == true ? WatchJarvisStyle.accent : .secondary)
-            .padding(.horizontal, 5)
-            .frame(height: 21)
-            .background(Color.white.opacity(0.07), in: Capsule())
-        }
-        .buttonStyle(JarvisPressStyle())
-        .disabled(isOn != true || mode != "manual" || stale || model.purifierBusy)
-        .confirmationDialog(
-            "Air purifier fan",
-            isPresented: $showsPurifierFanChoices,
-            titleVisibility: .visible
-        ) {
-            ForEach(1...4, id: \.self) { level in
-                Button(level == fan ? "✓ Fan \(level)" : "Fan \(level)") {
-                    Task { await model.setPurifierFan(level) }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
-        .accessibilityLabel("Air purifier fan level")
-        .accessibilityValue(fan.map(String.init) ?? "unavailable")
-        .accessibilityHint(
-            model.isPurifierVerificationPending
-                ? "Wait for the previous change to be confirmed"
-                : (mode == "manual" ? "Double tap to choose a fan level" : "Set the air purifier to manual mode to change fan level")
-        )
     }
 
     @ViewBuilder
@@ -695,7 +600,7 @@ struct WatchDashboardContent: View {
     }
 
     private var purifierSummary: String {
-        guard let purifier = model.lastState?.subsystems?.purifier else { return "Status unavailable" }
+        guard let purifier = model.selectedPurifier else { return "Status unavailable" }
         let power = purifier.isOn.map { $0 ? "On" : "Off" } ?? "Unknown"
         if let mode = purifier.mode, !mode.isEmpty { return "\(power) · \(mode.capitalized)" }
         return power

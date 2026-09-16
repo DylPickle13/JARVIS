@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import JARVISKit
 import Network
+import UIKit
 
 @MainActor
 enum PiTerminalConnectionStatus: Equatable {
@@ -25,6 +26,9 @@ final class PiTerminalController: ObservableObject {
     @Published private(set) var attachmentError: String?
     @Published private(set) var attachmentProgress: Double?
     @Published private(set) var isAttachmentBusy = false
+
+    @Published var pasteReview: PiTerminalPasteReview?
+    @Published var pasteError: String?
 
     let settings: PiTerminalSettings
 
@@ -57,6 +61,8 @@ final class PiTerminalController: ObservableObject {
 
     func attach(_ view: PiTerminalHostView) {
         terminalView = view
+        view.pasteReviewChanged = { [weak self] in self?.pasteReview = $0 }
+        view.pasteErrorChanged = { [weak self] in self?.pasteError = $0 }
         view.stateChanged = { [weak self] newStatus in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -166,6 +172,17 @@ final class PiTerminalController: ObservableObject {
         guard canSendTerminalInput else { return }
         terminalView?.toggleControlLatch()
     }
+
+    func receivePasteProviders(_ providers: [NSItemProvider]) {
+        guard canSendTerminalInput else { return }
+        terminalView?.receivePasteProviders(providers)
+    }
+
+    func confirmPaste(id: UUID, singleLine: Bool) {
+        terminalView?.confirmPaste(id: id, singleLine: singleLine)
+    }
+
+    func cancelPaste() { terminalView?.cancelPaste() }
 
     func pasteIntoTerminal() {
         guard canSendTerminalInput else { return }

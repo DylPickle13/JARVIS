@@ -32,11 +32,11 @@ struct PiTerminalView: View {
             Color.black.ignoresSafeArea()
 
             if configurationReady, !editingLogin {
-                VStack(spacing: 0) {
+                GeometryReader { geometry in
                     PiTerminalContainer(controller: terminal)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
                         .background(Color.black)
                         .accessibilityLabel("Pi terminal")
-                    PiTerminalKeyBar(controller: terminal)
                 }
             } else {
                 setupView
@@ -47,6 +47,7 @@ struct PiTerminalView: View {
                 sessionIndicator
             }
         }
+        .tint(JarvisPalette.accent)
         .onAppear {
             loadDrafts()
             terminal.setVisible(true, fallbackHost: fallbackHost)
@@ -70,6 +71,23 @@ struct PiTerminalView: View {
                 secondaryButton: .cancel { terminal.rejectPendingHost() }
             )
         }
+        .alert("Review paste", isPresented: Binding(
+            get: { terminal.pasteReview != nil },
+            set: { if !$0 { terminal.pasteReview = nil } }
+        ), presenting: terminal.pasteReview) { review in
+            if review.supportsMultiline {
+                Button("Paste text") { terminal.confirmPaste(id: review.id, singleLine: false) }
+            }
+            Button("Paste as one line") { terminal.confirmPaste(id: review.id, singleLine: true) }
+            Button("Cancel", role: .cancel) { terminal.cancelPaste() }
+        } message: { review in
+            Text((review.supportsMultiline ? "Enter will not be appended.\n\n" : "Safe multiline paste is unavailable; choose one line.\n\n") + review.preview)
+        }
+        .alert("Cannot paste", isPresented: Binding(
+            get: { terminal.pasteError != nil }, set: { if !$0 { terminal.pasteError = nil } }
+        )) {
+            Button("OK", role: .cancel) { terminal.pasteError = nil }
+        } message: { Text(terminal.pasteError ?? "") }
         .sheet(isPresented: Binding(
             get: { terminal.isAttachmentSheetPresented },
             set: { presented in
@@ -254,113 +272,240 @@ struct PiTerminalView: View {
     }
 }
 
-struct PiTerminalKeyBar: View {
-    static let height: CGFloat = 46
+/// A width budget shared by the real toolbar and narrow-screen regression tests.
+/// Text keys get more room than arrows; no control has a fixed width or scrolls.
+enum PiTerminalToolbarAction: CaseIterable {
+    case escape, control, tab, slash, up, down, paste, attach, keyboard
 
+    var weight: CGFloat {
+        switch self {
+        case .escape, .control, .tab: 1.15
+        case .slash, .up, .down: 0.8
+        default: 1
+        }
+    }
+}
+
+struct PiTerminalToolbarMetrics {
+    static let height: CGFloat = 46
+    static let inset: CGFloat = 4
+    static let spacing: CGFloat = 2
+    let availableWidth: CGFloat
+    let showsAttachments: Bool
+
+    var actions: [PiTerminalToolbarAction] {
+        PiTerminalToolbarAction.allCases.filter { showsAttachments || $0 != .attach }
+    }
+
+    func width(for action: PiTerminalToolbarAction) -> CGFloat {
+        let usable = max(0, availableWidth - Self.inset * 2 - CGFloat(actions.count - 1) * Self.spacing)
+        return usable * action.weight / actions.reduce(0) { $0 + $1.weight }
+    }
+}
+
+struct PiTerminalToolbarButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(isEnabled ? (configuration.isPressed ? 0.65 : 1) : 0.4)
+    }
+}
+
+struct PiTerminalKeyBar: View {
+    static let height = PiTerminalToolbarMetrics.height
     @ObservedObject var controller: PiTerminalController
 
     var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 4) {
-                key("Esc", label: "Escape", bytes: [0x1b])
-                Button {
-                    controller.toggleControlLatch()
-                } label: {
-                    Text("Ctrl")
-                        .foregroundStyle(controller.isControlLatched ? JarvisPalette.onAccent : .primary)
-                        .frame(width: 44, height: 34)
-                        .background(controller.isControlLatched ? JarvisPalette.accent : Color.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
-                }
-                .disabled(!controller.canSendTerminalInput)
-                .accessibilityLabel("Control modifier")
-                key("Tab", label: "Tab", bytes: [0x09])
-                key("/", label: "Slash", bytes: PiTerminalKeyDeck.slashBytes)
-                key("↑", label: "Up arrow", bytes: [0x1b, 0x5b, 0x41])
-                key("↓", label: "Down arrow", bytes: [0x1b, 0x5b, 0x42])
+        PiTerminalToolbarContent(
+            showsAttachments: PiTerminalFeatureGate.nativeAttachmentsEnabled,
+            canSend: controller.canSendTerminalInput,
+            canAttach: controller.canOpenAttachments,
+            controlLatched: controller.isControlLatched,
+            keyboardShown: controller.isTerminalFocused
+        ) { action in
+            switch action {
+            case .escape: controller.sendTerminalBytes([0x1b])
+            case .control: controller.toggleControlLatch()
+            case .tab: controller.sendTerminalBytes([0x09])
+            case .slash: controller.sendTerminalBytes(PiTerminalKeyDeck.slashBytes)
+            case .up: controller.sendTerminalBytes([0x1b, 0x5b, 0x41])
+            case .down: controller.sendTerminalBytes([0x1b, 0x5b, 0x42])
+            case .paste: controller.pasteIntoTerminal()
+            case .attach: controller.presentAttachmentSheet()
+            case .keyboard: controller.toggleTerminalKeyboard()
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Divider()
-                .frame(height: 30)
-
-            if PiTerminalFeatureGate.nativeAttachmentsEnabled {
-                Button {
-                    controller.presentAttachmentSheet()
-                } label: {
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(controller.canOpenAttachments ? JarvisPalette.accent : Color.secondary)
-                        .frame(width: 46, height: 46)
-                        .contentShape(Rectangle())
-                }
-                .disabled(!controller.canOpenAttachments)
-                .accessibilityLabel("Attach files")
-                .accessibilityHint("Choose Photos or Files for the next Pi message")
-            }
-
-            Button {
-                controller.toggleTerminalKeyboard()
-            } label: {
-                Image(systemName: controller.isTerminalFocused ? "keyboard.chevron.compact.down" : "keyboard")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(controller.isTerminalFocused ? JarvisPalette.accent : Color.primary)
-                    .frame(width: 46, height: 46)
-                    .contentShape(Rectangle())
-            }
-            .disabled(!controller.isTerminalFocused && !controller.canSendTerminalInput)
-            .accessibilityLabel(controller.isTerminalFocused ? "Hide keyboard" : "Show keyboard")
-            .accessibilityValue(controller.isTerminalFocused ? "Shown" : "Hidden")
         }
-        .frame(height: Self.height)
-        .background(.ultraThinMaterial)
+    }
+}
+
+/// Stateless presentation also lets render fixtures exercise every state without
+/// connecting to, reading the clipboard for, or submitting to a live Pi session.
+struct PiTerminalToolbarContent: View {
+    let showsAttachments: Bool
+    let canSend: Bool
+    let canAttach: Bool
+    let controlLatched: Bool
+    let keyboardShown: Bool
+    let perform: (PiTerminalToolbarAction) -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            let metrics = PiTerminalToolbarMetrics(availableWidth: geometry.size.width, showsAttachments: showsAttachments)
+            HStack(spacing: PiTerminalToolbarMetrics.spacing) {
+                key("Esc", label: "Escape", action: .escape, metrics: metrics)
+                key("Ctrl", label: "Control modifier", action: .control, metrics: metrics)
+                    .accessibilityValue(controlLatched ? "Latched" : "Off")
+                key("Tab", label: "Tab", action: .tab, metrics: metrics)
+                key("/", label: "Slash", action: .slash, metrics: metrics)
+                key("↑", label: "Up arrow", action: .up, metrics: metrics)
+                key("↓", label: "Down arrow", action: .down, metrics: metrics)
+                PiTerminalPasteControl(width: metrics.width(for: .paste)) { perform(.paste) }
+                    .disabled(!canSend)
+                if showsAttachments {
+                    icon("paperclip", label: "Attach files", action: .attach, metrics: metrics)
+                        .disabled(!canAttach)
+                        .accessibilityHint("Choose Photos or Files for the next Pi message")
+                }
+                icon(keyboardShown ? "keyboard.chevron.compact.down" : "keyboard",
+                     label: keyboardShown ? "Hide keyboard" : "Show keyboard", action: .keyboard, metrics: metrics)
+                    .disabled(!keyboardShown && !canSend)
+                    .accessibilityValue(keyboardShown ? "Shown" : "Hidden")
+            }
+            .padding(.horizontal, PiTerminalToolbarMetrics.inset)
+        }
+        .frame(height: PiTerminalToolbarMetrics.height)
+        .tint(JarvisPalette.accent)
+        .buttonStyle(PiTerminalToolbarButtonStyle())
+        .background(Color(uiColor: .secondarySystemBackground))
     }
 
-    private func key(_ title: String, label: String, bytes: [UInt8]) -> some View {
-        Button {
-            controller.sendTerminalBytes(bytes)
-        } label: {
-            keyLabel(title)
+    private func key(_ title: String, label: String, action: PiTerminalToolbarAction, metrics: PiTerminalToolbarMetrics) -> some View {
+        let latched = action == .control && controlLatched
+        return Button { perform(action) } label: {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .foregroundStyle(latched ? JarvisPalette.onAccent : JarvisPalette.accent)
+                .padding(.horizontal, 2)
+                .frame(width: metrics.width(for: action), height: 34)
+                .background(latched ? JarvisPalette.accent : JarvisPalette.accent.opacity(0.10),
+                            in: RoundedRectangle(cornerRadius: 8))
+                .frame(height: PiTerminalToolbarMetrics.height)
+                .contentShape(Rectangle())
         }
-        .disabled(!controller.canSendTerminalInput)
+        .disabled(!canSend)
         .accessibilityLabel(label)
     }
 
-    private func keyLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.callout.monospaced().weight(.semibold))
-            .foregroundStyle(.primary)
-            .frame(width: 44, height: 34)
-            .background(Color.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
+    private func icon(_ symbol: String, label: String, action: PiTerminalToolbarAction, metrics: PiTerminalToolbarMetrics) -> some View {
+        Button { perform(action) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(JarvisPalette.accent)
+                .frame(width: metrics.width(for: action), height: PiTerminalToolbarMetrics.height)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(label)
     }
-
 }
 
-private struct PiTerminalContainer: UIViewRepresentable {
+// Explicitly fill the parent's proposal. The terminal is not an intrinsic-height
+// control: its toolbar must never determine the height of the whole viewport.
+struct PiTerminalContainer: UIViewControllerRepresentable {
     let controller: PiTerminalController
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(controller: controller)
+    func makeUIViewController(context: Context) -> PiTerminalViewportController {
+        PiTerminalViewportController(controller: controller)
     }
 
-    func makeUIView(context: Context) -> PiTerminalHostView {
-        let view = PiTerminalHostView(frame: .zero)
-        context.coordinator.controller.attach(view)
-        return view
+    func updateUIViewController(_ uiViewController: PiTerminalViewportController, context: Context) {}
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiViewController: PiTerminalViewportController, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height,
+              width.isFinite, height.isFinite else { return nil }
+        return CGSize(width: max(0, width), height: max(0, height))
     }
 
-    func updateUIView(_ uiView: PiTerminalHostView, context: Context) {}
+    static func dismantleUIViewController(_ uiViewController: PiTerminalViewportController, coordinator: ()) {
+        uiViewController.disconnectView()
+    }
+}
 
-    static func dismantleUIView(_ uiView: PiTerminalHostView, coordinator: Coordinator) {
-        coordinator.controller.detach(uiView)
+final class PiTerminalViewportController: UIViewController {
+    let terminalView = PiTerminalHostView(frame: .zero)
+    let toolbar: UIHostingController<PiTerminalKeyBar>
+    private let controller: PiTerminalController
+    private var keyboardFrameInScreen: CGRect?
+
+    init(controller: PiTerminalController) {
+        self.controller = controller
+        toolbar = UIHostingController(rootView: PiTerminalKeyBar(controller: controller))
+        super.init(nibName: nil, bundle: nil)
     }
 
-    @MainActor
-    final class Coordinator {
-        let controller: PiTerminalController
-        init(controller: PiTerminalController) { self.controller = controller }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        view.clipsToBounds = true
+        view.addSubview(terminalView)
+        addChild(toolbar)
+        // This fixed-height child must not independently avoid the keyboard.
+        toolbar.safeAreaRegions = []
+        toolbar.view.backgroundColor = .clear
+        view.addSubview(toolbar.view)
+        toolbar.didMove(toParent: self)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
+            name: UIResponder.keyboardWillHideNotification, object: nil)
+        // Attach exactly once; a keyboard layout change only resizes the existing
+        // SwiftTerm view (and its existing SSH PTY), never replaces a session.
+        controller.attach(terminalView)
     }
+
+    // Intersect the actual keyboard with this viewport, not a cached keyboard
+    // height. If SwiftUI already reduced the viewport this adds no second inset.
+    static func contentBottom(bounds: CGRect, safeAreaBottom: CGFloat, keyboard: CGRect?) -> CGFloat {
+        let safeBottom = max(0, bounds.height - safeAreaBottom)
+        guard let keyboard, !keyboard.isNull, !keyboard.isEmpty,
+              keyboard.minY > bounds.minY,
+              keyboard.maxY >= bounds.maxY - 1,
+              keyboard.intersection(bounds).width >= bounds.width - 1 else { return safeBottom }
+        return min(safeBottom, max(0, keyboard.minY - bounds.minY))
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let keyboard: CGRect? = keyboardFrameInScreen.flatMap { frame in
+            guard let window = view.window, let screen = window.windowScene?.screen else { return nil }
+            return view.convert(window.convert(frame, from: screen.coordinateSpace), from: window)
+        }
+        let bottom = Self.contentBottom(bounds: view.bounds,
+            safeAreaBottom: view.safeAreaInsets.bottom, keyboard: keyboard)
+        let height = min(PiTerminalToolbarMetrics.height, bottom)
+        terminalView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: max(0, bottom - height))
+        toolbar.view.frame = CGRect(x: 0, y: bottom - height, width: view.bounds.width, height: height)
+    }
+
+    @objc private func keyboardChanged(_ notification: Notification) {
+        keyboardFrameInScreen = notification.name == UIResponder.keyboardWillHideNotification
+            ? nil : (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
+        let curve = (notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 0
+        view.setNeedsLayout()
+        UIView.animate(withDuration: duration, delay: 0,
+            options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState]) {
+            self.view.layoutIfNeeded()
+        }
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    func disconnectView() { controller.detach(terminalView) }
 }
 
 #Preview {

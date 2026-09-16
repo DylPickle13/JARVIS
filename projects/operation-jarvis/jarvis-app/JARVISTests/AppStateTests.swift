@@ -5,6 +5,31 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testPhonePurifierControlsCarryExplicitDeviceID() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.dual.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        let id = String(repeating: "b", count: 24)
+        await app.setPurifierPower(true, deviceID: id)
+        await app.setPurifierMode("auto", deviceID: id)
+        await app.setPurifierFan(2, deviceID: id)
+        XCTAssertEqual(api.commands, Array(repeating: "purifier-set", count: 3))
+        XCTAssertTrue(api.commandParams.allSatisfy { $0["deviceID"] == .string(id) })
+    }
+
+    func testWatchSelectedDeviceCannotFallBackToLegacyDefault() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.dual.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        let result = await app.executeWatchPurifierCommand(.power(true).targeting(String(repeating: "b", count: 24)))
+        XCTAssertFalse(result.ok)
+        XCTAssertTrue(api.commands.isEmpty)
+    }
+
     func testFreshnessDescribesOldestSourceNotLastNetworkCheck() {
         XCTAssertEqual(JarvisFormat.freshness(ageSeconds: nil), "Waiting for status")
         XCTAssertEqual(JarvisFormat.freshness(ageSeconds: 0), "Oldest source updated now")
@@ -287,6 +312,35 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(app.isStateLoading)
     }
 
+    func testPurifierCloudRefreshOnlyOnForegroundEntryAndExplicitRefresh() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.purifier.\(UUID().uuidString)")!
+        let app = AppState(store: EndpointStore(defaults: defaults), client: api,
+                           activeRefreshInterval: .milliseconds(50),
+                           controlRefreshInterval: .milliseconds(50))
+        app.endpointDraft = "http://fake.jarvis:8790"
+        app.sceneDidBecomeActive()
+        defer { app.sceneWillResignActive() }
+        for _ in 0..<40 where api.purifierRefreshCalls == 0 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertEqual(api.purifierRefreshCalls, 1)
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertGreaterThan(api.stateCalls, 3)
+        XCTAssertEqual(api.purifierRefreshCalls, 1, "Recurring visible-state polls are cache-only")
+        await app.refreshHome()
+        XCTAssertEqual(api.purifierRefreshCalls, 2)
+        app.sceneWillResignActive()
+        await app.refreshHome()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(api.purifierRefreshCalls, 2, "No cloud request while backgrounded")
+        app.sceneDidBecomeActive()
+        for _ in 0..<40 where api.purifierRefreshCalls < 3 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertEqual(api.purifierRefreshCalls, 3)
+    }
+
     func testCachedStateAndJobsPollingContinueAcrossActiveTabsWithoutServicesPolling() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.appstate.\(UUID().uuidString)")!
@@ -484,7 +538,7 @@ final class AppStateTests: XCTestCase {
         var deliveredConfiguration: WatchTerminalConfiguration?
         var deliveredPrompt: String?
 
-        let outcome = await JARVISSiriPromptRuntime.submit(
+        let outcome = await JARVISPromptRuntime.submit(
             "  inspect this\r\nonce  ",
             configurationLoader: { .configured(configuration) },
             delivery: { value, prompt in
@@ -499,10 +553,17 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(deliveredPrompt, "inspect this once")
     }
 
+    func testTalkURLDoesNotMatchTerminalOrOtherSchemes() {
+        XCTAssertTrue(JARVISPromptNavigation.isTalkURL(URL(string: "jarvis://talk")!))
+        XCTAssertFalse(JARVISPromptNavigation.isTalkURL(URL(string: "jarvis://terminal")!))
+        XCTAssertFalse(JARVISPromptNavigation.isTalkURL(URL(string: "https://talk")!))
+        XCTAssertFalse(JARVISPromptNavigation.isTerminalURL(URL(string: "jarvis://talk")!))
+    }
+
     func testSiriTerminalURLOnlyAcceptsTheTerminalDeepLink() {
-        XCTAssertTrue(JARVISSiriNavigation.isTerminalURL(JARVISSiriNavigation.terminalURL))
-        XCTAssertFalse(JARVISSiriNavigation.isTerminalURL(URL(string: "jarvis://settings")!))
-        XCTAssertFalse(JARVISSiriNavigation.isTerminalURL(URL(string: "https://terminal")!))
+        XCTAssertTrue(JARVISPromptNavigation.isTerminalURL(JARVISPromptNavigation.terminalURL))
+        XCTAssertFalse(JARVISPromptNavigation.isTerminalURL(URL(string: "jarvis://settings")!))
+        XCTAssertFalse(JARVISPromptNavigation.isTerminalURL(URL(string: "https://terminal")!))
     }
 
     func testSuccessfulSiriPromptNavigationRequestPersistsAndConsumesOnce() {
@@ -512,7 +573,7 @@ final class AppStateTests: XCTestCase {
         let center = NotificationCenter()
         let posted = expectation(description: "terminal navigation posted")
         let token = center.addObserver(
-            forName: JARVISSiriNavigation.terminalRequestNotification,
+            forName: JARVISPromptNavigation.terminalRequestNotification,
             object: nil,
             queue: nil
         ) { _ in
@@ -520,24 +581,24 @@ final class AppStateTests: XCTestCase {
         }
         defer { center.removeObserver(token) }
 
-        JARVISSiriNavigation.requestTerminalPresentation(
+        JARVISPromptNavigation.requestTerminalPresentation(
             slot: .nine,
             defaults: defaults,
             notificationCenter: center
         )
 
         wait(for: [posted], timeout: 1)
-        XCTAssertFalse(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in false }))
+        XCTAssertFalse(JARVISPromptNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in false }))
         var selected: JARVISTerminalSlot?
-        XCTAssertTrue(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { selected = $0; return true }))
+        XCTAssertTrue(JARVISPromptNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { selected = $0; return true }))
         XCTAssertEqual(selected, .nine)
-        XCTAssertFalse(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in XCTFail(); return true }))
+        XCTAssertFalse(JARVISPromptNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in XCTFail(); return true }))
     }
 
     func testSiriPromptFailsBeforeNetworkAndMapsAmbiguousSend() async {
         var loadedConfiguration = false
         var attemptedDelivery = false
-        let emptyOutcome = await JARVISSiriPromptRuntime.submit(
+        let emptyOutcome = await JARVISPromptRuntime.submit(
             "\r\n",
             configurationLoader: {
                 loadedConfiguration = true
@@ -554,7 +615,7 @@ final class AppStateTests: XCTestCase {
             token: String(repeating: "a", count: 64),
             certificateSHA256: String(repeating: "ab", count: 32)
         )
-        let uncertainOutcome = await JARVISSiriPromptRuntime.submit(
+        let uncertainOutcome = await JARVISPromptRuntime.submit(
             "send once",
             configurationLoader: { .configured(configuration) },
             delivery: { _, _ in throw WatchTerminalClientError.submissionUnconfirmed }
@@ -565,7 +626,7 @@ final class AppStateTests: XCTestCase {
     func testSiriNoUnusedSessionIsAnExplicitRefusalWithoutFallback() async {
         let configuration = WatchTerminalConfiguration(endpoint: "https://fixture.invalid:8792", token: String(repeating: "a", count: 64), certificateSHA256: String(repeating: "ab", count: 32))
         var attempts = 0
-        let outcome = await JARVISSiriPromptRuntime.submit("new conversation only", configurationLoader: { .configured(configuration) }, delivery: { _, _ in
+        let outcome = await JARVISPromptRuntime.submit("new conversation only", configurationLoader: { .configured(configuration) }, delivery: { _, _ in
             attempts += 1
             throw JARVISNewSessionError.noAvailableSession
         })
@@ -1069,7 +1130,8 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(multiTapRecognizers.isEmpty)
         XCTAssertFalse(longPressRecognizers.isEmpty)
         XCTAssertTrue(multiTapRecognizers.allSatisfy { !$0.isEnabled })
-        XCTAssertTrue(longPressRecognizers.allSatisfy { !$0.isEnabled })
+        XCTAssertEqual(longPressRecognizers.filter { $0.isEnabled }.map(\.name), ["jarvis.inline-selection.long-press"])
+        XCTAssertTrue(longPressRecognizers.filter { $0.name != "jarvis.inline-selection.long-press" }.allSatisfy { !$0.isEnabled })
 
         var outboundBytes: [UInt8] = []
         terminalView.outboundBytesObserver = { outboundBytes.append(contentsOf: $0) }
@@ -1120,6 +1182,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var commands: [String] = []
     var commandParams: [[String: JSONValue]] = []
     var stateCalls = 0
+    var purifierRefreshCalls = 0
     var codexRefreshCalls = 0
     var healthCalls = 0
     var servicesCalls = 0
@@ -1172,6 +1235,11 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         stateCalls += 1
         if let stateDelay { try await Task.sleep(for: stateDelay) }
         if !stateResponses.isEmpty { return stateResponses.removeFirst() }
+        return state
+    }
+
+    func stateRefreshingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        purifierRefreshCalls += 1
         return state
     }
 

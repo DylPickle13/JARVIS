@@ -288,7 +288,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
             case .complete:
                 JARVISNeuralCoreC2Decoration.drawBeams(context: &context, size: size, radius: radius, palette: palette.c2)
                 drawHalo(context: &context, center: center, radius: radius)
-                JARVISNeuralCoreC2Decoration.drawImpulses(context: &context, size: size, radius: radius, palette: palette.c2, phase: phase)
+                JARVISNeuralCoreC2Decoration.drawImpulses(context: &context, size: size, radius: radius, palette: palette.c2, phase: phase, sharesPulseShading: layout == .watch)
                 drawCathedralArchitecture(context: &context, center: center, radius: radius)
                 drawWireframe(context: &context, center: center, radius: radius)
                 drawFilaments(context: &context, center: center, radius: radius)
@@ -306,7 +306,7 @@ private struct JARVISMonochromeCathedralCanvas: View {
                 drawHalo(context: &context, center: center, radius: radius)
             case .phaseArtwork:
                 // Beams use the same selected phase; original moving layers retain order.
-                JARVISNeuralCoreC2Decoration.drawImpulses(context: &context, size: size, radius: radius, palette: palette.c2, phase: phase)
+                JARVISNeuralCoreC2Decoration.drawImpulses(context: &context, size: size, radius: radius, palette: palette.c2, phase: phase, sharesPulseShading: layout == .watch)
                 drawCathedralArchitecture(context: &context, center: center, radius: radius)
                 drawWireframe(context: &context, center: center, radius: radius)
                 drawFilaments(context: &context, center: center, radius: radius)

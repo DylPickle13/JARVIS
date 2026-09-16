@@ -16,6 +16,7 @@ private struct JARVISWatchLauncherProvider: TimelineProvider {
 }
 
 private struct JARVISWatchLauncherView: View {
+    var talk = false
     @Environment(\.widgetFamily) private var family
     @Environment(\.widgetRenderingMode) private var renderingMode
 
@@ -24,7 +25,7 @@ private struct JARVISWatchLauncherView: View {
             switch family {
             case .accessoryInline:
                 // Inline complications have no reliable full-color image area.
-                Label("Open JARVIS", systemImage: "app.fill")
+                Label(talk ? "Talk to JARVIS" : "Open JARVIS", systemImage: talk ? "waveform" : "app.fill")
             case .accessoryCorner:
                 renderedIcon
                     .scaledToFit()
@@ -39,7 +40,7 @@ private struct JARVISWatchLauncherView: View {
                         .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 1) {
                         Text("JARVIS").font(.headline)
-                        Text("Open app").font(.caption2).foregroundStyle(.secondary)
+                        Text(talk ? "Talk to JARVIS" : "Open app").font(.caption2).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     Image(systemName: "arrow.up.forward.app").font(.caption2)
@@ -50,34 +51,41 @@ private struct JARVISWatchLauncherView: View {
                 Image(systemName: "app.fill")
             }
         }
-        .widgetURL(jarvisWatchHomeURL)
+        .widgetURL(talk ? URL(string: "jarvis://talk")! : jarvisWatchHomeURL)
         .jarvisWatchWidgetBackground()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Open JARVIS app")
+        .accessibilityLabel(talk ? "Talk to JARVIS" : "Open JARVIS app")
     }
 
+    @ViewBuilder
     private var circularIcon: some View {
-        GeometryReader { geometry in
-            let side = min(geometry.size.width, geometry.size.height)
-            ZStack {
-                if renderingMode == .fullColor {
-                    Circle().fill(Color.black)
-                    fullColorIcon
-                        .scaledToFill()
-                } else {
-                    accentedIcon
-                        .scaledToFit()
+        if talk {
+            JARVISResonanceArtwork()
+        } else {
+            GeometryReader { geometry in
+                let side = min(geometry.size.width, geometry.size.height)
+                ZStack {
+                    if renderingMode == .fullColor {
+                        Circle().fill(Color.black)
+                        fullColorIcon
+                            .scaledToFill()
+                    } else {
+                        accentedIcon
+                            .scaledToFit()
+                    }
                 }
+                .frame(width: side, height: side)
+                .clipShape(Circle())
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
             }
-            .frame(width: side, height: side)
-            .clipShape(Circle())
-            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
     }
 
     @ViewBuilder
     private var renderedIcon: some View {
-        if renderingMode == .fullColor {
+        if talk {
+            JARVISResonanceArtwork()
+        } else if renderingMode == .fullColor {
             fullColorIcon
         } else {
             accentedIcon
@@ -107,6 +115,20 @@ struct JARVISWatchLauncherWidget: Widget {
         }
         .configurationDisplayName("Open JARVIS")
         .description("Launch the JARVIS Watch app from your watch face or Smart Stack.")
+        .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryRectangular, .accessoryInline])
+    }
+}
+
+/// Explicit user-entry point: opening this URL never submits a prompt.
+struct JARVISWatchTalkWidget: Widget {
+    let kind = "JARVISWatchTalkWidget.v1"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: JARVISWatchLauncherProvider()) { _ in
+            JARVISWatchLauncherView(talk: true)
+        }
+        .configurationDisplayName("Talk to JARVIS")
+        .description("Dictate or type; finishing native input sends to the first available New Pi session.")
         .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryRectangular, .accessoryInline])
     }
 }

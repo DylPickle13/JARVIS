@@ -285,6 +285,25 @@ public struct PurifierPendingCommand: Codable, Equatable, Sendable {
 }
 
 public struct PurifierSubsystem: Codable, Equatable, Sendable {
+    public var deviceID: String? = nil
+    public var defaultDeviceID: String? = nil
+    public var devices: [String: PurifierSubsystem]? = nil
+
+    /// A missing selected device must never fall back to the default purifier.
+    public func selected(_ id: String?) -> PurifierSubsystem? {
+        guard let id else { return self }
+        return devices?[id]
+    }
+
+    public var compactDevices: [(id: String, state: PurifierSubsystem)] {
+        guard let devices else { return [(deviceID ?? "legacy-default", self)] }
+        return devices.map { (id: $0.key, state: $0.value) }.sorted {
+            if $0.id == defaultDeviceID { return true }
+            if $1.id == defaultDeviceID { return false }
+            return $0.id < $1.id
+        }
+    }
+
     public let ok: Bool?
     public let stale: Bool?
     public let refreshing: Bool?

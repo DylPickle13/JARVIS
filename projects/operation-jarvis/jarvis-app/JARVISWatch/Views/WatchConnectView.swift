@@ -6,13 +6,26 @@ struct WatchConnectView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = WatchConnectModel()
     @StateObject private var notifications = WatchPushNotificationCoordinator.shared
-    @State private var siriTerminalRequestSequence = 0
+    @State private var terminalRequestSequence = 0
+    @State private var showTalkPrompt = false
 
     var body: some View {
         // TimelineView gives frontmost Always On snapshots a supported periodic
         // redraw. watchOS may reduce this cadence to minutes while dimmed.
         TimelineView(.periodic(from: .now, by: 15)) { _ in
-            rootContent
+            ZStack {
+                rootContent
+                    .allowsHitTesting(!showTalkPrompt)
+                    .accessibilityHidden(showTalkPrompt)
+                if showTalkPrompt {
+                    WatchTalkPromptView(onCancel: { showTalkPrompt = false }) { slot in
+                        JARVISPromptNavigation.requestTerminalPresentation(slot: slot)
+                        showTalkPrompt = false
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(WatchJarvisStyle.background)
+                }
+            }
         }
         // watchOS exposes status-bar suppression through this watch-only
         // SwiftUI modifier. Reclaim both the former clock strip and the
@@ -30,18 +43,25 @@ struct WatchConnectView: View {
             @unknown default:
                 break
             }
-            openSiriTerminalIfRequested()
+            openTerminalIfRequested()
             await model.runDebugRelaySmokeIfRequested()
         }
-        .onReceive(NotificationCenter.default.publisher(for: JARVISSiriNavigation.terminalRequestNotification)) { _ in
-            openSiriTerminalIfRequested()
+        .onReceive(NotificationCenter.default.publisher(for: JARVISPromptNavigation.terminalRequestNotification)) { _ in
+            openTerminalIfRequested()
         }
         .sheet(isPresented: $notifications.showPermissionExplanation) {
             WatchNotificationPermissionView(notifications: notifications)
         }
+        .onChange(of: showTalkPrompt) { _, showing in
+            if !showing { openTerminalIfRequested() }
+        }
         .onOpenURL { url in
-            guard JARVISSiriNavigation.isTerminalURL(url) else { return }
-            siriTerminalRequestSequence += 1
+            if JARVISPromptNavigation.isTalkURL(url) {
+                showTalkPrompt = true
+                return
+            }
+            guard JARVISPromptNavigation.isTerminalURL(url) else { return }
+            terminalRequestSequence += 1
         }
         .task(id: notifications.pendingTerminalRoute) {
             guard let request = notifications.pendingTerminalRoute,
@@ -49,7 +69,7 @@ struct WatchConnectView: View {
             _ = model.jobs.dismissPendingRoute()
             while !Task.isCancelled && notifications.pendingTerminalRoute == request {
                 if model.terminal.selectSlot(slot) {
-                    siriTerminalRequestSequence += 1
+                    terminalRequestSequence += 1
                     notifications.consumeTerminalRoute(request)
                     return
                 }
@@ -60,7 +80,7 @@ struct WatchConnectView: View {
             switch phase {
             case .active:
                 model.sceneDidBecomeActive()
-                openSiriTerminalIfRequested()
+                openTerminalIfRequested()
             case .inactive:
                 // Always On is inactive but still frontmost. Preserve polling,
                 // the selected route, current terminal frame, and button state.
@@ -90,16 +110,16 @@ struct WatchConnectView: View {
         WatchDashboardContent(
             model: model,
             jobs: model.jobs,
-            isDashboardCovered: notifications.showPermissionExplanation,
-            siriTerminalRequestSequence: siriTerminalRequestSequence,
+            isDashboardCovered: notifications.showPermissionExplanation || showTalkPrompt,
+            terminalRequestSequence: terminalRequestSequence,
             requestedJobRoute: notifications.pendingRoute,
             onJobRouteConsumed: notifications.consumePendingRoute
         )
     }
 
-    private func openSiriTerminalIfRequested() {
-        guard JARVISSiriNavigation.consumeTerminalPresentationRequest(select: { model.terminal.selectSlot($0) }) else { return }
-        siriTerminalRequestSequence += 1
+    private func openTerminalIfRequested() {
+        guard JARVISPromptNavigation.consumeTerminalPresentationRequest(select: { model.terminal.selectSlot($0) }) else { return }
+        terminalRequestSequence += 1
     }
 }
 
@@ -112,6 +132,32 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     @Published var cachedAt: Date?
     @Published var busyPlug: String?
     @Published var purifierBusy = false
+    @Published private(set) var busyPurifierDeviceID: String?
+    @Published var selectedPurifierID: String?
+    @Published private(set) var purifierRefreshing = false
+
+    var selectedPurifier: PurifierSubsystem? {
+        lastState?.subsystems?.purifier?.selected(selectedPurifierID)
+    }
+
+    /// Called only on explicit System-page entry, selection or Refresh.
+    /// Neither the cached polling loop nor wrist/AOD lifecycle calls this.
+    func refreshPurifierReadings(retry: Bool = false) async {
+        guard appIsForeground, appIsInteractive, !Task.isCancelled, !purifierRefreshing else { return }
+        purifierRefreshing = true
+        defer { purifierRefreshing = false }
+        if isViaPhone || store.endpoint == nil {
+            let response = await WatchBridge.shared.requestPurifierRefresh(retry: retry)
+            guard !Task.isCancelled, acceptRelayResult(response, failureMessage: "Purifier refresh unavailable") else { return }
+            WatchBridge.shared.requestState()
+        } else if let endpoint = store.endpoint {
+            do {
+                let state = retry ? try await client.stateRetryingPurifier(endpoint) : try await client.stateRefreshingPurifier(endpoint)
+                guard !Task.isCancelled, appIsForeground else { return }
+                acceptDirectState(state)
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
     @Published var pendingRelay = false
     @Published private(set) var isRefreshing = false
 
@@ -190,14 +236,15 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     var isPurifierVerificationPending: Bool {
-        lastState?.subsystems?.purifier?.verificationPending == true
+        selectedPurifier?.verificationPending == true
     }
 
-    var isPurifierStateStale: Bool {
-        connectionState != .connected
-            || cachedStateExpired
-            || lastState?.subsystems?.purifier?.ok != true
-            || lastState?.subsystems?.purifier?.stale == true
+    var isPurifierStateStale: Bool { isPurifierStateStale(deviceID: selectedPurifierID) }
+
+    func isPurifierStateStale(deviceID: String?) -> Bool {
+        let purifier = lastState?.subsystems?.purifier?.selected(deviceID)
+        return connectionState != .connected || cachedStateExpired
+            || purifier?.ok != true || purifier?.stale == true || purifier?.verificationPending == true
     }
 
     var shouldShowRetry: Bool {
@@ -526,32 +573,34 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         }
     }
 
-    func setPurifierPower(_ isOn: Bool) async {
-        await setPurifier(.power(isOn))
+    func setPurifierPower(_ isOn: Bool, deviceID: String?) async {
+        await setPurifier(.power(isOn), deviceID: deviceID)
     }
 
-    func setPurifierMode(_ mode: String) async {
+    func setPurifierMode(_ mode: String, deviceID: String?) async {
         guard let command = WatchPurifierCommand.mode(mode) else {
             errorMessage = "That air-purifier mode is unavailable."
             return
         }
-        await setPurifier(command)
+        await setPurifier(command, deviceID: deviceID)
     }
 
-    func setPurifierFan(_ level: Int) async {
+    func setPurifierFan(_ level: Int, deviceID: String?) async {
         guard let command = WatchPurifierCommand.speed(level) else {
             errorMessage = "The air-purifier fan level must be between 1 and 4."
             return
         }
-        await setPurifier(command)
+        await setPurifier(command, deviceID: deviceID)
     }
 
-    private func setPurifier(_ command: WatchPurifierCommand) async {
+    private func setPurifier(_ command: WatchPurifierCommand, deviceID: String?) async {
         guard !purifierBusy else { return }
-        guard !isPurifierStateStale, let purifier = lastState?.subsystems?.purifier else {
+        let purifier = lastState?.subsystems?.purifier?.selected(deviceID)
+        let command = command.targeting(deviceID ?? purifier?.deviceID)
+        guard !isPurifierStateStale(deviceID: deviceID), let purifier else {
             errorMessage = isPurifierVerificationPending
                 ? "Waiting for the air purifier to confirm the previous change."
-                : "Air-purifier data is stale; waiting for an automatic refresh."
+                : "Air-purifier data is stale; choose Refresh readings."
             return
         }
         if command.matches(purifier) {
@@ -560,7 +609,8 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         }
 
         purifierBusy = true
-        defer { purifierBusy = false }
+        busyPurifierDeviceID = command.deviceID
+        defer { purifierBusy = false; busyPurifierDeviceID = nil }
 
         if isViaPhone || store.endpointURL == nil {
             guard WatchBridge.shared.isPhoneReachable else {
@@ -592,8 +642,8 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
                 errorMessage = nil
                 return
             }
-            guard !isPurifierStateStale,
-                  let confirmed = lastState?.subsystems?.purifier,
+            guard !isPurifierStateStale(deviceID: command.deviceID),
+                  let confirmed = lastState?.subsystems?.purifier?.selected(command.deviceID),
                   command.matches(confirmed) else {
                 errorMessage = "The air-purifier result could not be confirmed."
                 return

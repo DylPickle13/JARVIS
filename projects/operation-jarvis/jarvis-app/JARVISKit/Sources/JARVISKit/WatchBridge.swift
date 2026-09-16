@@ -86,6 +86,18 @@ public enum WatchPurifierSetting: String, Codable, Equatable, Sendable {
 public struct WatchPurifierCommand: Codable, Equatable, Sendable {
     public static let supportedModes = ["auto", "manual", "sleep", "pet"]
 
+    public var deviceID: String? = nil
+
+    public func targeting(_ id: String?) -> Self {
+        var copy = self
+        copy.deviceID = id
+        return copy
+    }
+
+    /// A distinct wire type makes older phones reject targeted commands,
+    /// rather than decoding away the target and controlling their default.
+    public var relayMessageType: String { deviceID == nil ? "purifierCommand" : "purifierDeviceCommand" }
+
     public let setting: WatchPurifierSetting
     public let value: String?
     public let level: Int?
@@ -112,6 +124,7 @@ public struct WatchPurifierCommand: Codable, Equatable, Sendable {
     }
 
     public var isValid: Bool {
+        if let deviceID, deviceID.count != 24 || !deviceID.allSatisfy({ "0123456789abcdef".contains($0) }) { return false }
         switch setting {
         case .power:
             return level == nil && (value == "on" || value == "off")
@@ -123,6 +136,12 @@ public struct WatchPurifierCommand: Codable, Equatable, Sendable {
     }
 
     public var parameters: [String: JSONValue] {
+        var result = untargetedParameters
+        if let deviceID { result["deviceID"] = .string(deviceID) }
+        return result
+    }
+
+    private var untargetedParameters: [String: JSONValue] {
         switch setting {
         case .power, .mode:
             return ["setting": .string(setting.rawValue), "value": .string(value ?? "")]
@@ -132,6 +151,7 @@ public struct WatchPurifierCommand: Codable, Equatable, Sendable {
     }
 
     public func matches(_ purifier: PurifierSubsystem) -> Bool {
+        if let deviceID, purifier.deviceID != deviceID { return false }
         switch setting {
         case .power:
             return purifier.isOn == (value == "on")
@@ -151,6 +171,7 @@ public protocol WatchBridgeDelegate: AnyObject {
     func watchBridgeDidReceiveTerminalConfiguration(_ bridge: WatchBridge, configuration: WatchTerminalConfiguration)
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String)
     func watchBridgeDidReceivePurifierCommand(_ bridge: WatchBridge, command: WatchPurifierCommand, requestID: String)
+    func watchBridgeDidReceivePurifierRefresh(_ bridge: WatchBridge, retry: Bool, requestID: String)
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult)
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError)
     func watchBridgeDidReceivePushRegistration(_ bridge: WatchBridge, registration: JARVISPushRegistration)
@@ -163,6 +184,7 @@ public extension WatchBridgeDelegate {
     func watchBridgeDidReceiveTerminalConfiguration(_ bridge: WatchBridge, configuration: WatchTerminalConfiguration) {}
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String) {}
     func watchBridgeDidReceivePurifierCommand(_ bridge: WatchBridge, command: WatchPurifierCommand, requestID: String) {}
+    func watchBridgeDidReceivePurifierRefresh(_ bridge: WatchBridge, retry: Bool, requestID: String) {}
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult) {}
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError) {}
     func watchBridgeDidReceivePushRegistration(_ bridge: WatchBridge, registration: JARVISPushRegistration) {}
@@ -289,7 +311,12 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
               let payload = try? JSONEncoder().encode(command) else {
             return .failure(.rejected("The air-purifier command was invalid."))
         }
-        return await requestCommand(type: "purifierCommand", payload: payload, timeout: timeout)
+        return await requestCommand(type: command.relayMessageType, payload: payload, timeout: timeout)
+    }
+
+    public func requestPurifierRefresh(retry: Bool = false) async -> Result<CommandResult, WatchRelayFailure> {
+        let payload = Data(retry ? "true".utf8 : "false".utf8)
+        return await requestCommand(type: "purifierRefresh", payload: payload, timeout: .seconds(30))
     }
 
     private func requestCommand(
@@ -527,12 +554,17 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
                   let data = raw["payload"] as? Data,
                   let intent = try? JSONDecoder().decode(PlugIntent.self, from: data) else { return }
             delegate?.watchBridgeDidReceivePlugCommand(self, name: intent.name, isOn: intent.isOn, requestID: requestID)
-        case "purifierCommand":
+        case "purifierCommand", "purifierDeviceCommand":
             guard validateCommandDelivery(raw, requestID: requestID),
                   let data = raw["payload"] as? Data,
                   let command = try? JSONDecoder().decode(WatchPurifierCommand.self, from: data),
-                  command.isValid else { return }
+                  command.isValid, type == command.relayMessageType else { return }
             delegate?.watchBridgeDidReceivePurifierCommand(self, command: command, requestID: requestID)
+        case "purifierRefresh":
+            guard validateCommandDelivery(raw, requestID: requestID),
+                  let data = raw["payload"] as? Data,
+                  let retry = try? JSONDecoder().decode(Bool.self, from: data) else { return }
+            delegate?.watchBridgeDidReceivePurifierRefresh(self, retry: retry, requestID: requestID)
         case "terminalConfiguration":
             guard let data = raw["payload"] as? Data,
                   let configuration = try? JSONDecoder().decode(WatchTerminalConfiguration.self, from: data),
@@ -661,6 +693,7 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         _ command: WatchPurifierCommand,
         timeout: Duration = .seconds(30)
     ) async -> Result<CommandResult, WatchRelayFailure> { .failure(.unavailable) }
+    public func requestPurifierRefresh(retry: Bool = false) async -> Result<CommandResult, WatchRelayFailure> { .failure(.unavailable) }
     public func requestStateData(timeout: Duration = .seconds(15)) async -> Result<Data, WatchRelayFailure> {
         .failure(.unavailable)
     }

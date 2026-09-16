@@ -28,11 +28,13 @@ private enum WatchLauncherWidgetReloadPolicy {
         guard let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
               !build.isEmpty else {
             WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchLauncherWidget.v2")
+        WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchTalkWidget.v1")
             return
         }
         let defaults = UserDefaults.standard
         guard defaults.string(forKey: lastRequestedBuildKey) != build else { return }
         WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchLauncherWidget.v2")
+        WidgetCenter.shared.reloadTimelines(ofKind: "JARVISWatchTalkWidget.v1")
         defaults.set(build, forKey: lastRequestedBuildKey)
     }
 }
@@ -62,7 +64,6 @@ struct JARVISWatchApp: App {
 
     init() {
         WatchBridge.shared.start()
-        JARVISAppShortcuts.updateAppShortcutParameters()
         // The launcher has a static timeline. Request one reload for each newly
         // installed build without repeating identical WidgetKit work on every
         // same-build process launch.

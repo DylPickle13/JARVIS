@@ -13,6 +13,16 @@ enum JARVISNeuralCoreC2Decoration {
         let beam: Color
         let pale: Color
         let silver: Color
+        let pulseShading: GraphicsContext.Shading
+
+        private static let fullColorPulseShading = GraphicsContext.Shading.linearGradient(
+            Gradient(colors: [.clear, Color(white: 0.98).opacity(0.68)]),
+            startPoint: .zero, endPoint: CGPoint(x: 1, y: 0)
+        )
+        private static let primaryPulseShading = GraphicsContext.Shading.linearGradient(
+            Gradient(colors: [.clear, Color.primary.opacity(0.68)]),
+            startPoint: .zero, endPoint: CGPoint(x: 1, y: 0)
+        )
 
         init(usesFullColor: Bool) {
             white = usesFullColor ? .white : .primary
@@ -20,6 +30,7 @@ enum JARVISNeuralCoreC2Decoration {
             beam = usesFullColor ? Color(white: 0.90) : .primary.opacity(0.92)
             pale = usesFullColor ? Color(white: 0.80) : .primary.opacity(0.82)
             silver = usesFullColor ? Color(white: 0.62) : .primary.opacity(0.64)
+            pulseShading = usesFullColor ? Self.fullColorPulseShading : Self.primaryPulseShading
         }
     }
 
@@ -64,7 +75,7 @@ enum JARVISNeuralCoreC2Decoration {
 
     /// Decorative pulses are never progress or throughput. The outer widget
     /// policy supplies a fixed phase for Reduce Motion, AOD and static fallback.
-    static func drawImpulses(context: inout GraphicsContext, size: CGSize, radius r: CGFloat, palette: Palette, phase: CGFloat) {
+    static func drawImpulses(context: inout GraphicsContext, size: CGSize, radius r: CGFloat, palette: Palette, phase: CGFloat, sharesPulseShading: Bool = false) {
         guard r > 0, phase.isFinite else { return }
         let u = r / 50
         let normalizedPhase = phase - phase.rounded(.down)
@@ -87,7 +98,35 @@ enum JARVISNeuralCoreC2Decoration {
                 }
                 // A bounded soft under-stroke avoids per-frame blur filters.
                 context.stroke(path, with: .color(palette.pale.opacity(0.055*envelope)), lineWidth: 2.1*u)
-                context.stroke(path, with: .linearGradient(Gradient(colors: [.clear, palette.bright.opacity(0.68*envelope)]), startPoint: tail, endPoint: head), lineWidth: 0.80*u)
+                if sharesPulseShading {
+                    // Reuse one canonical ramp instead of archiving a differently
+                    // positioned/alpha-valued gradient for every pulse in every
+                    // scene. Local coordinates map back to the exact authored
+                    // tail points; opacity is applied at draw time, not baked into
+                    // hundreds of separate gradient resources. No sampling change.
+                    let dx = head.x-tail.x, dy = head.y-tail.y
+                    let lengthSquared = dx*dx + dy*dy
+                    if lengthSquared > 0 {
+                        let length = sqrt(lengthSquared)
+                        var localPath = Path()
+                        localPath.move(to: .zero)
+                        for segment in 1...6 {
+                            let q = shape.point(at: tailT + (t-tailT)*CGFloat(segment)/6)
+                            let x = q.x-tail.x, y = q.y-tail.y
+                            localPath.addLine(to: CGPoint(x: (x*dx+y*dy)/lengthSquared,
+                                                         y: (y*dx-x*dy)/lengthSquared))
+                        }
+                        var pulse = context
+                        pulse.opacity *= envelope
+                        pulse.translateBy(x: tail.x, y: tail.y)
+                        pulse.rotate(by: .radians(Double(atan2(dy, dx))))
+                        pulse.scaleBy(x: length, y: length)
+                        pulse.stroke(localPath, with: palette.pulseShading, lineWidth: 0.80*u/length)
+                    }
+                } else {
+                    // Preserve the existing iPhone path byte-for-byte in pixels.
+                    context.stroke(path, with: .linearGradient(Gradient(colors: [.clear, palette.bright.opacity(0.68*envelope)]), startPoint: tail, endPoint: head), lineWidth: 0.80*u)
+                }
                 dot(head, radius: 0.95*u, color: palette.bright.opacity(0.72*envelope), context: &context)
                 // The glints sit on the exact parent/fork junctions.
                 for junction in [CGFloat(0.42), 0.55, 0.68] {

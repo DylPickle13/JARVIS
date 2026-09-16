@@ -702,6 +702,9 @@ struct PiTerminalInputTransitionState: Equatable {
 final class PiTerminalKeyboardResponder: UITextView {
     var insertTextHandler: ((String) -> Void)?
     var deleteBackwardHandler: (() -> Void)?
+    var pasteHandler: (() -> Void)?
+    var copyHandler: (() -> Void)?
+    var canCopy: (() -> Bool)?
     var focusChanged: ((Bool) -> Void)?
 
     init() {
@@ -735,6 +738,13 @@ final class PiTerminalKeyboardResponder: UITextView {
 
     override func insertText(_ text: String) {
         insertTextHandler?(text)
+    }
+
+    override func paste(_ sender: Any?) { pasteHandler?() }
+    override func copy(_ sender: Any?) { copyHandler?() }
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(copy(_:)) { return canCopy?() == true }
+        return super.canPerformAction(action, withSender: sender)
     }
 
     override func deleteBackward() {
@@ -785,6 +795,18 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     var isTerminalKeyboardFocused: Bool { keyboardResponder.isFirstResponder }
     var isTerminalInputReady: Bool { inputTransition.acceptsInput(generation: activeSessionGeneration) }
     var outboundBytesObserver: (([UInt8]) -> Void)?
+    var clipboardTextReader: () -> String? = { UIPasteboard.general.string }
+    var clipboardWriter: (String) -> Void = { UIPasteboard.general.string = $0 }
+    var pasteReviewChanged: ((PiTerminalPasteReview?) -> Void)?
+    var pasteErrorChanged: ((String?) -> Void)?
+    private var pasteRequestID = UUID()
+    private var pendingPaste: (id: UUID, connection: UUID, generation: Int, text: String)?
+    private var inlineSelectionPan: UIPanGestureRecognizer!
+    private var inlineSelectionDismiss: UITapGestureRecognizer!
+    private lazy var selectionMenu = UIEditMenuInteraction(delegate: self)
+    private var selectionBoundsSize = CGSize.zero
+    private var inlineSelectionSurface: TerminalView?
+
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -814,6 +836,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         keyboardDismissMode = .interactive
         configureKeyboardResponder()
         configureFixedStepTouchScrolling()
+        configureInlineSelection()
         // Pi paints its own inverse-video cursor in the fixed input editor. Keep
         // the terminal hardware cursor hidden so tmux redraw/copy-mode cursor
         // movements can never flash over transcript rows.
@@ -843,6 +866,11 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if selectionBoundsSize != bounds.size {
+            dismissInlineSelection()
+            selectionBoundsSize = bounds.size
+        }
+        inlineSelectionSurface?.frame = bounds
         keyboardResponder.frame = CGRect(
             x: max(bounds.maxX - 1, 0),
             y: max(bounds.maxY - 1, 0),
@@ -855,6 +883,9 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         keyboardResponder.insertTextHandler = { [weak self] text in
             self?.insertText(text)
         }
+        keyboardResponder.pasteHandler = { [weak self] in self?.paste(nil) }
+        keyboardResponder.copyHandler = { [weak self] in self?.copyInlineSelection() }
+        keyboardResponder.canCopy = { [weak self] in self?.selectedInlineText != nil }
         keyboardResponder.deleteBackwardHandler = { [weak self] in
             self?.deleteBackward()
         }
@@ -873,9 +904,8 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         isDirectionalLockEnabled = true
         panGestureRecognizer.isEnabled = false
 
-        // SwiftTerm installs long-press and multi-tap selection recognizers.
-        // The phone terminal reserves vertical drags for Pi's own exact viewport;
-        // copy-response and paste remain available from the fixed key deck.
+        // Replace selection gestures selectively below; keep native scroll and
+        // its selection-pan fallback (which may send cursor keys) disabled.
         for recognizer in gestureRecognizers ?? [] {
             if recognizer is UILongPressGestureRecognizer {
                 recognizer.isEnabled = false
@@ -938,7 +968,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
                     guard let self,
                           self.connectionID == id,
                           self.activeSessionGeneration == generation else { return }
-                    self.feed(byteArray: bytes[...])
+                    self.receiveTerminalOutput(bytes)
                 }
             },
             onReady: { [weak self] generation in
@@ -997,6 +1027,8 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     func beginTerminalInputTransition(generation: Int, restoreKeyboard: Bool? = nil) {
+        dismissInlineSelection()
+        cancelPaste()
         let shouldRestoreKeyboard = restoreKeyboard ?? keyboardResponder.isFirstResponder
         inputTransition.begin(generation: generation, keyboardWasFocused: shouldRestoreKeyboard)
         if shouldRestoreKeyboard { _ = keyboardResponder.resignFirstResponder() }
@@ -1014,6 +1046,8 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     private func invalidateTerminalInput() {
+        dismissInlineSelection()
+        cancelPaste()
         inputTransition.invalidate()
         keyboardResponder.resetProxyBuffer()
     }
@@ -1089,6 +1123,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
 
     @objc private func handleFontPinch(_ recognizer: UIPinchGestureRecognizer) {
         if recognizer.state == .began {
+            dismissInlineSelection()
             pinchStartFontSize = font.pointSize
         }
         let nextSize = min(
@@ -1102,6 +1137,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     @objc private func handleTouchScrollPan(_ recognizer: UIPanGestureRecognizer) {
+        guard !hasSelection else { return }
         switch recognizer.state {
         case .began:
             touchScrollRemainder = 0
@@ -1138,7 +1174,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     func sendTouchScrollStep(scrollingUp: Bool, column: Int, row: Int) {
-        guard remoteMouseModeEnabled else { return }
+        guard remoteMouseModeEnabled, !hasSelection else { return }
         sendAccessoryBytes(PiTerminalTouchScroll.wheelBytes(
             scrollingUp: scrollingUp,
             column: column,
@@ -1160,6 +1196,9 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer === inlineSelectionDismiss { return hasSelection }
+        if gestureRecognizer === inlineSelectionPan { return hasSelection }
+        if hasSelection { return false }
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
         let velocity = pan.velocity(in: self)
         let isVertical = abs(velocity.y) > abs(velocity.x)
@@ -1179,7 +1218,8 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
-        gestureRecognizer === keyboardDismissPan
+        guard !hasSelection else { return false }
+        return gestureRecognizer === keyboardDismissPan
             || otherGestureRecognizer === keyboardDismissPan
             || gestureRecognizer === sessionSwipePan
             || otherGestureRecognizer === sessionSwipePan
@@ -1195,8 +1235,13 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         return keyboardResponder.resignFirstResponder()
     }
 
+    override func paste(_ sender: Any?) { pasteFromUserClipboard() }
+
+    override func copy(_ sender: Any?) { copyInlineSelection() }
+
     func sendAccessoryBytes(_ bytes: [UInt8]) {
         guard isTerminalInputReady else { return }
+        if hasSelection { dismissInlineSelection() }
         outboundBytesObserver?(bytes)
         guard sshConnection != nil else { return }
         sshConnection?.send(Data(bytes))
@@ -1208,6 +1253,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     }
 
     override func insertText(_ text: String) {
+        if hasSelection { dismissInlineSelection() }
         guard isTerminalInputReady else { return }
         if controlLatched,
            text.unicodeScalars.count == 1,
@@ -1255,5 +1301,221 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
         guard let url = URL(string: link), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
         UIApplication.shared.open(url)
+    }
+}
+
+// Inline selection uses SwiftTerm's existing highlight/handles, not a second view.
+extension PiTerminalHostView: UIEditMenuInteractionDelegate {
+    private var hasSelection: Bool { inlineSelectionSurface?.hasActiveSelection == true }
+    var selectedInlineText: String? { hasSelection ? inlineSelectionSurface?.selection.getSelectedText() : nil }
+
+    /// Hold only the visible cell presentation in place. The original terminal
+    /// continues parsing SSH output; no output queue, navigation, or remote pause.
+    private func holdInlinePresentation() -> TerminalView? {
+        if let surface = inlineSelectionSurface { return surface }
+        let source = getTerminal()
+        guard source.cols > 0, source.rows > 0, source.cols <= 512,
+              source.rows <= 256, source.cols * source.rows <= 32768,
+              !source.synchronizedOutputActive else { return nil }
+        var options = TerminalOptions()
+        options.cols = source.cols
+        options.rows = source.rows
+        options.scrollback = 0
+        let surface = TerminalView(frame: bounds, font: font, options: options)
+        surface.nativeBackgroundColor = nativeBackgroundColor
+        surface.nativeForegroundColor = nativeForegroundColor
+        surface.selectedTextBackgroundColor = selectedTextBackgroundColor
+        surface.selectedTextForegroundColor = selectedTextForegroundColor
+        surface.selectionHandleColor = selectionHandleColor
+        surface.isUserInteractionEnabled = false
+        surface.isScrollEnabled = false
+        let frozen = surface.getTerminal()
+        frozen.resize(cols: source.cols, rows: source.rows)
+        for row in 0..<source.rows {
+            guard let original = source.bufferLine(atRow: source.buffer.yDisp + row),
+                  let target = frozen.bufferLine(atRow: row) else { continue }
+            target.copyFrom(line: original)
+            // Grapheme IDs belong to their original terminal. Re-intern emoji
+            // and combining sequences instead of copying foreign character IDs.
+            for col in 0..<min(source.cols, original.count) {
+                let cell = original[col]
+                target[col] = frozen.makeCharData(attribute: cell.attribute,
+                                                   char: source.getCharacter(for: cell), size: cell.width)
+            }
+        }
+        frozen.hideCursor()
+        inlineSelectionSurface = surface
+        addSubview(surface)
+        surface.setNeedsDisplay()
+        return surface
+    }
+
+    private func configureInlineSelection() {
+        addInteraction(selectionMenu)
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(selectInlineWord(_:)))
+        hold.name = "jarvis.inline-selection.long-press"
+        hold.minimumPressDuration = 0.5
+        hold.allowableMovement = 8
+        addGestureRecognizer(hold)
+        let drag = UIPanGestureRecognizer(target: self, action: #selector(extendInlineSelection(_:)))
+        drag.delegate = self
+        drag.name = "jarvis.inline-selection.pan"
+        inlineSelectionPan = drag
+        addGestureRecognizer(drag)
+        let dismiss = UITapGestureRecognizer(target: self, action: #selector(dismissSelectionTap(_:)))
+        dismiss.delegate = self
+        inlineSelectionDismiss = dismiss
+        for tap in (gestureRecognizers ?? []).compactMap({ $0 as? UITapGestureRecognizer }) {
+            if tap.numberOfTapsRequired == 1 { tap.require(toFail: dismiss) }
+        }
+        addGestureRecognizer(dismiss)
+        accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Select terminal text", target: self, selector: #selector(selectAccessibleText))]
+    }
+
+    private func selectionPosition(at point: CGPoint) -> Position {
+        let terminal = inlineSelectionSurface?.getTerminal() ?? getTerminal()
+        let size = inlineSelectionSurface?.caretFrame.size ?? caretFrame.size
+        let point = CGPoint(x: point.x - bounds.minX, y: point.y - bounds.minY)
+        let col = Int(max(0, point.x) / max(1, size.width))
+        let row = Int(max(0, point.y) / max(1, size.height))
+        return Position(col: min(max(0, col), max(0, terminal.cols - 1)),
+                        row: min(max(terminal.buffer.yDisp, row), terminal.buffer.yDisp + max(0, terminal.rows - 1)))
+    }
+
+    @objc private func selectInlineWord(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        selectInlineWord(at: gesture.location(in: self))
+    }
+
+    func selectInlineWord(at point: CGPoint) {
+        guard let surface = holdInlinePresentation() else { return }
+        let terminal = surface.getTerminal()
+        let selection = surface.selection!
+        selection.selectWordOrExpression(at: selectionPosition(at: point), in: terminal.buffer)
+        selection.selectionMode = .character
+        showInlineSelectionMenu(at: point)
+    }
+
+    @objc private func selectAccessibleText() -> Bool {
+        selectInlineWord(at: CGPoint(x: bounds.midX, y: bounds.midY))
+        return hasSelection
+    }
+
+    @objc private func extendInlineSelection(_ gesture: UIPanGestureRecognizer) {
+        guard hasSelection else { return }
+        if gesture.state == .began || gesture.state == .changed {
+            extendInlineSelection(to: gesture.location(in: self), startsDrag: gesture.state == .began)
+        } else if gesture.state == .ended {
+            showInlineSelectionMenu(at: gesture.location(in: self))
+        } else if gesture.state == .cancelled {
+            dismissInlineSelection()
+        }
+    }
+
+    func extendInlineSelection(to point: CGPoint, startsDrag: Bool) {
+        guard hasSelection, let selection = inlineSelectionSurface?.selection else { return }
+        let hit = selectionPosition(at: point)
+        if startsDrag {
+            selectionMenu.dismissMenu()
+            let start = selection.start, end = selection.end
+            let columns = inlineSelectionSurface?.getTerminal().cols ?? 1
+            let startDistance = abs(start.row - hit.row) * columns + abs(start.col - hit.col)
+            let endDistance = abs(end.row - hit.row) * columns + abs(end.col - hit.col)
+            selection.pivot = startDistance <= endDistance ? end : start
+        }
+        selection.pivotExtend(bufferPosition: hit)
+    }
+
+    @objc private func dismissSelectionTap(_ gesture: UITapGestureRecognizer) {
+        dismissInlineSelection()
+    }
+
+    func dismissInlineSelection() {
+        clearSelection()
+        inlineSelectionSurface?.updateUiClosed()
+        inlineSelectionSurface?.removeFromSuperview()
+        inlineSelectionSurface = nil
+        selectionMenu.dismissMenu()
+        setNeedsDisplay()
+    }
+
+    private func showInlineSelectionMenu(at point: CGPoint) {
+        selectionMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: point))
+    }
+
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
+                             suggestedActions: [UIMenuElement]) -> UIMenu? {
+        guard hasSelection else { return UIMenu(children: []) }
+        return UIMenu(children: [UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in
+            self?.copyInlineSelection()
+        }])
+    }
+
+    func copyInlineSelection() {
+        guard hasSelection else { return }
+        if let text = selectedInlineText { clipboardWriter(text) }
+        dismissInlineSelection()
+    }
+
+    func receiveTerminalOutput(_ bytes: [UInt8]) {
+        // Parsing stays live even while the bounded inline presentation is held.
+        feed(byteArray: bytes[...])
+    }
+
+    func cancelPaste() {
+        pasteRequestID = UUID()
+        pendingPaste = nil
+        pasteReviewChanged?(nil)
+    }
+
+    private func beginPasteRequest() -> (UUID, UUID, Int)? {
+        guard isTerminalInputReady else { return nil }
+        cancelPaste()
+        pasteErrorChanged?(nil)
+        return (pasteRequestID, connectionID, activeSessionGeneration)
+    }
+
+    private func stagePaste(_ text: String, scope: (UUID, UUID, Int)) {
+        guard scope.0 == pasteRequestID, scope.1 == connectionID,
+              scope.2 == activeSessionGeneration, isTerminalInputReady else { return }
+        do {
+            let value = try PiTerminalPastePolicy.normalized(text)
+            pendingPaste = (scope.0, scope.1, scope.2, value)
+            if PiTerminalPastePolicy.needsReview(value) {
+                pasteReviewChanged?(PiTerminalPasteReview(id: scope.0, preview: String(value.prefix(1200)),
+                                                         supportsMultiline: getTerminal().bracketedPasteMode))
+            } else { confirmPaste(id: scope.0, singleLine: false) }
+        } catch { cancelPaste(); pasteErrorChanged?(error.localizedDescription) }
+    }
+
+    func pasteFromUserClipboard() {
+        guard let scope = beginPasteRequest() else { return }
+        stagePaste(clipboardTextReader() ?? "", scope: scope)
+    }
+
+    func receivePasteProviders(_ providers: [NSItemProvider]) {
+        guard let scope = beginPasteRequest() else { return }
+        guard providers.count == 1, let provider = providers.first, provider.canLoadObject(ofClass: NSString.self) else {
+            pasteErrorChanged?("Choose a single plain-text clipboard item. Use Attach for files or images.")
+            return
+        }
+        provider.loadObject(ofClass: NSString.self) { [weak self] object, _ in
+            let value = object as? String ?? ""
+            Task { @MainActor [weak self] in self?.stagePaste(value, scope: scope) }
+        }
+    }
+
+    func confirmPaste(id: UUID, singleLine: Bool) {
+        guard let pending = pendingPaste, pending.id == id, id == pasteRequestID,
+              pending.connection == connectionID, pending.generation == activeSessionGeneration,
+              isTerminalInputReady else { cancelPaste(); return }
+        do {
+            let bytes = try PiTerminalPastePolicy.bytes(pending.text, bracketed: getTerminal().bracketedPasteMode,
+                                                       singleLine: singleLine)
+            cancelPaste() // Consume BEFORE sending; confirmation can never replay.
+            dismissInlineSelection()
+            guard pending.connection == connectionID, pending.generation == activeSessionGeneration else { return }
+            sendAccessoryBytes(bytes)
+        } catch { cancelPaste(); pasteErrorChanged?(error.localizedDescription) }
     }
 }
