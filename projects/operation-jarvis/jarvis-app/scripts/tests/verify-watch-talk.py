@@ -44,14 +44,12 @@ print('Watch Talk source contracts passed (physical behavior not tested).')
 
 art = read('JARVISWatchWidget/ResonanceArtwork.swift')
 assert 'JARVISResonanceArtwork()' in widget
-assert 'JARVISWidgetTimerAnimationFont.register()' in widget
-assert 'allowsMotion && !reducedLuminance && !reduceMotion' in art
-assert 'JARVISWidgetTimerAnimationFont.isAvailable' in art
-assert 'widgetRenderingMode' not in art and 'renderingMode == .fullColor' not in art
-assert 'ResonanceFrame(phase: 0, movingOnly: false, subdued: animate)' in art
-assert 'ForEach(0..<24' in art
-assert 'JARVISWidgetTimerFrameWindow(frameIndex: index, frameCount: 24' in art
+assert 'JARVISWidgetTimerAnimationFont' not in widget
+assert 'ResonanceStaticFrame(simplified: reducedLuminance)' in art
+assert art.count('Canvas {') == 1
 assert '.widgetAccentable()' in art and '.accessibilityHidden(true)' in art
-for forbidden in ['Timer(', 'TimelineView(', 'URLSession', 'repeatForever', 'reloadTimelines']:
+for forbidden in ['JARVISWidgetTimer', 'ResonanceFrame(', 'movingOnly', 'allowsMotion',
+                  'Timer(', 'TimelineView(', 'URLSession', 'repeatForever',
+                  'reloadTimelines', '.animation(', '.mask', 'Date(', 'phase:']:
     assert forbidden not in art, forbidden
-print('Resonance static fallback, motion gating, and unchanged routing contracts passed.')
+print('Resonance is a single static Canvas without timer masks or an animation-font dependency.')

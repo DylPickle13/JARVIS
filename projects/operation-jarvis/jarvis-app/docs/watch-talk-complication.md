@@ -58,3 +58,11 @@ The owner confirmed Build187 automatically opens native input. This visual-only 
 ### Accented-mode motion permission
 
 Owner requested removal of the full-color-only motion gate after observing that Neural Core animated while Resonance appeared static. Only that gate is removed; frame count, timer masks, fallback artwork, Always On/Reduce Motion safeguards, and input routing are unchanged. Animation on the physical face still needs confirmation. Reported battery drain remains unattributed; this change is not a power-use fix.
+
+## Build192: static engraved Resonance
+
+Owner requested complete removal of Talk animation while retaining a more detailed static icon. The new artwork has segmented engraved rings, inset tracks, calibration ticks, a symmetric five-bar waveform, and three socketed orbital nodes. Reduced luminance omits the fine details. Accented/tinted rendering remains supported.
+
+Talk now renders one static Canvas, with no timer selectors, timer masks, animated frame stack, or animation-font registration. This removes its former24frames/48masks. Neural Core's implementation and accepted native Done-to-send input are unchanged. The icon is never a microphone indicator.
+
+Battery benefit is **unmeasured**: two power-profiler attempts and an unlocked retry timed out before recording. Source simplification is not proof that animation caused the reported drain. Spotify remains removed. Physical visual acceptance and a matched normal-use battery comparison remain pending.
