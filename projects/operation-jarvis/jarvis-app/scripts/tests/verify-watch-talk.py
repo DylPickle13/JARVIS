@@ -46,7 +46,8 @@ art = read('JARVISWatchWidget/ResonanceArtwork.swift')
 assert 'JARVISResonanceArtwork()' in widget
 assert 'JARVISWidgetTimerAnimationFont.register()' in widget
 assert 'allowsMotion && !reducedLuminance && !reduceMotion' in art
-assert 'renderingMode == .fullColor && JARVISWidgetTimerAnimationFont.isAvailable' in art
+assert 'JARVISWidgetTimerAnimationFont.isAvailable' in art
+assert 'widgetRenderingMode' not in art and 'renderingMode == .fullColor' not in art
 assert 'ResonanceFrame(phase: 0, movingOnly: false, subdued: animate)' in art
 assert 'ForEach(0..<24' in art
 assert 'JARVISWidgetTimerFrameWindow(frameIndex: index, frameCount: 24' in art

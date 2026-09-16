@@ -51,6 +51,10 @@ Physical cold/warm-launch tests must demonstrate automatic native input presenta
 
 The Talk complication uses the approved Resonance design: three broken outer arcs, fine inner arcs, three orbital dots, and five waveform bars. Circular/corner/rectangular slots show the vector mark; inline retains its readable waveform label. Existing widget kind and `jarvis://talk` URL remain unchanged.
 
-Motion is decorative, not a microphone or listening indicator. The existing system timer-mask selector is shared without altering the Neural Core renderer. Twenty-four lightweight frames make a restrained two-second cycle (small bar modulation, ±2.5° dot drift, inner-arc sheen); no app timers, network polls, or rapid timeline refreshes are added. A complete permanent frame remains underneath, so unavailable or frozen masks cannot blank the icon. Reduce Motion, Always On/reduced luminance, missing font, and accented rendering use the static design. watchOS may suspend animation; on-device appearance/motion acceptance remains separate from builds.
+Motion is decorative, not a microphone or listening indicator. The existing system timer-mask selector is shared without altering the Neural Core renderer. Twenty-four lightweight frames make a restrained two-second cycle (small bar modulation, ±2.5° dot drift, inner-arc sheen); no app timers, network polls, or rapid timeline refreshes are added. A complete permanent frame remains underneath, so unavailable or frozen masks cannot blank the icon. Reduce Motion, Always On/reduced luminance, and missing font use the static design. Accented/tinted rendering no longer disables motion. watchOS may suspend animation; on-device appearance/motion acceptance remains separate from builds.
 
 The owner confirmed Build187 automatically opens native input. This visual-only revision preserves the accepted root-overlay input, completion gate, and first-available-New-session flow.
+
+### Accented-mode motion permission
+
+Owner requested removal of the full-color-only motion gate after observing that Neural Core animated while Resonance appeared static. Only that gate is removed; frame count, timer masks, fallback artwork, Always On/Reduce Motion safeguards, and input routing are unchanged. Animation on the physical face still needs confirmation. Reported battery drain remains unattributed; this change is not a power-use fix.

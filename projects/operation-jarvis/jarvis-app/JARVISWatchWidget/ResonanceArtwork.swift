@@ -5,12 +5,11 @@ import WidgetKit
 struct JARVISResonanceArtwork: View {
     @Environment(\.isLuminanceReduced) private var reducedLuminance
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.widgetRenderingMode) private var renderingMode
     var allowsMotion = true
 
     private var animate: Bool {
         allowsMotion && !reducedLuminance && !reduceMotion &&
-            renderingMode == .fullColor && JARVISWidgetTimerAnimationFont.isAvailable
+            JARVISWidgetTimerAnimationFont.isAvailable
     }
 
     var body: some View {
