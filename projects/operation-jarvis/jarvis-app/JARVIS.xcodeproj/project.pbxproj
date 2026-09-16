@@ -20,7 +20,6 @@
 		1EF63AB4B7885F1F21708B02 /* ResonanceArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF2939AC06C1D6D6045FCB6E /* ResonanceArtwork.swift */; };
 		21E9789B6D7FDCFD43AD0B35 /* WidgetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */; };
 		2392D67F2D4A760498DF32EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ED67C789A071ACDEA4FD69FC /* Assets.xcassets */; };
-		2491AF9BD206690E15109DB5 /* SpotifyLauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ADF126B2B484C88B1D0E3B0 /* SpotifyLauncherWidget.swift */; };
 		26D143A1482F252A0D5C3892 /* JARVISWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1B144126B4647E06FE7EED06 /* JARVISWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		285BBD47EB95C2364F624D92 /* WatchJobsModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AE7C82A6919910DCCB2FFA5 /* WatchJobsModelTests.swift */; };
 		2C39CF58603D08048BA65D1A /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFAD68F450FB6F9BE8C17A8 /* LauncherWidget.swift */; };
@@ -44,7 +43,6 @@
 		52D863AFDF79688CA2CF1042 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 1F4C583917FA03DBF11F4A10 /* NIOSSH */; };
 		576BB6C417A8A28E379D2A45 /* WatchTerminalSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */; };
 		5B5B448515CF5F0728A3C35B /* PushRegistrationSSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D534B7F39774A6BEDAA367 /* PushRegistrationSSHTransport.swift */; };
-		5EF2F4204BA3152F8A5C24AE /* WatchSpotifyLauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EEBCA6EE6A8D038B4A02CB4 /* WatchSpotifyLauncherView.swift */; };
 		68C3DE29B22B446350ACB4EB /* NeuralCoreArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197A46DD464AA704E3FB32E9 /* NeuralCoreArtwork.swift */; };
 		68FC0A661B71E08B3735B208 /* JARVISPromptRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BC7233D8BF144DFD8CA711 /* JARVISPromptRuntime.swift */; };
 		6D08567A57B865DC280BBF38 /* PiAttachmentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509E3B0D14498373656B563B /* PiAttachmentPickerView.swift */; };
@@ -192,7 +190,6 @@
 		65330ED0EAB103D03CD69952 /* PiAttachmentTemporaryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentTemporaryStore.swift; sourceTree = "<group>"; };
 		65BFEC04E2CD0C7D691F114D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6A4347E38FD41C2BA6958E56 /* JARVIS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JARVIS.entitlements; sourceTree = "<group>"; };
-		6ADF126B2B484C88B1D0E3B0 /* SpotifyLauncherWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyLauncherWidget.swift; sourceTree = "<group>"; };
 		6BD0615D3C7D457B6C7DDA44 /* ProvisioningProfileStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvisioningProfileStatus.swift; sourceTree = "<group>"; };
 		6BD318AB3793295E0031F850 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		6DEE41C1A5E0238C3F10B643 /* JARVISWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JARVISWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -206,7 +203,6 @@
 		888D11D79E21EC5437B45339 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		8AC50929D8C075ED60E109B1 /* FillRect-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FillRect-Regular.otf"; sourceTree = "<group>"; };
 		8C187EFE35D060320CD74856 /* NeuralCoreWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreWidget.swift; sourceTree = "<group>"; };
-		8EEBCA6EE6A8D038B4A02CB4 /* WatchSpotifyLauncherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSpotifyLauncherView.swift; sourceTree = "<group>"; };
 		96FAF133194F2E675B54A1CD /* JARVISWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JARVISWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9A275952024515DF0771793A /* JARVISApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISApp.swift; sourceTree = "<group>"; };
 		9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsComponents.swift; sourceTree = "<group>"; };
@@ -376,7 +372,6 @@
 				771620AD2CA9D898AE768103 /* WatchDashboardContent.swift */,
 				61AEF102626B342076EACC36 /* WatchJobsView.swift */,
 				8886797C2D89DBE820465AF4 /* WatchOMLXCard.swift */,
-				8EEBCA6EE6A8D038B4A02CB4 /* WatchSpotifyLauncherView.swift */,
 				B49B83CEFCF1B3C4A27DE471 /* WatchSystemCrownViewport.swift */,
 				321EBF59E1E0CEBD18739D41 /* WatchTalkPromptView.swift */,
 				02220D93FADA230BF50A667D /* WatchTerminalView.swift */,
@@ -426,7 +421,6 @@
 				6DF549C08E0899CD48EC8294 /* LauncherWidget.swift */,
 				8C187EFE35D060320CD74856 /* NeuralCoreWidget.swift */,
 				FF2939AC06C1D6D6045FCB6E /* ResonanceArtwork.swift */,
-				6ADF126B2B484C88B1D0E3B0 /* SpotifyLauncherWidget.swift */,
 				C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */,
 			);
 			path = JARVISWatchWidget;
@@ -696,7 +690,6 @@
 				6FCDC3A9DF9D130AC887781E /* NeuralCoreContinuousAnimation.swift in Sources */,
 				C7E9D77697E658A1BB7F6391 /* NeuralCoreWidget.swift in Sources */,
 				1EF63AB4B7885F1F21708B02 /* ResonanceArtwork.swift in Sources */,
-				2491AF9BD206690E15109DB5 /* SpotifyLauncherWidget.swift in Sources */,
 				21E9789B6D7FDCFD43AD0B35 /* WidgetSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -766,7 +759,6 @@
 				F0854C3C067D4B857BC0DE6D /* WatchJobsView.swift in Sources */,
 				BD0594AF44CDB8B66F4C1B1A /* WatchOMLXCard.swift in Sources */,
 				F34D7B1A2671F4A44B16377B /* WatchPushNotificationCoordinator.swift in Sources */,
-				5EF2F4204BA3152F8A5C24AE /* WatchSpotifyLauncherView.swift in Sources */,
 				80FDB3F2C165FA2C6C94A46E /* WatchSystemCrownViewport.swift in Sources */,
 				FCB975562E5D7A8498A239AA /* WatchTalkPromptView.swift in Sources */,
 				47D15BD4F3FC45BED8969D74 /* WatchTerminalView.swift in Sources */,
