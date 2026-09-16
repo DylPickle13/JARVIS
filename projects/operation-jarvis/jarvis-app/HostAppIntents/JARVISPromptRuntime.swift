@@ -112,3 +112,17 @@ enum JARVISPromptRuntime {
         }
     }
 }
+
+/// One native input presentation can authorize at most one submission.
+/// Consume cancellation/empty results too, so duplicate callbacks cannot send.
+struct JARVISTalkInputCompletion {
+    private(set) var consumed = false
+
+    mutating func consume(_ results: [Any]?) -> String? {
+        guard !consumed else { return nil }
+        consumed = true
+        guard let value = results?.first as? String,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return value
+    }
+}

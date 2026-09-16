@@ -16,8 +16,12 @@ assert 'JARVISWatchTalkWidget()' in read('JARVISWatchWidget/JARVISWatchWidgetBun
 assert 'JARVISPromptNavigation.isTalkURL(url)' in route
 assert 'showTalkPrompt = true' in route
 assert 'notifications.showPermissionExplanation || showTalkPrompt' in route
-assert 'Button(action: send)' in view
-assert 'guard !sending, !submissionUnconfirmed else { return }' in view
+assert 'presentTextInputController(withSuggestions: nil, allowedInputMode: .plain)' in view
+assert 'TextField(' not in view and 'Button(action: send)' not in view
+assert 'await finishInput(results)' in view
+assert 'guard !completion.consumed else { return }' in view
+assert 'guard let value = completion.consume(results) else {' in view
+assert 'inputPresented = true' in view
 assert view.count('JARVISPromptRuntime.submit(') == 1
 assert 'case .unconfirmed:' in view and 'submissionUnconfirmed = true' in view
 assert '.interactiveDismissDisabled(sending)' in view

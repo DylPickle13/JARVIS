@@ -3,6 +3,27 @@ import XCTest
 import JARVISKit
 
 final class PromptRuntimeChecks: XCTestCase {
+    func testNativeCompletionAcceptsOnlyOnce() {
+        var gate = JARVISTalkInputCompletion()
+        XCTAssertEqual(gate.consume(["hello"]), "hello")
+        XCTAssertNil(gate.consume(["duplicate"]))
+    }
+
+    func testNativeCancellationCannotLaterSubmit() {
+        var gate = JARVISTalkInputCompletion()
+        XCTAssertNil(gate.consume(nil))
+        XCTAssertNil(gate.consume(["late callback"]))
+    }
+
+    func testNativeBlankAndNonTextResultsDoNotSubmit() {
+        let cases: [[Any]] = [[], ["  \n"], [42]]
+        for results in cases {
+            var gate = JARVISTalkInputCompletion()
+            XCTAssertNil(gate.consume(results))
+            XCTAssertTrue(gate.consumed)
+        }
+    }
+
     private var configuration: WatchTerminalConfiguration {
         .init(endpoint: "https://localhost:8792", token: "fixture-only", certificateSHA256: String(repeating: "a", count: 64))
     }

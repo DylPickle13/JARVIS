@@ -121,7 +121,7 @@ struct JARVISWatchTalkWidget: Widget {
             JARVISWatchLauncherView(talk: true)
         }
         .configurationDisplayName("Talk to JARVIS")
-        .description("Open a prompt, dictate or type, then send to an unused JARVIS Pi session.")
+        .description("Dictate or type; finishing native input sends to the first available New Pi session.")
         .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryRectangular, .accessoryInline])
     }
 }
