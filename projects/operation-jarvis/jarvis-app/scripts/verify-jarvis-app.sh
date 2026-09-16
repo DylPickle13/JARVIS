@@ -944,6 +944,7 @@ printf '%s\n' '== native Watch talk prompt source contract =='
 [[ ! -e HostAppIntents/JARVISSiriShortcuts.swift ]]
 reject_match 'host Siri command registration remains' -RqsE 'AppShortcutsProvider|SendPromptToJARVISIntent|OpenJARVISTerminalIntent|updateAppShortcutParameters' HostAppIntents JARVIS JARVISWatch
 python3 scripts/tests/verify-watch-talk.py
+python3 scripts/tests/verify-watch-spotify.py
 python3 scripts/tests/test-prompt-runtime.py
 grep -q 'JARVISSpokenPrompt.normalize(rawPrompt)' HostAppIntents/JARVISPromptRuntime.swift
 grep -q 'client.preflightNewSessionPrompt()' HostAppIntents/JARVISPromptRuntime.swift
@@ -1012,11 +1013,12 @@ done
 for kind in \
   JARVISWatchNeuralCoreWidget.v1 \
   JARVISWatchLauncherWidget.v2 \
-  JARVISWatchTalkWidget.v1; do
+  JARVISWatchTalkWidget.v1 \
+  JARVISWatchSpotifyWidget.v1; do
   grep -Rqs "let kind = \"$kind\"" JARVISWatchWidget || { echo "missing watch widget kind: $kind" >&2; exit 1; }
 done
 [[ "$(grep -c 'Widget()' JARVISWidget/JARVISWidgetBundle.swift)" == "2" ]]
-[[ "$(grep -c 'Widget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift)" == "3" ]]
+[[ "$(grep -c 'Widget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift)" == "4" ]]
 reject_match 'all remaining widgets must stay non-interactive' -RqsF 'Button(intent:' JARVISWidget JARVISWatchWidget
 grep -q 'JARVISNeuralCoreWidget()' JARVISWidget/JARVISWidgetBundle.swift
 grep -q 'JARVISWatchNeuralCoreWidget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift
@@ -1397,7 +1399,8 @@ done
 for kind in \
   JARVISWatchNeuralCoreWidget.v1 \
   JARVISWatchLauncherWidget.v2 \
-  JARVISWatchTalkWidget.v1; do
+  JARVISWatchTalkWidget.v1 \
+  JARVISWatchSpotifyWidget.v1; do
   grep -aFq "$kind" "$WATCH_WIDGET_BINARY" || { echo "built watch widget missing kind: $kind" >&2; exit 1; }
 done
 for retired_kind in \

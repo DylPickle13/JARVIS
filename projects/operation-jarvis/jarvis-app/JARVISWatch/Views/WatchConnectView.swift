@@ -8,6 +8,8 @@ struct WatchConnectView: View {
     @StateObject private var notifications = WatchPushNotificationCoordinator.shared
     @State private var terminalRequestSequence = 0
     @State private var showTalkPrompt = false
+    @State private var showSpotifyLauncher = false
+    @State private var spotifyLaunchSequence = 0
 
     var body: some View {
         // TimelineView gives frontmost Always On snapshots a supported periodic
@@ -15,8 +17,14 @@ struct WatchConnectView: View {
         TimelineView(.periodic(from: .now, by: 15)) { _ in
             ZStack {
                 rootContent
-                    .allowsHitTesting(!showTalkPrompt)
-                    .accessibilityHidden(showTalkPrompt)
+                    .allowsHitTesting(!showTalkPrompt && !showSpotifyLauncher)
+                    .accessibilityHidden(showTalkPrompt || showSpotifyLauncher)
+                if showSpotifyLauncher {
+                    WatchSpotifyLauncherView(onClose: { showSpotifyLauncher = false })
+                        .id(spotifyLaunchSequence)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(WatchJarvisStyle.background)
+                }
                 if showTalkPrompt {
                     WatchTalkPromptView(onCancel: { showTalkPrompt = false }) { slot in
                         JARVISPromptNavigation.requestTerminalPresentation(slot: slot)
@@ -56,7 +64,14 @@ struct WatchConnectView: View {
             if !showing { openTerminalIfRequested() }
         }
         .onOpenURL { url in
+            if JARVISWatchSpotifyRoute.accepts(url) {
+                guard !showTalkPrompt else { return } // never interrupt prompt admission
+                spotifyLaunchSequence += 1 // a new face tap gets one new attempt
+                showSpotifyLauncher = true
+                return
+            }
             if JARVISPromptNavigation.isTalkURL(url) {
+                guard !showSpotifyLauncher else { return }
                 showTalkPrompt = true
                 return
             }
@@ -110,7 +125,7 @@ struct WatchConnectView: View {
         WatchDashboardContent(
             model: model,
             jobs: model.jobs,
-            isDashboardCovered: notifications.showPermissionExplanation || showTalkPrompt,
+            isDashboardCovered: notifications.showPermissionExplanation || showTalkPrompt || showSpotifyLauncher,
             terminalRequestSequence: terminalRequestSequence,
             requestedJobRoute: notifications.pendingRoute,
             onJobRouteConsumed: notifications.consumePendingRoute

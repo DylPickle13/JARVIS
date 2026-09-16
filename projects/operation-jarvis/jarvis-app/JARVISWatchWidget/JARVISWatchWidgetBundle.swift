@@ -7,5 +7,6 @@ struct JARVISWatchWidgetBundle: WidgetBundle {
         JARVISWatchNeuralCoreWidget()
         JARVISWatchLauncherWidget()
         JARVISWatchTalkWidget()
+        JARVISWatchSpotifyWidget()
     }
 }

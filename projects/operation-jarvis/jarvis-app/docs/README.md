@@ -42,3 +42,5 @@ Older links still work here; the full sections are now in the implementation arc
 ### Native iPhone and Apple Watch APNs Scheduled-Job Notifications
 
 [Read the notification plan and later addenda](implementation-history.md#native-iphone-and-apple-watch-apns-scheduled-job-notifications). Read the later privacy and routing updates as well as the original plan.
+
+- [Watch-only third-party launchers](watch-third-party-launchers.md): Spotify candidate, Shortcuts limitation, source evidence, and pending physical acceptance.
