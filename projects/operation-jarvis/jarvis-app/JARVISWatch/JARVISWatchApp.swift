@@ -62,7 +62,6 @@ struct JARVISWatchApp: App {
 
     init() {
         WatchBridge.shared.start()
-        JARVISAppShortcuts.updateAppShortcutParameters()
         // The launcher has a static timeline. Request one reload for each newly
         // installed build without repeating identical WidgetKit work on every
         // same-build process launch.

@@ -57,7 +57,6 @@ struct JARVISApp: App {
     init() {
         let settings = PiTerminalSettings()
         _piTerminal = StateObject(wrappedValue: PiTerminalController(settings: settings))
-        JARVISAppShortcuts.updateAppShortcutParameters()
         // Request a targeted selector rebuild on launch. The same rate-limited
         // coordinator also runs on every foreground activation.
         PhoneNeuralCoreWidgetReloadCoordinator.reloadIfDue()
@@ -146,7 +145,7 @@ private struct RootTabView: View {
                 .tag(AppSection.settings)
         }
         .onAppear {
-            openSiriTerminalIfRequested()
+            openTerminalIfRequested()
             app.setActiveSection(selection)
             setPiVisibility(selection)
         }
@@ -155,7 +154,7 @@ private struct RootTabView: View {
             setPiVisibility(value)
         }
         .onOpenURL { url in
-            if JARVISSiriNavigation.isTerminalURL(url) {
+            if JARVISPromptNavigation.isTerminalURL(url) {
                 selection = .pi
                 return
             }
@@ -175,8 +174,8 @@ private struct RootTabView: View {
             default: selection = .home
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: JARVISSiriNavigation.terminalRequestNotification)) { _ in
-            openSiriTerminalIfRequested()
+        .onReceive(NotificationCenter.default.publisher(for: JARVISPromptNavigation.terminalRequestNotification)) { _ in
+            openTerminalIfRequested()
         }
         .task(id: notifications.pendingTerminalRoute) {
             guard let request = notifications.pendingTerminalRoute,
@@ -198,12 +197,12 @@ private struct RootTabView: View {
             requestedJobRoute = route
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { openSiriTerminalIfRequested() }
+            if phase == .active { openTerminalIfRequested() }
         }
     }
 
-    private func openSiriTerminalIfRequested() {
-        guard JARVISSiriNavigation.consumeTerminalPresentationRequest(select: { piTerminal.selectSlot($0) }) else { return }
+    private func openTerminalIfRequested() {
+        guard JARVISPromptNavigation.consumeTerminalPresentationRequest(select: { piTerminal.selectSlot($0) }) else { return }
         selection = .pi
     }
 

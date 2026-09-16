@@ -940,20 +940,15 @@ grep -q 'Retry now' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'always-visible Watch refresh control is still present' -qs 'Refresh status' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'iPhone toolbar refresh control is still present' -qs 'accessibilityLabel("Refresh home status")' JARVIS/Views/HomeView.swift
 
-printf '%s\n' '== two-turn Siri prompt source contract =='
-[[ ! -e HostAppIntents/JARVISSiriPlugIntents.swift ]]
-grep -q 'phrases: \["Hey \\(.applicationName)"\]' HostAppIntents/JARVISSiriShortcuts.swift
-[[ "$(grep -c 'AppShortcut(' HostAppIntents/JARVISSiriShortcuts.swift)" == "1" ]]
-grep -q 'struct SendPromptToJARVISIntent: AppIntent' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'requestValueDialog: IntentDialog("What would you like me to send to JARVIS?")' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'var prompt: String' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'JARVISSiriPromptRuntime.submit(prompt)' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'guard case \.sent(let slot) = outcome else { return \.result() }' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'JARVISSpokenPrompt.normalize(rawPrompt)' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'client.preflightNewSessionPrompt()' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'client.sendToNewSession(prompt)' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'throw JARVISNewSessionError.noAvailableSession' HostAppIntents/JARVISSiriPromptIntent.swift
-reject_match 'Siri regained selected-slot or raw-PTY fallback' -qsE 'SlotLoader|slotLoader|JARVISTerminalSlot.load|WatchTerminalInput|client.send\(' HostAppIntents/JARVISSiriPromptIntent.swift
+printf '%s\n' '== native Watch talk prompt source contract =='
+[[ ! -e HostAppIntents/JARVISSiriShortcuts.swift ]]
+reject_match 'host Siri command registration remains' -RqsE 'AppShortcutsProvider|SendPromptToJARVISIntent|OpenJARVISTerminalIntent|updateAppShortcutParameters' HostAppIntents JARVIS JARVISWatch
+python3 scripts/tests/verify-watch-talk.py
+python3 scripts/tests/test-prompt-runtime.py
+grep -q 'JARVISSpokenPrompt.normalize(rawPrompt)' HostAppIntents/JARVISPromptRuntime.swift
+grep -q 'client.preflightNewSessionPrompt()' HostAppIntents/JARVISPromptRuntime.swift
+grep -q 'client.sendToNewSession(prompt)' HostAppIntents/JARVISPromptRuntime.swift
+reject_match 'prompt regained selected-slot or raw-PTY fallback' -qsE 'SlotLoader|slotLoader|JARVISTerminalSlot.load|WatchTerminalInput|client.send\(' HostAppIntents/JARVISPromptRuntime.swift
 grep -q 'v2/terminal/new-session-prompt' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 [[ -f ../../../.pi/extensions/04-siri-new-session.ts ]]
 grep -q 'pi.sendUserMessage(text)' ../../../.pi/extensions/04-siri-new-session.ts
@@ -961,31 +956,24 @@ grep -q 'ctx.hasPendingMessages() === false' ../../../.pi/extensions/04-siri-new
 grep -q 'ctx.ui.getEditorText().length === 0' ../../../.pi/extensions/04-siri-new-session.ts
 grep -q 'self.store(path, record, create=True)' terminald/siri_new_session.py
 reject_match 'Siri allocator must not reset, provision, or paste into a conversation' -qsE 'send_input\(|paste-buffer|send-keys|--continue|new-session|ensure_session\(' terminald/siri_new_session.py
-grep -q '#if os(watchOS)' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'static var openAppWhenRun: Bool { true }' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'static var openAppWhenRun: Bool { false }' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'JARVISSiriNavigation.requestTerminalPresentation(slot: slot)' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'struct OpenJARVISTerminalIntent: OpenIntent' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'opensIntent: OpenJARVISTerminalIntent(target: .terminal)' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q '@MainActor' HostAppIntents/JARVISSiriPromptIntent.swift
-grep -q 'URL(string: "jarvis://terminal")' HostAppIntents/JARVISSiriPromptIntent.swift
+grep -q '@MainActor' HostAppIntents/JARVISPromptRuntime.swift
+grep -q 'URL(string: "jarvis://terminal")' HostAppIntents/JARVISPromptRuntime.swift
 reject_match 'host Siri plug intent/entity/runtime remains' -RqsE 'Turn(On|Off)JARVISPlugIntent|JARVISPlugEntity|JARVISSiriPlugRuntime|JARVISSiriParameterRegistrar|updateJARVISSiriParametersIfNeeded' HostAppIntents JARVIS JARVISWatch JARVISTests
 reject_match 'unsupported one-turn prompt entity remains' -RqsE 'JARVISPromptEntity|JARVISPromptEntityQuery|EntityStringQuery' HostAppIntents JARVISTests
-[[ "$(grep -c 'IntentDialog(' HostAppIntents/JARVISSiriPromptIntent.swift)" == "1" ]]
-reject_match 'Siri completion or failure dialogue remains' -qsE 'ProvidesDialog|return \.result\([^)]*dialog:' HostAppIntents/JARVISSiriPromptIntent.swift
+reject_match 'Siri completion or failure dialogue remains' -qsE 'ProvidesDialog|return \.result\([^)]*dialog:' HostAppIntents/JARVISPromptRuntime.swift
 reject_match 'Siri greeting playback code remains' -RqsE 'AudioPlaybackIntent|AVAudioPlayer|AVAudioSession|requestValue\(nil\)|greeting_(started|finished|recovery)' HostAppIntents
 reject_match 'bundled JARVIS greeting resource remains referenced' -RqsE 'JARVIS-Siri-Ready|Siri-Ready\.wav' HostAppIntents JARVIS JARVISWatch project.yml JARVIS.xcodeproj/project.pbxproj
 if find JARVIS JARVISWatch HostAppIntents -type f \( -iname '*.wav' -o -iname '*.wave' -o -iname '*.aiff' -o -iname '*.caf' -o -iname '*.m4a' -o -iname '*.mp3' \) -print -quit | grep -q .; then
   echo 'bundled host audio resource remains in source targets' >&2
   exit 1
 fi
-reject_match 'Siri terminal handoff must not use OpenURLIntent with a custom URL scheme' -qsF 'OpenURLIntent(' HostAppIntents/JARVISSiriPromptIntent.swift
+reject_match 'Siri terminal handoff must not use OpenURLIntent with a custom URL scheme' -qsF 'OpenURLIntent(' HostAppIntents/JARVISPromptRuntime.swift
 grep -q 'selection = \.pi' JARVIS/JARVISApp.swift
 grep -q 'selectedPage = \.terminal' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest(select:' JARVIS/JARVISApp.swift
-grep -q 'JARVISSiriNavigation.consumeTerminalPresentationRequest(select:' JARVISWatch/Views/WatchConnectView.swift
-grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVIS/JARVISApp.swift
-grep -q 'JARVISSiriNavigation.isTerminalURL(url)' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'JARVISPromptNavigation.consumeTerminalPresentationRequest(select:' JARVIS/JARVISApp.swift
+grep -q 'JARVISPromptNavigation.consumeTerminalPresentationRequest(select:' JARVISWatch/Views/WatchConnectView.swift
+grep -q 'JARVISPromptNavigation.isTerminalURL(url)' JARVIS/JARVISApp.swift
+grep -q 'JARVISPromptNavigation.isTerminalURL(url)' JARVISWatch/Views/WatchConnectView.swift
 [[ ! -d SharedAppIntents ]]
 grep -q 'WatchBridge.shared.requestPlugCommand' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'WatchBridge.shared.requestPurifierCommand' JARVISWatch/Views/WatchConnectView.swift
@@ -1023,11 +1011,12 @@ for kind in \
 done
 for kind in \
   JARVISWatchNeuralCoreWidget.v1 \
-  JARVISWatchLauncherWidget.v2; do
+  JARVISWatchLauncherWidget.v2 \
+  JARVISWatchTalkWidget.v1; do
   grep -Rqs "let kind = \"$kind\"" JARVISWatchWidget || { echo "missing watch widget kind: $kind" >&2; exit 1; }
 done
 [[ "$(grep -c 'Widget()' JARVISWidget/JARVISWidgetBundle.swift)" == "2" ]]
-[[ "$(grep -c 'Widget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift)" == "2" ]]
+[[ "$(grep -c 'Widget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift)" == "3" ]]
 reject_match 'all remaining widgets must stay non-interactive' -RqsF 'Button(intent:' JARVISWidget JARVISWatchWidget
 grep -q 'JARVISNeuralCoreWidget()' JARVISWidget/JARVISWidgetBundle.swift
 grep -q 'JARVISWatchNeuralCoreWidget()' JARVISWatchWidget/JARVISWatchWidgetBundle.swift
@@ -1381,33 +1370,16 @@ for path in sys.argv[1:3]:
     assert payload.get("queries", {}) == {}, path
 
 for path in sys.argv[3:]:
-    with open(path, encoding="utf-8") as handle:
+    metadata = Path(path)
+    if not metadata.exists():
+        continue  # Xcode may omit metadata entirely when no App Intents remain.
+    with metadata.open(encoding="utf-8") as handle:
         payload = json.load(handle)
-    actions = payload.get("actions", {})
-    is_watch = "/Watch/" in path
-    expected_actions = {"SendPromptToJARVISIntent"}
-    if not is_watch:
-        expected_actions.add("OpenJARVISTerminalIntent")
-    assert set(actions) == expected_actions, (path, sorted(actions))
-    prompt_action = actions["SendPromptToJARVISIntent"]
-    assert prompt_action["isDiscoverable"] is True, path
-    assert prompt_action["openAppWhenRun"] is is_watch, path
-    assert prompt_action["systemProtocols"] == [], path
-    prompt_parameter = prompt_action["parameters"][0]
-    assert prompt_parameter["name"] == "prompt", path
-    assert prompt_parameter["isOptional"] is False, path
-    assert prompt_parameter["valueType"]["primitive"]["wrapper"]["typeIdentifier"] == 0, path
-    if not is_watch:
-        terminal_open = actions["OpenJARVISTerminalIntent"]
-        assert terminal_open["isDiscoverable"] is False, path
-        assert terminal_open["openAppWhenRun"] is True, path
-        assert terminal_open["parameters"][0]["name"] == "target", path
-    shortcuts = payload.get("autoShortcuts", [])
-    assert [item["actionIdentifier"] for item in shortcuts] == ["SendPromptToJARVISIntent"], path
-    phrases = [item["key"] for item in shortcuts[0].get("phraseTemplates", [])]
-    assert phrases == ["Hey ${applicationName}"], (path, phrases)
+    assert payload.get("actions", {}) == {}, path
+    assert payload.get("autoShortcuts", []) == [], path
     assert payload.get("entities", {}) == {}, path
     assert payload.get("queries", {}) == {}, path
+
 PY
 if find "$PHONE_APP" -type f \( -iname '*.wav' -o -iname '*.wave' -o -iname '*.aiff' -o -iname '*.caf' -o -iname '*.m4a' -o -iname '*.mp3' \) -print -quit | grep -q .; then
   echo 'built app bundle contains an unexpected audio resource' >&2
@@ -1424,7 +1396,8 @@ for kind in \
 done
 for kind in \
   JARVISWatchNeuralCoreWidget.v1 \
-  JARVISWatchLauncherWidget.v2; do
+  JARVISWatchLauncherWidget.v2 \
+  JARVISWatchTalkWidget.v1; do
   grep -aFq "$kind" "$WATCH_WIDGET_BINARY" || { echo "built watch widget missing kind: $kind" >&2; exit 1; }
 done
 for retired_kind in \

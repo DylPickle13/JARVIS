@@ -538,7 +538,7 @@ final class AppStateTests: XCTestCase {
         var deliveredConfiguration: WatchTerminalConfiguration?
         var deliveredPrompt: String?
 
-        let outcome = await JARVISSiriPromptRuntime.submit(
+        let outcome = await JARVISPromptRuntime.submit(
             "  inspect this\r\nonce  ",
             configurationLoader: { .configured(configuration) },
             delivery: { value, prompt in
@@ -553,10 +553,17 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(deliveredPrompt, "inspect this once")
     }
 
+    func testTalkURLDoesNotMatchTerminalOrOtherSchemes() {
+        XCTAssertTrue(JARVISPromptNavigation.isTalkURL(URL(string: "jarvis://talk")!))
+        XCTAssertFalse(JARVISPromptNavigation.isTalkURL(URL(string: "jarvis://terminal")!))
+        XCTAssertFalse(JARVISPromptNavigation.isTalkURL(URL(string: "https://talk")!))
+        XCTAssertFalse(JARVISPromptNavigation.isTerminalURL(URL(string: "jarvis://talk")!))
+    }
+
     func testSiriTerminalURLOnlyAcceptsTheTerminalDeepLink() {
-        XCTAssertTrue(JARVISSiriNavigation.isTerminalURL(JARVISSiriNavigation.terminalURL))
-        XCTAssertFalse(JARVISSiriNavigation.isTerminalURL(URL(string: "jarvis://settings")!))
-        XCTAssertFalse(JARVISSiriNavigation.isTerminalURL(URL(string: "https://terminal")!))
+        XCTAssertTrue(JARVISPromptNavigation.isTerminalURL(JARVISPromptNavigation.terminalURL))
+        XCTAssertFalse(JARVISPromptNavigation.isTerminalURL(URL(string: "jarvis://settings")!))
+        XCTAssertFalse(JARVISPromptNavigation.isTerminalURL(URL(string: "https://terminal")!))
     }
 
     func testSuccessfulSiriPromptNavigationRequestPersistsAndConsumesOnce() {
@@ -566,7 +573,7 @@ final class AppStateTests: XCTestCase {
         let center = NotificationCenter()
         let posted = expectation(description: "terminal navigation posted")
         let token = center.addObserver(
-            forName: JARVISSiriNavigation.terminalRequestNotification,
+            forName: JARVISPromptNavigation.terminalRequestNotification,
             object: nil,
             queue: nil
         ) { _ in
@@ -574,24 +581,24 @@ final class AppStateTests: XCTestCase {
         }
         defer { center.removeObserver(token) }
 
-        JARVISSiriNavigation.requestTerminalPresentation(
+        JARVISPromptNavigation.requestTerminalPresentation(
             slot: .nine,
             defaults: defaults,
             notificationCenter: center
         )
 
         wait(for: [posted], timeout: 1)
-        XCTAssertFalse(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in false }))
+        XCTAssertFalse(JARVISPromptNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in false }))
         var selected: JARVISTerminalSlot?
-        XCTAssertTrue(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { selected = $0; return true }))
+        XCTAssertTrue(JARVISPromptNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { selected = $0; return true }))
         XCTAssertEqual(selected, .nine)
-        XCTAssertFalse(JARVISSiriNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in XCTFail(); return true }))
+        XCTAssertFalse(JARVISPromptNavigation.consumeTerminalPresentationRequest(defaults: defaults, select: { _ in XCTFail(); return true }))
     }
 
     func testSiriPromptFailsBeforeNetworkAndMapsAmbiguousSend() async {
         var loadedConfiguration = false
         var attemptedDelivery = false
-        let emptyOutcome = await JARVISSiriPromptRuntime.submit(
+        let emptyOutcome = await JARVISPromptRuntime.submit(
             "\r\n",
             configurationLoader: {
                 loadedConfiguration = true
@@ -608,7 +615,7 @@ final class AppStateTests: XCTestCase {
             token: String(repeating: "a", count: 64),
             certificateSHA256: String(repeating: "ab", count: 32)
         )
-        let uncertainOutcome = await JARVISSiriPromptRuntime.submit(
+        let uncertainOutcome = await JARVISPromptRuntime.submit(
             "send once",
             configurationLoader: { .configured(configuration) },
             delivery: { _, _ in throw WatchTerminalClientError.submissionUnconfirmed }
@@ -619,7 +626,7 @@ final class AppStateTests: XCTestCase {
     func testSiriNoUnusedSessionIsAnExplicitRefusalWithoutFallback() async {
         let configuration = WatchTerminalConfiguration(endpoint: "https://fixture.invalid:8792", token: String(repeating: "a", count: 64), certificateSHA256: String(repeating: "ab", count: 32))
         var attempts = 0
-        let outcome = await JARVISSiriPromptRuntime.submit("new conversation only", configurationLoader: { .configured(configuration) }, delivery: { _, _ in
+        let outcome = await JARVISPromptRuntime.submit("new conversation only", configurationLoader: { .configured(configuration) }, delivery: { _, _ in
             attempts += 1
             throw JARVISNewSessionError.noAvailableSession
         })

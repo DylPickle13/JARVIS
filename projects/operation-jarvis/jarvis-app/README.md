@@ -22,7 +22,7 @@ Captured in Apple simulators with sample data. The video shows the UI animations
 | iPhone terminal | SSH-backed access to persistent Pi sessions, with native keyboard controls. Photos/Files staging is gated by the signed build's attachment configuration. |
 | Apple Watch | Terminal, Plugs, System, and Jobs pages, with bounded foreground refresh and explicit stale/unavailable states. |
 | Jobs | Read-only schedules and saved per-job results. |
-| Siri | A prompt entry path into the protected terminal service. Admission and routing depend on compatible host and client versions. |
+| Talk to JARVIS | A native Watch icon complication opens a dictation/keyboard composer with explicit Send into the protected terminal service. Replaces Siri command registration on both platforms; signed deployment and physical acceptance are pending. See [setup and verification](docs/watch-talk-complication.md). |
 | Widgets | Neural Core and Open JARVIS surfaces, separate from native hardware command controls. |
 | Notifications | Opt-in scheduled-result and session-completion support. Signing, registration, permissions, and host activation are separate requirements. |
 
@@ -31,7 +31,7 @@ Feature availability depends on the client build and host configuration. The [st
 ## How it fits together
 
 - **iPhone terminal:** SwiftTerm and SwiftNIO SSH connect to fixed, persistent Mac-side Pi sessions.
-- **Watch and Siri terminal:** `terminald` provides a separate authenticated, certificate-pinned terminal bridge.
+- **Watch terminal and Talk prompt:** `terminald` provides a separate authenticated, certificate-pinned terminal bridge.
 - **Device controls and status:** `jarvisd` serves cached telemetry and validated commands. Plug and purifier buttons call this API directly, without going through the model.
 - **Shared code:** JARVISKit contains the API models, networking, stale-state handling, Watch bridge, and reusable UI components.
 

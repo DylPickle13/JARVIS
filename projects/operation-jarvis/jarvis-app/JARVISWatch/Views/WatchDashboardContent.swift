@@ -6,7 +6,7 @@ struct WatchDashboardContent: View {
     @ObservedObject var model: WatchConnectModel
     @ObservedObject var jobs: WatchJobsModel
     let isDashboardCovered: Bool
-    let siriTerminalRequestSequence: Int
+    let terminalRequestSequence: Int
     let requestedJobRoute: ScheduledJobNavigationRequest?
     let onJobRouteConsumed: (ScheduledJobNavigationRequest) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -82,7 +82,7 @@ struct WatchDashboardContent: View {
         .onChange(of: purifierDetail?.id) { _, _ in updateOMLXPresentation() }
         .sheet(item: $purifierDetail) { route in purifierDetailView(route) }
         .onChange(of: isDashboardCovered) { _, _ in updateOMLXPresentation() }
-        .onChange(of: siriTerminalRequestSequence) { oldValue, newValue in
+        .onChange(of: terminalRequestSequence) { oldValue, newValue in
             guard newValue != oldValue else { return }
             selectedPage = .terminal
         }

@@ -1,80 +1,15 @@
-import AppIntents
 import Foundation
 import JARVISKit
 
-struct SendPromptToJARVISIntent: AppIntent {
-    static let title: LocalizedStringResource = "Talk to JARVIS"
-    static let description = IntentDescription("Send a spoken prompt to an unused New JARVIS Pi session, or refuse if none are available.")
-    #if os(watchOS)
-    static var openAppWhenRun: Bool { true }
-    #else
-    static var openAppWhenRun: Bool { false }
-    #endif
-
-    /// Siri resolves this required free-form value in a supported second turn.
-    /// The user's answer authorizes one immediate, non-retried submission.
-    @Parameter(
-        title: "Prompt",
-        requestValueDialog: IntentDialog("What would you like me to send to JARVIS?")
-    )
-    var prompt: String
-
-    /// One normalized prompt is submitted exactly once to a host-selected New slot. The
-    /// value question above is the only app-provided dialogue; completion and
-    /// other failure results are deliberately silent. No capacity is an explicit refusal.
-    func perform() async throws -> some IntentResult {
-        let outcome = await JARVISSiriPromptRuntime.submit(prompt)
-        if outcome == .noNewSession { throw JARVISNewSessionError.noAvailableSession }
-        guard case .sent(let slot) = outcome else { return .result() }
-
-        await JARVISSiriNavigation.requestTerminalPresentation(slot: slot)
-        #if os(iOS)
-        if #available(iOS 18.2, *) {
-            return .result(opensIntent: OpenJARVISTerminalIntent(target: .terminal))
-        }
-        #endif
-        return .result()
-    }
-}
-
-#if os(iOS)
-enum JARVISTerminalDestination: String, AppEnum {
-    case terminal
-
-    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "JARVIS Terminal")
-    static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
-        .terminal: DisplayRepresentation(title: "Pi Terminal")
-    ]
-}
-
-/// OpenIntent is the supported custom-app handoff for this Siri flow. Unlike
-/// OpenURLIntent, it does not require a public universal link.
-struct OpenJARVISTerminalIntent: OpenIntent {
-    static let title: LocalizedStringResource = "Open JARVIS Terminal"
-    static var isDiscoverable: Bool { false }
-
-    @Parameter(title: "Destination")
-    var target: JARVISTerminalDestination
-
-    init() {}
-
-    init(target: JARVISTerminalDestination) {
-        self.target = target
-    }
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        // The originating intent already persisted the exact destination. Do not
-        // repost a last-selected-slot request after that destination was consumed.
-        return .result()
-    }
-}
-#endif
-
-enum JARVISSiriNavigation {
+enum JARVISPromptNavigation {
+    // Keep persisted routing keys compatible with existing installations.
     static let terminalRequestNotification = Notification.Name("com.operation-jarvis.siri-terminal-requested")
     static let terminalURL = URL(string: "jarvis://terminal")!
     private static let terminalRequestKey = "jarvis.siri-new-terminal-slot-requested"
+
+    static func isTalkURL(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "jarvis" && url.host?.lowercased() == "talk"
+    }
 
     static func isTerminalURL(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "jarvis" else { return false }
@@ -104,7 +39,7 @@ enum JARVISSiriNavigation {
     }
 }
 
-enum JARVISSiriPromptOutcome: Equatable {
+enum JARVISPromptOutcome: Equatable {
     case sent(JARVISTerminalSlot)
     case noNewSession
     case empty
@@ -118,7 +53,7 @@ enum JARVISSiriPromptOutcome: Equatable {
     case unconfirmed
 }
 
-enum JARVISSiriPromptRuntime {
+enum JARVISPromptRuntime {
     typealias ConfigurationLoader = () -> JARVISTerminalConfigurationLoadResult
     typealias Delivery = (WatchTerminalConfiguration, String) async throws -> JARVISTerminalSlot
 
@@ -131,7 +66,7 @@ enum JARVISSiriPromptRuntime {
             try await client.preflightNewSessionPrompt()
             return try await client.sendToNewSession(prompt)
         }
-    ) async -> JARVISSiriPromptOutcome {
+    ) async -> JARVISPromptOutcome {
         let normalized: String
         do {
             normalized = try JARVISSpokenPrompt.normalize(rawPrompt)

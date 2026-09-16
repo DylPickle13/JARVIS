@@ -6,7 +6,8 @@ struct WatchConnectView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = WatchConnectModel()
     @StateObject private var notifications = WatchPushNotificationCoordinator.shared
-    @State private var siriTerminalRequestSequence = 0
+    @State private var terminalRequestSequence = 0
+    @State private var showTalkPrompt = false
 
     var body: some View {
         // TimelineView gives frontmost Always On snapshots a supported periodic
@@ -30,18 +31,31 @@ struct WatchConnectView: View {
             @unknown default:
                 break
             }
-            openSiriTerminalIfRequested()
+            openTerminalIfRequested()
             await model.runDebugRelaySmokeIfRequested()
         }
-        .onReceive(NotificationCenter.default.publisher(for: JARVISSiriNavigation.terminalRequestNotification)) { _ in
-            openSiriTerminalIfRequested()
+        .onReceive(NotificationCenter.default.publisher(for: JARVISPromptNavigation.terminalRequestNotification)) { _ in
+            openTerminalIfRequested()
         }
         .sheet(isPresented: $notifications.showPermissionExplanation) {
             WatchNotificationPermissionView(notifications: notifications)
         }
+        .sheet(isPresented: $showTalkPrompt) {
+            WatchTalkPromptView { slot in
+                JARVISPromptNavigation.requestTerminalPresentation(slot: slot)
+                showTalkPrompt = false
+            }
+        }
+        .onChange(of: showTalkPrompt) { _, showing in
+            if !showing { openTerminalIfRequested() }
+        }
         .onOpenURL { url in
-            guard JARVISSiriNavigation.isTerminalURL(url) else { return }
-            siriTerminalRequestSequence += 1
+            if JARVISPromptNavigation.isTalkURL(url) {
+                showTalkPrompt = true
+                return
+            }
+            guard JARVISPromptNavigation.isTerminalURL(url) else { return }
+            terminalRequestSequence += 1
         }
         .task(id: notifications.pendingTerminalRoute) {
             guard let request = notifications.pendingTerminalRoute,
@@ -49,7 +63,7 @@ struct WatchConnectView: View {
             _ = model.jobs.dismissPendingRoute()
             while !Task.isCancelled && notifications.pendingTerminalRoute == request {
                 if model.terminal.selectSlot(slot) {
-                    siriTerminalRequestSequence += 1
+                    terminalRequestSequence += 1
                     notifications.consumeTerminalRoute(request)
                     return
                 }
@@ -60,7 +74,7 @@ struct WatchConnectView: View {
             switch phase {
             case .active:
                 model.sceneDidBecomeActive()
-                openSiriTerminalIfRequested()
+                openTerminalIfRequested()
             case .inactive:
                 // Always On is inactive but still frontmost. Preserve polling,
                 // the selected route, current terminal frame, and button state.
@@ -90,16 +104,16 @@ struct WatchConnectView: View {
         WatchDashboardContent(
             model: model,
             jobs: model.jobs,
-            isDashboardCovered: notifications.showPermissionExplanation,
-            siriTerminalRequestSequence: siriTerminalRequestSequence,
+            isDashboardCovered: notifications.showPermissionExplanation || showTalkPrompt,
+            terminalRequestSequence: terminalRequestSequence,
             requestedJobRoute: notifications.pendingRoute,
             onJobRouteConsumed: notifications.consumePendingRoute
         )
     }
 
-    private func openSiriTerminalIfRequested() {
-        guard JARVISSiriNavigation.consumeTerminalPresentationRequest(select: { model.terminal.selectSlot($0) }) else { return }
-        siriTerminalRequestSequence += 1
+    private func openTerminalIfRequested() {
+        guard JARVISPromptNavigation.consumeTerminalPresentationRequest(select: { model.terminal.selectSlot($0) }) else { return }
+        terminalRequestSequence += 1
     }
 }
 
