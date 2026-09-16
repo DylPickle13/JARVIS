@@ -250,7 +250,8 @@ private struct JARVISNeuralCoreAnimationFrame: View {
     }
 }
 
-private struct JARVISWidgetTimerFrameWindow: View {
+// Shared with the lightweight Talk artwork; existing selector behavior is unchanged.
+struct JARVISWidgetTimerFrameWindow: View {
     let frameIndex: Int
     let frameCount: Int
     let extent: CGFloat

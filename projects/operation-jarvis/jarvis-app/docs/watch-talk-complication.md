@@ -46,3 +46,11 @@ The owner reported that Build186 displayed its waiting text without opening nati
 The correction removes the Talk SwiftUI sheet and nested NavigationStack. A root overlay keeps the dashboard mounted while native WatchKit input is requested from the root host. Done-to-send, cancellation, duplicate suppression, and first-available-New-slot routing remain unchanged. A native TextFieldLink provides explicit manual recovery if automatic presentation still fails; that fallback is not acceptance of the requested zero-extra-tap flow. Public logs record only presentation/completion events, never prompt text.
 
 Physical cold/warm-launch tests must demonstrate automatic native input presentation. If only Open input appears, automatic presentation remains unresolved. Cancel once to verify no submission, then deliberately complete input for the end-to-end test.
+
+## Resonance artwork
+
+The Talk complication uses the approved Resonance design: three broken outer arcs, fine inner arcs, three orbital dots, and five waveform bars. Circular/corner/rectangular slots show the vector mark; inline retains its readable waveform label. Existing widget kind and `jarvis://talk` URL remain unchanged.
+
+Motion is decorative, not a microphone or listening indicator. The existing system timer-mask selector is shared without altering the Neural Core renderer. Twenty-four lightweight frames make a restrained two-second cycle (small bar modulation, ±2.5° dot drift, inner-arc sheen); no app timers, network polls, or rapid timeline refreshes are added. A complete permanent frame remains underneath, so unavailable or frozen masks cannot blank the icon. Reduce Motion, Always On/reduced luminance, missing font, and accented rendering use the static design. watchOS may suspend animation; on-device appearance/motion acceptance remains separate from builds.
+
+The owner confirmed Build187 automatically opens native input. This visual-only revision preserves the accepted root-overlay input, completion gate, and first-available-New-session flow.

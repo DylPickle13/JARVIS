@@ -57,28 +57,35 @@ private struct JARVISWatchLauncherView: View {
         .accessibilityLabel(talk ? "Talk to JARVIS" : "Open JARVIS app")
     }
 
+    @ViewBuilder
     private var circularIcon: some View {
-        GeometryReader { geometry in
-            let side = min(geometry.size.width, geometry.size.height)
-            ZStack {
-                if renderingMode == .fullColor {
-                    Circle().fill(Color.black)
-                    fullColorIcon
-                        .scaledToFill()
-                } else {
-                    accentedIcon
-                        .scaledToFit()
+        if talk {
+            JARVISResonanceArtwork()
+        } else {
+            GeometryReader { geometry in
+                let side = min(geometry.size.width, geometry.size.height)
+                ZStack {
+                    if renderingMode == .fullColor {
+                        Circle().fill(Color.black)
+                        fullColorIcon
+                            .scaledToFill()
+                    } else {
+                        accentedIcon
+                            .scaledToFit()
+                    }
                 }
+                .frame(width: side, height: side)
+                .clipShape(Circle())
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
             }
-            .frame(width: side, height: side)
-            .clipShape(Circle())
-            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
     }
 
     @ViewBuilder
     private var renderedIcon: some View {
-        if renderingMode == .fullColor {
+        if talk {
+            JARVISResonanceArtwork()
+        } else if renderingMode == .fullColor {
             fullColorIcon
         } else {
             accentedIcon
@@ -115,6 +122,10 @@ struct JARVISWatchLauncherWidget: Widget {
 /// Explicit user-entry point: opening this URL never submits a prompt.
 struct JARVISWatchTalkWidget: Widget {
     let kind = "JARVISWatchTalkWidget.v1"
+
+    init() {
+        JARVISWidgetTimerAnimationFont.register()
+    }
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: JARVISWatchLauncherProvider()) { _ in

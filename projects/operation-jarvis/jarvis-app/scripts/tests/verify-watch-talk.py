@@ -41,3 +41,16 @@ for folder in ['HostAppIntents', 'JARVIS', 'JARVISWatch']:
                           'OpenJARVISTerminalIntent', 'updateAppShortcutParameters']:
             assert forbidden not in source, (path, forbidden)
 print('Watch Talk source contracts passed (physical behavior not tested).')
+
+art = read('JARVISWatchWidget/ResonanceArtwork.swift')
+assert 'JARVISResonanceArtwork()' in widget
+assert 'JARVISWidgetTimerAnimationFont.register()' in widget
+assert 'allowsMotion && !reducedLuminance && !reduceMotion' in art
+assert 'renderingMode == .fullColor && JARVISWidgetTimerAnimationFont.isAvailable' in art
+assert 'ResonanceFrame(phase: 0, movingOnly: false, subdued: animate)' in art
+assert 'ForEach(0..<24' in art
+assert 'JARVISWidgetTimerFrameWindow(frameIndex: index, frameCount: 24' in art
+assert '.widgetAccentable()' in art and '.accessibilityHidden(true)' in art
+for forbidden in ['Timer(', 'TimelineView(', 'URLSession', 'repeatForever', 'reloadTimelines']:
+    assert forbidden not in art, forbidden
+print('Resonance static fallback, motion gating, and unchanged routing contracts passed.')

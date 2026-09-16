@@ -17,6 +17,7 @@
 		1759E7B88DF32720F791D755 /* OMLXStatusCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0614F828A3200E9212F5A8B0 /* OMLXStatusCard.swift */; };
 		1D5E7CC1DB8E703A3D114F61 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8068A9EC5CBE6A47B603710 /* JARVISKit */; };
 		1DC8B19B903AE4B1F55DDA99 /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */; };
+		1EF63AB4B7885F1F21708B02 /* ResonanceArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF2939AC06C1D6D6045FCB6E /* ResonanceArtwork.swift */; };
 		21E9789B6D7FDCFD43AD0B35 /* WidgetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */; };
 		2392D67F2D4A760498DF32EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ED67C789A071ACDEA4FD69FC /* Assets.xcassets */; };
 		26D143A1482F252A0D5C3892 /* JARVISWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1B144126B4647E06FE7EED06 /* JARVISWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -232,6 +233,7 @@
 		F89A5FD5332EC5B9ED8DD165 /* JARVISTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = JARVISTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FD52E36404CFBA273498ACD2 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		FD71A8A31F806B007B4B34AF /* PiTerminalClipboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalClipboardTests.swift; sourceTree = "<group>"; };
+		FF2939AC06C1D6D6045FCB6E /* ResonanceArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResonanceArtwork.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -418,6 +420,7 @@
 				29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */,
 				6DF549C08E0899CD48EC8294 /* LauncherWidget.swift */,
 				8C187EFE35D060320CD74856 /* NeuralCoreWidget.swift */,
+				FF2939AC06C1D6D6045FCB6E /* ResonanceArtwork.swift */,
 				C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */,
 			);
 			path = JARVISWatchWidget;
@@ -686,6 +689,7 @@
 				7886C0D4B9C05F203B4644AF /* NeuralCoreC2Decoration.swift in Sources */,
 				6FCDC3A9DF9D130AC887781E /* NeuralCoreContinuousAnimation.swift in Sources */,
 				C7E9D77697E658A1BB7F6391 /* NeuralCoreWidget.swift in Sources */,
+				1EF63AB4B7885F1F21708B02 /* ResonanceArtwork.swift in Sources */,
 				21E9789B6D7FDCFD43AD0B35 /* WidgetSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
