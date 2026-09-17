@@ -228,7 +228,7 @@ projects/operation-jarvis/raspberry-pi/
 | [`README.md`](./README.md) | Main Pi overview, SSH, room-audio integration, and maintenance index. |
 | [`room_audio/README.md`](./room_audio/README.md) | Room-audio architecture, server/client commands, VAD tuning, and service notes. |
 | [`room_audio/pi_room_audio_client.py`](./room_audio/pi_room_audio_client.py) | Pi-side PowerConf capture/playback client copied to `/home/pi/jarvis-room-audio-client.py`. |
-| [`room_audio/room_audio_server.py`](./room_audio/room_audio_server.py) | Mac-side room-audio HTTP bridge for ASR, Pi RPC, and TTS; Pi-side openWakeWord is the wake gate. |
+| [`room_audio/room_audio_server.py`](./room_audio/room_audio_server.py) | Mac-side room-audio HTTP bridge for ASR, Pi RPC, and TTS; Pi-side openWakeWord plus independent Mac Apple Dictation wake verification. |
 | [`docs/audio-hardware.md`](./docs/audio-hardware.md) | Anker PowerConf USB/Bluetooth findings and test commands. |
 | [`docs/display-hdmi-console.md`](./docs/display-hdmi-console.md) | HDMI safe-console settings, recovery commands, and direct terminal print command. |
 | [`docs/upgrade-log-20260517.md`](./docs/upgrade-log-20260517.md) | Fresh Bookworm install, troubleshooting, SSH bootstrap, and update log. |

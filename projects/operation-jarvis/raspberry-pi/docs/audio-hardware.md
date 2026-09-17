@@ -12,7 +12,7 @@ The documented setup uses USB audio at 48 kHz. The recovered/replacement hardwar
 | Speaker | USB ALSA, `plughw:CARD=PowerConf,DEV=0` |
 | Listener | `jarvis-room-audio.service` running `/home/pi/jarvis-room-audio-client.py --vad-loop --interrupt-while-busy` |
 
-The listener keeps USB capture running during acknowledgement and response playback. Idle turns need the local `hey_jarvis` wake word. While busy, short clips go to on-device Apple DictationTranscriber; only an exact normalized `stop` cancels generation and playback. Ordinary turns use on-device Apple SpeechTranscriber.
+The listener keeps USB capture running during acknowledgement and response playback. Idle turns need the local `hey_jarvis` wake word. While busy, short clips go to on-device Apple DictationTranscriber; only an exact normalized `stop` cancels generation and playback. Conversations are two-part: Pi wake detection plus on-device Apple Dictation verification of “Hey Jarvis” trigger cached “Yes sir?”. Start one separate request within five seconds after that prompt; Apple SpeechTranscriber transcribes it before “Generating your response, sir.” and the answer. The initial wake clip never executes a command. Verification failures are silent.
 
 Bluetooth BlueALSA SCO/A2DP remains a fallback, but the PowerConf cannot reliably capture with SCO and play with A2DP at the same time. That rules out voice interruption on the Bluetooth path.
 

@@ -62,9 +62,10 @@ DEFAULT_VAD_RESTORE_CAPTURE_WHILE_WAITING = os.environ.get(
 ).lower() not in {"0", "false", "no", "off", ""}
 DEFAULT_LOCAL_WAKE_WORD_ENABLED = os.environ.get("JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ENABLED", "0").lower() not in {"0", "false", "no", "off", ""}
 DEFAULT_LOCAL_WAKE_WORD_ENGINE = os.environ.get("JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ENGINE", "openwakeword").strip()
-DEFAULT_LOCAL_WAKE_WORD_THRESHOLD = float(os.environ.get("JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_THRESHOLD", "0.5"))
+DEFAULT_LOCAL_WAKE_WORD_THRESHOLD = float(os.environ.get("JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_THRESHOLD", "0.75"))
 DEFAULT_LOCAL_WAKE_WORD_COOLDOWN_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_COOLDOWN_SECONDS", "2.0"))
-DEFAULT_LOCAL_WAKE_WORD_ARM_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ARM_SECONDS", "8.0"))
+DEFAULT_LOCAL_WAKE_WORD_ARM_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ARM_SECONDS", "3.0"))
+DEFAULT_LOCAL_WAKE_WORD_CONSECUTIVE_FRAMES = max(1, int(os.environ.get("JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_CONSECUTIVE_FRAMES", "2")))
 DEFAULT_LOCAL_WAKE_WORD_CHUNK_MS = int(os.environ.get("JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_CHUNK_MS", "80"))
 DEFAULT_LOCAL_WAKE_WORD_MODEL = os.environ.get("JARVIS_ROOM_AUDIO_OPENWAKEWORD_MODEL", "hey_jarvis").strip()
 DEFAULT_LOCAL_WAKE_WORD_INFERENCE = os.environ.get("JARVIS_ROOM_AUDIO_OPENWAKEWORD_INFERENCE", "tflite").strip()
@@ -265,10 +266,13 @@ class LocalWakeWordDetector:
         self.max_model = ""
         self.max_score = 0.0
         self.threshold = max(0.0, min(1.0, float(args.local_wake_word_threshold)))
+        self.consecutive_frames = max(1, int(args.local_wake_word_consecutive_frames))
+        self._score_streaks: dict[str, int] = {}
         self.cooldown_seconds = max(0.0, float(args.local_wake_word_cooldown_seconds))
         self.chunk_samples = max(160, int(round(self.target_rate * (max(10, args.local_wake_word_chunk_ms) / 1000.0))))
         self.chunk_bytes = self.chunk_samples * 2
         self.log_scores = bool(args.local_wake_word_log_scores)
+        self._score_log_until = time.monotonic() + max(0.0, args.local_wake_word_log_seconds)
         self.inference_framework = str(args.openwakeword_inference).strip().lower() or "tflite"
         self.ncpu = max(1, int(getattr(args, "openwakeword_ncpu", DEFAULT_LOCAL_WAKE_WORD_NCPU)))
         model_specs = self._resolve_model_specs(args, openwakeword, openwakeword_utils)
@@ -278,7 +282,7 @@ class LocalWakeWordDetector:
             "local wake word online: "
             f"engine=openwakeword models={','.join(model_specs)} threshold={self.threshold:.2f} "
             f"chunk={self.chunk_samples / self.target_rate * 1000:.0f}ms cooldown={self.cooldown_seconds:.1f}s "
-            f"ncpu={self.ncpu}",
+            f"ncpu={self.ncpu} consecutive_frames={self.consecutive_frames}",
             flush=True,
         )
 
@@ -320,6 +324,7 @@ class LocalWakeWordDetector:
         return resolved
 
     def reset_stream(self) -> None:
+        self._score_streaks.clear()
         self._buffer.clear()
         self._ratecv_state = None
         self.last_model = ""
@@ -353,6 +358,7 @@ class LocalWakeWordDetector:
                     except Exception:
                         continue
             if not scores:
+                self._score_streaks.clear()
                 continue
 
             model_name, score = max(scores.items(), key=lambda item: item[1])
@@ -361,16 +367,55 @@ class LocalWakeWordDetector:
             if score > self.max_score:
                 self.max_model = model_name
                 self.max_score = score
-            if self.log_scores and now - self._last_score_log_at >= 1.0:
+            if self.log_scores and now <= self._score_log_until and now - self._last_score_log_at >= 1.0:
                 self._last_score_log_at = now
                 print(f"local wake score: model={model_name} score={score:.3f}", flush=True)
-            if score >= self.threshold and now >= self._cooldown_until:
+            # Require the same model to stay above threshold across adjacent chunks.
+            self._score_streaks = {
+                name: self._score_streaks.get(name, 0) + 1
+                for name, value in scores.items()
+                if value >= self.threshold and now >= self._cooldown_until
+            }
+            confirmed = [name for name, count in self._score_streaks.items() if count >= self.consecutive_frames]
+            if confirmed:
+                model_name = max(confirmed, key=scores.get)
+                score = scores[model_name]
+                self._score_streaks.clear()
                 self._cooldown_until = now + self.cooldown_seconds
                 reset = getattr(self._model, "reset", None)
                 if callable(reset):
                     reset()
                 hit = {"model": model_name, "score": score, "scores": scores}
         return hit
+
+
+class LocalWakeWordGate:
+    """One-shot wake authorization; busy audio never reaches the detector."""
+
+    def __init__(self, detector: LocalWakeWordDetector, arm_seconds: float) -> None:
+        self.detector = detector
+        self.arm_seconds = max(0.0, arm_seconds)
+        self.armed_until = 0.0
+        self._busy = False
+
+    def process_frame(self, frame: bytes, *, source_rate: int, now: float, busy: bool) -> dict | None:
+        if busy != self._busy:
+            # Drop buffered PCM, model history and partial score streaks on both edges.
+            self.detector.reset_stream()
+            self._busy = busy
+        if busy:
+            self.consume()
+            return None
+        hit = self.detector.process_frame(frame, source_rate=source_rate, now=now)
+        if hit:
+            self.armed_until = now + self.arm_seconds
+        return hit
+
+    def accepts(self, now: float) -> bool:
+        return not self._busy and self.armed_until > 0 and now <= self.armed_until
+
+    def consume(self) -> None:
+        self.armed_until = 0.0
 
 
 def create_local_wake_word_detector(args: argparse.Namespace) -> LocalWakeWordDetector | None:
@@ -387,6 +432,8 @@ def post_turn(
     async_ack: bool,
     token: str = "",
     turn_id: str = "",
+    client_id: str = "",
+    wake_ticket: str = "",
 ) -> dict:
     payload = {
         "client": "raspberry-pi-powerconf",
@@ -394,6 +441,10 @@ def post_turn(
         "asyncAck": async_ack,
         "audioWavBase64": base64.b64encode(wav_path.read_bytes()).decode("ascii"),
     }
+    if client_id:
+        payload.update(clientID=client_id, wakeFollowupSupported=True)
+    if wake_ticket:
+        payload["wakeTicket"] = wake_ticket
     if turn_id:
         payload["turnId"] = turn_id
     body = json.dumps(payload).encode("utf-8")
@@ -407,6 +458,14 @@ def post_turn(
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Room audio server returned HTTP {exc.code}: {detail}") from exc
+
+
+def post_wake_followup(args: argparse.Namespace, client_id: str, ticket: str, action: str) -> dict:
+    request = urllib.request.Request(args.server_url.rstrip("/") + "/wake-followup",
+        data=json.dumps({"clientID": client_id, "wakeTicket": ticket, "action": action}).encode(),
+        headers={"content-type": "application/json", "x-jarvis-room-token": args.token}, method="POST")
+    with urllib.request.urlopen(request, timeout=3) as response:
+        return json.loads(response.read(4096))
 
 
 def post_interrupt(server_url: str, wav_path: Path, *, turn_id: str, token: str = "") -> dict:
@@ -444,7 +503,7 @@ def get_turn_result(server_url: str, turn_id: str, *, token: str = "") -> dict:
 
 
 def response_without_audio(response: dict) -> dict:
-    return {k: v for k, v in response.items() if k != "audioWavBase64"}
+    return {k: v for k, v in response.items() if k not in {"audioWavBase64", "wakeTicket"}}
 
 
 class PlaybackController:
@@ -757,6 +816,15 @@ def submit_wav_turn_capture_released(args: argparse.Namespace, input_path: Path,
     return response
 
 
+class FollowupClaim:
+    """Claim at speech onset in a worker; never block continuous PCM capture."""
+
+    def __init__(self, ticket: str) -> None:
+        self.ticket = ticket
+        self.done = threading.Event()
+        self.accepted = False
+
+
 class RoomAudioTurnController:
     """Own one asynchronous room turn while the main thread keeps capturing."""
 
@@ -774,6 +842,67 @@ class RoomAudioTurnController:
         self._client_id = uuid.uuid4().hex
         self._report_sequence = 0
         self.capture_online = False
+        self._followup_ticket = ""
+        self._followup_deadline = 0.0
+        self._reserved_followup: FollowupClaim | None = None
+
+    def _revoke_followup(self, ticket: str) -> None:
+        if not ticket:
+            return
+        def revoke() -> None:
+            try:
+                post_wake_followup(self.args, self._client_id, ticket, "cancel")
+            except Exception:
+                pass  # Server also expires unused tickets; never log credentials.
+        threading.Thread(target=revoke, name="room-followup-cancel", daemon=True).start()
+
+    def clear_followup(self) -> None:
+        with self._lock:
+            ticket = self._followup_ticket
+            reserved = self._reserved_followup
+            self._followup_ticket, self._followup_deadline, self._reserved_followup = "", 0.0, None
+        self._revoke_followup(ticket)
+        if reserved is not None:
+            self._revoke_followup(reserved.ticket)
+
+    def arm_followup(self, response: dict, cancel: threading.Event) -> None:
+        ticket = str(response.get("wakeTicket") or "")
+        if not ticket:
+            return
+        # Playback has finished. Both clocks start here, not during Dictation/TTS.
+        try:
+            ready = post_wake_followup(self.args, self._client_id, ticket, "ready")
+        except Exception:
+            self._revoke_followup(ticket)
+            return
+        with self._lock:
+            if ready.get("ok") and not cancel.is_set():
+                self._followup_ticket = ticket
+                self._followup_deadline = time.monotonic() + min(5.0, float(ready.get("listenSeconds", 5.0)))
+                print("room listening for one request (5 seconds to start)", flush=True)
+                return
+        self._revoke_followup(ticket)
+
+    def reserve_followup(self, now: float) -> FollowupClaim | None:
+        with self._lock:
+            if self._turn_id or not self._followup_ticket:
+                return None
+            ticket = self._followup_ticket
+            self._followup_ticket = ""
+            if now >= self._followup_deadline:
+                self._revoke_followup(ticket)
+                return None
+            claim = FollowupClaim(ticket)
+            self._reserved_followup = claim
+        def reserve() -> None:
+            try:
+                claim.accepted = bool(post_wake_followup(self.args, self._client_id, ticket, "claim").get("ok"))
+            except Exception:
+                claim.accepted = False
+            finally:
+                claim.done.set()
+        threading.Thread(target=reserve, name="room-followup-claim", daemon=True).start()
+        return claim
 
     def start_reporting(self) -> None:
         if not self.args.token or (self._report_thread and self._report_thread.is_alive()): return
@@ -838,6 +967,7 @@ class RoomAudioTurnController:
         voiced_ms: float,
         max_rms: int,
         require_wake_word: bool,
+        followup: FollowupClaim | None = None,
     ) -> bool:
         with self._lock:
             if self._turn_id:
@@ -849,7 +979,7 @@ class RoomAudioTurnController:
             self._cancel_event = cancel_event
             thread = threading.Thread(
                 target=self._run_turn,
-                args=(turn_id, cancel_event, pcm, duration_seconds, voiced_ms, max_rms, require_wake_word),
+                args=(turn_id, cancel_event, pcm, duration_seconds, voiced_ms, max_rms, require_wake_word, followup),
                 name=f"room-audio-client-turn-{turn_id[:8]}",
                 daemon=True,
             )
@@ -866,8 +996,12 @@ class RoomAudioTurnController:
         voiced_ms: float,
         max_rms: int,
         require_wake_word: bool,
+        followup: FollowupClaim | None = None,
     ) -> None:
         try:
+            if followup is not None:
+                if not followup.done.wait(4) or not followup.accepted or cancel_event.is_set():
+                    return
             process_vad_utterance_controlled(
                 self.args,
                 pcm,
@@ -878,13 +1012,17 @@ class RoomAudioTurnController:
                 turn_id=turn_id,
                 cancel_event=cancel_event,
                 controller=self,
+                wake_ticket=followup.ticket if followup is not None else "",
             )
         except Exception as exc:
             if not cancel_event.is_set():
                 print(f"room turn error: {exc}", flush=True)
         finally:
             self.playback.stop()
+            if followup is not None:
+                self._revoke_followup(followup.ticket)
             with self._lock:
+                self._reserved_followup = None
                 if self._turn_id == turn_id:
                     self._turn_id = ""
                     self._state = "IDLE"
@@ -956,11 +1094,13 @@ class RoomAudioTurnController:
             self._state = "CANCELLING"
             cancel_event = self._cancel_event
         cancel_event.set()
+        self.clear_followup()
         self.playback.stop()
         print(f"room turn cancelled: turn={turn_id}", flush=True)
         return True
 
     def shutdown(self) -> None:
+        self.clear_followup()
         self.capture_online = False
         self._report_stop.set()
         if self._report_thread: self._report_thread.join(timeout=3)
@@ -1021,6 +1161,7 @@ def process_vad_utterance_controlled(
     turn_id: str,
     cancel_event: threading.Event,
     controller: RoomAudioTurnController,
+    wake_ticket: str = "",
 ) -> dict:
     with tempfile.TemporaryDirectory(prefix="jarvis-room-audio-vad-") as tmp_dir:
         input_path = Path(tmp_dir) / "input.wav"
@@ -1037,13 +1178,17 @@ def process_vad_utterance_controlled(
             async_ack=True,
             token=args.token,
             turn_id=turn_id,
+            client_id=controller._client_id,
+            wake_ticket=wake_ticket,
         )
     print(json.dumps(response_without_audio(response), indent=2, sort_keys=True), flush=True)
     if response.get("status") == "cancelled" or cancel_event.is_set():
         cancel_event.set()
+        controller._revoke_followup(str(response.get("wakeTicket") or ""))
         return response
 
-    # This first WAV is the short processing acknowledgement. Capture remains
+    # The first WAV is "Yes sir?" for a wake, or the processing ack for a request.
+    # Capture remains
     # live in the main thread while the worker plays it and polls for the answer.
     controller.set_state(turn_id, "PLAYING")
     play_response_audio(
@@ -1053,6 +1198,9 @@ def process_vad_utterance_controlled(
         playback_controller=controller.playback,
         cancel_event=cancel_event,
     )
+    if response.get("status") == "awaiting_command":
+        controller.arm_followup(response, cancel_event)
+        return response
     if response.get("pending") and not cancel_event.is_set():
         controller.set_state(turn_id, "GENERATING")
         server_turn_id = str(response.get("turnId") or turn_id)
@@ -1134,13 +1282,15 @@ def run_vad_loop(args: argparse.Namespace) -> None:
             continue
 
         proc = start_raw_arecord(device=args.device, rate=args.rate)
-        if turn_controller: turn_controller.start_reporting()
+        if turn_controller:
+            turn_controller.clear_followup()
+            turn_controller.start_reporting()
         if proc.stdout is None:
             raise RuntimeError("arecord stdout pipe was not created")
         fd = proc.stdout.fileno()
         if local_wake is not None:
             local_wake.reset_stream()
-        wake_armed_until = 0.0
+        wake_gate = LocalWakeWordGate(local_wake, args.local_wake_word_arm_seconds) if local_wake else None
         pre_roll: deque[tuple[bytes, bool, int]] = deque(maxlen=preroll_frames)
         utterance: list[bytes] | None = None
         utterance_bytes = 0
@@ -1148,6 +1298,8 @@ def run_vad_loop(args: argparse.Namespace) -> None:
         utterance_wake_max_score = 0.0
         utterance_wake_max_model = ""
         utterance_interrupt_candidate = False
+        utterance_followup: FollowupClaim | None = None
+        was_busy = False
         voiced_ms = 0.0
         max_rms = 0
         last_voice_at = 0.0
@@ -1176,19 +1328,26 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                         print(f"room-audio greeting error: {exc}", flush=True)
                     break
 
-                if local_wake is not None:
-                    wake_hit = local_wake.process_frame(frame, source_rate=args.rate, now=now)
+                busy = bool(turn_controller is not None and turn_controller.is_busy())
+                if was_busy and not busy:
+                    # Do not carry "Yes sir?"/response speaker audio into a command.
+                    utterance, utterance_bytes, utterance_followup = None, 0, None
+                    pre_roll.clear()
+                was_busy = busy
+                if wake_gate is not None:
+                    wake_hit = wake_gate.process_frame(frame, source_rate=args.rate, now=now, busy=busy)
+                    if busy:
+                        utterance_wake_accepted = False
                     if utterance is not None and local_wake.last_score > utterance_wake_max_score:
                         utterance_wake_max_score = local_wake.last_score
                         utterance_wake_max_model = local_wake.last_model
                     if wake_hit:
-                        wake_armed_until = now + max(0.0, args.local_wake_word_arm_seconds)
                         if utterance is not None:
                             utterance_wake_accepted = True
                         print(
                             "local wake detected: "
                             f"model={wake_hit.get('model')} score={float(wake_hit.get('score', 0.0)):.3f} "
-                            f"armed_for={max(0.0, wake_armed_until - now):.1f}s",
+                            f"armed_for={max(0.0, wake_gate.armed_until - now):.1f}s",
                             flush=True,
                         )
 
@@ -1201,8 +1360,9 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                         continue
                     utterance = []
                     utterance_bytes = 0
-                    utterance_interrupt_candidate = bool(turn_controller is not None and turn_controller.is_busy())
-                    utterance_wake_accepted = (not local_wake_gate_active) or now <= wake_armed_until
+                    utterance_interrupt_candidate = busy
+                    utterance_followup = turn_controller.reserve_followup(now) if turn_controller is not None and not busy else None
+                    utterance_wake_accepted = utterance_followup is not None or wake_gate is None or wake_gate.accepts(now)
                     utterance_wake_max_score = local_wake.last_score if local_wake is not None else 0.0
                     utterance_wake_max_model = local_wake.last_model if local_wake is not None else ""
                     voiced_ms = 0.0
@@ -1252,6 +1412,9 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                 pre_roll.clear()
 
                 if not enough_duration or not enough_voice:
+                    if utterance_followup is not None and turn_controller is not None:
+                        turn_controller.clear_followup()
+                        utterance_followup = None
                     print(
                         f"vad dropped: duration={duration:.2f}s voiced={voiced_ms:.0f}ms max_rms={max_rms}",
                         flush=True,
@@ -1285,6 +1448,8 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                     )
                     continue
 
+                if wake_gate is not None:
+                    wake_gate.consume()
                 print(
                     f"vad speech end: reason={reason} elapsed={now - speech_started_at:.2f}s "
                     f"local_wake_accepted={utterance_wake_accepted}",
@@ -1297,6 +1462,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                         voiced_ms=voiced_ms,
                         max_rms=max_rms,
                         require_wake_word=require_server_wake_word_after_local_gate,
+                        followup=utterance_followup,
                     ):
                         print("vad accepted turn in background; capture remains active", flush=True)
                     else:
@@ -1414,10 +1580,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--local-wake-word", dest="local_wake_word", action="store_true", default=DEFAULT_LOCAL_WAKE_WORD_ENABLED, help="Enable Pi-side wake-word detection before sending VAD utterances to the Mac")
     parser.add_argument("--no-local-wake-word", dest="local_wake_word", action="store_false")
     parser.add_argument("--local-wake-word-engine", default=DEFAULT_LOCAL_WAKE_WORD_ENGINE, choices=["openwakeword"])
-    parser.add_argument("--local-wake-word-threshold", type=float, default=DEFAULT_LOCAL_WAKE_WORD_THRESHOLD, help="openWakeWord activation threshold, usually 0.4-0.7")
+    parser.add_argument("--local-wake-word-threshold", type=float, default=DEFAULT_LOCAL_WAKE_WORD_THRESHOLD, help="openWakeWord activation threshold; higher reduces false wakes (default 0.75)")
+    parser.add_argument("--local-wake-word-consecutive-frames", type=int, default=DEFAULT_LOCAL_WAKE_WORD_CONSECUTIVE_FRAMES, help="Consecutive above-threshold model predictions required for a wake (default 2)")
     parser.add_argument("--local-wake-word-cooldown-seconds", type=float, default=DEFAULT_LOCAL_WAKE_WORD_COOLDOWN_SECONDS, help="Minimum seconds between local wake-word activations")
     parser.add_argument("--local-wake-word-arm-seconds", type=float, default=DEFAULT_LOCAL_WAKE_WORD_ARM_SECONDS, help="Seconds after a local wake hit during which the current/next VAD utterance is allowed through")
     parser.add_argument("--local-wake-word-chunk-ms", type=int, default=DEFAULT_LOCAL_WAKE_WORD_CHUNK_MS, help="Inference chunk size for local wake-word detection; openWakeWord recommends 80ms")
+    parser.add_argument("--local-wake-word-log-seconds", type=float, default=600.0, help="Limit optional score logging to this many seconds after detector startup (default 600)")
     parser.add_argument("--local-wake-word-log-scores", action="store_true", default=DEFAULT_LOCAL_WAKE_WORD_LOG_SCORES, help="Log the best local wake-word score about once per second for tuning")
     parser.add_argument("--openwakeword-model", default=DEFAULT_LOCAL_WAKE_WORD_MODEL, help="Comma-separated openWakeWord model names or model file paths; default hey_jarvis")
     parser.add_argument("--openwakeword-inference", default=DEFAULT_LOCAL_WAKE_WORD_INFERENCE, choices=["tflite", "onnx"], help="openWakeWord inference framework")

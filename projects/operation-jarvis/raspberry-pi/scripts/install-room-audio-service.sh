@@ -17,6 +17,9 @@ SERVICE_NAME="${SERVICE_NAME:-jarvis-room-audio.service}"
 LOCAL_WAKE_WORD="${LOCAL_WAKE_WORD:-1}"
 LOCAL_WAKE_WORD_MODEL="${LOCAL_WAKE_WORD_MODEL:-hey_jarvis}"
 LOCAL_WAKE_WORD_THRESHOLD="${LOCAL_WAKE_WORD_THRESHOLD:-0.75}"
+LOCAL_WAKE_WORD_CONSECUTIVE_FRAMES="${LOCAL_WAKE_WORD_CONSECUTIVE_FRAMES:-2}"
+LOCAL_WAKE_WORD_ARM_SECONDS="${LOCAL_WAKE_WORD_ARM_SECONDS:-3.0}"
+LOCAL_WAKE_WORD_LOG_SCORES="${LOCAL_WAKE_WORD_LOG_SCORES:-0}"
 LOCAL_WAKE_WORD_NCPU="${LOCAL_WAKE_WORD_NCPU:-2}"
 TRUST_LOCAL_WAKE_WORD="${TRUST_LOCAL_WAKE_WORD:-1}"
 BT_PLAYBACK_DRAIN_SECONDS="${BT_PLAYBACK_DRAIN_SECONDS:-1.2}"
@@ -70,15 +73,17 @@ fi
 
 WAKE_ARGS=""
 if [[ "$LOCAL_WAKE_WORD" != "0" ]]; then
-  WAKE_ARGS="--local-wake-word --openwakeword-model $LOCAL_WAKE_WORD_MODEL --local-wake-word-threshold $LOCAL_WAKE_WORD_THRESHOLD --openwakeword-ncpu $LOCAL_WAKE_WORD_NCPU"
+  WAKE_ARGS="--local-wake-word --openwakeword-model $LOCAL_WAKE_WORD_MODEL --local-wake-word-threshold $LOCAL_WAKE_WORD_THRESHOLD --openwakeword-ncpu $LOCAL_WAKE_WORD_NCPU --local-wake-word-consecutive-frames $LOCAL_WAKE_WORD_CONSECUTIVE_FRAMES --local-wake-word-arm-seconds $LOCAL_WAKE_WORD_ARM_SECONDS"
+  if [[ "$LOCAL_WAKE_WORD_LOG_SCORES" != "0" ]]; then
+    WAKE_ARGS="$WAKE_ARGS --local-wake-word-log-scores"
+  fi
   if [[ "$TRUST_LOCAL_WAKE_WORD" != "0" ]]; then
     WAKE_ARGS="$WAKE_ARGS --trust-local-wake-word"
   fi
 fi
 
-# Room audio now treats Pi-side openWakeWord as authoritative. The trust flag is
-# still passed for compatibility with older Mac-side servers that supported a
-# transcript wake-word re-check.
+# Keep the legacy trust flag for older servers. Current Mac servers always
+# independently verify "Hey Jarvis" with Apple Dictation; this flag cannot bypass it.
 if [[ "$AUDIO_TRANSPORT" == "usb" ]]; then
   SERVICE_WANTS="network-online.target"
   SERVICE_AFTER="network-online.target"

@@ -14,10 +14,12 @@ PowerConf mic/speaker on Raspberry Pi
   -> Pi-side openWakeWord gate filters non-JARVIS speech locally
   -> transport-neutral RMS/VAD segments speech with preroll + silence end detection
   -> Mac room-audio server only receives locally wake-accepted utterances
-  -> Apple SpeechTranscriber turn ASR (on-device)
-  -> Apple DictationTranscriber busy-only stop ASR (on-device)
-  -> Mac server trusts the Pi-side wake gate and responds to the transcription
-  -> immediate processing acknowledgement while USB capture remains active
+  -> Apple DictationTranscriber verifies an exact leading "Hey Jarvis" (on-device)
+  -> silent rejection if missing or verification fails
+  -> cached “Yes sir?” (no command execution from the wake clip)
+  -> five-second window to start one request, no repeated wake phrase
+  -> Apple SpeechTranscriber command ASR (on-device)
+  -> “Generating your response, sir.” while USB capture remains active
   -> Pi RPC JARVIS session
   -> Piper JARVIS TTS
   -> Pi client polls and plays final WAV through PowerConf
@@ -39,7 +41,7 @@ The room-audio server URL in the commands below remains `http://<private-lan-ip>
 
 The documented setup uses the PowerConf over USB at 48 kHz (`plughw:CARD=PowerConf,DEV=0`). USB supports capture and playback at the same time, so the microphone stays open through acknowledgement, generation, and the spoken response.
 
-Idle turns need the local `hey_jarvis` wake word. While busy, short speech clips go to Apple DictationTranscriber. An exact normalized `stop` cancels Pi generation, stops local playback, and prevents old audio from playing afterward. Ordinary turns use Apple SpeechTranscriber. This setup uses Apple ASR only, with no fallback or installed oMLX Whisper model.
+Idle turns need the local `hey_jarvis` wake word. While busy, short speech clips go to Apple DictationTranscriber. An exact normalized `stop` cancels Pi generation, stops local playback, and prevents old audio from playing afterward. Conversations are strictly two-part: an independent Apple DictationTranscriber wake check triggers “Yes sir?”, then one separately spoken request uses Apple SpeechTranscriber. This setup uses Apple ASR only, with no fallback or installed oMLX Whisper model.
 
 Bluetooth SCO/A2DP is still available as an installer fallback. It cannot support voice interruption because capture must stop for A2DP playback.
 
@@ -85,7 +87,7 @@ Optional environment variables:
 - `JARVIS_ROOM_AUDIO_ASR_FALLBACK_BACKEND`: optional fallback override; blank in the current Apple-only deployment.
 - `JARVIS_ROOM_AUDIO_INTERRUPT_ASR_BACKEND` / `JARVIS_ROOM_AUDIO_INTERRUPT_ASR_FALLBACK_BACKEND`: busy-only control-path overrides; the current deployment uses `apple-dictation` with no fallback.
 - `JARVIS_VOICE_APPLE_ASR_HELPER`, `JARVIS_VOICE_APPLE_ASR_LOCALE`, `JARVIS_VOICE_APPLE_ASR_TIMEOUT_SECONDS`, `JARVIS_VOICE_APPLE_ASR_CONTEXTUAL_STRINGS`: native helper path, locale, timeout, and up to 100 short hints. See [`../../voice/README.md`](../../voice/README.md).
-- `JARVIS_ROOM_AUDIO_WAKE_WORD`: legacy transcript-wake setting; room audio no longer uses it to reject turns after Pi-side openWakeWord has accepted them.
+- `JARVIS_ROOM_AUDIO_WAKE_WORD`: legacy alias setting; the independent verifier ignores it and requires exact leading words `hey jarvis` (case/punctuation insensitive).
 - `JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS`: code default `450`; the current room-speaker deployment retains `1000` ms of leading silence, originally added for A2DP first-syllable protection. Change it only after validating acknowledgement and final-answer playback on the active USB path.
 - `JARVIS_ROOM_AUDIO_PROCESSING_ACK_ENABLED`: defaults to `JARVIS_VOICE_PROCESSING_ACK_ENABLED`; when enabled, accepted turns can immediately play the acknowledgement.
 - `JARVIS_ROOM_AUDIO_PROCESSING_ACK_TEXT`: defaults to `JARVIS_VOICE_PROCESSING_ACK_TEXT` / `Generating your response, sir.`
@@ -99,8 +101,10 @@ Optional environment variables:
 - `JARVIS_ROOM_AUDIO_OPENWAKEWORD_MODEL`: defaults to `hey_jarvis`; can also be a local `.tflite`/`.onnx` model path, or comma-separated models.
 - `JARVIS_ROOM_AUDIO_OPENWAKEWORD_NCPU`: defaults to `2`; CPU threads for openWakeWord preprocessing. On the Pi 3 this gives better real-time headroom than the upstream default of `1`.
 - `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_THRESHOLD`: defaults to `0.75` in the installed Pi service; raise it to reduce false wakes, lower it to reduce missed wakes.
-- `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ARM_SECONDS`: defaults to `8.0`; after a wake hit, the current/next VAD utterance may pass through.
-- `JARVIS_ROOM_AUDIO_TRUST_LOCAL_WAKE_WORD`: retained for older deployments; the current Mac room-audio server always trusts Pi-side openWakeWord and does not perform a transcript wake-word re-check.
+- `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_CONSECUTIVE_FRAMES`: defaults to `2`; the same model must stay above threshold for two consecutive 80 ms predictions.
+- `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_LOG_SCORES`: enable temporary numeric score logging; `--local-wake-word-log-seconds` limits it to 600 seconds after detector startup by default. No audio recordings are created by score logging.
+- `JARVIS_ROOM_AUDIO_LOCAL_WAKE_WORD_ARM_SECONDS`: defaults to `3.0`; after a wake hit, the current/next VAD utterance may pass through. Authorization is consumed after one accepted ordinary turn.
+- `JARVIS_ROOM_AUDIO_TRUST_LOCAL_WAKE_WORD`: retained for older deployments; it cannot bypass the Mac Dictation verifier, even if the client sends `requireWakeWord=false`.
 - `JARVIS_ROOM_AUDIO_VAD_SILENCE_SECONDS`: defaults to `1.0`; room audio waits this long after voice ends before finalizing an utterance.
 - `JARVIS_ROOM_AUDIO_VAD_MIN_UTTERANCE_SECONDS`: defaults to `0.5`; shorter clips are dropped before ASR.
 - `JARVIS_ROOM_AUDIO_GREETING_ENABLED`: defaults to `1`; enables `/greeting`; the current Pi service plays it on startup only, not on reconnect.
@@ -147,11 +151,17 @@ Current USB/VAD listener command on the Raspberry Pi:
   --interval 1.0
 ```
 
-Say a wake-word phrase for a normal idle turn:
+Start a two-part conversation (USB full-duplex listener):
 
 ```text
-Jarvis, say the room speaker is online.
+You:    Hey Jarvis.
+JARVIS: Yes sir?
+You:    Say the room speaker is online.
+JARVIS: Generating your response, sir.
+JARVIS: [answer]
 ```
+
+Start your request within five seconds after “Yes sir?” finishes. One-shot wake-plus-command clips are never executed; any extra words in that first clip are ignored.
 
 While the acknowledgement, generation, or final answer is active, say only:
 
@@ -159,7 +169,7 @@ While the acknowledgement, generation, or final answer is active, say only:
 stop
 ```
 
-Bare `stop` is ignored while idle. During a turn, only the exact normalized word `stop` is accepted; longer phrases such as `don't stop` are rejected. This policy lives in `projects/operation-jarvis/voice/voice_commands.py` and is shared across transports. It allows cancellation during playback, but idle interrupt requests invoke neither ASR nor cancellation.
+After “Yes sir?”, only the exact whole utterance `never mind` or `nevermind` silently cancels the follow-up. `cancel` and `stop` are not follow-up cancellation keywords. Bare `stop` outside an authorized follow-up is ignored while idle. During a turn, only the exact normalized word `stop` is accepted; longer phrases such as `don't stop` are rejected. This policy lives in `projects/operation-jarvis/voice/voice_commands.py` and is shared across transports. It allows cancellation during playback, but idle interrupt requests invoke neither ASR nor cancellation.
 
 The local wake-word dependency is required for the current listener. The service installer creates `/home/pi/jarvis-room-audio/.venv` and installs `openwakeword` there by default. If rebuilding manually, provide both required endpoints:
 
@@ -171,7 +181,7 @@ projects/operation-jarvis/raspberry-pi/scripts/install-room-audio-service.sh
 
 The log should say `local wake word online`.
 
-For fixed-window diagnostics without requiring the wake word:
+For legacy fixed-window capture/upload diagnostics only (these cannot complete the new two-part conversation):
 
 ```bash
 /home/pi/jarvis-room-audio/.venv/bin/python \
@@ -213,7 +223,7 @@ ssh -i ~/.ssh/jarvis_dashboard_host -o IdentitiesOnly=yes pi@<private-lan-ip> \
 
 VAD reads continuous PCM audio, uses an RMS threshold to detect speech, keeps preroll, and waits for silence to end an utterance. Minimum voiced duration and maximum clip length limit what is sent.
 
-With `--local-wake-word`, the same stream is resampled to 16 kHz and passed to openWakeWord in 80 ms chunks. Idle utterances without a `hey_jarvis` detection are dropped locally. During a busy USB turn, short clips bypass only the wake check for exact `stop` recognition on the Mac. For ordinary accepted turns, the Mac transcribes and responds without checking wake-word aliases again.
+With `--local-wake-word`, the same stream is resampled to 16 kHz and passed to openWakeWord in 80 ms chunks. Idle utterances without a `hey_jarvis` detection are dropped locally. A wake requires two consecutive predictions at or above 0.75 and allows one candidate wake clip within a 3-second start window. It does not authorize command execution. Busy-mode audio is excluded from wake inference; detector history and pending authorization are cleared across busy transitions so playback cannot arm a later turn. During a busy USB turn, short clips bypass only the wake check for exact `stop` recognition on the Mac. The Mac independently verifies an exact leading “Hey Jarvis” using Apple DictationTranscriber with no contextual hints or fallback. Missing phrases and verifier errors return a silent rejection. Legacy aliases such as “Travis” are not accepted. A verified wake returns only “Yes sir?” and a single-use authorization; only the subsequent request can reach command ASR, the processing acknowledgement, and Pi RPC.
 
 See the [Pi overview](../README.md) and [audio hardware notes](../docs/audio-hardware.md) for the hardware setup.
 
@@ -234,4 +244,55 @@ Offline verification (no live playback, requests or service mutations):
 ```sh
 cd projects/operation-jarvis/raspberry-pi/room_audio
 /path/to/JARVIS/.venv/bin/python -m unittest test_room_audio_control test_room_audio_interrupt
+```
+
+
+## Two-part conversation and Mac wake verification
+
+1. Say **“Hey Jarvis.”** The Pi wake gate and strict Mac Dictation verifier must
+   both accept it. The initial clip is never sent to the LLM, even if it contains
+   a command after the wake phrase.
+2. JARVIS plays cached **“Yes sir?”** with 450 ms of leading silence to protect the first syllable during speaker startup (`JARVIS_ROOM_AUDIO_WAKE_ACK_LEADING_SILENCE_MS`).
+3. Start a separately spoken request within **five seconds after playback ends**.
+   The normal 30-second utterance limit applies; you do not need to finish within
+   five seconds. Wait for the prompt before speaking—talk-over is not supported.
+4. Command ASR completes, then **“Generating your response, sir.”** plays, followed
+   by the answer. No speech within the window returns silently to idle.
+
+The Mac issues a random, memory-only `wakeTicket`, bound to the client process ID
+and source address. `/wake-followup` transitions it from `prompt` to `ready`
+(after playback), then `claim` (at speech onset). Only a claimed ticket can
+submit one command to `/turn`. Prompt tickets expire in 30 seconds, the listening
+window is five seconds, and claimed tickets expire after 40 seconds to allow
+capture/upload. Reuse, wrong clients, expired tickets, and unclaimed tickets are
+rejected. New wakes revoke older tickets for that client. Cancellation, client
+capture recovery, and restarts clear/revoke authorization (unused server tickets
+also expire). These are on the same authenticated LAN transport as `/turn`, not
+a substitute for TLS or speaker authentication.
+
+The Pi never blocks PCM capture on the claim HTTP call. Busy/playback audio is
+excluded from wake inference, and a partial playback clip/preroll is discarded
+when busy mode ends so “Yes sir?” cannot become the request. A noise-triggered
+speech start can consume the one-request window; say “Hey Jarvis” again if so.
+
+`GET /health` reports `conversationMode: "two-part"`, `wakeAckText`,
+`followupStartSeconds`, `transcriptWakeCheckEnabled: true`, and `wakeVerification`.
+Wake success has `status: "awaiting_command"`, `pending: false`, and only the
+“Yes sir?” audio. Rejections have `accepted: false`, `pending: false`, and no audio.
+Client logs redact tickets; rejected transcripts are not logged. Uploaded WAVs
+are deleted by the HTTP handler. Startup greetings, Watch speech synthesis, and
+busy-only “stop” interruption remain separate. Saying exactly “never mind” or “nevermind” as the follow-up
+request cancels silently, before the processing acknowledgement. Matching ignores
+case and punctuation; longer phrases are ordinary requests. “Cancel” and “stop”
+are not cancellation keywords in this listening phase. The separate busy-only
+“stop” interrupt remains unchanged.
+
+This flow requires the updated USB full-duplex Pi client. Legacy fixed-window
+and Bluetooth clients cannot execute one-shot requests and receive
+`two_part_client_required` after a verified wake.
+
+Verify the helper if all wake clips are rejected:
+
+```bash
+projects/operation-jarvis/voice/apple_asr/.build/release/jarvis-apple-asr health --engine dictation --locale en-CA
 ```

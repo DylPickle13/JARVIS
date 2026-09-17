@@ -56,6 +56,7 @@ if str(VOICE_ROOT) not in sys.path:
     sys.path.insert(0, str(VOICE_ROOT))
 
 from room_audio_control import RoomAudioControl
+from room_audio_followup import WakeFollowups
 
 import config  # noqa: E402
 
@@ -63,6 +64,7 @@ config.load_project_env(PROJECT_ROOT / ".env")
 
 import pi_rpc  # noqa: E402
 import voice_pipeline  # noqa: E402
+from asr_backends import AppleSpeechASRBackend, AppleSpeechASRSettings  # noqa: E402
 from voice_commands import STOP_COMMAND, parse_voice_interrupt_command  # noqa: E402
 
 LOGGER = config.get_logger("operation_jarvis.room_audio")
@@ -104,6 +106,10 @@ WAKE_WORDS = tuple(
         if word.strip()
     )
 )
+# Deliberately independent of permissive legacy wake aliases (e.g. "Travis").
+VERIFIED_WAKE_PHRASE = "hey jarvis"
+WAKE_ACK_TEXT = "Yes sir?"
+WAKE_ACK_LEADING_SILENCE_MS = config.get_int_env("JARVIS_ROOM_AUDIO_WAKE_ACK_LEADING_SILENCE_MS", 450, minimum=0)
 TURN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$")
 
 
@@ -181,6 +187,18 @@ def normalize_wake_words(transcript: str) -> str:
     if callable(normalizer):
         return str(normalizer(transcript)).strip()
     return transcript.strip()
+
+
+def has_verified_wake_phrase(transcript: str) -> bool:
+    """Require exact leading words, ignoring punctuation/case but not spelling."""
+    words = re.findall(r"[^\W_]+", transcript.casefold(), flags=re.UNICODE)
+    return words[:2] == ["hey", "jarvis"]
+
+
+def is_followup_cancellation(transcript: str) -> bool:
+    """Exact whole-utterance cancellation only while taking the follow-up request."""
+    words = re.findall(r"[^\W_]+", transcript.casefold(), flags=re.UNICODE)
+    return words in (["never", "mind"], ["nevermind"])
 
 
 def is_loopback_address(raw: str) -> bool:
@@ -281,6 +299,15 @@ class RoomAudioBridge:
             ),
         )
         self._pipeline = voice_pipeline.VoicePipeline(pipeline_config, response_callback=self._run_pi_response)
+        # Independent, local-only verification with no wake-word hints or fallback.
+        # Keep ordinary command ASR and busy-only stop ASR unchanged.
+        self._wake_verifier = AppleSpeechASRBackend(AppleSpeechASRSettings(
+            helper_path=Path(pipeline_config.apple_asr_helper_path),
+            locale=pipeline_config.apple_asr_locale,
+            engine="dictation",
+            timeout_seconds=pipeline_config.apple_asr_timeout_seconds,
+            contextual_strings=(),
+        ))
         self._lock = threading.Lock()
         self._active_pi_turn_lock = threading.Lock()
         self._active_pi_turn_id = ""
@@ -289,6 +316,8 @@ class RoomAudioBridge:
         self.control = RoomAudioControl()
         self._ack_lock = threading.Lock()
         self._ack_audio_b64: str | None = None
+        self._wake_ack_audio_b64: str | None = None
+        self._followups = WakeFollowups()
         self._model = model
         self._thinking = thinking
 
@@ -305,6 +334,7 @@ class RoomAudioBridge:
         return self._pipeline.asr_status()
 
     def warm_up(self) -> None:
+        self._wake_verifier.warm_up()
         self._pipeline.warm_up()
 
     def close(self) -> None:
@@ -386,7 +416,21 @@ class RoomAudioBridge:
                 if ack_path is not None:
                     ack_path.unlink(missing_ok=True)
 
+    def _synthesize_wake_ack(self) -> str:
+        with self._ack_lock:
+            if self._wake_ack_audio_b64 is None:
+                path = self._pipeline.synthesize_notice(WAKE_ACK_TEXT)
+                try:
+                    # Even USB playback can clip the first syllable while the speaker wakes.
+                    self._wake_ack_audio_b64 = base64.b64encode(
+                        combine_wavs([path], leading_silence_ms=WAKE_ACK_LEADING_SILENCE_MS)
+                    ).decode("ascii")
+                finally:
+                    path.unlink(missing_ok=True)
+            return self._wake_ack_audio_b64
+
     def warm_processing_ack(self) -> None:
+        self._synthesize_wake_ack()
         if PROCESSING_ACK_ENABLED and PROCESSING_ACK_TEXT:
             self._synthesize_processing_ack()
 
@@ -646,6 +690,9 @@ class RoomAudioBridge:
             return dict(response) if isinstance(response, dict) else None
 
     def cancel_turn(self, turn_id: str) -> dict[str, Any] | None:
+        followups = getattr(self, "_followups", None)
+        if followups is not None:
+            followups.revoke_turn(turn_id)
         with self._jobs_lock:
             self._prune_jobs_locked()
             job = self._jobs.get(turn_id)
@@ -694,6 +741,8 @@ class RoomAudioBridge:
         with self._jobs_lock:
             self._prune_jobs_locked()
             turn_found = turn_id in self._jobs
+        followups = getattr(self, "_followups", None)
+        turn_found = turn_found or bool(followups is not None and followups.has_turn(turn_id))
         if not turn_found:
             return {
                 "ok": False,
@@ -731,18 +780,69 @@ class RoomAudioBridge:
             "status": "cancelled" if command == STOP_COMMAND else "ignored",
         }
 
+    @staticmethod
+    def _wake_rejection(reason: str, started: float) -> dict[str, Any]:
+        return {"ok": True, "accepted": False, "pending": False, "status": "rejected",
+                "reason": reason, "ackText": "", "audioWavBase64": "", "audioContentType": "",
+                "totalSeconds": time.monotonic() - started}
+
+    def _authorize_room_turn(
+        self, wav_path: Path, *, started: float, client_key: str,
+        wake_ticket: str, requested_turn_id: str, followup_supported: bool,
+    ) -> dict[str, Any] | None:
+        # Only a claimed, single-use server ticket authorizes command execution.
+        if wake_ticket:
+            if not self._followups.consume(wake_ticket, client_key):
+                return self._wake_rejection("invalid_wake_authorization", started)
+            return None
+        verification_started = time.monotonic()
+        try:
+            verified = has_verified_wake_phrase(self._wake_verifier.transcribe(wav_path))
+            reason = "wake_phrase_not_verified"
+        except Exception:
+            verified = False
+            reason = "wake_verification_unavailable"
+        LOGGER.info("Room wake verification: accepted=%s reason=%s seconds=%.3f",
+                    verified, "verified" if verified else reason,
+                    time.monotonic() - verification_started)
+        if not verified:
+            return self._wake_rejection(reason, started)
+        if not followup_supported or not client_key or not requested_turn_id:
+            return self._wake_rejection("two_part_client_required", started)
+        # No command ASR, processing ack, job, or LLM for the initial wake clip,
+        # even when it contains extra words. The user speaks the request next.
+        audio = self._synthesize_wake_ack()
+        ticket = self._followups.issue(client_key, requested_turn_id)
+        control = getattr(self, "control", None)
+        if control is not None and control.is_cancelled(requested_turn_id):
+            self._followups.revoke_turn(requested_turn_id)
+            return self._wake_rejection("wake_cancelled", started)
+        return {"ok": True, "accepted": True, "pending": False, "status": "awaiting_command",
+                "turnId": requested_turn_id, "wakeTicket": ticket,
+                "listenSeconds": self._followups.start_seconds,
+                "ackText": WAKE_ACK_TEXT, "audioWavBase64": audio, "audioContentType": "audio/wav",
+                "totalSeconds": time.monotonic() - started}
+
     def handle_wav_async_ack(
         self,
         wav_path: Path,
         *,
         require_wake_word: bool = True,
         requested_turn_id: str = "",
+        client_key: str = "",
+        wake_ticket: str = "",
+        followup_supported: bool = False,
     ) -> dict[str, Any]:
         started = time.monotonic()
+        rejection = self._authorize_room_turn(wav_path, started=started, client_key=client_key,
+            wake_ticket=wake_ticket, requested_turn_id=requested_turn_id, followup_supported=followup_supported)
+        if rejection is not None:
+            return rejection
         transcript, input_seconds, asr_seconds = self._pipeline.transcribe_audio(wav_path)
-        # Pi-side openWakeWord is the authoritative wake gate. Once a turn reaches
-        # Whisper, answer the transcription as-is instead of applying a second,
-        # fragile transcript wake-word check.
+        # No acknowledgement or generation for an exact "never mind" request.
+        if is_followup_cancellation(transcript):
+            return {"ok": True, "accepted": False, "pending": False, "status": "cancelled",
+                    "audioWavBase64": "", "ackText": ""}
 
         ack_audio_b64 = ""
         if PROCESSING_ACK_ENABLED and PROCESSING_ACK_TEXT:
@@ -802,12 +902,19 @@ class RoomAudioBridge:
             "thinking": self.thinking,
         }
 
-    def handle_wav(self, wav_path: Path, *, require_wake_word: bool = True) -> dict[str, Any]:
+    def handle_wav(self, wav_path: Path, *, require_wake_word: bool = True,
+                   client_key: str = "", wake_ticket: str = "", requested_turn_id: str = "",
+                   followup_supported: bool = False) -> dict[str, Any]:
         started = time.monotonic()
+        rejection = self._authorize_room_turn(wav_path, started=started, client_key=client_key,
+            wake_ticket=wake_ticket, requested_turn_id=requested_turn_id, followup_supported=followup_supported)
+        if rejection is not None:
+            return rejection
         transcript, input_seconds, asr_seconds = self._pipeline.transcribe_audio(wav_path)
-        # Pi-side openWakeWord is the authoritative wake gate. Once a turn reaches
-        # Whisper, answer the transcription as-is instead of applying a second,
-        # fragile transcript wake-word check.
+        # No acknowledgement or generation for an exact "never mind" request.
+        if is_followup_cancellation(transcript):
+            return {"ok": True, "accepted": False, "pending": False, "status": "cancelled",
+                    "audioWavBase64": "", "ackText": ""}
 
         return self._synthesize_accepted_turn(
             wav_path,
@@ -897,8 +1004,19 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
             {
                 "ok": True,
                 "service": "operation-jarvis-room-audio",
-                "wakeWords": list(WAKE_WORDS),
-                "transcriptWakeCheckEnabled": False,
+                "wakeWords": [VERIFIED_WAKE_PHRASE],
+                "transcriptWakeCheckEnabled": True,
+                "conversationMode": "two-part",
+                "wakeAckText": WAKE_ACK_TEXT,
+                "wakeAckLeadingSilenceMs": WAKE_ACK_LEADING_SILENCE_MS,
+                "followupStartSeconds": WakeFollowups.start_seconds,
+                "wakeVerification": {
+                    "backend": "apple-dictation",
+                    "phrase": VERIFIED_WAKE_PHRASE,
+                    "match": "strict-prefix",
+                    "failClosed": True,
+                    "contextualHints": False,
+                },
                 "model": self.server.bridge.model,
                 "thinking": self.server.bridge.thinking,
                 "asr": self.server.bridge.asr_status,
@@ -961,8 +1079,38 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
         except (ValueError, TypeError):
             self._send_json({"ok": False, "error": "invalid or superseded request"}, HTTPStatus.CONFLICT)
 
+    def _followup_client_key(self, payload: dict[str, Any]) -> str:
+        client_id = payload.get("clientID", "")
+        if not isinstance(client_id, str) or TURN_ID_PATTERN.fullmatch(client_id) is None:
+            return ""
+        return self.client_address[0] + "/" + client_id
+
+    def _handle_wake_followup(self) -> None:
+        if not self._authorized():
+            self._send_json({"ok": False, "error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+            return
+        try:
+            size = int(self.headers.get("content-length", "0"))
+            if not 0 < size <= 4096:
+                raise ValueError("invalid size")
+            payload = json.loads(self.rfile.read(size))
+            if not isinstance(payload, dict):
+                raise ValueError("invalid payload")
+            client = self._followup_client_key(payload)
+            ticket, action = payload.get("wakeTicket"), payload.get("action")
+            if not client or not isinstance(ticket, str) or len(ticket) > 128 or action not in {"ready", "claim", "cancel"}:
+                raise ValueError("invalid followup request")
+            accepted = self.server.bridge._followups.transition(ticket, client, action)
+            self._send_json({"ok": accepted, "listenSeconds": WakeFollowups.start_seconds},
+                            HTTPStatus.OK if accepted else HTTPStatus.CONFLICT)
+        except (ValueError, TypeError):
+            self._send_json({"ok": False, "error": "invalid followup request"}, HTTPStatus.BAD_REQUEST)
+
     def do_POST(self) -> None:  # noqa: N802 - stdlib method name
         path = urlparse(self.path).path.rstrip("/") or "/"
+        if path == "/wake-followup":
+            self._handle_wake_followup()
+            return
         if path in {"/client-state", "/control/stop"}:
             self._handle_control(path)
             return
@@ -997,6 +1145,11 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
             async_ack = bool(payload.get("asyncAck", payload.get("async_ack", False)))
             requested_turn_id = str(payload.get("turnId") or payload.get("turn_id") or "").strip()
             client_busy = payload.get("clientBusy", payload.get("client_busy", False)) is True
+            client_key = self._followup_client_key(payload)
+            wake_ticket = payload.get("wakeTicket", "")
+            if not isinstance(wake_ticket, str) or len(wake_ticket) > 128:
+                raise ValueError("invalid wake authorization")
+            followup_supported = payload.get("wakeFollowupSupported") is True
             if requested_turn_id and TURN_ID_PATTERN.fullmatch(requested_turn_id) is None:
                 raise ValueError("turnId must be 8-128 letters, digits, underscores, or hyphens")
             if path == "/interrupt" and not requested_turn_id:
@@ -1021,9 +1174,12 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                     wav_path,
                     require_wake_word=require_wake_word,
                     requested_turn_id=requested_turn_id,
+                    client_key=client_key, wake_ticket=wake_ticket, followup_supported=followup_supported,
                 )
             else:
-                response = self.server.bridge.handle_wav(wav_path, require_wake_word=require_wake_word)
+                response = self.server.bridge.handle_wav(wav_path, require_wake_word=require_wake_word,
+                    requested_turn_id=requested_turn_id, client_key=client_key,
+                    wake_ticket=wake_ticket, followup_supported=followup_supported)
             self._send_json(response)
         except voice_pipeline.VoicePipelineNoOutputError as exc:
             if path == "/interrupt":
