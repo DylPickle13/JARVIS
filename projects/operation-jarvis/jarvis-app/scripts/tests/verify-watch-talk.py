@@ -44,22 +44,31 @@ print('Watch Talk source contracts passed (physical behavior not tested).')
 
 art = read('JARVISWatchWidget/ResonanceArtwork.swift')
 assert 'JARVISResonanceArtwork()' in widget
-assert 'JARVISWidgetTimerAnimationFont' not in widget
+assert 'JARVISWidgetTimerAnimationFont.register()' in widget
 assert 'ResonanceStaticFrame(simplified: reducedLuminance)' in art
 assert art.count('Canvas {') == 1
 assert '.widgetAccentable()' in art and '.accessibilityHidden(true)' in art
-for forbidden in ['JARVISWidgetTimer', 'ResonanceFrame(', 'movingOnly', 'allowsMotion',
-                  'Timer(', 'TimelineView(', 'URLSession', 'repeatForever',
-                  'reloadTimelines', '.animation(', '.mask', 'Date(', 'phase:']:
-    assert forbidden not in art, forbidden
+assert '@Environment(\\.accessibilityReduceMotion)' in art
+assert '!reducedLuminance && !reduceMotion && JARVISWidgetTimerAnimationFont.isAvailable' in art
+assert 'private let frameCount = 32' in art
+assert 'JARVISWidgetTimerFrameWindow(' in art and '.id(animates)' in art
+assert 'phase: Double(index) / Double(frameCount)' in art
+assert 'var phase: Double? = nil' in art
+assert 'if let phase, !simplified {' in art
+assert 'for index in 0..<3' in art
+assert 'triangle(1.02 - 0.72 * u)' in art
+assert 'StrokeStyle(lineWidth: 2.8, lineJoin: .round)' in art
+assert 'sqrt(max(0, sin(.pi * u)))' in art
+assert 'triangle(0.22)' in art
+assert 'CascadeFieldGeometry' not in art and 'linearGradient' not in art
 assert 'func triangle(_ insetScale: CGFloat) -> Path' in art
 assert 'CGPoint(x: -39, y: -34), CGPoint(x: 39, y: -34)' in art
 assert 'CGPoint(x: 42, y: -29), CGPoint(x: 3, y: 37)' in art
 assert 'path.closeSubpath()' in art
 assert 'context.stroke(triangle(1)' in art
 assert 'context.stroke(triangle(0.84)' in art
-assert 'context.fill(triangle(simplified ? 0.62 : 0.65)' in art
-assert 'if !simplified {' in art
-for forbidden in ['ellipseIn:', 'addArc(', 'chevron', 'underscore', 'waveform', 'Color(red:', '.blur(']:
+assert 'triangle(simplified ? 0.62 : 0.65)' in art
+for forbidden in ['Timer(', 'TimelineView(', 'URLSession', 'repeatForever',
+                  'reloadTimelines', '.animation(', 'Date(', 'Color(red:', '.blur(']:
     assert forbidden not in art, forbidden
-print('Triangular arc reactor is a single static monochrome Canvas with layered rims and an inverted emitter.')
+print('Surge Cascade: 32 timer-selected phases; static reduced-luminance/Reduce Motion/font fallback.')

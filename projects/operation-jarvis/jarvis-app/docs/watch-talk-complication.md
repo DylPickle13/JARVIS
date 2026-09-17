@@ -84,3 +84,25 @@ Only artwork and its source contracts changed. Talk input/submission and Neural 
 The owner clarified the intended reactor is the inverted triangular Mark VI design, not the earlier circular reactor. This supersedes the circular candidate above: a bright clipped-tip inverted triangle sits inside two separated steel-white triangular rims. Reduced luminance omits the fine top bevel and slightly shrinks the emitter. No color, blur, animation, or additional rendering layer is introduced.
 
 Reference: https://www.xenom0rph.com/2018/03/hot-toys-iron-man-mark-vi-16-mms378-d17.html (Mark VI replica photographs). Geometry is drawn locally, not a bundled reference photograph. Existing artwork names, widget routing, native input, and Neural Core are unchanged. Deployed as Build194; physical visual acceptance remains pending.
+
+
+## Cascade Field animation (Build195 candidate)
+
+Owner selected the animated Cascade Field preview and authorized restoring Talk motion. This supersedes the static-only requirement for Talk, not for its native input or submission behavior.
+
+The clipped triangular emitter and layered rims remain fixed. Six expanding triangular fields, three counter-traveling tapered energy packets, and a clipped grayscale emitter scan provide decorative movement. This is never a microphone/listening-state indicator.
+
+Uses the existing, unchanged shared timer-font selector: **32 authored phases over its two-second cycle (nominal 16 FPS)**, rather than the offline GIF's 3.2-second/20-FPS loop. There are 32 Canvas scenes and 64 timer masks; this is a rendering-cost increase over Build194, not an energy optimization. Talk explicitly registers the already bundled font. No process timers, animation loops, networking, or timeline reloads drive the artwork. The system may throttle or suspend presentation; the nominal rate is not a measured physical result.
+
+Always-On/reduced luminance, Reduce Motion, or an unavailable font selects one static Canvas with no timer masks. Changes to animation eligibility rebuild selector identity. The wrapper remains accentable and hidden from accessibility so the widget retains its Talk label.
+
+Neural Core/shared selector implementation, widget identifiers/URLs, native composer, one-shot Done submission, terminal and backend remain unchanged. Build195 is not yet installed. Physical 44-point, accent, Always-On/resume, Reduce Motion, stability, and matched battery acceptance remain pending. The full legacy verifier has unrelated stale contracts and is not claimed green.
+
+
+## Surge Cascade (Build196 candidate)
+
+Owner confirmed Build195 works on Watch but found its motion too subtle, then selected **Surge Cascade** from the bold motion studies and authorized implementation/deployment. Three thick, high-contrast triangular waves move inward across a dark emitter, ending at a fixed small triangular core. The rims stay fixed. This replaces the fine expanding fields, perimeter particles, and emitter scan; it does not increase the existing 32-frame/64-mask selector budget.
+
+The selected Surge Cascade study was adapted to the existing two-second selector cycle (nominal 16 FPS versus the study's 2.4-second/20-FPS loop). The broad wave stroke is 2.8 canonical units, approximately 1.1 points at a 44-point size. Static reduced-luminance, Reduce Motion, and unavailable-font fallbacks remain unchanged. Talk and Neural Core behavior remain unchanged.
+
+Build196 was archived, audited, sealed, installed, and launched on both devices. All nine Pi sessions, backend, and runtime configuration were preserved. Physical motion/readability/Always-On and matched battery/energy acceptance remain pending; stronger motion does not establish battery impact.

@@ -123,6 +123,10 @@ struct JARVISWatchLauncherWidget: Widget {
 struct JARVISWatchTalkWidget: Widget {
     let kind = "JARVISWatchTalkWidget.v1"
 
+    init() {
+        JARVISWidgetTimerAnimationFont.register()
+    }
+
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: JARVISWatchLauncherProvider()) { _ in
             JARVISWatchLauncherView(talk: true)
