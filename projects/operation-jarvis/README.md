@@ -9,6 +9,7 @@ This directory connects JARVIS to the things around the house: plugs, the air pu
 - **Room audio:** Raspberry Pi capture/playback with Mac-side Apple SpeechTranscriber for ordinary turns, DictationTranscriber for busy-only `stop`, Pi RPC, and Piper speech on port `8791`.
 - **Apple apps:** iPhone, Watch, and two widgets per platform.
 - **Smart plugs:** local TP-Link Kasa control through a fixed plug catalogue.
+- **Security foundation (local-only):** optional, gitignored `security/` directory; not included in this repository or connected to jarvisd/apps.
 - **Air purifier:** VeSync/Levoit Vital 200S-P status and validated controls.
 - **Media:** Google Cast, YouTube, Spotify Connect, and short room speech.
 - **Provider quotas:** read-only Codex/Copilot status for `jarvisd` and the apps.
@@ -23,6 +24,7 @@ projects/operation-jarvis/
 ├── quotas/                     # read-only provider quota collection
 ├── raspberry-pi/room_audio/    # Pi client and Mac room-audio server
 ├── smart-plug/                 # local Kasa adapter and private catalogue
+├── security/                   # optional local-only directory; gitignored
 ├── voice/                      # neutral ASR/Pi RPC/Piper voice pipeline
 ├── jarvis.py                   # closed Operation JARVIS CLI implementation
 └── jarvis-cli                  # stable executable wrapper

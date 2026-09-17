@@ -1,6 +1,9 @@
 .env
 .secrets/
 
+# Local-only security implementation and configuration
+/security/
+
 # Runtime/generated artifacts
 data/*
 !data/.gitkeep
