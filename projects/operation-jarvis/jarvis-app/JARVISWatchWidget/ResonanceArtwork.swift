@@ -8,8 +8,9 @@ struct JARVISResonanceArtwork: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // Existing timer-font selector repeats every two seconds: 32 authored phases.
-    private let frameCount = 32
+    // Two-second cycle: 16 phases (nominal 8 FPS), 32 masks instead of 64.
+    // Bound Talk's scene count after a physical widget memory-limit termination.
+    private let frameCount = 16
     private var animates: Bool {
         !reducedLuminance && !reduceMotion && JARVISWidgetTimerAnimationFont.isAvailable
     }

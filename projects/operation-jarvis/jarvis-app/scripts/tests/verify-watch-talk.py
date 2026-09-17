@@ -50,7 +50,7 @@ assert art.count('Canvas {') == 1
 assert '.widgetAccentable()' in art and '.accessibilityHidden(true)' in art
 assert '@Environment(\\.accessibilityReduceMotion)' in art
 assert '!reducedLuminance && !reduceMotion && JARVISWidgetTimerAnimationFont.isAvailable' in art
-assert 'private let frameCount = 32' in art
+assert 'private let frameCount = 16' in art
 assert 'JARVISWidgetTimerFrameWindow(' in art and '.id(animates)' in art
 assert 'phase: Double(index) / Double(frameCount)' in art
 assert 'var phase: Double? = nil' in art
@@ -71,4 +71,4 @@ assert 'triangle(simplified ? 0.62 : 0.65)' in art
 for forbidden in ['Timer(', 'TimelineView(', 'URLSession', 'repeatForever',
                   'reloadTimelines', '.animation(', 'Date(', 'Color(red:', '.blur(']:
     assert forbidden not in art, forbidden
-print('Surge Cascade: 32 timer-selected phases; static reduced-luminance/Reduce Motion/font fallback.')
+print('Surge Cascade: 16 timer-selected phases (nominal 8 FPS); static reduced-luminance/Reduce Motion/font fallback.')

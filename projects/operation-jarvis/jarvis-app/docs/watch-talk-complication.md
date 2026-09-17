@@ -106,3 +106,9 @@ Owner confirmed Build195 works on Watch but found its motion too subtle, then se
 The selected Surge Cascade study was adapted to the existing two-second selector cycle (nominal 16 FPS versus the study's 2.4-second/20-FPS loop). The broad wave stroke is 2.8 canonical units, approximately 1.1 points at a 44-point size. Static reduced-luminance, Reduce Motion, and unavailable-font fallbacks remain unchanged. Talk and Neural Core behavior remain unchanged.
 
 Build196 was archived, audited, sealed, installed, and launched on both devices. All nine Pi sessions, backend, and runtime configuration were preserved. Physical motion/readability/Always-On and matched battery/energy acceptance remain pending; stronger motion does not establish battery impact.
+
+## Reduced scene budget (Build197 candidate)
+
+Owner reported frozen Surge Cascade and a nonresponsive Talk complication. A Watch jetsam report dated 2026-09-17 08:39:41 EDT identifies `JARVISWatchWidget` as terminated for `per-process-limit`. The report establishes widget-extension memory-limit termination, not exclusive attribution to Talk artwork. Direct `jarvis://talk` launch succeeded and the owner confirmed native input appeared.
+
+At the owner's request, Talk uses 16 phases over the unchanged two-second cycle (nominal 8 FPS), reducing its Canvas scene count from 32 to 16 and timer masks from 64 to 32. Wave geometry, static accessibility/Always-On fallbacks, routing, submission, shared selector and Neural Core remain unchanged. This halves authored scenes/masks, not necessarily total process memory. Build/install, physical tap/motion, memory stability and energy acceptance are separate; physical acceptance remains pending.
