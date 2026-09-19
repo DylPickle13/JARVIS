@@ -1,6 +1,10 @@
 # Room Audio / Session 10
 
-Deployed 2026-09-19: iPhone and Watch 0.3.0 (200), backend `20260919T215836Z-room-session10`.
+**Current native build:** the owner reports Build201 installed on both iPhone
+and Watch (2026-09-19). Build201 was not independently verified in this review.
+
+Historical rollout below: iPhone and Watch 0.3.0 (200), backend
+`20260919T215836Z-room-session10`, deployed 2026-09-19.
 
 - One Room Audio card opens the actual `jarvis-ios-10` Pi terminal. Both microphones submit to that one interactive process through a private Unix socket; neither server creates a separate RPC conversation in shared mode.
 - Sessions 1–9 retain their pane/PID, attachment/socket and exact history identities. Ordinary New/Siri allocation excludes 10. Reconnecting to an offline 10 never creates a replacement conversation.

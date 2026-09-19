@@ -1,4 +1,6 @@
-> **Latest checkpoint:** `20260919T215836Z-room-session10`, native Build200.
+> **Backend checkpoint:** `20260919T215836Z-room-session10`.
+> The owner now reports native Build201 on iPhone and Watch; the recorded
+> Build200 verification remains historical evidence, not a Build201 audit.
 > CLI/Pi and native device routing below are retained; shared Room Audio now uses
 > Session 10. See [rollout evidence and limits](../../jarvis-app/docs/room-session10.md).
 > The sections below record earlier milestones; installed records are authoritative.

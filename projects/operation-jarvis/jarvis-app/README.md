@@ -2,8 +2,9 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Installed checkpoint:** 0.3.0 (200), installed and launched on both iPhone and
-Watch on 2026-09-19. The Room Audio card opens shared Session 10; see
+**Current installed build:** 201 on both iPhone and Watch, reported by the owner
+on 2026-09-19. The verified Build200 rollout is retained as historical evidence,
+not verification of Build201. The Room Audio card opens shared Session 10; see
 [rollout and remaining physical acceptance](docs/room-session10.md).
 Device controls now use `/api/v1/device-command` with existing app authentication,
 a per-command request ID and redirect refusal. No automatic write retry or legacy
