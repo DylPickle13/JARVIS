@@ -1,0 +1,47 @@
+# Default private: publish only individually reviewed source/docs/templates.
+# New files and directories require review before adding an exception here.
+/*
+!/.gitignore
+!/README.md
+!/CLI.md
+!/security
+!/security_cli.py
+!/test_security_cli.py
+!/archive_probe.py
+!/archive_download_probe.py
+!/test_archive_download_probe.py
+!/continuous_recording.py
+!/requirements.txt
+!/requirements-archive.txt
+!/.env.example
+!/camera.env.example
+!/devices.example.json
+
+# Explicit private categories (also covered by the default rule above).
+.env
+.env.*
+!.env.example
+/devices.json
+/planned-devices.json
+/.secrets/
+/.locks/
+/.venv*/
+/private-archive/
+/private-notes/
+/logs/
+/runtime/
+/data/
+__pycache__/
+*.py[cod]
+*.log
+*.jsonl
+*.sqlite*
+*.db
+*.ts
+*.mp4
+*.jpg
+*.png
+# Household commissioning, inventory, storage and recording history.
+/SD-CARD.md
+/DOORBELL.md
+/SETUP-TODAY.md

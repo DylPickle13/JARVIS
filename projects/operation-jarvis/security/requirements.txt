@@ -1,0 +1,2 @@
+# Isolated security dependency. Do not install into/upgrade the working plug environment.
+python-kasa==0.10.2

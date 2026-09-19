@@ -1,8 +1,8 @@
 .env
 .secrets/
 
-# Local-only security implementation and configuration
-/security/
+# Security publishes only reviewed source/docs/templates; private data and
+# unreviewed new files are excluded by security/.gitignore.
 
 # Runtime/generated artifacts
 data/*

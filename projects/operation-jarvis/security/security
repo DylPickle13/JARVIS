@@ -1,0 +1,5 @@
+#!/bin/sh
+# Always use this module's isolated interpreter, regardless of caller cwd.
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 2
+cd "$ROOT" || exit 2
+exec "$ROOT/.venv-313/bin/python" security_cli.py "$@"

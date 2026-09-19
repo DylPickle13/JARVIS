@@ -1,0 +1,3 @@
+# Experimental probes only; install separately from the production CLI environment.
+-r requirements.txt
+pytapo==3.4.19
