@@ -126,6 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Control VeSync/Levoit air purifiers for Operation JARVIS.",
     )
     parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--expected-cid", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--retry-cooldown", action="store_true", help="One owner-requested read despite local cooldown; never for writes")
 
     sub = parser.add_subparsers(dest="command", required=True)
@@ -183,6 +184,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.expected_cid is not None:
+        writes = {"on", "off", "toggle", "mode", "speed", "display", "child-lock",
+                  "light-detection", "auto-preference", "timer", "clear-timer"}
+        if args.command not in writes or not args.expected_cid or getattr(args, "device", None) != args.expected_cid:
+            parser.error("--expected-cid requires a write to the exact explicit CID")
+
     if args.command == "doctor":
         _print_doctor(args.json)
         return 0
@@ -191,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--retry-cooldown is only allowed for status/status-all")
     try:
         settings = load_settings()
-        controller = AirPurifierController(settings, retry_cooldown=args.retry_cooldown)
+        controller = AirPurifierController(settings, retry_cooldown=args.retry_cooldown, expected_cid=args.expected_cid)
         if args.command == "list":
             _print_many(run(controller.list()), args.json)
         elif args.command == "status-all":

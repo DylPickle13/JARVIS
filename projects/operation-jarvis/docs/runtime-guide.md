@@ -37,7 +37,8 @@ Check the script's scope before running it against a live environment. The docum
 | Tools, lazy schemas, attachments, and integrations | [`.pi/extensions/`](../../../.pi/extensions/) |
 | Explicit durable memory | [`.pi/memory/`](../../../.pi/memory/) |
 | Private scheduler and retained results | [`.pi/scheduler/`](../../../.pi/scheduler/) |
-| Native apps, `jarvisd`, and `terminald` | [`jarvis-app/`](../jarvis-app/) |
+| Shared control backend (`jarvisd`) | [`jarvisd/`](../jarvisd/) |
+| Native apps and `terminald` | [`jarvis-app/`](../jarvis-app/) |
 | Mac-side voice processing | [`voice/`](../voice/) |
 | Raspberry Pi capture/playback transport | [`room_audio/`](../raspberry-pi/room_audio/) |
 | Device control, media, and related integrations | [`operation-jarvis/`](../) |

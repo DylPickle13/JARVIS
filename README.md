@@ -58,7 +58,7 @@ The [interactive architecture map](https://dylpickle13.github.io/) walks through
 | Persistent sessions and voice | [`pi_rpc.py`](pi_rpc.py), [voice pipeline](projects/operation-jarvis/voice/voice_pipeline.py) | [RPC tests](projects/operation-jarvis/voice/test_pi_rpc.py), [voice tests](projects/operation-jarvis/voice/test_voice_pipeline.py) |
 | Tool loading, memory, browser | [lazy tools](.pi/extensions/99-lazy-tools.ts), [memory](.pi/extensions/35-memory.ts), [browser](.pi/extensions/50-browser/) | [tool-loading tests](.pi/scripts/tests/pi-lazy-tools.test.mjs) |
 | Scheduled results | [scheduler](.pi/scheduler/runner.py) | [scheduler tests](.pi/scheduler/tests/) |
-| Native state and control | [`jarvisd`](projects/operation-jarvis/jarvis-app/jarvisd/jarvisd.py) | [API and state tests](projects/operation-jarvis/jarvis-app/jarvisd/tests/) |
+| Native state and control | [`jarvisd`](projects/operation-jarvis/jarvisd/jarvisd.py) | [API and state tests](projects/operation-jarvis/jarvisd/tests/) |
 | Apple clients and shared models | [SwiftUI app](projects/operation-jarvis/jarvis-app/JARVIS/), [JARVISKit](projects/operation-jarvis/jarvis-app/JARVISKit/) | [shared Swift tests](projects/operation-jarvis/jarvis-app/JARVISKit/Tests/JARVISKitTests/) |
 
 **Stack:** Python, TypeScript/JavaScript, Swift/SwiftUI, SQLite, SSH/tmux, macOS, iOS/watchOS, and Raspberry Pi.

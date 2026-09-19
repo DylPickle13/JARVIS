@@ -55,6 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
     for command in ("status", "on", "off", "toggle"):
         p = sub.add_parser(command, help=f"{command} a plug")
         p.add_argument("plug", help="Configured plug name or direct IP address")
+        if command != "status":
+            p.add_argument("--expected-host", default=None, help=argparse.SUPPRESS)
 
     return parser
 
@@ -84,11 +86,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "status":
             _print_status(run(controller.status(args.plug)), args.json)
         elif args.command == "on":
-            _print_status(run(controller.set_power(args.plug, True)), args.json)
+            _print_status(run(controller.set_power(args.plug, True, expected_host=args.expected_host)), args.json)
         elif args.command == "off":
-            _print_status(run(controller.set_power(args.plug, False)), args.json)
+            _print_status(run(controller.set_power(args.plug, False, expected_host=args.expected_host)), args.json)
         elif args.command == "toggle":
-            _print_status(run(controller.toggle(args.plug)), args.json)
+            _print_status(run(controller.toggle(args.plug, expected_host=args.expected_host)), args.json)
         else:
             parser.error(f"Unknown command: {args.command}")
     except KeyboardInterrupt:

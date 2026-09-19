@@ -10,6 +10,17 @@ Target device: **Levoit Vital 200S-P / Vital 200S**, VeSync model family `LAP-V2
 - Talks to the **VeSync cloud API**, not a local/LAN API.
 - Requires a normal VeSync account and the device paired in the official VeSync app first.
 
+Daemon writes now bind the admitted device to an exact CID through a private
+worker/CLI check: aliases, defaults, names, and models cannot redirect that write.
+Public CLI selection remains compatible and outside daemon write admission.
+The reviewed SDK mutation path now blocks token-driven replay, additional API/HTTP
+submissions and redirects. Source/version drift rejects writes until reviewed.
+Power/display/light-detection writes observe first; known-model status and write
+verification reject malformed/stale SDK observations instead of optimistic state.
+Read recovery and cloud backoff remain separate. This is not exactly-once execution
+or physical write certification; see [VeSync safety scope and test gate](../jarvisd/docs/vesync-write-safety.md)
+and [backend adapter limits](../jarvisd/docs/device-adapters.md).
+
 ## Setup
 
 `pyvesync 3.4.2` needs Python 3.11+. Use a separate virtual environment, as in `smart-plug/`, so it does not depend on the main Operation JARVIS environment's Python version.

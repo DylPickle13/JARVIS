@@ -4,7 +4,7 @@ This directory connects JARVIS to the things around the house: plugs, the air pu
 
 ## Components
 
-- **jarvisd:** native API on port `8790` for health, state, services, job results, and allowlisted device commands. Network allowlisting and token authentication are separate modes.
+- **[jarvisd](jarvisd/):** shared control backend on port `8790` for health, state, services, job results, and allowlisted device commands. Network allowlisting and token authentication are separate modes.
 - **terminald:** mobile terminal relay on port `8792`, restricted to the protected `jarvis-mobile` tmux sessions.
 - **Room audio:** Raspberry Pi capture/playback with Mac-side Apple SpeechTranscriber for ordinary turns, DictationTranscriber for busy-only `stop`, Pi RPC, and Piper speech on port `8791`.
 - **Apple apps:** iPhone, Watch, and two widgets per platform.
@@ -20,7 +20,8 @@ This directory connects JARVIS to the things around the house: plugs, the air pu
 ```text
 projects/operation-jarvis/
 ├── air-purifier/               # VeSync adapter
-├── jarvis-app/                 # iPhone, Watch, widgets, JARVISKit, jarvisd, terminald
+├── jarvisd/                    # shared control backend, API, tests, LaunchAgents
+├── jarvis-app/                 # iPhone, Watch, widgets, JARVISKit, terminald
 ├── quotas/                     # read-only provider quota collection
 ├── raspberry-pi/room_audio/    # Pi client and Mac room-audio server
 ├── smart-plug/                 # local Kasa adapter and private catalogue
@@ -44,6 +45,15 @@ curl -fsS http://127.0.0.1:8791/health | python3 -m json.tool
 ```
 
 Do not switch devices as a smoke test. Plug and purifier changes require fresh device state and confirmation of the requested result.
+
+## Shared backend
+
+`jarvisd` is independent of the Apple app. CLI/Pi plug and purifier writes use
+its authenticated loopback route; current native clients use a separate app-authenticated
+route through the same dispatcher. This is best-effort coordination, not exclusive
+SDK ownership. Security remains standalone and local-only; terminal and audio
+processing remain separate services. See the [architecture and migration plan](docs/backend-architecture.md)
+and [backend operations](jarvisd/README.md).
 
 ## Native app
 
@@ -88,6 +98,9 @@ PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_asr_backend
 PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_pi_rpc.py
 PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_voice_pipeline.py
 PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python raspberry-pi/room_audio/test_room_audio_interrupt.py
+
+# Backend-only verification (isolated runtime; no hardware)
+./jarvisd/verify.sh
 
 # Native/daemon verification
 cd jarvis-app

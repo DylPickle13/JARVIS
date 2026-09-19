@@ -1461,13 +1461,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None, *, command_router=None) -> int:
     parser = build_parser()
+    configure_parser = getattr(command_router, "configure_parser", None)
+    if configure_parser is not None:
+        configure_parser(parser)
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     action = getattr(args, "command", None)
     emit_event("action.start", action=action, summary=f"Starting {action}.")
     try:
-        payload = args.func(args)
+        # An explicit reviewed entry point may replace device writes. Exceptions
+        # from that router never fall through to a direct vendor handler.
+        payload = command_router(args) if command_router is not None else None
+        routed = payload is not None
+        if not routed:
+            payload = args.func(args)
         payload.setdefault("operationRoot", str(OPERATION_ROOT))
         payload.setdefault("summary", payload.get("stdout") or "Operation JARVIS action completed.")
         emit_event(
@@ -1482,7 +1490,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_print(payload)
         else:
             print(payload.get("summary") or json.dumps(payload, indent=2))
-        return 0
+        return (0 if payload.get("ok") is True else 1) if routed else 0
     except KeyboardInterrupt:
         error = {"ok": False, "action": action, "error": "Cancelled."}
         emit_event("action.error", action=action, ok=False, summary="Cancelled.", error="Cancelled.")
@@ -1510,4 +1518,6 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "jarvisd"))
+    from jarvisd_core.local_control import Router
+    raise SystemExit(main(command_router=Router(sys.modules[__name__])))

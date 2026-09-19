@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 from .config import Settings, normalize_name
 from .cooldown import cloud_request, CooldownError, is_rate_limit
+from .write_safety import execute_write, observe, validate_observation, WriteSafetyError
 
 SUPPORTED_VITAL_200S_MODELS = {
     "LAP-V201S-AASR",
@@ -116,9 +117,10 @@ class PurifierStatus:
 
 
 class AirPurifierController:
-    def __init__(self, settings: Settings, *, retry_cooldown: bool = False):
+    def __init__(self, settings: Settings, *, retry_cooldown: bool = False, expected_cid: str | None = None):
         self.settings = settings
         self.retry_cooldown = retry_cooldown
+        self.expected_cid = expected_cid
 
     async def list(self) -> dict[str, PurifierStatus]:
         async with self._session() as manager:
@@ -140,8 +142,7 @@ class AirPurifierController:
             result = {}
             for device in devices:
                 try:
-                    if await device.update() is False:
-                        raise AirPurifierError("Device did not confirm status refresh")
+                    await _refresh_status(device)
                     result[device.cid] = {"ok": True, "status": _status_from_device(device).as_dict()}
                 except Exception as exc:
                     if is_rate_limit(exc):
@@ -166,14 +167,15 @@ class AirPurifierController:
     async def status(self, device: str | None = None) -> PurifierStatus:
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            if await target.update() is False:
-                raise AirPurifierError("Device did not confirm status refresh")
+            await _refresh_status(target)
             return _status_from_device(target)
 
     async def set_power(self, on: bool, device: str | None = None) -> PurifierStatus:
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            ok = await target.turn_on() if on else await target.turn_off()
+            # SDK no-op decisions must not use raw/stale discovery fields.
+            await observe(target, expected_cid=self.expected_cid)
+            ok = await execute_write(target, "turn_on" if on else "turn_off", expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(f"VeSync did not confirm power {'on' if on else 'off'} for {target.device_name!r}")
             return await self._wait_for_status(
@@ -185,17 +187,13 @@ class AirPurifierController:
     async def toggle(self, device: str | None = None) -> PurifierStatus:
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            ok = await target.toggle_switch(None)
+            await observe(target, expected_cid=self.expected_cid)
+            desired = not bool(target.is_on)
+            ok = await execute_write(target, "toggle_switch", None, expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(f"VeSync did not confirm power toggle for {target.device_name!r}")
-            # Toggle may legitimately end either on or off. Poll once so the returned status is fresh.
-            await asyncio.sleep(min(5.0, self.settings.write_wait_seconds))
-            await target.update()
-            return replace(
-                _status_from_device(target),
-                write_accepted=True,
-                verification_pending=False,
-                verification_description="power toggle",
+            return await self._wait_for_status(
+                target, lambda status: status.is_on is desired, "power toggle",
             )
 
     async def set_mode(self, mode: str, device: str | None = None) -> PurifierStatus:
@@ -204,7 +202,7 @@ class AirPurifierController:
             raise AirPurifierError(f"Invalid mode {mode!r}; expected one of {sorted(SUPPORTED_MODES)}")
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            ok = await target.set_mode(mode)
+            ok = await execute_write(target, "set_mode", mode, expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(f"VeSync did not confirm mode {mode!r} for {target.device_name!r}")
             return await self._wait_for_status(
@@ -218,7 +216,7 @@ class AirPurifierController:
             raise AirPurifierError("Vital 200S fan speed must be between 1 and 4")
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            ok = await target.set_fan_speed(level)
+            ok = await execute_write(target, "set_fan_speed", level, expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(f"VeSync did not confirm fan speed {level} for {target.device_name!r}")
             return await self._wait_for_status(
@@ -236,7 +234,9 @@ class AirPurifierController:
     async def set_display(self, on: bool, device: str | None = None) -> PurifierStatus:
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            ok = await target.turn_on_display() if on else await target.turn_off_display()
+            # SDK no-op decisions must not use raw/stale discovery fields.
+            await observe(target, expected_cid=self.expected_cid)
+            ok = await execute_write(target, "turn_on_display" if on else "turn_off_display", expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(f"VeSync did not confirm display {'on' if on else 'off'} for {target.device_name!r}")
             return await self._wait_for_status(
@@ -248,7 +248,7 @@ class AirPurifierController:
     async def set_child_lock(self, on: bool, device: str | None = None) -> PurifierStatus:
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            ok = await target.turn_on_child_lock() if on else await target.turn_off_child_lock()
+            ok = await execute_write(target, "turn_on_child_lock" if on else "turn_off_child_lock", expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(f"VeSync did not confirm child lock {'on' if on else 'off'} for {target.device_name!r}")
             return await self._wait_for_status(
@@ -260,7 +260,9 @@ class AirPurifierController:
     async def set_light_detection(self, on: bool, device: str | None = None) -> PurifierStatus:
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            ok = await target.turn_on_light_detection() if on else await target.turn_off_light_detection()
+            # SDK no-op decisions must not use raw/stale discovery fields.
+            await observe(target, expected_cid=self.expected_cid)
+            ok = await execute_write(target, "turn_on_light_detection" if on else "turn_off_light_detection", expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(f"VeSync did not confirm light detection {'on' if on else 'off'} for {target.device_name!r}")
             return await self._wait_for_status(
@@ -284,7 +286,7 @@ class AirPurifierController:
             raise AirPurifierError("room_size must be greater than 0")
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            ok = await target.set_auto_preference(preference, room_size=room_size)
+            ok = await execute_write(target, "set_auto_preference", preference, room_size=room_size, expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(
                     f"VeSync did not confirm auto preference {preference!r} for {target.device_name!r}"
@@ -300,7 +302,7 @@ class AirPurifierController:
             raise AirPurifierError("timer minutes must be between 1 and 1440")
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            ok = await target.set_timer(minutes * 60)
+            ok = await execute_write(target, "set_timer", minutes * 60, expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(f"VeSync did not confirm timer for {target.device_name!r}")
             return await self._wait_for_status(
@@ -312,11 +314,8 @@ class AirPurifierController:
     async def clear_timer(self, device: str | None = None) -> PurifierStatus:
         async with self._session() as manager:
             target = await self._resolve_device(manager, device)
-            try:
-                await target.get_timer()
-            except Exception:
-                pass
-            ok = await target.clear_timer()
+            await observe(target, timer=True, expected_cid=self.expected_cid)
+            ok = await execute_write(target, "clear_timer", expected_cid=self.expected_cid)
             if not ok:
                 raise AirPurifierError(f"VeSync did not confirm timer clear for {target.device_name!r}")
             return await self._wait_for_status(
@@ -333,7 +332,7 @@ class AirPurifierController:
         delay = min(3.0, max(0.0, self.settings.write_wait_seconds))
         while True:
             await asyncio.sleep(delay)
-            await target.update()
+            await observe(target, expected_cid=self.expected_cid)
             last_status = _status_from_device(target)
             if predicate(last_status):
                 return replace(
@@ -359,7 +358,15 @@ class AirPurifierController:
             delay = min(5.0, max(0.25, deadline - now))
 
     async def _resolve_device(self, manager: Any, requested: str | None = None) -> Any:
+        if self.expected_cid is not None and (not self.expected_cid or requested != self.expected_cid):
+            raise AirPurifierError("Purifier selector does not match the admitted identity")
         purifiers = await self._purifiers(manager)
+        if self.expected_cid is not None:
+            # An admitted CID is exact: no alias, default, name or model fallback.
+            matches = [d for d in purifiers if getattr(d, "cid", None) == self.expected_cid]
+            if len(matches) != 1:
+                raise AirPurifierError("Admitted purifier identity is unavailable or ambiguous")
+            return matches[0]
         if not purifiers:
             raise AirPurifierError("No VeSync air purifiers were discovered. Pair the purifier in the VeSync app first.")
 
@@ -451,6 +458,19 @@ class AirPurifierController:
             time_zone=self.settings.time_zone,
             redact=True,
         )
+
+
+async def _refresh_status(target: Any) -> None:
+    previous = getattr(target, "last_response", None)
+    if await target.update() is False:
+        raise AirPurifierError("Device did not confirm status refresh")
+    if getattr(target, "device_type", None) in SUPPORTED_VITAL_200S_MODELS:
+        # SDK update() can return None after silently rejecting malformed JSON.
+        # Do not let discovery/optimistic state release daemon uncertainty fences.
+        response = getattr(target, "last_response", None)
+        if response is None or response is previous:
+            raise WriteSafetyError("Purifier refresh did not produce a new response")
+        validate_observation(getattr(response, "response_data", None), target)
 
 
 def dependency_status() -> DependencyStatus:

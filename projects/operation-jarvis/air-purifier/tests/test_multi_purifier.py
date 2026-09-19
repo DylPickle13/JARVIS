@@ -25,6 +25,16 @@ class MultiPurifierTests(unittest.IsolatedAsyncioTestCase):
         self.b = SimpleNamespace(cid='cid-b', device_name='Same', device_type='same-model', update=AsyncMock(), turn_on=AsyncMock(return_value=True))
         self.manager = SimpleNamespace(get_devices=AsyncMock(), devices=SimpleNamespace(air_purifiers=[self.a, self.b]))
         self.controller = AirPurifierController(self.settings)
+        # Routing tests remain SDK-free; the real mutation guard has a separate
+        # loopback-only gate under jarvisd/tests_sdk/.
+        async def simulated_write(target, method, *args, expected_cid=None, **kwargs):
+            return await getattr(target, method)(*args, **kwargs)
+        guard = patch('air_purifier.vesync_client.execute_write', side_effect=simulated_write)
+        guard.start()
+        self.addCleanup(guard.stop)
+        observation = patch('air_purifier.vesync_client.observe', new_callable=AsyncMock)
+        observation.start()
+        self.addCleanup(observation.stop)
         self.sessions = 0
         @asynccontextmanager
         async def fake_session():

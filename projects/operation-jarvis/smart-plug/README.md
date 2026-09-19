@@ -47,6 +47,23 @@ Machine-readable output:
 ./jarvis-cli --json plug-status pedalboard
 ```
 
+## Write safety boundary
+
+The controller authenticates/refreshes before a write. Credential fallback is
+limited to that pre-write phase; write or verification failures never cause a
+second wrapper mutation attempt. Toggle reads and writes on one connection.
+Unconfirmed state is reported as uncertain, not successful.
+
+Daemon writes also carry a private expected-host check. Direct CLI/tools remain
+outside daemon admission and have no admitted cache identity. Mutations now use
+reviewed, connection-local SDK query/send/HTTP single-attempt guards, zero protocol
+retries, and no HTTP redirects. Read retries remain unchanged. Unknown SDK versions
+or changed audited source files reject writes until reviewed; requirements still
+reference a moving PR, so do not blindly reinstall or refresh acceptance hashes.
+This is **not** an exactly-once device-execution guarantee. Do not automatically
+retry uncertain results. See [Kasa scope and SDK test gate](../jarvisd/docs/kasa-write-safety.md)
+and [backend adapter limits](../jarvisd/docs/device-adapters.md).
+
 ## Direct low-level control
 
 Use this when testing the plug subsystem directly:

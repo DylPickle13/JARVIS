@@ -1,0 +1,108 @@
+{
+  "protocol": "jarvis-control/2",
+  "vectors": [
+    {
+      "request": {
+        "protocol": "jarvis-control/2",
+        "requestID": "00000000000000000000000000000001",
+        "incarnation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "epoch": 3,
+        "window": "0000000000000001bbbbbbbbbbbbbbbb",
+        "operation": {
+          "action": "plug-on",
+          "params": {
+            "plug": "lamp"
+          }
+        }
+      },
+      "requestDigest": "091ba10dba8d5844e95b1f770ea78155acb21ecd4e105a57f87b8435291b545e"
+    },
+    {
+      "request": {
+        "protocol": "jarvis-control/2",
+        "requestID": "00000000000000000000000000000002",
+        "incarnation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "epoch": 3,
+        "window": "0000000000000001bbbbbbbbbbbbbbbb",
+        "operation": {
+          "action": "plug-off",
+          "params": {
+            "plug": "family-room-light"
+          }
+        }
+      },
+      "requestDigest": "fd8a96b6d9f74ee7ceb56eac14586ef606ddef501b2b07d033dc2c73ac419b69"
+    },
+    {
+      "request": {
+        "protocol": "jarvis-control/2",
+        "requestID": "00000000000000000000000000000003",
+        "incarnation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "epoch": 3,
+        "window": "0000000000000001bbbbbbbbbbbbbbbb",
+        "operation": {
+          "action": "plug-toggle",
+          "params": {
+            "plug": "tv"
+          }
+        }
+      },
+      "requestDigest": "eb7b0171c6848208ce00f52d759de64b5da7863002b77f73f79e223018a2e7c1"
+    },
+    {
+      "request": {
+        "protocol": "jarvis-control/2",
+        "requestID": "00000000000000000000000000000004",
+        "incarnation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "epoch": 3,
+        "window": "0000000000000001bbbbbbbbbbbbbbbb",
+        "operation": {
+          "action": "purifier-set",
+          "params": {
+            "deviceID": "dddddddddddddddddddddddd",
+            "setting": "speed",
+            "level": 4
+          }
+        }
+      },
+      "requestDigest": "27430788f2b367728f6d6420940b3657adcb94ea03f826a2b40b8b43e10d705a"
+    },
+    {
+      "request": {
+        "protocol": "jarvis-control/2",
+        "requestID": "00000000000000000000000000000005",
+        "incarnation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "epoch": 3,
+        "window": "0000000000000001bbbbbbbbbbbbbbbb",
+        "operation": {
+          "action": "purifier-set",
+          "params": {
+            "deviceID": "dddddddddddddddddddddddd",
+            "setting": "auto-preference",
+            "value": "quiet",
+            "roomSize": 100
+          }
+        }
+      },
+      "requestDigest": "94e34e65c887f11e5f256b1c363055d539f2d7aef12106b030722c1c981cde25"
+    },
+    {
+      "request": {
+        "protocol": "jarvis-control/2",
+        "requestID": "00000000000000000000000000000006",
+        "incarnation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "epoch": 3,
+        "window": "0000000000000001bbbbbbbbbbbbbbbb",
+        "operation": {
+          "action": "purifier-set",
+          "params": {
+            "deviceID": "dddddddddddddddddddddddd",
+            "setting": "timer",
+            "value": "clear"
+          }
+        }
+      },
+      "requestDigest": "dcce5bb924c19299e13fdaabc877cbc2069c521e4982aae3b501858605429f17"
+    }
+  ]
+}
