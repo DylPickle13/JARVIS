@@ -2,6 +2,13 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
+**Installed checkpoint:** 0.3.0 (200), installed and launched on both iPhone and
+Watch on 2026-09-19. The Room Audio card opens shared Session 10; see
+[rollout and remaining physical acceptance](docs/room-session10.md).
+Device controls now use `/api/v1/device-command` with existing app authentication,
+a per-command request ID and redirect refusal. No automatic write retry or legacy
+fallback. See [native control update](docs/native-control-update.md).
+
 I built these apps to reach my Mac-hosted Pi sessions and room controls from my phone and Watch. They also show system status and scheduled-job results. Both apps use SwiftUI, with shared networking and models in JARVISKit.
 
 [Project overview](../../../README.md) · [Architecture](docs/architecture.md) · [Build and operations](docs/operations.md) · [Documentation index](docs/README.md)
@@ -45,7 +52,7 @@ Pi runs the agent on the Mac. The apps connect to it rather than running a separ
 | [`JARVISWatch/`](JARVISWatch/) | Watch interface, terminal, device controls, and Jobs. |
 | [`JARVISKit/`](JARVISKit/) | Shared models, networking, state policies, and tests. |
 | [`JARVISWidget/`](JARVISWidget/), [`JARVISWatchWidget/`](JARVISWatchWidget/) | WidgetKit targets. |
-| [`jarvisd/`](jarvisd/) | Python state, hardware-command, and service API. |
+| [`../jarvisd/`](../jarvisd/) | Shared Operation JARVIS backend (outside the app). |
 | [`terminald/`](terminald/) | Isolated terminal relay. |
 | [`project.yml`](project.yml) | XcodeGen project specification. |
 | [`scripts/`](scripts/) | Verification, packaging, and guarded deployment helpers. |
@@ -64,7 +71,7 @@ On a configured Mac with the required Xcode components and dependencies, run fro
 
 This regenerates the Xcode project, runs Python/Node/Swift checks, and builds simulator products, so it writes files in the checkout. Additional iOS tests and live integration tests are opt-in. See the [verification guide](docs/operations.md#verification) for flags and setup.
 
-Representative tests: [daemon contracts](jarvisd/tests/), [terminal relay](terminald/tests/), [shared Swift behavior](JARVISKit/Tests/JARVISKitTests/), and [iPhone app tests](JARVISTests/).
+Representative tests: [daemon contracts](../jarvisd/tests/), [terminal relay](terminald/tests/), [shared Swift behavior](JARVISKit/Tests/JARVISKitTests/), and [iPhone app tests](JARVISTests/).
 
 ## Running the apps
 

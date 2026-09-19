@@ -6,6 +6,11 @@ The Raspberry Pi listens through an Anker PowerConf and plays JARVIS's replies t
 
 Code: `projects/operation-jarvis/raspberry-pi/room_audio/`.
 
+**Additional Mac USB speaker:** [macOS deployment and rollback](MACOS.md).
+The shared client now supports `--audio-backend coreaudio` with an explicitly
+selected PowerConf. It uses an isolated loopback server on port `8793`; the Pi
+continues using ALSA and its existing server on `8791`.
+
 Architecture:
 
 ```text

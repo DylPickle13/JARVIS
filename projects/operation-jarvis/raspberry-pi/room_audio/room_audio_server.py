@@ -74,8 +74,8 @@ DEFAULT_PORT = 8791
 DEFAULT_MAX_REQUEST_BYTES = 25 * 1024 * 1024
 WATCH_SPEECH_MAX_REQUEST_BYTES = 256 * 1024
 WATCH_SPEECH_MAX_TEXT_BYTES = 32 * 1024
-DEFAULT_CHANNEL_ID = "room-audio"
-DEFAULT_CHANNEL_NAME = "raspberry-pi-room-audio"
+DEFAULT_CHANNEL_ID = config.get_str_env("JARVIS_ROOM_AUDIO_CHANNEL_ID", "room-audio")
+DEFAULT_CHANNEL_NAME = config.get_str_env("JARVIS_ROOM_AUDIO_CHANNEL_NAME", "raspberry-pi-room-audio")
 DEFAULT_TTS_LEADING_SILENCE_MS = config.get_int_env("JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS", 450, minimum=0)
 ASYNC_JOB_TTL_SECONDS = config.get_int_env("JARVIS_ROOM_AUDIO_ASYNC_JOB_TTL_SECONDS", 900, minimum=60)
 ASYNC_POLL_AFTER_SECONDS = config.get_float_env("JARVIS_ROOM_AUDIO_ASYNC_POLL_AFTER_SECONDS", 0.25, minimum=0.05)
@@ -270,13 +270,18 @@ class RoomAudioBridge:
             config.get_str_env("JARVIS_PI_MODEL", ""),
         )
         thinking = config.get_str_env("JARVIS_ROOM_AUDIO_PI_THINKING", pi_rpc.JARVIS_PI_THINKING)
-        self._session = pi_rpc.PiRpcSession(
-            model=model,
-            thinking=thinking,
-            append_system_prompt=load_room_append_system_prompt(),
-            context_id=DEFAULT_CHANNEL_ID,
-            context_name=DEFAULT_CHANNEL_NAME,
-        )
+        self.conversation_session_id = 10 if os.environ.get("JARVIS_ROOM_AUDIO_SHARED_SESSION") == "10" else None
+        if self.conversation_session_id == 10:
+            from shared_room_session import SharedRoomSession
+            self._session = SharedRoomSession(PROJECT_ROOT)
+        else:
+            self._session = pi_rpc.PiRpcSession(
+                model=model,
+                thinking=thinking,
+                append_system_prompt=load_room_append_system_prompt(),
+                context_id=DEFAULT_CHANNEL_ID,
+                context_name=DEFAULT_CHANNEL_NAME,
+            )
         # The server returns a single final WAV to the Pi client, so do not stream
         # TTS chunks here. Room-specific ASR routing selects Apple Speech for
         # turns and Apple Dictation for interruption without changing other
@@ -1018,6 +1023,7 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                     "contextualHints": False,
                 },
                 "model": self.server.bridge.model,
+                "conversationSessionID": getattr(self.server.bridge, "conversation_session_id", None),
                 "thinking": self.server.bridge.thinking,
                 "asr": self.server.bridge.asr_status,
                 "ttsLeadingSilenceMs": DEFAULT_TTS_LEADING_SILENCE_MS,

@@ -694,7 +694,14 @@ public enum JSONValue: Codable, Equatable, Sendable {
     }
 }
 
+public enum RoomAudioSpeaker: String, CaseIterable, Codable, Sendable, Identifiable {
+    case pi, mac
+    public var id: String { rawValue }
+    public var title: String { self == .pi ? "Pi speaker" : "Mac speaker" }
+}
+
 public struct RoomAudioStatus: Codable, Equatable, Sendable {
+    public var speakerID: String? = nil
     public let ok: Bool
     public let clientOnline: Bool
     public let phase: String

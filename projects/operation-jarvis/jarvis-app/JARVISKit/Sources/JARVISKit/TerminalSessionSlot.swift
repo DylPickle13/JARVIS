@@ -1,6 +1,6 @@
 import Foundation
 
-/// The nine fixed mobile Pi conversations. The raw value is the only value
+/// Nine ordinary mobile conversations plus the reserved Room Audio conversation. The raw value is the only value
 /// allowed to cross the app/terminald boundary; tmux target names remain a
 /// host-side allowlist and are never accepted from a client.
 public enum JARVISTerminalSlot: Int, CaseIterable, Codable, Equatable, Hashable, Sendable {
@@ -13,6 +13,7 @@ public enum JARVISTerminalSlot: Int, CaseIterable, Codable, Equatable, Hashable,
     case seven = 7
     case eight = 8
     case nine = 9
+    case roomAudio = 10
 
     public static let defaultSlot: JARVISTerminalSlot = .one
     public static let defaultsKey = "jarvis.terminal.active-slot"

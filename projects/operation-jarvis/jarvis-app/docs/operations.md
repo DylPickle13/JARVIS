@@ -15,6 +15,10 @@ Start with the repository's [runtime guide](../../docs/runtime-guide.md) and [re
 
 ## Verification
 
+For backend-only changes, use `../jarvisd/verify.sh` from the app directory.
+It isolates daemon configuration and event/log storage without building or
+installing the apps. See [shared backend operations](../../jarvisd/README.md).
+
 From `projects/operation-jarvis/jarvis-app/` in the isolated checkout:
 
 ```bash

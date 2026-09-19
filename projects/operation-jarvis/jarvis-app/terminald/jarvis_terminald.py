@@ -47,6 +47,7 @@ TMUX_SESSIONS = {
     7: "jarvis-ios-7",
     8: "jarvis-ios-8",
     9: "jarvis-ios-9",
+    10: "jarvis-ios-10",
 }
 # Slot 1 aliases remain patchable for the existing focused tests and v1 clients.
 TMUX_SESSION = TMUX_SESSIONS[1]
@@ -826,7 +827,7 @@ class TerminalHTTPServer(ThreadingHTTPServer):
             TMUX, "-L", TMUX_SOCKET, "list-panes", "-a", "-F",
             "#{session_name}|#{window_index}|#{pane_index}|#{pane_pid}|#{pane_dead}",
         ], timeout=0.5).stdout.decode()
-        names = {name: slot for slot, name in TMUX_SESSIONS.items()}
+        names = {name: slot for slot, name in TMUX_SESSIONS.items() if slot <= 9}
         result = {}
         for line in output.splitlines():
             parts = line.split("|")

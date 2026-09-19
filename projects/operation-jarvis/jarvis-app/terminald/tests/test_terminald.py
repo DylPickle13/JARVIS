@@ -174,7 +174,7 @@ class TerminalServiceTests(unittest.TestCase):
                 [str(terminald.BOOTSTRAP), "--slot", str(slot), "--ensure-only"],
             )
         with self.assertRaises(terminald.TerminalError):
-            terminald.TerminalService(runner, session_id=10)
+            terminald.TerminalService(runner, session_id=11)
         with self.assertRaises(terminald.TerminalError):
             terminald.TerminalService(runner, session_id=True)
 
@@ -601,7 +601,7 @@ class TerminalServiceTests(unittest.TestCase):
             for path in (
                 "/v2/terminal/frame?after=0",
                 "/v2/terminal/frame?after=0&sessionID=0",
-                "/v2/terminal/frame?after=0&sessionID=10",
+                "/v2/terminal/frame?after=0&sessionID=11",
                 "/v2/terminal/frame?after=0&sessionID=2&sessionID=3",
                 "/v2/terminal/frame?after=0&sessionID=02",
             ):
@@ -610,7 +610,7 @@ class TerminalServiceTests(unittest.TestCase):
                 self.assertEqual(raised.exception.code, 400)
                 raised.exception.close()
 
-            for invalid_session in (False, 10, 2.0, "2", "02"):
+            for invalid_session in (False, 11, 2.0, "2", "02"):
                 invalid_payload = dict(input_payload, sessionID=invalid_session)
                 with self.assertRaises(HTTPError) as raised:
                     post_json("/v2/terminal/input", invalid_payload)
@@ -711,7 +711,7 @@ class TerminalServiceTests(unittest.TestCase):
 
                 for arguments in (
                     ["--slot", "0", "--ensure-only"],
-                    ["--slot", "10", "--ensure-only"],
+                    ["--slot", "11", "--ensure-only"],
                     ["--slot", "1", "--slot", "2", "--ensure-only"],
                     ["--session", "jarvis-ios-2", "--ensure-only"],
                 ):

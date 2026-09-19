@@ -64,8 +64,16 @@ case "$slot" in
   9)
     readonly TMUX_SESSION="jarvis-ios-9"
     ;;
+  10)
+    readonly TMUX_SESSION="jarvis-ios-10"
+    # Dedicated room ownership is provisioned on the host, never allocated by a phone reconnect.
+    "$TMUX_BIN" -L "$TMUX_SOCKET" has-session -t "=$TMUX_SESSION" 2>/dev/null || {
+      print -u2 -- "Room Audio Session 10 is offline; host setup is required."
+      exit 69
+    }
+    ;;
   *)
-    print -u2 -- "The mobile terminal slot must be an integer from 1 through 9."
+    print -u2 -- "The mobile terminal slot must be an integer from 1 through 10."
     exit 64
     ;;
 esac

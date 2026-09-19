@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { RoomSessionGate } from '../extensions/lib/room-session.ts';
+let sends=[],aborts=0,ready=true;
+const gate=new RoomSessionGate({ready:()=>ready,send:t=>sends.push(t),abort:async()=>{aborts++}});
+const a='a'.repeat(32),b='b'.repeat(32);
+const result=gate.prompt(a,'first');assert.equal(gate.input('extension','first'),true);gate.started();
+assert.equal((await gate.prompt(b,'second')).ok,false);assert.equal((await gate.abort(b)).ok,false);assert.equal(aborts,0);
+gate.settled('answer');assert.equal((await result).text,'answer');assert.equal((await gate.prompt(a,'again')).ok,false);
+const cancelled=gate.prompt(b,'other');gate.input('extension','other');gate.started();assert.equal(gate.input('interactive','draft'),false);
+assert.equal((await gate.abort(b)).ok,true);gate.settled('not spoken');assert.equal((await cancelled).ok,false);assert.equal(aborts,1);
+gate.input('interactive','manual');assert.equal((await gate.prompt('c'.repeat(32),'voice')).ok,false);gate.started();
+const manual=gate.status().requestID;assert.ok(manual);gate.settled('manual');assert.equal((await gate.abort(manual)).ok,false);
+assert.deepEqual(sends,['first','other']);gate.close();assert.equal(gate.status().ok,false);
+console.log('Room gate: single voice owner, manual input, exact abort, consumption and closure passed');

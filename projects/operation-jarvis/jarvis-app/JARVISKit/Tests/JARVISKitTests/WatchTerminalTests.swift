@@ -234,7 +234,7 @@ final class WatchTerminalTests: XCTestCase {
         XCTAssertEqual(frame.screenStart, 0)
         XCTAssertEqual(frame.ansiLines, frame.lines)
 
-        let invalid = Data(#"{"sessionID":10,"sequence":1,"columns":2,"rows":2,"cursorColumn":0,"cursorRow":1,"alternateScreen":false,"mouseMode":false,"historySize":0,"lines":["a","b"]}"#.utf8)
+        let invalid = Data(#"{"sessionID":11,"sequence":1,"columns":2,"rows":2,"cursorColumn":0,"cursorRow":1,"alternateScreen":false,"mouseMode":false,"historySize":0,"lines":["a","b"]}"#.utf8)
         XCTAssertThrowsError(try JSONDecoder().decode(WatchTerminalFrame.self, from: invalid))
     }
 

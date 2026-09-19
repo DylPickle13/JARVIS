@@ -28,10 +28,7 @@ Package.resolved
 local-config.json
 .env
 
-# jarvisd runtime artifacts
-jarvisd/logs/
-jarvisd/__pycache__/
-jarvisd/tests/__pycache__/
+# terminald runtime artifacts
 terminald/logs/
 terminald/__pycache__/
 terminald/tests/__pycache__/

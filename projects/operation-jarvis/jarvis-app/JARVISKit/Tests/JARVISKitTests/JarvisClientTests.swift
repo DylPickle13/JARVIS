@@ -63,6 +63,34 @@ final class JarvisClientTests: XCTestCase {
         }
     }
 
+    func testBothRoomSpeakersHaveIndependentStatusAndStopRoutes() async throws {
+        for speaker in RoomAudioSpeaker.allCases {
+            var paths: [String] = []
+            MockURLProtocol.handler = { request in
+                paths.append(request.url!.path)
+                XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+                let body = "{\"ok\":true,\"speakerID\":\"\(speaker.rawValue)\",\"clientOnline\":true,\"phase\":\"speaking\",\"turnID\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"canStop\":true,\"ageSeconds\":1}"
+                return MockURLProtocol.response(request, status: 200, body: body)
+            }
+            let status = try await client.roomAudioStatus(endpoint, speaker: speaker)
+            XCTAssertTrue(status.allowsStop)
+            _ = try await client.stopRoomAudio(endpoint, speaker: speaker, turnID: String(repeating: "a", count: 32))
+            XCTAssertEqual(paths, ["/api/v1/room-audio/\(speaker.rawValue)", "/api/v1/room-audio/\(speaker.rawValue)/stop"])
+        }
+    }
+
+    func testWrongRoomSpeakerResponseIsRejectedWithoutFallback() async throws {
+        var calls = 0
+        MockURLProtocol.handler = { request in
+            calls += 1
+            return MockURLProtocol.response(request, status: 200,
+                body: #"{"ok":true,"speakerID":"pi","clientOnline":true,"phase":"idle","canStop":false,"ageSeconds":1}"#)
+        }
+        do { _ = try await client.roomAudioStatus(endpoint, speaker: .mac); XCTFail("Expected identity rejection") }
+        catch let JarvisError.transport(message) { XCTAssertTrue(message.contains("identity")) }
+        XCTAssertEqual(calls, 1)
+    }
+
     func testRoomAudioUnknownOrStaleCannotBeStopped() throws {
         for phase in ["idle", "unavailable", "cancelling", "invented"] {
             let data = "{\"ok\":true,\"clientOnline\":true,\"phase\":\"\(phase)\",\"turnID\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"canStop\":true,\"ageSeconds\":1}".data(using: .utf8)!
@@ -160,6 +188,73 @@ final class JarvisClientTests: XCTestCase {
             XCTAssertEqual(status, 400)
             XCTAssertTrue(body.contains("not allowlisted"))
         }
+    }
+
+    func testPlugWriteBarrierUsesExistingErrorAndStaleFields() throws {
+        let raw = #"{"ok":true,"isOn":false,"stale":true,"error":"Command outcome is uncertain; refresh before another change."}"#
+        let plug = try JSONDecoder().decode(PlugState.self, from: Data(raw.utf8))
+        XCTAssertEqual(plug.stale, true)
+        XCTAssertEqual(plug.error, "Command outcome is uncertain; refresh before another change.")
+    }
+
+    func testDeviceActionsUseNativeRouteAndDistinctRequestIDs() async throws {
+        var ids = Set<String>()
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/device-command")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            let id = try XCTUnwrap(request.value(forHTTPHeaderField: "x-jarvis-request-id"))
+            XCTAssertEqual(id.count, 32)
+            XCTAssertTrue(ids.insert(id).inserted)
+            return MockURLProtocol.response(request, status: 200, body: #"{"ok":true}"#)
+        }
+        for action in ["plug-on", "plug-off", "plug-toggle", "purifier-set"] {
+            _ = try await client.command(endpoint, action: action, params: [:])
+        }
+        XCTAssertEqual(ids.count, 4)
+    }
+
+    func testReadCommandsKeepLegacyRouteWithoutMutationID() async throws {
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/command")
+            XCTAssertNil(request.value(forHTTPHeaderField: "x-jarvis-request-id"))
+            return MockURLProtocol.response(request, status: 200, body: #"{"ok":true}"#)
+        }
+        _ = try await client.command(endpoint, action: "plug-status", params: ["plug": .string("lamp")])
+    }
+
+    func testDeviceTransportFailureIsNotRetried() async throws {
+        var calls = 0
+        MockURLProtocol.handler = { _ in
+            calls += 1
+            throw URLError(.networkConnectionLost)
+        }
+        do {
+            _ = try await client.command(endpoint, action: "plug-on", params: ["plug": .string("lamp")])
+            XCTFail("Expected uncertain delivery")
+        } catch let JarvisError.transport(message) {
+            XCTAssertTrue(message.contains("unknown"))
+        }
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testCommandAdmissionConflictIsNotRetried() async throws {
+        var calls = 0
+        MockURLProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.url?.path, "/api/v1/device-command")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-request-id")?.count, 32)
+            XCTAssertEqual(request.httpMethod, "POST")
+            return MockURLProtocol.response(request, status: 409,
+                body: #"{"ok":false,"action":"plug-on","error":"A change is already in progress; nothing was sent."}"#)
+        }
+        do {
+            _ = try await client.command(endpoint, action: "plug-on", params: ["plug": .string("lamp")])
+            XCTFail("expected admission conflict")
+        } catch let JarvisError.http(status, body) {
+            XCTAssertEqual(status, 409)
+            XCTAssertTrue(body.contains("nothing was sent"))
+        }
+        XCTAssertEqual(calls, 1, "Never retry or replay a conflicting hardware command")
     }
 
     func testEventsClampLimitAndEncodeSince() async throws {
@@ -471,7 +566,7 @@ private final class RequestRecorder: @unchecked Sendable {
 }
 
 private final class MockURLProtocol: URLProtocol {
-    static var handler: ((URLRequest) -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -481,10 +576,14 @@ private final class MockURLProtocol: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return
         }
-        let (response, data) = handler(request)
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: data)
-        client?.urlProtocolDidFinishLoading(self)
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
         _ = url
     }
 

@@ -15,7 +15,7 @@ export function registerSiriNewSession(pi: ExtensionAPI, identityProbe = exactMo
   pi.on("session_start", async (_event, ctx) => {
     await stop?.(); stop = undefined; gate = undefined;
     const identity = await identityProbe();
-    if (!identity) return;
+    if (!identity || identity.slot === 10) return;
     promptActive = false; compacting = false;
     let root = resolve(ctx.cwd);
     while (!existsSync(join(root, ".pi")) || !existsSync(join(root, "projects"))) {

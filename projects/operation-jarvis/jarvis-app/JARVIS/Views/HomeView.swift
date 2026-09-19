@@ -212,49 +212,53 @@ struct HomeView: View {
     }
 
     private var roomAudioCard: some View {
-        // A bounded freshness clock, not an animation or network polling loop.
         TimelineView(.animation(minimumInterval: 1, paused: !homeMotionActive)) { context in
-            roomAudioContent(now: context.date)
-        }
-    }
-
-    private func roomAudioContent(now: Date) -> some View {
-        let status = app.roomAudio
-        let fresh = app.roomAudioUpdatedAt.map { now.timeIntervalSince($0) <= 6 } ?? false
-        let pulses = homeMotionActive && !app.roomAudioStopping
-            && ActivityMotionGate.roomAudioActive(status, receivedAt: app.roomAudioUpdatedAt, now: now)
-        let edgeAllowed = homeMotionActive && !app.roomAudioStopping
-            && ActivityMotionGate.roomAudioFresh(status, receivedAt: app.roomAudioUpdatedAt, now: now)
-            && ["processing", "speaking", "idle"].contains(status?.phase ?? "")
-        let title = fresh ? (status?.title ?? "Unavailable") : "Unavailable"
-        let tone: Color = title == "Talking" ? JarvisPalette.accent
-            : title == "Processing" || title == "Stopping" ? JarvisPalette.warning : .secondary
-        return MinimalCard {
-            HStack(spacing: 10) {
-                Label {
-                    Text("Room audio")
-                } icon: {
-                    Image(systemName: "waveform")
-                        .activityIconPulse(active: pulses)
-                        .accessibilityHidden(true)
-                }
-                .font(.subheadline.weight(.semibold))
-                Spacer(minLength: 4)
-                Circle().fill(tone).frame(width: 7, height: 7)
-                    .activityStatusBreath(active: pulses, slow: status?.phase == "processing")
-                    .accessibilityHidden(true)
-                Text(title).font(.caption.weight(.medium)).foregroundStyle(tone)
-                Button { Task { await app.stopRoomAudio() } } label: {
-                    Image(systemName: "stop.fill").font(.caption)
-                        .frame(width: 32, height: 32)
-                        .background(tone.opacity(0.12), in: Circle())
-                }
-                .buttonStyle(JarvisPressStyle())
-                .disabled(!fresh || status?.allowsStop != true || app.roomAudioStopping)
-                .accessibilityLabel("Stop active room-audio request")
+            let sessions = app.lastState?.subsystems?.pi?.mobileSessions
+            let lifecycle = app.lastState?.subsystems?.pi?.stale == true ? PiSessionLifecycle.unknown
+                : sessions?.first(where: { $0.sessionID == 10 })?.resolvedLifecycle ?? .unknown
+            let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
+            let activeSpeakers = RoomAudioSpeaker.allCases.filter { speaker in
+                app.roomAudio[speaker]?.allowsStop == true &&
+                    (app.roomAudioUpdatedAt[speaker].map { context.date.timeIntervalSince($0) <= 6 } ?? false)
             }
+            let speakerSummary = RoomAudioSpeaker.allCases.map { speaker in
+                let fresh = app.roomAudioUpdatedAt[speaker].map { context.date.timeIntervalSince($0) <= 6 } ?? false
+                return "\(speaker.title): \(fresh ? app.roomAudio[speaker]?.title ?? "Unavailable" : "Unavailable")"
+            }.joined(separator: " · ")
+            MinimalCard(padding: 8) {
+                HStack(spacing: 8) {
+                    Button { onOpenPiTerminal(.roomAudio) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("10").font(.system(.caption, design: .monospaced).weight(.semibold)).foregroundStyle(.secondary)
+                                Text("Room Audio").font(.subheadline.weight(.semibold))
+                                    .lineLimit(1).minimumScaleFactor(0.85)
+                                Spacer(minLength: 4)
+                                Image(systemName: presentation.symbol).foregroundStyle(presentation.tone.color)
+                                    .activityIconPulse(active: homeMotionActive && presentation.animatesIcon)
+                            }
+                            Text(speakerSummary).font(.caption2).foregroundStyle(.secondary)
+                                .lineLimit(1).minimumScaleFactor(0.85)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(JarvisPressStyle())
+                    .accessibilityLabel("Room Audio, Pi session 10, \(presentation.label), \(speakerSummary)")
+                    .accessibilityHint("Opens the shared Room Audio Pi session 10 terminal")
+                    Button { Task { await app.stopAllRoomAudio() } } label: {
+                        Image(systemName: "stop.fill").font(.caption)
+                            .frame(width: 32, height: 32)
+                            .background(JarvisPalette.warning.opacity(0.12), in: Circle())
+                    }
+                    .buttonStyle(JarvisPressStyle())
+                    .disabled(activeSpeakers.isEmpty || !app.roomAudioStopping.isEmpty)
+                    .accessibilityLabel("Stop current room audio on both speakers")
+                }
+            }
+            .activityCardEdge(active: presentation.animatesIcon,
+                allowed: homeMotionActive && presentation.allowsActivityEdge, muted: true)
         }
-        .activityCardEdge(active: pulses, allowed: edgeAllowed)
     }
 
     // MARK: - Compact overview

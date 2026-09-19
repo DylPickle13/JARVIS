@@ -1,0 +1,7 @@
+# Isolated macOS listener environment (Python 3.13); server keeps JARVIS/.venv.
+sounddevice==0.5.5
+openwakeword==0.6.0
+onnxruntime==1.26.0
+audioop-lts==0.2.2; python_version >= "3.13"
+numpy==2.5.3
+scipy==1.18.1

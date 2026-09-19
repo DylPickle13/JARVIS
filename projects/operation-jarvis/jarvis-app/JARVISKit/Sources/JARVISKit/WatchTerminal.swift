@@ -596,7 +596,7 @@ public final class WatchTerminalClient: @unchecked Sendable {
             guard let ack = try? JSONDecoder().decode(TerminalInputAcknowledgement.self, from: data),
                   ack.ok, ack.requestID == requestID.uuidString,
                   let identifier = try? Self.canonicalSessionID(in: data),
-                  let slot = JARVISTerminalSlot(rawValue: identifier), ack.sessionID == identifier else {
+                  let slot = JARVISTerminalSlot(rawValue: identifier), slot != .roomAudio, ack.sessionID == identifier else {
                 throw WatchTerminalClientError.submissionUnconfirmed
             }
             return slot

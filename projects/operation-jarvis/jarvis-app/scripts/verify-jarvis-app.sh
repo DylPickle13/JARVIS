@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Repeatable local verification for the daemon, shared package, and host apps.
+# JARVIS_SKIP_NATIVE_BUILDS=1 runs source/unit checks without rendering or Xcode builds.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -46,10 +47,10 @@ cmp -s "$LOCKED_PACKAGE_BACKUP" "$LOCKED_PACKAGE_RESOLUTION" || {
 grep -q 'a9a5efd40eaf558a2bcd48d64b1d1646be686008' "$LOCKED_PACKAGE_RESOLUTION"
 
 printf '%s\n' '== Siri guarded-admission Node tests =='
-node --test ../../../.pi/scripts/tests/siri-new-session.test.mjs
+node --test ../../../.pi/scripts/tests/siri-new-session.test.mjs ../../../.pi/tests/room-session.test.mjs
 
 printf '%s\n' '== Python unit tests =='
-python3 -m unittest discover -s jarvisd/tests -v
+../jarvisd/verify.sh
 terminal_tests_ok=0
 for attempt in 1 2 3; do
   terminal_log="$DERIVED_DATA_PATH/terminald-tests-$attempt.log"
@@ -68,7 +69,8 @@ if [[ "$terminal_tests_ok" != "1" ]]; then
 fi
 python3 -m unittest discover -s ../../../.pi/scheduler/tests -v
 python3 -m py_compile \
-  jarvisd/jarvisd.py \
+  ../jarvisd/jarvisd.py \
+  ../jarvisd/device-worker.py \
   terminald/jarvis_terminald.py \
   scripts/jarvis-mobile-vscode-restart.py \
   ../jarvis.py \
@@ -79,23 +81,25 @@ python3 -m py_compile \
   ../../../.pi/scheduler/apns_provider.py
 
 printf '%s\n' '== warm responsive jarvisd collector contract =='
-grep -q 'DEFAULT_ACTIVE_LEASE_SECONDS = 45.0' jarvisd/jarvisd.py
-grep -q 'DEFAULT_ACTIVATION_WAIT_SECONDS = 0.0' jarvisd/jarvisd.py
-grep -q '"plugs": 10.0' jarvisd/jarvisd.py
-grep -q '"purifier": 45.0' jarvisd/jarvisd.py
-grep -q '"codexQuota": 300.0' jarvisd/jarvisd.py
-grep -q 'DEFAULT_FRESHNESS_LIMITS = {' jarvisd/jarvisd.py
-grep -q '"plugs": 30.0' jarvisd/jarvisd.py
-grep -q '"purifier": 90.0' jarvisd/jarvisd.py
-grep -q 'def _record_is_stale' jarvisd/jarvisd.py
-grep -q 'def _plug_item_is_stale' jarvisd/jarvisd.py
-grep -q 'def _complete_plug_collection_locked' jarvisd/jarvisd.py
-grep -q 'recent_last_good = (' jarvisd/jarvisd.py
-grep -q 'test_partial_plug_failure_retains_and_expires_only_that_devices_last_good' jarvisd/tests/test_jarvisd.py
-grep -q 'self._condition = threading.Condition(self._lock)' jarvisd/jarvisd.py
-grep -q 'def activate_client(self, wait_timeout:' jarvisd/jarvisd.py
-grep -q 'return STATE_COORDINATOR.snapshot(client_active=True)' jarvisd/jarvisd.py
-reject_match 'fixed 250-millisecond jarvisd scheduler polling was restored' -Fq 'self._stop.wait(0.25)' jarvisd/jarvisd.py
+grep -q 'DEFAULT_ACTIVE_LEASE_SECONDS = 45.0' ../jarvisd/jarvisd_core/state.py
+grep -q 'DEFAULT_ACTIVATION_WAIT_SECONDS = 0.0' ../jarvisd/jarvisd_core/state.py
+grep -q '"plugs": 10.0' ../jarvisd/jarvisd_core/state.py
+grep -Fq '"purifier": float("inf")' ../jarvisd/jarvisd_core/state.py
+# Cloud reads remain foreground/explicit, at most once per minute.
+grep -Fq 'now - last >= 60.0' ../jarvisd/jarvisd_core/state.py
+grep -q '"codexQuota": 300.0' ../jarvisd/jarvisd_core/state.py
+grep -q 'DEFAULT_FRESHNESS_LIMITS = {' ../jarvisd/jarvisd_core/state.py
+grep -q '"plugs": 30.0' ../jarvisd/jarvisd_core/state.py
+grep -q '"purifier": 90.0' ../jarvisd/jarvisd_core/state.py
+grep -q 'def _record_is_stale' ../jarvisd/jarvisd_core/state.py
+grep -q 'def _plug_item_is_stale' ../jarvisd/jarvisd_core/state.py
+grep -q 'def _complete_plug_collection_locked' ../jarvisd/jarvisd_core/state.py
+grep -q 'recent_last_good = (' ../jarvisd/jarvisd_core/state.py
+grep -q 'test_partial_plug_failure_retains_and_expires_only_that_devices_last_good' ../jarvisd/tests/test_jarvisd.py
+grep -q 'self._condition = threading.Condition(self._lock)' ../jarvisd/jarvisd_core/state.py
+grep -q 'def activate_client(self, wait_timeout:' ../jarvisd/jarvisd_core/state.py
+grep -q 'return STATE_COORDINATOR.snapshot(client_active=True)' ../jarvisd/jarvisd.py
+reject_match 'fixed 250-millisecond jarvisd scheduler polling was restored' -Fq 'self._stop.wait(0.25)' ../jarvisd/jarvisd_core/state.py
 
 printf '%s\n' '== responsive scoped foreground state =='
 grep -q 'controlActiveInterval: Duration = .seconds(3)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
@@ -114,15 +118,15 @@ grep -q 'testRoutineStateReadKeepsFreshControlsAvailable' JARVISTests/AppStateTe
 grep -q 'testUnrelatedOverallStalenessDoesNotDisableFreshPlugSubsystem' JARVISKit/Tests/JARVISKitTests/PlugCommandTests.swift
 
 printf '%s\n' '== bounded jarvisd logging contract =='
-grep -q 'from logging.handlers import RotatingFileHandler' jarvisd/jarvisd.py
-grep -q 'JARVISD_LOG_MAX_BYTES' jarvisd/jarvisd.py
-grep -q 'JARVISD_LOG_BACKUP_COUNT' jarvisd/jarvisd.py
-grep -q 'MAX_LOG_LINE_CHARS = 4096' jarvisd/jarvisd.py
-grep -q 'class RoutineRequestLogGate' jarvisd/jarvisd.py
-grep -q 'ROUTINE_REQUEST_LOG_PATHS = {"/health", "/api/v1/state", "/api/v1/omlx"}' jarvisd/jarvisd.py
-grep -q 'and status == 200' jarvisd/jarvisd.py
-grep -q 'and not parsed.query' jarvisd/jarvisd.py
-grep -q 'log_writer = configure_bounded_stderr()' jarvisd/jarvisd.py
+grep -q 'from logging.handlers import RotatingFileHandler' ../jarvisd/jarvisd_core/logging.py
+grep -q 'JARVISD_LOG_MAX_BYTES' ../jarvisd/jarvisd.py
+grep -q 'JARVISD_LOG_BACKUP_COUNT' ../jarvisd/jarvisd.py
+grep -q 'MAX_LOG_LINE_CHARS = 4096' ../jarvisd/jarvisd_core/logging.py
+grep -q 'class RoutineRequestLogGate' ../jarvisd/jarvisd_core/logging.py
+grep -q 'ROUTINE_REQUEST_LOG_PATHS = {"/health", "/api/v1/state", "/api/v1/omlx"}' ../jarvisd/jarvisd.py
+grep -q 'and status == 200' ../jarvisd/jarvisd.py
+grep -q 'and not parsed.query' ../jarvisd/jarvisd.py
+grep -q 'log_writer = configure_bounded_stderr()' ../jarvisd/jarvisd.py
 grep -q '^JARVISD_LOG_MAX_BYTES=1048576$' ../../../.env.example
 grep -q '^JARVISD_LOG_BACKUP_COUNT=3$' ../../../.env.example
 grep -q '^JARVISD_ROUTINE_REQUEST_LOG_INTERVAL=60$' ../../../.env.example
@@ -133,7 +137,7 @@ from pathlib import Path
 home = Path('JARVIS/Views/HomeView.swift').read_text()
 assert home.index('purifierSection(state)') < home.index('OMLXStatusCard(client: app.client')
 assert 'active: scenePhase == .active && app.activeSection == .home' in home
-host = Path('jarvisd/jarvisd.py').read_text().split('# Read-only oMLX activity', 1)[1].split('STATE_COORDINATOR = StateCoordinator()', 1)[0]
+host = Path('../jarvisd/jarvisd.py').read_text().split('# Read-only oMLX activity', 1)[1].split('STATE_COORDINATOR = StateCoordinator()', 1)[0]
 assert 'OMLX_COORDINATOR = StateCoordinator(' in host
 assert 'connection.request("GET", "/admin/api/activity"' in host
 assert '/api/stats' not in host and '"POST"' not in host
@@ -229,7 +233,7 @@ plutil -lint \
   JARVISWidget/Info.plist \
   JARVISWatch/Info.plist \
   JARVISWatchWidget/Info.plist \
-  jarvisd/launchd/*.plist \
+  ../jarvisd/launchd/*.plist \
   terminald/launchd/*.plist
 python3 -m json.tool JARVIS/Assets.xcassets/AccentColor.colorset/Contents.json >/dev/null
 python3 -m json.tool JARVIS/Assets.xcassets/JARVISMark.imageset/Contents.json >/dev/null
@@ -237,7 +241,7 @@ python3 -m json.tool JARVISWatch/Assets.xcassets/JARVISMark.imageset/Contents.js
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/JARVISWidgetIcon.imageset/Contents.json >/dev/null
 python3 -m json.tool JARVISWatchWidget/Assets.xcassets/JARVISWidgetIconAccented.imageset/Contents.json >/dev/null
-bash -n scripts/*.sh jarvisd/resurrector.sh
+bash -n scripts/*.sh ../jarvisd/resurrector.sh
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVIS/Info.plist)" == "jarvis" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' JARVISWatch/Info.plist)" == "jarvis" ]]
 shasum -a 256 -c config/protected-jarvis-icon-assets.sha256
@@ -265,7 +269,7 @@ grep -q 'Label("Jobs", systemImage: "calendar.badge.clock")' JARVIS/JARVISApp.sw
 reject_match 'Pi tab must be labeled JARVIS' -Fq 'Label("Pi"' JARVIS/JARVISApp.swift
 grep -q 'Label("Settings"' JARVIS/JARVISApp.swift
 grep -q 'requestedRoute: \$requestedJobRoute' JARVIS/JARVISApp.swift
-grep -q '/api/v1/scheduled-job-results' jarvisd/jarvisd.py
+grep -q '/api/v1/scheduled-job-results' ../jarvisd/jarvisd.py
 grep -q 'public static let limit = 100' JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift
 grep -q 'case jobs' JARVIS/AppState.swift
 grep -q 'await self.refreshJobs()' JARVIS/AppState.swift
@@ -325,14 +329,14 @@ grep -q 'hasConversation: hasConversation ?? null' ../../../.pi/extensions/46-lo
 reject_match 'retired Waiting mode must not be emitted' -E 'waitingForPrompt|return "waiting"' ../../../.pi/extensions/46-local-pi-session-status.ts
 grep -q 'pi.on("session_before_compact"' ../../../.pi/extensions/46-local-pi-session-status.ts
 grep -q 'version: 2' ../../../.pi/extensions/46-local-pi-session-status.ts
-grep -q 'MOBILE_PI_REPORTED_LIFECYCLES' jarvisd/jarvisd.py
-grep -q 'lifecycle = "offline"' jarvisd/jarvisd.py
-grep -q '(1, "jarvis-ios")' jarvisd/jarvisd.py
-grep -q '(9, "jarvis-ios-9")' jarvisd/jarvisd.py
-grep -q '#{session_name}\\t#{pane_dead}\\t#{pane_pid}' jarvisd/jarvisd.py
-grep -q 'pi-extension-local-session-status' jarvisd/jarvisd.py
-grep -q 'if project_root_is_explicit:' jarvisd/jarvisd.py
-grep -q '"mobileSessions": _mobile_pi_session_states()' jarvisd/jarvisd.py
+grep -q 'MOBILE_PI_REPORTED_LIFECYCLES' ../jarvisd/jarvisd.py
+grep -q 'lifecycle = "offline"' ../jarvisd/jarvisd.py
+grep -q '(1, "jarvis-ios")' ../jarvisd/jarvisd.py
+grep -q '(9, "jarvis-ios-9")' ../jarvisd/jarvisd.py
+grep -q '#{session_name}\\t#{pane_dead}\\t#{pane_pid}' ../jarvisd/jarvisd.py
+grep -q 'pi-extension-local-session-status' ../jarvisd/jarvisd.py
+grep -q 'if project_root_is_explicit:' ../jarvisd/jarvisd_core/config.py
+grep -q '"mobileSessions": _mobile_pi_session_states()' ../jarvisd/jarvisd.py
 grep -q 'SettingsGroup(title: "Configuration")' JARVIS/Views/SettingsView.swift
 reject_match 'paid-team Settings must not restore the obsolete Maintenance group' -Fq 'SettingsGroup(title: "Maintenance")' JARVIS/Views/SettingsView.swift
 [[ "$(grep -c 'NavigationLink {' JARVIS/Views/SettingsView.swift)" == "4" ]]
@@ -349,17 +353,17 @@ reject_match 'streamlined Settings must not restore separate Diagnostics or Abou
 reject_match 'streamlined Settings must not retain monolithic detail properties' -RqsE 'piTerminalDetail|watchTerminalDetail|developerSigningDetail' JARVIS/Views
 grep -q '"/api/v1/signing/status"' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 grep -q '"/api/v1/signing/renew"' JARVISKit/Sources/JARVISKit/JarvisClient.swift
-grep -q 'signing renewal does not accept a request body' jarvisd/jarvisd.py
-grep -q '\[str(SIGNING_RENEWAL_SCRIPT)\]' jarvisd/jarvisd.py
+grep -q 'signing renewal does not accept a request body' ../jarvisd/jarvisd.py
+grep -q '\[str(SIGNING_RENEWAL_SCRIPT)\]' ../jarvisd/jarvisd.py
 [[ -x scripts/renew-free-signing.sh ]]
 grep -q 'refs/heads/main' scripts/renew-free-signing.sh
 grep -q 'PROFILE_REFRESH_COMPLETE' scripts/renew-free-signing.sh
 grep -q 'case verifying' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'write_status "verifying"' scripts/renew-free-signing.sh
 grep -q '"failedPhase": failed_phase or None' scripts/renew-free-signing.sh
-grep -q 'SIGNING_RENEWAL_STEPS' jarvisd/jarvisd.py
+grep -q 'SIGNING_RENEWAL_STEPS' ../jarvisd/jarvisd.py
 grep -q 'iPhone renewal succeeded, but Watch installation failed' scripts/renew-free-signing.sh
-reject_match 'signing renewal endpoint must not accept shell commands or client arguments' -E 'shell=True|SIGNING_RENEWAL_SCRIPT.*payload|renew-free-signing.sh.*\$@' jarvisd/jarvisd.py scripts/renew-free-signing.sh
+reject_match 'signing renewal endpoint must not accept shell commands or client arguments' -E 'shell=True|SIGNING_RENEWAL_SCRIPT.*payload|renew-free-signing.sh.*\$@' ../jarvisd/jarvisd.py scripts/renew-free-signing.sh
 reject_match 'legacy oversized iPhone status hero remains' -RqsE 'private var statusHeader|private var settingsHero|Native control plane' JARVIS/Views
 reject_match 'legacy expanded Home service groups remain' -qsE 'runtimeServicesExpanded|scheduledJobsExpanded|DisclosureGroup' JARVIS/Views/HomeView.swift
 reject_match 'Pi and Codex summaries must remain directly visible on Home' -qsE 'codexDetail|navigationTitle\("Codex usage"\)' JARVIS/Views/HomeView.swift
@@ -415,8 +419,8 @@ grep -q 'FALLBACK_ALERT_BODY' ../../../.pi/scheduler/apns_provider.py
 grep -q 'DELETE FROM notification_devices' ../../../.pi/scheduler/runner.py
 grep -q '_set_config_value(conn, "apns_dispatch_enabled", "0")' ../../../.pi/scheduler/runner.py
 grep -Fq '/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/.pi/scheduler/apns_registration.py' JARVIS/PushRegistrationSSHTransport.swift
-grep -q '"/api/v1/notification-status"' jarvisd/jarvisd.py
-reject_match 'APNs registration must never enter jarvisd HTTP' -Fq '/api/v1/notification-register' jarvisd/jarvisd.py
+grep -q '"/api/v1/notification-status"' ../jarvisd/jarvisd.py
+reject_match 'APNs registration must never enter jarvisd HTTP' -Fq '/api/v1/notification-register' ../jarvisd/jarvisd.py
 reject_match 'Watch must not gain background remote notification modes' -Eq 'remote-notification|<string>fetch</string>|<string>processing</string>' JARVISWatch/Info.plist
 
 printf '%s\n' '== Pi terminal source contract =='
@@ -469,7 +473,7 @@ reject_match 'Pi mouse mode must not install SwiftTerm remote drag reporting on 
 grep -q 'toggleTerminalKeyboard' JARVIS/Terminal/PiTerminalController.swift
 grep -q 'keyboard.chevron.compact.down' JARVIS/Terminal/PiTerminalView.swift
 grep -q 'slashBytes: \[UInt8\] = \[0x2f\]' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'key("/", label: "Slash", bytes: PiTerminalKeyDeck.slashBytes)' JARVIS/Terminal/PiTerminalView.swift
+grep -Fq 'key("/", label: "Slash", action: .slash, metrics: metrics)' JARVIS/Terminal/PiTerminalView.swift
 reject_match 'Pi key deck must not retain the dedicated Control-C button' -Fq 'Control C, abort' JARVIS/Terminal/PiTerminalView.swift
 reject_match 'Pi key deck must end at the Down arrow' -E 'Left arrow|Right arrow|Shift Return|Option Return|Pi keyboard shortcuts|accessibilityLabel\("Paste"\)' JARVIS/Terminal/PiTerminalView.swift
 reject_match 'Pi terminal must not force the keyboard open when its view appears' -Fq 'DispatchQueue.main.async { _ = view.becomeFirstResponder() }' JARVIS/Terminal/PiTerminalView.swift
@@ -600,7 +604,10 @@ grep -q 'self.tmux_target = TMUX_TARGET if session_id == 1 else "=" + self.tmux_
 grep -q 'service.frame_after(after)' terminald/jarvis_terminald.py
 grep -q '\["jarvis-ios-9", 9\]' ../../../.pi/extensions/lib/attach/mobile-server.ts
 grep -q '"jarvis-ios-9"' ../../../.pi/extensions/lib/attach/transport.ts
-grep -Fq '!/^[1-9]$/.test(argumentsList[1])' ../../../.pi/scripts/pi-attach-mobile-receiver.mjs
+grep -Fq '!/^(?:[1-9]|10)$/.test(argumentsList[1])' ../../../.pi/scripts/pi-attach-mobile-receiver.mjs
+grep -Fq 'case roomAudio = 10' JARVISKit/Sources/JARVISKit/TerminalSessionSlot.swift
+grep -Fq '["jarvis-ios-10", 10]' ../../../.pi/extensions/lib/attach/mobile-server.ts
+grep -Fq '10: "jarvis-ios-10"' terminald/jarvis_terminald.py
 grep -q 'def _v2_payload_session(value: Any)' terminald/jarvis_terminald.py
 grep -q 'if type(value) is not int or value not in TMUX_SESSIONS' terminald/jarvis_terminald.py
 grep -q '"sessionID": session_id' terminald/jarvis_terminald.py
@@ -747,15 +754,16 @@ grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVIS/Views/HomeView
 grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'let pollutedFraction = (Double(value) - 1) / 74' JARVISKit/Sources/JARVISKit/AirQualityGauge.swift
 grep -q 'public struct CodexQuotaSubsystem' JARVISKit/Sources/JARVISKit/Models.swift
-grep -q 'CODEX_QUOTAS_SCRIPT' jarvisd/jarvisd.py
-grep -q 'JARVIS_ROOT / "projects" / "operation-jarvis" / "quotas" / "quotas.py"' jarvisd/jarvisd.py
-grep -q '\[sys.executable, str(CODEX_QUOTAS_SCRIPT), "codex", "--json"\]' jarvisd/jarvisd.py
-grep -q '"codexQuota": 60.0' jarvisd/jarvisd.py
-grep -q 'query.get("refresh") == \["codexQuota"\]' jarvisd/jarvisd.py
+grep -q 'CODEX_QUOTAS_SCRIPT' ../jarvisd/jarvisd.py
+grep -q 'JARVIS_ROOT / "projects" / "operation-jarvis" / "quotas" / "quotas.py"' ../jarvisd/jarvisd.py
+grep -q '\[sys.executable, str(CODEX_QUOTAS_SCRIPT), "codex", "--json"\]' ../jarvisd/jarvisd.py
+grep -q '"codexQuota": 60.0' ../jarvisd/jarvisd_core/state.py
+grep -Fq 'for subsystem in query.get("refresh", []):' ../jarvisd/jarvisd.py
+grep -Fq 'if subsystem in {"codexQuota", "purifier"}:' ../jarvisd/jarvisd.py
 grep -q 'stateRefreshingCodexQuota' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 grep -q 'model.refreshCodexQuotaWhenVisible()' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'page == .system' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})' jarvisd/jarvisd.py
+grep -q 'NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})' ../jarvisd/jarvisd_core/state.py
 reject_match 'Watch System page must not restore the removed Direct to Mac panel' -Fq 'Direct to Mac' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'configuration.candidateBaseURLs' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
@@ -795,9 +803,9 @@ grep -q 'plugButton(name, minimumHeight: tileHeight)' JARVISWatch/Views/WatchDas
 grep -q 'minHeight: minimumHeight' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func pageHeader(_ title: String, symbol: String)' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch Plugs/System top-right header summaries must remain removed' -RqsE 'plugSummary|codexQuotaHeader|pageHeader\([^)]*trailing:' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'private func purifierPowerButton' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'private func purifierModeControl' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'private func purifierFanControl' JARVISWatch/Views/WatchDashboardContent.swift
+grep -Fq 'await model.setPurifierPower(!isOn, deviceID: route.deviceID)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -Fq 'await model.setPurifierMode(option, deviceID: route.deviceID)' JARVISWatch/Views/WatchDashboardContent.swift
+grep -Fq 'await model.setPurifierFan(level, deviceID: route.deviceID)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'WatchBridge.shared.requestPurifierCommand' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'watchBridgeDidReceivePurifierCommand' JARVIS/AppStateWatchBridge.swift
 grep -q 'public struct WatchPurifierCommand' JARVISKit/Sources/JARVISKit/WatchBridge.swift
@@ -805,7 +813,7 @@ grep -q 'public let verificationPending: Bool?' JARVISKit/Sources/JARVISKit/Mode
 grep -q 'public let pendingCommand: PurifierPendingCommand?' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'purifierConfirmationCaption' JARVIS/Views/HomeView.swift
 grep -q 'purifierPendingSummary' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'data\["pendingCommand"\] = pending_command' jarvisd/jarvisd.py
+grep -q 'data\["pendingCommand"\] = pending_command' ../jarvisd/jarvisd_core/state.py
 reject_match 'Air-purifier controls must stay in the existing System card, not add a Watch page' -Fq 'case purifier' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'System Watch pager must not reserve the removed clock strip' -Fq 'tabViewStyle(.verticalPage)' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch terminal must not require an Open button' -qs 'Open JARVIS' JARVISWatch/Views/WatchDashboardContent.swift
@@ -861,7 +869,7 @@ reject_match 'standalone Watch push-result presentation must stay removed' -RqsE
 [[ -x scripts/install-jarvis-terminald.sh ]]
 [[ -x scripts/jarvis-terminal-provisioning.sh ]]
 reject_match 'Watch terminal must not open SSH directly' -RqsE 'import NIOSSH|import NIOPosix|import SwiftTerm' JARVISWatch
-reject_match 'terminal bridge must remain separate from jarvisd' -RqsF 'terminal/frame' jarvisd
+reject_match 'terminal bridge must remain separate from jarvisd' -RqsF 'terminal/frame' ../jarvisd
 
 printf '%s\n' '== concurrency-safe native formatting and WidgetKit contracts =='
 grep -q 'Date.ISO8601FormatStyle(includingFractionalSeconds: true)' JARVIS/Views/Components.swift
@@ -899,13 +907,13 @@ grep -q 'async let state: Void = self.fetchState()' JARVIS/AppState.swift
 grep -q 'testCachedStateAndJobsPollingContinueAcrossActiveTabsWithoutServicesPolling' JARVISTests/AppStateTests.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
 grep -q '100.87.28.34' JARVISKit/Sources/JARVISKit/Endpoints.swift
-grep -q 'TAILSCALE_APP_CLI' jarvisd/jarvisd.py
+grep -q 'TAILSCALE_APP_CLI' ../jarvisd/jarvisd.py
 for plist in JARVIS/Info.plist JARVISWatch/Info.plist JARVISWidget/Info.plist JARVISWatchWidget/Info.plist; do
   grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' "$plist"
   grep -q '100.87.28.34' "$plist"
 done
 reject_match 'retired Tailscale node address is still present' -RqsF '100.96.55.86' \
-  JARVIS JARVISWatch JARVISWidget JARVISWatchWidget JARVISKit/Sources jarvisd
+  JARVIS JARVISWatch JARVISWidget JARVISWatchWidget JARVISKit/Sources ../jarvisd
 grep -q 'self.activeSection == .home' JARVIS/AppState.swift
 grep -q '? self.controlRefreshInterval' JARVIS/AppState.swift
 grep -q 'try await Task.sleep(for: interval)' JARVIS/AppState.swift
@@ -1262,16 +1270,20 @@ assert 'MinimalCard(padding: 8)' in text
 pi_content = text.split('struct PiSessionCardContent: View', 1)[1].split('struct HomeView: View', 1)[0]
 assert 'Image(systemName: presentation.symbol)' in pi_content
 assert 'presentation.allowsActivityEdge, muted: true' in pi_content
-assert text.count('muted: true') == 1
+assert pi_content.count('muted: true') == 1
 assert 'Text("\\(sessionID)")' in pi_content
 assert 'Circle()' not in pi_content and 'Text("Pi ' not in pi_content
 assert 'minHeight: 42' in pi_content and 'MinimalCard(padding: 8)' in pi_content
 assert '.accessibilityLabel("Pi session ' in pi_content
 
-assert 'ActivityMotionGate.roomAudioActive(status, receivedAt: app.roomAudioUpdatedAt, now: now)' in text
-assert '.activityIconPulse(active: pulses)' in text and 'homeMotionActive && !app.roomAudioStopping' in text
+assert 'onOpenPiTerminal(.roomAudio)' in text
+assert 'let activeSpeakers = RoomAudioSpeaker.allCases.filter' in text
+assert 'app.roomAudio[speaker]?.allowsStop == true' in text
+assert 'context.date.timeIntervalSince($0) <= 6' in text
+assert '.activityIconPulse(active: homeMotionActive && presentation.animatesIcon)' in text
 assert 'minimumInterval: 1, paused: !homeMotionActive' in text
-assert '.disabled(!fresh || status?.allowsStop != true || app.roomAudioStopping)' in text
+assert '.disabled(activeSpeakers.isEmpty || !app.roomAudioStopping.isEmpty)' in text
+assert 'await app.stopAllRoomAudio()' in text
 
 assert '.activityIconPulse(active: motionActive && presentation.animatesIcon)' in text
 motion = Path('JARVISKit/Sources/JARVISKit/ActivityIconMotion.swift').read_text()
@@ -1307,6 +1319,7 @@ else
   swift test --package-path JARVISKit
 fi
 
+if [[ "${JARVIS_SKIP_NATIVE_BUILDS:-0}" != "1" ]]; then
 printf '%s\n' '== Neural Core C2 artwork render contracts =='
 bash scripts/verify-neural-core-artwork.sh
 
@@ -1445,6 +1458,10 @@ WATCH_HOST_BINARY="$DERIVED_DATA_PATH/Build/Products/Debug-watchsimulator/JARVIS
   && WATCH_HOST_BINARY="$DERIVED_DATA_PATH/Build/Products/Debug-watchsimulator/JARVISWatch.app/JARVISWatch.debug.dylib"
 reject_match 'SSH terminal code leaked into the Watch host' -aFq 'PiTerminalConfiguration' "$WATCH_HOST_BINARY"
 
+else
+  printf '%s\n' '== SKIPPED: artwork rendering, native builds and simulator tests (JARVIS_SKIP_NATIVE_BUILDS=1) =='
+fi
+
 printf '%s\n' '== Interaction motion source contracts =='
 python3 - <<'MOTION'
 from pathlib import Path
@@ -1458,7 +1475,7 @@ home = Path('JARVIS/Views/HomeView.swift').read_text()
 watch = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 assert '.buttonStyle(JarvisPressStyle())' in home and '.buttonStyle(JarvisPressStyle())' in watch
 assert 'isStale: item.stale' in home
-assert 'allowed: !stale && !model.isPurifierVerificationPending && isOn != nil' in watch
+assert '.disabled(stale || model.purifierBusy || purifier?.isOn == nil)' in watch
 assert '.interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.32)' in watch
 assert '.contentTransition(.opacity)' in Path('JARVIS/Views/Components.swift').read_text()
 print('PASS: bounded input/confirmed presentation motion and lifecycle gates')

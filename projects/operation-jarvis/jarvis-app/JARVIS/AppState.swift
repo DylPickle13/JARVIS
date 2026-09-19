@@ -44,45 +44,70 @@ private struct WidgetReloadValue: Equatable {
 @MainActor
 public final class AppState: ObservableObject {
     public let store: EndpointStore
-    @Published public private(set) var roomAudio: RoomAudioStatus?
-    @Published public private(set) var roomAudioUpdatedAt: Date?
-    @Published public private(set) var roomAudioStopping = false
-    private var roomAudioGeneration = 0
+    @Published public private(set) var roomAudio: [RoomAudioSpeaker: RoomAudioStatus] = [:]
+    @Published public private(set) var roomAudioUpdatedAt: [RoomAudioSpeaker: Date] = [:]
+    @Published public private(set) var roomAudioStopping: Set<RoomAudioSpeaker> = []
+    private var roomAudioGeneration: [RoomAudioSpeaker: Int] = [:]
+    private var roomAudioEndpoints: [RoomAudioSpeaker: JarvisEndpoint] = [:]
 
     public func refreshRoomAudio() async {
-        guard !roomAudioStopping else { return }
+        async let pi: Void = refreshRoomAudio(speaker: .pi)
+        async let mac: Void = refreshRoomAudio(speaker: .mac)
+        _ = await (pi, mac)
+    }
+
+    private func refreshRoomAudio(speaker: RoomAudioSpeaker) async {
+        guard !roomAudioStopping.contains(speaker) else { return }
         guard activeSection == .home, connectionState == .connected, let endpoint = activeEndpoint else {
-            roomAudio = nil
+            roomAudio[speaker] = nil
             return
         }
-        let generation = roomAudioGeneration
+        let generation = roomAudioGeneration[speaker, default: 0]
         do {
-            let result = try await client.roomAudioStatus(endpoint)
-            guard !Task.isCancelled, generation == roomAudioGeneration,
+            let result = try await client.roomAudioStatus(endpoint, speaker: speaker)
+            guard !Task.isCancelled, generation == roomAudioGeneration[speaker, default: 0],
                   activeEndpoint == endpoint, activeSection == .home else { return }
-            roomAudio = result
-            roomAudioUpdatedAt = Date()
+            roomAudio[speaker] = result
+            roomAudioUpdatedAt[speaker] = Date()
+            roomAudioEndpoints[speaker] = endpoint
         } catch {
-            if !Task.isCancelled, generation == roomAudioGeneration, activeEndpoint == endpoint { roomAudio = nil }
+            if !Task.isCancelled, generation == roomAudioGeneration[speaker, default: 0], activeEndpoint == endpoint {
+                roomAudio[speaker] = nil
+            }
         }
     }
 
-    public func stopRoomAudio() async {
-        guard connectionState == .connected, !roomAudioStopping, let status = roomAudio, status.allowsStop,
-              let updated = roomAudioUpdatedAt, Date().timeIntervalSince(updated) <= 6,
-              let turn = status.turnID, let endpoint = activeEndpoint else { return }
-        roomAudioGeneration += 1
-        roomAudioStopping = true
-        defer { roomAudioStopping = false }
+    public func stopAllRoomAudio() async {
+        let targets = RoomAudioSpeaker.allCases.compactMap { speaker -> (RoomAudioSpeaker, String)? in
+            guard let status = roomAudio[speaker], status.allowsStop, let turn = status.turnID else { return nil }
+            return (speaker, turn)
+        }
+        await withTaskGroup(of: Void.self) { group in
+            for (speaker, turn) in targets {
+                group.addTask { await self.stopRoomAudio(speaker: speaker, expectedTurnID: turn) }
+            }
+        }
+    }
+
+    public func stopRoomAudio(speaker: RoomAudioSpeaker, expectedTurnID: String? = nil) async {
+        guard connectionState == .connected, !roomAudioStopping.contains(speaker),
+              let status = roomAudio[speaker], status.allowsStop,
+              expectedTurnID == nil || status.turnID == expectedTurnID,
+              let updated = roomAudioUpdatedAt[speaker], Date().timeIntervalSince(updated) <= 6,
+              let turn = status.turnID, let endpoint = activeEndpoint,
+              roomAudioEndpoints[speaker] == endpoint else { return }
+        roomAudioGeneration[speaker, default: 0] += 1
+        roomAudioStopping.insert(speaker)
+        defer { roomAudioStopping.remove(speaker) }
         do {
-            let result = try await client.stopRoomAudio(endpoint, turnID: turn)
+            let result = try await client.stopRoomAudio(endpoint, speaker: speaker, turnID: turn)
             guard activeEndpoint == endpoint else { return }
-            roomAudio = result
-            roomAudioUpdatedAt = Date()
+            roomAudio[speaker] = result
+            roomAudioUpdatedAt[speaker] = Date()
         } catch {
-            // Never retry a possibly accepted stop or substitute a newer turn.
-            roomAudio = nil
-            operationErrorMessage = "Could not confirm room-audio Stop. Refresh status before trying again."
+            // Never retry a possibly accepted stop or substitute another speaker/turn.
+            roomAudio[speaker] = nil
+            operationErrorMessage = "Could not confirm \(speaker.title) Stop. Refresh status before trying again."
         }
     }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Raspberry Pi room-audio client for Operation JARVIS.
+"""Raspberry Pi/macOS room-audio client for Operation JARVIS.
 
 Supports both fixed-window diagnostics and the production continuous VAD
 listener. The Pi captures room audio from the Anker PowerConf, reconnects the
@@ -24,6 +24,7 @@ import json
 import math
 import os
 import select
+import signal
 import subprocess
 import sys
 import tempfile
@@ -86,6 +87,26 @@ DEFAULT_INTERRUPT_VAD_SILENCE_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_
 DEFAULT_INTERRUPT_VAD_MAX_UTTERANCE_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_INTERRUPT_VAD_MAX_UTTERANCE_SECONDS", "2.0"))
 
 
+# ALSA remains the default so standalone Pi deployments need no new module.
+AUDIO_BACKEND = "alsa"
+
+
+def coreaudio_command(operation: str, *, device: str, rate: int | None = None,
+                      path: Path | None = None, seconds: float | None = None) -> list[str]:
+    command = [sys.executable, str(Path(__file__).with_name("room_audio_coreaudio.py")),
+               operation, "--device", device]
+    if rate is not None: command.extend(["--rate", str(rate)])
+    if path is not None: command.extend(["--path", str(path)])
+    if seconds is not None: command.extend(["--seconds", str(seconds)])
+    return command
+
+
+def playback_command(path: Path, device: str) -> list[str]:
+    if AUDIO_BACKEND == "coreaudio":
+        return coreaudio_command("playback", device=device, path=path)
+    return ["aplay", "-q", "-D", device, str(path)]
+
+
 def run(cmd: list[str], *, timeout: float | None = None) -> None:
     subprocess.run(cmd, check=True, timeout=timeout)
 
@@ -115,10 +136,13 @@ def wav_duration_seconds(path: Path) -> float:
 
 
 def play_wav(path: Path, *, device: str) -> None:
-    run(["aplay", "-q", "-D", device, str(path)], timeout=max(120, wav_duration_seconds(path) + 30))
+    run(playback_command(path, device), timeout=max(120, wav_duration_seconds(path) + 30))
 
 
 def record_wav(path: Path, *, device: str, seconds: float, rate: int) -> None:
+    if AUDIO_BACKEND == "coreaudio":
+        run(coreaudio_command("record", device=device, rate=rate, path=path, seconds=seconds), timeout=seconds + 10)
+        return
     run(
         [
             "arecord",
@@ -161,6 +185,10 @@ def pcm_rms_s16le_mono(pcm: bytes) -> int:
 
 
 def start_raw_arecord(*, device: str, rate: int) -> subprocess.Popen:
+    # Preserve the PCM pipe contract and watchdog for both transports.
+    if AUDIO_BACKEND == "coreaudio":
+        return subprocess.Popen(coreaudio_command("capture", device=device, rate=rate),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
     return subprocess.Popen(
         [
             "arecord",
@@ -340,7 +368,7 @@ class LocalWakeWordDetector:
             return None
         if source_rate != self.target_rate:
             if audioop is None:
-                raise RuntimeError("local wake-word resampling requires Python audioop; capture at 16000 Hz or use Python <=3.12")
+                raise RuntimeError("local wake-word resampling requires audioop; install audioop-lts on Python 3.13+, capture at 16000 Hz, or use Python <=3.12")
             frame, self._ratecv_state = audioop.ratecv(frame, 2, 1, source_rate, self.target_rate, self._ratecv_state)
         self._buffer.extend(frame)
 
@@ -517,7 +545,7 @@ class PlaybackController:
         if cancel_event is not None and cancel_event.is_set():
             return False
         proc = subprocess.Popen(
-            ["aplay", "-q", "-D", device, str(path)],
+            playback_command(path, device),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -586,7 +614,7 @@ def play_response_audio(
             completed = playback_controller.play(output_path, device=device, cancel_event=cancel_event)
         elapsed = time.monotonic() - started
         outcome = "finished" if completed else "interrupted"
-        print(f"response audio aplay {outcome}: elapsed={elapsed:.2f}s", flush=True)
+        print(f"response audio {AUDIO_BACKEND} {outcome}: elapsed={elapsed:.2f}s", flush=True)
     if completed and drain_seconds > 0:
         # BlueALSA/aplay can return as soon as the WAV is queued, while the
         # Bluetooth speaker is still physically draining its A2DP buffer. If we
@@ -1528,7 +1556,8 @@ def run_turn(args: argparse.Namespace) -> dict:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server-url", default=DEFAULT_SERVER_URL)
-    parser.add_argument("--device", default=DEFAULT_AUDIO_DEVICE, help="ALSA capture device; also used for playback unless --playback-device is set")
+    parser.add_argument("--audio-backend", choices=["alsa", "coreaudio"], default="alsa", help="Core Audio on macOS; ALSA remains the Pi default")
+    parser.add_argument("--device", default=DEFAULT_AUDIO_DEVICE, help="ALSA capture device or exact Core Audio name; also used for playback unless --playback-device is set")
     parser.add_argument("--playback-device", default=DEFAULT_PLAYBACK_DEVICE, help="ALSA playback device, useful when Bluetooth capture uses SCO and playback uses A2DP")
     parser.add_argument("--duration", type=float, default=DEFAULT_RECORD_SECONDS)
     parser.add_argument("--rate", type=int, default=DEFAULT_RATE)
@@ -1618,7 +1647,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    global AUDIO_BACKEND
     args = build_parser().parse_args()
+    AUDIO_BACKEND = args.audio_backend
+    if AUDIO_BACKEND == "coreaudio":
+        if sys.platform != "darwin":
+            raise SystemExit("--audio-backend coreaudio requires macOS")
+        if args.bluetooth_mac:
+            raise SystemExit("Core Audio mode does not use the Linux Bluetooth reconnect helper")
+        # launchd stop must also close capture, playback and follow-up state.
+        def terminate(_signum, _frame):
+            raise KeyboardInterrupt
+        signal.signal(signal.SIGTERM, terminate)
     if not args.playback_device:
         args.playback_device = args.device
     if args.interrupt_while_busy:
@@ -1649,4 +1689,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(0)

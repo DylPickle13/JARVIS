@@ -5,6 +5,29 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testRoomSpeakersRefreshIndependentlyAndStopOnlySelectedTurn() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.rooms.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        app.connectionState = .connected
+        await app.refreshRoomAudio()
+        XCTAssertEqual(Set(app.roomAudio.keys), Set(RoomAudioSpeaker.allCases))
+        XCTAssertNotEqual(app.roomAudio[.pi]?.turnID, app.roomAudio[.mac]?.turnID)
+        await app.stopRoomAudio(speaker: .mac)
+        XCTAssertEqual(api.roomStops.count, 1)
+        XCTAssertEqual(api.roomStops.first?.0, .mac)
+        XCTAssertEqual(api.roomStops.first?.1, String(repeating: "b", count: 32))
+        XCTAssertTrue(app.roomAudio[.pi]?.allowsStop == true)
+        api.roomUnavailable = .mac
+        await app.refreshRoomAudio()
+        XCTAssertNil(app.roomAudio[.mac])
+        XCTAssertNotNil(app.roomAudio[.pi])
+        await app.stopRoomAudio(speaker: .mac)
+        XCTAssertEqual(api.roomStops.count, 1, "Unavailable Mac must not stop the Pi")
+    }
+
     func testPhonePurifierControlsCarryExplicitDeviceID() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.dual.\(UUID().uuidString)")!
@@ -962,7 +985,7 @@ final class AppStateTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        XCTAssertEqual(JARVISTerminalSlot.allCases.map(\.rawValue), Array(1...9))
+        XCTAssertEqual(JARVISTerminalSlot.allCases.map(\.rawValue), Array(1...10))
         XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .one)
         JARVISTerminalSlot.six.persist(to: defaults)
         XCTAssertEqual(JARVISTerminalSlot.load(from: defaults), .six)
@@ -973,9 +996,11 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(JARVISTerminalSlot.six.previous, .five)
         XCTAssertEqual(JARVISTerminalSlot.six.next, .seven)
         XCTAssertEqual(JARVISTerminalSlot.nine.previous, .eight)
-        XCTAssertNil(JARVISTerminalSlot.nine.next)
+        XCTAssertEqual(JARVISTerminalSlot.nine.next, .roomAudio)
+        XCTAssertNil(JARVISTerminalSlot.roomAudio.next)
         XCTAssertNil(JARVISTerminalSlot(rawValue: 0))
-        XCTAssertNil(JARVISTerminalSlot(rawValue: 10))
+        XCTAssertEqual(JARVISTerminalSlot(rawValue: 10), .roomAudio)
+        XCTAssertNil(JARVISTerminalSlot(rawValue: 11))
     }
 
     func testHomePiCardCanSelectAnExactDeviceLocalTerminalSlotBeforePresentation() throws {
@@ -1197,6 +1222,24 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var scheduledJobResultRequests: [ScheduledJobResultRequest] = []
     var signingStatusCalls = 0
     var signingStartCalls = 0
+    var roomUnavailable: RoomAudioSpeaker?
+    var roomStops: [(RoomAudioSpeaker, String)] = []
+
+    @MainActor
+    func roomAudioStatus(_ endpoint: JarvisEndpoint, speaker: RoomAudioSpeaker) async throws -> RoomAudioStatus {
+        if roomUnavailable == speaker { throw JarvisError.transport("offline") }
+        let turn = String(repeating: speaker == .pi ? "a" : "b", count: 32)
+        let data = try JSONSerialization.data(withJSONObject: ["ok": true, "speakerID": speaker.rawValue,
+            "clientOnline": true, "phase": "speaking", "turnID": turn, "canStop": true, "ageSeconds": 1])
+        return try JSONDecoder().decode(RoomAudioStatus.self, from: data)
+    }
+
+    @MainActor
+    func stopRoomAudio(_ endpoint: JarvisEndpoint, speaker: RoomAudioSpeaker, turnID: String) async throws -> RoomAudioStatus {
+        roomStops.append((speaker, turnID))
+        return try await roomAudioStatus(endpoint, speaker: speaker)
+    }
+
     private var purifierIsOn = false
     private var purifierMode = "auto"
     private var purifierFan = 2

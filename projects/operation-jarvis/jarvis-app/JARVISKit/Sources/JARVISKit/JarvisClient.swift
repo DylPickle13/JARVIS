@@ -79,6 +79,8 @@ public protocol JarvisAPI: Sendable {
     func omlxStatus(_ endpoint: JarvisEndpoint) async throws -> OMLXSnapshot
     func roomAudioStatus(_ endpoint: JarvisEndpoint) async throws -> RoomAudioStatus
     func stopRoomAudio(_ endpoint: JarvisEndpoint, turnID: String) async throws -> RoomAudioStatus
+    func roomAudioStatus(_ endpoint: JarvisEndpoint, speaker: RoomAudioSpeaker) async throws -> RoomAudioStatus
+    func stopRoomAudio(_ endpoint: JarvisEndpoint, speaker: RoomAudioSpeaker, turnID: String) async throws -> RoomAudioStatus
     func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus
     func serviceAction(_ endpoint: JarvisEndpoint, name: String, action: String) async throws -> ServiceActionResult
     func signingRenewalStatus(_ endpoint: JarvisEndpoint) async throws -> SigningRenewalStatus
@@ -98,6 +100,15 @@ public extension JarvisAPI {
         throw JarvisError.transport("Room audio control unavailable.")
     }
 
+    func roomAudioStatus(_ endpoint: JarvisEndpoint, speaker: RoomAudioSpeaker) async throws -> RoomAudioStatus {
+        guard speaker == .pi else { throw JarvisError.transport("Mac room audio unavailable.") }
+        return try await roomAudioStatus(endpoint)
+    }
+    func stopRoomAudio(_ endpoint: JarvisEndpoint, speaker: RoomAudioSpeaker, turnID: String) async throws -> RoomAudioStatus {
+        guard speaker == .pi else { throw JarvisError.transport("Mac room audio unavailable.") }
+        return try await stopRoomAudio(endpoint, turnID: turnID)
+    }
+
     func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus {
         throw JarvisError.transport("Notification status is unavailable.")
     }
@@ -114,6 +125,17 @@ public extension JarvisAPI {
 
     func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         try await state(endpoint)
+    }
+}
+
+private final class DeviceCommandDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    static let shared = DeviceCommandDelegate()
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil) // A device write must never follow a redirect.
     }
 }
 
@@ -172,21 +194,29 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         method: String = "GET",
         body: Data? = nil,
         requestTimeout: TimeInterval? = nil,
+        deviceWrite: Bool = false,
+        refuseRedirect: Bool = false,
         as type: T.Type
     ) async throws -> T {
         var request = try makeRequest(endpoint, path, method: method)
         if let requestTimeout { request.timeoutInterval = max(0.2, requestTimeout) }
         request.httpBody = body
+        if deviceWrite {
+            request.setValue(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
+                             forHTTPHeaderField: "x-jarvis-request-id")
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.timeoutInterval = 45
+        }
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: (deviceWrite || refuseRedirect) ? DeviceCommandDelegate.shared : nil)
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as URLError {
-            throw JarvisError.transport(error.localizedDescription)
+            throw JarvisError.transport(deviceWrite ? "Device command delivery may be unknown. Refresh state; do not retry automatically. \(error.localizedDescription)" : error.localizedDescription)
         } catch {
-            throw JarvisError.transport(error.localizedDescription)
+            throw JarvisError.transport(deviceWrite ? "Device command delivery may be unknown. Refresh state; do not retry automatically. \(error.localizedDescription)" : error.localizedDescription)
         }
 
         guard let http = response as? HTTPURLResponse else {
@@ -318,7 +348,9 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         params: [String: JSONValue]? = nil
     ) async throws -> CommandResult {
         let body = try JSONEncoder().encode(CommandRequest(action: action, params: params))
-        return try await perform(endpoint, "/api/v1/command", method: "POST", body: body, as: CommandResult.self)
+        let isDeviceWrite = ["plug-on", "plug-off", "plug-toggle", "purifier-set"].contains(action)
+        return try await perform(endpoint, isDeviceWrite ? "/api/v1/device-command" : "/api/v1/command",
+                                 method: "POST", body: body, deviceWrite: isDeviceWrite, as: CommandResult.self)
     }
 
     public func events(_ endpoint: JarvisEndpoint, since: Int? = nil, limit: Int = 100) async throws -> EventsResponse {
@@ -362,6 +394,24 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         try await perform(endpoint, "/api/v1/omlx", requestTimeout: 3, as: OMLXSnapshot.self)
     }
 
+    public func roomAudioStatus(_ endpoint: JarvisEndpoint, speaker: RoomAudioSpeaker) async throws -> RoomAudioStatus {
+        let result = try await perform(endpoint, "/api/v1/room-audio/\(speaker.rawValue)",
+                                       requestTimeout: 3, as: RoomAudioStatus.self)
+        guard result.speakerID == speaker.rawValue else { throw JarvisError.transport("Room speaker identity mismatch.") }
+        return result
+    }
+
+    public func stopRoomAudio(_ endpoint: JarvisEndpoint, speaker: RoomAudioSpeaker, turnID: String) async throws -> RoomAudioStatus {
+        guard turnID.utf8.count == 32, turnID.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil else {
+            throw JarvisError.transport("Exact room turn ID required.")
+        }
+        let result = try await perform(endpoint, "/api/v1/room-audio/\(speaker.rawValue)/stop", method: "POST",
+                                      body: JSONEncoder().encode(["turnID": turnID]), requestTimeout: 4,
+                                      refuseRedirect: true, as: RoomAudioStatus.self)
+        guard result.speakerID == speaker.rawValue else { throw JarvisError.transport("Room speaker identity mismatch.") }
+        return result
+    }
+
     public func roomAudioStatus(_ endpoint: JarvisEndpoint) async throws -> RoomAudioStatus {
         try await perform(endpoint, "/api/v1/room-audio", requestTimeout: 3, as: RoomAudioStatus.self)
     }
@@ -370,7 +420,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
             throw JarvisError.transport("Invalid room turn.")
         }
         return try await perform(endpoint, "/api/v1/room-audio/stop", method: "POST",
-            body: JSONEncoder().encode(["turnID": turnID]), requestTimeout: 4, as: RoomAudioStatus.self)
+            body: JSONEncoder().encode(["turnID": turnID]), requestTimeout: 4, refuseRedirect: true, as: RoomAudioStatus.self)
     }
 
     public func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus {

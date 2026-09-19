@@ -4,6 +4,9 @@
 
 Pi sessions run on the Mac. The apps connect to those sessions and use separate APIs for device controls and status. Earlier designs and build-specific notes are in the [development archive](development-history.md) and [implementation archive](implementation-history.md).
 
+`jarvisd` is owned by Operation JARVIS, not the Apple app. See the
+[shared backend plan](../../docs/backend-architecture.md) and [daemon operations](../../jarvisd/README.md).
+
 ## Components and ownership
 
 | Component | Owns | Does not own |
@@ -16,7 +19,7 @@ Pi sessions run on the Mac. The apps connect to those sessions and use separate 
 | `terminald` | Fixed-session terminal frames, validated input, and Watch/Siri terminal transport. | Native hardware commands or arbitrary client-selected tmux targets. |
 | Private scheduler | Job execution, bounded retained results, and configured notification dispatch. | A native schedule-editing UI. |
 
-Source entry points: [app root](../JARVIS/JARVISApp.swift), [shared package](../JARVISKit/), [jarvisd](../jarvisd/jarvisd.py), [terminald](../terminald/jarvis_terminald.py), and [scheduler](../../../../.pi/scheduler/runner.py).
+Source entry points: [app root](../JARVIS/JARVISApp.swift), [shared package](../JARVISKit/), [jarvisd](../../jarvisd/jarvisd.py), [terminald](../terminald/jarvis_terminald.py), and [scheduler](../../../../.pi/scheduler/runner.py).
 
 ## Request paths
 
@@ -61,4 +64,4 @@ Build 144 used generic job alerts. Build 145 added short, sanitized job names an
 
 The apps need compatible host services, configured integrations, and platform permissions. Agent requests can use external model providers even though the sessions run locally; device APIs and model providers have separate access rules.
 
-Tests cover the [daemon](../jarvisd/tests/), [terminal relay](../terminald/tests/), and [shared Swift code](../JARVISKit/Tests/JARVISKitTests/). See [operations](operations.md#verification) for running them. Passing tests does not replace checking the signed build and its behavior on the intended devices.
+Tests cover the [daemon](../../jarvisd/tests/), [terminal relay](../terminald/tests/), and [shared Swift code](../JARVISKit/Tests/JARVISKitTests/). See [operations](operations.md#verification) for running them. Passing tests does not replace checking the signed build and its behavior on the intended devices.
