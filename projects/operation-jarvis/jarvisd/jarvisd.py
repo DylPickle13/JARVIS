@@ -45,7 +45,7 @@ from jarvisd_core.control_http import ControlHTTPMixin, ControlHTTPServer, WRITE
 from pathlib import Path
 from typing import Any, Callable
 
-from jarvisd_core import auth, commands
+from jarvisd_core import auth, commands, security_status
 from jarvisd_core.config import _find_ancestor, _load_env_file, _resolve_jarvis_root
 from jarvisd_core.commands import COMMANDS, CommandError, PURIFIER_MODES, PURIFIER_SPEEDS
 from jarvisd_core.diagnostics import _safe_error
@@ -103,6 +103,8 @@ HOST = os.environ.get("JARVISD_HOST", "0.0.0.0")
 AUTH_MODE = os.environ.get("JARVISD_AUTH_MODE", "trusted-network").strip().lower()
 API_TOKEN = os.environ.get("JARVIS_API_TOKEN", "")
 EVENT_TOKEN = os.environ.get("JARVISD_EVENT_TOKEN", "")
+# Opt-in local launcher path. No worker, cache, or startup device reads.
+SECURITY_CLI = os.environ.get("JARVISD_SECURITY_CLI", "")
 TRUSTED_CIDRS_RAW = os.environ.get(
     "JARVISD_TRUSTED_CIDRS",
     "127.0.0.0/8,::1/128,192.168.21.0/24,100.64.0.0/10",
@@ -1840,6 +1842,10 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
         parsed = urllib.parse.urlsplit(self.path)
         normalized_path = parsed.path.rstrip("/") or "/"
         ip = self.client_address[0] if self.client_address else "?"
+        if normalized_path == "/api/v1/security/status":
+            # Do not log private device selectors or query strings.
+            self.log_message("%s /api/v1/security/status %s", self.command, status)
+            return
         if (
             self.command == "GET"
             and status == 200
@@ -1999,6 +2005,23 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
             if self._reject_origin():
                 return
             self._send(200, {"ok": True, "version": VERSION, "uptimeSeconds": round(time.time() - START_TIME, 1)})
+            return
+        if path == "/api/v1/security/status":
+            if self._reject_origin():
+                return
+            # Occupancy-sensitive data requires the API token even when other
+            # endpoints use trusted-network mode. No new credentials or scopes.
+            if not auth.authorized(mode="token", address=self._client_ip(),
+                    token=self.headers.get("x-jarvis-token", ""), scope="api",
+                    api_token=API_TOKEN, event_token="", trusted_cidrs=""):
+                self._send(401, {"ok": False, "error": "unauthorized"})
+                return
+            selectors = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            if set(selectors) != {"device"} or len(selectors["device"]) != 1:
+                self._send(400, {"ok": False, "error": "one device selector required"})
+                return
+            code, body = security_status.read_status(SECURITY_CLI, selectors["device"][0])
+            self._send(code, body)
             return
         if path == "/api/v1/omlx":
             if self._auth_or_respond(): self._send(200, collect_omlx())

@@ -1,4 +1,7 @@
-> **Backend checkpoint:** `20260919T215836Z-room-session10`.
+> **Backend checkpoint:** `20260919T230024Z-security-status`.
+> Adds opt-in, API-token-protected on-demand security status via the existing
+> private CLI. [Verification](../../docs/security-integration-plan.md): 612 backend,
+> 32 Kasa and 38 VeSync tests; live 401/200 read-only probes passed. No media route.
 > The owner now reports native Build201 on iPhone and Watch; the recorded
 > Build200 verification remains historical evidence, not a Build201 audit.
 > CLI/Pi and native device routing below are retained; shared Room Audio now uses
