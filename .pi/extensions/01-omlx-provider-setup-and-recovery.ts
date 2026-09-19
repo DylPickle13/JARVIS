@@ -99,6 +99,30 @@ const OMLX_PROVIDER_SEEDS: ProviderSeed[] = [
 				},
 			},
 			{
+				id: "Qwen3.8-27B-Uncensored-MLX-4bit",
+				name: "Qwen3.8-27B-Uncensored-MLX-4bit",
+				reasoning: true,
+				thinkingLevelMap: {
+					minimal: "low",
+					low: "low",
+					medium: "medium",
+					high: "xhigh",
+					xhigh: "xhigh",
+					max: null,
+				},
+				input: ["text", "image"],
+				contextWindow: 262144,
+				maxTokens: 32768,
+				compat: {
+					thinkingFormat: "chat-template",
+					chatTemplateKwargs: {
+						enable_thinking: { $var: "thinking.enabled" },
+						preserve_thinking: true,
+						reasoning_effort: { $var: "thinking.effort", omitWhenOff: true },
+					},
+				},
+			},
+			{
 				id: "Qwen3.6-35B-A3B-4bit",
 				name: "Qwen3.6-35B-A3B-4bit",
 				reasoning: true,
