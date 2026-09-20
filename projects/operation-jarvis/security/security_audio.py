@@ -25,8 +25,8 @@ import urllib.request
 import wave
 
 ROOT = Path(__file__).resolve().parent
-APP = ROOT / 'private-notes/audio-poc/JARVIS Camera Audio.app'
 MIC16_APP = ROOT / 'private-notes/audio-poc/native16/JARVIS Camera Audio 16k.app'
+APP = MIC16_APP  # One approved bundle for room audio and standalone playback.
 DEFAULT_VOLUME = 30
 
 

@@ -87,7 +87,7 @@ settings, and `move` configures the step in the same invocation.
 ## Camera speaker audio
 
 The commissioned C230 supports local custom audio through the permission-approved
-**JARVIS Camera Audio.app** (go2rtc). D235 and all other models fail closed until
+**JARVIS Camera Audio 16k.app** (go2rtc). D235 and all other models fail closed until
 separately commissioned. This is foreground CLI functionality, not a backend route
 or an automatically installed service.
 
@@ -138,7 +138,7 @@ printf 'Good evening, sir.' | ./security audio speak indoor-camera --text-file -
 
 - FFmpeg must be on PATH; macOS `open` launches an explicitly permission-approved
   go2rtc app. This host's approved bundle remains at
-  `private-notes/audio-poc/JARVIS Camera Audio.app`; preserve its identity and
+  `private-notes/audio-poc/native16/JARVIS Camera Audio 16k.app`; preserve its identity and
   Local Network permission. `--app /path/to/Your.app` selects another reviewed
   compatible bundle containing `Contents/MacOS/go2rtc`. The CLI does not download,
   re-sign, install, or auto-approve apps.

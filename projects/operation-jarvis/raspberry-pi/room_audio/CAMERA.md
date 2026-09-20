@@ -40,10 +40,10 @@ the AI agent software running on the Mac, not the Raspberry Pi.
   service.
 
 Only the previously commissioned C230 is accepted. No D235 support is inferred.
-The original named `JARVIS Camera Audio.app` remains the speaker-only CLI and
-rollback dependency. The active microphone upgrade uses the separately approved
+Room audio and standalone speaker commands share the permission-approved
 `JARVIS Camera Audio 16k.app` with **microphone-only** changes; its speaker code is
-identical to upstream. See `../../security/AUDIO-QUALITY.md`.
+identical to upstream and remains PCMA/8 kHz. The original stock app is no longer
+required. See `../../security/AUDIO-QUALITY.md`.
 
 ## Privacy and limitations
 

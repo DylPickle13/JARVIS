@@ -22,6 +22,16 @@ class Clock:
 
 
 class PlaybackTests(unittest.TestCase):
+    def test_standalone_commands_share_room_audio_bundle(self):
+        parser = argparse.ArgumentParser()
+        audio.add_parser(parser.add_subparsers())
+        for command, extra in [('speak', ['--text', 'test']), ('play', ['test.wav'])]:
+            args = parser.parse_args(['audio', command, 'indoor-camera', *extra])
+            self.assertEqual(Path(args.app), audio.MIC16_APP)
+        session = audio.CameraSession(audio.APP, Path('/tmp/test'), 'test', 'test', lambda: None)
+        self.assertEqual(session.codec, 'pcma')
+        self.assertFalse(session.microphone16)
+
     def test_unlimited_default_runs_long_file(self):
         clock = Clock()
         session = Mock()
