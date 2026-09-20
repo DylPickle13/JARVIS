@@ -1,0 +1,24 @@
+--- a/pkg/tapo/producer.go
++++ b/pkg/tapo/producer.go
+@@ -33,6 +33,11 @@
+ 				},
+ 			},
+ 		}
++		// Explicit opt-in only: D235 HD preview uses HEVC. Keep the
++		// existing C230/audio and lower-resolution H264 paths unchanged.
++		if c.url.Query().Get("video") == "h265" {
++			c.medias[0].Codecs[0].Name = core.CodecH265
++		}
+ 		if c.native16 {
+ 			for _, media := range c.medias {
+ 				if media.Kind == core.KindAudio && media.Direction == core.DirectionRecvonly {
+@@ -60,6 +65,9 @@
+ 	switch media.Kind {
+ 	case core.KindVideo:
+ 		track.ID = mpegts.StreamTypeH264
++		if codec.Name == core.CodecH265 {
++			track.ID = mpegts.StreamTypeH265
++		}
+ 	case core.KindAudio:
+ 		track.ID = mpegts.StreamTypePCMATapo
+ 		if c.native16 {

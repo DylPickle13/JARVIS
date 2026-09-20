@@ -1,4 +1,4 @@
-"""Local-only JARVIS security CLI and adapters. No background monitoring."""
+"""JARVIS security CLI: local devices and explicit cloud Smart Actions. No monitoring."""
 from __future__ import annotations
 
 
@@ -979,11 +979,12 @@ WRITES = {
     'C230': {'state', 'led', 'motion_detection', 'person_detection',
              'pet_detection', 'baby_cry_detection', 'tamper_detection'},
     'H200': {'led', 'alarm_sound', 'alarm_volume', 'alarm_duration'},
+    'D235': set(),
 }
 SENSOR_MODELS = {'T100', 'T110'}
 WRITES.update({model: set() for model in SENSOR_MODELS})
 ACTIONS = {'T100': set(), 'T110': set(), 'C230': {'pan_left', 'pan_right', 'tilt_up', 'tilt_down'},
-           'H200': {'stop_alarm', 'test_alarm'}}
+           'H200': {'stop_alarm', 'test_alarm'}, 'D235': set()}
 READS = set.union(*WRITES.values()) | {'alarm', 'rssi', 'signal_level', 'device_time'}
 
 
@@ -999,6 +1000,14 @@ def registry(path=ROOT / 'devices.json'):
         for alias, entry in data.items():
             if not re.fullmatch(r'[a-z][a-z0-9-]{0,39}', alias):
                 raise ValueError
+            if entry.get('model') == 'D235':
+                if set(entry) not in ({'model', 'hub'}, {'model', 'hub', 'host'}) or entry['hub'] != 'hub':
+                    raise ValueError
+                if 'host' in entry:
+                    Settings(host=entry['host'])
+                    if not entry['host'] or entry['host'] == '@hub':
+                        raise ValueError
+                continue
             if entry.get('model') in SENSOR_MODELS:
                 if (set(entry) != {'model', 'hub', 'name'} or entry['hub'] != 'hub'
                         or not isinstance(entry['name'], str) or not entry['name'].strip()):
@@ -1010,7 +1019,7 @@ def registry(path=ROOT / 'devices.json'):
                 Settings(host=entry['host'])
                 if not entry['host']:
                     raise ValueError
-        if any(e['model'] in SENSOR_MODELS for e in data.values()):
+        if any(e['model'] in SENSOR_MODELS | {'D235'} for e in data.values()):
             if data.get('hub', {}).get('model') != 'H200':
                 raise ValueError
         return data
@@ -1102,6 +1111,13 @@ def parse_value(feature, text):
 
 
 def validate_request(model, command, name, value, confirm, audible):
+    if model == 'D235':
+        if command in ('recording', 'recordings', 'clip'):
+            from security_recording import validate
+        else:
+            from security_doorbell_direct import validate
+        validate(command, name, value, confirm)
+        return
     if model in SENSOR_MODELS and command not in ('status', 'capabilities'):
         raise ControlError('unsupported_command')
     if command not in ('status', 'capabilities', 'storage', 'set', 'action', 'privacy', 'move'):
@@ -1197,6 +1213,18 @@ async def execute(alias, command, *, name=None, value=None, confirm=False,
         raise ControlError('unknown_device')
     entry = devices[alias]
     model = entry['model']
+    if model == 'D235':
+        validate_request(model, command, name, value, confirm, audible)
+        from security_doorbell import execute as read_doorbell
+        if 'host' not in entry and command not in ('status', 'capabilities'):
+            raise ControlError('direct_doorbell_required')
+        with device_lock(entry['hub']):
+            if 'host' in entry:
+                result = await read_doorbell(env_file, entry=entry, command=command,
+                                           name=name, value=value, confirm=confirm)
+            else:
+                result = await read_doorbell(env_file)
+        return {'device': alias, **result}
     is_sensor = model in SENSOR_MODELS
     connection_entry = devices[entry['hub']] if is_sensor else entry
     connection_model = connection_entry['model']
@@ -1275,7 +1303,7 @@ class Parser(argparse.ArgumentParser):
 
 
 def parser():
-    p = Parser(description='Local JARVIS security CLI. No background monitoring.')
+    p = Parser(description='JARVIS security CLI. Smart Actions use TP-Link cloud; no background monitoring.')
     p.add_argument('--json', action='store_true', help='Machine-readable output')
     p.add_argument('--env-file', default=str(ROOT / '.env'))
     p.add_argument('--registry', default=str(ROOT / 'devices.json'))
@@ -1299,8 +1327,28 @@ def parser():
         s.add_argument('--confirm', action='store_true', help='Explicit approval for this write')
         if command == 'action':
             s.add_argument('--allow-audible', action='store_true', help='Approve audible alarm test')
+    r = sub.add_parser('recording', help='D235 weekly recording plan/status')
+    r.add_argument('device')
+    r.add_argument('name', choices=('status', 'continuous', 'events', 'schedule'), default='status', nargs='?')
+    r.add_argument('--schedule-file', help='JSON object with all seven weekday arrays')
+    r.add_argument('--confirm', action='store_true')
+    for command in ('recordings', 'clip'):
+        r = sub.add_parser(command, help='D235 hub archive index or private bounded clip')
+        r.add_argument('device')
+        r.add_argument('--start', required=command == 'clip', help='Unix seconds or ISO timestamp with UTC offset')
+        r.add_argument('--end', required=command == 'clip', help='Unix seconds or ISO timestamp with UTC offset')
+        if command == 'clip':
+            r.add_argument('--confirm', action='store_true', help='Approve a private local media download')
     from security_audio import add_parser
     add_parser(sub)
+    from security_video import add_parser as add_video_parser
+    add_video_parser(sub)
+    from security_events import add_parser as add_events_parser
+    add_events_parser(sub)
+    from security_chime import add_parser as add_chime_parser
+    add_chime_parser(sub)
+    from security_smart_actions import add_parser as add_smart_parser
+    add_smart_parser(sub)
     return p
 
 
@@ -1313,17 +1361,48 @@ def control_main(argv=None):
         if args.command == 'devices':
             result = {'result': 'configured', 'devices': {
                 k: {'model': v['model']} for k, v in registry(args.registry).items()}}
+        elif args.command == 'smart-actions':
+            from security_smart_actions import execute_smart_actions
+            result = execute_smart_actions(args, adapter=sys.modules[__name__])
+        elif args.command == 'chime':
+            from security_chime import execute_chime
+            result = execute_chime(args, adapter=sys.modules[__name__])
+        elif args.command == 'events':
+            from security_events import execute_events
+            result = execute_events(args, adapter=sys.modules[__name__])
+        elif args.command in ('snapshot', 'live'):
+            from security_video import execute_video
+            result = execute_video(args, adapter=sys.modules[__name__])
         elif args.command == 'audio':
             from security_audio import execute_audio
             result = execute_audio(args, adapter=sys.modules[__name__])
         else:
+            value = args.degrees if args.command == 'move' else getattr(args, 'value', None)
+            if args.command == 'recording':
+                if args.name == 'schedule':
+                    if not args.schedule_file:
+                        raise ControlError('schedule_file_required')
+                    with Path(args.schedule_file).open() as source:
+                        text = source.read(16385)
+                    if len(text) > 16384:
+                        raise ControlError('invalid_weekly_schedule')
+                    try:
+                        value = json.loads(text)
+                    except ValueError:
+                        raise ControlError('invalid_weekly_schedule') from None
+                elif args.schedule_file:
+                    raise ControlError('unexpected_schedule_file')
+            elif args.command in ('recordings', 'clip'):
+                now = int(time.time())
+                value = {'start': args.start if args.start is not None else now - 3600,
+                         'end': args.end if args.end is not None else now - 60}
             result = asyncio.run(execute(args.device, args.command,
                 name=getattr(args, 'name', None),
-                value=args.degrees if args.command == 'move' else getattr(args, 'value', None),
+                value=value,
                 confirm=getattr(args, 'confirm', False),
                 audible=getattr(args, 'allow_audible', False),
                 env_file=args.env_file, registry_path=args.registry))
-        code = 3 if result.get('outcome') == 'unknown' else 0
+        code = 3 if result.get('outcome') == 'unknown' else (2 if result.get('result') == 'error' else 0)
     except ControlError as exc:
         result = {'result': 'error', 'reason': str(exc)}
         code = 3 if str(exc) == 'write_outcome_unknown' else 2

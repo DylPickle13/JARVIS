@@ -7,7 +7,12 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-import archive_download_probe as probe
+try:
+    import archive_download_probe as probe
+except ModuleNotFoundError as exc:
+    if exc.name != 'pytapo' and not (exc.name or '').startswith('pytapo.'):
+        raise
+    raise unittest.SkipTest('archive tests require the isolated .venv-archive environment') from None
 
 
 class FakeMedia:

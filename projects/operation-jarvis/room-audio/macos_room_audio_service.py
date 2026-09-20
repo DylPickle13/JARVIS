@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 ROOM = Path(__file__).resolve().parent
-ROOT = ROOM.parents[3]
+ROOT = ROOM.parents[2]
 DEFAULT_STATE = Path.home() / 'Library/Application Support/JARVIS/room-audio-mac'
 LABEL_PREFIX = 'com.operation-jarvis.room-audio-mac-'
 

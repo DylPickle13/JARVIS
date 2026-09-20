@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch, call
 
 import security_audio as audio
 import security_cli as cli
@@ -22,6 +22,35 @@ class Clock:
 
 
 class PlaybackTests(unittest.TestCase):
+    def test_preparation_waits_for_completion_without_fixed_sleep(self):
+        proc = Mock(returncode=0)
+        proc.poll.side_effect = [None, None, 0, 0]
+        proc.wait.side_effect = [audio.subprocess.TimeoutExpired('test', 0.1), 0]
+        stop = Mock()
+        with patch.object(audio.subprocess, 'Popen', return_value=proc), \
+                patch.object(audio.time, 'sleep') as sleep:
+            audio.run_child(['test'], stop)
+        self.assertEqual(stop.call_count, 2)
+        self.assertEqual(proc.wait.call_args_list, [call(timeout=0.1), call(timeout=0.1)])
+        sleep.assert_not_called()
+
+    def test_preparation_wait_still_cleans_up_on_stop(self):
+        proc = Mock(pid=123, returncode=None)
+        proc.poll.return_value = None
+        with patch.object(audio.subprocess, 'Popen', return_value=proc), \
+                patch.object(audio.os, 'killpg') as kill:
+            with self.assertRaises(audio.Stopped):
+                audio.run_child(['test'], Mock(side_effect=audio.Stopped))
+        kill.assert_called_once_with(123, audio.signal.SIGTERM)
+        proc.wait.assert_called_once_with(timeout=3)
+
+    def test_preparation_wait_still_reports_failure(self):
+        proc = Mock(returncode=1)
+        proc.poll.return_value = 1
+        with patch.object(audio.subprocess, 'Popen', return_value=proc):
+            with self.assertRaisesRegex(audio.AudioError, 'audio_preparation_failed'):
+                audio.run_child(['test'], Mock())
+
     def test_standalone_commands_share_room_audio_bundle(self):
         parser = argparse.ArgumentParser()
         audio.add_parser(parser.add_subparsers())
@@ -83,6 +112,10 @@ class ArgumentTests(unittest.TestCase):
         self.assertIsNone(args.duration)
         self.assertIsNone(args.volume)
 
+    def test_doorbell_defaults_to_jarvis_voice(self):
+        args = cli.parser().parse_args(['audio', 'speak', 'front-doorbell', '--text', 'Hello', '--confirm'])
+        self.assertEqual(args.voice, 'jarvis')
+
     def test_invalid_volume(self):
         for value in ('-1', '101', 'nan', '1.5'):
             with self.subTest(value=value), self.assertRaises(cli.ControlError):
@@ -140,6 +173,44 @@ class CommandTests(unittest.TestCase):
         with self.assertRaisesRegex(cli.ControlError, 'audio_model_not_commissioned'):
             audio.execute_audio(self.args('speak', 'bell', '--text', 'test', '--confirm'), self.adapter)
         self.adapter.load_settings.assert_not_called()
+
+    def test_doorbell_confirmation_precedes_network(self):
+        self.adapter.registry.return_value['bell']['hub'] = 'hub'
+        with self.assertRaisesRegex(cli.ControlError, 'confirmation_required'):
+            audio.execute_audio(self.args('speak', 'bell', '--text', 'test'), self.adapter)
+        self.adapter.load_settings.assert_not_called()
+
+    def test_doorbell_uses_direct_identity_and_both_locks(self):
+        self.adapter.registry.return_value['bell']['hub'] = 'hub'
+        self.adapter.device_lock.side_effect = lambda *_: nullcontext()
+        self._mock_run()
+        with patch.object(audio, 'identify_doorbell', new_callable=AsyncMock) as identity:
+            result = audio.execute_audio(self.args('play', 'bell', __file__, '--confirm'), self.adapter)
+        identity.assert_awaited_once()
+        self.assertEqual(self.adapter.device_lock.call_args_list, [call('hub'), call('bell')])
+        self.assertEqual(result['result'], 'audio_completed')
+        self.assertTrue(audio.prepare.call_args.args[0].doorbell_padding)
+        self.assertEqual(result['physical_verification'], 'not_assessed')
+        self.session.close.assert_called_once()
+        self.assertEqual(list((self.root/'.audio-runtime/bell').iterdir()), [])
+
+    def test_doorbell_identity_requests_only_identity(self):
+        import asyncio
+        entry = {'model': 'D235', 'host': '192.0.2.11', 'hub': 'hub'}
+        with patch('security_doorbell.execute', new_callable=AsyncMock,
+                   return_value={'model': 'D235', 'doorbell_reachability': 'authenticated'}) as worker:
+            asyncio.run(audio.identify_doorbell(entry, 'unused'))
+        worker.assert_awaited_once_with('unused', entry=entry, command='identity')
+
+    def test_doorbell_identity_mismatch_fails_before_transport(self):
+        self.adapter.registry.return_value['bell']['hub'] = 'hub'
+        self.adapter.device_lock.side_effect = lambda *_: nullcontext()
+        self._mock_run()
+        with patch('security_doorbell.execute', new_callable=AsyncMock,
+                   return_value={'model': 'C230', 'doorbell_reachability': 'authenticated'}):
+            with self.assertRaisesRegex(cli.ControlError, 'audio_identity_mismatch'):
+                audio.execute_audio(self.args('speak', 'bell', '--text', 'test', '--confirm'), self.adapter)
+        self.session.start.assert_not_called()
 
     def test_volume_save_and_read_offline(self):
         result = audio.execute_audio(self.args('volume', 'camera', '42', '--confirm'), self.adapter)
@@ -267,6 +338,10 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(commands[0][commands[0].index('-ar') + 1], '8000')
             self.assertIn('file,pipe', commands[0])
             self.assertIn('-format_whitelist', commands[0])
+            args.doorbell_padding = True
+            with patch.object(audio, 'run_child', convert), patch.object(audio.shutil, 'which', return_value='/bin/ffmpeg'):
+                audio.prepare(args, root, 60, lambda: None)
+            self.assertIn('volume=0.6,adelay=1500:all=1,apad=pad_dur=2', commands[1])
 
     def test_missing_local_file(self):
         with self.assertRaisesRegex(audio.AudioError, 'local_media_file_required'):

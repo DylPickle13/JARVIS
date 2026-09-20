@@ -71,7 +71,7 @@ This is my personal setup, not a one-click installer. To run it, you need a Mac 
 - [Detailed rebuild instructions](.pi/docs/REBUILD_FROM_SCRATCH.md)
 - [Pi extensions](.pi/docs/PI_EXTENSIONS.md)
 - [Native app architecture, verification, and operations](projects/operation-jarvis/jarvis-app/docs/README.md)
-- [Room audio](projects/operation-jarvis/raspberry-pi/room_audio/README.md)
+- [Room audio](projects/operation-jarvis/room-audio/README.md)
 
 ## Running it safely
 

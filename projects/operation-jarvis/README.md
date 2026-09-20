@@ -23,7 +23,7 @@ projects/operation-jarvis/
 ├── jarvisd/                    # shared control backend, API, tests, LaunchAgents
 ├── jarvis-app/                 # iPhone, Watch, widgets, JARVISKit, terminald
 ├── quotas/                     # read-only provider quota collection
-├── raspberry-pi/room_audio/    # Pi client and Mac room-audio server
+├── room-audio/                # Mac-hosted room conversations and audio endpoints
 ├── smart-plug/                 # local Kasa adapter and private catalogue
 ├── security/                   # optional local-only directory; gitignored
 ├── voice/                      # neutral ASR/Pi RPC/Piper voice pipeline
@@ -86,7 +86,7 @@ cd /path/to/JARVIS
 
 ## Room audio
 
-The [Mac room-audio server](raspberry-pi/room_audio/room_audio_server.py) uses the [voice pipeline](voice/voice_pipeline.py), [Apple ASR helper](voice/apple_asr/), and root `pi_rpc.py`. The Pi client handles USB capture, voice activity detection (VAD), local wake detection, playback, and exact busy-only `stop` interruption.
+The [Mac room-audio server](room-audio/room_audio_server.py) uses the [voice pipeline](voice/voice_pipeline.py), [Apple ASR helper](voice/apple_asr/), and root `pi_rpc.py`. Mac USB PowerConf and camera clients handle capture, voice activity detection (VAD), wake detection, playback, and exact busy-only `stop` interruption. Raspberry Pi hardware is no longer required; see the [room-audio guide](room-audio/README.md).
 
 Keep room-service work separate from the protected mobile tmux sessions. Announce and obtain approval for a restart, then check `GET /health` before continuing.
 
@@ -97,7 +97,7 @@ Keep room-service work separate from the protected mobile tmux sessions. Announc
 PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_asr_backends.py
 PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_pi_rpc.py
 PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_voice_pipeline.py
-PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python raspberry-pi/room_audio/test_room_audio_interrupt.py
+PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python room-audio/test_room_audio_interrupt.py
 
 # Backend-only verification (isolated runtime; no hardware)
 ./jarvisd/verify.sh

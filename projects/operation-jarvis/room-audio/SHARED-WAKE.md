@@ -26,7 +26,7 @@ stream or one shared openWakeWord history.
 The existing PowerConf and camera endpoints must already be configured.
 
 ```sh
-ROOM=projects/operation-jarvis/raspberry-pi/room_audio
+ROOM=projects/operation-jarvis/room-audio
 python3 "$ROOM/configure_shared_room_wake.py"
 launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.operation-jarvis.room-wake.plist"
 # Wait for “Shared wake ready” in the worker output log before reloading clients.
@@ -34,7 +34,7 @@ launchctl bootout "gui/$(id -u)/com.operation-jarvis.room-audio-mac-client"
 launchctl bootout "gui/$(id -u)/com.operation-jarvis.room-audio-camera"
 sleep 3  # launchd teardown is asynchronous; immediate bootstrap can fail with EIO
 launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.operation-jarvis.room-audio-mac-client.plist"
-launchctl bootstrap "gui/$(id -u)" "$HOME/Library/Application Support/JARVIS/room-audio-camera/trial.plist"
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.operation-jarvis.room-audio-camera.plist"
 ```
 
 Worker state/logs/backups: `~/Library/Application Support/JARVIS/room-wake/`.
@@ -63,7 +63,7 @@ Run the room suite with the repository Python (the capture-only venv lacks serve
 ASR dependencies):
 
 ```sh
-cd projects/operation-jarvis/raspberry-pi/room_audio
+cd projects/operation-jarvis/room-audio
 /Users/dylanrapanan/JARVIS/.venv/bin/python -m unittest discover -p 'test_*.py'
 ```
 

@@ -60,6 +60,18 @@ class WakeVerificationTests(unittest.TestCase):
                     bridge._synthesize_accepted_turn.assert_not_called()
                     self.assertEqual(bridge._jobs, {})
 
+    def test_transcript_diagnostics_require_unexpired_opt_in(self):
+        for until, expected in ((0, False), (99, False), (101, True)):
+            bridge = self.make_bridge("Hey Travis")
+            with patch.object(server, "WAKE_DIAGNOSTICS_UNTIL", until), \
+                    patch.object(server.time, "time", return_value=100), \
+                    patch.object(server.LOGGER, "info") as log:
+                result = bridge.handle_wav(Path("unused.wav"))
+            diagnostic_calls = [c for c in log.call_args_list if "diagnostic" in c.args[0]]
+            self.assertEqual(bool(diagnostic_calls), expected)
+            self.assertEqual(result["reason"], "wake_phrase_not_verified")
+            self.assertNotIn("transcript", result)
+
     def test_verifier_failure_fails_closed(self):
         for method in ("handle_wav", "handle_wav_async_ack"):
             bridge = self.make_bridge("")

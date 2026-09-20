@@ -1,17 +1,18 @@
-# Additional USB PowerConf endpoint on macOS
+# USB PowerConf room endpoint on macOS
 
 This runs the **same room conversation client/server** on `mac-mini-64`, with a
 Core Audio subprocess backend instead of Linux ALSA. Nothing is installed into
-speaker firmware. The Raspberry Pi endpoint remains independent.
+speaker firmware. Raspberry Pi hardware is not required; its former installation
+has been removed. The other documented room endpoint is the C230 camera.
 
 ## Layout
 
-| Component | Mac endpoint | Existing Pi endpoint |
+| Component | Mac USB endpoint | Camera endpoint (reuses historical server) |
 |---|---|---|
-| Server | `127.0.0.1:8793` (loopback only) | port `8791`, unchanged |
+| Server | `127.0.0.1:8793` (loopback only) | loopback port `8791` |
 | RPC context | `room-audio-mac` / `mac-mini-64-room-audio` | `room-audio` / `raspberry-pi-room-audio` |
-| Client | macOS Core Audio, exact name `PowerConf` | Pi ALSA, unchanged |
-| Agents | `com.operation-jarvis.room-audio-mac-{server,client}` | existing services, unchanged |
+| Client | macOS Core Audio, exact name `PowerConf` | C230 camera transport on Mac |
+| Agents | `com.operation-jarvis.room-audio-mac-{server,client}` | camera agent and reused room server |
 
 State, private environment, isolated client venv and logs:
 `~/Library/Application Support/JARVIS/room-audio-mac/`.
@@ -21,10 +22,14 @@ voice assets. The client has its own Python 3.13 environment, sounddevice,
 openWakeWord 0.6.0 with ONNX, and audioop-lts for streaming resampling. No global
 Python packages or default macOS audio routes are changed.
 
-The server code defaults still name the Pi context. Only the new agent sets
+This guide records the isolated endpoint provisioning baseline. Shared wake and
+conversation behavior may layer on top; preserve those opt-ins during updates.
+See [shared wake](SHARED-WAKE.md) and the [project overview](README.md).
+
+The server code defaults still name the historical Pi context. Only the new agent sets
 `JARVIS_ROOM_AUDIO_CHANNEL_ID` and `JARVIS_ROOM_AUDIO_CHANNEL_NAME`. Each server
 owns its own Pi RPC process, follow-up tickets, jobs and single-client controls.
-The existing app's room status and Stop **still address the Pi on 8791**, not this
+The documented app room status and Stop **address the historical room server on 8791**, not this
 endpoint. Multi-room app controls are not implemented here.
 
 ## Provision
@@ -32,7 +37,7 @@ endpoint. Multi-room app controls are not implemented here.
 From the JARVIS root, with `uv` installed and the existing server venv available:
 
 ```sh
-projects/operation-jarvis/raspberry-pi/scripts/install-macos-room-audio.sh
+projects/operation-jarvis/room-audio/scripts/install-macos-room-audio.sh
 ```
 
 This installs the isolated client requirements and wake models, generates an
@@ -89,7 +94,7 @@ microphone access and Apple ASR permissions/assets must work under the agent.
 ## Checks
 
 ```sh
-ROOM=projects/operation-jarvis/raspberry-pi/room_audio
+ROOM=projects/operation-jarvis/room-audio
 STATE="$HOME/Library/Application Support/JARVIS/room-audio-mac"
 "$STATE/.venv/bin/python" "$ROOM/room_audio_coreaudio.py" list
 curl -fsS http://127.0.0.1:8793/health
@@ -107,7 +112,7 @@ checking numeric VAD activity. Confirm speaker output by ear.
 Offline regression tests (no live device, launchd or production HTTP changes):
 
 ```sh
-.venv/bin/python -m unittest discover -s projects/operation-jarvis/raspberry-pi/room_audio -p 'test_*.py'
+.venv/bin/python -m unittest discover -s projects/operation-jarvis/room-audio -p 'test_*.py'
 ```
 
 Initial deployment checks: 69 unit tests passed; real PowerConf playback heard

@@ -1,11 +1,11 @@
-"""Foreground, owner-approved C230 speaker audio. No daemon or backend routes.
+"""Foreground, owner-approved C230/D235 speaker audio. No daemon or backend routes.
 
 Volume is digital gain, not a persistent camera speaker setting. Runtime metadata
 contains no speech, media paths, LAN addresses or credentials. Media and local API
 credentials exist only in an owner-only temporary directory for the session.
 """
 import asyncio
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import hashlib
 import json
 import math
@@ -53,7 +53,7 @@ def duration_arg(value):
 
 
 def add_parser(sub):
-    p = sub.add_parser('audio', help='C230 speech, files, volume, status and stop')
+    p = sub.add_parser('audio', help='C230/D235 speech, files, volume, status and stop')
     commands = p.add_subparsers(dest='audio_command', required=True)
     for name in ('speak', 'play', 'status', 'stop', 'volume'):
         s = commands.add_parser(name)
@@ -154,6 +154,14 @@ async def identify(host, settings):
             await asyncio.wait_for(dev.disconnect(), 2)
 
 
+async def identify_doorbell(entry, env_file):
+    # D235 discovery is unreliable; use the isolated, read-only HTTPS adapter.
+    from security_doorbell import execute
+    result = await execute(env_file, entry=entry, command='identity')
+    if result.get('model') != 'D235' or result.get('doorbell_reachability') != 'authenticated':
+        raise AudioError('audio_identity_mismatch')
+
+
 @contextmanager
 def interruptible():
     old = signal.getsignal(signal.SIGTERM)
@@ -172,7 +180,12 @@ def run_child(command, check_stop):
     try:
         while proc.poll() is None:
             check_stop()
-            time.sleep(0.1)
+            # Wake immediately on completion rather than sleeping out a polling
+            # interval. Keep cancellation checks bounded for long synthesis.
+            try:
+                proc.wait(timeout=0.1)
+            except subprocess.TimeoutExpired:
+                pass
         if proc.returncode:
             raise AudioError('audio_preparation_failed')
     finally:
@@ -213,7 +226,9 @@ def prepare(args, tmp, volume, check_stop):
     output = tmp / 'playback.wav'
     command = [ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist', 'file,pipe',
                '-format_whitelist', 'wav,aiff,mp3,mov,flac,ogg,aac,matroska,webm',
-               '-i', str(safe_source), '-map', '0:a:0', '-vn', '-af', f'volume={volume/100}',
+               '-i', str(safe_source), '-map', '0:a:0', '-vn', '-af',
+               f'volume={volume/100}' + (',adelay=1500:all=1,apad=pad_dur=2'
+                                        if getattr(args, 'doorbell_padding', False) else ''),
                '-ar', str(getattr(args, 'sample_rate', 8000)), '-ac', '1', '-c:a', 'pcm_s16le']
     if args.duration is not None:
         command += ['-t', str(args.duration)]
@@ -253,7 +268,7 @@ class CameraSession:
             # Never return raw go2rtc diagnostics (may contain credential URLs).
             raise AudioError('camera_audio_transport_failed') from None
 
-    def start(self):
+    def start(self, *, video_only=False, video_quality='low'):
         if not (self.app / 'Contents/MacOS/go2rtc').is_file():
             raise AudioError('approved_go2rtc_app_unavailable')
         api_port, rtsp_port = port(), port()
@@ -265,7 +280,8 @@ class CameraSession:
                   'webrtc:\n  listen: ""\n  ice_servers: []\n'
                   'ffmpeg:\n  bin: ' + json.dumps(shutil.which('ffmpeg')) + '\n'
                   'log:\n  level: error\nstreams:\n  speaker: '
-                  + json.dumps(f'tapo://admin:{digest}@{self.host}' + ('?audio=mic16' if self.microphone16 else '')) + '\n')
+                  + json.dumps(f'tapo://admin:{digest}@{self.host}' + (('?subtype=0&video=h265' if video_quality == 'hd' else '?subtype=1') if video_only else
+                      '?audio=mic16' if self.microphone16 else '')) + '\n')
         (self.tmp / 'go2rtc.yaml').write_text(config)
         self.base = f'http://127.0.0.1:{api_port}/api/streams'
         self.rtsp_audio_url = f'rtsp://127.0.0.1:{rtsp_port}/speaker?audio=' + ('pcmu' if self.microphone16 else 'pcma')
@@ -285,8 +301,13 @@ class CameraSession:
                 time.sleep(0.1)
         else:
             raise AudioError('camera_audio_start_timeout')
-        info = self.request({'src': 'speaker', 'audio': 'all'}, timeout=15)
+        info = self.request({'src': 'speaker', 'video' if video_only else 'audio': 'all'}, timeout=15)
         medias = [m for p in info.get('producers') or [] for m in p.get('medias') or []]
+        if video_only:
+            if not any('video, recvonly,' in m for m in medias):
+                raise AudioError('camera_video_codec_unavailable')
+            self.rtsp_video_url = f'rtsp://127.0.0.1:{rtsp_port}/speaker?video'
+            return
         expected = 'audio, sendonly, PCMA/8000'
         if not any(expected in m for m in medias):
             raise AudioError('camera_speaker_codec_unavailable')
@@ -372,7 +393,9 @@ def execute_audio(args, adapter=None):
     registry, load_settings = adapter.registry, adapter.load_settings
     device_lock, ControlError = adapter.device_lock, adapter.ControlError
     entry = registry(args.registry).get(args.device)
-    if not entry or entry.get('model') != 'C230' or entry.get('host') == '@hub':
+    if (not entry or entry.get('model') not in ('C230', 'D235')
+            or not entry.get('host') or entry.get('host') == '@hub'
+            or (entry.get('model') == 'D235' and not entry.get('hub'))):
         raise ControlError('audio_model_not_commissioned')
     operation = args.audio_command
     if operation in ('speak', 'play', 'stop') or (operation == 'volume' and args.level is not None):
@@ -408,7 +431,11 @@ def execute_audio(args, adapter=None):
             local_file(args.file)
         else:
             args.text = load_text(args)
-        with device_lock(args.device), interruptible():
+        with ExitStack() as locks, interruptible():
+            # Match the doorbell adapter's hub-first locking order.
+            if entry['model'] == 'D235':
+                locks.enter_context(device_lock(entry['hub']))
+            locks.enter_context(device_lock(args.device))
             session_id = secrets.token_hex(16)
             state = {'pid': os.getpid(), 'session': session_id, 'phase': 'identifying',
                      'volume': volume, 'voice': args.voice if operation == 'speak' else None,
@@ -425,9 +452,13 @@ def execute_audio(args, adapter=None):
             try:
                 with tempfile.TemporaryDirectory(prefix='session-', dir=directory) as name:
                     tmp = Path(name)
-                    asyncio.run(asyncio.wait_for(identify(entry['host'], settings), 18))
+                    if entry['model'] == 'D235':
+                        asyncio.run(asyncio.wait_for(identify_doorbell(entry, args.env_file), 50))
+                    else:
+                        asyncio.run(asyncio.wait_for(identify(entry['host'], settings), 18))
                     check_stop()
                     update('preparing')
+                    args.doorbell_padding = entry['model'] == 'D235'
                     file, seconds = prepare(args, tmp, volume, check_stop)
                     state['media_seconds'] = round(seconds, 3)
                     session = CameraSession(args.app, tmp, entry['host'], settings.password, check_stop)

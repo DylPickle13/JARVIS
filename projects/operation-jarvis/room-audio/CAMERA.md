@@ -22,8 +22,9 @@ Verification found no dedicated remaining paths or pairing; systemd reports
 Both the reused room server (8791) and Mac USB endpoint (8793) reported online/idle
 after the persistent switch. Room audio no longer requires Raspberry Pi hardware.
 
-The existing server's historical “Pi-room” label and the `raspberry-pi/room_audio`
-source directory do not imply a current hardware dependency. “Pi RPC” refers to
+The existing server's historical “Pi-room” label does not imply a current hardware
+dependency. Canonical source now lives in `room-audio/`; installed LaunchAgents
+use that path, and the former `raspberry-pi/room_audio` compatibility link was removed. “Pi RPC” refers to
 the AI agent software running on the Mac, not the Raspberry Pi.
 
 ## Components
@@ -43,7 +44,7 @@ Only the previously commissioned C230 is accepted. No D235 support is inferred.
 Room audio and standalone speaker commands share the permission-approved
 `JARVIS Camera Audio 16k.app` with **microphone-only** changes; its speaker code is
 identical to upstream and remains PCMA/8 kHz. The original stock app is no longer
-required. See `../../security/AUDIO-QUALITY.md`.
+required. See `../security/AUDIO-QUALITY.md`.
 
 ## Privacy and limitations
 
@@ -53,11 +54,15 @@ required. See `../../security/AUDIO-QUALITY.md`.
   it to 8 kHz before the client upsampled it; that loss is now avoided. Speaker
   replies remain on the correct-speed **PCMA/8 kHz** path. Advertised 16 kHz speaker
   support did not work correctly in listening tests and was rejected. See
-  [audio quality evidence and build notes](../../security/AUDIO-QUALITY.md).
+  [audio quality evidence and build notes](../security/AUDIO-QUALITY.md).
   Wake distance and transcription accuracy still need physical tests.
 - Idle ordinary speech is discarded by the local wake gate. Only wake candidates,
   the authorized separate request, and busy-only interrupt clips go to the existing
   loopback server. Strict independent Apple wake verification remains enabled.
+  A locally confirmed wake now ends after a 300 ms trailing window (or earlier
+  normal VAD endpoint), rather than waiting up to 30 seconds for background sound
+  to stop. Command follow-ups and busy interrupt capture retain their existing
+  VAD rules. The client logs this endpoint as `reason=wake-tail`.
 - No new audio archive is created. Existing room code uses temporary turn WAVs
   and may log accepted transcripts: keep endpoint logs private. The proprietary
   Tapo preview transport can carry video alongside audio internally; the client
@@ -93,7 +98,7 @@ From the JARVIS root:
 
 ```sh
 projects/operation-jarvis/security/.venv-313/bin/python \
-  projects/operation-jarvis/raspberry-pi/room_audio/camera_room_audio_service.py \
+  projects/operation-jarvis/room-audio/camera_room_audio_service.py \
   configure --device indoor-camera --volume 30 --confirm
 ```
 
@@ -153,7 +158,7 @@ heartbeat returns to idle. Do not start both clients for the same server.
 
 ```sh
 .venv/bin/python -m unittest discover \
-  -s projects/operation-jarvis/raspberry-pi/room_audio -p 'test_*.py' -q
+  -s projects/operation-jarvis/room-audio -p 'test_*.py' -q
 ```
 
 At trial setup: 85 room tests passed. Live camera checks received PCM before,

@@ -11,7 +11,7 @@ The Mac-side speech code for JARVIS. Room audio uses it to transcribe speech and
 - `APPEND_SYSTEM.md`: concise spoken-response guidance used by room-audio Pi RPC sessions.
 - `test_asr_backends.py`, `test_voice_pipeline.py`, `test_pi_rpc.py`: backend, pipeline, and Pi RPC regression tests.
 
-The persistent Pi RPC implementation lives at repository root in [`../../../pi_rpc.py`](../../../pi_rpc.py). The active room bridge lives in [`../raspberry-pi/room_audio/room_audio_server.py`](../raspberry-pi/room_audio/room_audio_server.py).
+The persistent Pi RPC implementation lives at repository root in [`../../../pi_rpc.py`](../../../pi_rpc.py). The active room bridge lives in [`../room-audio/room_audio_server.py`](../room-audio/room_audio_server.py).
 
 ## Pipeline
 
@@ -59,7 +59,7 @@ Voice settings use the `JARVIS_VOICE_*` prefix:
 - `JARVIS_VOICE_TTS_BACKEND=piper` and the `JARVIS_VOICE_TTS_PIPER_*` voice controls.
 - `JARVIS_VOICE_ASR_TIMEOUT_SECONDS`, `JARVIS_VOICE_LLM_TIMEOUT_SECONDS`, `JARVIS_VOICE_TTS_TIMEOUT_SECONDS`, `JARVIS_VOICE_MODEL_LOAD_TIMEOUT_SECONDS`.
 
-Room-specific ASR overrides use `JARVIS_ROOM_AUDIO_ASR_*`; see the [room-audio README](../raspberry-pi/room_audio/README.md). Warm-up skips oMLX when neither ASR nor direct chat uses it.
+Room-specific ASR overrides use `JARVIS_ROOM_AUDIO_ASR_*`; see the [room-audio README](../room-audio/README.md). Warm-up skips oMLX when neither ASR nor direct chat uses it.
 
 ## Tests
 
@@ -70,7 +70,7 @@ export PYTHONPATH="$PWD:$PWD/projects/operation-jarvis/voice"
 .venv/bin/python projects/operation-jarvis/voice/test_asr_backends.py
 .venv/bin/python projects/operation-jarvis/voice/test_pi_rpc.py
 .venv/bin/python projects/operation-jarvis/voice/test_voice_pipeline.py
-.venv/bin/python projects/operation-jarvis/raspberry-pi/room_audio/test_room_audio_interrupt.py
+.venv/bin/python projects/operation-jarvis/room-audio/test_room_audio_interrupt.py
 ```
 
 These Python tests mock transcription, synthesis, and model calls; they do not use room hardware. Before deployment, also test the native helper with a representative 48 kHz PowerConf recording.

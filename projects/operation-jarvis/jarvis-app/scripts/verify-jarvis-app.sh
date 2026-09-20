@@ -74,7 +74,7 @@ python3 -m py_compile \
   terminald/jarvis_terminald.py \
   scripts/jarvis-mobile-vscode-restart.py \
   ../jarvis.py \
-  ../raspberry-pi/room_audio/room_audio_server.py \
+  ../room-audio/room_audio_server.py \
   ../voice/voice_pipeline.py \
   ../../../pi_rpc.py \
   ../../../.pi/scheduler/runner.py \
@@ -615,8 +615,8 @@ grep -q 'private static func canonicalSessionID(in data: Data) throws -> Int' JA
 grep -q 'CFGetTypeID(number) == CFNumberGetTypeID()' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q '!CFNumberIsFloatType(number)' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'acknowledgement.ok' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
-grep -q 'path == "/synthesize"' ../raspberry-pi/room_audio/room_audio_server.py
-grep -q 'is_loopback_address(self.client_address\[0\])' ../raspberry-pi/room_audio/room_audio_server.py
+grep -q 'path == "/synthesize"' ../room-audio/room_audio_server.py
+grep -q 'is_loopback_address(self.client_address\[0\])' ../room-audio/room_audio_server.py
 grep -q 'public func speechAudio(' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'import AVFoundation' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'Image(systemName: controller.isSpeechPlaying ? "stop.fill" : "speaker.wave.2.fill")' JARVISWatch/Views/WatchTerminalView.swift

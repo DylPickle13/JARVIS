@@ -11,7 +11,7 @@ import shlex
 import subprocess
 import time
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[3]
 STATE = ROOT / '.pi/runtime/room-audio-session'
 TMUX = '/opt/homebrew/bin/tmux'
 SESSION = '=jarvis-ios-10'

@@ -5,7 +5,7 @@ umask 077
 [[ "$(uname -s)" == Darwin ]] || { echo 'macOS required' >&2; exit 1; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-ROOM="$ROOT/projects/operation-jarvis/raspberry-pi/room_audio"
+ROOM="$ROOT/projects/operation-jarvis/room-audio"
 STATE="$HOME/Library/Application Support/JARVIS/room-audio-mac"
 command -v uv >/dev/null || { echo 'Install uv first' >&2; exit 1; }
 [[ -x "$ROOT/.venv/bin/python" ]] || { echo 'Existing JARVIS server venv required' >&2; exit 1; }

@@ -40,7 +40,7 @@ Check the script's scope before running it against a live environment. The docum
 | Shared control backend (`jarvisd`) | [`jarvisd/`](../jarvisd/) |
 | Native apps and `terminald` | [`jarvis-app/`](../jarvis-app/) |
 | Mac-side voice processing | [`voice/`](../voice/) |
-| Raspberry Pi capture/playback transport | [`room_audio/`](../raspberry-pi/room_audio/) |
+| Mac-hosted room conversations and device transports | [`room-audio/`](../room-audio/) |
 | Device control, media, and related integrations | [`operation-jarvis/`](../) |
 
 ## Private scheduled jobs
@@ -75,7 +75,7 @@ The verifier regenerates the Xcode project and writes build artifacts. See [oper
 
 ## Room audio
 
-The Mac service uses [Pi RPC](../../../pi_rpc.py), the [voice pipeline](../voice/voice_pipeline.py), [ASR backends](../voice/asr_backends.py), and the [LAN bridge](../raspberry-pi/room_audio/room_audio_server.py). Raspberry Pi capture/playback and its service installer remain separate.
+The Mac service uses [Pi RPC](../../../pi_rpc.py), the [voice pipeline](../voice/voice_pipeline.py), [ASR backends](../voice/asr_backends.py), and the [room bridge](../room-audio/room_audio_server.py). Active endpoints use Mac USB PowerConf and camera audio; retired Raspberry Pi scripts and installation guides have been removed.
 
 Read-only health on a configured Mac host:
 
@@ -83,7 +83,7 @@ Read-only health on a configured Mac host:
 curl -fsS http://127.0.0.1:8791/health | python3 -m json.tool
 ```
 
-See the [room-audio README](../raspberry-pi/room_audio/README.md) for backend-specific setup. A health check does not authorize starting, stopping, installing, or reconfiguring audio services.
+See the [room-audio README](../room-audio/README.md) for backend-specific setup. A health check does not authorize starting, stopping, installing, or reconfiguring audio services.
 
 ## Pi tool loading
 

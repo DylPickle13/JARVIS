@@ -18,7 +18,7 @@ import tempfile
 import time
 
 ROOM = Path(__file__).resolve().parent
-OPERATION = ROOM.parents[1]
+OPERATION = ROOM.parent
 ROOT = OPERATION.parents[1]
 SECURITY = OPERATION/'security'
 sys.path.insert(0, str(SECURITY))

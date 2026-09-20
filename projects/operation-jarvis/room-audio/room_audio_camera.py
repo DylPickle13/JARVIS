@@ -16,7 +16,7 @@ import tempfile
 import time
 import urllib.parse
 
-SECURITY = Path(__file__).resolve().parents[2] / 'security'
+SECURITY = Path(__file__).resolve().parents[1] / 'security'
 sys.path.insert(0, str(SECURITY))
 from security_audio import (AudioError, CameraSession, prepare, read_json,
                             interruptible)

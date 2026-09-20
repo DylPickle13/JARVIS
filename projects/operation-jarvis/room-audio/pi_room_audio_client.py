@@ -281,8 +281,8 @@ class LocalWakeWordDetector:
             from openwakeword.model import Model  # type: ignore[import-not-found]
         except Exception as exc:
             raise RuntimeError(
-                "local wake word requires openWakeWord; refresh the Pi service with "
-                "`projects/operation-jarvis/raspberry-pi/scripts/install-room-audio-service.sh`"
+                "local wake word requires openWakeWord in the endpoint environment; "
+                "see projects/operation-jarvis/room-audio/MACOS.md"
             ) from exc
 
         self._np = np
@@ -416,6 +416,22 @@ class LocalWakeWordDetector:
                     reset()
                 hit = {"model": model_name, "score": score, "scores": scores}
         return hit
+
+
+class WakeClipEndpoint:
+    """Bound a confirmed wake's trailing audio, never a command or interrupt."""
+
+    def __init__(self, tail_seconds: float = 0.3) -> None:
+        self.tail_seconds = tail_seconds
+        self.deadline: float | None = None
+
+    def reached(self, now: float, *, confirmed: bool, followup: bool, busy: bool) -> bool:
+        if not confirmed or followup or busy:
+            self.deadline = None
+            return False
+        if self.deadline is None:
+            self.deadline = now + self.tail_seconds
+        return now >= self.deadline
 
 
 class LocalWakeWordGate:
@@ -1329,6 +1345,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
         wake_gate = LocalWakeWordGate(local_wake, args.local_wake_word_arm_seconds) if local_wake else None
         pre_roll: deque[tuple[bytes, bool, int]] = deque(maxlen=preroll_frames)
         utterance: list[bytes] | None = None
+        wake_endpoint = WakeClipEndpoint()
         utterance_bytes = 0
         utterance_wake_accepted = not local_wake_gate_active
         utterance_wake_max_score = 0.0
@@ -1408,6 +1425,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                         pre_roll.append((frame, False, rms))
                         continue
                     utterance = []
+                    wake_endpoint = WakeClipEndpoint()
                     utterance_bytes = 0
                     utterance_interrupt_candidate = busy
                     utterance_followup = turn_controller.reserve_followup(now) if turn_controller is not None and not busy else None
@@ -1450,7 +1468,16 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                     if utterance_interrupt_candidate
                     else args.vad_silence_seconds
                 )
-                if duration < max_utterance_seconds and silence_seconds < silence_target_seconds:
+                # Once the local model confirms a wake, retain a short tail for
+                # independent Apple verification instead of waiting for room silence.
+                # Follow-up commands and busy-only interrupts keep their existing VAD.
+                wake_complete = wake_endpoint.reached(
+                    now,
+                    confirmed=local_wake_gate_active and utterance_wake_accepted,
+                    followup=utterance_followup is not None,
+                    busy=utterance_interrupt_candidate,
+                )
+                if not wake_complete and duration < max_utterance_seconds and silence_seconds < silence_target_seconds:
                     continue
 
                 pcm = b"".join(utterance)
@@ -1470,7 +1497,7 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                     )
                     continue
 
-                reason = "max-duration" if duration >= max_utterance_seconds else "silence"
+                reason = "wake-tail" if wake_complete else ("max-duration" if duration >= max_utterance_seconds else "silence")
                 if utterance_interrupt_candidate:
                     if turn_controller is not None and turn_controller.start_interrupt(
                         pcm,

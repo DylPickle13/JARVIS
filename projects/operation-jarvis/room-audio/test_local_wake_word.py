@@ -1,9 +1,11 @@
 """Wake gate regression tests; no audio hardware or openWakeWord required."""
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from pi_room_audio_client import LocalWakeWordDetector, LocalWakeWordGate
+import pi_room_audio_client as client
+
+from pi_room_audio_client import LocalWakeWordDetector, LocalWakeWordGate, WakeClipEndpoint
 
 
 def detector(predictions):
@@ -63,6 +65,64 @@ class DetectorTests(unittest.TestCase):
         self.assertIsNone(frame(model, now=11))
         self.assertIsNone(frame(model, now=12.1))
         self.assertIsNotNone(frame(model, now=12.2))
+
+
+class WakeClipEndpointTests(unittest.TestCase):
+    def test_continuous_noise_cannot_extend_confirmed_wake(self):
+        endpoint = WakeClipEndpoint()
+        for now in (10, 10.1, 10.2, 10.29):
+            self.assertFalse(endpoint.reached(now, confirmed=True, followup=False, busy=False))
+        self.assertTrue(endpoint.reached(10.31, confirmed=True, followup=False, busy=False))
+        self.assertEqual(endpoint.deadline, 10.3)
+
+    def test_unconfirmed_audio_commands_and_interrupts_keep_normal_vad(self):
+        for confirmed, followup, busy in ((False, False, False), (True, True, False),
+                                           (True, False, True)):
+            endpoint = WakeClipEndpoint()
+            for now in (10, 11, 40):
+                self.assertFalse(endpoint.reached(now, confirmed=confirmed, followup=followup, busy=busy))
+            self.assertIsNone(endpoint.deadline)
+
+    def test_vad_loop_submits_confirmed_wake_without_any_silence(self):
+        args = client.build_parser().parse_args([
+            '--local-wake-word', '--interrupt-while-busy', '--no-startup-greeting',
+            '--rate', '16000', '--vad-frame-ms', '20',
+        ])
+        clock = [100.0]
+        count = [0]
+        def read_frame(*unused, **kwargs):
+            count[0] += 1
+            if count[0] > 100:
+                raise AssertionError('wake waited beyond two seconds')
+            clock[0] = 100 + count[0] * .02
+            return b'\xe8\x03' * 320  # Continuous RMS=1000, never silence.
+        model = SimpleNamespace(reset_stream=Mock(), last_score=.9, last_model='jarvis')
+        model.process_frame = lambda *a, **kw: {'score': .9, 'model': 'jarvis'} if count[0] == 20 else None
+        controller = Mock()
+        controller.is_busy.return_value = False
+        controller.reserve_followup.return_value = None
+        controller.start_turn.side_effect = KeyboardInterrupt
+        with patch.object(client, 'create_local_wake_word_detector', return_value=model), \
+                patch.object(client, 'RoomAudioTurnController', return_value=controller), \
+                patch.object(client, 'start_raw_arecord', return_value=Mock()), \
+                patch.object(client, 'read_exact_fd', side_effect=read_frame), \
+                patch.object(client.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(client, 'stop_process'), \
+                patch.object(client.time, 'sleep', side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                client.run_vad_loop(args)
+        controller.start_turn.assert_called_once()
+        duration = controller.start_turn.call_args.kwargs['duration_seconds']
+        self.assertGreaterEqual(duration, .68)
+        self.assertLess(duration, .8)
+        self.assertIsNone(controller.start_turn.call_args.kwargs['followup'])
+
+    def test_ineligible_audio_clears_old_deadline(self):
+        endpoint = WakeClipEndpoint()
+        endpoint.reached(10, confirmed=True, followup=False, busy=False)
+        endpoint.reached(11, confirmed=True, followup=True, busy=False)
+        self.assertFalse(endpoint.reached(20, confirmed=True, followup=False, busy=False))
+        self.assertEqual(endpoint.deadline, 20.3)
 
 
 class GateTests(unittest.TestCase):

@@ -41,7 +41,7 @@ Jobs reads the scheduler's limited inventory and saved results. It cannot edit s
 
 ### Room audio
 
-The Raspberry Pi handles microphone capture and wake detection; the Mac handles transcription and responses. The app shows room-audio status and can stop the current turn. See the [room-audio guide](../../raspberry-pi/room_audio/README.md).
+The Mac hosts room-audio capture, wake detection, transcription, and responses through USB PowerConf and camera endpoints; Raspberry Pi hardware is no longer required. The app shows room-audio status and can stop the current turn. See the [room-audio guide](../../room-audio/README.md) for endpoint-specific controls and limitations.
 
 ## Security and trust boundaries
 

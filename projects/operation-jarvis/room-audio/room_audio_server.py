@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""LAN room-audio bridge for Operation JARVIS.
+"""Mac-hosted room-audio bridge for Operation JARVIS.
 
-Mac-side service:
-  Raspberry Pi PowerConf WAV -> pluggable Apple/oMLX ASR -> Pi RPC JARVIS -> Piper TTS WAV.
-
-The Raspberry Pi client records/plays audio locally, asks this server for startup
-or reconnect greeting audio, and posts VAD/fixed-length turns here. This keeps the
-heavier ASR, LLM/Pi RPC, and TTS stack on the Mac while using the Pi as the room
-microphone/speaker endpoint.
+Shared device clients submit audio for ASR, Pi agent responses, and Piper TTS.
+Active documented transports are Mac USB PowerConf and camera audio; Raspberry
+Pi ALSA remains a legacy option. Pi RPC denotes agent software, not Pi hardware.
+Historical channel defaults are retained to preserve conversation identity.
 """
 
 from __future__ import annotations
@@ -108,6 +105,8 @@ WAKE_WORDS = tuple(
 )
 # Deliberately independent of permissive legacy wake aliases (e.g. "Travis").
 VERIFIED_WAKE_PHRASE = "hey jarvis"
+# Explicit, time-bounded opt-in: wake candidates may contain private speech.
+WAKE_DIAGNOSTICS_UNTIL = config.get_int_env("JARVIS_ROOM_WAKE_DIAGNOSTICS_UNTIL", 0, minimum=0)
 WAKE_ACK_TEXT = "Yes sir?"
 WAKE_ACK_LEADING_SILENCE_MS = config.get_int_env("JARVIS_ROOM_AUDIO_WAKE_ACK_LEADING_SILENCE_MS", 450, minimum=0)
 TURN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$")
@@ -802,7 +801,11 @@ class RoomAudioBridge:
             return None
         verification_started = time.monotonic()
         try:
-            verified = has_verified_wake_phrase(self._wake_verifier.transcribe(wav_path))
+            transcript = self._wake_verifier.transcribe(wav_path)
+            verified = has_verified_wake_phrase(transcript)
+            if time.time() < WAKE_DIAGNOSTICS_UNTIL:
+                LOGGER.info("Room wake diagnostic: turn=%s transcript=%r accepted=%s",
+                            requested_turn_id, transcript[:240], verified)
             reason = "wake_phrase_not_verified"
         except Exception:
             verified = False
