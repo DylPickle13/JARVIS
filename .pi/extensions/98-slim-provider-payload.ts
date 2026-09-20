@@ -79,7 +79,9 @@ function stripNestedSchemaMetadata(value: any): any {
 
   const copy: any = {};
   for (const [key, child] of Object.entries(value)) {
-    if (key === "description" || key === "title" || key === "$comment" || key === "examples" || key === "additionalProperties") continue;
+    // Strip prose only. additionalProperties is a validation constraint required
+    // by strict tool schemas, not optional metadata.
+    if (key === "description" || key === "title" || key === "$comment" || key === "examples") continue;
     copy[key] = stripNestedSchemaMetadata(child);
   }
   return copy;
@@ -141,7 +143,6 @@ function compactTool(tool: any): any {
   if (copy.function && typeof copy.function === "object") {
     copy.function = { ...copy.function };
     if (override && typeof copy.function.description === "string") copy.function.description = override;
-    if (copy.function.strict === false) delete copy.function.strict;
     if (copy.function.parameters) copy.function.parameters = stripNestedSchemaMetadata(copy.function.parameters);
   }
 
