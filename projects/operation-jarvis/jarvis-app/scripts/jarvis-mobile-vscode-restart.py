@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Restart the nine local Pi processes without losing their conversations.
+"""Restart the ten local Pi processes without losing their conversations.
 
 This is intentionally a host-only maintenance command for the local VS Code
 workspace. It restarts each Pi command in its existing fixed tmux pane; it does
@@ -48,6 +48,7 @@ SLOT_NAMES = {
     7: "jarvis-ios-7",
     8: "jarvis-ios-8",
     9: "jarvis-ios-9",
+    10: "jarvis-ios-10",
 }
 # Legacy Waiting remains busy/fail-closed during owner-controlled reloads.
 VALID_LIFECYCLES = frozenset({"new", "idle", "running", "waiting", "compacting", "unknown"})
@@ -281,7 +282,7 @@ def snapshots_from_panes(
     expected_session_dir: Path | None = None,
     now: dt.datetime | None = None,
 ) -> list[SessionEvidence]:
-    """Build and validate all nine immutable preflight snapshots."""
+    """Build and validate all ten immutable preflight snapshots."""
     project_root = project_root.resolve()
     expected_session_dir = (expected_session_dir or session_directory(project_root)).resolve()
     observed_at = now or _utc_now()
@@ -485,7 +486,7 @@ def _restart_lock(path: Path = LOCK_PATH) -> Iterator[None]:
 
 
 def restart_all(*, dry_run: bool = False) -> None:
-    """Preflight, restart, and verify all nine fixed Pi panes."""
+    """Preflight, restart, and verify all ten fixed Pi panes."""
     if not PROJECT_ROOT.is_dir():
         raise RestartError(f"JARVIS project root is missing: {PROJECT_ROOT}")
     if not TMUX_BIN.is_file() or not PI_BIN.is_file() or not TMUX_CONFIG.is_file():
@@ -516,7 +517,7 @@ def restart_all(*, dry_run: bool = False) -> None:
                 )
             return
 
-        # Do not mutate any pane until all nine fixed identities, status files,
+        # Do not mutate any pane until all ten fixed identities, status files,
         # session paths, and idle states have passed preflight.
         _source_profile()
         for snapshot in snapshots:
@@ -537,9 +538,9 @@ def restart_all(*, dry_run: bool = False) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Restart all nine local JARVIS Pi processes in-place while preserving sessions."
+        description="Restart all ten local JARVIS Pi processes in-place while preserving sessions."
     )
-    parser.add_argument("--all", action="store_true", help="restart all nine fixed Pi panes")
+    parser.add_argument("--all", action="store_true", help="restart all ten fixed Pi panes")
     parser.add_argument("--dry-run", action="store_true", help="perform preflight without restarting")
     args = parser.parse_args(argv)
     if not args.all:

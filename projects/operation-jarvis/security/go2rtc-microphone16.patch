@@ -1,0 +1,92 @@
+--- a/pkg/tapo/client.go
++++ b/pkg/tapo/client.go
+@@ -28,7 +28,8 @@
+ type Client struct {
+ 	core.Listener
+ 
+-	url *url.URL
++	url      *url.URL
++	native16 bool // microphone only; talkback remains the original PCMA/8000 path
+ 
+ 	medias    []*core.Media
+ 	receivers []*core.Receiver
+@@ -70,7 +71,7 @@
+ 		u.Host += ":8800"
+ 	}
+ 
+-	c := &Client{url: u}
++	c := &Client{url: u, native16: u.Query().Get("audio") == "mic16"}
+ 	if c.conn1, err = c.newConn(); err != nil {
+ 		return nil, err
+ 	}
+@@ -229,7 +230,7 @@
+ 				return err2
+ 			}
+ 
+-			if pkt.PayloadType == mpegts.StreamTypePCMUTapo {
++			if pkt.PayloadType == mpegts.StreamTypePCMUTapo && !c.native16 {
+ 				// TODO: rewrite this part in the future
+ 				// Some cameras in the new firmware began to use PCMU/16000.
+ 				// https://github.com/AlexxIT/go2rtc/issues/1954
+--- a/pkg/tapo/producer.go
++++ b/pkg/tapo/producer.go
+@@ -33,6 +33,13 @@
+ 				},
+ 			},
+ 		}
++		if c.native16 {
++			for _, media := range c.medias {
++				if media.Kind == core.KindAudio && media.Direction == core.DirectionRecvonly {
++					media.Codecs = []*core.Codec{{Name: core.CodecPCMU, ClockRate: 16000, PayloadType: 96}}
++				}
++			}
++		}
+ 	}
+ 
+ 	return c.medias
+@@ -55,6 +62,9 @@
+ 		track.ID = mpegts.StreamTypeH264
+ 	case core.KindAudio:
+ 		track.ID = mpegts.StreamTypePCMATapo
++		if c.native16 {
++			track.ID = mpegts.StreamTypePCMUTapo
++		}
+ 	}
+ 	c.receivers = append(c.receivers, track)
+ 	return track, nil
+--- /dev/null
++++ b/pkg/tapo/native16_test.go
+@@ -0,0 +1,33 @@
++package tapo
++
++import (
++	"github.com/AlexxIT/go2rtc/pkg/core"
++	"testing"
++)
++
++func TestMicrophone16DoesNotChangeSpeaker(t *testing.T) {
++	for _, native := range []bool{false, true} {
++		c := &Client{native16: native}
++		audio := 0
++		for _, media := range c.GetMedias() {
++			if media.Kind != core.KindAudio {
++				continue
++			}
++			audio++
++			name, rate := core.CodecPCMA, uint32(8000)
++			if native && media.Direction == core.DirectionRecvonly {
++				name, rate = core.CodecPCMU, 16000
++			}
++			codec := media.Codecs[0]
++			if codec.Name != name || codec.ClockRate != rate {
++				t.Fatalf("native=%v direction=%s got %s/%d", native, media.Direction, codec.Name, codec.ClockRate)
++			}
++			if rate == 16000 && codec.PayloadType != 96 {
++				t.Fatal("16 kHz needs dynamic RTP payload type")
++			}
++		}
++		if audio != 2 {
++			t.Fatalf("want mic and speaker, got %d", audio)
++		}
++	}
++}

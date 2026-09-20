@@ -7,6 +7,11 @@
 !/security
 !/security_cli.py
 !/test_security_cli.py
+!/security_audio.py
+!/security_tts.py
+!/go2rtc-microphone16.patch
+!/AUDIO-QUALITY.md
+!/test_security_audio.py
 !/archive_probe.py
 !/archive_download_probe.py
 !/test_archive_download_probe.py
@@ -25,6 +30,8 @@
 /planned-devices.json
 /.secrets/
 /.locks/
+/.audio-runtime/
+/.audio-settings/
 /.venv*/
 /private-archive/
 /private-notes/

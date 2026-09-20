@@ -318,8 +318,42 @@
       "hide": true
     },
     {
-      "label": "JARVIS: Show all 9 Pi sessions",
+      "label": "JARVIS Mobile Pi 10 \u2014 jarvis-ios-10",
+      "type": "shell",
+      "command": "printf 'JARVIS_TASK_START_10\\nJARVIS_TASK_READY_10\\n'; exec /usr/bin/env -u TMUX /opt/homebrew/bin/tmux -L jarvis-mobile attach-session -f ignore-size -t '=jarvis-ios-10:'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "jarvis-mobile-layout",
+        "pattern": {
+          "regexp": "^(JARVIS_TASK_DIAGNOSTIC):(.*)$",
+          "file": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^JARVIS_TASK_START_10$",
+          "endsPattern": "^JARVIS_TASK_READY_10$"
+        }
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false,
+        "close": false,
+        "group": "jarvis-mobile-pi-10"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "hide": true
+    },
+    {
+      "label": "JARVIS: Show all 10 Pi sessions",
       "dependsOn": [
+        "JARVIS Mobile Pi 10 \u2014 jarvis-ios-10",
         "JARVIS Mobile Pi 1 \u2014 jarvis-ios",
         "JARVIS Mobile Pi 3 \u2014 jarvis-ios-3",
         "JARVIS Mobile Pi 2 \u2014 jarvis-ios-2",
@@ -334,9 +368,10 @@
       "problemMatcher": []
     },
     {
-      "label": "JARVIS: Restart and show all 9 Pi sessions",
+      "label": "JARVIS: Restart and show all 10 Pi sessions",
       "dependsOn": [
         "JARVIS: Restart all Pi processes (preserve sessions)",
+        "JARVIS Mobile Pi 10 \u2014 jarvis-ios-10",
         "JARVIS Mobile Pi 1 \u2014 jarvis-ios",
         "JARVIS Mobile Pi 3 \u2014 jarvis-ios-3",
         "JARVIS Mobile Pi 2 \u2014 jarvis-ios-2",

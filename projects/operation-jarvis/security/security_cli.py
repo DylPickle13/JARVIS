@@ -1299,6 +1299,8 @@ def parser():
         s.add_argument('--confirm', action='store_true', help='Explicit approval for this write')
         if command == 'action':
             s.add_argument('--allow-audible', action='store_true', help='Approve audible alarm test')
+    from security_audio import add_parser
+    add_parser(sub)
     return p
 
 
@@ -1311,6 +1313,9 @@ def control_main(argv=None):
         if args.command == 'devices':
             result = {'result': 'configured', 'devices': {
                 k: {'model': v['model']} for k, v in registry(args.registry).items()}}
+        elif args.command == 'audio':
+            from security_audio import execute_audio
+            result = execute_audio(args, adapter=sys.modules[__name__])
         else:
             result = asyncio.run(execute(args.device, args.command,
                 name=getattr(args, 'name', None),

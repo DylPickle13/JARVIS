@@ -84,6 +84,105 @@ SDK defaults (30 degrees pan, 10 degrees tilt). Prefer `move` for explicit bound
 The SDK's step settings are process-local: they are not offered as persistent
 settings, and `move` configures the step in the same invocation.
 
+## Camera speaker audio
+
+The commissioned C230 supports local custom audio through the permission-approved
+**JARVIS Camera Audio.app** (go2rtc). D235 and all other models fail closed until
+separately commissioned. This is foreground CLI functionality, not a backend route
+or an automatically installed service.
+
+```bash
+# Default voice: the existing local Piper JARVIS voice, not the macOS system voice.
+./security audio speak indoor-camera --text 'Good evening, sir.' --confirm
+./security audio speak indoor-camera --text-file message.txt --volume 40 --confirm
+printf 'Good evening, sir.' | ./security audio speak indoor-camera --text-file - --confirm
+
+# Entire local file; no arbitrary duration cutoff.
+./security audio play indoor-camera /path/to/announcement.mp3 --volume 50 --confirm
+# Optional duration cap, or repeat until explicitly stopped.
+./security audio play indoor-camera /path/to/sound.wav --duration 20 --confirm
+./security audio play indoor-camera /path/to/sound.wav --loop --confirm
+
+# Another terminal can inspect or stop preparation/playback.
+./security --json audio status indoor-camera
+./security audio stop indoor-camera --confirm
+# Ctrl-C in the playback terminal also stops and cleans up.
+
+# Read/save the default gain for FUTURE sessions (not current playback).
+./security audio volume indoor-camera
+./security audio volume indoor-camera 35 --confirm
+# Explicit alternative installed macOS voice; never used as a silent fallback.
+./security audio speak indoor-camera --text 'Hello, sir.' --voice Daniel --confirm
+```
+
+### Volume and duration
+
+- Volume is **digital signal gain, 0–100 percent**; 0 is muted, 100 is full source
+  level. The initial default is 30. This does **not** read/change the camera's
+  hardware speaker-volume setting. Physical loudness depends on that setting and
+  the source recording. Saved defaults apply on the next invocation, not mid-play.
+- By default there is **no playback-duration limit or text truncation**. The CLI
+  waits for file completion. `--loop` repeats indefinitely until stop/Ctrl-C;
+  repetitions have a small gap. `--duration SECONDS` is an optional positive cap,
+  including across loops; it excludes synthesis/connection time. A poll or network
+  request can delay stopping slightly; it is not a sample-accurate timing promise.
+- Synthesis and conversion can take time and temporary disk space proportional to
+  input size. Whole-file preparation happens before playback; speech is chunked
+  without dropping text. This is not a live microphone or network-radio interface.
+- Network setup/requests retain short timeouts. The completion watchdog scales
+  with the actual media duration plus 30 seconds; it is not the general CLI's
+  25-second bound. A transport error during playback is an uncertain outcome,
+  never an automatic replay.
+
+### Dependencies and permissions
+
+- FFmpeg must be on PATH; macOS `open` launches an explicitly permission-approved
+  go2rtc app. This host's approved bundle remains at
+  `private-notes/audio-poc/JARVIS Camera Audio.app`; preserve its identity and
+  Local Network permission. `--app /path/to/Your.app` selects another reviewed
+  compatible bundle containing `Contents/MacOS/go2rtc`. The CLI does not download,
+  re-sign, install, or auto-approve apps.
+- Default speech uses `../.venv/bin/python`, Piper and the already-cached
+  `jgkawell/jarvis` voice (high quality by default). The worker reads only the
+  project's `JARVIS_VOICE_TTS_*` synthesis preferences and environment overrides.
+  No model download, LLM call or microphone capture occurs. Missing dependencies
+  or cached models fail rather than silently switching voices.
+- Backend implementation: `security_audio.py`; isolated synthesis worker:
+  `security_tts.py`; offline tests: `test_security_audio.py`.
+
+### Privacy and results
+
+`--confirm` approves audible output. Prefer stdin or `--text-file` for private
+speech so it is not stored in shell history/process arguments. Only configured
+C230 hosts are used, with a fresh live identity check and the normal device lock.
+While audio holds that lock, other CLI camera operations fail busy; audio
+status/stop remain available. Local files only; playlists and network-fetching
+FFmpeg protocols are disallowed. Output is mono 8 kHz speech-quality audio.
+This is the physically verified speaker format: higher advertised speaker rates
+failed listening tests. The separate room listener can preserve native 16 kHz
+microphone input without changing this output path; see [quality evidence](AUDIO-QUALITY.md).
+
+`audio_completed` means the transport session finished, not microphone-verified
+physical playback. `audio_stop_requested` is a cooperative request; inspect status
+or wait for the playback command's `audio_stopped` result. Status is local session
+state, not a fresh camera capability/status query.
+
+Runtime metadata in `.audio-runtime/` and defaults in `.audio-settings/` are
+owner-only and ignored by Git. Speech, converted audio, authentication hashes and
+random loopback API credentials are temporary. The API is bound to loopback with
+an ephemeral credential; RTSP is loopback-only; WebRTC/STUN are disabled. Other
+users/processes with access to the local account remain trusted, not sandboxed.
+Normal completion, Ctrl-C, SIGTERM, stop and handled errors terminate the exact
+session's app/FFmpeg processes and remove temporary files. Forced SIGKILL, power
+loss or an OS crash cannot run cleanup; do not use SIGKILL as the normal stop path.
+No persistent camera audio setting or long-running service is changed.
+
+Run offline regression tests:
+
+```bash
+.venv-313/bin/python -m unittest test_security_cli test_security_audio -q
+```
+
 ## Hub controls
 
 ```bash
@@ -113,7 +212,8 @@ features; new/unknown vendor capabilities are not automatically executable.
 - `security_assessment` always remains `not_assessed`.
 - Device/model validation precedes controls. Requests target one configured host.
 - One operation at a time per alias across CLI processes, using a local file lock.
-- Network work has a 25-second overall bound plus up to 2 seconds for disconnect.
+- Non-audio network work has a 25-second overall bound plus up to 2 seconds for disconnect.
+  Audio has bounded setup/requests, but playback runs to media completion by default.
 - Protocol queries use zero SDK retries. No automatic retry of writes.
 - Settings are reread after writes with module cache timestamps invalidated.
 - `verified` means the read-back matched; it is not physical/security verification.
@@ -153,7 +253,7 @@ old `python -m jarvis_security...` paths have been removed by consolidation.
 ## Not exposed by this CLI
 
 Pairing/unpairing, formatting, factory reset, firmware changes, recording schedules,
-clip listing/download, RTSP viewing, audio, tracking, presets, zones, notification
+clip listing/download, RTSP viewing, live microphone streaming, tracking, presets, zones, notification
 rules, and general raw vendor RPCs. Separate experimental archive and recording-plan
 scripts are described in [README.md](README.md); they are not CLI/backend commands.
 These capabilities are not all exposed by the pinned SDK;

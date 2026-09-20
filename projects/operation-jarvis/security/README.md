@@ -5,6 +5,10 @@ experimental archive probes. Supported models describe code capabilities, **not
 an installed-device inventory or a claim that a home is secure**.
 
 The core CLI and its tests are `security_cli.py` and `test_security_cli.py`.
+C230 speaker audio is implemented in `security_audio.py`, with a local Piper
+JARVIS voice worker in `security_tts.py` and offline tests in
+`test_security_audio.py`. See [speaker audio commands](CLI.md#camera-speaker-audio)
+for full-length speech/files, gain, looping, status and stop.
 See [CLI.md](CLI.md) for commands and safety limits. The backend's
 [on-demand status endpoint](../docs/security-integration-plan.md) wraps the existing
 CLI; it does not expose controls or media. No security polling service is installed.
@@ -33,7 +37,7 @@ Camera Account/RTSP credentials are separate from the hub's cloud credentials;
 ./security --help
 ./security devices                       # offline configured aliases only
 ./security --json status hub             # explicit live read, after local setup
-.venv-313/bin/python -m unittest test_security_cli -q  # offline tests
+.venv-313/bin/python -m unittest test_security_cli test_security_audio -q  # offline tests
 ```
 
 Reads are snapshots. Hub-reported sensor values do not establish radio freshness.
@@ -77,6 +81,7 @@ Never commit:
 - `.env`, real camera credentials or secret-manager exports;
 - `devices.json`, `planned-devices.json`, LAN addresses or device/account IDs;
 - recordings, snapshots, clip indexes, logs, runtime state or lock files;
+- `.audio-runtime/`, `.audio-settings/`, generated speech, audio files or app binaries;
 - virtual environments or caches;
 - household commissioning notes (`SD-CARD.md`, `DOORBELL.md`, `SETUP-TODAY.md`,
   `private-notes/`). These existing private files are deliberately not published.

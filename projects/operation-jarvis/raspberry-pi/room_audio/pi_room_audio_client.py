@@ -93,7 +93,8 @@ AUDIO_BACKEND = "alsa"
 
 def coreaudio_command(operation: str, *, device: str, rate: int | None = None,
                       path: Path | None = None, seconds: float | None = None) -> list[str]:
-    command = [sys.executable, str(Path(__file__).with_name("room_audio_coreaudio.py")),
+    worker = 'room_audio_camera.py' if AUDIO_BACKEND == 'camera' else 'room_audio_coreaudio.py'
+    command = [sys.executable, str(Path(__file__).with_name(worker)),
                operation, "--device", device]
     if rate is not None: command.extend(["--rate", str(rate)])
     if path is not None: command.extend(["--path", str(path)])
@@ -102,7 +103,7 @@ def coreaudio_command(operation: str, *, device: str, rate: int | None = None,
 
 
 def playback_command(path: Path, device: str) -> list[str]:
-    if AUDIO_BACKEND == "coreaudio":
+    if AUDIO_BACKEND in ("coreaudio", "camera"):
         return coreaudio_command("playback", device=device, path=path)
     return ["aplay", "-q", "-D", device, str(path)]
 
@@ -140,7 +141,7 @@ def play_wav(path: Path, *, device: str) -> None:
 
 
 def record_wav(path: Path, *, device: str, seconds: float, rate: int) -> None:
-    if AUDIO_BACKEND == "coreaudio":
+    if AUDIO_BACKEND in ("coreaudio", "camera"):
         run(coreaudio_command("record", device=device, rate=rate, path=path, seconds=seconds), timeout=seconds + 10)
         return
     run(
@@ -186,7 +187,7 @@ def pcm_rms_s16le_mono(pcm: bytes) -> int:
 
 def start_raw_arecord(*, device: str, rate: int) -> subprocess.Popen:
     # Preserve the PCM pipe contract and watchdog for both transports.
-    if AUDIO_BACKEND == "coreaudio":
+    if AUDIO_BACKEND in ("coreaudio", "camera"):
         return subprocess.Popen(coreaudio_command("capture", device=device, rate=rate),
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
     return subprocess.Popen(
@@ -1576,7 +1577,7 @@ def run_turn(args: argparse.Namespace) -> dict:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server-url", default=DEFAULT_SERVER_URL)
-    parser.add_argument("--audio-backend", choices=["alsa", "coreaudio"], default="alsa", help="Core Audio on macOS; ALSA remains the Pi default")
+    parser.add_argument("--audio-backend", choices=["alsa", "coreaudio", "camera"], default="alsa", help="Core Audio or supervised camera on macOS; ALSA remains the Pi default")
     parser.add_argument("--device", default=DEFAULT_AUDIO_DEVICE, help="ALSA capture device or exact Core Audio name; also used for playback unless --playback-device is set")
     parser.add_argument("--playback-device", default=DEFAULT_PLAYBACK_DEVICE, help="ALSA playback device, useful when Bluetooth capture uses SCO and playback uses A2DP")
     parser.add_argument("--duration", type=float, default=DEFAULT_RECORD_SECONDS)
@@ -1670,9 +1671,9 @@ def main() -> int:
     global AUDIO_BACKEND
     args = build_parser().parse_args()
     AUDIO_BACKEND = args.audio_backend
-    if AUDIO_BACKEND == "coreaudio":
+    if AUDIO_BACKEND in ("coreaudio", "camera"):
         if sys.platform != "darwin":
-            raise SystemExit("--audio-backend coreaudio requires macOS")
+            raise SystemExit("Selected audio backend requires macOS")
         if args.bluetooth_mac:
             raise SystemExit("Core Audio mode does not use the Linux Bluetooth reconnect helper")
         # launchd stop must also close capture, playback and follow-up state.

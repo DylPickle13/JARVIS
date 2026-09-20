@@ -697,7 +697,8 @@ public enum JSONValue: Codable, Equatable, Sendable {
 public enum RoomAudioSpeaker: String, CaseIterable, Codable, Sendable, Identifiable {
     case pi, mac
     public var id: String { rawValue }
-    public var title: String { self == .pi ? "Pi speaker" : "Mac speaker" }
+    // Keep the legacy wire ID `pi`; its physical endpoint is now the camera.
+    public var title: String { self == .pi ? "Camera speaker" : "Mac speaker" }
 }
 
 public struct RoomAudioStatus: Codable, Equatable, Sendable {

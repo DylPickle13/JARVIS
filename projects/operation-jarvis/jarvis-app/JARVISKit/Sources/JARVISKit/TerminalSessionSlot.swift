@@ -20,6 +20,11 @@ public enum JARVISTerminalSlot: Int, CaseIterable, Codable, Equatable, Hashable,
 
     public var displayName: String { String(rawValue) }
 
+    /// Shared phone/Watch indicator grouping: 1–3, 4–6, 7–9, Room Audio (10).
+    public var hasLeadingIndicatorGap: Bool {
+        self == .four || self == .seven || self == .roomAudio
+    }
+
     public var previous: JARVISTerminalSlot? {
         JARVISTerminalSlot(rawValue: rawValue - 1)
     }

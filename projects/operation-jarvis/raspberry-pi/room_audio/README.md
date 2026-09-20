@@ -1,8 +1,16 @@
 # Operation JARVIS Room Audio
 
-The Raspberry Pi listens through an Anker PowerConf and plays JARVIS's replies through the same speaker. The Mac handles transcription, Pi RPC, and speech synthesis.
+**Current primary room endpoint:** the C230 camera now supplies microphone and
+speaker audio directly to the Mac; the Raspberry Pi room-audio installation,
+backups and dedicated PowerConf pairing have been removed at owner request. See [camera deployment and rollback](CAMERA.md). The Mac handles local
+wake detection, transcription, Pi RPC (agent software), and speech synthesis.
+The independent Mac USB PowerConf endpoint is unchanged.
 
-**Microphone privacy:** capture runs continuously on the Pi. While idle, it drops speech that does not pass the local wake-word check. While JARVIS is generating or speaking, short speech clips go to the Mac without a wake word so it can recognize an exact `stop`. Keep logs, transcripts, and recordings private.
+The Raspberry Pi/Anker PowerConf instructions below are preserved as the legacy
+setup/reinstallation reference, not an existing Pi installation or the active primary room transport.
+
+**Microphone privacy:** capture runs continuously on the active endpoint (now the
+camera-to-Mac path; historically the Pi). While idle, it drops speech that does not pass the local wake-word check. While JARVIS is generating or speaking, short speech clips go to the Mac without a wake word so it can recognize an exact `stop`. Keep logs, transcripts, and recordings private.
 
 Code: `projects/operation-jarvis/raspberry-pi/room_audio/`.
 

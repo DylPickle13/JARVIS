@@ -102,7 +102,7 @@ struct PiTerminalView: View {
         VStack {
             HStack(spacing: 5) {
                 ForEach(JARVISTerminalSlot.allCases, id: \.self) { slot in
-                    if slot == .four || slot == .seven {
+                    if slot.hasLeadingIndicatorGap {
                         Spacer().frame(width: 3)
                     }
                     Capsule()
