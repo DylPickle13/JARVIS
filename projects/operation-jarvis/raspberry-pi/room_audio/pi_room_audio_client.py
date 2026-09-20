@@ -449,6 +449,13 @@ class LocalWakeWordGate:
 def create_local_wake_word_detector(args: argparse.Namespace) -> LocalWakeWordDetector | None:
     if not args.local_wake_word:
         return None
+    shared_socket = os.environ.get("JARVIS_ROOM_WAKE_SOCKET", "")
+    if shared_socket:
+        from shared_room_wake import RemoteWakeDetector
+        room = os.environ.get("JARVIS_ROOM_WAKE_ROOM", "")
+        if not room or not args.interrupt_while_busy:
+            raise ValueError("shared wake requires a room ID and continuous capture (--interrupt-while-busy)")
+        return RemoteWakeDetector(shared_socket, room)
     return LocalWakeWordDetector(args)
 
 
@@ -1357,6 +1364,10 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                     break
 
                 busy = bool(turn_controller is not None and turn_controller.is_busy())
+                if local_wake is not None and hasattr(local_wake, "update_activity"):
+                    # Renew ownership during accepted command capture and response.
+                    # The lease also covers the server's five-second follow-up window.
+                    local_wake.update_activity(busy or (utterance is not None and utterance_wake_accepted), now)
                 if was_busy and not busy:
                     # Do not carry "Yes sir?"/response speaker audio into a command.
                     utterance, utterance_bytes, utterance_followup = None, 0, None
@@ -1378,6 +1389,15 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                             f"armed_for={max(0.0, wake_gate.armed_until - now):.1f}s",
                             flush=True,
                         )
+
+                if local_wake is not None and not getattr(local_wake, "allowed", True):
+                    # Another room owns the conversation. Never retain its speaker
+                    # audio as a pending command or authorize a stale local wake.
+                    wake_gate.consume()
+                    utterance, utterance_bytes, utterance_followup = None, 0, None
+                    utterance_wake_accepted = False
+                    pre_roll.clear()
+                    continue
 
                 rms = pcm_rms_s16le_mono(frame)
                 is_voiced = rms >= args.vad_rms_threshold
