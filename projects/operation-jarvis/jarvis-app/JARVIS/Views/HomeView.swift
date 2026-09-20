@@ -76,7 +76,7 @@ struct PiSessionCardContent: View {
     var body: some View {
         let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
         let color = presentation.tone.color
-        MinimalCard(padding: 8) {
+        MinimalCard(padding: 8, glass: true) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text("\(sessionID)")
@@ -286,7 +286,7 @@ struct HomeView: View {
         }
         .padding(.horizontal, 12)
         .frame(minHeight: 42)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .jarvisGlassSurface(JarvisPalette.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous), glass: true)
         .overlay {
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .stroke(connectionColor.opacity(0.14), lineWidth: 0.75)
@@ -987,7 +987,8 @@ struct PlugCard: View {
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, minHeight: 54, maxHeight: 54)
-        .background(tileFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .jarvisGlassSurface(tileFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous),
+                            glass: true, tint: isOn == true ? JarvisPalette.accent.opacity(0.12) : nil)
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(isOn == true ? JarvisPalette.accent.opacity(0.28) : Color.primary.opacity(0.055), lineWidth: 0.75)

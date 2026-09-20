@@ -114,7 +114,7 @@ struct WatchJobsView: View {
                     }
                 }
             }
-            .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         }
     }
 
@@ -176,7 +176,7 @@ struct WatchJobsView: View {
             Spacer(minLength: 0)
         }
         .padding(8)
-        .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     private var loadingCard: some View {
@@ -187,7 +187,7 @@ struct WatchJobsView: View {
             Spacer()
         }
         .padding(10)
-        .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var emptyCard: some View {
@@ -204,7 +204,7 @@ struct WatchJobsView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 }
 
@@ -307,7 +307,7 @@ private struct WatchJobThreadView: View {
                             .foregroundStyle(.secondary)
                             .padding(10)
                             .frame(maxWidth: .infinity)
-                            .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                            .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                     } else {
                         ForEach(currentThread.messages) { result in
                             WatchJobMessage(
@@ -386,7 +386,7 @@ private struct WatchJobThreadView: View {
             }
         }
         .padding(9)
-        .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 
     private var statusText: String {
@@ -457,7 +457,7 @@ private struct WatchJobMessage: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
+        .jarvisGlassSurface(
             isFocused ? WatchJarvisStyle.accent.opacity(0.10) : WatchJarvisStyle.surface,
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )

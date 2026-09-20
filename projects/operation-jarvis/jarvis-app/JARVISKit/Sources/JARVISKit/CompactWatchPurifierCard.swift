@@ -83,7 +83,7 @@ public struct CompactWatchPurifierCard: View {
         }
         .padding(.horizontal, 9).padding(.vertical, 4)
         .frame(maxWidth: .infinity)
-        .background(surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .jarvisGlassSurface(surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .contain)
     }
 }

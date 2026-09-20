@@ -2,8 +2,14 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current installed build:** 202 on both iPhone and Watch, with installation and
-launch independently verified on 2026-09-19 EDT. The room endpoint is labelled
+**Current installed build:** 203 on both iPhone and Watch, with installation and
+launch independently verified on 2026-09-20 EDT. Build 203 adds native Liquid Glass
+to selected controls and quieter translucent card surfaces, preserving layout,
+interaction, and backend behavior. Older systems use material fallbacks; Reduce
+Transparency and increased contrast use opaque surfaces. Simulator Home (light/dark)
+and Watch System previews were reviewed; the owner visually approved the deployed
+apps on 2026-09-20 EDT.
+The room endpoint is labelled
 **Camera speaker**, and both terminal indicators group sessions **3 · 3 · 3 · 1**.
 The Room Audio card opens shared Session 10; see
 [rollout and remaining physical acceptance](docs/room-session10.md).

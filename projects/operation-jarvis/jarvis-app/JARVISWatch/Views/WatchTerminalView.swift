@@ -1401,7 +1401,7 @@ struct WatchTerminalView: View {
                     .font(.system(size: 15, weight: .bold, design: .monospaced))
                     .foregroundStyle(WatchJarvisStyle.accent)
                     .frame(width: 28, height: 35)
-                    .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .jarvisGlassSurface(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous), glass: true)
             }
             .buttonStyle(.plain)
             .disabled(!normalInputIsEnabled)
@@ -1415,7 +1415,7 @@ struct WatchTerminalView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(WatchJarvisStyle.accent)
                     .frame(width: 28, height: 35)
-                    .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .jarvisGlassSurface(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous), glass: true)
             }
             .buttonStyle(.plain)
             .disabled(!backspaceIsEnabled)
@@ -1431,6 +1431,11 @@ struct WatchTerminalView: View {
                     .foregroundStyle(Color.black)
                     .frame(width: 28, height: 35)
                     .background(WatchJarvisStyle.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.30), lineWidth: 0.75)
+                            .allowsHitTesting(false)
+                    }
             }
             .buttonStyle(.plain)
             .disabled(!normalInputIsEnabled)
@@ -1457,9 +1462,10 @@ struct WatchTerminalView: View {
         }
         .foregroundStyle(emphasized ? Color.black : Color.primary)
         .frame(maxWidth: .infinity, minHeight: 35)
-        .background(
+        .jarvisGlassSurface(
             emphasized ? WatchJarvisStyle.accent : Color.white.opacity(0.09),
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous),
+            glass: !emphasized
         )
     }
 
@@ -1496,7 +1502,9 @@ struct WatchTerminalView: View {
             Text(title)
                 .font(.system(size: title.count > 2 ? 9 : 12, weight: .bold, design: .monospaced))
                 .frame(maxWidth: .infinity, minHeight: 28)
-                .background(selected ? WatchJarvisStyle.accent.opacity(0.35) : Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+                .jarvisGlassSurface(selected ? WatchJarvisStyle.accent.opacity(0.35) : Color.white.opacity(0.10),
+                                    in: RoundedRectangle(cornerRadius: 6), glass: true,
+                                    tint: selected ? WatchJarvisStyle.accent.opacity(0.25) : nil)
         }
         .buttonStyle(.plain)
         .disabled(

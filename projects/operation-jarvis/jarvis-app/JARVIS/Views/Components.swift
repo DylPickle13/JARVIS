@@ -61,8 +61,7 @@ struct OperationErrorCard: View {
 
 // MARK: - Card container
 
-/// An inset-grouped card (secondary grouped background, 12pt continuous
-/// corners) matching the HIG grouped-list card style.
+/// A quiet translucent content card with the existing size and continuous corners.
 struct Card<Content: View>: View {
     @ViewBuilder var content: Content
 
@@ -74,14 +73,10 @@ struct Card<Content: View>: View {
         content
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
+            .jarvisGlassSurface(
                 JarvisPalette.surface,
                 in: RoundedRectangle(cornerRadius: 18, style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.primary.opacity(0.065), lineWidth: 0.75)
-            }
             .shadow(color: Color.black.opacity(0.055), radius: 12, y: 5)
     }
 }
@@ -94,24 +89,23 @@ struct Card<Content: View>: View {
 struct MinimalCard<Content: View>: View {
     @ViewBuilder var content: Content
     let contentPadding: CGFloat
+    let glass: Bool
 
-    init(padding: CGFloat = 12, @ViewBuilder content: () -> Content) {
+    init(padding: CGFloat = 12, glass: Bool = false, @ViewBuilder content: () -> Content) {
         self.content = content()
         self.contentPadding = padding
+        self.glass = glass
     }
 
     var body: some View {
         content
             .padding(contentPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
+            .jarvisGlassSurface(
                 JarvisPalette.surface,
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous),
+                glass: glass
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.primary.opacity(0.055), lineWidth: 0.75)
-            }
     }
 }
 

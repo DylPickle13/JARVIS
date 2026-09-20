@@ -399,7 +399,7 @@ struct WatchDashboardContent: View {
             }
             .padding(.horizontal, 10)
             .frame(maxWidth: .infinity, minHeight: 72)
-            .background(
+            .jarvisGlassSurface(
                 LinearGradient(colors: panelColors, startPoint: .topLeading, endPoint: .bottomTrailing),
                 in: RoundedRectangle(cornerRadius: 16, style: .continuous)
             )
@@ -430,7 +430,7 @@ struct WatchDashboardContent: View {
             }
             .padding(.horizontal, 10)
             .frame(maxWidth: .infinity, minHeight: 60)
-            .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Codex quota unavailable")
         }
@@ -512,7 +512,7 @@ struct WatchDashboardContent: View {
                 if busy { ProgressView().controlSize(.small) }
             }
             .padding(10)
-            .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous), glass: true)
         }
         .buttonStyle(JarvisPressStyle())
         .disabled(state == nil || stale || model.busyPlug != nil)
@@ -541,7 +541,7 @@ struct WatchDashboardContent: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, minHeight: 126)
-        .background(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private var availablePlugNames: [String] {
@@ -689,7 +689,8 @@ private struct WatchPlugTile: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .leading)
-        .background(tileFill, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .jarvisGlassSurface(tileFill, in: RoundedRectangle(cornerRadius: 15, style: .continuous),
+                            glass: true, tint: isOn == true ? WatchJarvisStyle.accent.opacity(0.12) : nil)
         .overlay {
             RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .stroke(isOn == true ? WatchJarvisStyle.accent.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 0.8)

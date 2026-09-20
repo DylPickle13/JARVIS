@@ -115,7 +115,8 @@ struct PiTerminalView: View {
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 7)
-            .background(.black.opacity(0.72), in: Capsule())
+            .jarvisGlassSurface(Color.black.opacity(0.72), in: Capsule(), glass: true)
+            .environment(\.colorScheme, .dark)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.top, 8)
             .padding(.trailing, 9)
@@ -149,7 +150,8 @@ struct PiTerminalView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .foregroundStyle(.white)
-                .background(.black.opacity(0.78), in: Capsule())
+                .jarvisGlassSurface(Color.black.opacity(0.78), in: Capsule(), glass: true)
+                .environment(\.colorScheme, .dark)
                 .padding(.top, 8)
                 Spacer()
             }
@@ -180,7 +182,7 @@ struct PiTerminalView: View {
             }
             .padding(22)
             .frame(maxWidth: 330)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .jarvisGlassSurface(Color.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .padding()
         }
     }
