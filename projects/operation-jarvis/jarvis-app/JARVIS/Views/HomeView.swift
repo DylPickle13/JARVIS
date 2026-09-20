@@ -1065,10 +1065,10 @@ struct CompactPurifierCard: View {
         }
         .padding(5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(JarvisPalette.surface)
-        }
+        .jarvisGlassSurface(
+            JarvisPalette.surface,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(JarvisPalette.accent.opacity(0.20), lineWidth: 0.75)

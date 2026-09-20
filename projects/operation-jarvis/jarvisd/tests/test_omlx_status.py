@@ -25,6 +25,67 @@ def model(**extra):
 
 
 class OMLXTests(unittest.TestCase):
+    def setUp(self):
+        # Never launch production release-check workers from a unit test.
+        self.update_coordinator = jarvisd.OMLX_UPDATE_COORDINATOR
+        patch = mock.patch.object(jarvisd, "OMLX_UPDATE_COORDINATOR")
+        self.updates = patch.start()
+        self.addCleanup(patch.stop)
+        self.updates.snapshot.return_value = {
+            "subsystems": {s: {"ok": False} for s in jarvisd.OMLX_SERVER_IDS},
+            "subsystemsMeta": {s: {"ageSeconds": None, "stale": True, "error": None}
+                               for s in jarvisd.OMLX_SERVER_IDS},
+        }
+
+    def test_update_parser_requires_explicit_boolean_and_version_and_sanitizes(self):
+        self.assertEqual(jarvisd._omlx_update({"update_available": True,
+            "latest_version": "0.3.5rc1", "release_url": "PRIVATE", "cookie": "PRIVATE"}),
+            {"ok": True, "available": True, "latestVersion": "0.3.5rc1"})
+        self.assertEqual(jarvisd._omlx_update({"update_available": False}),
+            {"ok": True, "available": False, "latestVersion": None})
+        for raw in [None, {}, {"update_available": 1}, {"update_available": "true"},
+                    {"update_available": True},
+                    {"update_available": True, "latest_version": "PRIVATE\npath"}]:
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                jarvisd._omlx_update(raw)
+
+    def test_update_transport_is_read_only_and_fails_closed(self):
+        for status in [200, 302, 401, 404, 500]:
+            connection = self.fake_connection(status, {"update_available": True, "latest_version": "0.3.5"})
+            with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+                jarvisd.http.client, "HTTPConnection", return_value=connection) as factory:
+                result = jarvisd._omlx_collect_update("mac-mini-16")
+            factory.assert_called_once_with("192.168.21.30", 8000, timeout=7.0)
+            connection.request.assert_called_once_with("GET", "/admin/api/update-check",
+                headers={"Accept": "application/json"})
+            self.assertEqual(result["ok"], status == 200)
+            connection.close.assert_called_once()
+
+    def test_update_checks_have_independent_hourly_cadence(self):
+        coordinator = self.update_coordinator
+        self.assertIsNot(coordinator, jarvisd.OMLX_COORDINATOR)
+        for server in jarvisd.OMLX_SERVER_IDS:
+            self.assertEqual(coordinator.intervals[server], 3600)
+            self.assertEqual(coordinator.idle_intervals[server], 3600)
+
+    def test_update_metadata_is_independent_of_activity_freshness(self):
+        ids = jarvisd.OMLX_SERVER_IDS
+        coordinator = self.coordinator({s: lambda: {} for s in ids})
+        coordinator.start = lambda: None
+        self.complete(coordinator, ids[0], jarvisd._omlx_activity(activity()))
+        snapshot = self.updates.snapshot.return_value
+        snapshot["subsystems"][ids[0]] = {"ok": True, "available": True, "latestVersion": "0.3.5"}
+        snapshot["subsystemsMeta"][ids[0]] = {"ageSeconds": 10, "stale": False, "error": None}
+        with mock.patch.object(jarvisd, "OMLX_COORDINATOR", coordinator):
+            result = jarvisd.collect_omlx()["servers"]
+            self.assertTrue(result[0]["update"]["available"])
+            self.assertFalse(result[0]["update"]["stale"])
+            self.assertTrue(result[1]["update"]["stale"])
+            snapshot["subsystemsMeta"][ids[0]]["error"] = "Check failed"
+            result = jarvisd.collect_omlx()["servers"][0]
+            self.assertTrue(result["update"]["stale"])
+            self.assertFalse(result["stale"])
+
     def test_allowlist_excludes_credentials_content_paths_and_request_ids(self):
         raw = activity([model(generating=[{"request_id": "private-request", "prompt": "PRIVATE",
             "output": "PRIVATE", "generated_tokens": 42, "tokens_per_second": 12.5,

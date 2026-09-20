@@ -2,13 +2,23 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current installed build:** 203 on both iPhone and Watch, with installation and
-launch independently verified on 2026-09-20 EDT. Build 203 adds native Liquid Glass
+**Current installed build:** 205 on both iPhone and Watch, with installation and
+launch independently verified on 2026-09-20 EDT. Build 205 adds automatic oMLX detail
+pages, full-name overflow scrolling, and a green dot immediately right of the
+oMLX title when either server confirms an available update. Card dimensions remain
+unchanged. The separate hourly backend release check is deployed; both servers
+reported no update at verification. Both simulator targets build successfully;
+physical visual acceptance remains pending. Build 204 is retained for rollback.
+
+Build 204 added the matching purple tab accent, translucent iPhone purifier card,
+softer Watch borders, and glass terminal accessory buttons.
+
+Build 203 introduced native Liquid Glass
 to selected controls and quieter translucent card surfaces, preserving layout,
 interaction, and backend behavior. Older systems use material fallbacks; Reduce
 Transparency and increased contrast use opaque surfaces. Simulator Home (light/dark)
-and Watch System previews were reviewed; the owner visually approved the deployed
-apps on 2026-09-20 EDT.
+and Watch System previews were reviewed; the owner visually approved build 203
+on 2026-09-20 EDT.
 The room endpoint is labelled
 **Camera speaker**, and both terminal indicators group sessions **3 · 3 · 3 · 1**.
 The Room Audio card opens shared Session 10; see

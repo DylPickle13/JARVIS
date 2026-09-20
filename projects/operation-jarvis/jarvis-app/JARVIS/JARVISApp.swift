@@ -68,7 +68,7 @@ struct JARVISApp: App {
                 .environmentObject(app)
                 .environmentObject(notifications)
                 .environmentObject(piTerminal)
-                .tint(Color.accentColor)
+                .tint(JarvisPalette.accent)
                 .task {
                     app.startWatchBridge()
                     notifications.configure(app: app)

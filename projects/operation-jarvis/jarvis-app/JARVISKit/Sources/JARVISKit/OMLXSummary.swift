@@ -9,6 +9,8 @@ public struct OMLXServerSummary: Equatable, Identifiable, Sendable {
     public let accessibilityValue: String
     public let phase: OMLXPhase
     public let fresh: Bool
+    public let details: OMLXCardDetails?
+    public let updateAvailable: Bool
 
     public var hasActiveWork: Bool { fresh && [.generating, .prefill, .processing].contains(phase) }
     public var breathesStatus: Bool { hasActiveWork || (fresh && phase == .loading) }
@@ -26,6 +28,8 @@ public struct OMLXServerSummary: Equatable, Identifiable, Sendable {
         serverLabel = id == "mac-mini-64" ? "64 GB" : "16 GB"
         fresh = available && server?.isFresh(requestStartedAt: requestStartedAt, now: now) == true
         phase = fresh ? (server?.phase ?? .unknown) : .unknown
+        details = fresh ? server.map { OMLXCardDetails(server: $0) } : nil
+        updateAvailable = fresh && server?.update?.isAvailable(requestStartedAt: requestStartedAt, now: now) == true
         guard fresh, let server else {
             status = checking ? "Checking" : (server?.lastSuccessAt != nil ? "Stale" : "Unavailable")
             metric = nil

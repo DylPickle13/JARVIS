@@ -17,6 +17,21 @@ of those clients. See the [architecture and phased plan](../docs/backend-archite
 [candidate progress and blocking gates](docs/cutover-status.md). The deployed
 best-effort CLI/Pi and native routing does not require that deferred machinery.
 
+## oMLX update indicator (deployed 2026-09-20)
+
+Deployment record: `20260920T230414Z-omlx-update-indicator`. Read-only health and
+both server checks passed; protected terminal/audio services and pane identities
+were unchanged. Only the backend daemon was replaced; oMLX was not restarted.
+
+`GET /api/v1/omlx` includes optional per-server `update` metadata. Independent
+hourly workers read each configured oMLX server's `/admin/api/update-check`,
+using that server's installed-version comparison and selected release channel.
+Only availability, a validated release version, and cache health/age are exposed;
+no release URLs, credentials, downloads, installs, or service restarts.
+The iPhone/Watch title dot requires fresh activity and a successful, non-stale
+update result no older than two hours. Missing/unsupported checks show no dot.
+Release checks do not block or change the existing activity polling cadence.
+
 ## Current responsibilities
 
 - Cached state with per-subsystem freshness and last-good observations.

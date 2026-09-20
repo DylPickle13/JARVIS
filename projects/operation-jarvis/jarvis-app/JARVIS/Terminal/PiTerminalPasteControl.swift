@@ -11,7 +11,9 @@ struct PiTerminalPasteControl: View {
             Image(systemName: "doc.on.clipboard")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(JarvisPalette.accent)
-                .frame(width: width, height: PiTerminalToolbarMetrics.height)
+                .frame(width: width, height: 34)
+                .piTerminalKeySurface()
+                .frame(height: PiTerminalToolbarMetrics.height)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PiTerminalToolbarButtonStyle())

@@ -314,6 +314,33 @@ struct PiTerminalToolbarButtonStyle: ButtonStyle {
     }
 }
 
+/// One visual surface for text keys, icons and Paste. It stays inside the
+/// existing 34pt key face; the enclosing full-height hit target is unchanged.
+extension View {
+    func piTerminalKeySurface(latched: Bool = false) -> some View {
+        modifier(PiTerminalKeySurface(latched: latched))
+    }
+}
+
+private struct PiTerminalKeySurface: ViewModifier {
+    let latched: Bool
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8)
+        if latched {
+            // Preserve the solid selected fill and its contrasting foreground.
+            content
+                .background(JarvisPalette.accent, in: shape)
+                .overlay {
+                    shape.strokeBorder(Color.white.opacity(0.30), lineWidth: 0.75)
+                        .allowsHitTesting(false)
+                }
+        } else {
+            content.jarvisGlassSurface(JarvisPalette.accent.opacity(0.10), in: shape, glass: true)
+        }
+    }
+}
+
 struct PiTerminalKeyBar: View {
     static let height = PiTerminalToolbarMetrics.height
     @ObservedObject var controller: PiTerminalController
@@ -392,8 +419,7 @@ struct PiTerminalToolbarContent: View {
                 .foregroundStyle(latched ? JarvisPalette.onAccent : JarvisPalette.accent)
                 .padding(.horizontal, 2)
                 .frame(width: metrics.width(for: action), height: 34)
-                .background(latched ? JarvisPalette.accent : JarvisPalette.accent.opacity(0.10),
-                            in: RoundedRectangle(cornerRadius: 8))
+                .piTerminalKeySurface(latched: latched)
                 .frame(height: PiTerminalToolbarMetrics.height)
                 .contentShape(Rectangle())
         }
@@ -406,7 +432,9 @@ struct PiTerminalToolbarContent: View {
             Image(systemName: symbol)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(JarvisPalette.accent)
-                .frame(width: metrics.width(for: action), height: PiTerminalToolbarMetrics.height)
+                .frame(width: metrics.width(for: action), height: 34)
+                .piTerminalKeySurface()
+                .frame(height: PiTerminalToolbarMetrics.height)
                 .contentShape(Rectangle())
         }
         .accessibilityLabel(label)

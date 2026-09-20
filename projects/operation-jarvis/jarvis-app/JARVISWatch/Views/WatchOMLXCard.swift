@@ -18,10 +18,6 @@ struct WatchOMLXCard: View {
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                }
                 .activityCardEdge(active: rows.contains(where: \.hasActiveWork),
                     allowed: active && OMLXServerSummary.allowsEdge(rows), cornerRadius: 13, compact: true)
         }

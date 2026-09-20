@@ -25,6 +25,16 @@ private struct JarvisGlassSurface<S: InsettableShape, F: ShapeStyle>: View {
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
+    // The Watch's small, dark canvas needs less decorative edge contrast.
+    // Keep accessibility borders and native control glass unchanged.
+    private var edgeHighlight: Double {
+        #if os(watchOS)
+        return 0.12
+        #else
+        return colorScheme == .dark ? 0.20 : 0.65
+        #endif
+    }
+
     var body: some View {
         if reduceTransparency || contrast == .increased {
             // Some original Watch fills are translucent: put an opaque base
@@ -41,7 +51,7 @@ private struct JarvisGlassSurface<S: InsettableShape, F: ShapeStyle>: View {
                     shape.strokeBorder(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(colorScheme == .dark ? 0.20 : 0.65),
+                                Color.white.opacity(edgeHighlight),
                                 Color.white.opacity(0.035),
                                 Color.primary.opacity(0.08),
                             ],

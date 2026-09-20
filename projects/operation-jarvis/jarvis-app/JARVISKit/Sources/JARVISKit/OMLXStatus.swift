@@ -49,6 +49,7 @@ public struct OMLXServerStatus: Decodable, Equatable, Identifiable, Sendable {
     public let memoryLimitBytes: Double?
     public let memoryKind: String?
     public let memoryPressure: String?
+    public let update: OMLXUpdateStatus?
 
     /// Add elapsed client time to the *source* age, not the age of the last
     /// successful HTTP poll. requestStartedAt also conservatively counts RTT.
@@ -71,6 +72,24 @@ public struct OMLXServerStatus: Decodable, Equatable, Identifiable, Sendable {
         let phases = Set(models.map { $0.phase }.filter { $0 != .ready })
         if phases.count > 1 { return .processing }
         return phases.first ?? .ready
+    }
+}
+
+/// Optional additive field: older jarvisd hosts simply omit the update signal.
+/// An unknown, failed or expired check is not evidence of an available update.
+public struct OMLXUpdateStatus: Decodable, Equatable, Sendable {
+    public let ok: Bool?
+    public let available: Bool?
+    public let latestVersion: String?
+    public let stale: Bool?
+    public let ageSeconds: Double?
+
+    public func isAvailable(requestStartedAt: Date?, now: Date) -> Bool {
+        guard ok == true, available == true, stale == false,
+              let latestVersion, !latestVersion.isEmpty, latestVersion.count <= 64,
+              let ageSeconds, ageSeconds.isFinite, ageSeconds >= 0,
+              let requestStartedAt else { return false }
+        return ageSeconds + max(0, now.timeIntervalSince(requestStartedAt)) <= 7200
     }
 }
 

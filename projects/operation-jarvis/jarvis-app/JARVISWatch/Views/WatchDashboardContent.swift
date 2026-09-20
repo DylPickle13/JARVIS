@@ -405,7 +405,7 @@ struct WatchDashboardContent: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(color.opacity(0.16), lineWidth: 0.75)
+                    .stroke(color.opacity(0.10), lineWidth: 0.75)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Codex weekly quota, \(Int(remaining.rounded())) percent remaining, \(codexResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))")
@@ -693,7 +693,7 @@ private struct WatchPlugTile: View {
                             glass: true, tint: isOn == true ? WatchJarvisStyle.accent.opacity(0.12) : nil)
         .overlay {
             RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(isOn == true ? WatchJarvisStyle.accent.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 0.8)
+                .stroke(isOn == true ? WatchJarvisStyle.accent.opacity(0.24) : Color.white.opacity(0.045), lineWidth: 0.8)
         }
         .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
     }

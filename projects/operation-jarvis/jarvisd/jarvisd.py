@@ -1455,6 +1455,8 @@ def _collect_network() -> dict:
 OMLX_SERVER_IDS = ("mac-mini-64", "mac-mini-16")
 OMLX_MAX_BODY = 256 * 1024
 OMLX_FRESH_SECONDS = 6.0
+OMLX_UPDATE_INTERVAL = 3600.0
+OMLX_UPDATE_FRESH_SECONDS = 7200.0
 
 
 def _omlx_number(value: Any, *, integer: bool = False) -> int | float | None:
@@ -1539,10 +1541,38 @@ def _omlx_activity(raw: Any) -> dict:
     }
 
 
+def _omlx_update(raw: Any) -> dict:
+    """Trust the server's own installed-version/channel comparison, not a guessed
+    GitHub tag. Do not forward release URLs or arbitrary admin metadata.
+    """
+    if not isinstance(raw, dict) or type(raw.get("update_available")) is not bool:
+        raise ValueError("unsupported update schema")
+    available = raw["update_available"]
+    latest = raw.get("latest_version")
+    if available and (not isinstance(latest, str) or len(latest) > 64
+                      or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}[a-zA-Z0-9.+-]*", latest)):
+        raise ValueError("missing release version")
+    return {"ok": True, "available": available, "latestVersion": latest if available else None}
+
+
 def _omlx_collect(server_id: str) -> dict:
+    return _omlx_read(server_id, path="/admin/api/activity", parser=_omlx_activity,
+                      timeout=2.0, unavailable="oMLX activity unavailable.")
+
+
+def _omlx_collect_update(server_id: str) -> dict:
+    # oMLX owns its selected release channel and caches GitHub checks itself.
+    # This endpoint only checks; it never downloads or installs an update.
+    return _omlx_read(server_id, path="/admin/api/update-check", parser=_omlx_update,
+                      timeout=7.0, unavailable="oMLX update check unavailable.")
+
+
+def _omlx_read(server_id: str, *, path: str, parser, timeout: float, unavailable: str) -> dict:
     """Bounded GET to two operator-configured private IPs. No login, redirects,
     inference, automatic model loading or other writes, including on failure.
     """
+    if path not in ("/admin/api/activity", "/admin/api/update-check"):
+        return {"ok": False, "error": unavailable}
     suffix = {"mac-mini-64": "64", "mac-mini-16": "16"}[server_id]
     host = os.environ.get(f"JARVISD_OMLX_{suffix}_HOST", "127.0.0.1" if suffix == "64" else "192.168.21.30")
     connection = None
@@ -1567,8 +1597,8 @@ def _omlx_collect(server_id: str) -> dict:
             if not cookie or len(cookie) > 4096 or "\r" in cookie or "\n" in cookie:
                 raise ValueError("invalid cookie file")
             headers["Cookie"] = cookie
-        deadline = time.monotonic() + 2.0
-        connection = http.client.HTTPConnection(host, 8000, timeout=2.0)
+        deadline = time.monotonic() + timeout
+        connection = http.client.HTTPConnection(host, 8000, timeout=timeout)
         connection.connect()
         transport = connection.sock
         def expire():
@@ -1582,13 +1612,13 @@ def _omlx_collect(server_id: str) -> dict:
         timeout_guard.daemon = True
         timeout_guard.start()
         transport.settimeout(max(0.001, deadline - time.monotonic()))
-        connection.request("GET", "/admin/api/activity", headers=headers)
+        connection.request("GET", path, headers=headers)
         transport.settimeout(max(0.001, deadline - time.monotonic()))
         response = connection.getresponse()
         if response.status in (401, 403):
             return {"ok": False, "error": "Authentication required."}
         if response.status != 200:
-            return {"ok": False, "error": "oMLX activity unavailable."}
+            return {"ok": False, "error": unavailable}
         chunks = []
         size = 0
         while not response.isclosed():
@@ -1606,10 +1636,10 @@ def _omlx_collect(server_id: str) -> dict:
             size += len(chunk)
             if size > OMLX_MAX_BODY:
                 raise ValueError("oversized activity")
-        return _omlx_activity(json.loads(b"".join(chunks)))
+        return parser(json.loads(b"".join(chunks)))
     except Exception:
         # Never expose exception strings, response bodies, cookies or paths.
-        return {"ok": False, "error": "oMLX activity unavailable."}
+        return {"ok": False, "error": unavailable}
     finally:
         if timeout_guard is not None:
             timeout_guard.cancel()
@@ -1628,17 +1658,33 @@ OMLX_COORDINATOR = StateCoordinator(
 )
 
 
+# Independent workers and an hourly cadence: an upstream release lookup must
+# never delay activity samples or inherit the two-second dashboard cadence.
+OMLX_UPDATE_COORDINATOR = StateCoordinator(
+    collectors={server: (lambda server=server: _omlx_collect_update(server)) for server in OMLX_SERVER_IDS},
+    intervals={server: OMLX_UPDATE_INTERVAL for server in OMLX_SERVER_IDS},
+    idle_intervals={server: OMLX_UPDATE_INTERVAL for server in OMLX_SERVER_IDS},
+    freshness_limits={server: OMLX_UPDATE_FRESH_SECONDS for server in OMLX_SERVER_IDS},
+    active_lease_seconds=6.0,
+)
+
+
 def collect_omlx() -> dict:
     # A distinct lease: Watch/state/widget traffic cannot enable fast oMLX
     # collection. Cold reads return immediately, then independent workers fill
     # each server's last-good cache. Polling never waits for an upstream read.
     snapshot = OMLX_COORDINATOR.snapshot(client_active=True)
+    updates = OMLX_UPDATE_COORDINATOR.snapshot(client_active=True)
     servers = []
     for server_id in OMLX_SERVER_IDS:
         data = snapshot["subsystems"][server_id]
         meta = snapshot["subsystemsMeta"][server_id]
+        update = updates["subsystems"][server_id]
+        update_meta = updates["subsystemsMeta"][server_id]
         servers.append({
             **data, "id": server_id, "ageSeconds": meta["ageSeconds"],
+            "update": {**update, "ageSeconds": update_meta["ageSeconds"],
+                       "stale": update_meta["stale"] or update_meta["error"] is not None},
             "lastSuccessAt": meta["updatedAt"],
             # Unlike control grace periods, a failed activity probe must not
             # keep last-known generation looking live even for six seconds.
@@ -2327,6 +2373,7 @@ def main(*, control_factory=None, local_control=False) -> int:
                 server.server_close()
             STATE_COORDINATOR.stop()
             OMLX_COORDINATOR.stop()
+            OMLX_UPDATE_COORDINATOR.stop()
             if log_writer is not None:
                 log_writer.flush()
     return 0
