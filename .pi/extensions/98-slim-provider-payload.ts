@@ -24,7 +24,7 @@ function compactInstructions(instructions: string, payload: any): string {
       "- Ask one clarification only if required.",
       "- Memory: load `memory` first; stable facts only; no secrets/sensitive data.",
       "- Web: `web_search` discover, `fetch_content` text/pages, `get_search_content` stored; load `browser` for rendered/interactive/logged-in/forms/screenshots/open-use-check sites.",
-      "- Discover optional schemas with `load_tools`; its description is the canonical group inventory. Known valid direct calls auto-load registered lazy tools on the JARVIS runtime. Lights/plugs/switches/Cast/purifier => use `smart_plug`/`jarvis` (load `jarvis` if needed), no shell/file fallback unless the tool fails; cron checks use `jarvis_cron` unless OS cron/launchd is explicit.",
+      "- Discover optional schemas with `load_tools`; its description is the canonical group inventory. Known valid direct calls auto-load registered lazy tools on the JARVIS runtime. Home controls or named door/security protocols (including explanations) => `load_tools({groups:[\"operation_jarvis\"]})`, then its tools, not shell/web. Never claim actions without tool results or bypass gates; cron checks use `jarvis_cron` unless OS cron/launchd is explicit.",
       "- Be concise; show paths.",
       "",
     ].join("\n"),
@@ -55,8 +55,7 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   // Optional lazy-loaded tools: preserve terse top-level descriptions.
   minecraft_jarvis: "Minecraft bot chat/control; use direct short plain messages; no SSH/shell/slash.",
   github_cli: "Run official gh CLI with args; loads GitHub token from .env and redacts it.",
-  jarvis: "Operation JARVIS Cast/Spotify/air-purifier helper.",
-  smart_plug: "Local smart-plug control.",
+
   google_workspace: "Google Workspace API for Drive/Gmail/Docs/Sheets/Calendar.",
   jarvis_cron: "Manage scheduled Pi/JARVIS jobs and bounded local results.",
   browser_status: "Visible Chrome status, profile path, active tab, and open tabs.",
@@ -107,8 +106,7 @@ const SCHEMA_STRIP_TOOLS = new Set([
   // Optional lazy-loaded tools: preserve top-level descriptions, strip nested prose.
   "minecraft_jarvis",
   "github_cli",
-  "jarvis",
-  "smart_plug",
+
   "google_workspace",
   "jarvis_cron",
   "browser_status",
@@ -128,6 +126,9 @@ const SCHEMA_STRIP_TOOLS = new Set([
 function compactTool(tool: any): any {
   if (!tool || typeof tool !== "object") return tool;
   const name = toolName(tool);
+  // Keep concise domain schemas intact: their units/required-field meanings and
+  // safety distinctions matter more than shaving prose after on-demand loading.
+  if (name?.startsWith("operation_jarvis_")) return tool;
   // Keep pi-web-access's upstream descriptions and schemas intact.
   if (["web_search", "source_check", "fetch_content", "get_search_content"].includes(name ?? "")) return tool;
   if (!name || !SCHEMA_STRIP_TOOLS.has(name)) return tool;

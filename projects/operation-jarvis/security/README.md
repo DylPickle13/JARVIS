@@ -24,14 +24,18 @@ a narrow TPAP transport with isolated, pinned @noble/curves dependencies, not th
 production camera environment; the superseded prototype has been removed;
 see [chime commands and caveats](CLI.md#experimental-d100c-chime).
 
-`security_smart_actions.py` adds explicit cloud list/show/create/update/rename,
+`security_smart_actions.py` adds explicit cloud list/describe/show/create/update/rename,
 enable/disable/delete and separately confirmed shortcut execution. Writes require
 confirmation, fresh revisions for existing rules, private backups and readback;
 there are no automatic retries. Only cloud reads and name-change/restoration are
 live-verified so far; other operations remain experimentally implemented, with
 offline coverage. See [Smart Actions commands, setup and caveats](CLI.md#experimental-tapo-cloud-smart-actions).
 Cloud account configuration and raw rule exports/backups remain private; tokens
-are session-only. Local device commands remain local.
+are session-only. Local device commands remain local. The optional
+[Operation JARVIS Pi suite](../../../.pi/docs/OPERATION_JARVIS_TOOLS.md) exposes
+read-only devices/status/capabilities and cloud list/describe. Automation
+enable/disable is implemented but blocked until separately commissioned; the
+extension never activates that gate itself.
 
 ## Local setup
 

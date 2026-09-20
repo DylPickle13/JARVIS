@@ -4,7 +4,9 @@ The core CLI implementation is in **security_cli.py**, with offline tests in
 **test_security_cli.py**. Audio, video, doorbell and recording adapters have
 separate modules and offline test suites. The legacy archive probes also supply
 helpers used by the supported clip-download path. `security` is a small shell launcher for the isolated
-Python 3.13 environment. This CLI installs no Pi tools, daemon or scheduled task.
+Python 3.13 environment. This CLI installs no daemon or scheduled task. The
+project's optional [Operation JARVIS Pi tools](../../../.pi/docs/OPERATION_JARVIS_TOOLS.md)
+wrap bounded reads and guarded automation enable/disable.
 The separately deployed backend now wraps `status` in an API-token-protected
 on-demand route; see [deployment evidence](../docs/security-integration-plan.md).
 Reviewed source/docs/templates are tracked; credentials, inventories, media and
@@ -19,6 +21,7 @@ No daemon, polling, cloud token cache, automatic MFA requests, or login/write re
 
 ```bash
 ./security --json smart-actions list
+./security --json smart-actions describe REF  # allowlisted partial summary; no export
 ./security --json smart-actions show REF
 # show prints a private JSON file path; it never dumps device IDs/locations to stdout.
 # REF and REVISION below come from a recent list/show, not a device alias.
@@ -40,6 +43,9 @@ disposable rule for commissioning those operations, not an existing household ru
 
 - `list` returns names, opaque references, kind, enabled status and SHA256 revisions.
   These summaries are still private household data; don't publish CLI output.
+- `describe` returns bounded allowlisted trigger/action configuration, not raw
+  device IDs, location, RPCs or private files. Unknown fields and trigger combination
+  semantics remain uninterpreted; it is not proof of physical behaviour.
 - `show` saves the exact rule to a fresh owner-only file in `private-smart-actions/`.
   Edit that file locally for `update`. Keep the same ID and all fields you intend to
   preserve: **update replaces the complete rule**, it is not a JSON merge/patch.

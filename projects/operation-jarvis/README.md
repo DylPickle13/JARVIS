@@ -9,7 +9,7 @@ This directory connects JARVIS to the things around the house: plugs, the air pu
 - **Room audio:** Raspberry Pi capture/playback with Mac-side Apple SpeechTranscriber for ordinary turns, DictationTranscriber for busy-only `stop`, Pi RPC, and Piper speech on port `8791`.
 - **Apple apps:** iPhone, Watch, and two widgets per platform.
 - **Smart plugs:** local TP-Link Kasa control through a fixed plug catalogue.
-- **Security foundation (local-only):** optional, gitignored `security/` directory; not included in this repository or connected to jarvisd/apps.
+- **Security:** reviewed CLI source in `security/`, with private credentials/inventory/media kept ignored. jarvisd exposes token-protected on-demand status only. Pi tools add local reads and explicit Tapo cloud automation management; writes remain gated pending commissioning.
 - **Air purifier:** VeSync/Levoit Vital 200S-P status and validated controls.
 - **Media:** Google Cast, YouTube, Spotify Connect, and short room speech.
 - **Provider quotas:** read-only Codex/Copilot status for `jarvisd` and the apps.
@@ -25,7 +25,7 @@ projects/operation-jarvis/
 ├── quotas/                     # read-only provider quota collection
 ├── room-audio/                # Mac-hosted room conversations and audio endpoints
 ├── smart-plug/                 # local Kasa adapter and private catalogue
-├── security/                   # optional local-only directory; gitignored
+├── security/                   # reviewed CLI source; private runtime/config ignored
 ├── voice/                      # neutral ASR/Pi RPC/Piper voice pipeline
 ├── jarvis.py                   # closed Operation JARVIS CLI implementation
 └── jarvis-cli                  # stable executable wrapper
@@ -51,9 +51,19 @@ Do not switch devices as a smoke test. Plug and purifier changes require fresh d
 `jarvisd` is independent of the Apple app. CLI/Pi plug and purifier writes use
 its authenticated loopback route; current native clients use a separate app-authenticated
 route through the same dispatcher. This is best-effort coordination, not exclusive
-SDK ownership. Security remains standalone and local-only; terminal and audio
-processing remain separate services. See the [architecture and migration plan](docs/backend-architecture.md)
+SDK ownership. Security controls remain in the standalone CLI; jarvisd exposes
+only authenticated on-demand status. Smart Actions explicitly use Tapo cloud.
+Terminal and audio processing remain separate services. See the [architecture and migration plan](docs/backend-architecture.md)
 and [backend operations](jarvisd/README.md).
+
+## Pi household-control tools
+
+Load `operation_jarvis` for five focused tools: `operation_jarvis_plugs`,
+`operation_jarvis_purifier`, `operation_jarvis_media`, `operation_jarvis_security`,
+and `operation_jarvis_automations`. The former `jarvis` group/tool and `smart_plug`
+tool are retired; CLI commands and backend routes are unchanged. See the
+[tool guide](../../.pi/docs/OPERATION_JARVIS_TOOLS.md) for schemas, safety gates,
+offline tests and rollout. No new daemon or polling is installed.
 
 ## Native app
 

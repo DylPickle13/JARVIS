@@ -578,10 +578,11 @@ def handle_help(_args: argparse.Namespace) -> dict[str, Any]:
     return {
         "ok": True,
         "action": "help",
-        "summary": "Operation JARVIS help: load the optional jarvis tool group first, then call the jarvis tool directly for Cast/Spotify, smart-plug, or air-purifier workflows.",
+        "summary": "Operation JARVIS CLI guide. In Pi, load operation_jarvis for focused household-control tools; the action names below describe this CLI, not the Pi schemas.",
         "guide": {
-            "tool": "jarvis",
-            "availability": "optional provider-visible tool group; load with load_tools({groups:[\"jarvis\"]})",
+            "tools": ["operation_jarvis_plugs", "operation_jarvis_purifier", "operation_jarvis_media", "operation_jarvis_security", "operation_jarvis_automations"],
+            "availability": "optional Pi group; load with load_tools({groups:[\"operation_jarvis\"]})",
+            "actionNaming": "CLI actions below retain their prefixes. Pi uses focused tools: purifier-status becomes operation_jarvis_purifier action=status; cast-status becomes operation_jarvis_media action=status. Security uses its separate CLI.",
             "scope": "Native/local interface + Google Cast speech/media + Spotify Connect playback/control + local Kasa smart-plug control + VeSync/Levoit air purifier control",
             "defaults": {
                 "speechDevice": DEFAULT_SPEAK_DEVICE,

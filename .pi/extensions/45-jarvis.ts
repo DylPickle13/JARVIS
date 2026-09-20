@@ -1,124 +1,13 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-
 import { findAncestorFile, parseDotEnv } from "./lib/env";
 import { truncate } from "./lib/text";
 
-const DEFAULT_JARVIS_ROOT = resolve(process.env.JARVIS_ROOT || process.cwd());
-const ACTIONS = [
-  "help",
-  "status",
-  "speak",
-  "cast-status",
-  "cast-volume",
-  "cast-mute",
-  "cast-stop",
-  "cast-youtube",
-  "cast-play-url",
-  "cast-spotify-devices",
-  "cast-spotify",
-  "cast-spotify-pause",
-  "cast-spotify-next",
-  "cast-spotify-previous",
-  "cast-spotify-prev",
-  "cast-spotify-volume",
-  "cast-spotify-queue-add",
-  "cast-spotify-add-queue",
-  "cast-spotify-queue",
-  "cast-spotify-seek",
-  "cast-spotify-shuffle",
-  "cast-spotify-repeat",
-  "plug-list",
-  "plug-status",
-  "plug-on",
-  "plug-off",
-  "plug-toggle",
-  "plug-discover",
-  "plug-save-discovery",
-  "purifier-list",
-  "purifier-status-all",
-  "purifier-status",
-  "purifier-set",
-] as const;
-const DEVICES = ["tv", "speakers"] as const;
-const MUTE_STATES = ["on", "off", "toggle"] as const;
-const SMART_PLUG_ACTIONS = ["list", "status", "on", "off", "toggle", "discover", "save-discovery"] as const;
-const PURIFIER_SETTINGS = ["power", "mode", "speed", "display", "child-lock", "light-detection", "auto-preference", "timer"] as const;
-const SPOTIFY_CREDENTIAL_ENV_KEYS = [
-  "SPOTIFY_CLIENT_ID",
-  "SPOTIFY_CLIENT_SECRET",
-  "SPOTIFY_REFRESH_TOKEN",
-  "SPOTIFY_SP_DC",
-  "SPOTIFY_SP_KEY",
-  "SP_DC",
-  "SP_KEY",
-] as const;
-const SENSITIVE_RESULT_KEY_RE = /(?:authorization|password|secret|token|spotify.*(?:client.?id|sp.?dc|sp.?key)|sp.?dc|sp.?key)/i;
-
-type JarvisAction = typeof ACTIONS[number];
-type SmartPlugAction = typeof SMART_PLUG_ACTIONS[number];
-type PurifierSetting = typeof PURIFIER_SETTINGS[number];
-type Device = typeof DEVICES[number];
-
-type JarvisParams = {
-  action: JarvisAction;
-  device?: Device;
-  text?: string;
-  query?: string;
-  url?: string;
-  contentType?: string;
-  spotifyUri?: string;
-  resume?: boolean;
-  spotifyDeviceName?: string;
-  spotifyDeviceId?: string;
-  spotifyType?: "track" | "album" | "playlist" | "artist" | "any";
-  spotifyQueueType?: "track" | "episode";
-  market?: string;
-  position?: string;
-  timestamp?: string;
-  positionMs?: number;
-  repeatState?: "off" | "context" | "track" | "toggle";
-  limit?: number;
-  level?: number;
-  state?: "on" | "off" | "toggle";
-  quitApp?: boolean;
-  enqueue?: boolean;
-  noSearch?: boolean;
-  noCast?: boolean;
-  castTimeout?: number;
-  voice?: string;
-  rate?: number;
-  maxChars?: number;
-  servePort?: number;
-  serveHost?: string;
-  postCastServeSeconds?: number;
-  plug?: string;
-  plugConfig?: string;
-  discoveryTarget?: string;
-  plugTimeout?: number;
-  purifier?: string;
-  retryCooldown?: boolean;
-  setting?: PurifierSetting;
-  value?: string;
-  minutes?: number;
-  roomSize?: number;
-  purifierTimeout?: number;
-};
-
-type SmartPlugParams = {
-  action: SmartPlugAction;
-  plug?: string;
-  plugConfig?: string;
-  discoveryTarget?: string;
-  timeout?: number;
-};
-
-function findOperationJarvisDir(cwd: string): string {
+// Small model-facing schemas; the existing CLI/backends still own device safety.
+export function operationDir(cwd: string): string {
   let current = resolve(cwd);
   while (true) {
     const candidate = join(current, "projects", "operation-jarvis");
@@ -127,656 +16,177 @@ function findOperationJarvisDir(cwd: string): string {
     if (parent === current) break;
     current = parent;
   }
-  return join(DEFAULT_JARVIS_ROOT, "projects", "operation-jarvis");
+  const candidate = join(resolve(process.env.JARVIS_ROOT || process.cwd()), "projects", "operation-jarvis");
+  if (!existsSync(join(candidate, "jarvis.py"))) throw new Error("Operation JARVIS installation unavailable");
+  return candidate;
 }
 
-function findProjectRoot(cwd: string): string {
-  let current = resolve(cwd);
-  while (true) {
-    if (existsSync(join(current, ".pi")) && existsSync(join(current, "projects"))) return current;
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return DEFAULT_JARVIS_ROOT;
+const credentialKeys = ["SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET", "SPOTIFY_REFRESH_TOKEN", "SPOTIFY_SP_DC", "SPOTIFY_SP_KEY", "SP_DC", "SP_KEY"];
+function secrets(cwd: string, dir: string): string[] {
+  const envs = [process.env, parseDotEnv(findAncestorFile(cwd, ".env")), parseDotEnv(join(dir, ".env"))];
+  return [...new Set(envs.flatMap(env => credentialKeys.map(key => env[key]?.trim()).filter((v): v is string => !!v && v.length >= 6)))];
 }
-
-function pythonPath(cwd: string): string {
-  const root = findProjectRoot(cwd);
-  const operationJarvisPython = join(root, "projects", "operation-jarvis", ".venv", "bin", "python");
-  if (existsSync(operationJarvisPython)) return operationJarvisPython;
-  const rootPython = join(root, ".venv", "bin", "python");
-  if (existsSync(rootPython)) return rootPython;
-  return "python3";
+function redact(value: any, credentials: string[]): any {
+  if (typeof value === "string") {
+    for (const secret of credentials) value = value.split(secret).join("[REDACTED_CREDENTIAL]");
+    return value.replace(/((?:Authorization|Proxy-Authorization)\s*:\s*(?:Bearer|Basic)\s+)\S+/gi, "$1[REDACTED_CREDENTIAL]");
+  }
+  if (Array.isArray(value)) return value.map(v => redact(v, credentials));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) =>
+    [k, /authorization|password|secret|token|spotify.*(?:client.?id|sp.?dc|sp.?key)|sp.?dc|sp.?key/i.test(k) ? "[REDACTED_CREDENTIAL]" : redact(v, credentials)]));
+  return value;
 }
-
-function spotifyCredentialValues(cwd: string, operationDir: string): string[] {
-  const projectEnv = parseDotEnv(findAncestorFile(cwd, ".env"));
-  const operationEnv = parseDotEnv(join(operationDir, ".env"));
-  const values = new Set<string>();
-  for (const key of SPOTIFY_CREDENTIAL_ENV_KEYS) {
-    for (const value of [process.env[key], operationEnv[key], projectEnv[key]]) {
-      const cleaned = value?.trim();
-      if (cleaned && cleaned.length >= 6) values.add(cleaned);
-    }
-  }
-  return [...values];
-}
-
-function redactCredentialText(value: unknown, secrets: readonly string[]): string {
-  let text = String(value ?? "");
-  for (const secret of secrets) text = text.split(secret).join("[REDACTED_CREDENTIAL]");
-  return text
-    .replace(/(--spotify-(?:client-id|client-secret|refresh-token|sp-dc|sp-key)\s+)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1[REDACTED_CREDENTIAL]")
-    .replace(/((?:SPOTIFY_(?:CLIENT_ID|CLIENT_SECRET|REFRESH_TOKEN|SP_DC|SP_KEY)|SP_(?:DC|KEY))\s*=\s*)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1[REDACTED_CREDENTIAL]")
-    .replace(/((?:Authorization|Proxy-Authorization)\s*:\s*(?:Bearer|Basic)\s+)\S+/gi, "$1[REDACTED_CREDENTIAL]");
-}
-
-function redactSensitiveValue(value: unknown, secrets: readonly string[], seen = new WeakSet<object>()): unknown {
-  if (typeof value === "string") return redactCredentialText(value, secrets);
-  if (!value || typeof value !== "object") return value;
-  if (seen.has(value)) return "[Circular]";
-  seen.add(value);
-  if (Array.isArray(value)) return value.map((item) => redactSensitiveValue(item, secrets, seen));
-
-  const redacted: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    redacted[key] = SENSITIVE_RESULT_KEY_RE.test(key)
-      ? "[REDACTED_CREDENTIAL]"
-      : redactSensitiveValue(item, secrets, seen);
-  }
-  return redacted;
-}
-
-function textFromPayload(payload: any): string {
-  if (!payload) return "No Operation JARVIS output.";
-  if (payload.action === "help" || payload.guide) {
-    return JSON.stringify({ summary: payload.summary, guide: payload.guide }, null, 2);
-  }
-  if (payload.summary) return String(payload.summary);
-  if (payload.answer) return String(payload.answer);
-  if (payload.query) return String(payload.query);
-  if (payload.stdout) return String(payload.stdout);
-  if (payload.error) return `Operation JARVIS error: ${payload.error}`;
-  return JSON.stringify(payload, null, 2);
-}
-
-function add(args: string[], flag: string, value: string | number | boolean | undefined | null) {
-  if (value === undefined || value === null || value === false) return;
-  if (value === true) args.push(flag);
-  else args.push(flag, String(value));
-}
-
-function appendSpeakArgs(args: string[], params: JarvisParams) {
-  add(args, "--device", params.device ?? "speakers");
-  add(args, "--cast-timeout", params.castTimeout);
-  add(args, "--voice", params.voice);
-  add(args, "--rate", params.rate);
-  add(args, "--max-chars", params.maxChars);
-  add(args, "--serve-port", params.servePort);
-  add(args, "--serve-host", params.serveHost);
-  add(args, "--post-cast-serve-seconds", params.postCastServeSeconds);
-}
-
-function appendSpotifyControlArgs(args: string[], params: JarvisParams) {
-  // Spotify credentials are intentionally loaded only by the local adapter from
-  // environment files. Never accept or persist them in model-visible tool calls.
-  add(args, "--spotify-device-name", params.spotifyDeviceName);
-  add(args, "--spotify-device-id", params.spotifyDeviceId);
-}
-
-function appendSpotifyArgs(args: string[], params: JarvisParams) {
-  appendSpotifyControlArgs(args, params);
-  add(args, "--spotify-type", params.spotifyType);
-  add(args, "--market", params.market);
-}
-
-function appendSmartPlugArgs(args: string[], params: Pick<JarvisParams, "plugConfig" | "discoveryTarget" | "plugTimeout">) {
-  add(args, "--plug-config", params.plugConfig);
-  add(args, "--discovery-target", params.discoveryTarget);
-  add(args, "--plug-timeout", params.plugTimeout);
-}
-
-function appendDedicatedSmartPlugArgs(args: string[], params: SmartPlugParams) {
-  appendSmartPlugArgs(args, {
-    plugConfig: params.plugConfig,
-    discoveryTarget: params.discoveryTarget,
-    plugTimeout: params.timeout,
-  });
-}
-
-function cleanText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function requireText(value: unknown, name: string): string {
-  const text = cleanText(value);
-  if (!text) throw new Error(`${name} is required`);
-  return text;
-}
-
-function normalizeSmartPlugAction(value: unknown): SmartPlugAction | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
-  if ((SMART_PLUG_ACTIONS as readonly string[]).includes(normalized)) return normalized as SmartPlugAction;
-
-  const aliases: Record<string, SmartPlugAction> = {
-    devices: "list",
-    "list-plugs": "list",
-    ls: "list",
-    scan: "discover",
-    discovery: "discover",
-    rescan: "discover",
-    check: "status",
-    get: "status",
-    "get-status": "status",
-    state: "status",
-    "turn-on": "on",
-    "switch-on": "on",
-    "power-on": "on",
-    enable: "on",
-    true: "on",
-    "turn-off": "off",
-    "switch-off": "off",
-    "power-off": "off",
-    disable: "off",
-    false: "off",
-    flip: "toggle",
-    switch: "toggle",
-    "toggle-power": "toggle",
-  };
-  return aliases[normalized];
-}
-
-function normalizeSmartPlugName(value: unknown): string | undefined {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 1) {
-    return `plug-${value}`;
-  }
-  if (typeof value !== "string") return undefined;
-  const text = value.trim();
-  if (!text) return undefined;
-  const normalized = text.toLowerCase().replace(/[\s_]+/g, "-");
-  const match = normalized.match(/^(?:plug|p)?-?(\d+)$/);
-  if (match) return `plug-${match[1]}`;
-  return normalized;
-}
-
-function prepareSmartPlugArguments(args: unknown): unknown {
-  if (!args || typeof args !== "object" || Array.isArray(args)) return args;
-  const input = args as Record<string, unknown>;
-  const next: Record<string, unknown> = { ...input };
-
-  const action = normalizeSmartPlugAction(input.action ?? input.command ?? input.operation);
-  if (action) next.action = action;
-
-  const plug = normalizeSmartPlugName(input.plug ?? input.plugName ?? input.name ?? input.device);
-  if (plug) next.plug = plug;
-
-  if (next.timeout === undefined && typeof input.plugTimeout === "number") next.timeout = input.plugTimeout;
-
-  delete next.command;
-  delete next.operation;
-  delete next.plugName;
-  delete next.name;
-  delete next.device;
-  delete next.plugTimeout;
-  return next;
-}
-
-function buildJarvisArgs(params: JarvisParams): string[] {
-  const action = params.action;
-  if (action === "help") {
-    return ["help"];
-  }
-
-  if (action === "status") {
-    const args = ["status"];
-    add(args, "--device", params.device ?? "tv");
-    add(args, "--cast-timeout", params.castTimeout);
-    add(args, "--no-cast", params.noCast);
-    return args;
-  }
-
-  if (action === "speak") {
-    const text = requireText(params.text, "text");
-    const args = ["speak"];
-    appendSpeakArgs(args, params);
-    args.push(text);
-    return args;
-  }
-
-  if (action === "cast-status") {
-    const args = ["cast-status"];
-    add(args, "--device", params.device ?? "tv");
-    add(args, "--cast-timeout", params.castTimeout);
-    return args;
-  }
-
-  if (action === "cast-volume") {
-    if (params.level === undefined) throw new Error("level is required");
-    const args = ["cast-volume", String(params.level)];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    return args;
-  }
-
-  if (action === "cast-mute") {
-    const args = ["cast-mute", params.state ?? "on"];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    return args;
-  }
-
-  if (action === "cast-stop") {
-    const args = ["cast-stop"];
-    add(args, "--device", params.device ?? "tv");
-    if (params.quitApp === false) args.push("--media-only");
-    else args.push("--quit-app");
-    add(args, "--cast-timeout", params.castTimeout);
-    return args;
-  }
-
-  if (action === "cast-youtube") {
-    const query = requireText(params.query, "query");
-    const args = ["cast-youtube"];
-    add(args, "--device", params.device ?? "tv");
-    add(args, "--cast-timeout", params.castTimeout);
-    add(args, "--enqueue", params.enqueue);
-    add(args, "--no-search", params.noSearch);
-    args.push(query);
-    return args;
-  }
-
-  if (action === "cast-play-url") {
-    const url = requireText(params.url, "url");
-    const args = ["cast-play-url"];
-    add(args, "--device", params.device ?? "tv");
-    add(args, "--cast-timeout", params.castTimeout);
-    add(args, "--type", params.contentType ?? "video/mp4");
-    args.push(url);
-    return args;
-  }
-
-  if (action === "cast-spotify-devices") {
-    const args = ["cast-spotify-devices"];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    appendSpotifyArgs(args, params);
-    return args;
-  }
-
-  if (action === "cast-spotify") {
-    const query = cleanText(params.query);
-    const spotifyUri = cleanText(params.spotifyUri);
-    if (!query && !spotifyUri && !params.resume) {
-      throw new Error("cast-spotify requires query, spotifyUri, or resume=true");
-    }
-    const args = ["cast-spotify"];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    add(args, "--spotify-uri", spotifyUri || undefined);
-    add(args, "--resume", params.resume);
-    appendSpotifyArgs(args, params);
-    if (query) args.push(query);
-    return args;
-  }
-
-  if (action === "cast-spotify-pause" || action === "cast-spotify-next" || action === "cast-spotify-previous" || action === "cast-spotify-prev") {
-    const command = action === "cast-spotify-prev" ? "cast-spotify-previous" : action;
-    const args = [command];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    appendSpotifyControlArgs(args, params);
-    return args;
-  }
-
-  if (action === "cast-spotify-volume") {
-    if (params.level === undefined) throw new Error("level is required");
-    const args = ["cast-spotify-volume", String(params.level)];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    appendSpotifyControlArgs(args, params);
-    return args;
-  }
-
-  if (action === "cast-spotify-queue-add" || action === "cast-spotify-add-queue") {
-    const query = cleanText(params.query);
-    const spotifyUri = cleanText(params.spotifyUri);
-    if (!query && !spotifyUri) throw new Error("cast-spotify-queue-add requires query or spotifyUri");
-    const args = ["cast-spotify-queue-add"];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    add(args, "--spotify-uri", spotifyUri || undefined);
-    add(args, "--spotify-queue-type", params.spotifyQueueType);
-    add(args, "--market", params.market);
-    appendSpotifyControlArgs(args, params);
-    if (query) args.push(query);
-    return args;
-  }
-
-  if (action === "cast-spotify-queue") {
-    const args = ["cast-spotify-queue"];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    add(args, "--limit", params.limit);
-    appendSpotifyControlArgs(args, params);
-    return args;
-  }
-
-  if (action === "cast-spotify-seek") {
-    const position = cleanText(params.position ?? params.timestamp);
-    if (!position && params.positionMs === undefined) throw new Error("cast-spotify-seek requires position/timestamp or positionMs");
-    const args = ["cast-spotify-seek"];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    if (params.positionMs !== undefined) add(args, "--position-ms", params.positionMs);
-    else args.push(position);
-    appendSpotifyControlArgs(args, params);
-    return args;
-  }
-
-  if (action === "cast-spotify-shuffle") {
-    const args = ["cast-spotify-shuffle", params.state ?? "toggle"];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    appendSpotifyControlArgs(args, params);
-    return args;
-  }
-
-  if (action === "cast-spotify-repeat") {
-    const args = ["cast-spotify-repeat", params.repeatState ?? "toggle"];
-    add(args, "--device", params.device ?? "speakers");
-    add(args, "--cast-timeout", params.castTimeout);
-    appendSpotifyControlArgs(args, params);
-    return args;
-  }
-
-  if (action === "plug-list" || action === "plug-discover" || action === "plug-save-discovery") {
-    const args = [action];
-    appendSmartPlugArgs(args, params);
-    return args;
-  }
-
-  if (action === "plug-status" || action === "plug-on" || action === "plug-off" || action === "plug-toggle") {
-    const plug = requireText(params.plug, "plug");
-    const args: string[] = [action];
-    appendSmartPlugArgs(args, params);
-    args.push(plug);
-    return args;
-  }
-
-  if (params.retryCooldown && action !== "purifier-status" && action !== "purifier-status-all") {
-    throw new Error("retryCooldown is only allowed for explicit status reads, never writes");
-  }
-  if (action === "purifier-list" || action === "purifier-status-all") {
-    if (params.purifier) throw new Error("Collection actions do not accept a purifier selector");
-    const args = [action];
-    add(args, "--purifier-timeout", params.purifierTimeout);
-    if (params.retryCooldown) args.push("--retry-cooldown");
-    return args;
-  }
-  if (action === "purifier-status") {
-    const args = ["purifier-status"];
-    if (params.retryCooldown) args.push("--retry-cooldown");
-    add(args, "--purifier", params.purifier);
-    add(args, "--purifier-timeout", params.purifierTimeout);
-    return args;
-  }
-
-  if (action === "purifier-set") {
-    const setting = requireText(params.setting, "setting") as PurifierSetting;
-    const args = ["purifier-set"];
-    add(args, "--purifier", params.purifier);
-    add(args, "--purifier-timeout", params.purifierTimeout);
-    add(args, "--state", params.state);
-    add(args, "--level", params.level);
-    add(args, "--minutes", params.minutes);
-    add(args, "--room-size", params.roomSize);
-    args.push(setting);
-    if (params.value !== undefined && params.value !== null && String(params.value).trim()) {
-      args.push(String(params.value).trim());
-    }
-    return args;
-  }
-
-  throw new Error(`Unsupported Operation JARVIS action: ${action}`);
-}
-
-function buildDedicatedSmartPlugArgs(params: SmartPlugParams): string[] {
-  const action = params.action;
-  if (action === "list") {
-    const args = ["plug-list"];
-    appendDedicatedSmartPlugArgs(args, params);
-    return args;
-  }
-  if (action === "discover") {
-    const args = ["plug-discover"];
-    appendDedicatedSmartPlugArgs(args, params);
-    return args;
-  }
-  if (action === "save-discovery") {
-    const args = ["plug-save-discovery"];
-    appendDedicatedSmartPlugArgs(args, params);
-    return args;
-  }
-
-  const plug = requireText(params.plug, "plug");
-  const args = [`plug-${action}`];
-  appendDedicatedSmartPlugArgs(args, params);
-  args.push(plug);
-  return args;
-}
-
-function smartPlugTimeoutMs(params: SmartPlugParams): number {
-  const timeout = params.timeout ?? 30;
-  if (params.action === "discover" || params.action === "save-discovery") {
-    return Math.ceil((timeout + 90) * 1000);
-  }
-  return Math.ceil((timeout + 45) * 1000);
-}
-
-function timeoutMs(params: JarvisParams): number {
-  const castTimeout = params.castTimeout ?? (params.action.includes("youtube") ? 90 : 45);
-  const postCast = params.postCastServeSeconds ?? 60;
-  switch (params.action) {
-    case "help":
-      return 30_000;
-    case "status":
-    case "cast-status":
-    case "cast-volume":
-    case "cast-mute":
-    case "cast-stop":
-    case "cast-play-url":
-    case "cast-spotify-devices":
-    case "cast-spotify-pause":
-    case "cast-spotify-next":
-    case "cast-spotify-previous":
-    case "cast-spotify-prev":
-    case "cast-spotify-volume":
-    case "cast-spotify-queue-add":
-    case "cast-spotify-add-queue":
-    case "cast-spotify-queue":
-    case "cast-spotify-seek":
-    case "cast-spotify-shuffle":
-    case "cast-spotify-repeat":
-      return Math.ceil(((params.noCast ? 10 : castTimeout + 30)) * 1000);
-    case "cast-youtube":
-    case "cast-spotify":
-      return Math.ceil((castTimeout + 90) * 1000);
-    case "speak":
-      return Math.ceil((castTimeout + postCast + 90) * 1000);
-    case "plug-list":
-    case "plug-status":
-    case "plug-on":
-    case "plug-off":
-    case "plug-toggle":
-      return Math.ceil(((params.plugTimeout ?? 30) + 45) * 1000);
-    case "plug-discover":
-    case "plug-save-discovery":
-      return Math.ceil(((params.plugTimeout ?? 30) + 90) * 1000);
-    case "purifier-list":
-    case "purifier-status-all":
-    case "purifier-status":
-      return Math.ceil(((params.purifierTimeout ?? 150) + 30) * 1000);
-    case "purifier-set":
-      return Math.ceil(((params.purifierTimeout ?? 150) + 60) * 1000);
-    default:
-      return 180_000;
-  }
-}
-
-async function runJarvis(
-  pi: ExtensionAPI,
-  cwd: string,
-  args: string[],
-  signal: AbortSignal | undefined,
-  timeout: number,
-  onUpdate?: (update: any) => void,
-) {
-  const operationDir = findOperationJarvisDir(cwd);
-  const adapterPath = join(operationDir, "jarvis.py");
-  if (!existsSync(adapterPath)) {
-    throw new Error(`Operation JARVIS adapter not found: ${adapterPath}`);
-  }
-
-  onUpdate?.({ content: [{ type: "text", text: "Running Operation JARVIS adapter..." }] });
-
-  const command = ["--json", ...args];
-  const python = pythonPath(cwd);
-  const secrets = spotifyCredentialValues(cwd, operationDir);
-  const result = await pi.exec(python, [adapterPath, ...command], { signal, timeout });
-  const stdout = redactCredentialText(result.stdout.trim(), secrets);
-  const stderr = redactCredentialText(result.stderr.trim(), secrets);
-  const raw = (stdout || stderr).trim();
+async function run(pi: ExtensionAPI, cwd: string, args: string[], signal: AbortSignal | undefined, timeout: number) {
+  const dir = operationDir(cwd);
+  const root = resolve(dir, "../..");
+  const python = [join(dir, ".venv/bin/python"), join(root, ".venv/bin/python")].find(existsSync) || "python3";
+  const credentials = secrets(cwd, dir);
+  const result = await pi.exec(python, [join(dir, "jarvis.py"), "--json", ...args], { signal, timeout });
   let payload: any;
-  try {
-    payload = raw ? JSON.parse(raw) : { ok: result.code === 0 };
-  } catch {
-    payload = { ok: result.code === 0, stdout, stderr };
-  }
-  payload = redactSensitiveValue(payload, secrets) as any;
-
+  try { payload = redact(JSON.parse(result.stdout), credentials); }
+  catch { throw new Error("Operation JARVIS returned invalid output; outcome unverified. Do not replay writes."); }
   if (result.code !== 0 || payload?.ok === false) {
-    const message = payload?.error || stderr || stdout || `jarvis.py exited with code ${result.code}`;
-    throw new Error(redactCredentialText(message, secrets));
+    // Never expose raw stderr/exception text or command lines.
+    throw new Error(typeof payload?.error === "string" ? payload.error : "Operation JARVIS failed; outcome unverified. Do not replay writes.");
   }
-
-  return {
-    content: [{ type: "text" as const, text: truncate(textFromPayload(payload)) }],
-    details: {
-      ok: true,
-      adapterPath,
-      command: redactSensitiveValue([python, adapterPath, ...command], secrets),
-      ...payload,
-    },
-  };
+  return { content: [{ type: "text" as const, text: truncate(String(payload.summary || payload.answer || JSON.stringify(payload))) }], details: payload };
+}
+const text = (description: string) => Type.Optional(Type.String({ minLength: 1, maxLength: 2048, description }));
+const integer = (minimum: number, maximum: number, description: string) => Type.Optional(Type.Integer({ minimum, maximum, description }));
+function required(value: unknown, name: string): string {
+  if (typeof value !== "string" || !value.trim() || value.trim().startsWith("-") || /[\x00-\x1f]/.test(value)) throw new Error(`${name} is required and must not be an option`);
+  return value.trim();
+}
+function add(args: string[], flag: string, value: unknown) {
+  if (value !== undefined) args.push(flag, String(value));
+}
+function bounds(value: unknown, min: number, max: number, name: string) {
+  if (value !== undefined && (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max)) throw new Error(`${name} must be ${min}..${max}`);
+}
+export function preparePlugArguments(args: unknown): unknown {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return args;
+  const p = { ...args } as Record<string, any>;
+  if (typeof p.plug === "string") p.plug = p.plug.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  return p;
 }
 
-export default function registerJarvis(pi: ExtensionAPI) {
+export default function registerOperationJarvis(pi: ExtensionAPI) {
   pi.registerTool({
-    name: "jarvis",
-    label: "Operation JARVIS",
-    description: "Operation JARVIS tool loaded on demand with load_tools({ groups: [\"jarvis\"] }) for Google Cast speech/media, Spotify Connect control, local Kasa smart-plug control, and VeSync/Levoit air-purifier control. Safe guide: action=help. Safe local status: action=status with noCast=true. Required fields: speak text; cast-youtube query; cast-play-url url; cast-volume/cast-spotify-volume level; cast-spotify query/spotifyUri/resume; cast-spotify-queue-add query/spotifyUri; cast-spotify-seek position/positionMs; plug actions need plug; purifier-set needs setting.",
+    name: "operation_jarvis_plugs", label: "Operation JARVIS · Plugs",
+    description: "Control Operation JARVIS household lights and Kasa plugs over the local network. List aliases if unclear; writes return verified state. Not TV media control.",
     parameters: Type.Object({
-      action: StringEnum(ACTIONS, { description: "Choose one exact action. Use help for a safe machine-readable guide. Common: status, speak, cast-status, cast-spotify, plug-status, plug-on, plug-off, purifier-status, purifier-set." }),
-      device: Type.Optional(StringEnum(DEVICES, { description: "Cast target alias: tv or speakers. Defaults to tv for media/status and speakers for speech/volume/mute/Spotify. Configure the underlying local device names privately." })),
-      text: Type.Optional(Type.String({ description: "Required for action=speak. Short text to speak aloud; keep detailed answers in the current text response." })),
-      query: Type.Optional(Type.String({ description: "Required for cast-youtube. For cast-spotify, this is a Spotify search query (or URI/URL text). For cast-spotify-queue-add, this is the track/episode search query." })),
-      url: Type.Optional(Type.String({ description: "Required for cast-play-url. Direct media URL." })),
-      contentType: Type.Optional(Type.String({ description: "cast-play-url MIME type; default video/mp4." })),
-      spotifyUri: Type.Optional(Type.String({ description: "cast-spotify: explicit Spotify URI or open.spotify.com URL." })),
-      resume: Type.Optional(Type.Boolean({ description: "cast-spotify: resume current Spotify playback when no query/spotifyUri is provided." })),
-      spotifyDeviceName: Type.Optional(Type.String({ description: "Spotify Connect device name override for cast-spotify* actions. Use an exact name from local private config or from cast-spotify-devices. Prefer names over IDs." })),
-      spotifyDeviceId: Type.Optional(Type.String({ description: "Spotify Connect device id override for cast-spotify* actions. Use only if a name is ambiguous; IDs can change." })),
-      spotifyType: Type.Optional(StringEnum(["track", "album", "playlist", "artist", "any"] as const, { description: "cast-spotify search type when query text is used; default track." })),
-      spotifyQueueType: Type.Optional(StringEnum(["track", "episode"] as const, { description: "cast-spotify-queue-add search type when query text is used; default track." })),
-      market: Type.Optional(Type.String({ description: "cast-spotify/cast-spotify-queue-add: Spotify market code (e.g. CA, US)." })),
-      position: Type.Optional(Type.String({ description: "cast-spotify-seek timestamp, e.g. 90, 90s, 1:30, 1:02:03, or 90000ms." })),
-      timestamp: Type.Optional(Type.String({ description: "Alias for position in cast-spotify-seek." })),
-      positionMs: Type.Optional(Type.Number({ description: "cast-spotify-seek explicit seek position in milliseconds." })),
-      repeatState: Type.Optional(StringEnum(["off", "context", "track", "toggle"] as const, { description: "cast-spotify-repeat state; default toggle. context repeats playlist/album, track repeats one item, off disables." })),
-      limit: Type.Optional(Type.Number({ description: "cast-spotify-queue maximum queue items to read; default 20." })),
-      level: Type.Optional(Type.Number({ description: "Required for cast-volume/cast-spotify-volume (0..100). Also used for purifier-set setting=speed; purifier fan speed is 1..4." })),
-      state: Type.Optional(StringEnum(MUTE_STATES, { description: "cast-mute state; default on. Also used for cast-spotify-shuffle as on/off/toggle." })),
-      quitApp: Type.Optional(Type.Boolean({ description: "cast-stop: quit current Cast app for a stronger stop. Defaults true; set false to stop media only and leave the app open." })),
-      enqueue: Type.Optional(Type.Boolean({ description: "YouTube actions: enqueue instead of play now." })),
-      noSearch: Type.Optional(Type.Boolean({ description: "YouTube actions: require URL/video ID instead of searching." })),
-      noCast: Type.Optional(Type.Boolean({ description: "status: skip Cast device check." })),
-      plug: Type.Optional(Type.String({ description: "Smart-plug name or direct IP for plug-status/plug-on/plug-off/plug-toggle. Use a configured alias from private local config or run plug-list first." })),
-      plugConfig: Type.Optional(Type.String({ description: "Optional smart-plug plugs.json path override." })),
-      discoveryTarget: Type.Optional(Type.String({ description: "Optional Kasa discovery broadcast target, e.g. a LAN broadcast address." })),
-      plugTimeout: Type.Optional(Type.Number({ description: "Smart-plug command timeout seconds." })),
-      retryCooldown: Type.Optional(Type.Boolean({ description: "Owner-authorized single recovery read despite local cooldown. Only purifier-status/status-all; never retry automatically or use for writes." })),
-      purifier: Type.Optional(Type.String({ description: "Purifier alias, unique name or exact CID. Shared model names are ambiguous and rejected. Omit to use the configured default; never infer all-device writes." })),
-      setting: Type.Optional(StringEnum(PURIFIER_SETTINGS, { description: "Required for purifier-set. Choose one setting: power, mode, speed, display, child-lock, light-detection, auto-preference, or timer." })),
-      value: Type.Optional(Type.String({ description: "purifier-set value. Examples: power on/off/toggle; mode auto/manual/sleep/pet; display on/off; child-lock on/off; light-detection on/off; auto-preference default/quiet/efficient; timer clear." })),
-      minutes: Type.Optional(Type.Number({ description: "purifier-set setting=timer: timer minutes, 1..1440." })),
-      roomSize: Type.Optional(Type.Number({ description: "purifier-set setting=auto-preference: optional room size in square feet." })),
-      purifierTimeout: Type.Optional(Type.Number({ description: "Air purifier command timeout seconds; default 150. Writes can take more than a minute to reflect; accepted-but-stale writes may return verification_pending." })),
-
-      castTimeout: Type.Optional(Type.Number({ description: "Cast command timeout seconds." })),
-      voice: Type.Optional(Type.String({ description: "macOS say voice for speech." })),
-      rate: Type.Optional(Type.Number({ description: "macOS say speech rate." })),
-      maxChars: Type.Optional(Type.Number({ description: "Max spoken characters; 0 disables truncation." })),
-      servePort: Type.Optional(Type.Number({ description: "Local HTTP server port for Cast speech audio." })),
-      serveHost: Type.Optional(Type.String({ description: "LAN host/IP Chromecast should use for local Cast speech URL." })),
-      postCastServeSeconds: Type.Optional(Type.Number({ description: "Seconds to keep local speech server alive after Cast command." })),
-    }),
-    async execute(_toolCallId, rawParams, signal, onUpdate, ctx) {
-      const params = rawParams as JarvisParams;
-      if (params.level !== undefined && (params.level < 0 || params.level > 100)) throw new Error("level must be between 0 and 100");
-      if (params.action === "purifier-set" && params.setting === "speed" && params.level !== undefined && (params.level < 1 || params.level > 4)) throw new Error("purifier speed level must be between 1 and 4");
-      if (params.positionMs !== undefined && params.positionMs < 0) throw new Error("positionMs must be 0 or greater");
-      if (params.limit !== undefined && params.limit <= 0) throw new Error("limit must be greater than 0");
-      if (params.maxChars !== undefined && params.maxChars < 0) throw new Error("maxChars must be 0 or greater");
-      if (params.postCastServeSeconds !== undefined && params.postCastServeSeconds < 0) throw new Error("postCastServeSeconds must be 0 or greater");
-      const args = buildJarvisArgs(params);
-      return runJarvis(pi, ctx.cwd, args, signal, timeoutMs(params), onUpdate);
-    },
-    renderCall(args, theme) {
-      const action = typeof args.action === "string" ? args.action : "action";
-      const detail = typeof args.text === "string"
-        ? args.text.slice(0, 40)
-        : typeof args.query === "string"
-          ? args.query.slice(0, 40)
-          : typeof args.plug === "string"
-            ? args.plug
-            : args.device ?? "";
-      return new Text(`${theme.fg("toolTitle", "jarvis")} ${theme.fg("accent", action)} ${theme.fg("dim", detail)}`, 0, 0);
-    },
-    renderResult(result, _options, theme) {
-      const action = result.details?.action ?? "done";
-      const summary = result.details?.summary ?? result.details?.answer ?? "completed";
-      return new Text(`${theme.fg("success", `✓ JARVIS ${action}`)} ${theme.fg("dim", String(summary).slice(0, 80))}`, 0, 0);
+      action: StringEnum(["list", "status", "on", "off", "toggle"]),
+      plug: text("Configured plug alias; required except for list."),
+    }, { additionalProperties: false }),
+    executionMode: "sequential",
+    prepareArguments: preparePlugArguments,
+    async execute(_id, p, signal, _update, ctx) {
+      if (!["list", "status", "on", "off", "toggle"].includes(p.action)) throw new Error("Unsupported plug action");
+      const args = [`plug-${p.action}`];
+      if (p.action === "list") {
+        if (p.plug !== undefined) throw new Error("list does not accept a plug");
+      } else {
+        const alias = required(p.plug, "plug");
+        if (!/^[a-z][a-z0-9-]{0,63}$/.test(alias)) throw new Error("Use a configured plug alias, not an IP or path");
+        args.push(alias);
+      }
+      return run(pi, ctx.cwd, args, signal, 75_000);
     },
   });
 
   pi.registerTool({
-    name: "smart_plug",
-    label: "Smart Plug",
-    description: "Simple local-only TP-Link Kasa smart-plug control for Operation JARVIS. Normal calls need only action plus a configured plug alias. Use action=list without plug to see configured plugs. Uses the local network, not TP-Link cloud.",
+    name: "operation_jarvis_purifier", label: "Operation JARVIS · Purifier",
+    description: "Read/control Operation JARVIS VeSync/Levoit air purifiers. list discovers devices; status-all refreshes all; set changes one device. Writes may take over a minute; never retry automatically.",
     parameters: Type.Object({
-      action: StringEnum(SMART_PLUG_ACTIONS, { description: "Operation. Use list to show plugs; status/on/off/toggle with plug for normal control. discover/save-discovery are maintenance actions." }),
-      plug: Type.Optional(Type.String({ description: "Plug name or direct IP. Required for status/on/off/toggle. Use action=list to see configured aliases. Natural phrases with spaces are normalized." })),
-      plugConfig: Type.Optional(Type.String({ description: "Advanced: optional smart-plug plugs.json path override." })),
-      discoveryTarget: Type.Optional(Type.String({ description: "Advanced: optional Kasa discovery broadcast target, e.g. a LAN broadcast address." })),
-      timeout: Type.Optional(Type.Number({ description: "Advanced: smart-plug command timeout seconds; default 30." })),
-    }),
-    prepareArguments: prepareSmartPlugArguments,
-    async execute(_toolCallId, rawParams, signal, onUpdate, ctx) {
-      const params = rawParams as SmartPlugParams;
-      if (params.timeout !== undefined && params.timeout <= 0) throw new Error("timeout must be greater than 0");
-      const args = buildDedicatedSmartPlugArgs(params);
-      return runJarvis(pi, ctx.cwd, args, signal, smartPlugTimeoutMs(params), onUpdate);
+      action: StringEnum(["list", "status", "status-all", "set"]),
+      purifier: text("Configured alias or unique device name; omit for default. No selector on list/status-all."),
+      setting: Type.Optional(StringEnum(["power", "mode", "speed", "display", "child-lock", "light-detection", "auto-preference", "timer"])),
+      value: text("set: on/off/toggle; mode auto/manual/sleep/pet; auto-preference default/quiet/efficient; timer clear."),
+      level: integer(1, 4, "set speed: fan level 1–4."),
+      minutes: integer(1, 1440, "set timer: minutes."),
+      roomSize: integer(1, 10000, "set auto-preference: optional square feet."),
+      retryCooldown: Type.Optional(Type.Boolean({ description: "Owner-authorized recovery status read only; never automatically." })),
+    }, { additionalProperties: false }),
+    executionMode: "sequential",
+    async execute(_id, p, signal, _update, ctx) {
+      if (!["list", "status", "status-all", "set"].includes(p.action)) throw new Error("Unsupported purifier action");
+      if (p.retryCooldown && !["status", "status-all"].includes(p.action)) throw new Error("retryCooldown is only allowed for explicit status reads");
+      if (["list", "status-all"].includes(p.action) && p.purifier) throw new Error("Collection actions reject a device selector");
+      if (p.action !== "set" && [p.setting, p.value, p.level, p.minutes, p.roomSize].some(v => v !== undefined)) throw new Error("Settings require action=set");
+      bounds(p.level, 1, 4, "level"); bounds(p.minutes, 1, 1440, "minutes"); bounds(p.roomSize, 1, 10000, "roomSize");
+      const args = [`purifier-${p.action}`];
+      if (p.retryCooldown) args.push("--retry-cooldown");
+      if (p.purifier !== undefined) add(args, "--purifier", required(p.purifier, "purifier"));
+      if (p.action === "set") {
+        const setting = required(p.setting, "setting");
+        add(args, "--level", p.level); add(args, "--minutes", p.minutes); add(args, "--room-size", p.roomSize);
+        args.push(setting);
+        if (p.value !== undefined) args.push(required(p.value, "value"));
+      }
+      return run(pi, ctx.cwd, args, signal, p.action === "set" ? 210_000 : 180_000);
     },
-    renderCall(args, theme) {
-      const action = typeof args.action === "string" ? args.action : "action";
-      const detail = typeof args.plug === "string" ? args.plug : "";
-      return new Text(`${theme.fg("toolTitle", "smart_plug")} ${theme.fg("accent", action)} ${theme.fg("dim", detail)}`, 0, 0);
-    },
-    renderResult(result, _options, theme) {
-      const summary = result.details?.summary ?? "completed";
-      return new Text(`${theme.fg("success", "✓ smart_plug")} ${theme.fg("dim", String(summary).slice(0, 80))}`, 0, 0);
+  });
+
+  pi.registerTool({
+    name: "operation_jarvis_media", label: "Operation JARVIS · Media",
+    description: "Operation JARVIS Google Cast, Spotify Connect, and speech through household speakers/TV. Use status for playback, speak for aloud text; not electrical power or camera audio.",
+    parameters: Type.Object({
+      action: StringEnum(["status", "volume", "mute", "stop", "youtube", "play-url", "speak", "spotify-devices", "spotify", "spotify-pause", "spotify-next", "spotify-previous", "spotify-volume", "spotify-queue", "spotify-queue-add", "spotify-seek", "spotify-shuffle", "spotify-repeat"]),
+      device: Type.Optional(StringEnum(["tv", "speakers"], { description: "Default TV for video/status/stop; speakers for speech/volume/mute/Spotify." })),
+      text: text("speak: short text to say aloud."),
+      query: text("youtube/spotify/spotify-queue-add: search text or media URL."),
+      url: text("play-url: direct HTTP(S) media URL."),
+      contentType: text("play-url: MIME type; default video/mp4."),
+      level: integer(0, 100, "volume/spotify-volume: percent."),
+      state: Type.Optional(StringEnum(["on", "off", "toggle"], { description: "mute defaults on; spotify-shuffle defaults toggle." })),
+      spotifyUri: text("spotify/spotify-queue-add: Spotify URI or URL instead of query."),
+      spotifyDeviceName: text("Exact Spotify Connect name instead of configured device."),
+      spotifyType: Type.Optional(StringEnum(["track", "album", "playlist", "artist", "any"])),
+      resume: Type.Optional(Type.Boolean({ description: "spotify: resume instead of selecting media." })),
+      position: text("spotify-seek: timestamp such as 1:30 or 90s."),
+      repeatState: Type.Optional(StringEnum(["off", "context", "track", "toggle"])),
+      limit: integer(1, 100, "spotify-queue: maximum items; default 20."),
+      enqueue: Type.Optional(Type.Boolean({ description: "youtube: queue instead of immediate playback." })),
+    }, { additionalProperties: false }),
+    executionMode: "sequential",
+    async execute(_id, p, signal, _update, ctx) {
+      bounds(p.level, 0, 100, "level"); bounds(p.limit, 1, 100, "limit");
+      const args = [p.action === "speak" ? "speak" : `cast-${p.action}`];
+      const defaultDevice = ["status", "stop", "youtube", "play-url"].includes(p.action) ? "tv" : "speakers";
+      add(args, "--device", p.device ?? defaultDevice);
+      if (p.action.startsWith("spotify")) add(args, "--spotify-device-name", p.spotifyDeviceName);
+      switch (p.action) {
+        case "status": case "spotify-devices": case "spotify-pause": case "spotify-next": case "spotify-previous": break;
+        case "stop": args.push("--quit-app"); break;
+        case "speak": args.push(required(p.text, "text")); break;
+        case "volume": case "spotify-volume":
+          if (p.level === undefined) throw new Error("level is required");
+          args.push(String(p.level)); break;
+        case "mute": args.push(p.state ?? "on"); break;
+        case "youtube":
+          if (p.enqueue) args.push("--enqueue");
+          args.push(required(p.query, "query")); break;
+        case "play-url": {
+          const url = required(p.url, "url");
+          if (!/^https?:\/\//i.test(url)) throw new Error("HTTP(S) media URL required");
+          add(args, "--type", p.contentType ?? "video/mp4"); args.push(url); break;
+        }
+        case "spotify": case "spotify-queue-add":
+          if (!p.query && !p.spotifyUri && !(p.action === "spotify" && p.resume)) throw new Error("query, spotifyUri or spotify resume=true required");
+          add(args, "--spotify-uri", p.spotifyUri);
+          if (p.action === "spotify") {
+            if (p.resume) args.push("--resume");
+            add(args, "--spotify-type", p.spotifyType);
+          }
+          if (p.query) args.push(required(p.query, "query"));
+          break;
+        case "spotify-queue": add(args, "--limit", p.limit); break;
+        case "spotify-seek": args.push(required(p.position, "position")); break;
+        case "spotify-shuffle": args.push(p.state ?? "toggle"); break;
+        case "spotify-repeat": args.push(p.repeatState ?? "toggle"); break;
+        default: throw new Error("Unsupported media action");
+      }
+      return run(pi, ctx.cwd, args, signal, p.action === "speak" ? 195_000 : 180_000);
     },
   });
 }

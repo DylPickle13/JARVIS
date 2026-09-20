@@ -332,6 +332,7 @@ expected_extension_roots=(
   .pi/extensions/45-jarvis.ts
   .pi/extensions/46-local-pi-session-status.ts
   .pi/extensions/47-watch-terminal-speech.ts
+  .pi/extensions/48-jarvis-security.ts
   .pi/extensions/50-browser
   .pi/extensions/50-minecraft-jarvis-chat.ts
   .pi/extensions/55-ssh-exec.ts
@@ -368,6 +369,7 @@ expected_extension_files=(
   .pi/scripts/tests/local-pi-session-status.test.mjs
   .pi/scripts/tests/siri-new-session.test.mjs
   .pi/extensions/lib/siri-new-session.ts
+  .pi/extensions/lib/operation-jarvis-security.ts
   .pi/scripts/tests/jarvis-pi-ssh.test.mjs
   .pi/scripts/tests/pi-attach-bridge.test.mjs
   .pi/scripts/tests/pi-attach-core.test.mjs
@@ -526,6 +528,7 @@ const optionalToolFiles = [
   '.pi/extensions/30-google-access.ts',
   '.pi/extensions/35-memory.ts',
   '.pi/extensions/45-jarvis.ts',
+  '.pi/extensions/48-jarvis-security.ts',
   '.pi/extensions/50-browser/tools.ts',
   '.pi/extensions/50-minecraft-jarvis-chat.ts',
   '.pi/extensions/56-github-cli.ts',
@@ -549,6 +552,11 @@ if command -v node >/dev/null 2>&1; then
   else
     warn "custom lazy-execution runtime not built; stock Pi requires explicit load_tools (see .pi/docs/PI_LAZY_EXECUTION.md)"
   fi
+fi
+
+section "Operation JARVIS focused tools (offline mocks only)"
+if command -v node >/dev/null 2>&1; then
+  run_check "focused controls, security gates and provider schemas" node --test .pi/scripts/tests/jarvis-purifiers.test.mjs .pi/tests/operation-jarvis-security.test.mjs .pi/tests/slim-provider-payload.test.mjs
 fi
 
 section "Local Pi lifecycle telemetry checks"

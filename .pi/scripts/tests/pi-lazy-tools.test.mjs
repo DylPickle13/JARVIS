@@ -45,7 +45,7 @@ async function fixture(t, options = {}) {
   const settingsManager = sdk.SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
   const registerMocks = (pi) => {
     api = pi;
-    for (const name of ["browser_open", "browser_status", "reaper_ping", "reaper_lua", "unlisted_tool"]) {
+    for (const name of ["browser_open", "browser_status", "reaper_ping", "reaper_lua", "unlisted_tool", "operation_jarvis_plugs", "operation_jarvis_purifier", "operation_jarvis_media", "operation_jarvis_security", "operation_jarvis_automations"]) {
       pi.registerTool({
         name, label: name, description: `Inert ${name} test tool`,
         parameters: Type.Object({ url: Type.String() }),
@@ -123,6 +123,22 @@ test("direct hidden call executes once, returns real output/guidance and activat
   assert.equal(f.executions.length, 2);
   assert(!again.addedToolNames?.length);
   assert.doesNotMatch(resultText(again), /Auto-loaded/);
+});
+
+test("Operation JARVIS is one lazy group, no legacy names and stable baseline prompt", async (t) => {
+  const f = await fixture(t);
+  const [result] = await f.run([call("operation_jarvis_security")]);
+  assert.equal(result.isError, false);
+  assert.equal(f.executions.length, 1);
+  assert.equal(result.addedToolNames.length, 5);
+  assert(result.addedToolNames.every(name => name.startsWith("operation_jarvis_")));
+  assert.match(resultText(result), /Operation JARVIS household control/);
+  assert(!f.requests[0].tools.some(name => name.startsWith("operation_jarvis_")));
+  assert.equal(f.requests[0].systemPrompt, f.requests[1].systemPrompt);
+  assert.match(f.requests[0].systemPrompt, /operation_jarvis/);
+  assert.doesNotMatch(f.requests[0].systemPrompt, /Barn door|smart_plug|first load `jarvis`/);
+  const [oldGroup] = await f.run([call("load_tools", { groups: ["jarvis"] })]);
+  assert.match(resultText(oldGroup), /Invalid tool group/);
 });
 
 test("invalid arguments never execute or activate the group", async (t) => {

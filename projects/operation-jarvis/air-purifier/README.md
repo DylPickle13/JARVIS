@@ -119,12 +119,12 @@ If multiple purifiers are on the account, pass a device name/CID/model:
 
 ## JARVIS tool integration
 
-After loading the optional Pi tool group with `load_tools({ groups: ["jarvis"] })`, use:
+After loading `load_tools({ groups: ["operation_jarvis"] })`, use:
 
-- `jarvis({ action: "purifier-status" })` for status/filter/air-quality info.
-- `jarvis({ action: "purifier-set", setting: "mode", value: "sleep" })` for mode changes.
-- `jarvis({ action: "purifier-set", setting: "speed", level: 1 })` for manual fan speed 1-4.
-- `jarvis({ action: "purifier-set", setting: "display", value: "off" })` for display control.
+- `operation_jarvis_purifier({ action: "status" })` for status/filter/air-quality info.
+- `operation_jarvis_purifier({ action: "set", setting: "mode", value: "sleep" })` for mode changes.
+- `operation_jarvis_purifier({ action: "set", setting: "speed", level: 1 })` for manual fan speed 1-4.
+- `operation_jarvis_purifier({ action: "set", setting: "display", value: "off" })` for display control.
 
 If a change is still pending, say so and check status later. Do not immediately send another command to compensate.
 

@@ -28,8 +28,8 @@ import uuid
 
 import security_cli as cli
 
-OPERATIONS = ('list', 'show', 'create', 'update', 'rename', 'enable', 'disable', 'delete', 'execute')
-WRITES = set(OPERATIONS) - {'list', 'show'}
+OPERATIONS = ('list', 'show', 'describe', 'create', 'update', 'rename', 'enable', 'disable', 'delete', 'execute')
+WRITES = set(OPERATIONS) - {'list', 'show', 'describe'}
 MAX_BYTES = 262144
 PRIVATE = cli.ROOT / 'private-notes/smart-actions'
 STORAGE = cli.ROOT / 'private-smart-actions'
@@ -102,6 +102,53 @@ def summary(rule):
     return {'ref': reference(rule), 'revision': revision(rule), 'name': rule['name'],
             'kind': 'shortcut' if rule['triggerSetting']['isManual'] else 'automation',
             'enabled': rule['enabled']}
+
+
+def describe_rule(rule):
+    """Bounded configuration projection, never raw IDs, names, locations or RPCs.
+
+    Trigger combination codes and firmware service semantics are intentionally not
+    interpreted. This describes fields, not verified real-world behaviour.
+    """
+    triggers = rule['triggerSetting'].get('things', [])
+    actions = rule['actionSetting'].get('things', [])
+    if not isinstance(triggers, list) or not isinstance(actions, list):
+        raise SmartError('unsupported_smart_description')
+    if len(triggers) > 32 or len(actions) > 32:
+        raise SmartError('unsupported_smart_description')
+    def model(item):
+        return item.get('model') if item.get('model') in ('H200', 'C230', 'D235', 'T100', 'T110') else 'unknown'
+    trigger_rows = []
+    for item in triggers:
+        if not isinstance(item, dict):
+            raise SmartError('unsupported_smart_description')
+        event = item.get('event', {})
+        event = event.get('name') if isinstance(event, dict) else None
+        trigger_rows.append({'model': model(item), 'event': event if event in ('open', 'close', 'motion') else 'unknown'})
+    action_rows = []
+    for item in actions:
+        if not isinstance(item, dict):
+            raise SmartError('unsupported_smart_description')
+        row = {'model': model(item), 'effect': 'unverified_device_action'}
+        service = item.get('service', {})
+        params = service.get('inputParams', {}) if isinstance(service, dict) else {}
+        if row['model'] == 'H200' and isinstance(params, dict):
+            duration, tone, volume = params.get('duration'), params.get('type'), params.get('volume')
+            if type(duration) is int and 0 <= duration <= 3600:
+                row['configured_duration_seconds'] = duration
+            if isinstance(tone, str) and re.fullmatch(r'Alarm [0-9]{1,2}', tone):
+                row['configured_alarm_tone'] = tone
+            if isinstance(volume, str) and re.fullmatch(r'[0-9]{1,3}', volume):
+                row['configured_volume_raw'] = volume
+        action_rows.append(row)
+    period = rule.get('effectivePeriod', {})
+    all_day = True if isinstance(period, dict) and period.get('periodType') == 'ALL_DAY' else None
+    return {'rule': summary(rule), 'configuration': {
+        'triggers': trigger_rows, 'actions': action_rows,
+        'all_day': all_day, 'trigger_combination': 'not_interpreted',
+        'description_scope': 'partial_allowlisted_fields',
+        'physical_behavior': 'not_verified',
+        'warning': 'Enabling may cause physical actions immediately or on later triggers. Disabling does not stop an already sounding alarm.'}}
 
 
 def private_read(path, limit=MAX_BYTES):
@@ -364,6 +411,8 @@ def run(req, cloud):
     rules = cloud.listing()
     if op == 'list':
         return {'result': 'read_succeeded', 'source': 'tapo_cloud', 'rules': [summary(r) for r in rules]}
+    if op == 'describe':
+        return {'result': 'read_succeeded', 'source': 'tapo_cloud', **describe_rule(target(rules, req['ref']))}
     if op == 'show':
         rule = target(rules, req['ref'])
         path = snapshot(rule, 'rule')

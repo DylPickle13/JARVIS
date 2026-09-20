@@ -33,6 +33,14 @@ test('preserves strict validation constraints in Responses, Messages, and Chat t
   assert.deepEqual(tools, original);
 });
 
+test('keeps focused Operation JARVIS purpose and parameter meanings on all provider shapes', () => {
+  const tool = { name: 'operation_jarvis_purifier', description: 'Operation JARVIS household purifier control', parameters: schema };
+  const tools = [tool, { name: tool.name, description: tool.description, input_schema: schema }, { type: 'function', function: tool }];
+  assert.deepEqual(compact({ tools }).tools, tools);
+  const deferred = [{ type: 'tool_search_output', tools }];
+  assert.deepEqual(compact({ input: deferred }).input, deferred);
+});
+
 test('preserves constraints on deferred tool schemas', () => {
   const result = compact({ input: [{ type: 'tool_search_output', tools: [{ name: 'read', parameters: schema }] }] });
   assert.equal(result.input[0].tools[0].parameters.additionalProperties, false);

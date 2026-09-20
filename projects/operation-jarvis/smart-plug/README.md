@@ -17,7 +17,7 @@ tv -> <private-lan-ip>              label: TV, verified locally controllable
 
 ## Preferred JARVIS control
 
-In Pi, load the `jarvis` tool group and use `smart_plug`. Every call needs an `action`; add `plug` only for `status`, `on`, `off`, or `toggle`.
+In Pi, load the `operation_jarvis` tool group and use `operation_jarvis_plugs`. Every call needs an `action`; add `plug` only for `status`, `on`, `off`, or `toggle`.
 
 Before turning on a plug attached to an appliance, confirm the attached device is safe to energize and supervised.
 

@@ -72,6 +72,37 @@ class SmartTests(unittest.TestCase):
         self.assertNotIn('test0001', text)
         self.assertEqual(r['rules'][0]['revision'], s.revision(rule()))
 
+    def test_describe_is_read_only_allowlisted_and_creates_no_export(self):
+        value = rule()
+        value['triggerSetting']['things'] = [
+            {'model': 'T110', 'event': {'name': 'open'}, 'thingName': 'PRIVATE-ID'},
+            {'model': 'T110', 'event': {'name': 'close'}},
+            {'model': 'T100', 'event': {'name': 'motion'}},
+        ]
+        value['actionSetting']['things'] = [{'model': 'H200', 'service': {
+            'inputParams': {'duration': 300, 'type': 'Alarm 4', 'volume': '10', 'secret': 'PRIVATE-ID'}},
+            'thingName': 'PRIVATE-ID'}]
+        value['effectivePeriod'] = {'periodType': 'ALL_DAY', 'location': 'PRIVATE-ID'}
+        cloud = FakeCloud([value])
+        result = s.run({'operation': 'describe', 'ref': s.reference(value)}, cloud)
+        self.assertEqual(result['configuration']['actions'][0]['configured_duration_seconds'], 300)
+        self.assertEqual(result['configuration']['trigger_combination'], 'not_interpreted')
+        self.assertEqual(result['configuration']['physical_behavior'], 'not_verified')
+        self.assertTrue(result['configuration']['all_day'])
+        self.assertNotIn('PRIVATE-ID', json.dumps(result))
+        self.assertEqual(cloud.writes, [])
+        self.assertFalse((self.root / 'private').exists())
+        args = cli.parser().parse_args(['--json', 'smart-actions', 'describe', s.reference(value)])
+        self.assertEqual(args.smart_operation, 'describe')
+
+    def test_describe_unknown_fields_are_not_interpreted(self):
+        result = s.describe_rule(rule())['configuration']
+        self.assertEqual(result['triggers'][0], {'model': 'unknown', 'event': 'unknown'})
+        self.assertEqual(result['description_scope'], 'partial_allowlisted_fields')
+        value = rule(); value['triggerSetting']['things'] *= 33
+        with self.assertRaisesRegex(s.SmartError, 'unsupported_smart_description'):
+            s.describe_rule(value)
+
     def test_show_is_private_exact_editable_rule(self):
         r = s.run(request('show'), FakeCloud([rule()]))
         p = self.root / r['private_file']

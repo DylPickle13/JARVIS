@@ -4,7 +4,7 @@ import { Type } from "typebox";
 type CanonicalToolGroup =
   | "memory"
   | "code_docs"
-  | "jarvis"
+  | "operation_jarvis"
   | "minecraft_jarvis"
   | "github"
   | "google"
@@ -35,7 +35,7 @@ const ALWAYS_ON_TOOLS = [
 const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   memory: ["memory"],
   code_docs: ["code_search"],
-  jarvis: ["jarvis", "smart_plug"],
+  operation_jarvis: ["operation_jarvis_plugs", "operation_jarvis_purifier", "operation_jarvis_media", "operation_jarvis_security", "operation_jarvis_automations"],
   minecraft_jarvis: ["minecraft_jarvis"],
   github: ["github_cli"],
   google: ["google_workspace"],
@@ -67,7 +67,7 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
 const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   memory: "memory for durable project/local facts/preferences/workflows; never store secrets",
   code_docs: "code_search for external code/docs/API examples",
-  jarvis: "Operation JARVIS for Google Cast speech/media, local smart plugs, and VeSync/Levoit air purifier control",
+  operation_jarvis: "Operation JARVIS household control: lights/plugs, purifier, Cast/Spotify/speech, Tapo security sensors and cloud automations/protocols",
   minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   github: "github_cli for guarded official GitHub CLI access using the configured local token",
   google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
@@ -81,7 +81,7 @@ const GROUP_NAMES = Object.keys(TOOL_GROUPS) as ConcreteToolGroup[];
 const GROUP_NAMES_WITH_ALL_TEXT = [...GROUP_NAMES, "all"].join(", ");
 const LOADABLE_GROUPS_TEXT = `${GROUP_NAMES.map((name) => `${name}=${GROUP_SUMMARIES[name]}`).join("; ")}; all=all loadable groups`;
 const BASELINE_TOOLS_TEXT = "coding, ssh, web_search/fetch_content/get_search_content, maps";
-const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name. Always-on baseline: ${BASELINE_TOOLS_TEXT}. Available groups: ${LOADABLE_GROUPS_TEXT}. Optional schemas stay visible for this Pi session after loading. On the JARVIS lazy-execution runtime, valid direct calls to registered lazy tools also auto-load their group; use this loader to discover unfamiliar schemas.`;
+const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name. Always-on baseline: ${BASELINE_TOOLS_TEXT}. Available groups: ${LOADABLE_GROUPS_TEXT}. Schemas persist for this session. Registered direct calls auto-load on JARVIS; use this loader for unfamiliar schemas.`;
 const LOAD_TOOLS_PROMPT_SNIPPET = `Load optional tool groups by exact name: ${GROUP_NAMES_WITH_ALL_TEXT}.`;
 
 const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly string[] }> = {
@@ -110,16 +110,14 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Workspace writes/destructive calls require explicit user intent; include IDs, request body under `json`/`body`, and verify with a read/list call when feasible. Never pass API keys/secrets in params.",
     ],
   },
-  jarvis: {
-    skill: "operation-jarvis",
+  operation_jarvis: {
+    skill: "Operation JARVIS household control",
     lines: [
-      "For any home-control request (lights/plugs/switches/power, Cast/TV/speakers, air purifier), use the exact `jarvis` or `smart_plug` tool; discover unfamiliar schemas with `load_tools({ groups: [\"jarvis\"] })`. Do not read files, run shell/CLI, SSH, or guess commands unless the JARVIS tool fails.",
-      "Safe checks: `jarvis({ action: \"help\" })`, `jarvis({ action: \"status\", noCast: true })`, `jarvis({ action: \"cast-status\", device: \"speakers\" })`, `smart_plug({ action: \"list\" })`, or `jarvis({ action: \"purifier-status\" })`.",
-      "Cast actions: `jarvis({ action: \"speak\", text: \"JARVIS online.\", device: \"speakers\" })`, `jarvis({ action: \"cast-status\", device: \"tv\" })`, `jarvis({ action: \"cast-volume\", level: 25 })`, `jarvis({ action: \"cast-youtube\", query: \"relaxing jazz\", device: \"tv\" })`, and related `cast-mute`, `cast-stop`, `cast-play-url` actions. `cast-stop` quits the Cast app by default.",
-      "Spotify actions include `cast-spotify-devices`, play/resume with `cast-spotify`, pause/next/previous/volume, queue read/add, seek, shuffle, and repeat. Use `device: \"tv\"`/`\"speakers\"` for configured aliases or an exact `spotifyDeviceName`; prefer names over changing IDs and never expose credentials.",
-      "Smart-plug/light phrases such as 'turn on/off the light/lamp/pedalboard/tv plug' go directly to the dedicated local-only tool: `smart_plug({ action: \"status\"|\"on\"|\"off\"|\"toggle\", plug: \"<configured-plug-name>\" })`. Run `smart_plug({ action: \"list\" })` only if the alias is unclear, and summarize the resulting state after writes.",
-      "Air-purifier discovery uses `purifier-list` (CID-keyed, not fresh sensor readings); `purifier-status-all` explicitly refreshes all devices in one session. Prefer configured aliases or unique names/CIDs; never select a shared model or infer a group write. No automatic cloud polling. retryCooldown is only for an owner-authorized recovery read, never automatic retries. Single-device actions: `jarvis({ action: \"purifier-status\" })` for read-only status/filter/air-quality info, and `jarvis({ action: \"purifier-set\", setting: \"mode\", value: \"auto\" })` for writes. Supported settings: power, mode, speed, display, child-lock, light-detection, auto-preference, timer. VeSync writes may take more than a minute; wait for the tool result before issuing another purifier command.",
-      "For spoken output, keep text short and keep full details in the current text response.",
+      "Use `operation_jarvis_*` tools for household control, not shell/SSH. Plugs control electrical power; media controls playback/speech; security reads devices; automations manages Tapo cloud rules, not Pi cron jobs or Minecraft.",
+      "Examples: `operation_jarvis_plugs({action:\"on\",plug:\"lamp\"})`; `operation_jarvis_media({action:\"speak\",text:\"Ready, sir.\"})`; `operation_jarvis_purifier({action:\"set\",setting:\"mode\",value:\"auto\"})`.",
+      "Discover unclear selectors with plugs/purifier list, security devices, or automations list. No inferred group writes. Purifier list is discovery; status-all refreshes readings. Wait for writes; retryCooldown is an owner-authorized recovery read only.",
+      "For named protocols use automations describe/enable/disable with the exact current name. Enable is not execute. Changes require commissioning and user confirmation; never bypass a gate via CLI. Unknown write outcome means stop, inspect, never replay.",
+      "Security is on demand, not monitoring or an assessment that the house is secure. Sensor readings are hub snapshots with unknown radio freshness. Report configuration verification separately from physical acceptance; never expose raw rules, credentials or media.",
     ],
   },
   minecraft_jarvis: {
@@ -290,7 +288,7 @@ function buildGuidanceSection(groups: readonly GuidanceGroup[], heading = "JARVI
   if (groups.length === 0) return "";
   const sections = groups.map((group) => {
     const guidance = GROUP_GUIDANCE[group];
-    const label = group === "jarvis" ? "jarvis group" : `${group} group`;
+    const label = `${group} group`;
     return [`### ${label} — ${guidance.skill} playbook`, ...guidance.lines.map((line) => `- ${line}`)].join("\n");
   });
   return [
@@ -318,10 +316,10 @@ export default function lazyTools(pi: ExtensionAPI) {
     description: LOAD_TOOLS_DESCRIPTION,
     promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET,
     promptGuidelines: [
-      "Use load_tools to discover unfamiliar schemas in optional groups listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home-control intents (lights/plugs/switches/power, Cast/TV/speakers, purifier) => first load `jarvis`; for lights/plugs then call `smart_plug` directly. Do not inspect files or use shell/CLI unless the tool fails. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Apple Notes => load `apple_notes`, then use the exact unlocked `apple_notes_*` tool. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
+      "Use load_tools to discover unfamiliar schemas in optional groups listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. This Pi controls Operation JARVIS household devices. For home controls or a named door/security protocol (including what it does), call `load_tools({groups:[\"operation_jarvis\"]})`, then its tools—not shell/SSH/web. Never claim actions without tool results or bypass safety gates. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Apple Notes => load `apple_notes`, then use the exact unlocked `apple_notes_*` tool. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `jarvis_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Web tools use stock pi-web-access descriptions, parameters, and defaults. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
-      "Use load_tools to discover unfamiliar optional schemas. On the JARVIS lazy-execution runtime, a valid direct call to a registered lazy tool auto-loads its group and executes once with normal safety checks. Unknown, removed, or excluded tools remain unavailable. After loading, use the exact tool and returned playbook; do not substitute shell commands for unavailable tools.",
+      "Registered lazy tools auto-load on JARVIS and execute once through normal safety checks. Unknown/removed/excluded tools remain unavailable; use returned schemas/playbooks, not guessed shell substitutes.",
     ],
     parameters: Type.Object({
       groups: Type.Array(GroupName, {

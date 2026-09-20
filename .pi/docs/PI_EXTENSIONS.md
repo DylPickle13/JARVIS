@@ -26,7 +26,8 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `30-google-access.ts`: Google Workspace tool.
 - `34-maps.ts`: Google Maps places/geocode/routes natural-language tool.
 - `35-memory.ts`: explicit durable project-local memory; no prompt-time auto-recall or system-prompt mutation.
-- `45-jarvis.ts`: Operation JARVIS Cast, smart plugs, and VeSync/Levoit air purifier actions.
+- `45-jarvis.ts`: focused `operation_jarvis_media`, `operation_jarvis_plugs`, and `operation_jarvis_purifier` tools.
+- `48-jarvis-security.ts`: `operation_jarvis_security` reads and guarded `operation_jarvis_automations` cloud rules; no polling/media.
 - `46-local-pi-session-status.ts`: sends lifecycle heartbeats to `jarvisd`, reporting New, Idle, Running, Compacting, or fail-closed Unknown.
   - New means no user/assistant messages or conversation summaries in the in-memory session tree. Metadata alone does not count. A fresh message clears New; restored, forked, or compacted history stays Idle when inactive.
   - After compaction, heartbeats check `ctx.isIdle()`. There is no Waiting mode: open interactive prompts remain Running/busy for restart and completion safety.
@@ -57,7 +58,7 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 |---|---|
 | `memory` | `memory` |
 | `code_docs` | `code_search` |
-| `jarvis` | `jarvis`, `smart_plug` |
+| `operation_jarvis` | `operation_jarvis_plugs`, `operation_jarvis_purifier`, `operation_jarvis_media`, `operation_jarvis_security`, `operation_jarvis_automations` |
 | `minecraft_jarvis` | `minecraft_jarvis` |
 | `github` | `github_cli` |
 | `google` | `google_workspace` |
@@ -77,7 +78,7 @@ Memory is explicit: loading `memory` makes search, remember, update, forget, lis
 
 Prior Pi/JARVIS sessions are searched directly with baseline coding tools. The project-specific JSONL directory and raw-search workflow belong in ignored `.pi/APPEND_SYSTEM.md`; use `rg -l` to shortlist files, then parse/read only the relevant records.
 
-The `jarvis` group includes Operation JARVIS actions for Cast/Spotify workflows, smart plugs, and Levoit/VeSync purifiers. `purifier-list` discovers CID-keyed devices without refreshing readings; `purifier-status-all` explicitly reads all devices in one cloud session. `purifier-status` and `purifier-set` select one device using its configured alias, unique name or exact CID. Ambiguous shared models/names are rejected. `retryCooldown` permits only an owner-authorized recovery read, never a write or automatic retry. Existing sessions need a future tool reload to expose new schema actions; do not reset live sessions for this.
+The `operation_jarvis` group is the household-control suite, distinct from Pi coding, Minecraft, and cron jobs. Focused schemas retain short purpose/parameter descriptions even after provider slimming. No domain playbook is injected into the baseline system prompt. See [Operation JARVIS tools](OPERATION_JARVIS_TOOLS.md) for migration, examples and security commissioning. Existing sessions need an owner-controlled `/reload` or a new session; do not reset or restart live services.
 
 Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: discover their schemas by loading `minecraft_jarvis` or `github`. Known valid direct calls also auto-load on the JARVIS runtime. Ordinary local `git` operations continue to use the baseline coding shell.
 
