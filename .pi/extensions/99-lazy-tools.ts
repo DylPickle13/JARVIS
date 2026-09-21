@@ -34,7 +34,7 @@ const ALWAYS_ON_TOOLS = [
 const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   memory: ["memory"],
   code_docs: ["code_search"],
-  operation_jarvis: ["operation_jarvis_plugs", "operation_jarvis_purifier", "operation_jarvis_media", "operation_jarvis_security", "operation_jarvis_automations"],
+  operation_jarvis: ["operation_jarvis_presence", "operation_jarvis_plugs", "operation_jarvis_purifier", "operation_jarvis_media", "operation_jarvis_security", "operation_jarvis_automations"],
   github: ["github_cli"],
   google: ["google_workspace"],
   cron: ["jarvis_cron"],

@@ -72,6 +72,19 @@ export function preparePlugArguments(args: unknown): unknown {
 
 export default function registerOperationJarvis(pi: ExtensionAPI) {
   pi.registerTool({
+    name: "operation_jarvis_presence", label: "Operation JARVIS · Presence",
+    description: "Read Dylan's estimated basement (Mac) and living room (Pi) proximity from the authenticated backend. Zones are independent and may overlap; do not infer a unique room. Unknown/stale is not away; BLE device presence is not proof of human location. No scanning, enrollment or household actions.",
+    parameters: Type.Object({}, { additionalProperties: false }),
+    async execute(_id, _p, signal, _update, ctx) {
+      const dir = operationDir(ctx.cwd);
+      const result = await pi.exec(join(dir, ".venv/bin/python"), [join(dir, "presence/status.py")], { signal, timeout: 8000 });
+      let payload: any;
+      try { payload = JSON.parse(result.stdout); }
+      catch { throw new Error("Presence unavailable; location unknown."); }
+      return { content: [{ type: "text" as const, text: JSON.stringify(payload) }], details: payload };
+    },
+  });
+  pi.registerTool({
     name: "operation_jarvis_plugs", label: "Operation JARVIS · Plugs",
     description: "Control Operation JARVIS household lights and Kasa plugs over the local network. List aliases if unclear; writes return verified state. Not TV media control.",
     parameters: Type.Object({

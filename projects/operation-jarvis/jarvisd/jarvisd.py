@@ -2070,6 +2070,21 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                 return
             self._send(200, {"ok": True, "version": VERSION, "uptimeSeconds": round(time.time() - START_TIME, 1)})
             return
+        if path == "/api/v1/presence":
+            from jarvisd_core import presence
+            from jarvisd_core.local_control import authorized
+            if self._reject_origin():
+                return
+            # Location is private even in trusted-network mode.
+            if not authorized(self) and not auth.authorized(mode="token", address=self._client_ip(),
+                    token=self.headers.get("x-jarvis-token", ""), scope="api",
+                    api_token=API_TOKEN, event_token="", trusted_cidrs=""):
+                self._send(401, {"ok": False, "error": "unauthorized"})
+                return
+            basement = presence.read_status()
+            self._send(200, {"ok": True, "presence": basement,
+                             "zones": [basement, presence.read_living_room()]})
+            return
         if path == "/api/v1/security/status":
             if self._reject_origin():
                 return
