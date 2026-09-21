@@ -13,6 +13,22 @@ Reviewed source/docs/templates are tracked; credentials, inventories, media and
 runtime/commissioning records stay ignored. See [repository privacy](README.md#repository-privacy).
 Aliases below are command examples, not an installed-device inventory.
 
+## Sensor read diagnostics
+
+T100/T110 reads allow 60 seconds for discovery, authentication and hub/child
+updates (other local operations retain 25 seconds). Discovery uses a 5-second
+window and 10-second request timeout for sensors. No automatic operation retry
+or fallback to a previous successful reading is added; missing or ambiguous
+children still fail closed. Unavailable individual features remain `unknown`.
+
+`hub_snapshot_at` records local snapshot acquisition, not the last sensor radio
+transmission. `sensor_updated_at` remains null and `radio_freshness` is `unknown`.
+The CLI's `observed_at` records response construction time, including on errors.
+Pi exposes only allowlisted failure reasons and a bounded diagnostic `stage`
+(`preflight`, `connection`, `state_read`, or `unknown`), never raw exceptions.
+Reload Pi extensions to activate adapter changes; physical open/close acceptance
+still requires an owner-controlled test.
+
 ## Experimental Tapo cloud Smart Actions
 
 Unlike local device commands, `smart-actions` explicitly authenticates to **TP-Link's

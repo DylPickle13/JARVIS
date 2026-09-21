@@ -5,9 +5,36 @@ import { Type } from "typebox";
 import { operationDir } from "./45-jarvis";
 import { alias, projectSecurity, resolveRule, runSecurity, type SecurityRunner } from "./lib/operation-jarvis-security";
 
-class ReauthenticationRequired extends Error {}
-
 type Dependencies = { run?: SecurityRunner; directory?: (cwd: string) => string };
+class ReauthenticationRequired extends Error {}
+class SecurityReadFailure extends Error {
+  constructor(readonly reason: string, readonly stage: "preflight" | "connection" | "state_read" | "unknown") { super(reason); }
+}
+
+const SAFE_FAILURE_REASONS = new Set([
+  "device_busy", "sensor_missing_or_ambiguous", "device_identity_mismatch", "unknown_device",
+  "unreachable", "authentication_failed", "timeout", "operation_failed", "dependency_unavailable",
+  "private_credentials_unavailable", "invalid_device_registry", "network_or_local_io_error",
+  "invalid_output", "output_limit", "worker_failed", "cancelled",
+]);
+const PREFLIGHT_FAILURES = new Set(["device_busy", "unknown_device", "invalid_device_registry", "private_credentials_unavailable"]);
+const CONNECTION_FAILURES = new Set(["unreachable", "authentication_failed", "dependency_unavailable", "network_or_local_io_error", "device_identity_mismatch"]);
+function failureStage(reason: string): "preflight" | "connection" | "state_read" | "unknown" {
+  if (PREFLIGHT_FAILURES.has(reason)) return "preflight";
+  if (CONNECTION_FAILURES.has(reason)) return "connection";
+  if (["sensor_missing_or_ambiguous", "operation_failed", "invalid_output", "output_limit", "worker_failed"].includes(reason)) return "state_read";
+  return "unknown";
+}
+function safeReason(value: unknown): string {
+  return typeof value === "string" && SAFE_FAILURE_REASONS.has(value) ? value : "security_read_or_preflight_failed";
+}
+function runnerReason(error: unknown): string {
+  const value = error instanceof Error ? error.message : "";
+  return ({
+    security_cancelled: "cancelled", security_timeout: "timeout", security_output_limit: "output_limit",
+    security_launcher_unavailable: "worker_failed", security_invalid_output: "invalid_output",
+  } as Record<string, string>)[value] ?? "security_read_or_preflight_failed";
+}
 function output(value: any, isError = false) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }], details: value, isError };
 }
@@ -24,14 +51,20 @@ export function registerSecurity(pi: ExtensionAPI, deps: Dependencies = {}) {
     catch (error) {
       if (error instanceof ReauthenticationRequired) return output({ result: "error", reason: "cloud_reauthentication_required", message: "Explicit TP-Link sign-in is required. With owner approval, use list with reauthenticate: true; this may trigger a login email.", automatic_retry: false }, true);
       // No raw subprocess, SDK, filesystem or private configuration exceptions.
-      return output({ result: "error", reason: "security_read_or_preflight_failed", security_assessment: "not_assessed", automatic_retry: false }, true);
+      const reason = error instanceof SecurityReadFailure ? error.reason : runnerReason(error);
+      const stage = error instanceof SecurityReadFailure ? error.stage : "unknown";
+      return output({ result: "error", reason, stage, security_assessment: "not_assessed", automatic_retry: false }, true);
     } finally { busy = false; }
   }
   async function read(dir: string, args: string[], signal?: AbortSignal) {
     const result = await run(dir, args, signal);
     if (args[0] === "smart-actions" && result.payload.result === "error" && result.payload.reason === "cloud_reauthentication_required") throw new ReauthenticationRequired();
-    if (result.code !== 0 || !["configured", "read_succeeded"].includes(result.payload.result)) throw new Error("security_read_failed");
-    if (["status", "capabilities"].includes(args[0]) && result.payload.device !== args[1]) throw new Error("security_identity_mismatch");
+    if (result.code !== 0 || !["configured", "read_succeeded"].includes(result.payload.result)) {
+      const reason = safeReason(result.payload.reason);
+      const stage = ["preflight", "connection", "state_read"].includes(result.payload.stage) ? result.payload.stage : failureStage(reason);
+      throw new SecurityReadFailure(reason, stage);
+    }
+    if (["status", "capabilities"].includes(args[0]) && result.payload.device !== args[1]) throw new SecurityReadFailure("device_identity_mismatch", "state_read");
     return projectSecurity(result.payload);
   }
   pi.registerTool({

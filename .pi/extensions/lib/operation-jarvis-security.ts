@@ -92,7 +92,10 @@ export function projectSecurity(payload: any): any {
     result.features = Object.fromEntries(Object.entries(payload.features).filter(([key]) => FEATURES.has(key)).map(([key, feature]: any) => [key,
       { value: feature?.status === "unknown" ? null : scalar(feature?.value), status: feature?.status === "unknown" || feature?.value === undefined ? "unknown" : "reported" }]));
   }
-  if (["T100", "T110"].includes(payload.model)) Object.assign(result, { observation_scope: "hub_reported_snapshot", radio_freshness: "unknown" });
+  if (["T100", "T110"].includes(payload.model)) Object.assign(result, {
+    observation_scope: "hub_reported_snapshot", radio_freshness: "unknown", sensor_updated_at: null,
+    hub_snapshot_at: typeof payload.hub_snapshot_at === "string" && /^\d{4}-\d\d-\d\dT[0-9:.+Z-]+$/.test(payload.hub_snapshot_at) ? payload.hub_snapshot_at : null,
+  });
   if (payload.rules !== undefined) result.rules = rulesFrom(payload);
   if (payload.rule !== undefined && payload.rule !== null) result.rule = ruleSummary(payload.rule);
   if (payload.configuration) {

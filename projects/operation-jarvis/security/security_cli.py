@@ -1230,15 +1230,20 @@ async def execute(alias, command, *, name=None, value=None, confirm=False,
     connection_model = connection_entry['model']
     validate_request(model, command, name, value, confirm, audible)
     progress = {}
+    stage = 'preflight'
     device = None
     from kasa import Discover
     try:
         with device_lock(entry['hub'] if is_sensor else alias):
             settings = load_settings(env_file)
             host = settings.host if connection_entry['host'] == '@hub' else connection_entry['host']
-            async with asyncio.timeout(25):
+            stage = 'connection'
+            # A sensor read includes H200 child initialization; keep writes at
+            # their existing budget and never automatically replay a request.
+            async with asyncio.timeout(60 if is_sensor else 25):
                 device = await Discover.discover_single(host, username=settings.username,
-                    password=settings.password, discovery_timeout=3, timeout=5)
+                    password=settings.password, discovery_timeout=5 if is_sensor else 3,
+                    timeout=10 if is_sensor else 5)
                 expected_type = 'hub' if connection_model == 'H200' else 'camera'
                 if device is None:
                     raise ControlError('unreachable')
@@ -1257,6 +1262,7 @@ async def execute(alias, command, *, name=None, value=None, confirm=False,
                 info = response['getDeviceInfo']['device_info']['basic_info']
                 if info.get('device_model') != connection_model:
                     raise ControlError('device_identity_mismatch')
+                stage = 'state_read'
                 if command != 'storage':
                     await device.update()
                 if is_sensor:
@@ -1265,14 +1271,19 @@ async def execute(alias, command, *, name=None, value=None, confirm=False,
                             'result': 'read_succeeded',
                             'observation_scope': 'hub_reported_snapshot',
                             'sensor_reachability': 'not_assessed',
+                            'hub_snapshot_at': datetime.now(timezone.utc).isoformat(),
+                            'radio_freshness': 'unknown',
+                            'sensor_updated_at': None,
                             'features': sensor_inventory(child, model)}
                 result = await operate(device, model, command, name, value, progress)
                 return {'device': alias, 'model': model,
                         'hardware': clean(info.get('hw_version')),
                         'firmware': clean(info.get('sw_version')), **result}
-    except BaseException:
+    except BaseException as exc:
         if progress.get('write_started'):
             raise ControlError('write_outcome_unknown') from None
+        if isinstance(exc, Exception):
+            exc.security_stage = stage
         raise
     finally:
         if device is not None:
@@ -1404,7 +1415,8 @@ def control_main(argv=None):
                 env_file=args.env_file, registry_path=args.registry))
         code = 3 if result.get('outcome') == 'unknown' else (2 if result.get('result') == 'error' else 0)
     except ControlError as exc:
-        result = {'result': 'error', 'reason': str(exc)}
+        result = {'result': 'error', 'reason': str(exc),
+                  'stage': getattr(exc, 'security_stage', 'preflight')}
         code = 3 if str(exc) == 'write_outcome_unknown' else 2
     except KeyboardInterrupt:
         result, code = {'result': 'cancelled'}, 130
@@ -1413,7 +1425,8 @@ def control_main(argv=None):
                   'TimeoutError': 'timeout', 'ModuleNotFoundError': 'dependency_unavailable',
                   'PrivateEnvError': 'private_credentials_unavailable',
                   'OSError': 'network_or_local_io_error'}.get(type(exc).__name__, 'operation_failed')
-        result, code = {'result': 'error', 'reason': reason}, 2
+        result, code = {'result': 'error', 'reason': reason,
+                        'stage': getattr(exc, 'security_stage', 'unknown')}, 2
     result.update(security_assessment='not_assessed', observed_at=datetime.now(timezone.utc).isoformat())
     if machine or result.get('result') == 'error':
         print(json.dumps(result, indent=2))

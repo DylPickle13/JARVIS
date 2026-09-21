@@ -27,6 +27,31 @@ function fixture(options = {}) {
   const ctx = { cwd: '/unused', hasUI: options.hasUI ?? true, ui: { async confirm(title, body) { confirmations.push({ title, body }); return options.confirm ?? true; } } };
   return { tools, calls, confirmations, invoke: (p, kind = 'automations', signal) => tools[`operation_jarvis_${kind}`].execute('test', p, signal, undefined, ctx) };
 }
+test('read failures expose only fixed reasons and stages without retrying', async () => {
+  for (const [payload, reason, stage] of [
+    [{ reason: 'timeout', stage: 'state_read' }, 'timeout', 'state_read'],
+    [{ reason: 'device_busy' }, 'device_busy', 'preflight'],
+    [{ reason: 'sensor_missing_or_ambiguous' }, 'sensor_missing_or_ambiguous', 'state_read'],
+    [{ reason: 'SECRET /private/path', stage: 'SECRET' }, 'security_read_or_preflight_failed', 'unknown'],
+  ]) {
+    const tools = {}; let calls = 0;
+    registerSecurity({ registerTool(t) { tools[t.name] = t; } }, {
+      directory: () => '/unused',
+      run: async () => { calls++; return { code: 2, payload: { result: 'error', ...payload } }; },
+    });
+    const r = await tools.operation_jarvis_security.execute('test', { action: 'status', device: 'door-sensor' }, undefined, undefined, { cwd: '/unused' });
+    assert.equal(r.details.reason, reason); assert.equal(r.details.stage, stage);
+    assert.equal(r.isError, true); assert.equal(r.details.automatic_retry, false);
+    assert.equal(calls, 1); assert.doesNotMatch(JSON.stringify(r), /SECRET/);
+  }
+});
+test('sensor acquisition time is not a radio update timestamp', () => {
+  const stamp = '2026-09-21T03:41:44.447695+00:00';
+  const p = projectSecurity({ result: 'read_succeeded', model: 'T110', hub_snapshot_at: stamp, sensor_updated_at: stamp });
+  assert.equal(p.hub_snapshot_at, stamp);
+  assert.equal(p.sensor_updated_at, null); assert.equal(p.radio_freshness, 'unknown');
+  assert.equal(projectSecurity({ model: 'T110', hub_snapshot_at: 'SECRET' }).hub_snapshot_at, null);
+});
 test('only canonical tools and narrow schemas; no prompt injection on load', () => {
   const f = fixture();
   assert.deepEqual(Object.keys(f.tools), ['operation_jarvis_security', 'operation_jarvis_automations']);

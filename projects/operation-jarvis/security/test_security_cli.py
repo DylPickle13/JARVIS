@@ -471,6 +471,50 @@ class control_OperationTests(unittest.IsolatedAsyncioTestCase):
             await operate(d, 'H200', 'storage')
         d.protocol.query.assert_awaited_once_with({'get': {'harddisk_manage': {'table': ['hd_info']}}})
 
+    async def test_sensor_read_budget_metadata_and_failures(self):
+        from contextlib import nullcontext
+        for failure in ('success', 'timeout', 'missing', 'feature'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                p = Path(tmp) / 'registry.json'
+                p.write_text(json.dumps({
+                    'hub': {'model': 'H200', 'host': '192.168.1.2'},
+                    'door': {'model': 'T110', 'hub': 'hub', 'name': 'Test door'}}))
+                feature = control_Feature('Sensor', True)
+                child = NS(model='T110', alias='Test door', features={'is_open': feature})
+                d = control_device()
+                d.model, d.device_type = 'H200', NS(value='hub')
+                d.children = [] if failure == 'missing' else [child]
+                d.protocol.query.return_value = {'getDeviceInfo': {'device_info': {
+                    'basic_info': {'device_model': 'H200'}}}}
+                if failure == 'timeout':
+                    d.update.side_effect = TimeoutError('PRIVATE')
+                if failure == 'feature':
+                    feature.container._last_update_error = RuntimeError('PRIVATE')
+                with patch('kasa.Discover.discover_single', new=AsyncMock(return_value=d)) as discover, \
+                     patch('security_cli.device_lock', return_value=nullcontext()), \
+                     patch('security_cli.install_empty_child_lists_compat'), \
+                     patch('security_cli.load_settings', return_value=NS(host='', username='u', password='p')), \
+                     patch('security_cli.asyncio.timeout', wraps=asyncio.timeout) as budget:
+                    if failure in ('timeout', 'missing'):
+                        with self.assertRaises((TimeoutError, ControlError)) as caught:
+                            await execute('door', 'status', registry_path=p)
+                        self.assertEqual(caught.exception.security_stage, 'state_read')
+                    else:
+                        result = await execute('door', 'status', registry_path=p)
+                        self.assertEqual(result['radio_freshness'], 'unknown')
+                        self.assertIsNone(result['sensor_updated_at'])
+                        self.assertIsNotNone(result['hub_snapshot_at'])
+                        if failure == 'feature':
+                            self.assertEqual(result['features']['is_open']['status'], 'unknown')
+                        else:
+                            self.assertTrue(result['features']['is_open']['value'])
+                    budget.assert_called_once_with(60)
+                    self.assertEqual(discover.call_args.kwargs['timeout'], 10)
+                    discover.assert_awaited_once()
+                    d.update.assert_awaited_once()
+                    d.disconnect.assert_awaited_once()
+                    feature.set_value.assert_not_awaited()
+
     async def test_execute_paths(self):
         try:
             import kasa
