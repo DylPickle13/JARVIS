@@ -87,7 +87,7 @@ See the [room-audio README](../room-audio/README.md) for backend-specific setup.
 
 ## Pi tool loading
 
-Always-on tools cover coding, SSH, web research/fetch, Maps, and `load_tools`. Optional groups include `memory`, `code_docs`, `jarvis`, `minecraft_jarvis`, `github`, `google`, `cron`, `browser`, and `reaper`.
+Always-on tools cover coding, SSH, web research/fetch, Maps, and `load_tools`. Optional groups include `memory`, `code_docs`, `jarvis`, `github`, `google`, `cron`, `browser`, and `reaper`.
 
 Load only the group you need. Reading Jobs or scheduler status does not authorize device actions. See the [Pi extension guide](../../../.pi/docs/PI_EXTENSIONS.md).
 

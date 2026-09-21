@@ -53,7 +53,6 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   // Keep load_tools out of this override map: 99-lazy-tools.ts generates its
   // provider-visible description from the canonical group registry.
   // Optional lazy-loaded tools: preserve terse top-level descriptions.
-  minecraft_jarvis: "Minecraft bot chat/control; use direct short plain messages; no SSH/shell/slash.",
   github_cli: "Run official gh CLI with args; loads GitHub token from .env and redacts it.",
 
   google_workspace: "Google Workspace API for Drive/Gmail/Docs/Sheets/Calendar.",
@@ -104,7 +103,6 @@ const SCHEMA_STRIP_TOOLS = new Set([
   "load_tools",
   "maps",
   // Optional lazy-loaded tools: preserve top-level descriptions, strip nested prose.
-  "minecraft_jarvis",
   "github_cli",
 
   "google_workspace",

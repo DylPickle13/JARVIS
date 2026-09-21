@@ -224,7 +224,7 @@ Previous pre-slimming captures were roughly:
 
 - Do not commit or publish captured provider payloads. They can contain local context, memories, and prompt text.
 - The capture command starts a fresh non-session Pi run. It measures the baseline visible tool set, not optional groups loaded in an existing interactive session.
-- Baseline currently includes project always-on tools such as `ssh`, web/fetch tools, `maps`, and `load_tools`; use `/load-tools` in an interactive session if you need to measure optional groups such as `minecraft_jarvis` or `github` separately.
+- Baseline currently includes project always-on tools such as `ssh`, web/fetch tools, `maps`, and `load_tools`; use `/load-tools` in an interactive session if you need to measure optional groups such as `github` separately.
 - To measure exact provider tokens, use Method A after a real request. To see what contributes to size, use Method B.
 - If prompt caching is active, use `effectiveInput = input + cacheRead + cacheWrite` for full effective input.
 - Durable memory is explicit-only and does not mutate the system prompt. Load/search the `memory` tool when a task needs stored context.

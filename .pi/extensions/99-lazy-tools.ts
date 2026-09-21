@@ -5,7 +5,6 @@ type CanonicalToolGroup =
   | "memory"
   | "code_docs"
   | "operation_jarvis"
-  | "minecraft_jarvis"
   | "github"
   | "google"
   | "cron"
@@ -36,7 +35,6 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   memory: ["memory"],
   code_docs: ["code_search"],
   operation_jarvis: ["operation_jarvis_plugs", "operation_jarvis_purifier", "operation_jarvis_media", "operation_jarvis_security", "operation_jarvis_automations"],
-  minecraft_jarvis: ["minecraft_jarvis"],
   github: ["github_cli"],
   google: ["google_workspace"],
   cron: ["jarvis_cron"],
@@ -68,7 +66,6 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   memory: "memory for durable project/local facts/preferences/workflows; never store secrets",
   code_docs: "code_search for external code/docs/API examples",
   operation_jarvis: "Operation JARVIS household control: lights/plugs, purifier, Cast/Spotify/speech, Tapo security sensors and cloud automations/protocols",
-  minecraft_jarvis: "Minecraft jarvis bot chat/control through the in-game Qwen companion",
   github: "github_cli for guarded official GitHub CLI access using the configured local token",
   google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
   cron: "jarvis_cron for private scheduled Pi/JARVIS jobs and bounded local result history",
@@ -118,15 +115,6 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Discover unclear selectors with plugs/purifier list, security devices, or automations list. No inferred group writes. Purifier list is discovery; status-all refreshes readings. Wait for writes; retryCooldown is an owner-authorized recovery read only.",
       "For named protocols use automations describe/enable/disable with the exact current name. Enable is not execute. Enabling can cause immediate or later physical actions; disabling does not stop an already sounding alarm. Unknown write outcome means stop, inspect, never replay.",
       "Security is on demand, not monitoring or an assessment that the house is secure. Sensor readings are hub snapshots with unknown radio freshness. Report configuration verification separately from physical acceptance; never expose raw rules, credentials or media.",
-    ],
-  },
-  minecraft_jarvis: {
-    skill: "minecraft-jarvis",
-    lines: [
-      "Use `minecraft_jarvis` (load its group to discover the schema if needed) when the user wants to command or talk to the Minecraft jarvis bot from this Pi session instead of typing in Minecraft.",
-      "Pass the user's plain-language instruction in `message`; do not pre-interpret it into Minecraft bot tools. The configured local Pi RPC agent decides whether to respond or act within its safe Mineflayer toolset.",
-      "Keep messages short and non-destructive. The local Minecraft Pi agent currently starts with safe tools only: chat, observe/status, players, inventory, movement/follow/stop, block search, simple mining, and simple crafting.",
-      "Do not substitute SSH, shell, or slash commands for `minecraft_jarvis`.",
     ],
   },
   github: {
@@ -316,7 +304,7 @@ export default function lazyTools(pi: ExtensionAPI) {
     description: LOAD_TOOLS_DESCRIPTION,
     promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET,
     promptGuidelines: [
-      "Use load_tools to discover unfamiliar schemas in optional groups listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. This Pi controls Operation JARVIS household devices. For home controls or a named door/security protocol (including what it does), call `load_tools({groups:[\"operation_jarvis\"]})`, then its tools—not shell/SSH/web. Never claim actions without tool results or bypass safety gates. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Minecraft bot chat/control => load `minecraft_jarvis`, then use `minecraft_jarvis`. Apple Notes => load `apple_notes`, then use the exact unlocked `apple_notes_*` tool. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
+      "Use load_tools to discover unfamiliar schemas in optional groups listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. This Pi controls Operation JARVIS household devices. For home controls or a named door/security protocol (including what it does), call `load_tools({groups:[\"operation_jarvis\"]})`, then its tools—not shell/SSH/web. Never claim actions without tool results or bypass safety gates. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Apple Notes => load `apple_notes`, then use the exact unlocked `apple_notes_*` tool. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
       "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `jarvis_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
       "Web tools use stock pi-web-access descriptions, parameters, and defaults. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
       "Registered lazy tools auto-load on JARVIS and execute once through normal safety checks. Unknown/removed/excluded tools remain unavailable; use returned schemas/playbooks, not guessed shell substitutes.",

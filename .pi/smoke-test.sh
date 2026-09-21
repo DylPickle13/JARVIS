@@ -334,7 +334,6 @@ expected_extension_roots=(
   .pi/extensions/47-watch-terminal-speech.ts
   .pi/extensions/48-jarvis-security.ts
   .pi/extensions/50-browser
-  .pi/extensions/50-minecraft-jarvis-chat.ts
   .pi/extensions/55-ssh-exec.ts
   .pi/extensions/56-github-cli.ts
   .pi/extensions/58-reaper-bridge.ts
@@ -453,7 +452,7 @@ assertSameGroups('GROUP_GUIDANCE', toolGroups, recordKeys('GROUP_GUIDANCE'));
 const alwaysOnMatch = lazy.match(/const ALWAYS_ON_TOOLS = \[([\s\S]*?)\n\] as const;/);
 if (!alwaysOnMatch) throw new Error('Could not find ALWAYS_ON_TOOLS');
 const alwaysOnTools = [...alwaysOnMatch[1].matchAll(/"([a-z][a-z0-9_]*)"/g)].map((item) => item[1]);
-for (const [group, tool] of [['minecraft_jarvis', 'minecraft_jarvis'], ['github', 'github_cli']]) {
+for (const [group, tool] of [['github', 'github_cli']]) {
   if (alwaysOnTools.includes(tool)) throw new Error(`${tool} must remain lazy, not always on`);
   const mapping = new RegExp(`^  ${group}: \\[[^\\n]*"${tool}"[^\\n]*\\],$`, 'm');
   if (!mapping.test(lazy)) throw new Error(`${group} must lazy-load ${tool}`);
@@ -530,7 +529,6 @@ const optionalToolFiles = [
   '.pi/extensions/45-jarvis.ts',
   '.pi/extensions/48-jarvis-security.ts',
   '.pi/extensions/50-browser/tools.ts',
-  '.pi/extensions/50-minecraft-jarvis-chat.ts',
   '.pi/extensions/56-github-cli.ts',
   '.pi/extensions/58-reaper-bridge.ts',
 ];

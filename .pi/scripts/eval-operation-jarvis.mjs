@@ -75,7 +75,6 @@ for (const [prompt, tool, action, parameters] of cases) {
 }
 for (const [prompt, group] of [
   ['What scheduled Pi jobs do I have?', 'cron'],
-  ['Tell Minecraft jarvis to follow me.', 'minecraft_jarvis'],
 ]) {
   const calls = await request([{ role: 'user', content: prompt }], baseline);
   const ok = calls.length === 1 && calls[0].name === 'load_tools' && JSON.stringify(calls[0].args.groups) === JSON.stringify([group]);

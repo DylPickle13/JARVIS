@@ -854,7 +854,6 @@ export default function registerSsh(pi: ExtensionAPI) {
     promptGuidelines: [
       "Use local coding tools on mac-mini-64; use ssh only for configured remote hosts and always pass host.",
       "Use exec for captured commands, pty:true for a local TUI, or start/input/read/close for stateful RPC sessions.",
-      "Use minecraft_jarvis, not SSH, for in-game control.",
       "Do not change long-running remote services without sir's explicit request.",
     ],
     parameters: Type.Object({

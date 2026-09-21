@@ -35,7 +35,6 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
   - `jarvisd` derives Offline and fail-closed Unknown from the fixed tmux sessions.
 - `47-watch-terminal-speech.ts`: publishes only the current tmux-bound Pi session's latest completed assistant text blocks to a private Watch-speech runtime marker; thinking and tool activity are excluded.
 - `50-browser/`: visible Chrome control through a persistent CDP bridge, hard-scoped to a dedicated JARVIS window in the user's signed-in profile.
-- `50-minecraft-jarvis-chat.ts`: Minecraft jarvis bot chat/control.
 - `55-ssh-exec.ts`: unrestricted configured SSH execution plus directly attached and stateful interactive PTY sessions.
 - `56-github-cli.ts`: guarded GitHub CLI adapter.
 - `58-reaper-bridge.ts`: live REAPER inline-Lua bridge.
@@ -59,7 +58,6 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | `memory` | `memory` |
 | `code_docs` | `code_search` |
 | `operation_jarvis` | `operation_jarvis_plugs`, `operation_jarvis_purifier`, `operation_jarvis_media`, `operation_jarvis_security`, `operation_jarvis_automations` |
-| `minecraft_jarvis` | `minecraft_jarvis` |
 | `github` | `github_cli` |
 | `google` | `google_workspace` |
 | `cron` | `jarvis_cron` |
@@ -80,7 +78,7 @@ Prior Pi/JARVIS sessions are searched directly with baseline coding tools. The p
 
 The `operation_jarvis` group is the household-control suite, distinct from Pi coding, Minecraft, and cron jobs. Focused schemas retain short purpose/parameter descriptions even after provider slimming. No domain playbook is injected into the baseline system prompt. See [Operation JARVIS tools](OPERATION_JARVIS_TOOLS.md) for migration and examples. Existing sessions need an owner-controlled `/reload` or a new session; do not reset or restart live services.
 
-Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: discover their schemas by loading `minecraft_jarvis` or `github`. Known valid direct calls also auto-load on the JARVIS runtime. Ordinary local `git` operations continue to use the baseline coding shell.
+Authenticated GitHub CLI access is intentionally lazy: discover its schema by loading `github`. Known valid direct calls also auto-load on the JARVIS runtime. Ordinary local `git` operations continue to use the baseline coding shell.
 
 ## Native file attachments
 
