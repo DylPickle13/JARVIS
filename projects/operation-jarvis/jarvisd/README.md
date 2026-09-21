@@ -32,7 +32,12 @@ The iPhone/Watch title dot requires fresh activity and a successful, non-stale
 update result no older than two hours. Missing/unsupported checks show no dot.
 Release checks do not block or change the existing activity polling cadence.
 
-## Whole-Mac RAM telemetry (source-only; not yet deployed)
+## Whole-Mac RAM telemetry
+
+Deployed 2026-09-20 EDT: `20260921T023147Z-host-memory`, alongside native build
+206. Both hosts returned fresh whole-Mac readings through the installed daemon.
+Health checks passed and protected terminal/audio service and pane identities
+were unchanged. Only jarvisd was replaced; neither oMLX server was restarted.
 
 `GET /api/v1/omlx` adds optional per-server `hostMemory`: `ok`, `usedBytes`,
 `totalBytes`, `definition`, `ageSeconds`, and `stale` (a sanitized `error` on cold

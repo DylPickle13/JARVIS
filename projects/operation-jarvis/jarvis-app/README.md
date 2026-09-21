@@ -2,21 +2,22 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Source candidate (not yet deployed):** oMLX cards use fixed host/status,
+**Current installed build:** 206 on both iPhone and Watch, with installation and
+launch independently verified on 2026-09-20 EDT. oMLX cards now use fixed host/status,
 short model, generation t/s, and whole-Mac RAM columns with the same heading,
 two rows, padding, and wrapper dimensions. No rotating pages or scrolling text.
 Full model names remain available to VoiceOver; ambiguous concurrent work shows
 `Multi` with no combined speed. RAM is independently tracked by jarvisd and never
 substituted with oMLX memory; stale/missing readings show `—`. The update dot is
-unchanged. See [backend memory telemetry](../jarvisd/README.md#whole-mac-ram-telemetry-source-only-not-yet-deployed).
+unchanged. See [backend memory telemetry](../jarvisd/README.md#whole-mac-ram-telemetry).
 
-**Current installed build:** 205 on both iPhone and Watch, with installation and
-launch independently verified on 2026-09-20 EDT. Build 205 adds automatic oMLX detail
-pages, full-name overflow scrolling, and a green dot immediately right of the
-oMLX title when either server confirms an available update. Card dimensions remain
-unchanged. The separate hourly backend release check is deployed; both servers
-reported no update at verification. Both simulator targets build successfully;
-physical visual acceptance remains pending. Build 204 is retained for rollback.
+All 67 focused tests passed; both simulator targets build successfully. iPhone 11
+and Watch SE 40mm layouts were reviewed; physical visual acceptance remains
+pending. Build 205 is retained for rollback. All simulators are shut down.
+
+Build 205 introduced the confirmed-update title dot and rotating details, now
+replaced by build 206's stationary columns. The independent hourly release check
+remains deployed; both servers reported no update at build 206 verification.
 
 Build 204 added the matching purple tab accent, translucent iPhone purifier card,
 softer Watch borders, and glass terminal accessory buttons.
