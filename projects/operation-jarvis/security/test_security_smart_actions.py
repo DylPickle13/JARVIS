@@ -290,6 +290,64 @@ class SmartTests(unittest.TestCase):
         self.assertEqual(s.cloud_code({}), 0)
         with self.assertRaises(s.SmartError):s.cloud_code({'error_code': 'oops'})
 
+    def test_session_reuse_and_explicit_login_only(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(s, 'STORAGE', Path(directory)):
+            c = s.Cloud.__new__(s.Cloud)
+            def login(*args):
+                c.token = 'offline-token'
+                c.endpoint = 'https://fake.tplinknbu.com'
+            c.login = Mock(side_effect=login)
+            with self.assertRaisesRegex(s.SmartError, 'reauthentication_required'):
+                c.session('test@example.test', 'fake')
+            c.login.assert_not_called()
+            terminal = c.term
+            c.session('test@example.test', 'fake', True)
+            c.login.assert_called_once()
+            d = s.Cloud.__new__(s.Cloud)
+            d.login = Mock(side_effect=AssertionError('unexpected login'))
+            d.session('test@example.test', 'fake')
+            self.assertEqual(d.term, terminal)
+            self.assertEqual(d.token, 'offline-token')
+            for name in ('session.json', 'terminal.json'):
+                self.assertEqual((Path(directory) / name).stat().st_mode & 0o777, 0o600)
+            with self.assertRaisesRegex(s.SmartError, 'reauthentication_required'):
+                d.session('different@example.test', 'fake')
+            d.login.assert_not_called()
+
+    def test_failed_explicit_login_invalidates_session(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(s, 'STORAGE', Path(directory)):
+            c = s.Cloud.__new__(s.Cloud)
+            c.login = Mock(side_effect=s.SmartError('cloud_mfa_required'))
+            with self.assertRaisesRegex(s.SmartError, 'cloud_mfa_required'):
+                c.session('test@example.test', 'fake', True)
+            with self.assertRaisesRegex(s.SmartError, 'reauthentication_required'):
+                c.session('test@example.test', 'fake')
+            c.login.assert_called_once()
+
+    def test_session_rejects_insecure_and_symlink_files(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(s, 'STORAGE', Path(directory)):
+            c = s.Cloud.__new__(s.Cloud)
+            c.login = Mock(side_effect=AssertionError('unexpected login'))
+            with self.assertRaises(s.SmartError):
+                c.session('test@example.test', 'fake')
+            path = Path(directory) / 'session.json'
+            path.write_text('{}')
+            path.chmod(0o644)
+            with self.assertRaisesRegex(s.SmartError, 'private_file_permissions'):
+                c.session('test@example.test', 'fake')
+            path.unlink()
+            path.symlink_to(Path(directory) / 'terminal.json')
+            with self.assertRaises(OSError):
+                c.session('test@example.test', 'fake')
+            c.login.assert_not_called()
+
+    def test_reauthentication_restricted_to_list(self):
+        for operation in s.OPERATIONS:
+            if operation != 'list':
+                with self.assertRaisesRegex(s.SmartError, 'reauthentication_requires_list'):
+                    s.validate_request({'operation': operation, 'reauthenticate': True})
+        s.validate_request({'operation': 'list', 'reauthenticate': True})
+
     def test_cloud_host_allowlist(self):
         for url in ('http://a.tplinknbu.com', 'https://evil.test', 'https://a.tplinknbu.com@evil.test',
                     'https://a.tplinknbu.com/path', 'https://a.tplinknbu.com:444', 'https://a.tplinknbu.com?x=y'):

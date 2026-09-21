@@ -17,7 +17,20 @@ Aliases below are command examples, not an installed-device inventory.
 
 Unlike local device commands, `smart-actions` explicitly authenticates to **TP-Link's
 cloud**. It manages app shortcuts/automations, not per-device recording schedules.
-No daemon, polling, cloud token cache, automatic MFA requests, or login/write retry.
+No daemon, polling, automatic MFA requests, or login/write retry. A stable JARVIS
+terminal identity and cloud session are persisted in ignored, owner-only (0600)
+`private-smart-actions/terminal.json` and `session.json` (directory 0700).
+Ordinary calls reuse the token without logging in. A missing/rejected session
+requires explicit reauthentication; unknown cloud errors also stop without login.
+Never commit, print, or share these files. Delete `session.json` to forget the local
+token; this does not revoke the session at TP-Link. Keep `terminal.json` to retain
+the device identity.
+
+Initial sign-in or renewal: `./security --json smart-actions list --reauthenticate`
+(owner-operated CLI only). In Pi, use automations `action: "list", reauthenticate: true` to sign in and
+cache the session, including from voice. Reload Pi extensions after updating to expose this
+parameter. Sign-in may trigger an account email; token reuse is intended to reduce
+alerts, not guarantee their absence.
 
 ```bash
 ./security --json smart-actions list
@@ -38,8 +51,8 @@ No daemon, polling, cloud token cache, automatic MFA requests, or login/write re
 **Acceptance:** cloud listing and a temporary name change/restoration were live
 verified. The integrated CLI passed a live read-only smoke test. Create, full
 update, enable/disable, delete, and execute are implemented and tested against
-synthetic offline peers, **not yet live-accepted**. Use an explicitly approved
-disposable rule for commissioning those operations, not an existing household rule.
+synthetic offline peers, **not yet live-accepted**. The Pi suite now exposes
+enable/disable live (owner approval 2026-09-20); other mutations remain CLI-only.
 
 - `list` returns names, opaque references, kind, enabled status and SHA256 revisions.
   These summaries are still private household data; don't publish CLI output.

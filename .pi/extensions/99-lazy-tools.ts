@@ -116,7 +116,7 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Use `operation_jarvis_*` tools for household control, not shell/SSH. Plugs control electrical power; media controls playback/speech; security reads devices; automations manages Tapo cloud rules, not Pi cron jobs or Minecraft.",
       "Examples: `operation_jarvis_plugs({action:\"on\",plug:\"lamp\"})`; `operation_jarvis_media({action:\"speak\",text:\"Ready, sir.\"})`; `operation_jarvis_purifier({action:\"set\",setting:\"mode\",value:\"auto\"})`.",
       "Discover unclear selectors with plugs/purifier list, security devices, or automations list. No inferred group writes. Purifier list is discovery; status-all refreshes readings. Wait for writes; retryCooldown is an owner-authorized recovery read only.",
-      "For named protocols use automations describe/enable/disable with the exact current name. Enable is not execute. Changes require commissioning and user confirmation; never bypass a gate via CLI. Unknown write outcome means stop, inspect, never replay.",
+      "For named protocols use automations describe/enable/disable with the exact current name. Enable is not execute. Enabling can cause immediate or later physical actions; disabling does not stop an already sounding alarm. Unknown write outcome means stop, inspect, never replay.",
       "Security is on demand, not monitoring or an assessment that the house is secure. Sensor readings are hub snapshots with unknown radio freshness. Report configuration verification separately from physical acceptance; never expose raw rules, credentials or media.",
     ],
   },

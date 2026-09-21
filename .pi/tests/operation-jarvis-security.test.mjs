@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, mkdir, writeFile, chmod, symlink, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { jiti } from './helpers/pi-import.mjs';
 const { registerSecurity } = await jiti.import(resolve(import.meta.dirname, '../extensions/48-jarvis-security.ts'));
-const { projectSecurity, runSecurity, commissioned } = await jiti.import(resolve(import.meta.dirname, '../extensions/lib/operation-jarvis-security.ts'));
+const { projectSecurity, runSecurity } = await jiti.import(resolve(import.meta.dirname, '../extensions/lib/operation-jarvis-security.ts'));
 const rule = { name: 'Example protocol', ref: 'a'.repeat(16), revision: 'b'.repeat(64), kind: 'automation', enabled: false };
 const configuration = { triggers: [{ model: 'T110', event: 'open', deviceId: 'SECRET' }], actions: [{ model: 'H200', configured_duration_seconds: 300, configured_alarm_tone: 'Alarm 4', configured_volume_raw: '10', thingName: 'SECRET' }], all_day: true, raw: 'SECRET' };
 function fixture(options = {}) {
@@ -21,7 +21,7 @@ function fixture(options = {}) {
     return options.writePayload ?? { result: 'write_verified', rule: current, private_backup: 'SECRET' };
   };
   registerSecurity({ registerTool(t) { tools[t.name] = t; } }, {
-    directory: () => '/unused/mock-only', commissioned: async () => options.accepted ?? false,
+    directory: () => '/unused/mock-only',
     run: async (_dir, args) => { calls.push(args); return { code: args[1] === 'enable' ? options.writeCode ?? 0 : 0, payload: payload(args) }; },
   });
   const ctx = { cwd: '/unused', hasUI: options.hasUI ?? true, ui: { async confirm(title, body) { confirmations.push({ title, body }); return options.confirm ?? true; } } };
@@ -58,21 +58,37 @@ test('list and describe resolve names fresh, no raw rule export', async () => {
   assert.deepEqual(f.calls, [['smart-actions', 'list'], ['smart-actions', 'describe', rule.ref]]);
   assert.equal(r.details.configuration.trigger_combination, 'not_interpreted');
 });
+test('reauthentication is list-only and supports voice sessions', async () => {
+  const headless = fixture({ hasUI: false });
+  const r = await headless.invoke({ action: 'list', reauthenticate: true });
+  assert.equal(r.isError, false);
+  assert.equal(headless.confirmations.length, 0);
+  assert.deepEqual(headless.calls, [['smart-actions', 'list', '--reauthenticate']]);
+  const rejected = fixture();
+  assert.equal((await rejected.invoke({ action: 'describe', name: rule.name, reauthenticate: true })).isError, true);
+  assert.equal(rejected.calls.length, 0);
+});
+test('missing session reports explicit sign-in requirement without retry', async () => {
+  const tools = {}; let calls = 0;
+  registerSecurity({ registerTool(t) { tools[t.name] = t; } }, {
+    directory: () => '/unused',
+    run: async () => { calls++; return { code: 1, payload: { result: 'error', reason: 'cloud_reauthentication_required' } }; },
+  });
+  const result = await tools.operation_jarvis_automations.execute('test', { action: 'list' }, undefined, undefined, { cwd: '/unused' });
+  assert.equal(result.details.reason, 'cloud_reauthentication_required');
+  assert.equal(result.details.automatic_retry, false);
+  assert.equal(calls, 1);
+});
 test('missing/duplicate names never pick a rule or write', async () => {
   for (const rules of [[], [rule, { ...rule, ref: 'd'.repeat(16), name: 'EXAMPLE PROTOCOL' }]]) {
-    const f = fixture({ rules, accepted: true });
+    const f = fixture({ rules });
     assert.equal((await f.invoke({ action: 'enable', name: rule.name })).details.reason, 'rule_name_missing_or_ambiguous');
     assert.equal(f.calls.length, 1);
   }
 });
 test('revision changes between listing and description fail closed', async () => {
-  const f = fixture({ described: { revision: 'd'.repeat(64) }, accepted: true });
+  const f = fixture({ described: { revision: 'd'.repeat(64) } });
   assert.equal((await f.invoke({ action: 'enable', name: rule.name })).details.result, 'rule_changed');
-  assert.equal(f.calls.length, 2); assert.equal(f.confirmations.length, 0);
-});
-test('uncommissioned change returns configuration preview without writing', async () => {
-  const f = fixture(); const r = await f.invoke({ action: 'enable', name: rule.name });
-  assert.equal(r.details.result, 'commissioning_required'); assert.equal(r.details.writes_attempted, 0);
   assert.equal(f.calls.length, 2); assert.equal(f.confirmations.length, 0);
 });
 test('already desired state is a read-only no-op', async () => {
@@ -80,40 +96,38 @@ test('already desired state is a read-only no-op', async () => {
   assert.equal(r.details.result, 'unchanged'); assert.equal(f.calls.length, 2);
 });
 test('shortcuts are not enabled or executed', async () => {
-  const f = fixture({ rule: { kind: 'shortcut' }, accepted: true });
+  const f = fixture({ rule: { kind: 'shortcut' } });
   assert.equal((await f.invoke({ action: 'enable', name: rule.name })).details.result, 'unsupported_rule_kind');
   assert.equal((await f.invoke({ action: 'execute', name: rule.name })).isError, true);
   assert.equal(f.calls.length, 2);
 });
-test('headless sessions cannot approve a write', async () => {
-  const f = fixture({ accepted: true, hasUI: false });
-  assert.equal((await f.invoke({ action: 'enable', name: rule.name })).details.result, 'confirmation_ui_required');
+test('headless sessions can write', async () => {
+  const f = fixture({ hasUI: false });
+  const r = await f.invoke({ action: 'enable', name: rule.name });
+  assert.equal(r.isError, false);
+  assert.equal(f.confirmations.length, 0);
+  assert.equal(f.calls.length, 3);
+});
+test('aborting before write sends nothing', async () => {
+  const f = fixture();
+  assert.equal((await f.invoke({ action: 'enable', name: rule.name }, 'automations', AbortSignal.abort())).details.result, 'cancelled');
   assert.equal(f.calls.length, 2);
 });
-test('declining confirmation or aborting before write sends nothing', async () => {
-  for (const aborted of [false, true]) {
-    const f = fixture({ accepted: true, confirm: aborted });
-    const signal = aborted ? AbortSignal.abort() : undefined;
-    assert.equal((await f.invoke({ action: 'enable', name: rule.name }, 'automations', signal)).details.result, 'cancelled');
-    assert.equal(f.calls.length, 2);
-  }
-});
-test('accepted and confirmed enable uses exact revision once with readback', async () => {
-  const f = fixture({ accepted: true });
+test('enable uses exact revision once with readback', async () => {
+  const f = fixture();
   const r = await f.invoke({ action: 'enable', name: rule.name });
   assert.deepEqual(f.calls.at(-1), ['smart-actions', 'enable', rule.ref, '--revision', rule.revision, '--confirm']);
-  assert.equal(f.calls.length, 3); assert.equal(f.confirmations.length, 1);
-  assert.match(f.confirmations[0].body, /300|immediately/);
+  assert.equal(f.calls.length, 3); assert.equal(f.confirmations.length, 0);
   assert.equal(r.details.configuration_verified, true); assert.equal(r.details.physical_behavior, 'not_verified');
   assert.doesNotMatch(JSON.stringify(r), /SECRET|private_backup/);
 });
 test('disable uses the same guarded path', async () => {
-  const f = fixture({ accepted: true, rule: { enabled: true } });
+  const f = fixture({ rule: { enabled: true } });
   assert.equal((await f.invoke({ action: 'disable', name: rule.name })).details.rule.enabled, false);
   assert.equal(f.calls.at(-1)[1], 'disable');
 });
 test('stale CLI revision rejection is not replayed', async () => {
-  const f = fixture({ accepted: true, writeCode: 2, writePayload: { result: 'error', reason: 'smart_revision_conflict' } });
+  const f = fixture({ writeCode: 2, writePayload: { result: 'error', reason: 'smart_revision_conflict' } });
   const r = await f.invoke({ action: 'enable', name: rule.name });
   assert.equal(r.isError, true); assert.equal(r.details.automatic_retry, false); assert.equal(f.calls.length, 3);
 });
@@ -123,7 +137,7 @@ test('uncertain/timeout/malformed/incorrect readback never reports success or re
     { writeThrow: true }, { writePayload: { result: 'write_verified', rule } },
     { writePayload: { result: 'write_verified', rule: { password: 'SECRET' } } },
   ]) {
-    const f = fixture({ accepted: true, ...option }); const r = await f.invoke({ action: 'enable', name: rule.name });
+    const f = fixture(option); const r = await f.invoke({ action: 'enable', name: rule.name });
     assert.equal(r.details.result, 'write_outcome_unknown'); assert.equal(r.isError, true);
     assert.equal(r.details.automatic_retry, false); assert.equal(f.calls.length, 3);
     assert.doesNotMatch(JSON.stringify(r), /SECRET/);
@@ -147,16 +161,6 @@ test('busy security calls are rejected, never queued', async () => {
   assert.equal(second.details.result, 'device_busy'); assert.equal(calls, 1);
   release(); assert.equal((await first).isError, false);
 });
-test('revocation while consent is open prevents the write', async () => {
-  const tools = {}; let accepted = true; const calls = [];
-  registerSecurity({ registerTool(t) { tools[t.name] = t; } }, {
-    directory: () => '/unused', commissioned: async () => accepted,
-    run: async (_d, args) => { calls.push(args); return { code: 0, payload: args[1] === 'list' ? { result: 'read_succeeded', rules: [rule] } : { result: 'read_succeeded', rule, configuration } }; },
-  });
-  const r = await tools.operation_jarvis_automations.execute('test', { action: 'enable', name: rule.name }, undefined, undefined,
-    { cwd: '/unused', hasUI: true, ui: { async confirm() { accepted = false; return true; } } });
-  assert.equal(r.details.result, 'commissioning_required'); assert.equal(calls.length, 2);
-});
 test('errored or missing feature values cannot masquerade as observations', () => {
   const r = projectSecurity({ result: 'read_succeeded', features: { is_open: { status: 'unknown', value: false }, battery_low: {} } });
   assert.deepEqual(r.features.is_open, { value: null, status: 'unknown' });
@@ -166,17 +170,6 @@ test('projection retains unknown freshness and strips unexpected nested fields',
   const r = projectSecurity({ result: 'read_succeeded', model: 'T100', host: 'SECRET', name: 'SECRET', features: { motion_detected: { value: false, private: 'SECRET' }, password: { value: 'SECRET' } } });
   assert.equal(r.radio_freshness, 'unknown'); assert.equal(r.security_assessment, 'not_assessed');
   assert.equal(r.features.motion_detected.value, false); assert.doesNotMatch(JSON.stringify(r), /SECRET/);
-});
-test('commissioning marker fails closed on absence, malformed data, permissions and symlink', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'operation-commission-test-')); t.after(() => rm(dir, { recursive: true, force: true }));
-  await mkdir(join(dir, 'private-notes')); const path = join(dir, 'private-notes/pi-automation-commissioning.json');
-  assert.equal(await commissioned(dir, 'enable'), false);
-  await writeFile(path, 'not JSON', { mode: 0o600 }); assert.equal(await commissioned(dir, 'enable'), false);
-  await writeFile(path, JSON.stringify({ version: 1, accepted: ['enable'] }));
-  assert.equal(await commissioned(dir, 'enable'), true); assert.equal(await commissioned(dir, 'disable'), false);
-  await chmod(path, 0o644); assert.equal(await commissioned(dir, 'enable'), false);
-  await rm(path); const target = join(dir, 'target'); await writeFile(target, '{"version":1,"accepted":["enable"]}', { mode: 0o600 });
-  await symlink(target, path); assert.equal(await commissioned(dir, 'enable'), false);
 });
 async function launcher(t, source) {
   const dir = await mkdtemp(join(tmpdir(), 'operation-runner-test-')); t.after(() => rm(dir, { recursive: true, force: true }));

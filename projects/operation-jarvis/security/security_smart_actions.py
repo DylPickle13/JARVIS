@@ -47,6 +47,8 @@ def add_parser(sub):
     actions = p.add_subparsers(dest='smart_operation', required=True)
     for name in OPERATIONS:
         cmd = actions.add_parser(name)
+        if name == 'list':
+            cmd.add_argument('--reauthenticate', action='store_true', help='Explicit cloud sign-in; may trigger a TP-Link email')
         if name not in ('list', 'create'):
             cmd.add_argument('ref', help='Opaque reference from smart-actions list')
         if name in WRITES:
@@ -197,6 +199,9 @@ def snapshot(value, category):
 
 def validate_request(req):
     op = req.get('operation')
+    if 'reauthenticate' in req and (type(req['reauthenticate']) is not bool or
+            (req['reauthenticate'] and op != 'list')):
+        raise SmartError('reauthentication_requires_list')
     if op not in OPERATIONS:
         raise SmartError('unsupported_smart_operation')
     if op in WRITES and req.get('confirm') is not True:
@@ -327,7 +332,8 @@ class Cloud:
         result = parse_json(payload) if payload else {}
         if cloud_code(result) != 0:
             code = cloud_code(result)
-            reason = {-20601: 'cloud_authentication_failed', -20675: 'cloud_account_locked',
+            reason = {-20601: 'cloud_reauthentication_required', -20651: 'cloud_reauthentication_required',
+                      -20675: 'cloud_account_locked',
                       -20677: 'cloud_mfa_required'}.get(code, 'cloud_request_rejected')
             raise SmartError(reason)
         return result
@@ -349,6 +355,53 @@ class Cloud:
         if token:
             query['token'] = token
         return self.send('POST', 'https://n-wap-gw.tplinkcloud.com' + path + '?' + urllib.parse.urlencode(query), headers, body)
+
+    def session(self, username, password, reauthenticate=False):
+        """Called under the parent device lock. Never automatically retry login."""
+        STORAGE.mkdir(mode=0o700, exist_ok=True)
+        info = STORAGE.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise SmartError('private_storage_permissions')
+        identity = STORAGE / 'terminal.json'
+        try:
+            terminal = parse_json(private_read(identity, 4096))
+            self.term = str(uuid.UUID(terminal['terminal']))
+        except FileNotFoundError:
+            self.term = str(uuid.uuid4())
+            self.save_session_file(identity, {'terminal': self.term})
+        account = hashlib.sha256(username.strip().lower().encode()).hexdigest()
+        path = STORAGE / 'session.json'
+        if reauthenticate:
+            # Invalidate the old session before attempting an explicit login.
+            self.save_session_file(path, {'version': 1, 'reauthentication_required': True})
+            self.login(username, password)
+            self.save_session_file(path, {'version': 1, 'account': account,
+                'terminal': self.term, 'token': self.token, 'endpoint': self.endpoint})
+            return
+        try:
+            cached = parse_json(private_read(path, 16384))
+        except FileNotFoundError:
+            raise SmartError('cloud_reauthentication_required') from None
+        if (cached.get('version') != 1 or cached.get('account') != account or
+                cached.get('terminal') != self.term or not isinstance(cached.get('token'), str) or
+                not cached['token'] or len(cached['token']) > 8192):
+            raise SmartError('cloud_reauthentication_required')
+        self.endpoint = self.base(cached['endpoint'], 'tplinknbu.com')
+        self.token = cached['token']
+
+    @staticmethod
+    def save_session_file(path, value):
+        # Atomic owner-only replacement; no token-bearing temporary files left behind.
+        tmp = path.with_name('.session-' + uuid.uuid4().hex)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                f.write(canonical(value))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
     def login(self, username, password):
         r = self.rpc('/api/v2/account/login', {'appType': APP, 'appVersion': '3.4.451',
@@ -450,7 +503,7 @@ def run(req, cloud):
 def execute_smart_actions(args, adapter=None):
     adapter = adapter or cli
     req = {'operation': args.smart_operation}
-    for name in ('confirm', 'ref', 'revision', 'name', 'allow_active', 'allow_actions'):
+    for name in ('confirm', 'ref', 'revision', 'name', 'allow_active', 'allow_actions', 'reauthenticate'):
         if hasattr(args, name):
             req[name] = getattr(args, name)
     try:
@@ -500,7 +553,7 @@ def worker():
         req = parse_json(data)
         validate_request(req)
         cloud = Cloud()
-        cloud.login(req.pop('username'), req.pop('password'))
+        cloud.session(req.pop('username'), req.pop('password'), req.get('reauthenticate', False))
         result = run(req, cloud)
     except SmartError as exc:
         result = {'result': 'error', 'reason': str(exc)}

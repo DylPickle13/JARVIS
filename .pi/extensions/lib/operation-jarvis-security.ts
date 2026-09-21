@@ -1,6 +1,4 @@
 import { spawn } from "node:child_process";
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
 import { join } from "node:path";
 
 export type SecurityResult = { code: number; payload: any };
@@ -44,19 +42,6 @@ export const runSecurity: SecurityRunner = (dir, args, signal) => new Promise((r
     } catch { reject(new Error("security_invalid_output")); }
   });
 });
-
-export async function commissioned(dir: string, action: string): Promise<boolean> {
-  let file;
-  try {
-    file = await open(join(dir, "private-notes", "pi-automation-commissioning.json"), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    const stat = await file.stat();
-    if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0 || stat.size > 4096) return false;
-    const value = JSON.parse(await file.readFile("utf8"));
-    return value.version === 1 && Array.isArray(value.accepted) && value.accepted.includes(action)
-      && value.accepted.every((x: unknown) => x === "enable" || x === "disable");
-  } catch { return false; }
-  finally { await file?.close(); }
-}
 
 const MODELS = new Set(["H200", "C230", "D235", "T100", "T110"]);
 const RESULTS = new Set(["configured", "read_succeeded", "unchanged", "write_verified", "write_outcome_unknown", "error", "cancelled"]);

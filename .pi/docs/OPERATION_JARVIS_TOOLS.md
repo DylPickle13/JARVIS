@@ -69,37 +69,17 @@ an owner-authorized recovery read, never an automatic retry or write bypass.
 - Full rule CRUD, shortcut execution, chime/alarm actions, camera media, recording
   changes and archive downloads are deliberately not exposed by these tools.
 
-## Automation changes: implemented, not commissioned
+## Automation changes
 
 Enable/disable performs a fresh list, unique case-insensitive exact-name match,
 and a fresh description with matching revision. Ambiguity or concurrent edits
 fail closed. Already-desired state is a read-only no-op.
 
-Actual changes are **disabled by default**. A separately owner-approved
-commissioning procedure must first use a disposable rule to validate enable and
-disable through the existing CLI, verify unchanged peers/readback and assess
-physical effects. Do not commission by activating an existing household alarm
-rule. Do not create/delete test rules or trigger devices without explicit approval.
-
-Only after that acceptance should the owner record the accepted operations in
-this ignored, owner-owned regular mode-0600 file:
-
-```text
-projects/operation-jarvis/security/private-notes/pi-automation-commissioning.json
-```
-
-Its format is `{"version":1,"accepted":["enable","disable"]}`. Only list the
-operations actually accepted. The extension never creates or modifies this gate;
-missing, malformed, broad-permission or symlinked files fail closed. Removing an
-operation revokes it. This is an installation safety gate, not authentication
-against processes already able to edit the project or invoke the CLI.
-
-A commissioned change still requires a **user confirmation dialog** in TUI or a
-supporting RPC client. Headless print/JSON sessions cannot approve it. The dialog
-shows the current configuration and warns that enabling can cause immediate or
-later actions; disabling does not stop an already sounding alarm. The CLI then
-checks the exact revision again, saves private backups, sends at most one mutation
-and verifies readback. This is not a server-atomic conditional write: avoid
+Changes are live in both interactive and headless sessions (owner approval,
+2026-09-20; the former commissioning gate was removed). Enabling can cause
+immediate or later actions; disabling does not stop an already sounding alarm.
+The CLI checks the exact revision again, saves private backups, sends at most one
+mutation and verifies readback. This is not a server-atomic conditional write: avoid
 simultaneous app edits. Timeout/cancel/malformed reply after invocation is an
 unknown outcome, not permission to retry or roll back. Inspect current state and
 private recovery backups before further action.
@@ -149,7 +129,7 @@ physical acceptance test. No service configuration is changed.
 
 2026-09-20 verification:
 - 57 Node tests passed, including SDK/deferred loading, renamed group, fixed argv,
-  confirmation/commissioning gates, stale revisions, privacy, uncertainty, output
+  stale revisions, privacy, uncertainty, output
   limits and process-group cancellation.
 - 171 security CLI/Smart Actions Python tests passed.
 - Qwen3.6-35B-A3B-4bit: final 16/16 discovery/action/boundary checks passed,

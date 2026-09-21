@@ -34,8 +34,8 @@ Cloud account configuration and raw rule exports/backups remain private; tokens
 are session-only. Local device commands remain local. The optional
 [Operation JARVIS Pi suite](../../../.pi/docs/OPERATION_JARVIS_TOOLS.md) exposes
 read-only devices/status/capabilities and cloud list/describe. Automation
-enable/disable is implemented but blocked until separately commissioned; the
-extension never activates that gate itself.
+enable/disable is live-accepted (owner approval 2026-09-20); the extension
+checks the exact revision again and verifies readback.
 
 ## Local setup
 

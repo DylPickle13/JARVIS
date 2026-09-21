@@ -78,7 +78,7 @@ Memory is explicit: loading `memory` makes search, remember, update, forget, lis
 
 Prior Pi/JARVIS sessions are searched directly with baseline coding tools. The project-specific JSONL directory and raw-search workflow belong in ignored `.pi/APPEND_SYSTEM.md`; use `rg -l` to shortlist files, then parse/read only the relevant records.
 
-The `operation_jarvis` group is the household-control suite, distinct from Pi coding, Minecraft, and cron jobs. Focused schemas retain short purpose/parameter descriptions even after provider slimming. No domain playbook is injected into the baseline system prompt. See [Operation JARVIS tools](OPERATION_JARVIS_TOOLS.md) for migration, examples and security commissioning. Existing sessions need an owner-controlled `/reload` or a new session; do not reset or restart live services.
+The `operation_jarvis` group is the household-control suite, distinct from Pi coding, Minecraft, and cron jobs. Focused schemas retain short purpose/parameter descriptions even after provider slimming. No domain playbook is injected into the baseline system prompt. See [Operation JARVIS tools](OPERATION_JARVIS_TOOLS.md) for migration and examples. Existing sessions need an owner-controlled `/reload` or a new session; do not reset or restart live services.
 
 Minecraft bot chat/control and authenticated GitHub CLI access are intentionally lazy: discover their schemas by loading `minecraft_jarvis` or `github`. Known valid direct calls also auto-load on the JARVIS runtime. Ordinary local `git` operations continue to use the baseline coding shell.
 
