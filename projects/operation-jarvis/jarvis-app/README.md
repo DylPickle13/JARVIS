@@ -2,6 +2,14 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
+**Source candidate (not yet deployed):** oMLX cards use fixed host/status,
+short model, generation t/s, and whole-Mac RAM columns with the same heading,
+two rows, padding, and wrapper dimensions. No rotating pages or scrolling text.
+Full model names remain available to VoiceOver; ambiguous concurrent work shows
+`Multi` with no combined speed. RAM is independently tracked by jarvisd and never
+substituted with oMLX memory; stale/missing readings show `—`. The update dot is
+unchanged. See [backend memory telemetry](../jarvisd/README.md#whole-mac-ram-telemetry-source-only-not-yet-deployed).
+
 **Current installed build:** 205 on both iPhone and Watch, with installation and
 launch independently verified on 2026-09-20 EDT. Build 205 adds automatic oMLX detail
 pages, full-name overflow scrolling, and a green dot immediately right of the

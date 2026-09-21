@@ -27,6 +27,15 @@ def model(**extra):
 class OMLXTests(unittest.TestCase):
     def setUp(self):
         # Never launch production release-check workers from a unit test.
+        self.memory_coordinator = jarvisd.HOST_MEMORY_COORDINATOR
+        memory_patch = mock.patch.object(jarvisd, "HOST_MEMORY_COORDINATOR")
+        self.memories = memory_patch.start()
+        self.addCleanup(memory_patch.stop)
+        self.memories.snapshot.return_value = {
+            "subsystems": {s: {"ok": False} for s in jarvisd.OMLX_SERVER_IDS},
+            "subsystemsMeta": {s: {"ageSeconds": None, "stale": True, "error": None}
+                               for s in jarvisd.OMLX_SERVER_IDS},
+        }
         self.update_coordinator = jarvisd.OMLX_UPDATE_COORDINATOR
         patch = mock.patch.object(jarvisd, "OMLX_UPDATE_COORDINATOR")
         self.updates = patch.start()
@@ -36,6 +45,26 @@ class OMLXTests(unittest.TestCase):
             "subsystemsMeta": {s: {"ageSeconds": None, "stale": True, "error": None}
                                for s in jarvisd.OMLX_SERVER_IDS},
         }
+
+    def test_host_memory_is_independent_and_failures_hide_last_good_readings(self):
+        ids = jarvisd.OMLX_SERVER_IDS
+        coordinator = self.coordinator({s: lambda: {} for s in ids})
+        coordinator.start = lambda: None
+        sample = self.memories.snapshot.return_value
+        sample["subsystems"][ids[0]] = {"ok": True, "usedBytes": 1024, "totalBytes": 2048}
+        sample["subsystemsMeta"][ids[0]] = {"ageSeconds": 12, "stale": False, "error": None}
+        with mock.patch.object(jarvisd, "OMLX_COORDINATOR", coordinator):
+            result = jarvisd.collect_omlx()["servers"]
+            self.assertTrue(result[0]["stale"])  # No inference sample needed for host RAM.
+            self.assertFalse(result[0]["hostMemory"]["stale"])
+            self.assertEqual(result[0]["hostMemory"]["ageSeconds"], 12)
+            self.assertTrue(result[1]["hostMemory"]["stale"])
+            sample["subsystemsMeta"][ids[0]]["error"] = "Read failed"
+            self.assertTrue(jarvisd.collect_omlx()["servers"][0]["hostMemory"]["stale"])
+        for server in ids:
+            self.assertEqual(self.memory_coordinator.intervals[server], 10)
+            self.assertEqual(self.memory_coordinator.idle_intervals[server], 60)
+            self.assertEqual(self.memory_coordinator.freshness_limits[server], 30)
 
     def test_update_parser_requires_explicit_boolean_and_version_and_sanitizes(self):
         self.assertEqual(jarvisd._omlx_update({"update_available": True,

@@ -11,6 +11,25 @@ public struct OMLXServerSummary: Equatable, Identifiable, Sendable {
     public let fresh: Bool
     public let details: OMLXCardDetails?
     public let updateAvailable: Bool
+    public let hostMemoryUsedBytes: Double?
+    public let hostMemoryTotalBytes: Double?
+
+    public var compactServerLabel: String { id == "mac-mini-64" ? "64G" : "16G" }
+    public var modelLabel: String { details?.modelLabel ?? status }
+    public var speedText: String { details?.speedText ?? "—" }
+    /// G is the compact GiB unit used alongside 64G/16G host capacity labels.
+    public var hostMemoryText: String {
+        hostMemoryUsedBytes.map { ($0 / 1_073_741_824).formatted(.number.precision(.fractionLength(0))) + "G" } ?? "—"
+    }
+    public var cardAccessibilityValue: String {
+        let activity = details.map { status + ". " + $0.accessibilityValue } ?? accessibilityValue
+        guard let used = hostMemoryUsedBytes, let total = hostMemoryTotalBytes else {
+            return activity + ". Mac memory unavailable."
+        }
+        let usedText = (used / 1_073_741_824).formatted(.number.precision(.fractionLength(1)))
+        let totalText = (total / 1_073_741_824).formatted(.number.precision(.fractionLength(0)))
+        return activity + ". Whole Mac memory used \(usedText) of \(totalText) gibibytes, excluding reclaimable file cache."
+    }
 
     public var hasActiveWork: Bool { fresh && [.generating, .prefill, .processing].contains(phase) }
     public var breathesStatus: Bool { hasActiveWork || (fresh && phase == .loading) }
@@ -30,6 +49,10 @@ public struct OMLXServerSummary: Equatable, Identifiable, Sendable {
         phase = fresh ? (server?.phase ?? .unknown) : .unknown
         details = fresh ? server.map { OMLXCardDetails(server: $0) } : nil
         updateAvailable = fresh && server?.update?.isAvailable(requestStartedAt: requestStartedAt, now: now) == true
+        let memory = available && server?.hostMemory?.isFresh(requestStartedAt: requestStartedAt, now: now) == true
+            ? server?.hostMemory : nil
+        hostMemoryUsedBytes = memory?.usedBytes
+        hostMemoryTotalBytes = memory?.totalBytes
         guard fresh, let server else {
             status = checking ? "Checking" : (server?.lastSuccessAt != nil ? "Stale" : "Unavailable")
             metric = nil

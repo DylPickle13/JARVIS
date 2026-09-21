@@ -32,6 +32,33 @@ The iPhone/Watch title dot requires fresh activity and a successful, non-stale
 update result no older than two hours. Missing/unsupported checks show no dot.
 Release checks do not block or change the existing activity polling cadence.
 
+## Whole-Mac RAM telemetry (source-only; not yet deployed)
+
+`GET /api/v1/omlx` adds optional per-server `hostMemory`: `ok`, `usedBytes`,
+`totalBytes`, `definition`, `ageSeconds`, and `stale` (a sanitized `error` on cold
+failure). This is backend-owned host telemetry, never oMLX process/model memory.
+`jarvisd_core/host_memory.py` reads `sysctl hw.memsize` and `vm_stat` locally for
+`mac-mini-64`, and through the existing trusted SSH alias `mac-mini-16` for that
+host. The daemon account must already have noninteractive SSH access and a known
+host key; the collector never provisions credentials or accepts new keys.
+
+Independent single-flight workers sample every 10 seconds while the oMLX card is
+visible and every 60 seconds while idle after the first request. Reads have a
+four-second deadline, a 16 KiB output cap, no login prompts, and no retries.
+A 30-second freshness limit and immediate failure invalidation apply independently
+of oMLX activity/release checks. API polls only read cached snapshots; they do not
+wait for SSH, and client code never collects host metrics itself.
+
+Memory used is `(anonymous - purgeable + wired + physical compressor) * pageSize`.
+This follows macOS's app/wired/compressed categories, excludes reclaimable
+file-backed cache, and does not double-count logical compressed pages or swap.
+It is not `total - free` or `total - available`; independent samples can differ
+from Activity Monitor's live display. The wire definition is
+`macos-nonpurgeable-anonymous-wired-compressed`. Missing/inconsistent counters
+fail closed. The static card shows rounded GiB as `38G`; VoiceOver gives one
+decimal and total capacity. Old backends and stale host reads show `—`, with no
+fallback to the existing oMLX-only `memoryUsedBytes` field.
+
 ## Current responsibilities
 
 - Cached state with per-subsystem freshness and last-good observations.

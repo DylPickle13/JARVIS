@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from jarvisd_core import auth, commands, security_status
+from jarvisd_core.host_memory import collect_host_memory
 from jarvisd_core.config import _find_ancestor, _load_env_file, _resolve_jarvis_root
 from jarvisd_core.commands import COMMANDS, CommandError, PURIFIER_MODES, PURIFIER_SPEEDS
 from jarvisd_core.diagnostics import _safe_error
@@ -1457,6 +1458,7 @@ OMLX_MAX_BODY = 256 * 1024
 OMLX_FRESH_SECONDS = 6.0
 OMLX_UPDATE_INTERVAL = 3600.0
 OMLX_UPDATE_FRESH_SECONDS = 7200.0
+HOST_MEMORY_FRESH_SECONDS = 30.0
 
 
 def _omlx_number(value: Any, *, integer: bool = False) -> int | float | None:
@@ -1669,22 +1671,38 @@ OMLX_UPDATE_COORDINATOR = StateCoordinator(
 )
 
 
+# Host telemetry has its own workers, age and lease. It does not depend on
+# oMLX being healthy and cannot delay inference activity or release checks.
+HOST_MEMORY_COORDINATOR = StateCoordinator(
+    collectors={server: (lambda server=server: collect_host_memory(server)) for server in OMLX_SERVER_IDS},
+    intervals={server: 10.0 for server in OMLX_SERVER_IDS},
+    idle_intervals={server: 60.0 for server in OMLX_SERVER_IDS},
+    freshness_limits={server: HOST_MEMORY_FRESH_SECONDS for server in OMLX_SERVER_IDS},
+    active_lease_seconds=6.0,
+)
+
+
 def collect_omlx() -> dict:
     # A distinct lease: Watch/state/widget traffic cannot enable fast oMLX
     # collection. Cold reads return immediately, then independent workers fill
     # each server's last-good cache. Polling never waits for an upstream read.
     snapshot = OMLX_COORDINATOR.snapshot(client_active=True)
     updates = OMLX_UPDATE_COORDINATOR.snapshot(client_active=True)
+    memories = HOST_MEMORY_COORDINATOR.snapshot(client_active=True)
     servers = []
     for server_id in OMLX_SERVER_IDS:
         data = snapshot["subsystems"][server_id]
         meta = snapshot["subsystemsMeta"][server_id]
         update = updates["subsystems"][server_id]
         update_meta = updates["subsystemsMeta"][server_id]
+        memory = memories["subsystems"][server_id]
+        memory_meta = memories["subsystemsMeta"][server_id]
         servers.append({
             **data, "id": server_id, "ageSeconds": meta["ageSeconds"],
             "update": {**update, "ageSeconds": update_meta["ageSeconds"],
                        "stale": update_meta["stale"] or update_meta["error"] is not None},
+            "hostMemory": {**memory, "ageSeconds": memory_meta["ageSeconds"],
+                           "stale": memory_meta["stale"] or memory_meta["error"] is not None},
             "lastSuccessAt": meta["updatedAt"],
             # Unlike control grace periods, a failed activity probe must not
             # keep last-known generation looking live even for six seconds.
@@ -2374,6 +2392,7 @@ def main(*, control_factory=None, local_control=False) -> int:
             STATE_COORDINATOR.stop()
             OMLX_COORDINATOR.stop()
             OMLX_UPDATE_COORDINATOR.stop()
+            HOST_MEMORY_COORDINATOR.stop()
             if log_writer is not None:
                 log_writer.flush()
     return 0

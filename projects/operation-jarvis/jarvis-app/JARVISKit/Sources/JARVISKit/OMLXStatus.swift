@@ -50,6 +50,7 @@ public struct OMLXServerStatus: Decodable, Equatable, Identifiable, Sendable {
     public let memoryKind: String?
     public let memoryPressure: String?
     public let update: OMLXUpdateStatus?
+    public let hostMemory: HostMemoryStatus?
 
     /// Add elapsed client time to the *source* age, not the age of the last
     /// successful HTTP poll. requestStartedAt also conservatively counts RTT.
@@ -72,6 +73,28 @@ public struct OMLXServerStatus: Decodable, Equatable, Identifiable, Sendable {
         let phases = Set(models.map { $0.phase }.filter { $0 != .ready })
         if phases.count > 1 { return .processing }
         return phases.first ?? .ready
+    }
+}
+
+/// Whole-Mac memory is independently collected by jarvisd, not oMLX.
+/// Older backends omit it; never substitute process/model memory.
+public struct HostMemoryStatus: Decodable, Equatable, Sendable {
+    public let ok: Bool?
+    public let usedBytes: Double?
+    public let totalBytes: Double?
+    public let definition: String?
+    public let stale: Bool?
+    public let ageSeconds: Double?
+
+    public func isFresh(requestStartedAt: Date?, now: Date) -> Bool {
+        guard ok == true, stale == false,
+              definition == "macos-nonpurgeable-anonymous-wired-compressed",
+              let usedBytes, usedBytes.isFinite, usedBytes >= 0,
+              let totalBytes, totalBytes.isFinite, totalBytes > 0, totalBytes <= 9_007_199_254_740_992,
+              usedBytes <= totalBytes,
+              let ageSeconds, ageSeconds.isFinite, ageSeconds >= 0,
+              let requestStartedAt else { return false }
+        return ageSeconds + max(0, now.timeIntervalSince(requestStartedAt)) <= 30
     }
 }
 
