@@ -9,6 +9,8 @@ import shlex
 import subprocess
 import time
 
+from health import HealthMonitor, UNKNOWN
+
 ROOT = Path(__file__).resolve().parent
 SOCKET = 'pi-desk'
 HOST = 'mac-mini-64'
@@ -33,6 +35,8 @@ class StatusFeed:
         self.received = 0
         self.retry_at = 0
         self.started = 0
+        self.connection = 'Connecting to Mac…'
+        self.failed = False
 
     def close(self):
         if self.process:
@@ -50,6 +54,8 @@ class StatusFeed:
 
     def fail(self):
         self.close()
+        self.failed = True
+        self.connection = 'SSH disconnected · Retrying in 3s'
         self.retry_at = time.monotonic() + 3
 
     def poll(self):
@@ -63,6 +69,7 @@ class StatusFeed:
                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL)
                 self.started = now
+                self.connection = 'Reconnecting to Mac…' if self.failed else 'Connecting to Mac…'
             except OSError:
                 self.fail()
         if self.process:
@@ -79,10 +86,18 @@ class StatusFeed:
                         while b'\n' in self.buffer:
                             line, self.buffer = self.buffer.split(b'\n', 1)
                             try:
-                                self.states = valid_states(json.loads(line))
+                                payload = json.loads(line)
+                                if not isinstance(payload, dict):
+                                    raise ValueError('Expected status object')
+                                self.states = valid_states(payload)
                                 self.received = now
+                                self.failed = False
+                                available = any(state != 'unknown' for state in self.states.values())
+                                self.connection = ('Mac connected · Session status live' if available else
+                                                   'Mac connected · Session status unavailable')
                             except (ValueError, TypeError):
                                 self.states = {}
+                                self.connection = 'Mac connected · Invalid status data'
         # Restart a hung stream, not merely its displayed status.
         if self.process and now - (self.received or self.started) > STALE_AFTER:
             self.fail()
@@ -151,7 +166,7 @@ def open_workspace(key):
                            *command], check=False).returncode
 
 
-def paint(screen, states, error=''):
+def paint(screen, states, error='', connection='Connecting to Mac…', health=UNKNOWN):
     screen.erase()
     rows, cols = screen.getmaxyx()
     def text(y, x, value, color=0):
@@ -162,17 +177,24 @@ def paint(screen, states, error=''):
         except curses.error:
             pass
     if cols < 57 or rows < 25:
-        text(1, 2, 'PI DESK', curses.A_BOLD)
-        text(3, 2, '1: 1–3   2: 4–6   3: 7–9   4: 10')
-        text(5, 2, 's: Shell  q: Quit  F12: Back from sessions')
+        text(0, 2, 'PI DESK', curses.A_BOLD)
+        text(1, 2, connection, curses.color_pair(4))
+        text(2, 2, health[0], curses.A_DIM)
+        text(3, 2, health[1], curses.A_DIM)
+        text(5, 2, '1: 1–3   2: 4–6   3: 7–9   4: 10')
+        text(6, 2, 's: Shell  q: Quit  F12: Back from sessions')
         for n in range(1, 11):
             text(7+n, 2, f'{n:2}: {states.get(str(n), "unknown").title()}')
+        text(19, 2, error, curses.color_pair(1))
+        screen.refresh()
         return
     width = min(23, (cols-12)//3)
     left = max(1, (cols-(width*3+9))//2)
     text(0, left, 'P I  D E S K', curses.color_pair(4) | curses.A_BOLD)
-    text(1, left, 'Live Pi sessions · Mac mini', curses.A_DIM)
-    y = 3
+    text(1, left, connection, curses.color_pair(4))
+    text(2, left, health[0], curses.A_DIM)
+    text(3, left, health[1], curses.A_DIM)
+    y = 5
     for key, numbers in GROUPS.items():
         text(y+1, left, f'[{key}]', curses.color_pair(4))
         for col, number in enumerate(numbers):
@@ -183,7 +205,7 @@ def paint(screen, states, error=''):
             text(y+1, x, '│'+f'  {number}'.ljust(width-2)+'│', color | curses.A_BOLD)
             text(y+2, x, '│'+('  ● '+state.title()).ljust(width-2)+'│', color)
             text(y+3, x, '╰'+'─'*(width-2)+'╯', color)
-        y += 5 if rows >= 27 else 4
+        y += 5 if rows >= 29 else 4
     text(y, left, '1–3 Open row   4 Session 10   s Shell   q Quit', curses.A_DIM)
     text(y+1, left, error or 'F12 Return to grid · Auto-reconnect enabled',
          curses.color_pair(1) if error else curses.A_DIM)
@@ -198,14 +220,16 @@ def main(screen):
         curses.init_pair(i, color if curses.COLORS >= 256 else i % 7 + 1, -1)
     screen.timeout(250)
     feed = StatusFeed()
+    monitor = HealthMonitor(HOST)
     error = ''
     previous = None
     try:
         while True:
             states = feed.poll()
-            signature = (tuple(sorted(states.items())), screen.getmaxyx(), error)
+            health = monitor.poll()
+            signature = (tuple(sorted(states.items())), screen.getmaxyx(), error, feed.connection, health)
             if signature != previous:
-                paint(screen, states, error)
+                paint(screen, states, error, feed.connection, health)
                 previous = signature
             key = screen.getch()
             if key in (ord('q'), ord('Q')):

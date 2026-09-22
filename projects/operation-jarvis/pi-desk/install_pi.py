@@ -38,7 +38,7 @@ def install():
     if unit.is_file():
         shutil.copy2(unit, backup / 'pi-desk.service')
     APP.mkdir(parents=True, exist_ok=True)
-    for name in ('terminal.py', 'connect.sh', 'launch.sh', 'status_stream.py', 'install_pi.py'):
+    for name in ('terminal.py', 'health.py', 'connect.sh', 'launch.sh', 'status_stream.py', 'install_pi.py'):
         shutil.copy2(SOURCE / name, APP / name)
         (APP / name).chmod(0o700)
     shutil.copytree(SOURCE / 'config', APP / 'config', dirs_exist_ok=True)

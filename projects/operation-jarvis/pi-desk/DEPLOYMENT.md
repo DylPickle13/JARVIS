@@ -54,6 +54,25 @@ F12 returned to the grid. Presence, audio proxy, Bluetooth and SSH recovered;
 the backend reported fresh presence data from both zones. Wi-Fi power saving
 remained off. No failed system or user units. Left the display at the menu.
 
+## Connection feedback and health strip — 2026-09-22, 11:30 EDT
+
+Added explicit SSH connection/retry and backend-data availability messages, plus
+Wi-Fi association signal, Mac ping latency, CPU temperature and presence-service
+active state. Read-only checks run off the UI thread every 10 seconds, with
+bounded command timeouts and 25-second reading expiry. No radio scans or
+household actions. Service state is explicitly not sensor freshness or occupancy.
+
+- **21 tests passed on Mac and Pi**, including message transitions, watchdog,
+  missing commands/data, ping failure, timeouts, single-worker bounds, expired
+  readings, worker failure, and the grid layout with its new health strip.
+- Live diagnostic stream went from connected → SSH disconnected/retry → connected
+  after terminating only its own diagnostic SSH client.
+- Live health sampling returned Wi-Fi signal, ping latency, temperature and active
+  presence service. Group 1 opened with three live panes; F12 returned to the menu.
+- Pi Desk remains boot-enabled, active, with zero restarts; presence and audio
+  proxy services remained active throughout this display-only update.
+- Pre-update Pi rollback: `~/.local/state/pi-desk/backups/20260922T153003Z/`.
+
 ## Still untested deliberately
 
 - Prolonged Wi-Fi loss, Mac reboot, and TV hotplug. Retry behaviour is tested

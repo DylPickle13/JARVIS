@@ -1,4 +1,6 @@
 import datetime as dt
+import os
+import health
 import shutil
 import subprocess
 import time
@@ -97,6 +99,95 @@ class PaneRecoveryTests(unittest.TestCase):
     def test_tenth_solo(self):
         terminal.ensure_group('4')
         self.assertEqual(self.tags('group-4:0'), ['10'])
+
+
+class FeedbackTests(unittest.TestCase):
+    def test_stream_feedback_and_watchdog(self):
+        read_fd, write_fd = os.pipe()
+        process = mock.Mock(stdout=os.fdopen(read_fd, 'rb'))
+        feed = terminal.StatusFeed()
+        try:
+            with mock.patch.object(terminal.subprocess, 'Popen', return_value=process), \
+                 mock.patch.object(terminal.time, 'monotonic', return_value=100) as clock:
+                feed.poll()
+                self.assertEqual(feed.connection, 'Connecting to Mac…')
+                os.write(write_fd, b'{}\n')
+                feed.poll()
+                self.assertIn('connected · Session status unavailable', feed.connection)
+                os.write(write_fd, b'{"1":"running"}\n')
+                self.assertEqual(feed.poll(), {'1': 'running'})
+                self.assertIn('status live', feed.connection)
+                os.write(write_fd, b'[]\n')
+                self.assertEqual(feed.poll(), {})
+                self.assertIn('Invalid status', feed.connection)
+                clock.return_value = 113
+                feed.poll()
+                self.assertIn('SSH disconnected', feed.connection)
+        finally:
+            feed.close()
+            os.close(write_fd)
+
+    def test_health_values(self):
+        with mock.patch.object(health, 'output', side_effect=[
+                'signal: -49 dBm', 'hostname 192.0.2.1\n',
+                '64 bytes time=12.5 ms', 'active\n']) as run, \
+             mock.patch.object(health.Path, 'read_text', return_value='56400'):
+            lines = health.collect('mac-mini-64')
+        self.assertEqual(lines, ('Wi-Fi -49 dBm | Mac ping 12.5 ms | Pi 56°C',
+                                 'Presence service: active'))
+        self.assertEqual(run.call_args_list[2].args[0][-1], '192.0.2.1')
+
+    def test_health_missing_tools_and_temperature(self):
+        with mock.patch.object(health, 'output', return_value=''), \
+             mock.patch.object(health.Path, 'read_text', side_effect=OSError):
+            self.assertEqual(health.collect('mac-mini-64'), health.UNKNOWN)
+
+    def test_ping_failure_does_not_claim_mac_offline(self):
+        with mock.patch.object(health, 'output', side_effect=[
+                'Not connected.', 'hostname 192.0.2.1\n', '', 'failed']), \
+             mock.patch.object(health.Path, 'read_text', return_value='bad'):
+            lines = health.collect('mac-mini-64')
+        self.assertIn('Wi-Fi disconnected', lines[0])
+        self.assertIn('Mac ping no reply', lines[0])
+        self.assertEqual(lines[1], 'Presence service: failed')
+
+    def test_command_timeout_is_unknown(self):
+        with mock.patch.object(health.subprocess, 'run', side_effect=subprocess.TimeoutExpired('test', 2)):
+            self.assertEqual(health.output(['test']), '')
+
+    def test_background_single_worker_and_expiry(self):
+        monitor = health.HealthMonitor('mac-mini-64')
+        with mock.patch.object(health.threading, 'Thread') as worker, \
+             mock.patch.object(health.time, 'monotonic', return_value=100) as clock:
+            self.assertEqual(monitor.poll(), health.UNKNOWN)
+            monitor.poll()
+            worker.assert_called_once()
+            self.assertTrue(worker.call_args.kwargs['daemon'])
+            monitor.lines = ('old reading', 'old status')
+            monitor.updated = 100
+            self.assertEqual(monitor.poll(), monitor.lines)
+            clock.return_value = 126
+            self.assertEqual(monitor.poll(), health.UNKNOWN)
+            worker.assert_called_once()  # A hung worker must not spawn more workers.
+
+    def test_worker_exception_is_unknown(self):
+        monitor = health.HealthMonitor('mac-mini-64')
+        monitor.busy = True
+        with mock.patch.object(health, 'collect', side_effect=RuntimeError):
+            monitor.sample()
+        self.assertFalse(monitor.busy)
+        self.assertEqual(monitor.lines, health.UNKNOWN)
+
+    def test_grid_fits_with_health_strip(self):
+        screen = mock.Mock()
+        screen.getmaxyx.return_value = (25, 96)
+        with mock.patch.object(terminal.curses, 'color_pair', return_value=0):
+            terminal.paint(screen, {}, connection='Connection test', health=('Health one', 'Health two'))
+        calls = [call.args for call in screen.addnstr.call_args_list]
+        self.assertTrue(any(row[0] == 1 and row[2] == 'Connection test' for row in calls))
+        self.assertTrue(any(row[0] == 3 and row[2] == 'Health two' for row in calls))
+        self.assertTrue(any(row[2] == '[4]' for row in calls))
+        self.assertTrue(all(0 <= row[0] < 25 for row in calls))
 
 
 if __name__ == '__main__':

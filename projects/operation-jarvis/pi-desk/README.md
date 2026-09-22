@@ -36,6 +36,7 @@ Manual start on the Pi:
 ## Architecture and recovery
 
 - `terminal.py`: card-grid UI, status stream management, workspace reconciliation.
+- `health.py`: asynchronous, read-only local health strip; no UI-blocking checks.
 - `connect.sh`: one reconnecting SSH client per local pane. Retries after three
   seconds; 5-second keepalives, two missed replies, 5-second connection timeout.
 - `status_stream.py`: Mac-side read-only projection of the **same jarvisd Pi
@@ -60,6 +61,21 @@ New = cyan, Compacting = blue, Offline = grey, Unknown = amber. Collector sample
 older than 15 seconds, backend errors and disconnected feeds become **Unknown**,
 never a fabricated Idle/Offline. The UI expires its stream after 12 seconds and
 reconnects failed streams automatically. It pauses polling while a workspace is open.
+
+The connection banner distinguishes **Connecting**, **SSH disconnected / Retrying**,
+**Reconnecting**, **Mac connected / Session status live**, and **Mac connected /
+Session status unavailable**. A working SSH feed with missing backend data is not
+misreported as a Mac outage. SSH failure can mean network, authentication, or
+remote-helper trouble; it does not prove the Mac is powered off.
+
+The read-only health strip refreshes every **10 seconds while the menu is open**:
+Wi-Fi association signal (`wlan0`, dBm), one Mac ICMP ping, Pi CPU temperature,
+and the local presence unit's active state. Checks run in a single background
+worker with 2-second command timeouts. Readings expire after 25 seconds; missing
+tools/data show `--` or `unknown`. Ping `no reply` is not proof of an offline Mac.
+**Presence service: active** means the process is running—not fresh sensor data
+or anyone's location. No Bluetooth/Wi-Fi scans, credentials, privileged commands,
+new listeners, or persistent health logs are involved.
 
 ## Installation / restore from source
 
