@@ -101,6 +101,42 @@ class PaneRecoveryTests(unittest.TestCase):
         self.assertEqual(self.tags('group-4:0'), ['10'])
 
 
+class SelectionTests(unittest.TestCase):
+    def test_each_session_requires_enter(self):
+        for number in range(1, 11):
+            choice = terminal.SessionChoice()
+            for digit in str(number):
+                self.assertIsNone(choice.press(ord(digit)))
+            self.assertEqual(choice.press(10), str(number))
+            self.assertEqual(choice.value, '')
+
+    def test_edit_cancel_invalid(self):
+        choice = terminal.SessionChoice()
+        choice.press(ord('1'))
+        choice.press(ord('0'))
+        choice.press(127)
+        self.assertEqual(choice.value, '1')
+        choice.press(27)
+        self.assertEqual(choice.value, '')
+        for value in ('', '0', '11', '100', '01'):
+            for digit in value:
+                choice.press(ord(digit))
+            self.assertIsNone(choice.press(10))
+            self.assertTrue(choice.error)
+        self.assertEqual(choice.press(ord('s')), 's')
+
+    def test_group_and_focus_for_all_sessions(self):
+        for number in range(1, 11):
+            group, index = terminal.session_group(number)
+            self.assertEqual(terminal.GROUPS[group][index], number)
+            with mock.patch.object(terminal, 'ensure_group', return_value='group-'+group) as ensure, \
+                 mock.patch.object(terminal, 'tmux') as mux, \
+                 mock.patch.object(terminal.subprocess, 'run'):
+                terminal.open_workspace(str(number))
+                ensure.assert_called_once_with(group)
+                mux.assert_called_once_with('select-pane', '-t', f'group-{group}:0.{index}')
+
+
 class FeedbackTests(unittest.TestCase):
     def test_stream_feedback_and_watchdog(self):
         read_fd, write_fd = os.pipe()
@@ -208,7 +244,8 @@ class FeedbackTests(unittest.TestCase):
         calls = [call.args for call in screen.addnstr.call_args_list]
         self.assertTrue(any(row[0] == 1 and row[2] == 'Connection test' for row in calls))
         self.assertTrue(any(row[0] == 3 and row[2] == 'Health two' for row in calls))
-        self.assertTrue(any(row[2] == '[4]' for row in calls))
+        self.assertTrue(any(row[2] == '10' for row in calls))
+        self.assertFalse(any(row[2] == '[4]' for row in calls))
         self.assertTrue(all(0 <= row[0] < 25 for row in calls))
 
 

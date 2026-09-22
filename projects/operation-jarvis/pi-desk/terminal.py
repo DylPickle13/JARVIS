@@ -155,11 +155,46 @@ def ensure_group(key):
     return group
 
 
+class SessionChoice:
+    """Explicit Enter keeps session 1 and session 10 unambiguous."""
+    def __init__(self):
+        self.value = ''
+        self.error = ''
+
+    def press(self, key):
+        self.error = ''
+        if ord('0') <= key <= ord('9'):
+            self.value = (self.value + chr(key))[:3]
+        elif key in (curses.KEY_BACKSPACE, 8, 127):
+            self.value = self.value[:-1]
+        elif key == 27:
+            self.value = ''
+        elif key in (ord('s'), ord('S')):
+            self.value = ''
+            return 's'
+        elif key in (10, 13, curses.KEY_ENTER):
+            if self.value in tuple(str(n) for n in range(1, 11)):
+                result, self.value = self.value, ''
+                return result
+            self.error = 'Choose a session from 1 to 10.'
+            self.value = ''
+        return None
+
+
+def session_group(number):
+    for key, numbers in GROUPS.items():
+        if number in numbers:
+            return key, numbers.index(number)
+    raise ValueError('Session must be between 1 and 10')
+
+
 def open_workspace(key):
     if key == 's':
         command = ['ssh', '-t', '-o', 'ConnectTimeout=5', HOST]
     else:
-        group = ensure_group(key)
+        group_key, pane_index = session_group(int(key))
+        group = ensure_group(group_key)
+        tmux('select-pane', '-t', f'{group}:0.{pane_index}')
         command = ['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group]
     return subprocess.run(['foot', '--fullscreen',
                            '--font=DejaVu Sans Mono:size=14,Noto Color Emoji:size=14',
@@ -178,7 +213,7 @@ def diagnostic_pair(value):
     return 7
 
 
-def paint(screen, states, error='', connection='Connecting to Mac…', health=UNKNOWN):
+def paint(screen, states, error='', connection='Connecting to Mac…', health=UNKNOWN, selection=''):
     screen.erase()
     rows, cols = screen.getmaxyx()
     def text(y, x, value, color=0):
@@ -193,7 +228,7 @@ def paint(screen, states, error='', connection='Connecting to Mac…', health=UN
         text(1, 2, connection, curses.color_pair(diagnostic_pair(connection)))
         text(2, 2, health[0], curses.color_pair(diagnostic_pair(health[0])))
         text(3, 2, health[1], curses.color_pair(diagnostic_pair(health[1])))
-        text(5, 2, '1: 1–3   2: 4–6   3: 7–9   4: 10')
+        text(5, 2, f'Session: {selection or "_"}  ·  Type 1–10 + Enter')
         text(6, 2, 's: Shell  q: Quit  F12: Back from sessions')
         for n in range(1, 11):
             text(7+n, 2, f'{n:2}: {states.get(str(n), "unknown").title()}')
@@ -207,8 +242,7 @@ def paint(screen, states, error='', connection='Connecting to Mac…', health=UN
     text(2, left, health[0], curses.color_pair(diagnostic_pair(health[0])))
     text(3, left, health[1], curses.color_pair(diagnostic_pair(health[1])))
     y = 5
-    for key, numbers in GROUPS.items():
-        text(y+1, left, f'[{key}]', curses.color_pair(4))
+    for numbers in GROUPS.values():
         for col, number in enumerate(numbers):
             state = states.get(str(number), 'unknown')
             color = curses.color_pair(STATES.index(state)+1)
@@ -222,8 +256,8 @@ def paint(screen, states, error='', connection='Connecting to Mac…', health=UN
             text(y+2, x+4, state.title(), curses.color_pair(7))
             text(y+3, x, '╰'+'─'*(width-2)+'╯', border)
         y += 5 if rows >= 29 else 4
-    text(y, left, '1–3 Open row   4 Session 10   s Shell   q Quit', curses.A_DIM)
-    text(y+1, left, error or 'F12 Return to grid · Auto-reconnect enabled',
+    text(y, left, f'Session: {selection or "_"}  ·  Type 1–10 + Enter', curses.color_pair(9))
+    text(y+1, left, error or 'Opens its group · s Shell · q Quit · F12 Menu',
          curses.color_pair(1) if error else curses.A_DIM)
     screen.refresh()
 
@@ -241,25 +275,29 @@ def main(screen):
     screen.timeout(250)
     feed = StatusFeed()
     monitor = HealthMonitor(HOST)
+    choice = SessionChoice()
     error = ''
     previous = None
     try:
         while True:
             states = feed.poll()
             health = monitor.poll()
-            signature = (tuple(sorted(states.items())), screen.getmaxyx(), error, feed.connection, health)
+            signature = (tuple(sorted(states.items())), screen.getmaxyx(), error, feed.connection, health, choice.value)
             if signature != previous:
-                paint(screen, states, error, feed.connection, health)
+                paint(screen, states, error, feed.connection, health, choice.value)
                 previous = signature
             key = screen.getch()
             if key in (ord('q'), ord('Q')):
                 return
-            if key in tuple(map(ord, ('1', '2', '3', '4', 's', 'S'))):
+            selected = choice.press(key)
+            if key != -1:
+                error = choice.error
+            if selected is not None:
                 feed.close()
                 curses.def_prog_mode()
                 curses.endwin()
                 try:
-                    result = open_workspace(chr(key).lower())
+                    result = open_workspace(selected)
                     error = '' if result == 0 else 'Connection closed; select a workspace to retry.'
                 except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
                     error = str(exc)[:70]

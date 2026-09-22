@@ -10,10 +10,11 @@ Pi Desk starts automatically on the TV after the Pi boots, on **tty3**.
 
 | Key | Action |
 | --- | --- |
-| `1` | Mac sessions 1, 2, 3 side by side |
-| `2` | Sessions 4, 5, 6 |
-| `3` | Sessions 7, 8, 9 |
-| `4` | Session 10 alone |
+| `1`–`3`, then Enter | Sessions 1, 2, 3 side by side; focus the chosen session |
+| `4`–`6`, then Enter | Sessions 4, 5, 6; focus the chosen session |
+| `7`–`9`, then Enter | Sessions 7, 8, 9; focus the chosen session |
+| `10`, then Enter | Session 10 alone |
+| Backspace / Escape | Edit / clear the session number |
 | `s` | Interactive Mac shell; type `exit` to return |
 | `q` | Close Pi Desk; it starts again on the next boot or manual start |
 | `F12` | Leave a session group and return to the clean menu |

@@ -87,6 +87,18 @@ verified expanded active/inactive title styles, 14 pt workspace launch and F12.
 Presence and audio services stayed active. Pre-update rollback:
 `~/.local/state/pi-desk/backups/20260922T190534Z/`.
 
+## Direct session selection — 2026-09-22, 15:10 EDT
+
+Menu now accepts session numbers 1–10 followed by Enter, opens the corresponding
+three-session workspace (10 alone), and focuses the requested session. Removed
+row-number shortcuts from the cards; added a visible input prompt, Backspace
+editing and Escape clearing. Explicit Enter disambiguates 1 from 10.
+
+All 26 tests passed on Mac and Pi. Live checks: `5` + Enter opened 4/5/6 with
+session 5 focused; `10` + Enter opened session 10 alone; F12 returned to the menu.
+Presence/audio remained active. Pre-update rollback:
+`~/.local/state/pi-desk/backups/20260922T191052Z/`.
+
 ## Still untested deliberately
 
 - Prolonged Wi-Fi loss, Mac reboot, and TV hotplug. Retry behaviour is tested
