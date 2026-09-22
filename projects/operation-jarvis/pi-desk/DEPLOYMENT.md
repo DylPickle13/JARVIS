@@ -130,6 +130,26 @@ This supersedes the earlier F12-to-fullscreen-menu and 24 pt menu behaviour.
 The existing service's boot acceptance was tested earlier; this version was
 service-restart tested, not subjected to another full Pi reboot.
 
+## Cleanup — 2026-09-22, 15:38 EDT
+
+Removed the retired curses/fullscreen-menu implementation and its obsolete UI
+and keyboard-buffer tests. Shared transport/workspace code now lives in `core.py`;
+`desktop.py` is the sole display entry point. The installer backs up the old app
+before removing `terminal.py` and stale Python caches. Blank/health-bar clicks
+are ignored rather than displaying an invalid-selection message. Attachment
+failures now propagate their exit status to the display service.
+
+- **25 current tests passed on Mac and Pi.** Retired-menu tests were removed and
+  overlapping tests consolidated; recovery, status freshness, diagnostics,
+  all-ten-session focus, group-boundary navigation, click routing and migration
+  cleanup remain covered.
+- Live F12 selection and 4 → Left → 3 → Right → 4 verified after deployment.
+- Installed SHA-256 manifest verified; no `terminal.py` remains in the installed app.
+- Removed six explicitly identified temporary deployment/staging directories.
+  All nine Pi rollback backups, saved selection and active lock files retained.
+- Pi Desk, presence/audio, Bluetooth and SSH remained healthy; zero display restarts.
+- Pre-cleanup rollback: `~/.local/state/pi-desk/backups/20260922T193852Z/`.
+
 ## Still untested deliberately
 
 - Prolonged Wi-Fi loss, Mac reboot, and TV hotplug. Retry behaviour is tested

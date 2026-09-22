@@ -8,7 +8,7 @@ import sys
 import threading
 
 from health import HealthMonitor
-from terminal import ROOT, SOCKET, HOST, StatusFeed, GROUPS, ensure_group, session_group, tmux
+from core import ROOT, SOCKET, HOST, StatusFeed, GROUPS, ensure_group, session_group, tmux
 
 STATE = Path.home() / '.local/state/pi-desk'
 COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': 75,
@@ -72,7 +72,7 @@ def selector(states):
         color = COLORS.get(states.get(str(n)), COLORS['unknown'])
         parts.append(f'#[range=user|{n},bg={background},fg={foreground},{weight}] {n} '
                      f'#[fg=colour{color}]● #[norange,bg=#000000,nobold] ')
-    parts.append('#[fg=colour245] F12: select · Ctrl+←/→: pane')
+    parts.append('#[fg=colour245] F12: select · Ctrl+←/→: session')
     return ''.join(parts)
 
 
@@ -82,7 +82,10 @@ def health_line(connection, health):
     text = f' {summary} | {health[0]} | {health[1]}'
     # Escape format introducers, even though collectors currently emit no '#'.
     text = text.replace('#', '##').replace('\n', ' ')
-    warning = any(s in text.lower() for s in ('disconnected', 'unavailable', 'unknown', 'no reply', '--', 'retry', 'invalid', 'inactive'))
+    warning = any(s in text.lower() for s in (
+        'disconnected', 'unavailable', 'unknown', 'no reply', '--', 'retry',
+        'invalid', 'inactive', 'reconnecting', 'deactivating',
+    ))
     color = 203 if 'failed' in text.lower() else 179 if warning else 245
     return f'#[norange,bg=#000000,fg=colour{color},nobold]{text}'
 
@@ -125,24 +128,39 @@ def main():
         worker = threading.Thread(target=monitor, args=(stop,), daemon=True)
         worker.start()
         try:
-            subprocess.run(['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group], check=False)
+            return subprocess.run(
+                ['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group],
+                check=False,
+            ).returncode
         finally:
             stop.set()
             worker.join(timeout=12)
 
 
-if __name__ == '__main__':
-    if len(sys.argv) == 4 and sys.argv[1] in ('select', 'step'):
+def dispatch(args):
+    if not args:
+        return main()
+    if len(args) != 3 or args[0] not in ('select', 'click', 'step'):
+        return 2
+    action, value, client = args
+    if action == 'click':
         try:
-            if sys.argv[1] == 'select':
-                choose(session_number(sys.argv[2]), int(sys.argv[3]))
-            else:
-                if sys.argv[2] not in ('-1', '1'):
-                    raise ValueError('Invalid navigation direction')
-                choose(client_pid=int(sys.argv[3]), step=int(sys.argv[2]))
-        except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-            # Never expose remote command output or inject data into a coding pane.
-            tmux('display-message', 'Pi Desk: selection unavailable; retry with F12', check=False)
-            raise SystemExit(1) from exc
-    else:
-        main()
+            session_number(value)
+        except ValueError:
+            return 0  # Health readings and blank status-bar space are not buttons.
+    try:
+        if action in ('select', 'click'):
+            choose(session_number(value), int(client))
+        else:
+            if value not in ('-1', '1'):
+                raise ValueError('Invalid navigation direction')
+            choose(client_pid=int(client), step=int(value))
+    except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired):
+        # Never expose remote output or inject data into a coding pane.
+        tmux('display-message', 'Pi Desk: selection unavailable; retry with F12', check=False)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(dispatch(sys.argv[1:]))

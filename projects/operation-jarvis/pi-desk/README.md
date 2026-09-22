@@ -38,8 +38,8 @@ Plain arrows are unchanged. Session selection is serialized to handle rapid clic
 Pi Desk starts at boot and restores the last session chosen through its controls
 (default 1). All text is **14 pt**, with DejaVu Sans Mono and Noto Color Emoji,
 a pure-black background, US keyboard and 1080p output. The active coding pane has
-a cyan border/bold title; inactive chrome is muted. The old standalone fullscreen
-menu remains in source for rollback/reference but is not launched.
+a cyan border/bold title; inactive chrome is muted. The retired fullscreen menu
+has been removed; its historical versions remain available in Git and rollback backups.
 
 Manual start on the Pi: `~/.local/bin/pi-desk` (legacy `mac-sessions` redirects here).
 There is no separate menu window or automatic return to a menu when a group closes.
@@ -70,7 +70,7 @@ privileged health commands, new ports, credentials or persistent diagnostic logs
 
 - `desktop.py`: persistent tmux attachment, top bar, click/keyboard routing,
   ordered cross-group navigation and last-session persistence.
-- `terminal.py`: shared bounded status feed, tagged-pane recovery and legacy grid.
+- `core.py`: shared bounded status feed, tmux commands and tagged-pane recovery.
 - `health.py`: read-only asynchronous diagnostics.
 - `connect.sh`: reconnecting SSH client per pane (3-second retry, 5-second
   connection timeout/keepalives, two missed keepalives).

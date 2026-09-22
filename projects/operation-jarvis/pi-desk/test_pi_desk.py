@@ -1,18 +1,20 @@
+"""Isolated tests: no real Mac sessions, household actions or private state."""
 import datetime as dt
 import os
-import tempfile
 from pathlib import Path
-import desktop
-import health
 import shutil
 import subprocess
+import tempfile
 import time
 import unittest
 from unittest import mock
 import uuid
 
+import core
+import desktop
+import health
+import install_pi
 import status_stream
-import terminal
 
 
 class StatusTests(unittest.TestCase):
@@ -25,11 +27,9 @@ class StatusTests(unittest.TestCase):
     def test_fresh(self):
         self.assertEqual(status_stream.extract(self.data, self.now), {'1': 'idle'})
 
-    def test_stale(self):
-        self.assertEqual(status_stream.extract(self.data, self.now+dt.timedelta(seconds=16)), {})
-
-    def test_future(self):
-        self.assertEqual(status_stream.extract(self.data, self.now-dt.timedelta(seconds=6)), {})
+    def test_stale_and_future(self):
+        for delta in (16, -6):
+            self.assertEqual(status_stream.extract(self.data, self.now+dt.timedelta(seconds=delta)), {})
 
     def test_backend_stale(self):
         self.data['stale'] = True
@@ -39,80 +39,101 @@ class StatusTests(unittest.TestCase):
         del self.data['subsystems']['pi']['updatedAt']
         self.assertEqual(status_stream.extract(self.data, self.now), {})
 
-    def test_no_private_payload(self):
-        self.data['subsystems']['pi']['mobileSessions'][0]['private'] = 'not emitted'
+    def test_no_private_payload_or_invalid_rows(self):
+        rows = self.data['subsystems']['pi']['mobileSessions']
+        rows[0]['private'] = 'not emitted'
+        rows += [None, {'sessionID': True, 'lifecycle': 'idle'},
+                 {'sessionID': 11, 'lifecycle': 'idle'}, {'sessionID': 2, 'lifecycle': []}]
         self.assertEqual(status_stream.extract(self.data, self.now), {'1': 'idle'})
 
-    def test_invalid_rows(self):
-        self.data['subsystems']['pi']['mobileSessions'] += [None, {'sessionID': True, 'lifecycle': 'idle'},
-            {'sessionID': 11, 'lifecycle': 'idle'}, {'sessionID': 2, 'lifecycle': []}]
-        self.assertEqual(status_stream.extract(self.data, self.now), {'1': 'idle'})
-
-    def test_grid_validation(self):
-        self.assertEqual(terminal.valid_states({'1': 'running', '2': [], '11': 'idle'}), {'1': 'running'})
-        self.assertEqual(terminal.valid_states([]), {})
+    def test_state_validation(self):
+        self.assertEqual(core.valid_states({'1': 'running', '2': [], '11': 'idle'}), {'1': 'running'})
+        self.assertEqual(core.valid_states([]), {})
 
     def test_feed_retries_failed_start(self):
-        feed = terminal.StatusFeed()
-        with mock.patch.object(terminal.subprocess, 'Popen', side_effect=OSError) as start:
-            with mock.patch.object(terminal.time, 'monotonic', return_value=100):
+        feed = core.StatusFeed()
+        with mock.patch.object(core.subprocess, 'Popen', side_effect=OSError) as start:
+            with mock.patch.object(core.time, 'monotonic', return_value=100):
                 self.assertEqual(feed.poll(), {})
                 feed.poll()
                 self.assertEqual(start.call_count, 1)
-            with mock.patch.object(terminal.time, 'monotonic', return_value=104):
+            with mock.patch.object(core.time, 'monotonic', return_value=104):
                 feed.poll()
                 self.assertEqual(start.call_count, 2)
+
+    def test_stream_feedback_and_watchdog(self):
+        read_fd, write_fd = os.pipe()
+        process = mock.Mock(stdout=os.fdopen(read_fd, 'rb'))
+        feed = core.StatusFeed()
+        try:
+            with mock.patch.object(core.subprocess, 'Popen', return_value=process), \
+                 mock.patch.object(core.time, 'monotonic', return_value=100) as clock:
+                feed.poll()
+                self.assertEqual(feed.connection, 'Connecting to Mac…')
+                for payload, expected, label in (
+                    (b'{}\n', {}, 'status unavailable'),
+                    (b'{"1":"running"}\n', {'1': 'running'}, 'status live'),
+                    (b'[]\n', {}, 'Invalid status'),
+                ):
+                    os.write(write_fd, payload)
+                    self.assertEqual(feed.poll(), expected)
+                    self.assertIn(label, feed.connection)
+                clock.return_value = 113
+                feed.poll()
+                self.assertIn('SSH disconnected', feed.connection)
+        finally:
+            feed.close()
+            os.close(write_fd)
 
 
 @unittest.skipUnless(shutil.which('tmux'), 'tmux not installed')
 class PaneRecoveryTests(unittest.TestCase):
     def setUp(self):
-        self.socket = mock.patch.object(terminal, 'SOCKET', 'pi-desk-test-'+uuid.uuid4().hex)
+        self.socket = mock.patch.object(core, 'SOCKET', 'pi-desk-test-'+uuid.uuid4().hex)
         self.socket.start()
-        self.command = mock.patch.object(terminal, 'connection_command', return_value='sleep 120')
+        self.command = mock.patch.object(core, 'connection_command', return_value='sleep 120')
         self.command.start()
 
     def tearDown(self):
-        terminal.tmux('kill-server', check=False)
+        core.tmux('kill-server', check=False)
         self.command.stop()
         self.socket.stop()
 
     def tags(self, target='group-1:0'):
-        return terminal.tmux('list-panes', '-t', target, '-F', '#{@pi-desk-session}').stdout.splitlines()
+        return core.tmux('list-panes', '-t', target, '-F', '#{@pi-desk-session}').stdout.splitlines()
 
     def test_create_and_idempotent(self):
-        terminal.ensure_group('1')
-        terminal.ensure_group('1')
+        core.ensure_group('1')
+        core.ensure_group('1')
         self.assertEqual(self.tags(), ['1', '2', '3'])
 
     def test_missing_middle_restored_in_order(self):
-        terminal.ensure_group('1')
-        terminal.tmux('kill-pane', '-t', 'group-1:0.1')
-        terminal.ensure_group('1')
+        core.ensure_group('1')
+        core.tmux('kill-pane', '-t', 'group-1:0.1')
+        core.ensure_group('1')
         self.assertEqual(self.tags(), ['1', '2', '3'])
 
     def test_dead_pane_respawned(self):
-        terminal.ensure_group('1')
-        terminal.tmux('respawn-pane', '-k', '-t', 'group-1:0.1', 'exit 0')
+        core.ensure_group('1')
+        core.tmux('respawn-pane', '-k', '-t', 'group-1:0.1', 'exit 0')
         time.sleep(0.1)
-        terminal.ensure_group('1')
-        dead = terminal.tmux('list-panes', '-t', 'group-1:0', '-F', '#{pane_dead}').stdout.splitlines()
+        core.ensure_group('1')
+        dead = core.tmux('list-panes', '-t', 'group-1:0', '-F', '#{pane_dead}').stdout.splitlines()
         self.assertEqual(dead, ['0', '0', '0'])
 
-    def test_persistent_selector_focus(self):
+    def test_persistent_selector_focus_for_all_sessions(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(desktop, 'STATE', Path(directory)):
-            self.assertEqual(desktop.choose(5), 'group-2')
-            self.assertEqual(terminal.tmux('display-message', '-p', '-t', 'group-2',
-                                          '#{@pi-desk-session}').stdout.strip(), '5')
-            self.assertEqual(desktop.last_session(), 5)
-            desktop.choose(10)
+            for number in range(1, 11):
+                key, _ = core.session_group(number)
+                group = desktop.choose(number)
+                self.assertEqual(group, 'group-'+key)
+                focused = core.tmux('display-message', '-p', '-t', group,
+                                    '#{@pi-desk-session}').stdout.strip()
+                self.assertEqual(focused, str(number))
+                self.assertEqual(desktop.last_session(), number)
             self.assertEqual(self.tags('group-4:0'), ['10'])
-            self.assertEqual(terminal.tmux('show-options', '-gv', 'status').stdout.strip(), '2')
-            self.assertEqual(terminal.tmux('show-options', '-gv', 'status-position').stdout.strip(), 'top')
-
-    def test_tenth_solo(self):
-        terminal.ensure_group('4')
-        self.assertEqual(self.tags('group-4:0'), ['10'])
+            self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), '2')
+            self.assertEqual(core.tmux('show-options', '-gv', 'status-position').stdout.strip(), 'top')
 
 
 class DesktopTests(unittest.TestCase):
@@ -120,15 +141,20 @@ class DesktopTests(unittest.TestCase):
         bar = desktop.selector({'1': 'running'})
         for n in range(1, 11):
             self.assertIn(f'range=user|{n},', bar)
-        self.assertIn('fg=colour77', bar)
-        self.assertIn('F12', bar)
-        self.assertIn('#{session_name}', bar)
-        self.assertIn('#{@pi-desk-session}', bar)
+        for text in ('fg=colour77', 'F12', '#{session_name}', '#{@pi-desk-session}'):
+            self.assertIn(text, bar)
 
     def test_invalid_input(self):
         for value in ('', '11', '-1', '01', '1;exit', 'left'):
             with self.assertRaises(ValueError):
                 desktop.session_number(value)
+
+    def test_background_click_is_ignored(self):
+        with mock.patch.object(desktop, 'choose') as choose:
+            self.assertEqual(desktop.dispatch(['click', '', '999']), 0)
+            choose.assert_not_called()
+            self.assertEqual(desktop.dispatch(['click', '5', '999']), 0)
+            choose.assert_called_once_with(5, 999)
 
     def test_restore_invalid_state(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(desktop, 'STATE', Path(directory)):
@@ -137,8 +163,10 @@ class DesktopTests(unittest.TestCase):
             self.assertEqual(desktop.last_session(), 1)
 
     def test_health_style_and_escape(self):
+        self.assertIn('colour245', desktop.health_line('live', ('test', 'active')))
         self.assertIn('colour203', desktop.health_line('live', ('test', 'failed')))
-        self.assertIn('colour179', desktop.health_line('unavailable', ('test', 'active')))
+        for status in ('unavailable', 'reconnecting', 'deactivating'):
+            self.assertIn('colour179', desktop.health_line(status, ('test', 'active')))
         self.assertIn('##(bad)', desktop.health_line('live', ('#(bad)', 'active')))
 
     def test_navigation_boundaries(self):
@@ -151,8 +179,8 @@ class DesktopTests(unittest.TestCase):
                     return mock.Mock(stdout='999\tclient\t%1\n', returncode=0)
                 if args[0] == 'display-message':
                     return mock.Mock(stdout=str(current), returncode=0)
-                return mock.Mock(stdout='', returncode=1 if args[0]=='list-panes' else 0)
-            key, index = terminal.session_group(wanted)
+                return mock.Mock(stdout='', returncode=1 if args[0] == 'list-panes' else 0)
+            key, index = core.session_group(wanted)
             with tempfile.TemporaryDirectory() as directory, \
                  mock.patch.object(desktop, 'STATE', Path(directory)), \
                  mock.patch.object(desktop, 'tmux', side_effect=mux), \
@@ -163,68 +191,7 @@ class DesktopTests(unittest.TestCase):
                 self.assertEqual(desktop.last_session(), wanted)
 
 
-class SelectionTests(unittest.TestCase):
-    def test_each_session_requires_enter(self):
-        for number in range(1, 11):
-            choice = terminal.SessionChoice()
-            for digit in str(number):
-                self.assertIsNone(choice.press(ord(digit)))
-            self.assertEqual(choice.press(10), str(number))
-            self.assertEqual(choice.value, '')
-
-    def test_edit_cancel_invalid(self):
-        choice = terminal.SessionChoice()
-        choice.press(ord('1'))
-        choice.press(ord('0'))
-        choice.press(127)
-        self.assertEqual(choice.value, '1')
-        choice.press(27)
-        self.assertEqual(choice.value, '')
-        for value in ('', '0', '11', '100', '01'):
-            for digit in value:
-                choice.press(ord(digit))
-            self.assertIsNone(choice.press(10))
-            self.assertTrue(choice.error)
-        self.assertEqual(choice.press(ord('s')), 's')
-
-    def test_group_and_focus_for_all_sessions(self):
-        for number in range(1, 11):
-            group, index = terminal.session_group(number)
-            self.assertEqual(terminal.GROUPS[group][index], number)
-            with mock.patch.object(terminal, 'ensure_group', return_value='group-'+group) as ensure, \
-                 mock.patch.object(terminal, 'tmux') as mux, \
-                 mock.patch.object(terminal.subprocess, 'run'):
-                terminal.open_workspace(str(number))
-                ensure.assert_called_once_with(group)
-                mux.assert_called_once_with('select-pane', '-t', f'group-{group}:0.{index}')
-
-
-class FeedbackTests(unittest.TestCase):
-    def test_stream_feedback_and_watchdog(self):
-        read_fd, write_fd = os.pipe()
-        process = mock.Mock(stdout=os.fdopen(read_fd, 'rb'))
-        feed = terminal.StatusFeed()
-        try:
-            with mock.patch.object(terminal.subprocess, 'Popen', return_value=process), \
-                 mock.patch.object(terminal.time, 'monotonic', return_value=100) as clock:
-                feed.poll()
-                self.assertEqual(feed.connection, 'Connecting to Mac…')
-                os.write(write_fd, b'{}\n')
-                feed.poll()
-                self.assertIn('connected · Session status unavailable', feed.connection)
-                os.write(write_fd, b'{"1":"running"}\n')
-                self.assertEqual(feed.poll(), {'1': 'running'})
-                self.assertIn('status live', feed.connection)
-                os.write(write_fd, b'[]\n')
-                self.assertEqual(feed.poll(), {})
-                self.assertIn('Invalid status', feed.connection)
-                clock.return_value = 113
-                feed.poll()
-                self.assertIn('SSH disconnected', feed.connection)
-        finally:
-            feed.close()
-            os.close(write_fd)
-
+class HealthTests(unittest.TestCase):
     def test_health_values(self):
         with mock.patch.object(health, 'output', side_effect=[
                 'signal: -49 dBm', 'hostname 192.0.2.1\n',
@@ -266,7 +233,7 @@ class FeedbackTests(unittest.TestCase):
             self.assertEqual(monitor.poll(), monitor.lines)
             clock.return_value = 126
             self.assertEqual(monitor.poll(), health.UNKNOWN)
-            worker.assert_called_once()  # A hung worker must not spawn more workers.
+            worker.assert_called_once()
 
     def test_worker_exception_is_unknown(self):
         monitor = health.HealthMonitor('mac-mini-64')
@@ -276,39 +243,19 @@ class FeedbackTests(unittest.TestCase):
         self.assertFalse(monitor.busy)
         self.assertEqual(monitor.lines, health.UNKNOWN)
 
-    def test_diagnostic_colors(self):
-        self.assertEqual(terminal.diagnostic_pair('Presence service: active'), 7)
-        self.assertEqual(terminal.diagnostic_pair('Mac connected · Session status live'), 7)
-        for value in ('Mac ping no reply', 'Presence service: inactive',
-                      'SSH disconnected · Retrying in 3s', 'Wi-Fi --', 'Session status unavailable'):
-            self.assertEqual(terminal.diagnostic_pair(value), 1)
-        self.assertEqual(terminal.diagnostic_pair('Presence service: failed'), 10)
 
-    def test_card_color_is_limited_to_dot(self):
-        screen = mock.Mock()
-        screen.getmaxyx.return_value = (25, 57)
-        with mock.patch.object(terminal.curses, 'color_pair', side_effect=lambda n: n):
-            terminal.paint(screen, {'1': 'compacting'})
-        calls = [call.args for call in screen.addnstr.call_args_list]
-        self.assertTrue(any(row[2] == '●' and row[4] == 5 for row in calls))
-        self.assertTrue(any(row[2].startswith('╭') and row[4] == 8 for row in calls))
-        self.assertTrue(any(row[2] == 'Compacting' and row[4] == 7 for row in calls))
-        # Longest lifecycle label fits inside the narrowest card.
-        label = next(row for row in calls if row[2] == 'Compacting')
-        edge = next(row for row in calls if row[0] == label[0] and row[2].startswith('│'))
-        self.assertLess(label[1] + len(label[2])-1, edge[1] + len(edge[2])-1)
-
-    def test_grid_fits_with_health_strip(self):
-        screen = mock.Mock()
-        screen.getmaxyx.return_value = (25, 96)
-        with mock.patch.object(terminal.curses, 'color_pair', return_value=0):
-            terminal.paint(screen, {}, connection='Connection test', health=('Health one', 'Health two'))
-        calls = [call.args for call in screen.addnstr.call_args_list]
-        self.assertTrue(any(row[0] == 1 and row[2] == 'Connection test' for row in calls))
-        self.assertTrue(any(row[0] == 3 and row[2] == 'Health two' for row in calls))
-        self.assertTrue(any(row[2] == '10' for row in calls))
-        self.assertFalse(any(row[2] == '[4]' for row in calls))
-        self.assertTrue(all(0 <= row[0] < 25 for row in calls))
+class InstallerTests(unittest.TestCase):
+    def test_retired_files_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'terminal.py').write_text('retired')
+            (root/'core.py').write_text('current')
+            (root/'__pycache__').mkdir()
+            (root/'__pycache__/terminal.pyc').touch()
+            install_pi.remove_retired(root)
+            self.assertFalse((root/'terminal.py').exists())
+            self.assertFalse((root/'__pycache__').exists())
+            self.assertTrue((root/'core.py').exists())
 
 
 if __name__ == '__main__':

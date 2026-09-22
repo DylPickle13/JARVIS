@@ -14,6 +14,12 @@ HOME = Path.home()
 APP = HOME / '.local/share/pi-desk'
 
 
+def remove_retired(app):
+    """Run only after the full installed app has been backed up."""
+    (app / 'terminal.py').unlink(missing_ok=True)
+    shutil.rmtree(app / '__pycache__', ignore_errors=True)
+
+
 def install():
     stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     backup = HOME / '.local/state/pi-desk/backups' / stamp
@@ -38,9 +44,10 @@ def install():
     if unit.is_file():
         shutil.copy2(unit, backup / 'pi-desk.service')
     APP.mkdir(parents=True, exist_ok=True)
-    for name in ('terminal.py', 'desktop.py', 'health.py', 'connect.sh', 'launch.sh', 'status_stream.py', 'install_pi.py'):
+    for name in ('core.py', 'desktop.py', 'health.py', 'connect.sh', 'launch.sh', 'status_stream.py', 'install_pi.py'):
         shutil.copy2(SOURCE / name, APP / name)
         (APP / name).chmod(0o700)
+    remove_retired(APP)
     shutil.copytree(SOURCE / 'config', APP / 'config', dirs_exist_ok=True)
     labwc = HOME / '.config/pi-desk/labwc'
     labwc.mkdir(parents=True, exist_ok=True)
