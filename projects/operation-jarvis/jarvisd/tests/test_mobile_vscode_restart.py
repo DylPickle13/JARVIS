@@ -70,6 +70,49 @@ class MobileVscodeRestartTests(unittest.TestCase):
         self.assertEqual([item.session_file for item in snapshots], [session_files[index] for index in range(1, 11)])
         self.assertTrue(all(item.lifecycle == "idle" for item in snapshots))
 
+    def test_quit_slot_is_recreated_without_guessing_history(self):
+        root, status_dir, session_dir, now, output, files = self.fixture()
+        output = "\n".join(line for line in output.splitlines() if not line.startswith("jarvis-ios-2\t"))
+        (status_dir / "10002-session.json").unlink()
+        snapshots = restart.snapshots_from_panes(
+            output, project_root=root, status_dir=status_dir,
+            expected_session_dir=session_dir, now=now)
+        missing = snapshots[1]
+        self.assertEqual(missing.pane_id, "")
+        self.assertEqual(missing.session_file.parent, session_dir)
+        self.assertNotIn(missing.session_file, files.values())
+        args = restart.respawn_arguments(missing, root)
+        self.assertEqual(args[:4], ["new-session", "-d", "-s", "jarvis-ios-2"])
+        self.assertIn(str(missing.session_file), args[-1])
+        self.assertNotIn("--continue", args[-1])
+        self.assertEqual(snapshots[0].session_file, files[1])
+
+    def test_dead_slot_without_descriptor_respawns_in_place(self):
+        root, status_dir, session_dir, now, output, _ = self.fixture()
+        output = output.replace("%1\t0\t10002", "%1\t1\t10002")
+        (status_dir / "10002-session.json").unlink()
+        snapshots = restart.snapshots_from_panes(
+            output, project_root=root, status_dir=status_dir,
+            expected_session_dir=session_dir, now=now)
+        self.assertEqual(snapshots[1].pane_id, "%1")
+        self.assertEqual(restart.respawn_arguments(snapshots[1], root)[0], "respawn-pane")
+
+    def test_all_quit_slots_get_distinct_explicit_sessions(self):
+        root, status_dir, session_dir, now, _, _ = self.fixture()
+        snapshots = restart.snapshots_from_panes(
+            "", project_root=root, status_dir=status_dir,
+            expected_session_dir=session_dir, now=now)
+        self.assertEqual(len({s.session_file for s in snapshots}), 10)
+        self.assertTrue(all(not s.pane_id for s in snapshots))
+
+    def test_missing_slot_does_not_bypass_busy_live_slot(self):
+        root, status_dir, session_dir, now, output, _ = self.fixture(lifecycle_by_slot={3: "running"})
+        output = "\n".join(line for line in output.splitlines() if not line.startswith("jarvis-ios-2\t"))
+        with self.assertRaisesRegex(restart.RestartError, "non-idle"):
+            restart.snapshots_from_panes(
+                output, project_root=root, status_dir=status_dir,
+                expected_session_dir=session_dir, now=now)
+
     def test_new_sessions_are_quiescent_and_preserve_exact_history_paths(self):
         root, status_dir, session_dir, now, pane_output, session_files = self.fixture(
             lifecycle_by_slot={1: "new", 7: "new", 8: "new", 9: "new", 10: "new"})

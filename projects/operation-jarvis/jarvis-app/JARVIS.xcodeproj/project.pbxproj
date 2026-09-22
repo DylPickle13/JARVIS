@@ -8,9 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		00A8A57CB85F3DEEC79B83AF /* WatchTerminalProvisioningSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20440B35638B5FF94AF10A0 /* WatchTerminalProvisioningSettings.swift */; };
+		0205C6521C75D03A1D39FDAA /* PiMaintenanceSSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BEA65FE38ED78A449C45811 /* PiMaintenanceSSHTransport.swift */; };
 		0238BFAC7D9D67865051829A /* PiTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CDED70C520590C29476EBEF /* PiTerminalView.swift */; };
 		0270B90D3D4F52F5A77FE14E /* WidgetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40C659E6D5CAA095003D8887 /* WidgetSupport.swift */; };
+		088E47E01671032B79377449 /* PiSessionMaintenanceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C080165F7649543790E156 /* PiSessionMaintenanceController.swift */; };
 		0A666BCB6A0896655C0ACE28 /* JARVISTerminalConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325AC9EE99D5B5BA85A84D73 /* JARVISTerminalConfigurationStore.swift */; };
+		0EAC2EC1F167762F6098083F /* PiSessionMaintenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 059A9491E7F412C62EE24748 /* PiSessionMaintenanceTests.swift */; };
 		0F66D813FC88B80BA6290BC7 /* PiTerminalPastePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBD97B069F537568F810649A /* PiTerminalPastePolicy.swift */; };
 		151491541519300CE9013524 /* JARVISPromptRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BC7233D8BF144DFD8CA711 /* JARVISPromptRuntime.swift */; };
 		164A7C5B2C9AA9272A226560 /* PiAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8DEE39E010FD51DF01CE39 /* PiAttachmentTests.swift */; };
@@ -163,6 +166,7 @@
 /* Begin PBXFileReference section */
 		02220D93FADA230BF50A667D /* WatchTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTerminalView.swift; sourceTree = "<group>"; };
 		03D534B7F39774A6BEDAA367 /* PushRegistrationSSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationSSHTransport.swift; sourceTree = "<group>"; };
+		059A9491E7F412C62EE24748 /* PiSessionMaintenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiSessionMaintenanceTests.swift; sourceTree = "<group>"; };
 		0614F828A3200E9212F5A8B0 /* OMLXStatusCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OMLXStatusCard.swift; sourceTree = "<group>"; };
 		07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		137E1FF7B884864E7A46CE7B /* PiTerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalSettingsView.swift; sourceTree = "<group>"; };
@@ -173,6 +177,7 @@
 		28C023257637E052A6CBCF4A /* PiSSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiSSHTransport.swift; sourceTree = "<group>"; };
 		29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWatchWidgetBundle.swift; sourceTree = "<group>"; };
 		2AE7C82A6919910DCCB2FFA5 /* WatchJobsModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchJobsModelTests.swift; sourceTree = "<group>"; };
+		2BEA65FE38ED78A449C45811 /* PiMaintenanceSSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMaintenanceSSHTransport.swift; sourceTree = "<group>"; };
 		2C8DEE39E010FD51DF01CE39 /* PiAttachmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentTests.swift; sourceTree = "<group>"; };
 		31627FF42650862FB0296B9C /* PiTerminalController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalController.swift; sourceTree = "<group>"; };
 		321EBF59E1E0CEBD18739D41 /* WatchTalkPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTalkPromptView.swift; sourceTree = "<group>"; };
@@ -221,6 +226,7 @@
 		C53C1087DDDA6246634A9DA3 /* DeveloperSigningSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperSigningSettingsView.swift; sourceTree = "<group>"; };
 		C5BC7233D8BF144DFD8CA711 /* JARVISPromptRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISPromptRuntime.swift; sourceTree = "<group>"; };
 		C6B471182994AE2EC6CE2DEB /* WidgetSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSupport.swift; sourceTree = "<group>"; };
+		C7C080165F7649543790E156 /* PiSessionMaintenanceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiSessionMaintenanceController.swift; sourceTree = "<group>"; };
 		CBD97B069F537568F810649A /* PiTerminalPastePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalPastePolicy.swift; sourceTree = "<group>"; };
 		D8AA41F4C1B6F7971B326286 /* OMLXStatusModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OMLXStatusModelTests.swift; sourceTree = "<group>"; };
 		DB17F31548738F2D4FA74526 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
@@ -283,6 +289,7 @@
 				88764939E043048E6692C482 /* JobsPresentationTests.swift */,
 				D8AA41F4C1B6F7971B326286 /* OMLXStatusModelTests.swift */,
 				2C8DEE39E010FD51DF01CE39 /* PiAttachmentTests.swift */,
+				059A9491E7F412C62EE24748 /* PiSessionMaintenanceTests.swift */,
 				FD71A8A31F806B007B4B34AF /* PiTerminalClipboardTests.swift */,
 				2AE7C82A6919910DCCB2FFA5 /* WatchJobsModelTests.swift */,
 			);
@@ -430,6 +437,8 @@
 			isa = PBXGroup;
 			children = (
 				B6B51B77D369CD456401A9C5 /* Attachments */,
+				2BEA65FE38ED78A449C45811 /* PiMaintenanceSSHTransport.swift */,
+				C7C080165F7649543790E156 /* PiSessionMaintenanceController.swift */,
 				28C023257637E052A6CBCF4A /* PiSSHTransport.swift */,
 				31627FF42650862FB0296B9C /* PiTerminalController.swift */,
 				DF061A1013CCC419548F2E89 /* PiTerminalPasteControl.swift */,
@@ -715,7 +724,9 @@
 				CB31E7E24C064DFDC8844981 /* PiAttachmentProtocol.swift in Sources */,
 				F44772CB4ED1CF9904DE511F /* PiAttachmentSSHTransport.swift in Sources */,
 				34123E2539E0864979A236EE /* PiAttachmentTemporaryStore.swift in Sources */,
+				0205C6521C75D03A1D39FDAA /* PiMaintenanceSSHTransport.swift in Sources */,
 				E51BAC21CD90FE23E49E721D /* PiSSHTransport.swift in Sources */,
+				088E47E01671032B79377449 /* PiSessionMaintenanceController.swift in Sources */,
 				4531362D9F95607130CA5155 /* PiTerminalController.swift in Sources */,
 				3E813DC18BB1B495005B7295 /* PiTerminalPasteControl.swift in Sources */,
 				0F66D813FC88B80BA6290BC7 /* PiTerminalPastePolicy.swift in Sources */,
@@ -740,6 +751,7 @@
 				C090C98DB4B95B2F5B97A281 /* JobsPresentationTests.swift in Sources */,
 				F8CF13DAF79ACDD1903AB377 /* OMLXStatusModelTests.swift in Sources */,
 				164A7C5B2C9AA9272A226560 /* PiAttachmentTests.swift in Sources */,
+				0EAC2EC1F167762F6098083F /* PiSessionMaintenanceTests.swift in Sources */,
 				3E9DFCDE1569E8FE73FBE598 /* PiTerminalClipboardTests.swift in Sources */,
 				95D980CFEA72CAC956921F47 /* WatchJobsModel.swift in Sources */,
 				285BBD47EB95C2364F624D92 /* WatchJobsModelTests.swift in Sources */,

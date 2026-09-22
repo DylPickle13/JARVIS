@@ -88,11 +88,27 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 # lifetime. The exact target allowlist above prevents client-controlled tmux
 # command construction.
 if ! "$TMUX_BIN" -L "$TMUX_SOCKET" has-session -t "=$TMUX_SESSION" 2>/dev/null; then
-  if ! "$TMUX_BIN" -L "$TMUX_SOCKET" -f "$TMUX_CONFIG" \
-      new-session -d -s "$TMUX_SESSION" -c "$JARVIS_ROOT" "$PI_COMMAND"; then
-    # A simultaneous phone/Watch reconnect may have won the create race.
-    "$TMUX_BIN" -L "$TMUX_SOCKET" has-session -t "=$TMUX_SESSION"
-  fi
+  # Share the restart lock: a reconnect must not allocate a fresh slot while
+  # maintenance is recreating that slot with its explicit session path.
+  /usr/bin/python3 - "$JARVIS_ROOT" "$TMUX_BIN" "$TMUX_SOCKET" "$TMUX_CONFIG" "$TMUX_SESSION" "$PI_COMMAND" <<'PY'
+import fcntl
+from pathlib import Path
+import subprocess
+import sys
+root, tmux, socket, config, session, command = sys.argv[1:]
+path = Path(root) / ".pi/runtime/jarvis-mobile-vscode-restart.lock"
+path.parent.mkdir(parents=True, exist_ok=True)
+with path.open("a+") as lock:
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.exit("Pi maintenance is running; reconnect shortly.")
+    base = [tmux, "-L", socket]
+    if subprocess.run(base + ["has-session", "-t", "=" + session],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        subprocess.run(base + ["-f", config, "new-session", "-d", "-s", session,
+                              "-c", root, command], check=True)
+PY
 fi
 
 # Reapply the checked-in profile for an already-running server so mobile wheel

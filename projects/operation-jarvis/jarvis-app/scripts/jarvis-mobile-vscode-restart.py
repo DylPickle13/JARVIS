@@ -3,8 +3,8 @@
 
 This is intentionally a host-only maintenance command for the local VS Code
 workspace. It restarts each Pi command in its existing fixed tmux pane; it does
-not kill a tmux session/server, attach a client, resize a pane, or guess a
-session with ``--continue``.
+not kill a tmux session/server, attach a client, resize a live pane, or guess a
+session with ``--continue``. Missing/dead slots reopen as fresh sessions.
 """
 
 from __future__ import annotations
@@ -19,10 +19,11 @@ import shlex
 import subprocess
 import sys
 import time
+import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Mapping, Sequence
+from typing import Callable, Iterator, Mapping, Sequence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -230,7 +231,7 @@ def _read_status_for_pid(
     return status_path, payload
 
 
-def parse_fixed_panes(stdout: str) -> dict[str, PaneEvidence]:
+def parse_fixed_panes(stdout: str, *, allow_unavailable: bool = False) -> dict[str, PaneEvidence]:
     """Parse exactly one fixed pane per allowlisted session."""
     rows: dict[str, list[PaneEvidence | None]] = {name: [] for name in SLOT_NAMES.values()}
     for raw_line in stdout.splitlines():
@@ -258,13 +259,15 @@ def parse_fixed_panes(stdout: str) -> dict[str, PaneEvidence]:
 
     result: dict[str, PaneEvidence] = {}
     for name, matching_rows in rows.items():
+        if not matching_rows and allow_unavailable:
+            continue
         if len(matching_rows) != 1 or matching_rows[0] is None:
             raise RestartError(f"fixed tmux session {name} is missing or ambiguous")
         pane = matching_rows[0]
         assert pane is not None
         if pane.window_index != "0" or pane.pane_index != "0":
             raise RestartError(f"fixed tmux session {name} is not pane 0.0")
-        if pane.pane_dead != "0" or pane.pane_pid <= 0:
+        if pane.pane_dead not in ({"0", "1"} if allow_unavailable else {"0"}) or pane.pane_pid <= 0:
             raise RestartError(f"fixed tmux session {name} does not have a live pane")
         if not re.fullmatch(r"%[0-9]+", pane.pane_id):
             raise RestartError(f"fixed tmux session {name} has an invalid pane identity")
@@ -286,12 +289,25 @@ def snapshots_from_panes(
     project_root = project_root.resolve()
     expected_session_dir = (expected_session_dir or session_directory(project_root)).resolve()
     observed_at = now or _utc_now()
-    panes = parse_fixed_panes(pane_output)
+    panes = parse_fixed_panes(pane_output, allow_unavailable=True)
     snapshots: list[SessionEvidence] = []
     errors: list[str] = []
 
     for slot, name in SLOT_NAMES.items():
-        pane = panes[name]
+        pane = panes.get(name)
+        if pane is None or pane.pane_dead == "1":
+            # /quit removes the runtime descriptor. Never guess history from
+            # another slot or use --continue; allocate an explicit fresh file.
+            fresh = expected_session_dir / (
+                observed_at.strftime("%Y-%m-%dT%H-%M-%S-000Z_") + str(uuid.uuid4()) + ".jsonl"
+            )
+            snapshots.append(SessionEvidence(
+                slot=slot, name=name, pane_id=pane.pane_id if pane else "",
+                pane_pid=pane.pane_pid if pane else 0, session_file=fresh,
+                lifecycle="new", updated_at=observed_at, status_path=status_dir,
+                width=pane.width if pane else 80, height=pane.height if pane else 24,
+            ))
+            continue
         try:
             status_path, payload = _read_status_for_pid(
                 status_dir,
@@ -357,7 +373,7 @@ def _list_fixed_panes() -> dict[str, PaneEvidence]:
         detail = (result.stderr or "").strip().splitlines()
         suffix = f": {detail[0][:200]}" if detail else ""
         raise RestartError("jarvis-mobile tmux server is unavailable" + suffix)
-    return parse_fixed_panes(result.stdout or "")
+    return parse_fixed_panes(result.stdout or "", allow_unavailable=True)
 
 
 def pi_shell_command(session_file: Path) -> str:
@@ -378,6 +394,12 @@ def pi_shell_command(session_file: Path) -> str:
 
 
 def respawn_arguments(snapshot: SessionEvidence, project_root: Path = PROJECT_ROOT) -> list[str]:
+    if not snapshot.pane_id:
+        return [
+            "new-session", "-d", "-s", snapshot.name,
+            "-c", str(project_root), "-x", str(snapshot.width), "-y", str(snapshot.height),
+            pi_shell_command(snapshot.session_file),
+        ]
     return [
         "respawn-pane",
         "-k",
@@ -411,7 +433,7 @@ def _wait_for_ready(
         try:
             panes = _list_fixed_panes()
             pane = panes[snapshot.name]
-            if pane.pane_id != snapshot.pane_id:
+            if snapshot.pane_id and pane.pane_id != snapshot.pane_id:
                 raise RestartError(
                     f"pane identity changed from {snapshot.pane_id} to {pane.pane_id}"
                 )
@@ -485,7 +507,7 @@ def _restart_lock(path: Path = LOCK_PATH) -> Iterator[None]:
             file_handle.close()
 
 
-def restart_all(*, dry_run: bool = False) -> None:
+def restart_all(*, dry_run: bool = False, progress: Callable[[int], None] | None = None) -> None:
     """Preflight, restart, and verify all ten fixed Pi panes."""
     if not PROJECT_ROOT.is_dir():
         raise RestartError(f"JARVIS project root is missing: {PROJECT_ROOT}")
@@ -506,7 +528,12 @@ def restart_all(*, dry_run: bool = False) -> None:
             ]
         )
         if pane_result.returncode != 0:
-            raise RestartError("jarvis-mobile tmux server is unavailable")
+            # An absent server means every slot was quit. Other failures must
+            # remain errors rather than being mistaken for missing sessions.
+            detail = pane_result.stderr or ""
+            if "no server running" not in detail and "No such file or directory" not in detail:
+                raise RestartError("jarvis-mobile tmux server is unavailable")
+            pane_result.stdout = ""
         snapshots = snapshots_from_panes(pane_result.stdout or "")
 
         if dry_run:
@@ -519,10 +546,13 @@ def restart_all(*, dry_run: bool = False) -> None:
 
         # Do not mutate any pane until all ten fixed identities, status files,
         # session paths, and idle states have passed preflight.
-        _source_profile()
+        if any(snapshot.pane_id for snapshot in snapshots):
+            _source_profile()
         for snapshot in snapshots:
-            _set_latest_window_size(snapshot.name)
             _respawn(snapshot, PROJECT_ROOT)
+            if not snapshot.pane_id:
+                _source_profile()
+            _set_latest_window_size(snapshot.name)
             pane, refreshed = _wait_for_ready(
                 snapshot,
                 project_root=PROJECT_ROOT,
@@ -534,6 +564,8 @@ def restart_all(*, dry_run: bool = False) -> None:
                 f"({snapshot.pane_id}, PID {snapshot.pane_pid}->{pane.pane_pid}, "
                 f"{refreshed.session_file.name})"
             )
+            if progress:
+                progress(snapshot.slot)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -10,6 +10,8 @@ struct PiTerminalSettingsView: View {
     @State private var sshSaved = false
     @State private var showSecurityDetails = false
     @State private var showForgetHostConfirmation = false
+    @State private var showRestartConfirmation = false
+    @StateObject private var maintenance = PiSessionMaintenanceController()
 
     var body: some View {
         Form {
@@ -78,6 +80,36 @@ struct PiTerminalSettingsView: View {
             }
 
             Section {
+                Button {
+                    showRestartConfirmation = true
+                } label: {
+                    Label("Restart All 10 Pi Sessions", systemImage: "arrow.clockwise")
+                }
+                .disabled(maintenance.isWorking || maintenance.operationID != nil ||
+                          piTerminal.settings.configuration(fallbackHost: app.currentEndpoint?.host) == nil)
+
+                if maintenance.isWorking {
+                    ProgressView("Restarting sessions… \(maintenance.completed)/10")
+                }
+                if let message = maintenance.message {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("pi-maintenance-status")
+                }
+                if maintenance.operationID != nil && !maintenance.isWorking {
+                    Button(maintenance.canRetrySubmission ? "Retry Same Request" : "Check Restart Status") {
+                        runMaintenance(start: maintenance.canRetrySubmission)
+                    }
+                }
+            } header: {
+                Text("Session Maintenance")
+            } footer: {
+                Text("Restarts all 10 Pi sessions on the Mac, including sessions used by Watch and room audio. Active conversations are preserved; quit sessions reopen fresh. Busy sessions block the restart.")
+            }
+
+            Section {
                 DisclosureGroup("Security", isExpanded: $showSecurityDetails) {
                     Button(role: .destructive) {
                         showForgetHostConfirmation = true
@@ -95,6 +127,12 @@ struct PiTerminalSettingsView: View {
         }
         .compactSettingsForm(title: "Pi Terminal")
         .onAppear { loadSettings() }
+        .alert("Restart all 10 Pi sessions?", isPresented: $showRestartConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Restart Sessions", role: .destructive) { runMaintenance(start: true) }
+        } message: {
+            Text("Active conversations will be preserved; quit sessions will reopen fresh. Busy sessions will block the restart. Watch and room-audio sessions are also affected. The restart continues on the Mac if this phone disconnects.")
+        }
         .alert("Forget trusted SSH host?", isPresented: $showForgetHostConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Forget Host", role: .destructive) {
@@ -102,6 +140,17 @@ struct PiTerminalSettingsView: View {
             }
         } message: {
             Text("JARVIS will require explicit trust before the next terminal connection.")
+        }
+    }
+
+    private func runMaintenance(start: Bool) {
+        guard let configuration = piTerminal.settings.configuration(fallbackHost: app.currentEndpoint?.host) else { return }
+        maintenance.run(
+            configuration: configuration,
+            trustedHostKey: piTerminal.settings.trustedHostKey(host: configuration.host, port: configuration.port),
+            start: start
+        ) {
+            piTerminal.reconnectAfterSettingsChange(fallbackHost: app.currentEndpoint?.host)
         }
     }
 
