@@ -849,13 +849,15 @@ class DaemonUnitTests(unittest.TestCase):
         failed.set_result({"ok": False, "error": "temporary"})
         coordinator._complete("plugs", failed, coordinator._records["plugs"]["revision"])
 
-        recent = coordinator.snapshot()["subsystems"]["plugs"]
+        # Inspect cached expiry only; a foreground lease can race this fake clock
+        # by scheduling a successful collector and replacing lastGoodAt.
+        recent = coordinator.snapshot(client_active=False)["subsystems"]["plugs"]
         self.assertEqual(recent["value"], "confirmed")
         self.assertFalse(recent["stale"])
         self.assertEqual(recent["lastError"], "temporary")
 
         clock[0] = 121.0
-        expired = coordinator.snapshot()["subsystems"]["plugs"]
+        expired = coordinator.snapshot(client_active=False)["subsystems"]["plugs"]
         self.assertTrue(expired["stale"])
 
     def test_partial_plug_failure_retains_and_expires_only_that_devices_last_good(self):
@@ -1311,6 +1313,31 @@ class HTTPTests(unittest.TestCase):
         result = (response.status, dict(response.getheaders()), data)
         connection.close()
         return result
+
+    def test_network_speed_auth_acknowledgement_and_cached_reads(self):
+        from jarvisd_core import network_speed
+        with mock.patch.object(network_speed, 'SPEED_TEST') as speed:
+            speed.snapshot.return_value = {'ok': True, 'status': 'idle'}
+            speed.start.return_value = (202, {'ok': True, 'status': 'running'})
+            for mode in ('token', 'trusted-network'):
+                jarvisd.AUTH_MODE = mode
+                self.assertEqual(self.request('GET', '/api/v1/network/speed-test')[0], 401)
+                self.assertEqual(self.request('POST', '/api/v1/network/speed-test',
+                    {'acknowledgeBandwidth': True})[0], 401)
+            self.assertEqual(self.request('GET', '/api/v1/network/speed-test', token='api-secret')[0], 200)
+            speed.start.assert_not_called()
+            for payload in ({}, {'acknowledgeBandwidth': 1}, {'acknowledgeBandwidth': True, 'host': 'remote'}):
+                self.assertEqual(self.request('POST', '/api/v1/network/speed-test', payload, token='api-secret')[0], 400)
+            self.assertEqual(self.request('POST', '/api/v1/network/speed-test',
+                {'acknowledgeBandwidth': True}, token='api-secret', origin='https://bad.example')[0], 403)
+            speed.start.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/v1/network/speed-test',
+                {'acknowledgeBandwidth': True}, token='api-secret')[0], 202)
+            speed.start.return_value = (429, {'cooldownSeconds': 123})
+            status, headers, _ = self.request('POST', '/api/v1/network/speed-test',
+                {'acknowledgeBandwidth': True}, token='api-secret')
+            self.assertEqual(status, 429)
+            self.assertEqual(headers['Retry-After'], '123')
 
     def test_named_room_routes_forward_only_the_selected_speaker(self):
         def reply(handler, turn_id=None, speaker_id='pi'):

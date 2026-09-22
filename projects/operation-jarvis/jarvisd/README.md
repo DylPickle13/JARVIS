@@ -76,6 +76,68 @@ and its authenticated SSH bridge delivers living-room state. Both zones operate;
 initial two-way seated and short idle-device checks passed. Broader physical
 acceptance remains incomplete. See [presence](../presence/README.md).
 
+## On-demand network speed diagnostic (source-only)
+
+`GET /api/v1/network/speed-test` returns an in-memory snapshot without starting
+work. `POST` to the same route with `{"acknowledgeBandwidth": true}` starts an
+asynchronous local `/usr/bin/networkQuality -c -M 60` test. Both require the API
+token or authenticated loopback local-control credentials, even in trusted-network
+mode. Unapproved origins, query parameters, extra fields and remote selectors
+are rejected. Clients must show the returned bandwidth warning before requesting
+acknowledgement: tests consume substantial data and can disrupt streaming.
+
+POST returns 202 when admitted, 409 while running, or 429 with `Retry-After`
+during the five-minute start-to-start cooldown (including failed runs). GET
+reports `idle`, `running`, `completed`, or `failed`, a test ID, Unix-second start/
+finish timestamps, sanitized error, and `result` containing `downloadMbps`,
+`uploadMbps`, and `idleLatencyMs`. Throughput is simultaneous upload/download,
+not an Ookla-equivalent sequential benchmark. `ok` describes the API response;
+inspect `status` for test success. Results are historical snapshots, never live
+connectivity indicators; they and the cooldown reset when jarvisd restarts.
+
+Only Home internet — mac-mini-64 is measured, not phone Wi-Fi/cellular. One
+background worker has a 75-second hard deadline, 64 KiB output cap, fixed argv,
+normal TLS validation, and no retries. No automatic polling tests, schedules,
+new dependencies, raw provider metadata, or native-client changes. Parsing uses
+this Mac's documented networkQuality JSON fields; live provider validation and
+deployment remain pending. No daemon restart or actual bandwidth test was
+performed during implementation.
+
+## Native monitoring (deployed 2026-09-22 EDT)
+
+Active release `20260922T143035Z-passive-monitoring` adds separate **on-demand**
+read health for purifier, presence and Pi/Mac room audio. No extra device polling,
+cloud authentication or recovery attempts; no incidents for expired passive data.
+653 frozen-backend tests passed. Live sensor reads showed intermittent failures;
+monitoring availability is not a claim of proven sensor reliability.
+
+Release `20260922T142353Z-expanded-monitoring` also monitors existing Pi,
+services, network and Codex quota caches. All nine configured read-health checks
+were available after activation; 650 frozen-backend tests passed. Notifications
+remain disabled and no dashboard is served. Physical sensor transition and real
+hub outage tests were skipped at the owner's request, not marked passed.
+
+Deployment `20260922T135534Z-native-monitoring` enables 60-second, completion-relative
+polling for `door-sensor` and `motion-sensor`, with **notifications disabled**.
+The frozen release passed 650 backend tests; both sensors completed two background
+checks with available hub snapshots. Plug and both oMLX read-health checks passed.
+Protected terminal/audio service identities were unchanged. The unrelated
+network-speed work was excluded. The browser dashboard has been removed at the
+owner's request in release `20260922T141423Z-remove-monitor-dashboard`;
+monitoring remains available through authenticated APIs. Both removed dashboard
+URLs return 404, 650 frozen-backend tests passed, and sensor polling resumed.
+Physical transitions and radio freshness are not established by these checks.
+
+The local implementation adds serialized security polling, bounded sensor-read
+recovery, and authenticated cache-only `/api/v1/monitor/*` endpoints. It extends
+the existing daemon with bounded SQLite incident history, sustained-failure and
+recovery detection, and optional local Mac notifications. No browser dashboard,
+Kuma, VM, container or separate daemon. Monitoring and
+notifications default off in source; the installed activation above enables only
+polling/monitoring, not notifications.
+See [configuration and acceptance checks](docs/monitoring-native.md).
+Purifier recovery protections remain unchanged.
+
 ## Current responsibilities
 
 - Cached state with per-subsystem freshness and last-good observations.

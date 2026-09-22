@@ -11,7 +11,9 @@ import threading
 import time
 
 MAX_OUTPUT = 128 * 1024
-TIMEOUT = 30.0
+# CLI owns sensor-read retries within 60 seconds, plus disconnect cleanup.
+# Never add subprocess retries here (including for non-sensor reads).
+TIMEOUT = 65.0
 _READ_LOCK = threading.Lock()
 ERRORS = frozenset({"device_busy", "sensor_missing_or_ambiguous", "device_identity_mismatch",
     "unknown_device", "unreachable", "authentication_failed", "timeout", "operation_failed",
@@ -89,6 +91,17 @@ def _feature(features, name, kind):
 
 
 def read_status(cli_path: str, alias: str, *, runner=run_cli) -> tuple[int, dict]:
+    from .read_health import SECURITY_HEALTH
+    code, body = _read_status(cli_path, alias, runner=runner)
+    body['availability'] = 'available' if body.get('ok') is True else 'unavailable'
+    # Contention means no new check occurred. Retain the previous observation
+    # without refreshing its age; it expires normally if contention persists.
+    if code != 400 and body.get('errorCode') != 'device_busy':
+        SECURITY_HEALTH.record(alias, body.get('ok') is True)
+    return code, body
+
+
+def _read_status(cli_path: str, alias: str, *, runner=run_cli) -> tuple[int, dict]:
     """Called only after HTTP authorization. Blank config disables the route.
 
     The CLI validates the alias against its private registry and checks hardware
@@ -126,7 +139,13 @@ def read_status(cli_path: str, alias: str, *, runner=run_cli) -> tuple[int, dict
                 "rssi": _feature(features, "rssi", int),
                 "radioFreshness": "unknown",
             }
-        return 200, {**base, "ok": True, "device": alias, "model": model,
+        required_available = not sensor or data.get('motionDetected' if model == 'T100' else 'isOpen') is not None
+        attempts = result.get('read_attempts', 1)
+        attempts = attempts if type(attempts) is int and 1 <= attempts <= 3 else 1
+        return (200 if required_available else 503), {**base, "ok": required_available,
+                     **({} if required_available else {'errorCode': 'required_state_unavailable'}),
+                     'readAttempts': attempts, 'transientRecovered': attempts > 1,
+                     "device": alias, "model": model,
                      "observedAt": started, "source": "hub_snapshot" if sensor else "device_read",
                      "data": data}
     except Exception as exc:

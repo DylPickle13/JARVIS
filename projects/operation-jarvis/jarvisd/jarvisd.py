@@ -45,7 +45,7 @@ from jarvisd_core.control_http import ControlHTTPMixin, ControlHTTPServer, WRITE
 from pathlib import Path
 from typing import Any, Callable
 
-from jarvisd_core import auth, commands, security_status
+from jarvisd_core import auth, commands, security_status, read_health
 from jarvisd_core.host_memory import collect_host_memory
 from jarvisd_core.config import _find_ancestor, _load_env_file, _resolve_jarvis_root
 from jarvisd_core.commands import COMMANDS, CommandError, PURIFIER_MODES, PURIFIER_SPEEDS
@@ -106,6 +106,10 @@ API_TOKEN = os.environ.get("JARVIS_API_TOKEN", "")
 EVENT_TOKEN = os.environ.get("JARVISD_EVENT_TOKEN", "")
 # Opt-in local launcher path. No worker, cache, or startup device reads.
 SECURITY_CLI = os.environ.get("JARVISD_SECURITY_CLI", "")
+# Monitoring is enabled only during explicit daemon startup, never on import.
+MONITORING_ENABLED = False
+SECURITY_POLL_ALIASES = ()
+MONITOR_WORKER = None
 TRUSTED_CIDRS_RAW = os.environ.get(
     "JARVISD_TRUSTED_CIDRS",
     "127.0.0.0/8,::1/128,192.168.21.0/24,100.64.0.0/10",
@@ -1720,6 +1724,37 @@ def collect_state() -> dict:
     return STATE_COORDINATOR.snapshot(client_active=True)
 
 
+def _on_demand_observations():
+    from jarvisd_core.on_demand_monitoring import observations
+    try:
+        snapshot = STATE_COORDINATOR.snapshot(client_active=False)
+    except Exception:
+        snapshot = {}
+    return observations(snapshot, read_health.endpoint_snapshot())
+
+
+def _monitor_observations(integrations):
+    """Evaluate existing caches only; no foreground lease or extra device calls."""
+    from jarvisd_core import monitoring
+    result = {}
+    for group, coordinator, names, limit in (
+            ('integrations', STATE_COORDINATOR, integrations, None),
+            ('omlx', OMLX_COORDINATOR, OMLX_SERVER_IDS, 120.0)):
+        try:
+            snapshot = coordinator.snapshot(client_active=False)
+        except Exception:
+            snapshot = {}
+        for name in names:
+            code, _ = monitoring.integration(name, snapshot, observation_limit=limit)
+            result[f'{group}/{name}'] = code == 200
+    observations = read_health.SECURITY_HEALTH.snapshot()
+    for alias in SECURITY_POLL_ALIASES:
+        code, _ = monitoring.security(alias, enabled=True, configured=SECURITY_POLL_ALIASES,
+                                      observations=observations)
+        result[f'security/{alias}'] = code == 200
+    return result
+
+
 def _iso_now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -1906,6 +1941,9 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
         parsed = urllib.parse.urlsplit(self.path)
         normalized_path = parsed.path.rstrip("/") or "/"
         ip = self.client_address[0] if self.client_address else "?"
+        if normalized_path.startswith("/api/v1/monitor/"):
+            self.log_message("%s /api/v1/monitor/[redacted] %s", self.command, status)
+            return
         if normalized_path == "/api/v1/security/status":
             # Do not log private device selectors or query strings.
             self.log_message("%s /api/v1/security/status %s", self.command, status)
@@ -1948,6 +1986,9 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
 
     def _send(self, code: int, body: dict, extra_headers: dict | None = None) -> None:
         self.request_id = getattr(self, "request_id", uuid.uuid4().hex[:12])
+        path = urllib.parse.urlsplit(self.path).path.rstrip('/') or '/'
+        read_health.observe(self.command, path, code, body)
+        result_status = read_health.response_status(self.command, path, code, body)
         data = b"" if code == 204 else json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         if code != 204:
@@ -1955,6 +1996,8 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Request-ID", self.request_id)
+        if result_status is not None:
+            self.send_header("X-Jarvis-Result-Status", result_status)
         for key, value in self._origin_headers().items():
             self.send_header(key, value)
         for key, value in (extra_headers or {}).items():
@@ -2026,6 +2069,14 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
         if port is None:
             self._send(400, {"ok": False, "error": "Unknown room speaker"})
             return
+        if turn_id is None:
+            from jarvisd_core.room_audio_read import read_status
+            try:
+                safe = read_status(port, connection_factory=http.client.HTTPConnection)
+                self._send(200, {**safe, "speakerID": speaker_id})
+            except Exception:
+                self._send(503, {"ok": False, "error": "Room audio status unavailable."})
+            return
         try:
             request = urllib.request.Request(
                 f"http://127.0.0.1:{port}/control/" + ("stop" if turn_id is not None else "status"),
@@ -2050,12 +2101,47 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
         except Exception:
             self._send(503 if turn_id is None else 409, {"ok": False, "error": "Room audio unavailable or request changed."})
 
+    def _network_speed(self, parsed, *, start=False):
+        from jarvisd_core.network_speed import SPEED_TEST
+        from jarvisd_core.local_control import authorized
+        if self._reject_origin():
+            return
+        # Bandwidth-consuming diagnostics never inherit trusted-network access.
+        if not authorized(self) and not auth.authorized(mode="token", address=self._client_ip(),
+                token=self.headers.get("x-jarvis-token", ""), scope="api",
+                api_token=API_TOKEN, event_token="", trusted_cidrs=""):
+            self.close_connection = True
+            self._send(401, {"ok": False, "error": "unauthorized"}, {"Connection": "close"})
+            return
+        if parsed.query:
+            self.close_connection = True
+            self._send(400, {"ok": False, "error": "query parameters not supported"})
+            return
+        if not start:
+            self._send(200, SPEED_TEST.snapshot())
+            return
+        try:
+            payload = self._read_json()
+            if set(payload) != {"acknowledgeBandwidth"} or payload["acknowledgeBandwidth"] is not True:
+                raise ValueError("bandwidth acknowledgement required")
+        except RequestInputError as exc:
+            self._send(exc.status, {"ok": False, "error": exc.message})
+            return
+        except (ValueError, TypeError):
+            self._send(400, {"ok": False, "error": "Requires acknowledgeBandwidth: true; uses substantial data and may interrupt streaming."})
+            return
+        code, body = SPEED_TEST.start()
+        self._send(code, body, {"Retry-After": str(body["cooldownSeconds"])} if code == 429 else None)
+
     def do_GET(self):  # noqa: N802
         self.request_id = uuid.uuid4().hex[:12]
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         query = urllib.parse.parse_qs(parsed.query)
 
+        if path == "/api/v1/network/speed-test":
+            self._network_speed(parsed)
+            return
         if self.path == "/api/v1/local-control":
             from jarvisd_core.local_control import authorized
             self.close_connection = True
@@ -2069,6 +2155,81 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
             if self._reject_origin():
                 return
             self._send(200, {"ok": True, "version": VERSION, "uptimeSeconds": round(time.time() - START_TIME, 1)})
+            return
+        if path.startswith("/api/v1/monitor/"):
+            if self._reject_origin():
+                return
+            if not auth.authorized(mode="token", address=self._client_ip(),
+                    token=self.headers.get("x-jarvis-token", ""), scope="api",
+                    api_token=API_TOKEN, event_token="", trusted_cidrs=""):
+                self._send(401, {"ok": False, "error": "unauthorized"})
+                return
+            if parsed.query:
+                self._send(400, {"ok": False, "error": "query parameters not supported"})
+                return
+            if path in {"/api/v1/monitor/status", "/api/v1/monitor/history"}:
+                if not MONITORING_ENABLED or MONITOR_WORKER is None:
+                    self._send(503, {"ok": False, "error": "monitoring_disabled"})
+                    return
+                if not MONITOR_WORKER.storage_available:
+                    self._send(503, {"ok": False, "error": "monitoring_storage_unavailable"})
+                    return
+                try:
+                    data = ({"monitors": MONITOR_WORKER.store.status(),
+                             "onDemand": _on_demand_observations()} if path.endswith('/status')
+                            else {"events": MONITOR_WORKER.store.history()})
+                except Exception:
+                    self._send(503, {"ok": False, "error": "monitoring_storage_unavailable"})
+                    return
+                self._send(200, {"ok": True, "scope": "status_availability", **data})
+                return
+            from jarvisd_core import monitoring
+            parts = path.removeprefix("/api/v1/monitor/").split("/")
+            if len(parts) != 2 or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", parts[1]):
+                self._send(404, {"ok": False, "error": "unknown monitor"})
+                return
+            group, name = parts
+            if group == "security":
+                code, body = monitoring.security(name, enabled=MONITORING_ENABLED,
+                    configured=SECURITY_POLL_ALIASES, observations=read_health.SECURITY_HEALTH.snapshot())
+            elif group == "on-demand":
+                from jarvisd_core.on_demand_monitoring import NAMES
+                if name not in NAMES:
+                    code, body = 404, {"ok": False, "error": "unknown monitor"}
+                elif not MONITORING_ENABLED:
+                    code, body = monitoring.unavailable("monitoring_disabled")
+                else:
+                    row = _on_demand_observations()[name]
+                    available = row['availability'] == 'available'
+                    code, body = (200 if available else 503), {"ok": available, **row}
+            elif group in {"integrations", "omlx"}:
+                if not MONITORING_ENABLED:
+                    code, body = monitoring.unavailable("monitoring_disabled")
+                else:
+                    coordinator = STATE_COORDINATOR if group == "integrations" else OMLX_COORDINATOR
+                    code, body = monitoring.integration(name, coordinator.snapshot(client_active=False),
+                        observation_limit=120.0 if group == "omlx" else None)
+            else:
+                code, body = 404, {"ok": False, "error": "unknown monitor"}
+            self._send(code, body)
+            return
+        if path in {"/api/v1/health", "/api/v1/security/health"}:
+            if self._reject_origin():
+                return
+            # Diagnostics include private presence/security route observations.
+            # Require the API token even in trusted-network mode.
+            if not auth.authorized(mode="token", address=self._client_ip(),
+                    token=self.headers.get("x-jarvis-token", ""), scope="api",
+                    api_token=API_TOKEN, event_token="", trusted_cidrs=""):
+                self._send(401, {"ok": False, "error": "unauthorized"})
+                return
+            if parsed.query:
+                self._send(400, {"ok": False, "error": "query parameters not supported"})
+                return
+            observations = (read_health.SECURITY_HEALTH.snapshot()
+                            if path == "/api/v1/security/health" else read_health.endpoint_snapshot())
+            self._send(200, {"ok": True, "scope": "recorded_read_outcomes",
+                             "monitoring": False, "observations": observations})
             return
         if path == "/api/v1/presence":
             from jarvisd_core import presence
@@ -2195,6 +2356,9 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
         self.request_id = uuid.uuid4().hex[:12]
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        if path == "/api/v1/network/speed-test":
+            self._network_speed(parsed, start=True)
+            return
         if path == "/api/v1/room-audio/stop" or (path.startswith("/api/v1/room-audio/") and path.endswith("/stop")):
             if not self._auth_or_respond(): return
             speaker_id = "pi" if path == "/api/v1/room-audio/stop" else path.removeprefix("/api/v1/room-audio/").removesuffix("/stop")
@@ -2361,7 +2525,29 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
 
 
 def main(*, control_factory=None, local_control=False) -> int:
-    global EVENTS
+    global EVENTS, MONITORING_ENABLED, SECURITY_POLL_ALIASES, MONITOR_WORKER
+    from jarvisd_core.security_polling import SecurityPoller, aliases_from_config
+    enabled = os.environ.get("JARVISD_MONITORING_ENABLED", "false")
+    if enabled not in {"true", "false"}:
+        raise ValueError("Invalid monitoring enabled setting")
+    MONITORING_ENABLED = enabled == "true"
+    SECURITY_POLL_ALIASES = aliases_from_config(os.environ.get("JARVISD_SECURITY_POLL_ALIASES", ""))
+    try:
+        poll_interval = float(os.environ.get("JARVISD_SECURITY_POLL_INTERVAL", "60"))
+    except ValueError:
+        raise ValueError("Invalid security poll interval") from None
+    poller = SecurityPoller(SECURITY_CLI, SECURITY_POLL_ALIASES,
+                            reader=security_status.read_status, interval=poll_interval)
+    if MONITORING_ENABLED and (not API_TOKEN or (SECURITY_POLL_ALIASES and not SECURITY_CLI)):
+        raise ValueError("Monitoring requires API authentication and configured security reader")
+    notification_mode = os.environ.get('JARVISD_MONITOR_NOTIFICATIONS', 'false')
+    if notification_mode not in {'true', 'false'}:
+        raise ValueError('Invalid monitor notification setting')
+    integrations = tuple(filter(None, (value.strip() for value in
+        os.environ.get('JARVISD_MONITOR_INTEGRATIONS', 'plugs').split(','))))
+    if (len(set(integrations)) != len(integrations) or
+            any(name not in {'plugs', 'pi', 'services', 'network', 'codexQuota'} for name in integrations)):
+        raise ValueError('Invalid monitor integrations')
     if local_control and control_factory is not None:
         raise ValueError("Select one control mode")
     local_token = None
@@ -2393,6 +2579,20 @@ def main(*, control_factory=None, local_control=False) -> int:
                 runtime = None
                 raise RuntimeError("Invalid control runtime composition")
             runtime.install(server)
+        if MONITORING_ENABLED:
+            # Existing idle-cadence workers; health checks never renew active leases.
+            OMLX_COORDINATOR.start()
+            read_health.SECURITY_HEALTH.ttl = max(120.0, poll_interval * 2)
+            poller.start()
+            from jarvisd_core.monitor_store import MonitorStore
+            from jarvisd_core.monitor_worker import MonitorWorker, notify_local
+            keys = ([f'integrations/{name}' for name in integrations]
+                    + [f'omlx/{name}' for name in OMLX_SERVER_IDS]
+                    + [f'security/{alias}' for alias in SECURITY_POLL_ALIASES])
+            store = MonitorStore(Path.home() / 'Library/Application Support/JARVIS/monitoring/history.sqlite3',
+                keys, notifier=notify_local if notification_mode == 'true' else None)
+            MONITOR_WORKER = MonitorWorker(store, lambda: _monitor_observations(integrations))
+            MONITOR_WORKER.start()
         sys.stderr.write(f"[jarvisd] listening on {HOST}:{PORT} (version {VERSION})\n")
         server.serve_forever()
     except KeyboardInterrupt:
@@ -2404,6 +2604,10 @@ def main(*, control_factory=None, local_control=False) -> int:
         finally:
             if server is not None:
                 server.server_close()
+            if MONITOR_WORKER is not None:
+                MONITOR_WORKER.stop()
+                MONITOR_WORKER = None
+            poller.stop()
             STATE_COORDINATOR.stop()
             OMLX_COORDINATOR.stop()
             OMLX_UPDATE_COORDINATOR.stop()
