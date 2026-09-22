@@ -1,5 +1,8 @@
 import datetime as dt
 import os
+import tempfile
+from pathlib import Path
+import desktop
 import health
 import shutil
 import subprocess
@@ -96,9 +99,68 @@ class PaneRecoveryTests(unittest.TestCase):
         dead = terminal.tmux('list-panes', '-t', 'group-1:0', '-F', '#{pane_dead}').stdout.splitlines()
         self.assertEqual(dead, ['0', '0', '0'])
 
+    def test_persistent_selector_focus(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(desktop, 'STATE', Path(directory)):
+            self.assertEqual(desktop.choose(5), 'group-2')
+            self.assertEqual(terminal.tmux('display-message', '-p', '-t', 'group-2',
+                                          '#{@pi-desk-session}').stdout.strip(), '5')
+            self.assertEqual(desktop.last_session(), 5)
+            desktop.choose(10)
+            self.assertEqual(self.tags('group-4:0'), ['10'])
+            self.assertEqual(terminal.tmux('show-options', '-gv', 'status').stdout.strip(), '2')
+            self.assertEqual(terminal.tmux('show-options', '-gv', 'status-position').stdout.strip(), 'top')
+
     def test_tenth_solo(self):
         terminal.ensure_group('4')
         self.assertEqual(self.tags('group-4:0'), ['10'])
+
+
+class DesktopTests(unittest.TestCase):
+    def test_all_click_targets(self):
+        bar = desktop.selector({'1': 'running'})
+        for n in range(1, 11):
+            self.assertIn(f'range=user|{n},', bar)
+        self.assertIn('fg=colour77', bar)
+        self.assertIn('F12', bar)
+        self.assertIn('#{session_name}', bar)
+        self.assertIn('#{@pi-desk-session}', bar)
+
+    def test_invalid_input(self):
+        for value in ('', '11', '-1', '01', '1;exit', 'left'):
+            with self.assertRaises(ValueError):
+                desktop.session_number(value)
+
+    def test_restore_invalid_state(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(desktop, 'STATE', Path(directory)):
+            self.assertEqual(desktop.last_session(), 1)
+            (Path(directory)/'last-session').write_text('bad')
+            self.assertEqual(desktop.last_session(), 1)
+
+    def test_health_style_and_escape(self):
+        self.assertIn('colour203', desktop.health_line('live', ('test', 'failed')))
+        self.assertIn('colour179', desktop.health_line('unavailable', ('test', 'active')))
+        self.assertIn('##(bad)', desktop.health_line('live', ('#(bad)', 'active')))
+
+    def test_navigation_boundaries(self):
+        for current, step, wanted in ((4, -1, 3), (3, 1, 4), (9, 1, 10),
+                                      (10, -1, 9), (1, -1, 1), (10, 1, 10)):
+            calls = []
+            def mux(*args, **kwargs):
+                calls.append(args)
+                if args[0] == 'list-clients':
+                    return mock.Mock(stdout='999\tclient\t%1\n', returncode=0)
+                if args[0] == 'display-message':
+                    return mock.Mock(stdout=str(current), returncode=0)
+                return mock.Mock(stdout='', returncode=1 if args[0]=='list-panes' else 0)
+            key, index = terminal.session_group(wanted)
+            with tempfile.TemporaryDirectory() as directory, \
+                 mock.patch.object(desktop, 'STATE', Path(directory)), \
+                 mock.patch.object(desktop, 'tmux', side_effect=mux), \
+                 mock.patch.object(desktop, 'ensure_group', return_value='group-'+key):
+                desktop.choose(client_pid=999, step=step)
+                self.assertIn(('select-pane', '-t', f'group-{key}:0.{index}'), calls)
+                self.assertIn(('switch-client', '-c', 'client', '-t', '=group-'+key), calls)
+                self.assertEqual(desktop.last_session(), wanted)
 
 
 class SelectionTests(unittest.TestCase):

@@ -99,6 +99,37 @@ session 5 focused; `10` + Enter opened session 10 alone; F12 returned to the men
 Presence/audio remained active. Pre-update rollback:
 `~/.local/state/pi-desk/backups/20260922T191052Z/`.
 
+## Persistent selector and cross-group navigation — 2026-09-22, 15:25 EDT
+
+Replaced the fullscreen menu with **two native tmux status rows at the top**:
+clickable numbered session/status dots, then compact connection/health readings.
+The bar is not a pane, so navigation cannot get stuck in it. One fullscreen 14 pt
+Foot window keeps coding sessions visible at all times. The current 173×46 display
+retains 43 content rows per coding pane plus its title/border row.
+
+F12 opens numeric session selection without hiding the workspace. Ctrl+Left/Right
+moves through sessions 1–10, switching groups and focusing the requested session;
+it stops at the endpoints. The last selected session is persisted as a number.
+Existing healthy groups switch without rebuilding layouts; damaged groups retain
+pane-repair behaviour. A lock serializes selection and another prevents duplicate
+persistent displays. Status/health collection continues while coding.
+
+- **32 tests passed on both Mac and Pi**, including selector ranges, status styles,
+  state restoration, group focus, and cross-group/end-point navigation.
+- Live F12 selection of 4, Ctrl+Left → group 1/session 3, Ctrl+Right → group 2/session 4.
+- Live 10 → Left → 9 and Right → 10; another Right stayed at 10.
+- Actual tmux SGR mouse-input test on session 10's range selected group 4/session 10.
+  Used a temporary ignore-size local client; terminal contents were discarded,
+  not logged. The temporary client was closed afterwards.
+- Restarted the display service and verified automatic restoration of group 2,
+  focused on session 4. Two-row bar/live health returned; zero service restarts.
+- Presence/audio proxy, Bluetooth and SSH remained active; boot enablement retained.
+- Pre-update rollback: `~/.local/state/pi-desk/backups/20260922T192538Z/`.
+
+This supersedes the earlier F12-to-fullscreen-menu and 24 pt menu behaviour.
+The existing service's boot acceptance was tested earlier; this version was
+service-restart tested, not subjected to another full Pi reboot.
+
 ## Still untested deliberately
 
 - Prolonged Wi-Fi loss, Mac reboot, and TV hotplug. Retry behaviour is tested

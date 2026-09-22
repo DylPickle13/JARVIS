@@ -1,182 +1,166 @@
 # Pi Desk
 
-A lightweight living-room workspace for the Mac's ten Pi Coding Agent sessions.
-Runs on the Raspberry Pi 3 using **labwc + foot + local tmux + SSH**, not a browser
-or streamed desktop. Presence, Bluetooth, SSH and audio services stay independent.
+Lightweight living-room access to the Mac's ten Pi Coding Agent sessions using
+**labwc + Foot + local tmux + SSH**. No browser or streamed desktop.
 
-## Use
+## Interface
 
-Pi Desk starts automatically on the TV after the Pi boots, on **tty3**.
+A persistent **two-line top bar** replaces the fullscreen menu:
 
-| Key | Action |
+1. All ten session numbers with live coloured dots. Click a number to open its
+   group and focus that session. The current group is shaded; the focused number
+   is bold cyan.
+2. Compact connection status, Wi-Fi signal, Mac ping, temperature and presence
+   service state.
+
+The rest of the screen is always a coding workspace: **1/2/3**, **4/5/6**,
+**7/8/9**, or **10 alone**. The bar is native tmux status chrome, not a fourth
+pane: it consumes only two rows and cannot trap pane-navigation shortcuts.
+At the deployed 173×46 terminal size, coding panes retain 43 content rows plus
+their existing title/border row.
+
+| Control | Action |
 | --- | --- |
-| `1`–`3`, then Enter | Sessions 1, 2, 3 side by side; focus the chosen session |
-| `4`–`6`, then Enter | Sessions 4, 5, 6; focus the chosen session |
-| `7`–`9`, then Enter | Sessions 7, 8, 9; focus the chosen session |
-| `10`, then Enter | Session 10 alone |
-| Backspace / Escape | Edit / clear the session number |
-| `s` | Interactive Mac shell; type `exit` to return |
-| `q` | Close Pi Desk; it starts again on the next boot or manual start |
-| `F12` | Leave a session group and return to the clean menu |
-| Click a pane | Focus that terminal |
-| `Ctrl+A`, then arrow | Select a local pane |
-| `Ctrl` + `+` / `-` | Adjust the focused terminal's font size |
+| Click a session number in the top bar | Open its group and focus that session |
+| `F12`, type `1`–`10`, Enter | Select a session without hiding the workspace |
+| Escape in the F12 prompt | Cancel selection |
+| `Ctrl+Left/Right` | Previous/next session, including across group boundaries |
+| `Ctrl+A`, then Left/Right | Alternative previous/next session navigation |
+| Click a coding pane | Focus that pane |
+| `Ctrl` + `+` / `-` | Adjust terminal font size |
 | `Alt+F11` | Toggle fullscreen |
 
-The large menu uses 24 pt text; workspaces use 14 pt. Pure-black background,
-DejaVu Sans Mono, Noto Color Emoji, US keyboard, 1080p output. Cards have subtle
-grey borders, bold session numbers and small lifecycle-coloured dots. Health
-readings are muted grey, amber for uncertainty/problems and red for failed
-services. The active workspace pane has a cyan border and bold cyan title;
-inactive titles and the status bar stay muted. App-specific
-coloured content is not rewritten. F12 belongs to the local tmux workspace;
-it is not a global shortcut inside the standalone Mac shell.
+**4 → Left opens 1/2/3 focused on 3; 3 → Right opens 4/5/6 focused on 4.**
+Navigation stops at 1 and 10, rather than wrapping. Direct Ctrl+Arrow shortcuts
+are consumed locally, not passed to the remote editor for word navigation.
+Plain arrows are unchanged. Session selection is serialized to handle rapid clicks.
 
-Manual start on the Pi:
+Pi Desk starts at boot and restores the last session chosen through its controls
+(default 1). All text is **14 pt**, with DejaVu Sans Mono and Noto Color Emoji,
+a pure-black background, US keyboard and 1080p output. The active coding pane has
+a cyan border/bold title; inactive chrome is muted. The old standalone fullscreen
+menu remains in source for rollback/reference but is not launched.
 
-```sh
-~/.local/bin/pi-desk
-```
+Manual start on the Pi: `~/.local/bin/pi-desk` (legacy `mac-sessions` redirects here).
+There is no separate menu window or automatic return to a menu when a group closes.
 
-## Architecture and recovery
+## Status and diagnostics
 
-- `terminal.py`: card-grid UI, status stream management, workspace reconciliation.
-- `health.py`: asynchronous, read-only local health strip; no UI-blocking checks.
-- `connect.sh`: one reconnecting SSH client per local pane. Retries after three
-  seconds; 5-second keepalives, two missed replies, 5-second connection timeout.
-- `status_stream.py`: Mac-side read-only projection of the **same jarvisd Pi
-  lifecycle data used by the iPhone app**, over existing key-authenticated SSH.
-- `launch.sh`: fullscreen terminal launcher.
-- `config/`: reviewed foot, local tmux, compositor and systemd configuration.
-- `install_pi.py`: allowlisted backups and installation; activation is explicit.
+Session dots: Running green, Idle purple, New cyan, Compacting blue, Offline grey,
+Unknown amber. They use the same jarvisd lifecycle data as the iPhone app, streamed
+over existing key-authenticated SSH every **3 seconds**, continuously while coding.
+Only numbered lifecycle labels are streamed, never conversation contents.
 
-Local tmux uses the dedicated **`pi-desk` socket**. Remote tmux uses
-**`jarvis-mobile`**, exact session names, and `attach-session -f ignore-size`.
-No remote layouts are resized, other clients detached, or Mac Pi sessions
-created/killed. A narrow existing Mac layout can therefore leave blank space.
+The connection banner distinguishes connecting/reconnecting, disconnected SSH,
+live session data, and a connected Mac with unavailable backend data. Source
+samples older than 15 seconds become Unknown; a stream silent for 12 seconds is
+restarted. SSH failures do not prove that the Mac is powered off.
 
-Every workspace entry checks its tagged panes, restores missing ones, respawns
-exited ones and restores numeric order. A lost SSH connection normally reconnects
-inside its existing pane. Local dead panes remain visible until the next entry,
-rather than silently disappearing.
+Health sampling runs in one background worker every **10 seconds**, with 2-second
+command timeouts and 25-second expiry. It reads Wi-Fi association signal (`wlan0`),
+one ICMP ping to the existing Mac SSH alias, CPU temperature, and the local
+presence unit's state. Missing data shows `--`/unknown. Normal readings are muted;
+uncertainty is amber and explicit service failure red.
 
-Status is fetched every **3 seconds while the menu is visible**; only session
-numbers and lifecycle labels are streamed. Running = green, Idle = purple,
-New = cyan, Compacting = blue, Offline = grey, Unknown = amber. Collector samples
-older than 15 seconds, backend errors and disconnected feeds become **Unknown**,
-never a fabricated Idle/Offline. The UI expires its stream after 12 seconds and
-reconnects failed streams automatically. It pauses polling while a workspace is open.
+**Presence service: active means a running unit, not fresh sensor data or anyone's
+location.** Ping `no reply` does not prove the Mac is offline. No radio scans,
+privileged health commands, new ports, credentials or persistent diagnostic logs.
 
-The connection banner distinguishes **Connecting**, **SSH disconnected / Retrying**,
-**Reconnecting**, **Mac connected / Session status live**, and **Mac connected /
-Session status unavailable**. A working SSH feed with missing backend data is not
-misreported as a Mac outage. SSH failure can mean network, authentication, or
-remote-helper trouble; it does not prove the Mac is powered off.
+## Architecture
 
-The read-only health strip refreshes every **10 seconds while the menu is open**:
-Wi-Fi association signal (`wlan0`, dBm), one Mac ICMP ping, Pi CPU temperature,
-and the local presence unit's active state. Checks run in a single background
-worker with 2-second command timeouts. Readings expire after 25 seconds; missing
-tools/data show `--` or `unknown`. Ping `no reply` is not proof of an offline Mac.
-**Presence service: active** means the process is running—not fresh sensor data
-or anyone's location. No Bluetooth/Wi-Fi scans, credentials, privileged commands,
-new listeners, or persistent health logs are involved.
+- `desktop.py`: persistent tmux attachment, top bar, click/keyboard routing,
+  ordered cross-group navigation and last-session persistence.
+- `terminal.py`: shared bounded status feed, tagged-pane recovery and legacy grid.
+- `health.py`: read-only asynchronous diagnostics.
+- `connect.sh`: reconnecting SSH client per pane (3-second retry, 5-second
+  connection timeout/keepalives, two missed keepalives).
+- `status_stream.py`: read-only Mac jarvisd lifecycle projection.
+- `launch.sh`, `config/`: fullscreen display, local tmux, labwc and system service.
+- `install_pi.py`: allowlisted backups and installation; activation stays explicit.
 
-## Installation / restore from source
+The dedicated **local `pi-desk` tmux socket** contains the grouped workspaces.
+The remote Mac uses **`jarvis-mobile`** and `attach-session -f ignore-size`.
+Mac sessions are never recreated, killed, resized, or detached from other clients.
+Group switching affects only the Pi's display. Existing Mac layouts may therefore
+leave unused space in a Pi pane. Missing/dead local panes are repaired on selection;
+healthy groups switch without rebuilding their layouts.
 
-This deployment is intentionally hardware-specific: existing `pi` account,
-UID 1000, HDMI-A-1, tty3, Raspberry Pi OS, NetworkManager, and the existing
-`mac-mini-64` SSH alias. Review paths before using another machine.
+## Install/update
 
-Required Pi packages:
+This is hardware-specific: existing `pi` account/UID 1000, Raspberry Pi OS,
+HDMI-A-1, tty3, and the established `mac-mini-64` SSH alias.
 
 ```sh
 sudo apt-get install --no-install-recommends \
   labwc foot tmux wlr-randr fonts-dejavu-core fonts-noto-color-emoji
 ```
 
-Python 3 and OpenSSH are supplied by the OS. `wtype` was used for display smoke
-tests, but is not a runtime dependency. No browser or full desktop is required.
+Python 3/OpenSSH are OS-provided. `wtype` is for display smoke tests, not runtime.
+Keep existing SSH host verification, `IdentitiesOnly yes`, `ForwardAgent no`, and
+private keys outside this project. The existing pi account's sudo policy is not
+created or broadened here. This is a trusted household console, not a locked kiosk.
 
-Prerequisite: `ssh mac-mini-64` from the Pi must use the existing dedicated key
-and a separately verified host key. Keep `StrictHostKeyChecking yes`,
-`IdentitiesOnly yes` and `ForwardAgent no`. **Do not put private keys, tokens,
-IRKs, host-key databases or personal runtime data into this project.**
+On the Mac, back up `~/.local/bin/pi-grid-status`, then install `status_stream.py`
+there. It reads existing trusted-loopback `http://127.0.0.1:8790/api/v1/state`;
+backend/authentication failures become Unknown, never a reason to hardcode tokens.
 
-1. On the Mac, back up `~/.local/bin/pi-grid-status`, then copy
-   `status_stream.py` there (mode 0700). It uses the existing trusted-loopback
-   `http://127.0.0.1:8790/api/v1/state` endpoint. If backend authentication changes,
-   it fails closed to Unknown; do not hardcode credentials to work around that.
-2. Copy this project's source to a Pi staging directory using the existing SSH
-   connection. Run the tests there, then `python3 install_pi.py` **as pi**.
-3. Stop the old display service before activating a replacement. For updates:
-
-   ```sh
-   sudo systemctl stop pi-desk.service
-   python3 install_pi.py
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now pi-desk.service
-   ```
-
-   Only local display clients are closed; the Mac's tmux sessions survive.
-4. Verify `systemctl is-enabled pi-desk.service` and
-   `systemctl is-active pi-desk.service`. Enablement installs a
-   `multi-user.target.wants` link; it does not change the default boot target.
-
-The system service owns the compositor and local display clients, uses the
-existing `pi` account through PAM, and restarts on failure. Choosing Quit is a
-clean exit, not an endless automatic relaunch. The existing unrestricted sudo
-policy is **not** created or broadened by this project. Physical access to this
-terminal provides access to the Mac account; it is a trusted household console,
-not a locked-down kiosk.
-
-## Backups and rollback
-
-- **Source of truth:** this project, including its tested configurations.
-- **Pre-migration snapshot:** [`backups/`](backups/), containing only the explicitly
-  allowlisted old terminal scripts/configuration and deployment metadata.
-- **Pi runtime rollback copies:** `~/.local/state/pi-desk/backups/<UTC timestamp>/`.
-- **Mac status-helper rollback copies:** `~/.local/state/pi-desk/backups/`.
-- **Installed Pi source:** `~/.local/share/pi-desk/`; `manifest.json` records SHA-256s.
-- **Service:** `/etc/systemd/system/pi-desk.service`.
-
-For source rollback, stop Pi Desk, deploy a known-good project revision using
-`install_pi.py`, reload systemd, then start the service. To disable boot startup
-without touching presence/audio/SSH:
+Copy source to a Pi staging directory, run its tests as pi, then:
 
 ```sh
-sudo systemctl disable --now pi-desk.service
-sudo chvt 1
+sudo systemctl stop pi-desk.service
+python3 install_pi.py
+sudo systemctl daemon-reload
+sudo systemctl enable --now pi-desk.service
 ```
 
-The legacy snapshot is archival, not an automatic rollback installer. Its files
-are relative to the old `pi` home and require deliberate path-by-path restoration.
-Never blindly extract a snapshot over `/` or `$HOME`.
+Startup reapplies the local tmux configuration, including to a surviving server.
+The service owns the display/compositor on tty3 and restarts on failure, without
+changing `multi-user.target` or touching presence, audio, Bluetooth or SSH units.
+`~/.local/state/pi-desk/last-session` stores only the selected number, not contents.
 
-## Wi-Fi and keyboard
+Wi-Fi power saving remains disabled in the existing NetworkManager profile
+(`802-11-wireless.powersave=2`); no network profile is replaced. Console and labwc
+use US English; the installer manages only the dedicated compositor settings.
 
-Wi-Fi power saving is disabled in the **existing NetworkManager connection**
-(`802-11-wireless.powersave = 2`), not in a replacement network profile. That
-setting survives reconnects and boots. `iw dev wlan0 get power_save` should say
-`off`. Ethernet remains the best latency improvement if practical.
+## Backups/rollback
 
-Console `/etc/default/keyboard` and the dedicated compositor environment both
-use US English. The installer only manages the compositor's configuration;
-it does not overwrite the console or network profiles.
+- Source of truth: this project.
+- Historical, secret-free pre-migration archive: [`backups/`](backups/).
+- Pi rollback files: `~/.local/state/pi-desk/backups/<UTC timestamp>/`.
+- Mac helper backups: `~/.local/state/pi-desk/backups/` on the Mac.
+- Installed source: `~/.local/share/pi-desk/`, with SHA-256 `manifest.json`.
+- Service: `/etc/systemd/system/pi-desk.service`.
 
-## Checks
+For rollback, stop Pi Desk and install a known-good source revision (or the
+reviewed `app/` tree in a pre-update backup) using that revision's installer.
+When restoring the old menu, also stop the **local** tmux server so new status-bar
+options and key bindings do not survive into the old configuration:
+
+```sh
+sudo systemctl stop pi-desk.service
+tmux -L pi-desk kill-server   # Pi clients only; Mac sessions keep running
+# Run the chosen revision's install_pi.py here.
+sudo systemctl daemon-reload
+sudo systemctl start pi-desk.service
+```
+
+To disable boot startup: `sudo systemctl disable --now pi-desk.service`, then
+`sudo chvt 1`. Do not blindly extract snapshots over `/` or `$HOME`. Never commit
+SSH keys/config, IRKs, credentials, backend state or session transcripts.
+
+## Verification
 
 ```sh
 python3 -m unittest -v test_pi_desk
 bash -n connect.sh
 sh -n launch.sh
-foot --check-config
 systemctl status pi-desk.service
 journalctl -u pi-desk.service -n 40 --no-pager
+tmux -L pi-desk list-clients -F '#{session_name} focus=#{@pi-desk-session}'
 tmux -L pi-desk list-panes -a -F '#{session_name} #{@pi-desk-session} #{pane_dead}'
 systemctl --user is-active jarvis-presence.service mpris-proxy.service
 ```
 
-Tests use isolated `pi-desk-test-*` tmux sockets and `sleep` processes, never the
-Mac's actual sessions. See [DEPLOYMENT.md](DEPLOYMENT.md) for initial validation
-and remaining acceptance checks.
+Tests use isolated `pi-desk-test-*` sockets, temporary state and `sleep` processes;
+never real Mac sessions. Deployment results and remaining acceptance checks:
+[DEPLOYMENT.md](DEPLOYMENT.md).

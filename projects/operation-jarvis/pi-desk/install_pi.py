@@ -38,7 +38,7 @@ def install():
     if unit.is_file():
         shutil.copy2(unit, backup / 'pi-desk.service')
     APP.mkdir(parents=True, exist_ok=True)
-    for name in ('terminal.py', 'health.py', 'connect.sh', 'launch.sh', 'status_stream.py', 'install_pi.py'):
+    for name in ('terminal.py', 'desktop.py', 'health.py', 'connect.sh', 'launch.sh', 'status_stream.py', 'install_pi.py'):
         shutil.copy2(SOURCE / name, APP / name)
         (APP / name).chmod(0o700)
     shutil.copytree(SOURCE / 'config', APP / 'config', dirs_exist_ok=True)
@@ -54,7 +54,7 @@ def install():
     (bindir / 'pi-desk').write_text('#!/bin/sh\nsudo systemctl start pi-desk.service && sudo chvt 3\n')
     (bindir / 'pi-desk').chmod(0o700)
     # Compatibility with the earlier manual launcher name.
-    (bindir / 'mac-sessions').write_text('#!/bin/sh\nexec python3 "$HOME/.local/share/pi-desk/terminal.py"\n')
+    (bindir / 'mac-sessions').write_text('#!/bin/sh\nexec "$HOME/.local/bin/pi-desk"\n')
     (bindir / 'mac-sessions').chmod(0o700)
     subprocess.run(['sudo', 'install', '-m', '644', str(SOURCE / 'config/pi-desk.service'),
                     str(unit)], check=True)
