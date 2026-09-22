@@ -178,6 +178,28 @@ class FeedbackTests(unittest.TestCase):
         self.assertFalse(monitor.busy)
         self.assertEqual(monitor.lines, health.UNKNOWN)
 
+    def test_diagnostic_colors(self):
+        self.assertEqual(terminal.diagnostic_pair('Presence service: active'), 7)
+        self.assertEqual(terminal.diagnostic_pair('Mac connected · Session status live'), 7)
+        for value in ('Mac ping no reply', 'Presence service: inactive',
+                      'SSH disconnected · Retrying in 3s', 'Wi-Fi --', 'Session status unavailable'):
+            self.assertEqual(terminal.diagnostic_pair(value), 1)
+        self.assertEqual(terminal.diagnostic_pair('Presence service: failed'), 10)
+
+    def test_card_color_is_limited_to_dot(self):
+        screen = mock.Mock()
+        screen.getmaxyx.return_value = (25, 57)
+        with mock.patch.object(terminal.curses, 'color_pair', side_effect=lambda n: n):
+            terminal.paint(screen, {'1': 'compacting'})
+        calls = [call.args for call in screen.addnstr.call_args_list]
+        self.assertTrue(any(row[2] == '●' and row[4] == 5 for row in calls))
+        self.assertTrue(any(row[2].startswith('╭') and row[4] == 8 for row in calls))
+        self.assertTrue(any(row[2] == 'Compacting' and row[4] == 7 for row in calls))
+        # Longest lifecycle label fits inside the narrowest card.
+        label = next(row for row in calls if row[2] == 'Compacting')
+        edge = next(row for row in calls if row[0] == label[0] and row[2].startswith('│'))
+        self.assertLess(label[1] + len(label[2])-1, edge[1] + len(edge[2])-1)
+
     def test_grid_fits_with_health_strip(self):
         screen = mock.Mock()
         screen.getmaxyx.return_value = (25, 96)

@@ -73,6 +73,20 @@ household actions. Service state is explicitly not sensor freshness or occupancy
   proxy services remained active throughout this display-only update.
 - Pre-update Pi rollback: `~/.local/state/pi-desk/backups/20260922T153003Z/`.
 
+## Visual refinement — 2026-09-22, 15:05 EDT
+
+Session text increased to 14 pt; menu remains 24 pt. Cards now use subtle grey
+borders, bright bold numbers and coloured lifecycle dots instead of full-card
+colour. Normal diagnostics are muted grey; uncertainty is amber and explicit
+service failure red. Active local panes have bold cyan titles and cyan borders;
+inactive titles/status chrome are muted. Pure-black backgrounds retained.
+
+All 23 tests passed on Mac and Pi, including diagnostic colours and narrow-card
+label fit. Applied the configuration to the existing local `pi-desk` tmux server;
+verified expanded active/inactive title styles, 14 pt workspace launch and F12.
+Presence and audio services stayed active. Pre-update rollback:
+`~/.local/state/pi-desk/backups/20260922T190534Z/`.
+
 ## Still untested deliberately
 
 - Prolonged Wi-Fi loss, Mac reboot, and TV hotplug. Retry behaviour is tested

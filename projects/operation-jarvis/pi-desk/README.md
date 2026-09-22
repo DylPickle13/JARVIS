@@ -22,8 +22,12 @@ Pi Desk starts automatically on the TV after the Pi boots, on **tty3**.
 | `Ctrl` + `+` / `-` | Adjust the focused terminal's font size |
 | `Alt+F11` | Toggle fullscreen |
 
-The large menu uses 24 pt text; workspaces use 12 pt. Pure-black background,
-DejaVu Sans Mono, Noto Color Emoji, US keyboard, 1080p output. App-specific
+The large menu uses 24 pt text; workspaces use 14 pt. Pure-black background,
+DejaVu Sans Mono, Noto Color Emoji, US keyboard, 1080p output. Cards have subtle
+grey borders, bold session numbers and small lifecycle-coloured dots. Health
+readings are muted grey, amber for uncertainty/problems and red for failed
+services. The active workspace pane has a cyan border and bold cyan title;
+inactive titles and the status bar stay muted. App-specific
 coloured content is not rewritten. F12 belongs to the local tmux workspace;
 it is not a global shortcut inside the standalone Mac shell.
 

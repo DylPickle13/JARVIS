@@ -162,8 +162,20 @@ def open_workspace(key):
         group = ensure_group(key)
         command = ['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group]
     return subprocess.run(['foot', '--fullscreen',
-                           '--font=DejaVu Sans Mono:size=12,Noto Color Emoji:size=12',
+                           '--font=DejaVu Sans Mono:size=14,Noto Color Emoji:size=14',
                            *command], check=False).returncode
+
+
+def diagnostic_pair(value):
+    """Quiet normal readings; distinguish explicit failures from uncertainty."""
+    lowered = value.lower()
+    if 'failed' in lowered:
+        return 10
+    if any(word in lowered for word in ('disconnected', 'retry', 'reconnecting',
+                                        'unavailable', 'invalid', 'unknown',
+                                        'no reply', '--', 'inactive', 'deactivating')):
+        return 1
+    return 7
 
 
 def paint(screen, states, error='', connection='Connecting to Mac…', health=UNKNOWN):
@@ -178,9 +190,9 @@ def paint(screen, states, error='', connection='Connecting to Mac…', health=UN
             pass
     if cols < 57 or rows < 25:
         text(0, 2, 'PI DESK', curses.A_BOLD)
-        text(1, 2, connection, curses.color_pair(4))
-        text(2, 2, health[0], curses.A_DIM)
-        text(3, 2, health[1], curses.A_DIM)
+        text(1, 2, connection, curses.color_pair(diagnostic_pair(connection)))
+        text(2, 2, health[0], curses.color_pair(diagnostic_pair(health[0])))
+        text(3, 2, health[1], curses.color_pair(diagnostic_pair(health[1])))
         text(5, 2, '1: 1–3   2: 4–6   3: 7–9   4: 10')
         text(6, 2, 's: Shell  q: Quit  F12: Back from sessions')
         for n in range(1, 11):
@@ -191,9 +203,9 @@ def paint(screen, states, error='', connection='Connecting to Mac…', health=UN
     width = min(23, (cols-12)//3)
     left = max(1, (cols-(width*3+9))//2)
     text(0, left, 'P I  D E S K', curses.color_pair(4) | curses.A_BOLD)
-    text(1, left, connection, curses.color_pair(4))
-    text(2, left, health[0], curses.A_DIM)
-    text(3, left, health[1], curses.A_DIM)
+    text(1, left, connection, curses.color_pair(diagnostic_pair(connection)))
+    text(2, left, health[0], curses.color_pair(diagnostic_pair(health[0])))
+    text(3, left, health[1], curses.color_pair(diagnostic_pair(health[1])))
     y = 5
     for key, numbers in GROUPS.items():
         text(y+1, left, f'[{key}]', curses.color_pair(4))
@@ -201,10 +213,14 @@ def paint(screen, states, error='', connection='Connecting to Mac…', health=UN
             state = states.get(str(number), 'unknown')
             color = curses.color_pair(STATES.index(state)+1)
             x = left + 5 + col*(width+2)
-            text(y, x, '╭'+'─'*(width-2)+'╮', color)
-            text(y+1, x, '│'+f'  {number}'.ljust(width-2)+'│', color | curses.A_BOLD)
-            text(y+2, x, '│'+('  ● '+state.title()).ljust(width-2)+'│', color)
-            text(y+3, x, '╰'+'─'*(width-2)+'╯', color)
+            border = curses.color_pair(8)
+            text(y, x, '╭'+'─'*(width-2)+'╮', border)
+            for row in (y+1, y+2):
+                text(row, x, '│'+' '*(width-2)+'│', border)
+            text(y+1, x+3, str(number), curses.color_pair(9) | curses.A_BOLD)
+            text(y+2, x+2, '●', color)
+            text(y+2, x+4, state.title(), curses.color_pair(7))
+            text(y+3, x, '╰'+'─'*(width-2)+'╯', border)
         y += 5 if rows >= 29 else 4
     text(y, left, '1–3 Open row   4 Session 10   s Shell   q Quit', curses.A_DIM)
     text(y+1, left, error or 'F12 Return to grid · Auto-reconnect enabled',
@@ -218,6 +234,10 @@ def main(screen):
     # Unknown amber, Running green, Idle purple, New cyan, Compacting blue, Offline grey.
     for i, color in enumerate((179, 77, 141, 80, 75, 245), 1):
         curses.init_pair(i, color if curses.COLORS >= 256 else i % 7 + 1, -1)
+    # Muted text, subtle borders, bright numbers, explicit failure red.
+    for i, color, fallback in ((7, 245, curses.COLOR_WHITE), (8, 239, curses.COLOR_WHITE),
+                               (9, 252, curses.COLOR_WHITE), (10, 203, curses.COLOR_RED)):
+        curses.init_pair(i, color if curses.COLORS >= 256 else fallback, -1)
     screen.timeout(250)
     feed = StatusFeed()
     monitor = HealthMonitor(HOST)
