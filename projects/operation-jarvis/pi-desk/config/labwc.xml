@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<labwc_config>
+  <keyboard>
+    <default />
+    <keybind key="A-F11"><action name="ToggleFullscreen" /></keybind>
+  </keyboard>
+  <mouse><default /></mouse>
+</labwc_config>

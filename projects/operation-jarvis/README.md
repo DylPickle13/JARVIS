@@ -6,6 +6,7 @@ This directory connects JARVIS to the things around the house: plugs, the air pu
 
 - **[jarvisd](jarvisd/):** shared control backend on port `8790` for health, state, services, job results, and allowlisted device commands. Network allowlisting and token authentication are separate modes.
 - **terminald:** mobile terminal relay on port `8792`, restricted to the protected `jarvis-mobile` tmux sessions.
+- **[Pi Desk](pi-desk/):** lightweight living-room Raspberry Pi workspace: fullscreen session grid, live Pi status, three-pane SSH groups, recovery, and boot startup.
 - **Room audio:** Raspberry Pi capture/playback with Mac-side Apple SpeechTranscriber for ordinary turns, DictationTranscriber for busy-only `stop`, Pi RPC, and Piper speech on port `8791`.
 - **Apple apps:** iPhone, Watch, and two widgets per platform.
 - **Smart plugs:** local TP-Link Kasa control through a fixed plug catalogue.
@@ -22,6 +23,7 @@ projects/operation-jarvis/
 ├── air-purifier/               # VeSync adapter
 ├── jarvisd/                    # shared control backend, API, tests, LaunchAgents
 ├── jarvis-app/                 # iPhone, Watch, widgets, JARVISKit, terminald
+├── pi-desk/                    # living-room Pi terminal, boot service, backups, tests
 ├── quotas/                     # read-only provider quota collection
 ├── room-audio/                # Mac-hosted room conversations and audio endpoints
 ├── smart-plug/                 # local Kasa adapter and private catalogue

@@ -1,0 +1,29 @@
+[Unit]
+Description=Pi Desk living-room terminal
+After=systemd-user-sessions.service network.target
+Conflicts=getty@tty3.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=pi
+PAMName=login
+WorkingDirectory=/home/pi
+Environment=HOME=/home/pi
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+Environment=XKB_DEFAULT_LAYOUT=us
+TTYPath=/dev/tty3
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+TTYReset=yes
+ExecStartPre=+/usr/bin/chvt 3
+ExecStart=/usr/bin/labwc -C /home/pi/.config/pi-desk/labwc -S /home/pi/.local/share/pi-desk/launch.sh
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
