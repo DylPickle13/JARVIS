@@ -330,6 +330,7 @@ private final class WatchJobsAPI: JarvisAPI, @unchecked Sendable {
 
     func health(_ endpoint: JarvisEndpoint) async throws -> HealthResponse { throw unused() }
     func state(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot { throw unused() }
+    func cachedState(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot { throw unused() }
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult { throw unused() }
     func events(_ endpoint: JarvisEndpoint, since: Int?, limit: Int) async throws -> EventsResponse { throw unused() }
     func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse { throw unused() }

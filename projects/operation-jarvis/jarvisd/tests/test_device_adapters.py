@@ -353,13 +353,12 @@ class CollectorTests(unittest.TestCase):
             run.assert_called_once()
 
     def test_plug_partial_failure_keeps_peer_and_configured_host(self):
-        def run(argv, **kwargs):
-            if argv[-1] == "plug-list":
-                return {"ok": True, "plugs": {"a": "192.0.2.1", "b": "192.0.2.2"}}
-            if argv[-1] == "a":
-                return {"ok": True, "plug": {"host": "192.0.2.1", "is_on": True}}
-            raise TimeoutError("fixture timeout")
+        run = mock.Mock(return_value={"ok": True, "plugs": {
+            "a": {"ok": True, "host": "192.0.2.1", "is_on": True},
+            "b": {"ok": False, "host": "192.0.2.2", "is_on": None, "error": "PRIVATE"}}})
         result = collect_plugs(run_cli_json=run, cli=Path("/fixed"), env={})
+        run.assert_called_once_with(['/fixed', '--json', 'plug-status-all'], timeout=12, env={})
+        self.assertNotIn('PRIVATE', json.dumps(result))
         self.assertTrue(result["ok"])
         self.assertEqual(result["onCount"], 1)
         self.assertEqual(result["plugs"]["b"]["host"], "192.0.2.2")

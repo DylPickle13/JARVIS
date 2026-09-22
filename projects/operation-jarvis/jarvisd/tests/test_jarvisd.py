@@ -100,7 +100,7 @@ class DaemonUnitTests(unittest.TestCase):
 
         def fake_run(argv, timeout=20.0, env=None):
             calls.append((argv, timeout, env))
-            if argv[-1] == "plug-list":
+            if argv[-1] == "plug-status-all":
                 return {"ok": True, "plugs": {}}
             return {"ok": True, "purifiers": {}}
 

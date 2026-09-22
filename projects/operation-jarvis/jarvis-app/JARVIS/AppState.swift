@@ -118,6 +118,7 @@ public final class AppState: ObservableObject {
     @Published public var errorMessage: String?
     @Published public var operationErrorMessage: String?
     @Published public var lastState: StateSnapshot?
+    @Published public private(set) var lastStateRequestStartedAt: Date?
     @Published public var lastHealth: HealthResponse?
     @Published public var isRefreshing = false
     @Published public var isStateLoading = false
@@ -445,13 +446,16 @@ public final class AppState: ObservableObject {
 
     private func performFetchState(refreshingCodexQuota: Bool) async {
         guard let endpoint = activeEndpoint else { return }
+        let requestStartedAt = Date()
         isStateLoading = true
         defer { isStateLoading = false }
         do {
-            let snapshot = try await convergedState(endpoint, refreshingCodexQuota: refreshingCodexQuota)
+            let snapshot = try await convergedState(endpoint, refreshingCodexQuota: refreshingCodexQuota,
+                cachedOnly: activeSection != .home && !refreshingCodexQuota)
             let previousState = lastState
             let widgetsChanged = widgetReloadValue(previousState) != widgetReloadValue(snapshot)
             lastState = snapshot
+            lastStateRequestStartedAt = requestStartedAt
             SnapshotStore().save(snapshot)
             if widgetsChanged { WidgetCenter.shared.reloadAllTimelines() }
             if let data = try? JSONEncoder().encode(snapshot) {
@@ -489,8 +493,11 @@ public final class AppState: ObservableObject {
     /// remains stale and is never hidden or retried here.
     private func convergedState(
         _ endpoint: JarvisEndpoint,
-        refreshingCodexQuota: Bool = false
+        refreshingCodexQuota: Bool = false,
+        cachedOnly: Bool = false
     ) async throws -> StateSnapshot {
+        // Passive tabs never converge by promoting a cached read to active.
+        if cachedOnly { return try await client.cachedState(endpoint) }
         var snapshot = refreshingCodexQuota
             ? try await client.stateRefreshingCodexQuota(endpoint)
             : try await client.state(endpoint)
@@ -1114,10 +1121,9 @@ public final class AppState: ObservableObject {
                         await self.refreshVisibleControlState()
                     }
                 } else {
-                    // A lightweight cached state read keeps jarvisd's active
-                    // client lease alive on JARVIS, Jobs, and Settings. These reads
-                    // do not trigger purifier cloud polling; Home entry or an
-                    // explicit refresh requests that separately.
+                    // Passive tabs read the cache without renewing collector
+                    // leases or scheduling purifier cloud reads. Home and explicit
+                    // refreshes retain the bounded foreground policy.
                     async let state: Void = self.fetchState()
                     async let jobs: Void = self.refreshJobs()
                     _ = await (state, jobs)
@@ -1135,6 +1141,7 @@ public final class AppState: ObservableObject {
         pollingTask?.cancel()
         store.clear()
         lastState = nil
+        lastStateRequestStartedAt = nil
         lastHealth = nil
         lastScheduledJobs = []
         scheduledJobsSummary = nil

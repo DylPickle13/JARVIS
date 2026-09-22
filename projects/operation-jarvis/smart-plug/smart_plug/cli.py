@@ -51,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("discover", help="Discover Kasa plugs on the local network")
     sub.add_parser("save-discovery", help="Discover plugs and write plugs.json using their Kasa aliases")
     sub.add_parser("list", help="List configured plugs from plugs.json/.env")
+    sub.add_parser("status-all", help="Read all configured plugs in one bounded batch")
 
     for command in ("status", "on", "off", "toggle"):
         p = sub.add_parser(command, help=f"{command} a plug")
@@ -83,6 +84,9 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 for name, plug in sorted(settings.plugs.items()):
                     print(f"{name}: {plug.host}")
+        elif args.command == "status-all":
+            statuses = run(controller.status_all())
+            print(json.dumps(statuses, indent=2, sort_keys=True))
         elif args.command == "status":
             _print_status(run(controller.status(args.plug)), args.json)
         elif args.command == "on":

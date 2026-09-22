@@ -216,6 +216,27 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request(path)[0], 503)
         self.assertEqual(self.coordinator.snapshot.call_count, 1)
 
+    def test_cached_state_does_not_activate_or_refresh(self):
+        self.assertEqual(self.request('/api/v1/state?mode=cached')[0], 200)
+        self.coordinator.snapshot.assert_called_once_with(client_active=False, start_collectors=False)
+        self.coordinator.request_refresh.assert_not_called()
+        self.coordinator.snapshot.reset_mock()
+        for query in ('mode=cached&refresh=purifier', 'mode=cached&retryCooldown=true',
+                      'mode=bad', 'mode=cached&mode=cached', 'mode=', 'mode=cached&refresh='):
+            self.assertEqual(self.request('/api/v1/state?' + query)[0], 400)
+        self.coordinator.snapshot.assert_not_called()
+        self.coordinator.request_refresh.assert_not_called()
+
+    def test_work_diagnostics_are_private_and_cache_only(self):
+        self.coordinator.metrics.snapshot.return_value = {}
+        self.assertEqual(self.request('/api/v1/diagnostics', token='')[0], 401)
+        self.coordinator.metrics.snapshot.assert_not_called()
+        self.assertEqual(self.request('/api/v1/diagnostics')[0], 200)
+        self.assertEqual(self.request('/api/v1/diagnostics?refresh=true')[0], 400)
+        self.coordinator.snapshot.assert_not_called()
+        self.coordinator.request_refresh.assert_not_called()
+        self.reader.assert_not_called()
+
     def test_diagnostics_success_does_not_mask_monitor_failure(self):
         self.assertEqual(self.request('/api/v1/security/health')[0], 200)
         self.assertEqual(self.request('/api/v1/monitor/security/door')[0], 503)

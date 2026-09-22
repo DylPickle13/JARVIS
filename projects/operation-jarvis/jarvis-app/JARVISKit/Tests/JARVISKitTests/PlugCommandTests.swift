@@ -168,6 +168,7 @@ private final class PlugCommandFakeAPI: JarvisAPI, @unchecked Sendable {
 
     func health(_ endpoint: JarvisEndpoint) async throws -> HealthResponse { HealthResponse(ok: true) }
     func state(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot { stateValue }
+    func cachedState(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot { stateValue }
 
     func command(
         _ endpoint: JarvisEndpoint,

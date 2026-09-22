@@ -10,6 +10,9 @@ import subprocess
 import threading
 import time
 
+from .work_metrics import WorkMetrics
+METRICS = WorkMetrics(('reads',))
+
 MAX_OUTPUT = 128 * 1024
 # CLI owns sensor-read retries within 60 seconds, plus disconnect cleanup.
 # Never add subprocess retries here (including for non-sensor reads).
@@ -92,7 +95,7 @@ def _feature(features, name, kind):
 
 def read_status(cli_path: str, alias: str, *, runner=run_cli) -> tuple[int, dict]:
     from .read_health import SECURITY_HEALTH
-    code, body = _read_status(cli_path, alias, runner=runner)
+    code, body = METRICS.run('reads', _read_status, cli_path, alias, runner=runner)
     body['availability'] = 'available' if body.get('ok') is True else 'unavailable'
     # Contention means no new check occurred. Retain the previous observation
     # without refreshing its age; it expires normally if contention persists.

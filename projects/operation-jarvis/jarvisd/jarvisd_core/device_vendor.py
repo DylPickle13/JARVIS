@@ -169,6 +169,14 @@ class DeviceVendorAdapter:
             "airPurifier": result,
         }
 
+    def handle_plug_collection(self, args: argparse.Namespace) -> dict[str, Any]:
+        result = self.run_smart_plug_command(['status-all'], timeout=8.0,
+            config_path=self.smart_plug_config, discovery_target=args.discovery_target)
+        plugs = result.get('data')
+        if not isinstance(plugs, dict) or len(plugs) > 64:
+            raise JarvisError('Invalid plug collection')
+        return {'ok': True, 'action': 'plug-status-all', 'plugs': plugs}
+
     def handle_plug_list(self, args: argparse.Namespace) -> dict[str, Any]:
         result = self.run_smart_plug_command(
             ["list"],

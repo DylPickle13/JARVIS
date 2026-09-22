@@ -17,7 +17,9 @@ from . import vendor_fence
 # Retained from the independently tested delegation-stage artifact. An arbitrary
 # manifest may NOT bless the old unfenced wrappers merely by adding helper files.
 FENCED_MUTATORS = {
-    'smart-plug/smart_plug/kasa_client.py': 'b06582ec8cced26c91984458da957568e55257b7c52298f29e4d903084a8c69f',
+    # Re-reviewed batch-read candidate: existing controller methods AST-identical;
+    # same mandatory ownership patches. Never recompute/accept this at runtime.
+    'smart-plug/smart_plug/kasa_client.py': '5ac8a49d0752228a0e72744904db0bed357ca0ad5f23731be2ad626c3c6541d1',
     'air-purifier/air_purifier/write_safety.py': '69ea80798bc7e6d0055c59edc358b380dd9271d3e70fc5732989a1ed622b3a7b',
 }
 REQUIRED = frozenset({

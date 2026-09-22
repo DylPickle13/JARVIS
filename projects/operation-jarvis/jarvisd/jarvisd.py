@@ -316,7 +316,15 @@ def dispatch_command(action: Any, params: Any) -> dict:
 # --------------------------------------------------------------------------- #
 
 
+from jarvisd_core.work_metrics import WorkMetrics
+ADAPTER_METRICS = WorkMetrics(('worker_invocations',))
+
+
 def run_cli_json(argv: list[str], timeout: float = 20.0, env: dict[str, str] | None = None) -> dict:
+    return ADAPTER_METRICS.run('worker_invocations', _run_cli_json, argv, timeout, env)
+
+
+def _run_cli_json(argv: list[str], timeout: float = 20.0, env: dict[str, str] | None = None) -> dict:
     """Run an argv list without a shell and parse JSON stdout.
 
     ``Popen.communicate`` is used so a timed-out child is explicitly killed;
@@ -452,16 +460,11 @@ def _lan_ip() -> str | None:
 def _tailscale_ip() -> str | None:
     if TAILSCALE_SOCKET.exists():
         try:
-            conn = _UnixSocketHTTPConnection(str(TAILSCALE_SOCKET))
-            conn.request("GET", "/localapi/v0/self")
-            resp = conn.getresponse()
-            if resp.status == 200:
-                data = json.loads(resp.read().decode())
-                ips = (data.get("Self") or {}).get("TailscaleIPs") or []
-                conn.close()
-                if ips:
-                    return ips[0]
-            conn.close()
+            from jarvisd_core.local_http import read_json
+            data = read_json(str(TAILSCALE_SOCKET), "/localapi/v0/self")
+            ips = (data.get("Self") or {}).get("TailscaleIPs") or []
+            if ips:
+                return str(ipaddress.ip_address(ips[0]))
         except Exception:  # noqa: BLE001
             pass
     # Network extensions do not always expose a local-api socket to a LaunchAgent.
@@ -504,19 +507,6 @@ def _tailscale_ip() -> str | None:
         except (OSError, ValueError, subprocess.SubprocessError):
             continue
     return TAILSCALE_IP_FALLBACK or None
-
-
-class _UnixSocketHTTPConnection(http.client.HTTPConnection):
-    """Minimal HTTP connection over a unix socket for Tailscale localapi."""
-
-    def __init__(self, socket_path: str):
-        super().__init__("localhost")
-        self._socket_path = socket_path
-
-    def connect(self):  # noqa: D102
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.connect(self._socket_path)
-        self.sock = sock
 
 
 def _pi_history_has_conversation(session_file: object) -> bool | None:
@@ -733,7 +723,7 @@ def _pi_sessions() -> dict:
     if PI_RPC_SESSIONS.is_file():
         try:
             data = json.loads(PI_RPC_SESSIONS.read_text(encoding="utf-8"))
-            sessions = data.get("sessions", data if isinstance(data, list) else [])
+            sessions = data if isinstance(data, list) else data.get("sessions", [])
             for session in sessions:
                 if isinstance(session, dict) and session.get("active"):
                     rpc_active += 1
@@ -2231,6 +2221,23 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
             self._send(200, {"ok": True, "scope": "recorded_read_outcomes",
                              "monitoring": False, "observations": observations})
             return
+        if path == "/api/v1/diagnostics":
+            if self._reject_origin():
+                return
+            if not auth.authorized(mode="token", address=self._client_ip(),
+                    token=self.headers.get("x-jarvis-token", ""), scope="api",
+                    api_token=API_TOKEN, event_token="", trusted_cidrs=""):
+                self._send(401, {"ok": False, "error": "unauthorized"})
+                return
+            if parsed.query:
+                self._send(400, {"ok": False, "error": "query parameters not supported"})
+                return
+            self._send(200, {"ok": True, "scope": "process_local_work",
+                "collectors": STATE_COORDINATOR.metrics.snapshot(),
+                "omlx": OMLX_COORDINATOR.metrics.snapshot(),
+                "adapter": ADAPTER_METRICS.snapshot(),
+                "security": security_status.METRICS.snapshot()})
+            return
         if path == "/api/v1/presence":
             from jarvisd_core import presence
             from jarvisd_core.local_control import authorized
@@ -2274,6 +2281,13 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
             return
         if path == "/api/v1/state":
             if not self._auth_or_respond():
+                return
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            if "mode" in query:
+                if query != {"mode": ["cached"]}:
+                    self._send(400, {"ok": False, "error": "cached mode cannot request refresh"})
+                    return
+                self._send(200, STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False))
                 return
             # Authenticated hosts may request an immediate refresh of the
             # read-only Codex usage collector. The response remains the fast

@@ -36,6 +36,33 @@ class SmartPlugController:
     def __init__(self, settings: Settings):
         self.settings = settings
 
+    async def status_all(self) -> dict[str, dict]:
+        """One read-only process, bounded concurrency and per-item failures.
+
+        Configuration is loaded once by the caller. No discovery broadcast,
+        writes, or recovery beyond the existing status-read policy.
+        """
+        if len(self.settings.plugs) > 64:
+            raise ValueError('Too many configured plugs')
+        slots = asyncio.Semaphore(8)
+
+        async def read(name, plug):
+            try:
+                # Includes time waiting for a slot. Outer worker deadline also
+                # bounds SDK cleanup and process startup for the whole batch.
+                async with asyncio.timeout(7):
+                    async with slots:
+                        value = (await self.status(name)).as_dict()
+                        if type(value.get('is_on')) is not bool:
+                            raise ValueError('State unavailable')
+                        return name, {'ok': True, **value}
+            except Exception:
+                return name, {'ok': False, 'host': plug.host, 'is_on': None,
+                              'error': 'Plug read unavailable'}
+
+        return dict(await asyncio.gather(*(read(name, plug)
+                    for name, plug in self.settings.plugs.items())))
+
     async def discover(self) -> dict[str, PlugStatus]:
         kwargs = self._primary_auth_kwargs()
         devices = await Discover.discover(

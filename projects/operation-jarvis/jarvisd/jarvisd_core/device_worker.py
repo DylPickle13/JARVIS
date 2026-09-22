@@ -21,6 +21,7 @@ from .device_vendor import DeviceVendorAdapter
 
 HANDLERS = MappingProxyType({
     "plug-list": "handle_plug_list", "plug-status": "handle_plug_status",
+    "plug-status-all": "handle_plug_collection",
     "plug-on": "handle_plug_on", "plug-off": "handle_plug_off",
     "plug-toggle": "handle_plug_toggle", "purifier-status": "handle_purifier_status",
     "purifier-set": "handle_purifier_set", "purifier-status-all": "handle_purifier_collection",
@@ -40,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
             sub.add_argument("--no-cast", action="store_true", required=True)
         elif action.startswith("plug-"):
             sub.set_defaults(plug_timeout=30.0, discovery_target=None)
-            if action != "plug-list":
+            if action not in {"plug-list", "plug-status-all"}:
                 sub.add_argument("plug")
             if action in {"plug-on", "plug-off", "plug-toggle"}:
                 sub.add_argument("--expected-host", required=True)

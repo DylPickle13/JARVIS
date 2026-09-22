@@ -12,7 +12,9 @@ import shutil
 import sys
 
 BASELINES = {
-    'smart-plug/smart_plug/kasa_client.py': '3bad9afd444675e47241bb8303daed63e4998bee89b1865a268c3f80e693bd9c',
+    # Audit: read-only status_all added; mutation paths unchanged, SDK no-replay
+    # suite revalidated. Still fail closed on any subsequent source drift.
+    'smart-plug/smart_plug/kasa_client.py': '1e2261422c228a2387a960135152b80aabb02fbdb9acfae01c8cbdc2c743c818',
     'air-purifier/air_purifier/write_safety.py': '50c2254b557aa0116d2489e5e01b8447e0b2e4abb4491a2edc49ce72e36d1e4f',
 }
 PATCHES = {

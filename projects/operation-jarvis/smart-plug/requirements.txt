@@ -1,3 +1,3 @@
 # HS103 hardware v5 uses TP-Link's newer IOT KLAP v2 auth path.
-# Use python-kasa PR #1625 until this fix lands in a normal PyPI release.
-python-kasa @ git+https://github.com/python-kasa/python-kasa.git@refs/pull/1625/head
+# Reviewed installed PR #1625 revision; never follow the moving PR head.
+python-kasa @ git+https://github.com/python-kasa/python-kasa.git@dd92c05b12c9d55c0bbb7ee75a9352d5689e5f80

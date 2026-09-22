@@ -102,6 +102,42 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertEqual(stale.title, "Unavailable")
     }
 
+    func testCachedStateDispatchesThroughProtocolWithoutRefresh() async throws {
+        var calls = 0
+        MockURLProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/v1/state")
+            XCTAssertEqual(request.url?.query, "mode=cached")
+            XCTAssertNil(request.httpBody)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            return MockURLProtocol.response(request, status: 200,
+                body: #"{"ok":true,"stale":true,"refreshing":true}"#)
+        }
+        let api: any JarvisAPI = client
+        let snapshot = try await api.cachedState(endpoint)
+        XCTAssertEqual(snapshot.stale, true)
+        XCTAssertEqual(snapshot.refreshing, true)
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testCachedStateFailureDoesNotFallBackToActiveRead() async throws {
+        var calls = 0
+        MockURLProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.url?.query, "mode=cached")
+            return MockURLProtocol.response(request, status: 400, body: #"{"ok":false}"#)
+        }
+        let api: any JarvisAPI = client
+        do {
+            _ = try await api.cachedState(endpoint)
+            XCTFail("Expected cached read to fail without an active fallback")
+        } catch let JarvisError.http(status, _) {
+            XCTAssertEqual(status, 400)
+        }
+        XCTAssertEqual(calls, 1)
+    }
+
     func testHealthRequestUsesTokenAndDecodes() async throws {
         MockURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/health")

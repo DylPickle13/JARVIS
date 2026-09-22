@@ -5,49 +5,31 @@ on import. The existing worker limits, timeouts and recovery flag are preserved.
 """
 from __future__ import annotations
 
-import concurrent.futures
 from pathlib import Path
 from .diagnostics import _safe_error
 from .devices import _purifier_id, _purifier_state
 
 
 def collect_plugs(*, run_cli_json, cli: Path, env: dict[str, str]) -> dict:
-    listing = run_cli_json([str(cli), "--json", "plug-list"], timeout=12, env=env)
-    plugs_map = (listing.get("plugs") or {}) if isinstance(listing, dict) else {}
-    if not isinstance(plugs_map, dict):
-        return {"ok": False, "error": "plug-list returned invalid data"}
-    # An empty configured list is valid. It is different from a failed list.
-    if listing.get("ok") is False and not plugs_map:
-        return {"ok": False, "error": "plug-list failed"}
-    names = list(plugs_map.keys())
-    results: dict[str, dict] = {}
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(len(names), 8)))
-    futures = {
-        name: pool.submit(
-            run_cli_json,
-            [str(cli), "--json", "plug-status", name],
-            timeout=10,
-            env=env,
-        )
-        for name in names
-    }
-    try:
-        for name, future in futures.items():
-            try:
-                result = future.result(timeout=11)
-            except Exception as exc:  # noqa: BLE001
-                result = {"ok": False, "error": _safe_error(exc)}
-            plug = result.get("plug") if isinstance(result, dict) else None
-            results[name] = {
-                "ok": bool(result.get("ok")) if isinstance(result, dict) else False,
-                "isOn": plug.get("is_on") if isinstance(plug, dict) else None,
-                "host": plug.get("host") if isinstance(plug, dict) else plugs_map.get(name),
-                "rssi": plug.get("rssi") if isinstance(plug, dict) else None,
-                "alias": plug.get("alias") if isinstance(plug, dict) else None,
-                "error": _safe_error(result.get("error")) if isinstance(result, dict) and result.get("error") else None,
-            }
-    finally:
-        pool.shutdown(wait=False, cancel_futures=True)
+    # One worker/vendor pair instead of list + N worker/vendor pairs. A failed
+    # batch never falls back to individual subprocesses or replays any operation.
+    listing = run_cli_json([str(cli), "--json", "plug-status-all"], timeout=12, env=env)
+    plugs_map = listing.get('plugs') if isinstance(listing, dict) else None
+    if (not isinstance(listing, dict) or listing.get('ok') is not True
+            or not isinstance(plugs_map, dict) or len(plugs_map) > 64):
+        return {'ok': False, 'error': 'Plug collection unavailable'}
+    names = list(plugs_map)
+    results = {}
+    for name, plug in plugs_map.items():
+        if not isinstance(name, str) or not isinstance(plug, dict):
+            return {'ok': False, 'error': 'Invalid plug collection'}
+        valid = plug.get('ok') is True and type(plug.get('is_on')) is bool
+        results[name] = {
+            'ok': valid, 'isOn': plug.get('is_on') if valid else None,
+            'host': plug.get('host'), 'rssi': plug.get('rssi') if valid else None,
+            'alias': plug.get('alias') if valid else None,
+            'error': None if valid else 'Plug read unavailable',
+        }
     successful = [r for r in results.values() if r.get("ok")]
     on_count = sum(1 for result in successful if result.get("isOn") is True)
     return {

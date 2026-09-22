@@ -103,9 +103,24 @@ this Mac's documented networkQuality JSON fields; live provider validation and
 deployment remain pending. No daemon restart or actual bandwidth test was
 performed during implementation.
 
+## Efficiency release (deployed 2026-09-22 EDT)
+
+Active backend/watchdog release: `20260922T152918Z-efficiency-audit`.
+See [implementation and deployment verification](../docs/efficiency-audit.md).
+This adds bounded Unix HTTP reads, expiry for all monitored integration caches,
+watchdog failure hysteresis, single-worker bulk plug reads, token-protected
+`GET /api/v1/diagnostics`, and `GET /api/v1/state?mode=cached` without collection
+leases. The frozen source passed 972 Python tests. All four configured plugs and
+nine monitoring entries were available in the live sample; radio freshness and
+physical transitions remain unverified. Only jarvisd/watchdog were restarted;
+notifications remain off. The previously committed, explicit-only network-speed
+endpoint is included; no speed test ran. Voice retry/client polling changes are
+source-only pending separate voice/app rollout. No SDK dependency was upgraded.
+New offline verification and release preparation tools live in `../scripts/`.
+
 ## Native monitoring (deployed 2026-09-22 EDT)
 
-Active release `20260922T143035Z-passive-monitoring` adds separate **on-demand**
+Baseline release `20260922T143035Z-passive-monitoring` added separate **on-demand**
 read health for purifier, presence and Pi/Mac room audio. No extra device polling,
 cloud authentication or recovery attempts; no incidents for expired passive data.
 653 frozen-backend tests passed. Live sensor reads showed intermittent failures;

@@ -366,8 +366,6 @@ class VoicePipeline:
     ) -> None:
         self.config = pipeline_config or VoicePipelineConfig()
         self.response_callback = response_callback
-        self._session = requests.Session()
-        self._session_lock = threading.Lock()
         self._history: list[dict[str, str]] = []
         self._history_lock = threading.Lock()
         self._active_llm_response: requests.Response | None = None
@@ -790,15 +788,6 @@ class VoicePipeline:
             headers["Content-Type"] = "application/json"
         return headers
 
-    def _reset_session(self) -> None:
-        with self._session_lock:
-            old_session = self._session
-            self._session = requests.Session()
-        try:
-            old_session.close()
-        except Exception:
-            LOGGER.debug("Failed to close stale oMLX HTTP session", exc_info=True)
-
     def _request(
         self,
         method: str,
@@ -808,7 +797,9 @@ class VoicePipeline:
         rewind_on_retry: list[Any] | None = None,
         **kwargs: Any,
     ) -> requests.Response:
-        attempts = max(1, self.config.request_retries + 1)
+        # Retry safe reads only. Model load/unload and inference POST delivery
+        # may already have happened when the response is lost; never replay it.
+        attempts = max(1, self.config.request_retries + 1) if method.upper() in {'GET', 'HEAD'} else 1
         retry_statuses = {408, 409, 425, 429, 500, 502, 503, 504}
         last_error: BaseException | None = None
 
@@ -823,21 +814,19 @@ class VoicePipeline:
                 response = requests.request(method, url, **kwargs)
             except (requests.ConnectionError, requests.Timeout) as exc:
                 last_error = exc
-                self._reset_session()
                 if attempt >= attempts:
                     break
                 self._sleep_before_retry(stage, attempt, attempts, exc)
                 continue
 
             if response.status_code in retry_statuses and attempt < attempts:
-                last_error = VoicePipelineError(f"HTTP {response.status_code}: {response.text[:300]}")
+                last_error = VoicePipelineError(f"HTTP {response.status_code}")
                 response.close()
-                self._reset_session()
                 self._sleep_before_retry(stage, attempt, attempts, last_error)
                 continue
             return response
 
-        raise VoicePipelineError(f"oMLX {stage} request failed after {attempts} attempt(s): {last_error}") from last_error
+        raise VoicePipelineError(f"oMLX {stage} request failed after {attempts} attempt(s)") from None
 
     def _sleep_before_retry(self, stage: str, attempt: int, attempts: int, error: BaseException) -> None:
         delay = self.config.request_retry_backoff_seconds * attempt
@@ -846,7 +835,7 @@ class VoicePipeline:
             stage,
             attempt,
             attempts,
-            error,
+            type(error).__name__,
             delay,
         )
         if delay > 0:

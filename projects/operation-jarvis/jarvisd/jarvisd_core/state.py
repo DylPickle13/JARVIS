@@ -64,6 +64,9 @@ class StateCoordinator:
         "plugs": 30.0,
         "purifier": 90.0,
         "codexQuota": 900.0,
+        "pi": 180.0,
+        "services": 660.0,
+        "network": 1260.0,
     }
     CONTROL_SUBSYSTEMS = frozenset({"plugs", "purifier"})
     DEFAULT_ACTIVE_LEASE_SECONDS = 45.0
@@ -83,7 +86,9 @@ class StateCoordinator:
         started_at: float,
         retry_collectors: dict[str, Callable[[bool], dict]] | None = None,
     ):
+        from .work_metrics import WorkMetrics
         self.collectors = collectors
+        self.metrics = WorkMetrics(collectors)
         self._version = version
         self._started_at = started_at
         self._retry_collectors = retry_collectors or {}
@@ -650,6 +655,9 @@ class StateCoordinator:
                     self._condition.wait(timeout=min(wait_seconds, 60.0))
 
     def _collect_one(self, name: str) -> dict:
+        return self.metrics.run(name, self._collect_one_result, name)
+
+    def _collect_one_result(self, name: str) -> dict:
         try:
             if name in self._retry_collectors:
                 with self._condition:
@@ -842,10 +850,11 @@ class StateCoordinator:
                 record["stale"] = not recent_last_good
             self._condition.notify_all()
 
-    def snapshot(self, client_active: bool = False, wait_timeout: float | None = None) -> dict:
+    def snapshot(self, client_active: bool = False, wait_timeout: float | None = None,
+                 *, start_collectors: bool = True) -> dict:
         if client_active:
             self.activate_client(wait_timeout=wait_timeout)
-        else:
+        elif start_collectors:
             self.start()
         with self._lock:
             records = copy.deepcopy(self._records)

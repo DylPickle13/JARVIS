@@ -30,10 +30,16 @@ it. Unrelated CLI actions retain their handlers. Direct SDK scripts and vendor
 apps can still coexist. Security controls and media remain standalone/local-only;
 the backend exposes only the on-demand status read described below.
 
-[On-demand security status](security-integration-plan.md) is enabled in release
-`20260919T230024Z-security-status` (source default remains disabled). It wraps the
-existing CLI for one explicit API-token-authenticated read, without a cache or
-background collector. No media route exists.
+[Security status](security-integration-plan.md) initially shipped as an on-demand
+read in `20260919T230024Z-security-status`. Current native monitoring also supports
+explicitly configured serial sensor polling and cached read-health/history;
+source defaults remain off. See [current monitoring behavior](../jarvisd/docs/monitoring-native.md).
+No security media route exists. Read availability never proves radio freshness.
+
+[Efficiency audit and source improvements](efficiency-audit.md) documents bounded
+I/O, freshness expiry, bulk plug reads, passive client reads, diagnostic counters,
+and offline release preparation. Its deployment checkpoint identifies the active
+backend/watchdog release; native-app and voice rollout remain separate.
 
 ## Boundaries
 

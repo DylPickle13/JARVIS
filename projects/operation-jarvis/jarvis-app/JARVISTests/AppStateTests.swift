@@ -291,6 +291,35 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(app.isStateLoading)
     }
 
+    func testPassiveTabsReadCacheOnceWithoutActivatingOrConverging() async {
+        for section: AppSection in [.pi, .jobs, .settings] {
+            let stale = StateSnapshot(ok: true, refreshing: true, stale: true)
+            let fresh = StateSnapshot(ok: true, refreshing: false, stale: false)
+            let api = FakeAPI(stateResponses: [stale, fresh])
+            let defaults = UserDefaults(suiteName: "jarvis.passive.\(UUID().uuidString)")!
+            let store = EndpointStore(defaults: defaults)
+            store.endpointURLString = "http://fake.jarvis:8790"
+            let app = AppState(store: store, client: api,
+                staleConvergenceInterval: .zero, staleConvergenceAttempts: 2)
+            app.setActiveSection(section)
+
+            await app.fetchState()
+
+            XCTAssertEqual(api.cachedStateCalls, 1)
+            XCTAssertEqual(api.stateCalls, 1, "Passive reads must not converge via an active request")
+            XCTAssertEqual(api.purifierRefreshCalls, 0)
+            XCTAssertEqual(api.codexRefreshCalls, 0)
+            XCTAssertEqual(app.lastState?.stale, true)
+            XCTAssertEqual(api.stateResponses.count, 1)
+
+            app.setActiveSection(.home)
+            await app.fetchState()
+            XCTAssertEqual(api.cachedStateCalls, 1)
+            XCTAssertEqual(api.stateCalls, 2)
+            XCTAssertEqual(app.lastState?.stale, false)
+        }
+    }
+
     func testStateFetchDoesNotRetryCompletedStaleSnapshot() async {
         let completedStale = StateSnapshot(ok: true, refreshing: false, stale: true)
         let fresh = StateSnapshot(ok: true, refreshing: false, stale: false)
@@ -1207,6 +1236,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var commands: [String] = []
     var commandParams: [[String: JSONValue]] = []
     var stateCalls = 0
+    var cachedStateCalls = 0
     var purifierRefreshCalls = 0
     var codexRefreshCalls = 0
     var healthCalls = 0
@@ -1279,6 +1309,11 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         if let stateDelay { try await Task.sleep(for: stateDelay) }
         if !stateResponses.isEmpty { return stateResponses.removeFirst() }
         return state
+    }
+
+    func cachedState(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        cachedStateCalls += 1
+        return try await state(endpoint)
     }
 
     func stateRefreshingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {

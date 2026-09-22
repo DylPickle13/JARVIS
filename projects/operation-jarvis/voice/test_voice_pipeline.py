@@ -40,6 +40,38 @@ class _FakeASRBackend:
         return {"ok": self.error is None, "backend": self.name, "available": self.error is None}
 
 
+class RequestPolicyTests(unittest.TestCase):
+    def pipeline(self):
+        return voice_pipeline.VoicePipeline(voice_pipeline.VoicePipelineConfig(
+            request_retries=2, request_retry_backoff_seconds=0))
+
+    def test_ambiguous_posts_never_replay_or_allocate_unused_sessions(self):
+        with mock.patch.object(voice_pipeline.requests, 'Session') as session:
+            pipeline = self.pipeline()
+        session.assert_not_called()
+        for stage in ('load model', 'unload model', 'asr', 'llm', 'tts'):
+            with mock.patch.object(voice_pipeline.requests, 'request',
+                    side_effect=voice_pipeline.requests.Timeout('PRIVATE')) as request:
+                with self.assertRaises(voice_pipeline.VoicePipelineError) as failure:
+                    pipeline._request('POST', 'http://fixture.invalid', stage=stage, timeout=1)
+                request.assert_called_once()
+                self.assertNotIn('PRIVATE', str(failure.exception))
+
+    def test_retryable_post_status_is_returned_without_replay(self):
+        response = mock.Mock(status_code=503)
+        with mock.patch.object(voice_pipeline.requests, 'request', return_value=response) as request:
+            self.assertIs(self.pipeline()._request('POST', 'http://fixture.invalid', stage='llm'), response)
+        request.assert_called_once()
+        response.close.assert_not_called()
+
+    def test_get_transport_failure_has_bounded_recovery(self):
+        response = mock.Mock(status_code=200)
+        with mock.patch.object(voice_pipeline.requests, 'request', side_effect=[
+                voice_pipeline.requests.ConnectionError('PRIVATE'), response]) as request:
+            self.assertIs(self.pipeline()._request('GET', 'http://fixture.invalid', stage='status'), response)
+        self.assertEqual(request.call_count, 2)
+
+
 class FinalResponseSpeechTests(unittest.TestCase):
     def test_final_response_tables_and_long_sections_are_chunked_without_truncation(self) -> None:
         response = """Here's the weather for tomorrow:
