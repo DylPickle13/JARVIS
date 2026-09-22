@@ -154,6 +154,8 @@ struct HomeView: View {
                             OMLXStatusCard(client: app.client,
                                 endpoint: app.currentEndpoint.map { JarvisEndpoint(baseURL: $0, token: app.store.token ?? "") },
                                 active: scenePhase == .active && app.activeSection == .home && !showsPurifierControls)
+                            SystemHealthCard(snapshot: state, requestStartedAt: app.lastStateRequestStartedAt,
+                                active: scenePhase == .active && app.activeSection == .home && !showsPurifierControls)
                         }
                     } else {
                         compactOfflineCard
@@ -400,12 +402,6 @@ struct HomeView: View {
         let refreshing = subsystemStale && subsystem?.refreshing == true
 
         return VStack(alignment: .leading, spacing: 7) {
-            MinimalSectionHeader(
-                title: "Plugs",
-                systemImage: "powerplug",
-                detail: unavailable ? "Unavailable" : plugCountLabel(subsystem)
-            )
-
             if unavailable || items.isEmpty {
                 MinimalCard {
                     compactUnavailableRow(
@@ -453,11 +449,6 @@ struct HomeView: View {
             }
         }
         .accessibilityElement(children: .contain)
-    }
-
-    private func plugCountLabel(_ subsystem: PlugsSubsystem?) -> String {
-        guard let on = subsystem?.onCount, let total = subsystem?.count else { return "—" }
-        return "\(on) of \(total) on"
     }
 
     // MARK: - Purifier
@@ -780,27 +771,15 @@ struct HomeView: View {
         }
         let color = codexQuotaColor(remaining)
         let content = MinimalCard {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Label("Codex usage", systemImage: "chevron.left.forwardslash.chevron.right")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    StatusPill(text: codexPlanLabel(quota.planType), color: color, symbol: "sparkles")
-                        .controlSize(.small)
+            if usesAccessibilityLayout {
+                VStack(alignment: .leading, spacing: 8) {
+                    codexQuotaRing(remaining: remaining, color: color)
+                    codexQuotaDetails(quota, remaining: remaining, color: color)
                 }
-
-                Group {
-                    if usesAccessibilityLayout {
-                        VStack(alignment: .leading, spacing: 8) {
-                            codexQuotaRing(remaining: remaining, color: color)
-                            codexQuotaDetails(quota, remaining: remaining, color: color)
-                        }
-                    } else {
-                        HStack(spacing: 12) {
-                            codexQuotaRing(remaining: remaining, color: color)
-                            codexQuotaDetails(quota, remaining: remaining, color: color)
-                        }
-                    }
+            } else {
+                HStack(spacing: 12) {
+                    codexQuotaRing(remaining: remaining, color: color)
+                    codexQuotaDetails(quota, remaining: remaining, color: color)
                 }
             }
         }
@@ -842,7 +821,7 @@ struct HomeView: View {
         color: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Weekly capacity")
+            Text("Weekly Codex usage")
                 .font(.subheadline.weight(.semibold))
             ProgressView(value: remaining, total: 100)
                 .tint(color)
@@ -866,11 +845,6 @@ struct HomeView: View {
         CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)
             ? JarvisPalette.critical
             : JarvisPalette.accent
-    }
-
-    private func codexPlanLabel(_ plan: String?) -> String {
-        guard let plan, !plan.isEmpty else { return "CODEX" }
-        return plan.replacingOccurrences(of: "_", with: " ").uppercased()
     }
 
     private func codexQuotaResetLabel(_ window: CodexQuotaWindow?) -> String {

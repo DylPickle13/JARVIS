@@ -418,9 +418,10 @@ public enum CodexQuotaPresentationPolicy {
     }
 }
 
-/// The state endpoint's services entry is a map in the daemon JSON. This
-/// struct remains permissive for compatibility with older snapshots.
+/// Cached collector envelope: metadata plus the nested service-status map.
+/// Missing maps from older snapshots remain unknown, not implicitly healthy.
 public struct ServicesSubsystem: Codable, Equatable, Sendable {
+    public let services: [String: ServiceActionResult]?
     public let ok: Bool?
     public let stale: Bool?
     public let refreshing: Bool?
@@ -570,6 +571,10 @@ public struct ServiceActionResult: Codable, Equatable, Sendable {
     public let description: String?
     public let sortOrder: Int?
     public let critical: Bool?
+    /// "periodic" jobs may be loaded and healthy without a running process.
+    public let executionMode: String?
+    public let lastExitCode: Int?
+    public let lastExitSignal: Int?
     public let configured: Bool?
     public let allowedActions: [String]?
     public let returncode: Int?

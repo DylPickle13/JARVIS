@@ -1,21 +1,24 @@
 import SwiftUI
 
-/// Same heading and two single-line host rows. All columns remain stationary;
-/// only live values change. No rotation, marquee, or interaction for details.
+/// Shared heading and single-line host rows. Watch retains both rows;
+/// iPhone can opt into activity-only rows without losing peer health warnings.
 public struct OMLXSummaryContent: View {
     private let rows: [OMLXServerSummary]
     private let compact: Bool
     private let motionActive: Bool
+    private let activeRowsOnly: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isLuminanceReduced) private var luminanceReduced
     @ScaledMetric(relativeTo: .caption2) private var watchRowSize = 11.0
     @ScaledMetric(relativeTo: .caption2) private var watchHeadingSize = 10.5
 
-    public init(rows: [OMLXServerSummary], compact: Bool = false, motionActive: Bool = false) {
+    public init(rows: [OMLXServerSummary], compact: Bool = false, motionActive: Bool = false,
+                activeRowsOnly: Bool = false) {
         self.rows = rows
         self.compact = compact
         self.motionActive = motionActive
+        self.activeRowsOnly = activeRowsOnly
     }
     private var motion: OMLXMotionPolicy {
         .init(rows: rows, active: motionActive, sceneActive: scenePhase == .active,
@@ -28,6 +31,8 @@ public struct OMLXSummaryContent: View {
     private var gap: CGFloat { compact ? 3 : 7 }
 
     public var body: some View {
+        let home = OMLXHomePresentation(rows: rows)
+        let visibleRows = activeRowsOnly ? home.visibleRows : rows
         VStack(alignment: .leading, spacing: compact ? 3 : 6) {
             HStack(spacing: gap) {
                 HStack(spacing: compact ? 4 : 5) {
@@ -47,15 +52,24 @@ public struct OMLXSummaryContent: View {
                         .accessibilityLabel("oMLX update available")
                         .accessibilityValue(rows.filter(\.updateAvailable).map { "Mac mini \($0.serverLabel)" }.joined(separator: ", "))
                         .accessibilityHidden(!rows.contains(where: \.updateAvailable))
+                    if activeRowsOnly, let status = home.status {
+                        Text(status)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                column("t/s", width: speedWidth)
-                column("RAM", width: memoryWidth)
+                if !activeRowsOnly || !visibleRows.isEmpty {
+                    column("t/s", width: speedWidth)
+                    column("RAM", width: memoryWidth)
+                }
             }
             .font(compact ? .system(size: watchHeadingSize - 1) : .caption2)
             .foregroundStyle(.secondary)
-            ForEach(rows) { row in
+            ForEach(visibleRows) { row in
                 HStack(spacing: gap) {
                     HStack(spacing: compact ? 3 : 4) {
                         statusDot(row)

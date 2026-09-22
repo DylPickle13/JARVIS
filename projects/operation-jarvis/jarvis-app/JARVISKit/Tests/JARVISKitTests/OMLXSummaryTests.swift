@@ -15,6 +15,46 @@ final class OMLXSummaryTests: XCTestCase {
         .init(id: server.id, server: server, now: now ?? self.now, requestStartedAt: self.now, available: available)
     }
 
+    func testHomeHidesIdleRowsAndKeepsOnlyIndependentlyActiveHosts() throws {
+        let idle = summary(try server([model()]))
+        let activeServer = try server([model(active: 1)])
+        let active = OMLXServerSummary(id: "mac-mini-16", server: activeServer,
+            now: now, requestStartedAt: now, available: true)
+        XCTAssertEqual(OMLXHomePresentation(rows: [idle, idle]).visibleRows, [])
+        XCTAssertEqual(OMLXHomePresentation(rows: [idle, idle]).status, "Idle")
+        XCTAssertEqual(OMLXHomePresentation(rows: [idle, active]).visibleRows.map(\.id), ["mac-mini-16"])
+        XCTAssertNil(OMLXHomePresentation(rows: [idle, active]).status)
+        XCTAssertEqual(OMLXHomePresentation(rows: [active, summary(activeServer)]).visibleRows.count, 2)
+    }
+
+    func testHomeIncludesLoadingQueuePrefillAndGenerationButNotUnknown() throws {
+        for value in [model(loading: true), model(queued: 1), model(active: 1),
+                      model(active: 1, requests: #"[{"id":"r","phase":"prefill"}]"#),
+                      model(active: 1, requests: #"[{"id":"r","phase":"generating"}]"#)] {
+            let row = summary(try server([value]))
+            XCTAssertEqual(OMLXHomePresentation(rows: [row]).visibleRows, [row])
+        }
+        let stale = summary(try server([model(active: 1)], stale: true))
+        XCTAssertTrue(OMLXHomePresentation(rows: [stale]).visibleRows.isEmpty)
+        XCTAssertEqual(OMLXHomePresentation(rows: [stale]).status, "Stale")
+        let unknown = summary(try server([model(active: -1)]))
+        XCTAssertTrue(OMLXHomePresentation(rows: [unknown]).visibleRows.isEmpty)
+        XCTAssertNotEqual(OMLXHomePresentation(rows: [unknown]).status, "Idle")
+    }
+
+    func testHomeKeepsPeerWarningsWhenHealthyHostIsActive() throws {
+        let active = summary(try server([model(active: 1)]))
+        let missing = OMLXServerSummary(id: "mac-mini-16", server: nil, now: now,
+            requestStartedAt: nil, available: false)
+        let checking = OMLXServerSummary(id: "mac-mini-16", server: nil, now: now,
+            requestStartedAt: nil, available: false, checking: true)
+        XCTAssertEqual(OMLXHomePresentation(rows: [active, missing]).status, "16G unavailable")
+        XCTAssertEqual(OMLXHomePresentation(rows: [active, missing]).visibleRows, [active])
+        XCTAssertEqual(OMLXHomePresentation(rows: [missing]).status, "Unavailable")
+        XCTAssertEqual(OMLXHomePresentation(rows: [checking]).status, "Checking")
+        XCTAssertEqual(OMLXHomePresentation(rows: []).status, "Checking")
+    }
+
     func testTravellingEdgeWrapsWithoutBecomingAFullOutline() {
         for time in [-10.2, 0, 0.5, 4.9, 5, 5000] {
             let ranges = ActivityEdgeGeometry.ranges(time: time)

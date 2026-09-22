@@ -105,7 +105,9 @@ performed during implementation.
 
 ## Efficiency release (deployed 2026-09-22 EDT)
 
-Active backend/watchdog release: `20260922T152918Z-efficiency-audit`.
+Efficiency baseline: `20260922T152918Z-efficiency-audit` (still the watchdog
+release). Backend `20260922T162806Z-periodic-service-health` preserves this baseline
+and adds the service-health metadata described below.
 See [implementation and deployment verification](../docs/efficiency-audit.md).
 This adds bounded Unix HTTP reads, expiry for all monitored integration caches,
 watchdog failure hysteresis, single-worker bulk plug reads, token-protected
@@ -244,6 +246,45 @@ helper stays at `../jarvis-app/scripts/renew-free-signing.sh`, resolved through
 overrides remain supported. In a frozen artifact deployment explicitly configure
 `JARVISD_OPERATION_ROOT`, `JARVISD_PROJECT_ROOT`, and private services/event/log
 paths; preserve all existing authentication and runtime overrides.
+
+## Cached service execution health
+
+Service observations now add `executionMode` (`continuous` or `periodic`),
+`lastExitCode`, and `lastExitSignal`. `critical` denotes importance, not whether
+a process must remain alive. `services.json` explicitly marks the jobs scheduler
+periodic and room audio continuous; legacy configurations default to continuous,
+while invalid modes remain null. Check private deployment configuration separately
+from the repository copy when activating this change.
+
+`lastExitCode` is the observed launchd job completion code, **not** the return code
+of `launchctl print`. Never-exited/malformed values remain null; a terminating
+signal invalidates any previous exit-code success. Existing `ok` still denotes
+a successful status read. A loaded periodic job can be healthy while not running
+if its last completion succeeded. Missing registration/results are not proof of
+health. A nonzero completion, termination signal, or unloaded required job remains
+visible to clients; one successful scheduler check is not proof of successful
+individual jobs or guaranteed future scheduling.
+
+These fields travel through the existing cached `subsystems.services.services`
+map as well as `/api/v1/services`; no additional collector, polling, job execution,
+service restart, or command permission is introduced. The app should continue
+to honor collector freshness before interpreting a cached service result.
+Deployed 2026-09-22 at 12:30 EDT as
+`20260922T162806Z-periodic-service-health`. The candidate copied the installed
+efficiency-release tree and overlaid only `jarvisd.py`, `services.json`, and the
+new service-health tests; all 980 frozen Python tests passed. The daemon now uses
+the frozen service configuration. Cached live state confirmed a fresh, loaded,
+idle periodic scheduler with last exit 0 and no terminating signal. Required
+status and empty control permissions were preserved. Authenticated passive state,
+diagnostics, monitoring/history, and access-control checks passed.
+
+Only jarvisd and its watchdog were cycled after device-worker/readback quiescence;
+the watchdog's code/configuration were unchanged. Pi pane identities and protected
+terminal/audio service identities were unchanged; the scheduler was not restarted.
+Notifications remain off, incident history/configuration/SDKs were retained, and
+no device command or job was replayed. The prior backend/plist is retained for
+rollback. Signed iPhone build 211 is ready but not installed at this checkpoint;
+build 210 does not yet interpret periodic-service metadata.
 
 ## Verification
 

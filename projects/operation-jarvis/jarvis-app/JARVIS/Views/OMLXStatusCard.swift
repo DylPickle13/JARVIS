@@ -26,7 +26,7 @@ struct OMLXStatusCard: View {
                         available: available, checking: checking)
                 }
             MinimalCard(padding: 11) {
-                OMLXSummaryContent(rows: rows, motionActive: active)
+                OMLXSummaryContent(rows: rows, motionActive: active, activeRowsOnly: true)
             }
             .activityCardEdge(active: rows.contains(where: \.hasActiveWork),
                 allowed: active && OMLXServerSummary.allowsEdge(rows))

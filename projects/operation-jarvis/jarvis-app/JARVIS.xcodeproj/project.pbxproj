@@ -90,6 +90,7 @@
 		F34D7B1A2671F4A44B16377B /* WatchPushNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E59FF1EC8B04806AC245F3F /* WatchPushNotificationCoordinator.swift */; };
 		F44772CB4ED1CF9904DE511F /* PiAttachmentSSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B3DF6C367DAF49D5333EF0 /* PiAttachmentSSHTransport.swift */; };
 		F8CF13DAF79ACDD1903AB377 /* OMLXStatusModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8AA41F4C1B6F7971B326286 /* OMLXStatusModelTests.swift */; };
+		F9757BFF462EAA8C9D19F0E5 /* SystemHealthCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1443047D05A9C5A8E48C4BB /* SystemHealthCard.swift */; };
 		FCB975562E5D7A8498A239AA /* WatchTalkPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 321EBF59E1E0CEBD18739D41 /* WatchTalkPromptView.swift */; };
 		FCF833080CAEA662AA8530EB /* JARVISWatchWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29F1D18AEDF9F3DB0F8B9947 /* JARVISWatchWidgetBundle.swift */; };
 		FD95A85E202BD3525C7A4A4E /* JARVISWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1548C41F74BB5F0E3EF25885 /* JARVISWidgetBundle.swift */; };
@@ -232,6 +233,7 @@
 		DB17F31548738F2D4FA74526 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		DBE6CDFF2E6B3AEAFD720F34 /* JARVIS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JARVIS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF061A1013CCC419548F2E89 /* PiTerminalPasteControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalPasteControl.swift; sourceTree = "<group>"; };
+		E1443047D05A9C5A8E48C4BB /* SystemHealthCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemHealthCard.swift; sourceTree = "<group>"; };
 		ED67C789A071ACDEA4FD69FC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F2D47342CED96CA7B12B466D /* NeuralCoreC2Decoration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreC2Decoration.swift; sourceTree = "<group>"; };
 		F511B3C48F0433661629C5AB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -330,6 +332,7 @@
 				137E1FF7B884864E7A46CE7B /* PiTerminalSettingsView.swift */,
 				9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */,
 				888D11D79E21EC5437B45339 /* SettingsView.swift */,
+				E1443047D05A9C5A8E48C4BB /* SystemHealthCard.swift */,
 				9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */,
 			);
 			path = Views;
@@ -738,6 +741,7 @@
 				5B5B448515CF5F0728A3C35B /* PushRegistrationSSHTransport.swift in Sources */,
 				1DC8B19B903AE4B1F55DDA99 /* SettingsComponents.swift in Sources */,
 				D250A7189D6C70AD54591AFE /* SettingsView.swift in Sources */,
+				F9757BFF462EAA8C9D19F0E5 /* SystemHealthCard.swift in Sources */,
 				00A8A57CB85F3DEEC79B83AF /* WatchTerminalProvisioningSettings.swift in Sources */,
 				576BB6C417A8A28E379D2A45 /* WatchTerminalSettingsView.swift in Sources */,
 			);

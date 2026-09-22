@@ -791,6 +791,8 @@ def _service_metadata(spec: dict) -> dict:
         "description": description.strip()[:500] if description else None,
         "sortOrder": max(-1000, min(1000, sort_order)) if sort_order is not None else None,
         "critical": spec.get("critical") is True,
+        "executionMode": (spec.get("executionMode", "continuous")
+                          if spec.get("executionMode", "continuous") in ("continuous", "periodic") else None),
         "configured": configured,
         "allowedActions": _service_allowed_actions(spec),
     }
@@ -802,6 +804,17 @@ def _parse_launchctl_status(name: str, spec: dict, proc: subprocess.CompletedPro
     pid_match = re.search(r"(?:\"PID\"|\bpid)\s*=\s*(\d+)", text, re.IGNORECASE)
     state_match = re.search(r"\bstate\s*=\s*([A-Za-z]+)", text, re.IGNORECASE)
     pid = int(pid_match.group(1)) if pid_match else None
+    # launchctl's last completion belongs to the job, not to this status command.
+    # Unknown/never-exited values stay null; a signal must not inherit an old zero.
+    exit_match = re.search(r"^\s*last exit code\s*=\s*(-?\d{1,10})\s*$", text, re.MULTILINE | re.IGNORECASE)
+    signal_line = re.search(r"^\s*last terminating signal\s*=([^\n]*)$", text, re.MULTILINE | re.IGNORECASE)
+    signal_match = re.search(r"(?:^|[\s:])(\d{1,3})\s*$", signal_line.group(1)) if signal_line else None
+    last_exit_code = int(exit_match.group(1)) if exit_match and not signal_line else None
+    if last_exit_code is not None and not -(2**31) <= last_exit_code < 2**31:
+        last_exit_code = None
+    last_exit_signal = int(signal_match.group(1)) if signal_match else None
+    if last_exit_signal is not None and not 1 <= last_exit_signal <= 127:
+        last_exit_signal = None
     loaded = proc.returncode == 0
     running = pid is not None or (state_match and state_match.group(1).lower() in {"running", "active"})
     return {
@@ -811,6 +824,8 @@ def _parse_launchctl_status(name: str, spec: dict, proc: subprocess.CompletedPro
         "loaded": loaded,
         "running": bool(running) if loaded else False,
         "pid": pid,
+        "lastExitCode": last_exit_code if loaded else None,
+        "lastExitSignal": last_exit_signal if loaded else None,
         **_service_metadata(spec),
     }
 
