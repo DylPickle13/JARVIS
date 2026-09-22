@@ -45,11 +45,17 @@ The Mac's previous read-only status helper was separately retained under
 - Approximately 658 MiB available memory, 56°C, no active thermal throttle;
   `0x20000` was a historical soft-temperature-limit flag only.
 
+## Reboot acceptance — passed 2026-09-22, 11:19 EDT
+
+Owner-authorized reboot confirmed by a changed boot ID. Pi Desk automatically
+started on tty3 at 1080p/60 Hz, enabled and active with zero restarts. The live
+status SSH stream resumed. Opened group 1 after boot: sessions 1–3 were alive;
+F12 returned to the grid. Presence, audio proxy, Bluetooth and SSH recovered;
+the backend reported fresh presence data from both zones. Wi-Fi power saving
+remained off. No failed system or user units. Left the display at the menu.
+
 ## Still untested deliberately
 
-- **Actual reboot acceptance.** Boot startup is enabled and the service was
-  successfully started, but the Pi has not been rebooted to test it. Avoided
-  interrupting presence/audio merely to validate this change.
 - Prolonged Wi-Fi loss, Mac reboot, and TV hotplug. Retry behaviour is tested
   without deliberately taking the household's network or services offline.
 
