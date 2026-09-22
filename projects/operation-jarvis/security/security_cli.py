@@ -1206,8 +1206,43 @@ def select_sensor(hub, entry):
     return matches[0]
 
 
-async def execute(alias, command, *, name=None, value=None, confirm=False,
-                  audible=False, env_file=ROOT / '.env', registry_path=ROOT / 'devices.json'):
+async def execute(alias, command, **kwargs):
+    """One overall sensor-read budget; fresh connections, never replay writes."""
+    import random
+    devices = registry(kwargs.get('registry_path', ROOT / 'devices.json'))
+    sensor_read = (command in ('status', 'capabilities') and
+                   devices.get(alias, {}).get('model') in SENSOR_MODELS)
+    if not sensor_read:
+        return await _execute_once(alias, command, **kwargs)
+    # Pinned python-kasa distinguishes transport connection failures from
+    # authentication/identity failures; do not retry generic KasaException.
+    from kasa.exceptions import _ConnectionError as KasaConnectionError
+    attempts = 0
+    try:
+        async with asyncio.timeout(60):
+            for attempt in range(3):
+                attempts = attempt + 1
+                try:
+                    result = await _execute_once(alias, command, **kwargs)
+                    return {**result, 'read_attempts': attempts,
+                            'transient_recovered': attempts > 1}
+                except Exception as exc:
+                    # Explicit transient classes/reasons only. No authentication,
+                    # registry, identity, child selection, or generic SDK retries.
+                    transient = (isinstance(exc, (TimeoutError, ConnectionError, KasaConnectionError)) or
+                                 (isinstance(exc, ControlError) and str(exc) == 'unreachable'))
+                    if not transient or attempt == 2:
+                        raise
+                    await asyncio.sleep(random.uniform(0.2, 0.5) * (attempt + 1))
+    except Exception as exc:
+        exc.read_attempts = attempts
+        if not hasattr(exc, 'security_stage'):
+            exc.security_stage = 'connection'
+        raise
+
+
+async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
+                        audible=False, env_file=ROOT / '.env', registry_path=ROOT / 'devices.json'):
     devices = registry(registry_path)
     if alias not in devices:
         raise ControlError('unknown_device')

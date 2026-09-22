@@ -472,6 +472,8 @@ class control_OperationTests(unittest.IsolatedAsyncioTestCase):
         d.protocol.query.assert_awaited_once_with({'get': {'harddisk_manage': {'table': ['hd_info']}}})
 
     async def test_sensor_read_budget_metadata_and_failures(self):
+        # Verify the single-attempt implementation separately from retry policy.
+        from security_cli import _execute_once as execute
         from contextlib import nullcontext
         for failure in ('success', 'timeout', 'missing', 'feature'):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
@@ -1456,7 +1458,17 @@ class storage_TransportTests(unittest.IsolatedAsyncioTestCase):
 class PairedSensorTests(unittest.TestCase):
     def test_registered_sensors(self):
         import security_cli as cli
-        devices = cli.registry()
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as directory:
+            fixture = Path(directory) / 'devices.json'
+            fixture.write_text(json.dumps({
+                'hub': {'model': 'H200', 'host': '@hub'},
+                'motion-sensor': {'model': 'T100', 'hub': 'hub', 'name': 'Fixture motion'},
+                'door-sensor': {'model': 'T110', 'hub': 'hub', 'name': 'Fixture door'},
+            }))
+            devices = cli.registry(fixture)
         self.assertEqual(devices['motion-sensor']['model'], 'T100')
         self.assertEqual(devices['door-sensor']['model'], 'T110')
 

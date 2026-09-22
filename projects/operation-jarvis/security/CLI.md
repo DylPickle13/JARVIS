@@ -17,9 +17,19 @@ Aliases below are command examples, not an installed-device inventory.
 
 T100/T110 reads allow 60 seconds for discovery, authentication and hub/child
 updates (other local operations retain 25 seconds). Discovery uses a 5-second
-window and 10-second request timeout for sensors. No automatic operation retry
-or fallback to a previous successful reading is added; missing or ambiguous
-children still fail closed. Unavailable individual features remain `unknown`.
+window and 10-second request timeout for sensors. Status/capabilities reads now
+allow up to two jittered fresh-connection retries for explicit transient transport
+failures within that same overall 60-second budget. No write replay, generic SDK
+retry, or fallback to an older reading is added. Missing/ambiguous children,
+authentication and identity failures are not retried. Unavailable individual
+features remain `unknown`; the backend reports unavailable if required door or
+motion state is absent. Successful CLI reads include `read_attempts` and
+`transient_recovered`. These are source changes, not deployment evidence.
+
+The backend can opt into serial background polling; the CLI itself remains a
+single bounded invocation. See [native jarvisd monitoring](../jarvisd/docs/monitoring-native.md).
+The monitoring dashboard checks cached health, never invokes this CLI or retries
+device commands.
 
 `hub_snapshot_at` records local snapshot acquisition, not the last sensor radio
 transmission. `sensor_updated_at` remains null and `radio_freshness` is `unknown`.
