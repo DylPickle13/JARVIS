@@ -321,6 +321,7 @@ section "Extension inventory"
 expected_extension_roots=(
   .pi/extensions/00-private-permissions.ts
   .pi/extensions/01-omlx-provider-setup-and-recovery.ts
+  .pi/extensions/02-web-search-policy.ts
   .pi/extensions/03-codex-fast.ts
   .pi/extensions/04-delete-current-session.ts
   .pi/extensions/04-siri-new-session.ts
