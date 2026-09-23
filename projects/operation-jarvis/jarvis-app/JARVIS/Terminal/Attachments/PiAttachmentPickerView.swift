@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreTransferable
 import PhotosUI
 import SwiftUI
@@ -65,6 +66,8 @@ struct PiAttachmentPhotoTransfer: Transferable, Sendable {
 struct PiAttachmentPickerView: View {
     @ObservedObject var controller: PiTerminalController
 
+    @State private var showingCamera = false
+    @State private var cameraRequestID: UUID?
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var showingFileImporter = false
     @State private var loadingPhotos = false
@@ -89,7 +92,7 @@ struct PiAttachmentPickerView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { controller.commitAttachmentDraft() }
                         .fontWeight(.semibold)
-                        .disabled(!controller.canCommitAttachmentDraft || loadingPhotos)
+                        .disabled(!controller.canCommitAttachmentDraft || loadingPhotos || cameraRequestID != nil)
                 }
             }
         }
@@ -104,11 +107,28 @@ struct PiAttachmentPickerView: View {
             case .failure(let error): controller.reportAttachmentPickerError(error)
             }
         } onCancellation: {}
+        .fullScreenCover(isPresented: $showingCamera) {
+            PiAttachmentCameraView { result in
+                showingCamera = false
+                do {
+                    guard let image = try result.get() else { return }
+                    let transfer = try PiAttachmentCameraStore.prepare(
+                        image, maxBytes: controller.attachmentLimits.maxFileBytes
+                    )
+                    controller.addTransferredPhotos([(url: transfer.url, displayName: transfer.displayName)])
+                } catch {
+                    controller.reportAttachmentPickerError(error)
+                }
+            }
+            .ignoresSafeArea()
+            .interactiveDismissDisabled()
+        }
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
             loadPhotos(items)
         }
         .onDisappear {
+            cameraRequestID = nil
             photoLoadID = nil
             photoLoadTask?.cancel()
             photoLoadTask = nil
@@ -117,7 +137,17 @@ struct PiAttachmentPickerView: View {
     }
 
     private var sourceBar: some View {
-        HStack(spacing: 12) {
+        VStack(spacing: 12) {
+            Button(action: takePhoto) {
+                Label("Take Photo", systemImage: "camera")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(
+                controller.attachmentRemainingCount == 0
+                    || controller.isAttachmentBusy || loadingPhotos || cameraRequestID != nil
+            )
+            HStack(spacing: 12) {
             PhotosPicker(
                 selection: $photoItems,
                 maxSelectionCount: max(controller.attachmentRemainingCount, 1),
@@ -146,8 +176,38 @@ struct PiAttachmentPickerView: View {
                     || controller.isAttachmentBusy
                     || loadingPhotos
             )
+            }
+            .disabled(cameraRequestID != nil)
         }
         .padding()
+    }
+
+    private func takePhoto() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            controller.reportAttachmentPickerError(
+                PiAttachmentTransportError.rejected("No camera is available on this device.")
+            )
+            return
+        }
+        let requestID = UUID()
+        cameraRequestID = requestID
+        Task { @MainActor in
+            let granted: Bool
+            switch AVCaptureDevice.authorizationStatus(for: .video) {
+            case .authorized: granted = true
+            case .notDetermined: granted = await AVCaptureDevice.requestAccess(for: .video)
+            default: granted = false
+            }
+            guard cameraRequestID == requestID else { return }
+            cameraRequestID = nil
+            if granted {
+                showingCamera = true
+            } else {
+                controller.reportAttachmentPickerError(PiAttachmentTransportError.rejected(
+                    "Camera access is unavailable. Allow camera access for JARVIS in iPhone Settings, or choose Photos or Files."
+                ))
+            }
+        }
     }
 
     @ViewBuilder
@@ -156,7 +216,7 @@ struct PiAttachmentPickerView: View {
             ContentUnavailableView(
                 "No Attachments",
                 systemImage: "paperclip",
-                description: Text("Choose Photos or Files for the next Pi message.")
+                description: Text("Take a photo or choose Photos or Files for the next Pi message.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

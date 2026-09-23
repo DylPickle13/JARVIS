@@ -308,9 +308,10 @@ final class PiTerminalClipboardTests: XCTestCase {
 
     func testCompactToolbarWidthBudgetKeepsEveryControlVisible() {
         for width: CGFloat in [320, 375, 390, 414, 768, 844] {
-            for attachments in [false, true] {
-                let metrics = PiTerminalToolbarMetrics(availableWidth: width, showsAttachments: attachments)
-                XCTAssertEqual(metrics.actions.count, attachments ? 9 : 8)
+            do {
+                let metrics = PiTerminalToolbarMetrics(availableWidth: width)
+                XCTAssertEqual(metrics.actions.count, 8)
+                XCTAssertEqual(metrics.actions, [.escape, .control, .slash, .up, .down, .attach, .paste, .keyboard])
                 let total = metrics.actions.reduce(CGFloat.zero) { $0 + metrics.width(for: $1) }
                     + CGFloat(metrics.actions.count - 1) * PiTerminalToolbarMetrics.spacing
                     + 2 * PiTerminalToolbarMetrics.inset
@@ -324,7 +325,7 @@ final class PiTerminalClipboardTests: XCTestCase {
         XCTAssertEqual(PiTerminalToolbarMetrics.height, 46)
     }
 
-    func testCompactToolbarRendersAllNineControlsInOneRow() async throws {
+    func testCompactToolbarRendersAllEightControlsInOneRow() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         for width in [320, 375, 414, 768] {
             for dark in [false, true] {
@@ -336,8 +337,8 @@ final class PiTerminalClipboardTests: XCTestCase {
                     let window = UIWindow(windowScene: scene)
                     window.frame = CGRect(x: 0, y: 0, width: width, height: 100)
                     let host = UIHostingController(rootView:
-                        PiTerminalToolbarContent(showsAttachments: true, canSend: enabled,
-                            canAttach: enabled && state != 3, controlLatched: latched, keyboardShown: shown) {
+                        PiTerminalToolbarContent(canSend: enabled, canAttach: enabled && state != 3,
+                            controlLatched: latched, keyboardShown: shown) {
                                 actions.append($0)
                             }
                             .frame(width: CGFloat(width), height: 46)
@@ -367,7 +368,7 @@ final class PiTerminalClipboardTests: XCTestCase {
                         let start = y * cg.bytesPerRow + x * 4
                         return bytes[start..<(start + 3)].map(Int.init)
                     }
-                    let metrics = PiTerminalToolbarMetrics(availableWidth: CGFloat(width), showsAttachments: true)
+                    let metrics = PiTerminalToolbarMetrics(availableWidth: CGFloat(width))
                     var x = PiTerminalToolbarMetrics.inset
                     for action in metrics.actions {
                         let cellWidth = metrics.width(for: action)

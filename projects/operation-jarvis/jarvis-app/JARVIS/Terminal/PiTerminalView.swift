@@ -6,8 +6,7 @@ enum PiTerminalFeatureGate {
 #if JARVIS_NATIVE_ATTACHMENTS
     static let nativeAttachmentsEnabled = true
 #else
-    // The first signed candidate remains keyboard-only. Enable this condition
-    // only on the later attachment candidate after keyboard acceptance.
+    // Attachment entry points fail closed in builds without the capability.
     static let nativeAttachmentsEnabled = false
 #endif
 }
@@ -53,6 +52,9 @@ struct PiTerminalView: View {
             terminal.setVisible(true, fallbackHost: fallbackHost)
         }
         .onDisappear {
+            // A full-screen attachment camera covers this view without leaving
+            // the Pi tab. RootTabView and scene backgrounding still handle real exits.
+            guard !terminal.isAttachmentSheetPresented else { return }
             terminal.setVisible(false, fallbackHost: fallbackHost)
         }
         .onChange(of: fallbackHost) { _, value in
@@ -100,6 +102,16 @@ struct PiTerminalView: View {
 
     private var sessionIndicator: some View {
         VStack {
+            sessionBadge
+            .environment(\.colorScheme, .dark)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.top, 8)
+            .padding(.trailing, 9)
+            Spacer()
+        }
+    }
+
+    private var sessionBadge: some View {
             HStack(spacing: 5) {
                 ForEach(JARVISTerminalSlot.allCases, id: \.self) { slot in
                     if slot.hasLeadingIndicatorGap {
@@ -116,12 +128,6 @@ struct PiTerminalView: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 7)
             .jarvisGlassSurface(Color.black.opacity(0.72), in: Capsule(), glass: true)
-            .environment(\.colorScheme, .dark)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.top, 8)
-            .padding(.trailing, 9)
-            Spacer()
-        }
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Pi terminal session \(terminal.selectedSlot.displayName) of \(JARVISTerminalSlot.allCases.count)")
@@ -277,11 +283,11 @@ struct PiTerminalView: View {
 /// A width budget shared by the real toolbar and narrow-screen regression tests.
 /// Text keys get more room than arrows; no control has a fixed width or scrolls.
 enum PiTerminalToolbarAction: CaseIterable {
-    case escape, control, tab, slash, up, down, paste, attach, keyboard
+    case escape, control, slash, up, down, attach, paste, keyboard
 
     var weight: CGFloat {
         switch self {
-        case .escape, .control, .tab: 1.15
+        case .escape, .control: 1.15
         case .slash, .up, .down: 0.8
         default: 1
         }
@@ -293,10 +299,9 @@ struct PiTerminalToolbarMetrics {
     static let inset: CGFloat = 4
     static let spacing: CGFloat = 2
     let availableWidth: CGFloat
-    let showsAttachments: Bool
 
     var actions: [PiTerminalToolbarAction] {
-        PiTerminalToolbarAction.allCases.filter { showsAttachments || $0 != .attach }
+        PiTerminalToolbarAction.allCases
     }
 
     func width(for action: PiTerminalToolbarAction) -> CGFloat {
@@ -347,7 +352,6 @@ struct PiTerminalKeyBar: View {
 
     var body: some View {
         PiTerminalToolbarContent(
-            showsAttachments: PiTerminalFeatureGate.nativeAttachmentsEnabled,
             canSend: controller.canSendTerminalInput,
             canAttach: controller.canOpenAttachments,
             controlLatched: controller.isControlLatched,
@@ -356,7 +360,6 @@ struct PiTerminalKeyBar: View {
             switch action {
             case .escape: controller.sendTerminalBytes([0x1b])
             case .control: controller.toggleControlLatch()
-            case .tab: controller.sendTerminalBytes([0x09])
             case .slash: controller.sendTerminalBytes(PiTerminalKeyDeck.slashBytes)
             case .up: controller.sendTerminalBytes([0x1b, 0x5b, 0x41])
             case .down: controller.sendTerminalBytes([0x1b, 0x5b, 0x42])
@@ -371,7 +374,6 @@ struct PiTerminalKeyBar: View {
 /// Stateless presentation also lets render fixtures exercise every state without
 /// connecting to, reading the clipboard for, or submitting to a live Pi session.
 struct PiTerminalToolbarContent: View {
-    let showsAttachments: Bool
     let canSend: Bool
     let canAttach: Bool
     let controlLatched: Bool
@@ -380,22 +382,19 @@ struct PiTerminalToolbarContent: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let metrics = PiTerminalToolbarMetrics(availableWidth: geometry.size.width, showsAttachments: showsAttachments)
+            let metrics = PiTerminalToolbarMetrics(availableWidth: geometry.size.width)
             HStack(spacing: PiTerminalToolbarMetrics.spacing) {
                 key("Esc", label: "Escape", action: .escape, metrics: metrics)
                 key("Ctrl", label: "Control modifier", action: .control, metrics: metrics)
                     .accessibilityValue(controlLatched ? "Latched" : "Off")
-                key("Tab", label: "Tab", action: .tab, metrics: metrics)
                 key("/", label: "Slash", action: .slash, metrics: metrics)
                 key("↑", label: "Up arrow", action: .up, metrics: metrics)
                 key("↓", label: "Down arrow", action: .down, metrics: metrics)
+                icon("paperclip", label: "Attach files", action: .attach, metrics: metrics)
+                    .disabled(!canAttach)
+                    .accessibilityHint("Take a photo or choose Photos or Files for the next Pi message")
                 PiTerminalPasteControl(width: metrics.width(for: .paste)) { perform(.paste) }
                     .disabled(!canSend)
-                if showsAttachments {
-                    icon("paperclip", label: "Attach files", action: .attach, metrics: metrics)
-                        .disabled(!canAttach)
-                        .accessibilityHint("Choose Photos or Files for the next Pi message")
-                }
                 icon(keyboardShown ? "keyboard.chevron.compact.down" : "keyboard",
                      label: keyboardShown ? "Hide keyboard" : "Show keyboard", action: .keyboard, metrics: metrics)
                     .disabled(!keyboardShown && !canSend)

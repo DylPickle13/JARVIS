@@ -68,6 +68,8 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo to attach to your next Pi message.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>JARVIS connects to jarvisd and this Mac’s SSH service on your local network.</string>
 </dict>

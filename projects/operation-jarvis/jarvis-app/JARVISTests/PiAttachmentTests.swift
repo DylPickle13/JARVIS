@@ -1,11 +1,74 @@
 import CryptoKit
 import Foundation
 import XCTest
+import UIKit
 @testable import JARVIS
 
 @MainActor
 final class PiAttachmentTests: XCTestCase {
     private let generation = "0123456789abcdef0123456789abcdef"
+
+    private func cameraFixture() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 32, height: 24)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 32, height: 24))
+        }
+    }
+
+    func testCameraCaptureCreatesPrivateJPEGAndUsesExistingImportCleanup() async throws {
+        let store = PiAttachmentTemporaryStore()
+        let transfer = try PiAttachmentCameraStore.prepare(cameraFixture(), maxBytes: 1_000_000)
+        let directory = transfer.url.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bytes = try Data(contentsOf: transfer.url)
+        XCTAssertEqual(Array(bytes.prefix(2)), [0xff, 0xd8])
+        XCTAssertNotNil(UIImage(data: bytes))
+        XCTAssertEqual(transfer.displayName, "Camera Photo.jpg")
+        XCTAssertTrue(try directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
+        for (url, mode) in [(directory, 0o700), (transfer.url, 0o600)] {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, mode)
+        }
+        let workflow = UUID()
+        let file = try await store.importTransferredPhoto(
+            transfer.url, displayName: transfer.displayName, workflowID: workflow,
+            limits: PiAttachmentLimits(maxFiles: 1, maxFileBytes: 1_000_000, maxTotalBytes: 1_000_000)
+        )
+        XCTAssertEqual(try Data(contentsOf: file.url), bytes)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        await store.cleanup(workflowID: workflow)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.url.path))
+    }
+
+    func testCameraRejectsOversizedPhotoBeforeCreatingTransfer() {
+        XCTAssertThrowsError(try PiAttachmentCameraStore.prepare(cameraFixture(), maxBytes: 1))
+    }
+
+    func testCameraCancellationAndDuplicateCallbacksDoNotAttach() {
+        var results: [Result<UIImage?, Error>] = []
+        let coordinator = PiAttachmentCameraView.Coordinator { results.append($0) }
+        let picker = UIImagePickerController()
+        coordinator.imagePickerControllerDidCancel(picker)
+        coordinator.imagePickerController(picker, didFinishPickingMediaWithInfo: [.originalImage: cameraFixture()])
+        XCTAssertEqual(results.count, 1)
+        if case .success(let image) = results.first { XCTAssertNil(image) }
+        else { XCTFail("Cancellation must not produce an attachment or an error") }
+    }
+
+    func testCameraCaptureReturnsImageOnceAndRejectsMissingImage() {
+        var results: [Result<UIImage?, Error>] = []
+        let picker = UIImagePickerController()
+        let coordinator = PiAttachmentCameraView.Coordinator { results.append($0) }
+        coordinator.imagePickerController(picker, didFinishPickingMediaWithInfo: [.originalImage: cameraFixture()])
+        coordinator.imagePickerControllerDidCancel(picker)
+        XCTAssertEqual(results.count, 1)
+        if case .success(let image) = results.first { XCTAssertNotNil(image) }
+        else { XCTFail("Capture must return an image") }
+        let missing = PiAttachmentCameraView.Coordinator { result in
+            if case .failure = result {} else { XCTFail("Missing image must fail") }
+        }
+        missing.imagePickerController(picker, didFinishPickingMediaWithInfo: [:])
+    }
 
     func testAttachmentProtocolFramesRequestsAndValidatesExactResponses() throws {
         let requestID = UUID(uuidString: "11111111-2222-4333-8444-555555555555")!

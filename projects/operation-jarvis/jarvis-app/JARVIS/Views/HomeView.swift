@@ -131,9 +131,21 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
-                    HStack(spacing: 12) {
-                        Text("JARVIS").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
-                        compactConnectionStrip
+                    ReactorHeaderLayout {
+                        ReactorTitle(connected: app.connectionState == .connected, active: homeMotionActive)
+                            .accessibilityValue("\(connectionHeadline.isEmpty ? "Connected" : connectionHeadline), \(freshnessLabel)")
+                        Text(connectionHeadline)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(app.connectionState == .failed ? Color.red : Color.orange)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .clipped()
+                    }
+                    .frame(minHeight: 84)
+                    .background {
+                        if app.connectionState == .connected {
+                            ReactorHeaderCore(active: homeMotionActive)
+                        }
                     }
 
                     if let operationError = app.operationErrorMessage {
@@ -265,59 +277,15 @@ struct HomeView: View {
 
     // MARK: - Compact overview
 
-    private var compactConnectionStrip: some View {
-        HStack(spacing: 9) {
-            Circle()
-                .fill(connectionColor)
-                .frame(width: 9, height: 9)
-                .shadow(color: connectionColor.opacity(0.45), radius: 3)
-
-            Text(connectionHeadline)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            if app.isAwaitingFreshState || app.connectionState == .connecting {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Refreshing JARVIS status")
-            }
-
-
-        }
-        .padding(.horizontal, 12)
-        .frame(minHeight: 42)
-        .jarvisGlassSurface(JarvisPalette.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous), glass: true)
-        .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(connectionColor.opacity(0.14), lineWidth: 0.75)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(connectionHeadline), \(freshnessLabel)")
-    }
-
     private var connectionHeadline: String {
         switch app.connectionState {
         case .connected:
-            if purifierConfirmationIsPrimaryStatus { return "Online · confirming purifier" }
-            if app.isAwaitingFreshState { return "Online · loading status" }
-            return app.lastState?.stale == true ? "Online · partial data" : "Online · \(networkLabel)"
+            if purifierConfirmationIsPrimaryStatus { return "Confirming purifier" }
+            if app.isAwaitingFreshState { return "Loading status" }
+            return app.lastState?.stale == true ? "Partial data" : ""
         case .connecting: return "Connecting"
         case .failed: return "Offline"
         case .idle: return "Ready to connect"
-        }
-    }
-
-    private var connectionColor: Color {
-        switch app.connectionState {
-        case .connected:
-            return app.isAwaitingFreshState || app.lastState?.stale == true
-                ? JarvisPalette.warning
-                : JarvisPalette.accent
-        case .connecting: return JarvisPalette.warning
-        case .failed: return .red
-        case .idle: return .secondary
         }
     }
 
@@ -329,13 +297,6 @@ struct HomeView: View {
             return "Status current"
         }
         return JarvisFormat.freshness(ageSeconds: app.lastState?.ageSeconds)
-    }
-
-    private var networkLabel: String {
-        guard let host = app.currentEndpoint?.host else { return "—" }
-        if host.hasPrefix("100.") || host.hasSuffix(".ts.net") { return "Tailscale" }
-        if host.hasPrefix("192.168") || host.hasPrefix("10.") || host.hasPrefix("172.") { return "LAN" }
-        return host
     }
 
     private var purifierConfirmationIsPrimaryStatus: Bool {

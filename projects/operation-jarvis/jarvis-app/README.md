@@ -2,7 +2,42 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current installed build:** 206 on both iPhone and Watch, with installation and
+**Current iPhone build:** 221, installation and launch verified on 2026-09-23 EDT.
+Visibility fix: widget artwork renders at 140-point height behind the full header
+width, cropped to an owner-approved 84-point band (double the previous height).
+A rendered preview confirms visible core and filaments around JARVIS.
+The title backdrop now reuses the widget's actual Cathedral artwork and two-second
+motion cycle, rather than the earlier orbital approximation. The iPhone target
+includes the shared NeuralCoreArtwork/C2Decoration sources, without changing widgets.
+All artwork layers render in original widget white/silver behind the purple title; the widget
+wordmark is omitted. Neutral telemetry avoids invented readings. Its own bounded clock follows the title's
+visibility policy and retains Reduce Motion handling.
+Home now combines connection state into the centered JARVIS title: app-purple
+reactor ignition, then a continuous 3.6-second energy sweep/ripple and slow glow.
+Status stays in the remaining trailing space without shifting the title. The Online/Tailscale pill is
+removed; exceptional states retain a compact text label and VoiceOver status.
+Original title dimensions are preserved; the header minimum height is now 84 points.
+Effects pause offscreen/inactive and become static with Reduce Motion.
+Physical-device visual acceptance remains pending.
+The attachment sheet now offers **Take Photo** above Photos and Files. It requests
+camera access, captures a JPEG into the existing private attachment draft, and
+does not save to the photo library. Cancellation, unavailable/denied camera,
+size limits, and temporary-file cleanup are handled. Full-screen camera coverage
+does not disconnect Pi; real tab exits/backgrounding retain their cleanup.
+Camera permission and capture acceptance on the physical iPhone remain pending.
+Attach is now in the bottom terminal bar between Down and Paste, using the same
+rounded glass key surface as the other controls. Tab is removed; the bar remains
+eight controls wide. The top-right overlay is again only the session indicator.
+Build 220 is retained for rollback. All 39 selected attachment/terminal/title tests
+passed, including widget-cycle timing, continuous energy cycling, centered-title status clearance,
+ignition timing, reduced-motion behavior, unchanged title footprint,
+four camera tests, toolbar order and rendered layouts; the pre-existing plain-Paste
+pixel test was excluded after its identical baseline failure in build 211.
+Signed archive, four nested bundles, profiles, and unchanged entitlements verified.
+No direct Watch deployment or host service/session restart was performed.
+Physical attachment-flow acceptance is pending owner review.
+
+**Previous UI rollout:** Build 206 on both iPhone and Watch, with installation and
 launch independently verified on 2026-09-20 EDT. oMLX cards now use fixed host/status,
 short model, generation t/s, and whole-Mac RAM columns with the same heading,
 two rows, padding, and wrapper dimensions. No rotating pages or scrolling text.

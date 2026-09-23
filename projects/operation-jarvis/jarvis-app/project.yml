@@ -38,6 +38,8 @@ targets:
         excludes:
           - "Info.plist"
       - path: HostAppIntents
+      - path: WidgetShared/NeuralCoreArtwork.swift
+      - path: WidgetShared/NeuralCoreC2Decoration.swift
     dependencies:
       - package: JARVISKit
       - package: SwiftTerm
@@ -56,6 +58,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.operation-jarvis.jarvis
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) JARVIS_NATIVE_ATTACHMENTS"
         INFOPLIST_FILE: JARVIS/Info.plist
         CODE_SIGN_ENTITLEMENTS: JARVIS/JARVIS.entitlements
         GENERATE_INFOPLIST_FILE: NO
