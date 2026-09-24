@@ -8,12 +8,13 @@ struct ReactorTitle: View {
     @State private var ignition = Date()
 
     private var animates: Bool { connected && active && !reduceMotion }
+    static let titleFont = Font.system(size: 52, weight: .bold)
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animates)) { context in
             let phase = ReactorTitlePhase(elapsed: context.date.timeIntervalSince(ignition), animated: animates)
             Text("JARVIS")
-                .font(.largeTitle.bold())
+                .font(Self.titleFont)
                 .foregroundStyle(connected ? JarvisPalette.accent.opacity(0.15 + 0.7 * phase.reveal) : Color.secondary)
                 .overlay {
                     if connected {
@@ -31,7 +32,7 @@ struct ReactorTitle: View {
                             }
                             .frame(width: geometry.size.width, height: geometry.size.height)
                         }
-                        .mask(Text("JARVIS").font(.largeTitle.bold()))
+                        .mask(Text("JARVIS").font(Self.titleFont))
                         .allowsHitTesting(false)
                     }
                 }

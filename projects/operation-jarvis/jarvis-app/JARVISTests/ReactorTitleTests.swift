@@ -63,12 +63,15 @@ final class ReactorTitleTests: XCTestCase {
         try XCTUnwrap(image.pngData()).write(to: URL(fileURLWithPath: "/tmp/jarvis-header-core-preview.png"))
     }
 
-    @MainActor func testTitleKeepsOriginalTextFootprint() {
-        let original = UIHostingController(rootView: Text("JARVIS").font(.largeTitle.bold()))
+    @MainActor func testEnlargedTitleFitsExistingHeader() {
+        let original = UIHostingController(rootView: Text("JARVIS").font(ReactorTitle.titleFont))
         let reactor = UIHostingController(rootView: ReactorTitle(connected: true, active: false))
         let proposal = CGSize(width: 390, height: 100)
         let expected = original.sizeThatFits(in: proposal)
         let actual = reactor.sizeThatFits(in: proposal)
+        XCTAssertLessThanOrEqual(actual.height, 84)
+        XCTAssertLessThan(actual.width, 300)
+        XCTAssertGreaterThan(actual.height, 50)
         XCTAssertEqual(actual.width, expected.width, accuracy: 0.5)
         XCTAssertEqual(actual.height, expected.height, accuracy: 0.5)
     }

@@ -53,21 +53,26 @@ assert '!reducedLuminance && !reduceMotion && JARVISWidgetTimerAnimationFont.isA
 assert 'private let frameCount = 16' in art
 assert 'JARVISWidgetTimerFrameWindow(' in art and '.id(animates)' in art
 assert 'phase: Double(index) / Double(frameCount)' in art
-assert 'var phase: Double? = nil' in art
-assert 'if let phase, !simplified {' in art
+assert 'var phase: Double = 0.25' in art
+assert 'context.opacity = simplified ? 0.65 : 1' in art
+assert 'if let phase' not in art
 assert 'for index in 0..<3' in art
 assert 'triangle(1.02 - 0.72 * u)' in art
 assert 'StrokeStyle(lineWidth: 2.8, lineJoin: .round)' in art
 assert 'sqrt(max(0, sin(.pi * u)))' in art
-assert 'triangle(0.22)' in art
+assert 'triangle(0.22)' not in art
+solid_core = 'context.fill(triangle(0.72), with: .color(.white))'
+assert solid_core in art
+assert art.index(solid_core) > art.rindex('context.stroke(')
+assert 'Color(white: 70.0 / 255)' not in art
 assert 'CascadeFieldGeometry' not in art and 'linearGradient' not in art
 assert 'func triangle(_ insetScale: CGFloat) -> Path' in art
 assert 'CGPoint(x: -39, y: -34), CGPoint(x: 39, y: -34)' in art
 assert 'CGPoint(x: 42, y: -29), CGPoint(x: 3, y: 37)' in art
 assert 'path.closeSubpath()' in art
-assert 'context.stroke(triangle(1)' in art
-assert 'context.stroke(triangle(0.84)' in art
-assert 'triangle(simplified ? 0.62 : 0.65)' in art
+assert 'context.stroke(triangle(1.06)' in art
+assert 'context.stroke(triangle(0.91)' in art
+assert 'triangle(simplified ? 0.62 : 0.65)' not in art
 for forbidden in ['Timer(', 'TimelineView(', 'URLSession', 'repeatForever',
                   'reloadTimelines', '.animation(', 'Date(', 'Color(red:', '.blur(']:
     assert forbidden not in art, forbidden
