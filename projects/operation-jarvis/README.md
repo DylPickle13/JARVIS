@@ -12,6 +12,7 @@ This directory connects JARVIS to the things around the house: plugs, the air pu
 - **Smart plugs:** local TP-Link Kasa control through a fixed plug catalogue.
 - **Security:** reviewed CLI source in `security/`, with private credentials/inventory/media kept ignored. jarvisd exposes token-protected on-demand status only. Pi tools add local reads and explicit Tapo cloud automation management; writes are gated by revision checks and readback verification.
 - **Air purifier:** VeSync/Levoit Vital 200S-P status and validated controls.
+- **[AJAZZ keyboard](ajazz-keyboard/):** tested wired-AK820 lighting CLI and liked-effect preferences, moved here without duplication. An owner-authorized local watcher checks authenticated basement proximity approximately every three seconds: either device nearby resumes minute-spaced liked effects; both away applies purple ripples once. The collector's 10-second nearby hold stays unchanged; unknown/stale leaves lighting unchanged. The private `Keyboard lights` scheduler job only relays alerts and checks watcher health. See [automation details](ajazz-keyboard/docs/AUTOMATION.md). No keyboard backend route or new HID protocol is added.
 - **Media:** Google Cast, YouTube, Spotify Connect, and short room speech.
 - **Provider quotas:** read-only Codex/Copilot status for `jarvisd` and the apps.
 - **Private jobs:** the local scheduler and its limited, owner-only result history, shown read-only in Jobs.
@@ -21,6 +22,7 @@ This directory connects JARVIS to the things around the house: plugs, the air pu
 ```text
 projects/operation-jarvis/
 ├── air-purifier/               # VeSync adapter
+├── ajazz-keyboard/             # manual AK820 lighting CLI, presets and offline tests
 ├── jarvisd/                    # shared control backend, API, tests, LaunchAgents
 ├── jarvis-app/                 # iPhone, Watch, widgets, JARVISKit, terminald
 ├── pi-desk/                    # living-room Pi terminal, boot service, backups, tests
