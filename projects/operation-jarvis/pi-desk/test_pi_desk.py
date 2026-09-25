@@ -383,6 +383,7 @@ class DesktopTests(unittest.TestCase):
         bar = desktop.selector({})
         self.assertIn(' PI-DESK ', bar)
         self.assertIn('fg=#D183E8', bar)
+        self.assertIn('fg=#{?#{==:#{@pi-desk-session},1},#D183E8,colour252}', bar)
         self.assertEqual(bar.count(' │ '), 3)
         for n in range(1, 11):
             self.assertIn(f'] {n:02d} ', bar)
@@ -390,6 +391,11 @@ class DesktopTests(unittest.TestCase):
             tab = bar.split(f'range=user|{n},', 1)[1].split('range=user|', 1)[0]
             self.assertIn('#[norange,bg=#000000,nobold]#[fg=colour238] │ ', tab)
         self.assertNotIn('blink', bar)
+
+    def test_active_session_border_uses_brand_purple(self):
+        config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
+        self.assertIn("set -g pane-border-format '#[fg=#{?pane_active,#D183E8,colour245}]", config)
+        self.assertIn("set -g pane-active-border-style 'fg=#D183E8,bg=#000000'", config)
 
     def test_only_working_dots_pulse(self):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}

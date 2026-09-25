@@ -1,3 +1,12 @@
+# Purple selected-session outline — 2026-09-25, 00:25 EDT
+
+At user request, changed the selected session number, pane-border label, and active
+pane outline from cyan to the JARVIS dark accent `#D183E8`. Updated only the desktop
+selector and tmux border settings in the Mac/Pi runtimes; both manifests validate.
+Mac suite: 55 passed. Live tmux options and status output confirm the purple on both
+hosts. Refreshed only the viewers; Mac/Pi display pane IDs/PIDs and Mac hosted-agent
+pane IDs/PIDs are unchanged.
+
 # JARVIS purple title — 2026-09-25, 00:21 EDT
 
 Matched `PI-DESK` to the JARVIS app's dark accent, `#D183E8` (24-bit RGB).

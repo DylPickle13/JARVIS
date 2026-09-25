@@ -80,7 +80,7 @@ def selector(states, *, pulse_dim=False):
         group = '#{==:#{session_name},group-' + key + '}'
         active = '#{==:#{@pi-desk-session},' + str(n) + '}'
         background = '#{?' + group + ',#16252a,#000000}'
-        foreground = '#{?' + active + ',cyan,colour252}'
+        foreground = '#{?' + active + ',#D183E8,colour252}'
         weight = '#{?' + active + ',bold,nobold}'
         state = states.get(str(n))
         color = COLORS.get(state, COLORS['unknown'])
