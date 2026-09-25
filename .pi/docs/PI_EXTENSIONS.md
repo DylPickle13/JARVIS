@@ -35,6 +35,7 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
   - A successful, settled mobile turn can call the content-free APNs completion helper only when its private gate is enabled and the continuous activity lasted strictly more than 60 seconds (monotonic time, including automatic retries/compaction). This shared cutoff applies to both iPhone and Watch. Short/failed completions are consumed, never delayed until idle time crosses the cutoff. Switching sessions/shutdown resets the clock. It does not replay history or reload Pi.
   - `jarvisd` derives Offline and fail-closed Unknown from the fixed tmux sessions.
 - `47-watch-terminal-speech.ts`: publishes only the current tmux-bound Pi session's latest completed assistant text blocks to a private Watch-speech runtime marker; thinking and tool activity are excluded.
+- `49-session-autoname.ts`: automatic, on-device session titles for `/resume`; see below.
 - `50-browser/`: visible Chrome control through a persistent CDP bridge, hard-scoped to a dedicated JARVIS window in the user's signed-in profile.
 - `55-ssh-exec.ts`: unrestricted configured SSH execution plus directly attached and stateful interactive PTY sessions.
 - `56-github-cli.ts`: guarded GitHub CLI adapter.
@@ -42,6 +43,19 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `60-pdf-read-result.ts`: PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `98-slim-provider-payload.ts`: deterministic provider payload/schema slimming, including OpenAI deferred `tool_search_output` schemas.
 - `99-lazy-tools.ts`: additive lazy optional tool activation, plus opt-in direct-call auto-loading on the patched JARVIS Pi runtime.
+
+## Automatic session names
+
+`49-session-autoname.ts` calls `projects/apple-model/bin/apple-model` after `agent_settled` (once per completed response, not during tool cycles). No Pi core or apple-model changes, model-facing tools, or additional commands are needed. Activate with `/reload` or a new Pi process; existing sessions are considered on their next completed response, not retroactively on startup.
+
+- Input comes from the active in-memory branch: user text plus the last successful, tool-free assistant answer per user turn. Tools, thinking, images, custom messages, and abandoned branches are excluded. Compacted ancestors still present in that branch remain eligible; compaction summaries are not sent.
+- Each message is capped at 1,600 characters. The original completed task and newest completed turns share a 6,000-character budget. This is a character bound, not a token guarantee; context errors are skipped safely.
+- The fixed local binary receives conversation text and the current title via stdin, never shell interpolation or argv. No cloud fallback or transcript logging. Input is private conversation data; only the title and ownership metadata are persisted.
+- Inference runs asynchronously with a 45-second timeout and 16 KiB combined output limit. Missing/unavailable models, failed/aborted turns, invalid output, and stale results leave the name unchanged. New activity, navigation, compaction, and shutdown cancel work.
+- Existing names are treated as manual unless a persisted ownership record matches the latest session-name entry and session ID. `/name` takes ownership even when its text equals the generated title; clearing a name also protects it. Ownership uses session-wide metadata, while conversation selection remains branch-local. Forks conservatively retain inherited names rather than taking ownership.
+- The model is instructed to retain a useful existing title unless the main topic changes. Case/punctuation-only changes are suppressed; semantic stability otherwise depends on the model.
+
+Offline tests: `node --test .pi/tests/session-autoname.test.mjs`. They use an injected generator and temporary fake CLI, never the real model.
 
 ## Current tool surface
 

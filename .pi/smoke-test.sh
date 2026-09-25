@@ -334,6 +334,7 @@ expected_extension_roots=(
   .pi/extensions/46-local-pi-session-status.ts
   .pi/extensions/47-watch-terminal-speech.ts
   .pi/extensions/48-jarvis-security.ts
+  .pi/extensions/49-session-autoname.ts
   .pi/extensions/50-browser
   .pi/extensions/55-ssh-exec.ts
   .pi/extensions/56-github-cli.ts
@@ -367,6 +368,7 @@ expected_extension_files=(
   .pi/scripts/pi-attach-picker
   .pi/scripts/pi-attach-picker.swift
   .pi/scripts/tests/local-pi-session-status.test.mjs
+  .pi/tests/session-autoname.test.mjs
   .pi/scripts/tests/siri-new-session.test.mjs
   .pi/extensions/lib/siri-new-session.ts
   .pi/extensions/lib/operation-jarvis-security.ts
@@ -562,6 +564,7 @@ section "Local Pi lifecycle telemetry checks"
 if command -v node >/dev/null 2>&1; then
   run_check "Siri new-session admission tests" node --test .pi/scripts/tests/siri-new-session.test.mjs
   run_check "local Pi lifecycle event contract tests" node --test .pi/scripts/tests/local-pi-session-status.test.mjs
+  run_check "local session autoname tests" node --test .pi/tests/session-autoname.test.mjs
 fi
 
 section "Native attachment extension checks"
