@@ -74,7 +74,7 @@ def pulse_is_dim(now=None):
 
 
 def selector(states, *, pulse_dim=False):
-    parts = ['#[align=left,norange,fg=colour80,bg=#000000,nobold] PI-DESK ']
+    parts = ['#[align=left,norange,fg=#D183E8,bg=#000000,nobold] PI-DESK ']
     for n in range(1, 11):
         key, _ = session_group(n)
         group = '#{==:#{session_name},group-' + key + '}'

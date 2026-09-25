@@ -382,6 +382,7 @@ class DesktopTests(unittest.TestCase):
     def test_quiet_selector_groups(self):
         bar = desktop.selector({})
         self.assertIn(' PI-DESK ', bar)
+        self.assertIn('fg=#D183E8', bar)
         self.assertEqual(bar.count(' │ '), 3)
         for n in range(1, 11):
             self.assertIn(f'] {n:02d} ', bar)

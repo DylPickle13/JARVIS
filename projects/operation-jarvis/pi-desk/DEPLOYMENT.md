@@ -1,3 +1,11 @@
+# JARVIS purple title — 2026-09-25, 00:21 EDT
+
+Matched `PI-DESK` to the JARVIS app's dark accent, `#D183E8` (24-bit RGB).
+Both Mac and Pi tmux clients advertise RGB; the installed desktop manifests were
+updated and verified. Mac suite: 54 passed. Live status output showed the exact
+RGB title on both hosts. Refreshed only the viewers; display pane identities and
+Mac hosted-agent pane identities were unchanged.
+
 # Faster header pulse — 2026-09-24, 23:38 EDT
 
 At user request, shortened each bright/dim phase from 1.5s to 0.75s (1.5s full
