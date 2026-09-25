@@ -19,8 +19,8 @@ after confirming exact source hashes. All installed manifest entries now verify.
   both warning-row states, all six native bindings, and unchanged dummy pane
   identities. Fixed an older state-restoration test that inadvertently read the
   live server. These focused tests passed on both platforms. The full working-tree
-  suite (including separate, uncommitted reliability/timeout work) passed 47 tests
-  on Mac; Pi ran 47 with one zsh-only skip.
+  suite (including the separate reliability/timeout changes) passed 51 tests on
+  Mac; Pi ran 51 with one zsh-only skip.
 
 Installed CLI -> first PTY output, healthy dummy workspace, five openings/platform:
 
@@ -42,6 +42,72 @@ copies remain in the runtime backup directories. Live pane identities
 were unchanged at deployment. Optimizations apply on the next open; existing viewers
 were left alone. If rollback is needed, restore the prior source files and regenerate
 the install manifest; never kill the hosted server. mac-mini-16 was untouched.
+
+# Multiple-viewer acceptance — 2026-09-24, 22:05 EDT
+
+Isolated synthetic-output tests passed on Mac and Pi for two independent viewer
+terminals, two seconds with both readers paused, closing one while retaining the
+other, attaching a replacement, closing all clients, and overlapping two clients
+on the same terminal then closing them separately. The dummy pane PID was preserved
+throughout; no live display or agent sockets were used. Two viewers alone did not
+reproduce the original stall. This does not rule out a timing-dependent interaction.
+
+`probe_viewers.py` records the reusable test. On Mac it additionally exercised the
+new source wrapper with actual SIGTERM, SIGHUP, and a SIGSTOP-stopped tmux child;
+the owned child was reaped in every case. 14 checks passed, followed by all 46 unit
+tests at that point (including status-monitor election/failover). The Pi ran the
+eight raw tmux multi-viewer checks, not wrapper acceptance at that point. Subsequent
+updated full-suite validation passed 51 tests on Mac and ran 51 on Pi with one
+zsh-only skip. The actual signal/stopped-child wrapper acceptance remains Mac-only.
+A probe-cleanup exception on macOS was fixed and its unique leftover test socket
+removed; the full Mac probe then passed including cleanup.
+
+Hardening remains source-only. Actual-signal wrapper acceptance on Pi and deployment
+verification remain outstanding. No claim of a root-cause fix or deployment.
+
+# Viewer reliability investigation — 2026-09-24, 22:01 EDT
+
+Session 2 recovered the Mac display server by flushing the stale terminal's output
+queue. A process sample showed the tmux server blocked in `writev` from its terminal
+write callback. This identifies the blocking location, not the initiating cause.
+
+Isolated controlling-PTY tests on Mac and Raspberry Pi exercised a continuously
+printing dummy pane, fresh attach, two seconds without reading output, resumed
+reading, terminal hangup, and reattach. Neither reproduced a stall. Each server
+remained responsive (Mac queries 19.6–33.5 ms; Pi 20.6–33.6 ms), and the dummy
+pane identity was preserved. These are command response times, not display latency.
+Live viewers and hosted agents were not changed by these probes.
+
+Source-only hardening in `desktop.attach_viewer`: own/reap the display client on
+HUP, TERM or interruption; bounded TERM then KILL for an unresponsive/stopped client;
+restore prior signal handlers. Never signal a server or process group. Three new
+mocked cleanup tests brought the Mac suite to 46 passing tests at that point.
+Subsequent full-suite runs passed 51 tests on Mac and ran 51 on Pi with one zsh-only
+skip. Actual signal/PTY wrapper acceptance was run on Mac, not Pi. Session 2's timeout
+handling is preserved. This patch is NOT deployed and does not establish prevention
+of the original blocked-write fault. Validate the wrapper on Pi and verify installed
+manifests if deployment is ever authorized.
+
+# Cross-platform software latency — 2026-09-24, 21:53 EDT
+
+Isolated Pi-local PTY input injection to first readable terminal output, using
+installed native bindings, selector and ten dummy panes: 36 switches, median
+31.081 ms, range 23.945–56.810 ms. Within-group median 30.869 ms; cross-group
+31.223 ms. Mac source benchmark: 36 switches, median 5.931 ms, range
+3.397–13.059 ms; within-group 6.146 ms, cross-group 5.060 ms.
+
+These exclude physical keyboard, Foot/VS Code rendering, TV processing and scanout.
+Dummy panes also exclude live agent output load. Focus was verified after each
+timed interval. The Pi output is 1920×1080 at 60 Hz. No camera measurement exists.
+`benchmark_navigation.py` provides the isolated cross-platform reproduction;
+periodic status redraws are disabled to avoid false first-output measurements.
+
+Mac native navigation files now installed with manifest updates; active Pi Desk
+bindings refreshed without disconnecting viewers. Hosted pane identities unchanged.
+41 Mac tests passed. Existing viewer monitor code updates on reopening Pi Desk;
+native bindings are active immediately. Pi installation was already native and was
+not changed. mac-mini-16 untouched. The historical Mac rollback snapshot was later
+removed; no runtime rollback copy remains. Never restart agents.
 
 # Native tmux navigation — 2026-09-24, 18:18 EDT
 

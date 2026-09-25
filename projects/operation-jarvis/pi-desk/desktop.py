@@ -4,12 +4,13 @@ import fcntl
 import os
 from pathlib import Path
 import subprocess
+import signal
 import sys
 import threading
 
 from health import HealthMonitor
 from backend import clean_environment
-from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux
+from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, recover_closed_displays
 
 STATE = Path.home() / '.local/state/pi-desk'
 COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': 75,
@@ -185,7 +186,42 @@ def monitor(stop):
             return
 
 
+def attach_viewer(group):
+    """Own only this display client; reap it on terminal hangup or termination."""
+    child = None
+    handlers = {}
+
+    def interrupted(number, frame):
+        raise SystemExit(128 + number)
+
+    try:
+        for number in (signal.SIGHUP, signal.SIGTERM):
+            handlers[number] = signal.signal(number, interrupted)
+        child = subprocess.Popen(
+            ['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group],
+            env=clean_environment(),
+        )
+        return child.wait()
+    finally:
+        # Ignore repeated shutdown signals while reaping our own child. Never
+        # signal the server, a process group, or any hosted agent.
+        for number in handlers:
+            signal.signal(number, signal.SIG_IGN)
+        try:
+            if child is not None and child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    child.kill()  # A job-control-stopped client cannot handle TERM.
+                    child.wait(timeout=2)
+        finally:
+            for number, handler in handlers.items():
+                signal.signal(number, handler)
+
+
 def main():
+    recover_closed_displays()
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     group = choose(last_session())
     configure()
@@ -193,10 +229,7 @@ def main():
     worker = threading.Thread(target=monitor, args=(stop,), daemon=True)
     worker.start()
     try:
-        return subprocess.run(
-            ['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group],
-            env=clean_environment(), check=False,
-        ).returncode
+        return attach_viewer(group)
     finally:
         stop.set()
         worker.join(timeout=12)

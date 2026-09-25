@@ -7,6 +7,8 @@ import shlex
 import subprocess
 import time
 import sys
+import re
+import termios
 
 from backend import clean_environment, load
 
@@ -100,9 +102,60 @@ class StatusFeed:
         return self.states if now - self.received < STALE_AFTER else {}
 
 
+def recover_closed_displays():
+    """Unblock macOS tmux tty teardown without signalling clients or agents.
+
+    A hung-up display loses its controlling tty, but tmux can retain an open
+    slave fd and block in tty_raw(write). Flush only output for those exact
+    Pi Desk attach clients; never touch live terminals or agent PTYs.
+    """
+    if sys.platform != 'darwin':
+        return
+    try:
+        rows = subprocess.run(
+            ['ps', '-U', str(os.getuid()), '-o', 'pid=,tty=,command='],
+            capture_output=True, text=True, timeout=3, check=True).stdout
+        for row in rows.splitlines():
+            fields = row.split(None, 2)
+            if len(fields) != 3 or fields[1] != '??':
+                continue
+            pid, _, command = fields
+            args = shlex.split(command)
+            if (not args or Path(args[0]).name != 'tmux' or
+                    args[1:5] != ['-L', SOCKET, 'attach-session', '-t'] or
+                    len(args) != 6 or args[5] not in {'=group-' + k for k in GROUPS}):
+                continue
+            files = subprocess.run(
+                ['/usr/sbin/lsof', '-a', '-p', pid, '-d', '0', '-Fn'],
+                capture_output=True, text=True, timeout=3).stdout
+            for line in files.splitlines():
+                if not re.fullmatch(r'n/dev/ttys\d+', line):
+                    continue
+                # Recheck hangup after lsof: never flush a live display.
+                current = subprocess.run(
+                    ['ps', '-p', pid, '-o', 'tty=,command='],
+                    capture_output=True, text=True, timeout=3).stdout.strip()
+                if current.split(None, 1) != ['??', command]:
+                    continue
+                fd = os.open(line[1:], os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+                try:
+                    termios.tcflush(fd, termios.TCOFLUSH)
+                finally:
+                    os.close(fd)
+    except (OSError, ValueError, termios.error, subprocess.SubprocessError):
+        # Best effort; the normal bounded workspace probe reports any failure.
+        return
+
+
 def tmux(*args, check=True):
-    result = subprocess.run(['tmux', '-L', SOCKET, '-f', str(ROOT / 'config/tmux.conf'),
-                             *args], capture_output=True, text=True, timeout=8)
+    try:
+        result = subprocess.run(['tmux', '-L', SOCKET, '-f', str(ROOT / 'config/tmux.conf'),
+                                 *args], capture_output=True, text=True, timeout=8)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            'Pi Desk workspace is not responding (tmux timed out after 8 seconds). '
+            'A stale display terminal may be blocking it; underlying agents were not restarted.'
+        ) from exc
     if check and result.returncode:
         raise RuntimeError('Local workspace could not be prepared; please try again.')
     return result

@@ -40,7 +40,11 @@ def main():
     if not sys.stdin.isatty():
         parser.error('open Pi Desk in an interactive terminal')
     from desktop import main as display
-    return display()
+    try:
+        return display()
+    except RuntimeError as exc:
+        print(f'Pi Desk: {exc}', file=sys.stderr)
+        return 1
 
 
 if __name__ == '__main__':

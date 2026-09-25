@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import shlex
 import subprocess
+import sys
 import tempfile
 import time
 import threading
@@ -22,6 +23,96 @@ import native_navigation
 import health
 import install_pi
 import status_stream
+
+
+class ViewerCleanupTests(unittest.TestCase):
+    def test_normal_exit_does_not_terminate_client(self):
+        child = mock.Mock()
+        child.wait.return_value = 0
+        child.poll.return_value = 0
+        with mock.patch.object(desktop.subprocess, 'Popen', return_value=child):
+            self.assertEqual(desktop.attach_viewer('group-1'), 0)
+        child.terminate.assert_not_called()
+        child.kill.assert_not_called()
+
+    def test_interruption_reaps_only_owned_client(self):
+        child = mock.Mock()
+        child.poll.return_value = None
+        child.wait.side_effect = [KeyboardInterrupt(), 0]
+        with mock.patch.object(desktop.subprocess, 'Popen', return_value=child):
+            with self.assertRaises(KeyboardInterrupt):
+                desktop.attach_viewer('group-1')
+        child.terminate.assert_called_once()
+        child.kill.assert_not_called()
+
+    def test_stopped_client_is_killed_after_bounded_wait(self):
+        child = mock.Mock()
+        child.poll.return_value = None
+        child.wait.side_effect = [SystemExit(143), subprocess.TimeoutExpired('tmux', 2), 0]
+        with mock.patch.object(desktop.subprocess, 'Popen', return_value=child):
+            with self.assertRaises(SystemExit):
+                desktop.attach_viewer('group-1')
+        child.terminate.assert_called_once()
+        child.kill.assert_called_once()
+        self.assertEqual(child.wait.call_args, mock.call(timeout=2))
+
+
+class ClosedDisplayRecoveryTests(unittest.TestCase):
+    def recover(self, rows, current='?? tmux -L pi-desk attach-session -t =group-1'):
+        results = [mock.Mock(stdout=rows), mock.Mock(stdout='p42\nn/dev/ttys036\n'),
+                   mock.Mock(stdout=current)]
+        with mock.patch.object(core.sys, 'platform', 'darwin'), \
+                mock.patch.object(core.subprocess, 'run', side_effect=results), \
+                mock.patch.object(core.os, 'open', return_value=99) as opened, \
+                mock.patch.object(core.os, 'close') as closed, \
+                mock.patch.object(core.termios, 'tcflush') as flush:
+            core.recover_closed_displays()
+        return opened, closed, flush
+
+    def test_flushes_only_closed_display_output(self):
+        opened, closed, flush = self.recover('42 ?? tmux -L pi-desk attach-session -t =group-1')
+        self.assertEqual(opened.call_args.args[0], '/dev/ttys036')
+        flush.assert_called_once_with(99, core.termios.TCOFLUSH)
+        closed.assert_called_once_with(99)
+
+    def test_ignores_live_displays_and_agent_clients(self):
+        for row in ('42 ttys036 tmux -L pi-desk attach-session -t =group-1',
+                    '42 ?? tmux -L jarvis-mobile attach-session -t =jarvis-ios',
+                    '42 ?? tmux -L pi-desk new-session -d -s group-1'):
+            with self.subTest(row=row):
+                opened, _, flush = self.recover(row)
+                opened.assert_not_called()
+                flush.assert_not_called()
+
+    def test_rechecks_terminal_before_flush(self):
+        opened, _, flush = self.recover(
+            '42 ?? tmux -L pi-desk attach-session -t =group-1',
+            'ttys036 tmux -L pi-desk attach-session -t =group-1')
+        opened.assert_not_called()
+        flush.assert_not_called()
+
+    def test_probe_failure_is_nonfatal(self):
+        with mock.patch.object(core.sys, 'platform', 'darwin'), \
+                mock.patch.object(core.subprocess, 'run', side_effect=subprocess.TimeoutExpired('ps', 3)):
+            core.recover_closed_displays()
+
+
+class WorkspaceTimeoutTests(unittest.TestCase):
+    def test_timeout_is_actionable_even_for_unchecked_queries(self):
+        for check in (True, False):
+            with self.subTest(check=check), mock.patch.object(
+                    core.subprocess, 'run',
+                    side_effect=subprocess.TimeoutExpired('tmux', 8)):
+                with self.assertRaisesRegex(RuntimeError, 'workspace is not responding'):
+                    core.tmux('show-options', '-gv', '@pi-desk-last', check=check)
+
+    def test_cli_reports_workspace_failure_without_traceback(self):
+        with mock.patch.object(sys, 'argv', ['pi-desk']), \
+                mock.patch.object(sys.stdin, 'isatty', return_value=True), \
+                mock.patch.object(desktop, 'main', side_effect=RuntimeError('workspace unavailable')), \
+                mock.patch('builtins.print') as output:
+            self.assertEqual(cli.main(), 1)
+            output.assert_called_once_with('Pi Desk: workspace unavailable', file=sys.stderr)
 
 
 class StatusTests(unittest.TestCase):
