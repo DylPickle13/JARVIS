@@ -1,4 +1,6 @@
 """Native tmux navigation; Python runs only when a workspace needs recovery."""
+from contextlib import contextmanager
+import tempfile
 
 
 def binding(direction):
@@ -24,9 +26,26 @@ def binding(direction):
     return command
 
 
-def install(tmux):
+def configuration():
+    """tmux config text avoids its argv message-size limit for large bindings."""
+    result = []
     for direction, key in ((-1, 'Left'), (1, 'Right')):
         command = binding(direction)
-        tmux('bind-key', '-T', 'root', 'C-' + key, command)
-        for prefix_key in (key, 'C-' + key):
-            tmux('bind-key', '-T', 'prefix', prefix_key, command)
+        for table, name in (('root', 'C-' + key), ('prefix', key),
+                            ('prefix', 'C-' + key)):
+            result.append(f'bind-key -T {table} {name} {{ {command} }}\n')
+    return ''.join(result)
+
+
+@contextmanager
+def script():
+    # Private, short-lived config only; no agent output or runtime state.
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.tmux') as stream:
+        stream.write(configuration())
+        stream.flush()
+        yield stream.name
+
+
+def install(tmux):
+    with script() as path:
+        tmux('source-file', path)

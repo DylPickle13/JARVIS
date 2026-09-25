@@ -99,10 +99,10 @@ def health_line(connection, health):
 
 
 def render_status(rows):
-    for index, row in enumerate(rows):
-        tmux('set-option', '-g', f'status-format[{index}]', row)
-    # Clearing a format alone leaves a blank row: change the actual row count.
-    tmux('set-option', '-g', 'status', '2' if rows[1] else 'on')
+    # One queue keeps both rows and their count together, with one client spawn.
+    tmux('set-option', '-g', 'status-format[0]', rows[0], ';',
+         'set-option', '-g', 'status-format[1]', rows[1], ';',
+         'set-option', '-g', 'status', '2' if rows[1] else 'on')
 
 
 def persist_selection():
@@ -121,16 +121,32 @@ def persist_selection():
         os.replace(temporary, target)
 
 
-def configure():
-    from native_navigation import install
-    tmux('source-file', str(ROOT / 'config/tmux.conf'))
-    install(tmux)
-    current = tmux('show-options', '-gv', 'status-format[0]', check=False).stdout
+def configuration_version():
+    import hashlib
+    digest = hashlib.sha256(str(ROOT).encode())
+    for name in ('desktop.py', 'native_navigation.py', 'config/tmux.conf'):
+        digest.update((ROOT / name).read_bytes())
+    return digest.hexdigest()
+
+
+def configure(force=False):
+    # Cache configuration only, never pane health. A new server or changed file
+    # invalidates this marker; choose() still validates live panes on every open.
+    version = configuration_version()
+    if not force and tmux('show-options', '-gv', '@pi-desk-config', check=False).stdout.strip() == version:
+        return
+    from native_navigation import script
+    with script() as path:
+        current = tmux('source-file', str(ROOT / 'config/tmux.conf'), ';',
+                       'source-file', path, ';',
+                       'show-options', '-gv', 'status-format[0]').stdout
     if 'PI DESK' not in current:
         render_status((selector({}), health_line('Connecting to Mac…', ())))
     else:
-        warning = tmux('show-options', '-gv', 'status-format[1]', check=False).stdout.strip()
-        tmux('set-option', '-g', 'status', '2' if warning else 'on')
+        tmux('if-shell', '-F', '#{==:#{status-format[1]},}',
+             'set-option -g status on', 'set-option -g status 2')
+    # Publish only after every configuration command succeeds.
+    tmux('set-option', '-g', '@pi-desk-config', version)
 
 
 def watch_status(stop):

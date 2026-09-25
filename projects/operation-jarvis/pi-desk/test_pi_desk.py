@@ -112,6 +112,39 @@ class PaneRecoveryTests(unittest.TestCase):
     def tags(self, target='group-1:0'):
         return core.tmux('list-panes', '-t', target, '-F', '#{@pi-desk-session}').stdout.splitlines()
 
+    def test_batched_configure_repairs_bindings_and_preserves_status(self):
+        core.ensure_group('1')
+        identity = core.tmux('list-panes', '-t', 'group-1:0', '-F', '#{pane_id}:#{pane_pid}').stdout
+        with mock.patch.object(desktop, 'tmux', wraps=core.tmux) as commands:
+            desktop.configure()
+            self.assertEqual(commands.call_count, 4)
+        with mock.patch.object(desktop, 'tmux', wraps=core.tmux) as commands:
+            desktop.configure()
+            self.assertEqual(commands.call_count, 1)
+        with mock.patch.object(desktop, 'configuration_version', return_value='changed'), \
+                mock.patch.object(desktop, 'tmux', wraps=core.tmux) as commands:
+            desktop.configure()
+            self.assertEqual(commands.call_count, 4)
+        self.assertIn('PI DESK', core.tmux('show-options', '-gv', 'status-format[0]').stdout)
+        self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), '2')
+        for warning in ('', desktop.health_line('SSH disconnected', ())):
+            rows = (desktop.selector({'1': 'idle'}), warning)
+            desktop.render_status(rows)
+            core.tmux('unbind-key', '-T', 'root', 'C-Right')
+            with mock.patch.object(desktop, 'tmux', wraps=core.tmux) as commands:
+                desktop.configure(force=True)
+                self.assertEqual(commands.call_count, 3)
+            for index, row in enumerate(rows):
+                self.assertEqual(core.tmux('show-options', '-gv', f'status-format[{index}]').stdout.rstrip('\n'), row)
+            self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), '2' if warning else 'on')
+            for table, key in (('root', 'C-Left'), ('root', 'C-Right'),
+                               ('prefix', 'Left'), ('prefix', 'Right'),
+                               ('prefix', 'C-Left'), ('prefix', 'C-Right')):
+                lines = core.tmux('list-keys', '-T', table).stdout.splitlines()
+                self.assertTrue(any(line.split()[3] == key and 'if-shell' in line
+                                    for line in lines))
+        self.assertEqual(identity, core.tmux('list-panes', '-t', 'group-1:0', '-F', '#{pane_id}:#{pane_pid}').stdout)
+
     def test_create_and_idempotent(self):
         core.ensure_group('1')
         core.ensure_group('1')
@@ -268,7 +301,9 @@ class DesktopTests(unittest.TestCase):
             choose.assert_called_once_with(5, 999)
 
     def test_restore_invalid_state(self):
-        with tempfile.TemporaryDirectory() as directory, mock.patch.object(desktop, 'STATE', Path(directory)):
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(desktop, 'STATE', Path(directory)), \
+                mock.patch.object(desktop, 'tmux', return_value=mock.Mock(stdout='')):
             self.assertEqual(desktop.last_session(), 1)
             (Path(directory)/'last-session').write_text('bad')
             self.assertEqual(desktop.last_session(), 1)

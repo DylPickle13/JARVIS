@@ -1,3 +1,48 @@
+# Startup optimization — 2026-09-24, 22:40 EDT
+
+Deployed startup-only changes to Mac and Pi without restarting any viewer, service,
+or hosted agent. Installed desktop code was patched by function so the separate
+`attach_viewer()` reliability changes remain source-only. Session 2's already-installed
+Mac timeout handling was preserved; its two stale manifest entries were reconciled
+after confirming exact source hashes. All installed manifest entries now verify.
+
+- Configuration cache: server-local `@pi-desk-config` fingerprints desktop.py,
+  native_navigation.py, tmux.conf and install path. A new server or changed file
+  triggers configuration. Pane readiness is NEVER cached: choose() still validates
+  live tags/order/liveness and retains recovery. Use `configure(force=True)` to
+  restore bindings changed manually without modifying configuration files.
+- Initial setup loads all six native bindings from a private temporary tmux config
+  in one client call (then deletes the file). A direct argv batch exceeded tmux's
+  message-size limit in isolation and was rejected before deployment.
+- Status rows and row count are applied in one command queue.
+- Added real-server coverage for cache reuse/invalidation, forced binding repair,
+  both warning-row states, all six native bindings, and unchanged dummy pane
+  identities. Fixed an older state-restoration test that inadvertently read the
+  live server. These focused tests passed on both platforms. The full working-tree
+  suite (including separate, uncommitted reliability/timeout work) passed 47 tests
+  on Mac; Pi ran 47 with one zsh-only skip.
+
+Installed CLI -> first PTY output, healthy dummy workspace, five openings/platform:
+
+| Platform | Previous median | Updated repeat-open median | First open, uncached config |
+| --- | --- | --- | --- |
+| Mac | 116.44 ms | 65.73 ms (65.19–67.89) | 95.66 ms |
+| Pi | 854.67 ms | 557.79 ms (541.16–562.06) | 807.37 ms |
+
+Repeat-open samples exclude the first configuration-building run. Approximately
+44% faster on Mac and 35% on Pi. These are isolated software timings, not physical
+screen latency or fresh SSH/session startup. The real installed status monitor ran,
+with its election lock/state isolated. The local harness remains at
+`/tmp/pi-desk-full-startup.py`; the temporary Pi candidate stage was removed after
+validation and deployment. No claim that cold agent connections or the original
+blocked-write fault are improved.
+
+The deployment backups were subsequently removed after validation; no rollback
+copies remain in the runtime backup directories. Live pane identities
+were unchanged at deployment. Optimizations apply on the next open; existing viewers
+were left alone. If rollback is needed, restore the prior source files and regenerate
+the install manifest; never kill the hosted server. mac-mini-16 was untouched.
+
 # Native tmux navigation — 2026-09-24, 18:18 EDT
 
 Deployed to Raspberry Pi only. Healthy Ctrl + arrow navigation now runs directly
