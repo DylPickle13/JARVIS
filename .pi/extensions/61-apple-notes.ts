@@ -7,6 +7,16 @@ const DEFAULT_FOLDER = "Notes";
 const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_SEARCH_LIMIT = 50;
 const APPLE_SCRIPT_TIMEOUT_MS = 45_000;
+const READINESS_TIMEOUT_MS = 10_000;
+// A harmless Apple event triggers the same macOS Automation permission as writes.
+// Never attempt a mutation while a permission prompt or an unresponsive Notes app blocks it.
+const APPLE_NOTES_READINESS_SCRIPT = `
+tell application "Notes"
+  set accountId to id of account "iCloud"
+end tell
+return "ready"
+`;
+const AUTOMATION_HELP = "Check the mac-mini-64 desktop for a permission dialog, or open System Settings → Privacy & Security → Automation and allow the application running Pi (tmux when launched through tmux, otherwise your terminal/Pi host) to control Notes. Approve it yourself, ensure Notes responds, then retry.";
 
 const APPLE_NOTES_SCRIPT = String.raw`
 on replaceText(findText, replaceWith, subjectText)
@@ -437,7 +447,18 @@ async function runAppleNotes(
   args: { folder?: string; id?: string; title?: string; body?: string; mode?: string; query?: string; limit?: number } = {},
   signal?: AbortSignal,
 ): Promise<any> {
-  const result = await pi.exec("osascript", [
+  if (signal?.aborted) throw new Error("FAILED: Apple Notes request was cancelled before execution. No operation was attempted. Do not claim success.");
+  const readiness = await pi.exec("/usr/bin/osascript", ["-e", APPLE_NOTES_READINESS_SCRIPT], {
+    signal, timeout: READINESS_TIMEOUT_MS,
+  });
+  if (readiness.killed || signal?.aborted) {
+    throw new Error(`FAILED: Apple Notes readiness check ${signal?.aborted ? "was cancelled" : "timed out after 10 seconds"}. The requested ${action} operation was NOT attempted. Do not claim success or automatically retry. ${AUTOMATION_HELP}`);
+  }
+  if (readiness.code !== 0 || readiness.stdout.trim() !== "ready") {
+    throw new Error(`FAILED: Apple Notes readiness check failed. The requested ${action} operation was NOT attempted. Do not claim success. ${automationError(readiness.stderr, readiness.stdout)}\n${AUTOMATION_HELP}`);
+  }
+
+  const result = await pi.exec("/usr/bin/osascript", [
     "-e",
     APPLE_NOTES_SCRIPT,
     "--",
@@ -451,14 +472,30 @@ async function runAppleNotes(
     String(args.limit ?? DEFAULT_SEARCH_LIMIT),
   ], { signal, timeout: APPLE_SCRIPT_TIMEOUT_MS });
 
-  if (result.code !== 0) throw new Error(automationError(result.stderr, result.stdout));
-  const output = result.stdout.trim();
-  if (!output) throw new Error("Apple Notes returned no result");
-  try {
-    return JSON.parse(output);
-  } catch (error: any) {
-    throw new Error(`Apple Notes returned invalid JSON: ${String(error?.message ?? error)}\n${truncate(output, 4_000)}`);
+  const mutation = ["write", "update", "delete"].includes(action);
+  const failureHelp = mutation
+    ? "The change is UNCONFIRMED and may or may not have happened. Do not claim success or repeat the mutation automatically. Once Notes is responsive, read/search to verify before retrying."
+    : "No successful read result was received. Do not interpret this as an empty note list or claim success.";
+  if (result.killed || signal?.aborted) {
+    throw new Error(`FAILED: Apple Notes ${action} ${signal?.aborted ? "was cancelled" : "timed out after 45 seconds"}. ${failureHelp} ${AUTOMATION_HELP}`);
   }
+  if (result.code !== 0) throw new Error(`FAILED: ${automationError(result.stderr, result.stdout)}\n${failureHelp}`);
+  const output = result.stdout.trim();
+  if (!output) throw new Error(`FAILED: Apple Notes returned empty output, NOT a success response. ${failureHelp}`);
+  let data: any;
+  try {
+    data = JSON.parse(output);
+  } catch (error: any) {
+    throw new Error(`FAILED: Apple Notes returned invalid JSON: ${String(error?.message ?? error)}\n${failureHelp}\n${truncate(output, 4_000)}`);
+  }
+  const validNote = (note: any) => note && typeof note.id === "string" && note.id.length > 0
+    && typeof note.title === "string" && typeof note.folder === "string" && note.account === "iCloud";
+  const valid = action === "search"
+    ? Array.isArray(data?.notes) && data.count === data.notes.length && data.notes.every(validNote)
+    : validNote(data) && (action !== "delete" || data.deleted === true)
+      && (!["read", "update"].includes(action) || typeof data.body === "string");
+  if (!valid) throw new Error(`FAILED: Apple Notes returned an unexpected result shape. ${failureHelp}`);
+  return { ...data, status: "succeeded", action };
 }
 
 function noteLocatorSchema() {
@@ -516,7 +553,7 @@ export default function registerAppleNotes(pi: ExtensionAPI) {
   pi.registerTool({
     name: "apple_notes_write",
     label: "Write Apple Note",
-    description: `Create a plaintext iCloud Apple Note. The title is stored as the first line and the body follows it. Defaults to the iCloud → ${DEFAULT_FOLDER} folder. Load with load_tools({ groups: ["apple_notes"] }) before use.`,
+    description: `Create a plaintext iCloud Apple Note. The title is stored as the first line and the body follows it. Defaults to the iCloud → ${DEFAULT_FOLDER} folder. Only report creation when the result has status:"succeeded" and a note id. Errors/timeouts are NOT success; do not automatically repeat an unconfirmed write. Load with load_tools({ groups: ["apple_notes"] }) before use.`,
     parameters: Type.Object({
       title: Type.String({ minLength: 1, description: "Single-line note title." }),
       body: Type.Optional(Type.String({ description: "Plaintext note body." })),

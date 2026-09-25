@@ -156,6 +156,7 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
     lines: [
       "For Apple Notes requests, use the exact `apple_notes_*` tool; discover unfamiliar schemas with `load_tools({ groups: [\"apple_notes\"] })`; do not use SQLite, Shortcuts, JXA, shell scripts, or guessed Notes commands.",
       "The tools use macOS Notes automation with iCloud → Notes as the write default. Search/read may omit `folder` to scan non-deleted iCloud folders.",
+      "Only claim an operation succeeded when the tool returns status:succeeded (and a note id for mutations). FAILED, isError, empty output, or 'no result' NEVER mean success. A permission/readiness failure needs the user's approval on the Mac desktop; do not keep retrying or claim completion. An unconfirmed mutation may have happened: read/search to verify before attempting it again.",
       "Use `apple_notes_read` before updating or deleting when the note id is unknown. Prefer stable note ids over title fallbacks; ambiguous titles fail safely.",
       "`apple_notes_update` requires an explicit `mode`: `replace` preserves the title and replaces the body; `append` adds plaintext after the current note.",
       "`apple_notes_delete` moves the note to Recently Deleted. It requires confirmation, and UI-capable sessions show an additional confirmation dialog.",

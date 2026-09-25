@@ -555,7 +555,7 @@ fi
 
 section "Operation JARVIS focused tools (offline mocks only)"
 if command -v node >/dev/null 2>&1; then
-  run_check "focused controls, security gates and provider schemas" node --test .pi/scripts/tests/jarvis-purifiers.test.mjs .pi/tests/operation-jarvis-security.test.mjs .pi/tests/slim-provider-payload.test.mjs
+  run_check "focused controls, security gates and provider schemas" node --test .pi/scripts/tests/jarvis-purifiers.test.mjs .pi/tests/operation-jarvis-security.test.mjs .pi/tests/slim-provider-payload.test.mjs .pi/tests/apple-notes.test.mjs
 fi
 
 section "Local Pi lifecycle telemetry checks"
