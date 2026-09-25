@@ -379,6 +379,31 @@ final class WatchTerminalTests: XCTestCase {
         rejectedClient.close()
     }
 
+    func testTalkAlwaysPreflightsAndSubmitsToSessionTen() async throws {
+        let inputs = LockedBox<[WatchTerminalInput]>([])
+        let frame = fixtureFrame(session: .roomAudio)
+        TerminalURLProtocol.handler = { request in
+            XCTAssertFalse(request.url!.path.contains("new-session-prompt"))
+            if request.httpMethod == "GET" {
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+                XCTAssertTrue(query?.contains(URLQueryItem(name: "sessionID", value: "10")) == true)
+                return (200, try JSONEncoder().encode(frame))
+            }
+            let input = try JSONDecoder().decode(WatchTerminalInput.self, from: request.bodyData)
+            inputs.update { $0.append(input) }
+            return (200, Data("{\"ok\":true,\"requestID\":\"\(input.requestID)\",\"sessionID\":10}".utf8))
+        }
+        let client = fixtureClient()
+        defer { client.close() }
+        let slot = try await client.sendToTalkSession("  hello session ten  ")
+        XCTAssertEqual(slot, .roomAudio)
+        let captured = inputs.snapshot()
+        XCTAssertEqual(captured.count, 1)
+        XCTAssertEqual(captured.first?.sessionID, 10)
+        XCTAssertEqual(captured.first?.data, Data("hello session ten".utf8))
+        XCTAssertEqual(captured.first?.appendReturn, true)
+    }
+
     func testSharedClientPreflightsThenSubmitsExactlyOnceWithReturn() async throws {
         let postInputs = LockedBox<[WatchTerminalInput]>([])
         let frame = fixtureFrame()

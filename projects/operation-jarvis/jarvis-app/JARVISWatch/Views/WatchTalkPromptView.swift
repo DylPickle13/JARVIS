@@ -74,15 +74,15 @@ struct WatchTalkPromptView: View {
         }
         sending = true
         message = nil
-        // Preserve host-selected first-unused-slot admission. Never send to
-        // the Watch's selected slot, and never automatically retry a failure.
+        // Always continue session 10, independent of the Watch selection.
+        // Never automatically retry a failure.
         let outcome = await JARVISPromptRuntime.submit(value)
         sending = false
         switch outcome {
         case .sent(let slot):
             onSent(slot)
         case .noNewSession:
-            message = "No unused New Pi session is available. Existing conversations were not changed."
+            message = "Session 10 is unavailable. No other session was used."
         case .empty:
             message = "Enter a prompt first."
         case .invalidControls:
@@ -98,10 +98,10 @@ struct WatchTalkPromptView: View {
         case .identityMismatch:
             message = "Server identity verification failed. Check terminal configuration."
         case .rejected:
-            message = "JARVIS refused the prompt. Check terminal access and available sessions."
+            message = "JARVIS refused the prompt. Check terminal access and session 10."
         case .unconfirmed:
             submissionUnconfirmed = true
-            message = "Delivery is unconfirmed; the prompt may have been sent. Check your Pi sessions before sending again."
+            message = "Delivery is unconfirmed; the prompt may have been sent. Check session 10 before sending again."
         }
     }
 }

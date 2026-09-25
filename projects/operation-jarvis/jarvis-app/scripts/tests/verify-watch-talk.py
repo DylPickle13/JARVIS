@@ -30,8 +30,9 @@ assert '_ = completion.consume(nil)' in view
 assert view.count('JARVISPromptRuntime.submit(') == 1
 assert 'case .unconfirmed:' in view and 'submissionUnconfirmed = true' in view
 assert '.interactiveDismissDisabled(sending)' in view
-assert 'client.preflightNewSessionPrompt()' in runtime
-assert 'client.sendToNewSession(prompt)' in runtime
+assert 'client.sendToTalkSession(prompt)' in runtime
+assert 'client.preflightNewSessionPrompt()' not in runtime
+assert 'client.sendToNewSession(prompt)' not in runtime
 assert 'client.send(' not in runtime
 assert not (root / 'HostAppIntents/JARVISSiriShortcuts.swift').exists()
 for folder in ['HostAppIntents', 'JARVIS', 'JARVISWatch']:

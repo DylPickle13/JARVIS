@@ -6,7 +6,7 @@
 - Circular/corner slots use the existing JARVIS icon assets, including accented rendering. Rectangular/inline slots include a label.
 - Tapping opens `jarvis://talk` and automatically presents watchOS native text input. Finishing native input (usually **Done**) submits immediately; there is no extra Prompt-field tap or JARVIS Send button. watchOS controls which input method appears; dictation is not forcibly selected.
 - Opening, partial input, cancelling, or repeatedly tapping the complication does not send a prompt. A nonempty native completion authorizes at most one submission.
-- Native completion uses the existing guarded first-available New-session admission path (slots 1–9, independent of the Watch selection). It must not reset or paste into an existing conversation. Confirmed delivery opens the allocated terminal slot.
+- Native completion always preflights and submits to session 10 (Room Audio), independent of Watch selection and New-session availability. It continues that conversation without resetting it; confirmed delivery opens session 10. No fallback allocation or automatic POST retry is allowed.
 - Duplicate completion callbacks are ignored. Cancellation and blank input consume the completion without submission. No automatic retries occur. An unconfirmed result offers Close, never resubmission and tells the user to inspect Pi sessions first.
 - Existing **Open JARVIS** and Neural Core widgets retain their kinds and destinations.
 
@@ -29,7 +29,7 @@ Physical acceptance is separate from compilation:
 3. Add Talk to JARVIS to circular/corner/rectangular slots as available; check accented appearance.
 4. Test face tap from terminated/background/foreground app states.
 5. Verify input opens without a Prompt-field tap; dictate, cancel, and verify no submission.
-6. Finish native input with a deliberate test prompt once; verify no JARVIS Send tap is needed and exactly the first eligible New slot receives it and opens, regardless of the previously selected slot.
+6. Finish native input with a deliberate test prompt once; verify no JARVIS Send tap is needed and only session 10 receives it and opens, regardless of the previously selected slot or any available New slots.
 7. Check unavailable capacity, offline, locked credentials, identity failure, and unconfirmed-result UI using isolated fixtures where possible.
 8. Verify no changes to nine session identities, configuration, backend listeners, purifier controls, or iPhone terminal behavior.
 

@@ -63,8 +63,7 @@ enum JARVISPromptRuntime {
         delivery: Delivery = { configuration, prompt in
             let client = WatchTerminalClient(configuration: configuration)
             defer { client.close() }
-            try await client.preflightNewSessionPrompt()
-            return try await client.sendToNewSession(prompt)
+            return try await client.sendToTalkSession(prompt)
         }
     ) async -> JARVISPromptOutcome {
         let normalized: String

@@ -545,6 +545,20 @@ public final class WatchTerminalClient: @unchecked Sendable {
         }
     }
 
+    /// Talk always continues the reserved session 10, independent of selection.
+    /// Only preflight may choose a route; never retry a possibly delivered input.
+    public func sendToTalkSession(_ prompt: String) async throws -> JARVISTerminalSlot {
+        let normalized = try JARVISSpokenPrompt.normalize(prompt)
+        let slot = JARVISTerminalSlot.roomAudio
+        _ = try await preflight(slot: slot)
+        do {
+            try await send(WatchTerminalInput(session: slot, data: Data(normalized.utf8), appendReturn: true))
+        } catch WatchTerminalClientError.invalidResponse {
+            throw WatchTerminalClientError.submissionUnconfirmed
+        }
+        return slot
+    }
+
     /// Discover capability without opening, creating, or inspecting any terminal pane.
     public func preflightNewSessionPrompt() async throws {
         guard configuration.isValid else { throw WatchTerminalClientError.notConfigured }

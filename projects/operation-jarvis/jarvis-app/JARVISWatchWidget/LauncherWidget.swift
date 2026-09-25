@@ -132,7 +132,7 @@ struct JARVISWatchTalkWidget: Widget {
             JARVISWatchLauncherView(talk: true)
         }
         .configurationDisplayName("Talk to JARVIS")
-        .description("Dictate or type; finishing native input sends to the first available New Pi session.")
+        .description("Dictate or type; finishing native input sends to Pi session 10.")
         .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryRectangular, .accessoryInline])
     }
 }
