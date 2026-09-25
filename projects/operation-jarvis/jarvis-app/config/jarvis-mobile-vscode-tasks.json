@@ -3,8 +3,9 @@
   "tasks": [
     {
       "label": "JARVIS: Restart all Pi processes (preserve sessions)",
-      "type": "shell",
-      "command": "/usr/bin/python3 /Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/scripts/jarvis-mobile-vscode-restart.py --all",
+      "type": "process",
+      "command": "/usr/bin/python3",
+      "args": ["-u", "${workspaceFolder}/projects/operation-jarvis/jarvis-app/scripts/jarvis-mobile-vscode-restart.py", "--all"],
       "problemMatcher": [],
       "presentation": {
         "echo": true,
@@ -12,8 +13,8 @@
         "focus": false,
         "panel": "dedicated",
         "showReuseMessage": false,
-        "clear": true,
-        "close": true
+        "clear": false,
+        "close": false
       },
       "runOptions": {
         "instanceLimit": 1

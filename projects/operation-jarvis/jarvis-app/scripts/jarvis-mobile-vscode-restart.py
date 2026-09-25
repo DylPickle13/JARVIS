@@ -376,7 +376,7 @@ def _list_fixed_panes() -> dict[str, PaneEvidence]:
     return parse_fixed_panes(result.stdout or "", allow_unavailable=True)
 
 
-def pi_shell_command(session_file: Path) -> str:
+def pi_shell_command(session_file: Path, project_root: Path = PROJECT_ROOT) -> str:
     command: list[str] = ["/usr/bin/env"]
     for variable in STALE_SSH_VARIABLES:
         command.extend(["-u", variable])
@@ -390,7 +390,10 @@ def pi_shell_command(session_file: Path) -> str:
             str(session_file),
         ]
     )
-    return shlex.join(command)
+    # A long-lived tmux server can retain a deleted build-artifact cwd. On
+    # macOS Node failed with uv_cwd even with tmux's -c supplied. Resolve the
+    # live directory in the child too; exec keeps pane_pid equal to Pi's PID.
+    return f"cd -- {shlex.quote(str(project_root))} && exec {shlex.join(command)}"
 
 
 def respawn_arguments(snapshot: SessionEvidence, project_root: Path = PROJECT_ROOT) -> list[str]:
@@ -398,7 +401,7 @@ def respawn_arguments(snapshot: SessionEvidence, project_root: Path = PROJECT_RO
         return [
             "new-session", "-d", "-s", snapshot.name,
             "-c", str(project_root), "-x", str(snapshot.width), "-y", str(snapshot.height),
-            pi_shell_command(snapshot.session_file),
+            pi_shell_command(snapshot.session_file, project_root),
         ]
     return [
         "respawn-pane",
@@ -407,12 +410,21 @@ def respawn_arguments(snapshot: SessionEvidence, project_root: Path = PROJECT_RO
         str(project_root),
         "-t",
         f"={snapshot.name}:0.0",
-        pi_shell_command(snapshot.session_file),
+        pi_shell_command(snapshot.session_file, project_root),
     ]
 
 
 def _respawn(snapshot: SessionEvidence, project_root: Path) -> None:
-    result = _run_tmux(respawn_arguments(snapshot, project_root), timeout=15.0)
+    target = f"={snapshot.name}:0.0"
+    retain_failure = ["set-option", "-p", "-t", target, "remain-on-exit", "failed"]
+    arguments = respawn_arguments(snapshot, project_root)
+    # Retain crashes but not normal /quit. Install before respawning, or in
+    # the same tmux command queue as creation so early failures remain visible.
+    if snapshot.pane_id:
+        arguments = [*retain_failure, ";", *arguments]
+    else:
+        arguments = [*arguments, ";", *retain_failure]
+    result = _run_tmux(arguments, timeout=15.0)
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip().splitlines()
         suffix = f": {detail[0][:200]}" if detail else ""
@@ -440,7 +452,7 @@ def _wait_for_ready(
             if pane.pane_pid == snapshot.pane_pid:
                 raise RestartError("Pi PID has not changed yet")
             if pane.pane_dead != "0":
-                raise RestartError("new Pi pane is dead")
+                raise RestartError("new Pi exited; inspect its retained tmux pane for startup errors")
             refreshed = snapshots_from_panes(
                 "\n".join(
                     "\t".join(
@@ -549,6 +561,7 @@ def restart_all(*, dry_run: bool = False, progress: Callable[[int], None] | None
         if any(snapshot.pane_id for snapshot in snapshots):
             _source_profile()
         for snapshot in snapshots:
+            print(f"Starting slot {snapshot.slot}: {snapshot.name} ({snapshot.session_file.name})", flush=True)
             _respawn(snapshot, PROJECT_ROOT)
             if not snapshot.pane_id:
                 _source_profile()

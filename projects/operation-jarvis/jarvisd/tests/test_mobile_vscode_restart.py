@@ -1,10 +1,12 @@
 import datetime as dt
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "jarvis-app" / "scripts" / "jarvis-mobile-vscode-restart.py"
@@ -147,7 +149,12 @@ class MobileVscodeRestartTests(unittest.TestCase):
         self.assertEqual(len(set(show["dependsOn"])), 10)
         self.assertEqual(restart_task["dependsOn"][1:], show["dependsOn"])
         self.assertEqual(restart_task["dependsOrder"], "sequence")
-        self.assertTrue(tasks[restart_task["dependsOn"][0]]["hide"])
+        worker = tasks[restart_task["dependsOn"][0]]
+        self.assertTrue(worker["hide"])
+        self.assertEqual(worker["type"], "process")
+        self.assertEqual(worker["args"][0], "-u")
+        self.assertFalse(worker["presentation"]["close"])
+        self.assertFalse(worker["presentation"]["clear"])
         groups = {}
         for label in show["dependsOn"]:
             task = tasks[label]
@@ -260,6 +267,52 @@ class MobileVscodeRestartTests(unittest.TestCase):
         self.assertIn("-u SSH_CONNECTION", arguments[6])
         self.assertNotIn("kill-session", arguments[6])
         self.assertNotIn("kill-server", arguments[6])
+
+    def test_child_reenters_project_from_deleted_server_cwd(self):
+        # Reproduce the stale cwd of the long-lived live tmux server without
+        # touching it. Exercise quoting and exec/PID preservation as well.
+        root = Path(self.tempdir.name) / "project with ' quotes"
+        root.mkdir()
+        deleted = Path(self.tempdir.name) / "deleted-build"
+        deleted.mkdir()
+        fake_pi = Path(self.tempdir.name) / "fake-pi"
+        fake_pi.write_text(
+            "#!/usr/bin/python3\nimport json, os, sys\n"
+            "print(json.dumps([os.getcwd(), os.getpid(), sys.argv[1:]]))\n"
+        )
+        fake_pi.chmod(0o700)
+        session = root / "explicit session.jsonl"
+        with patch.object(restart, "PI_BIN", fake_pi):
+            command = restart.pi_shell_command(session, root)
+        launcher = (
+            "import os, sys; os.chdir(sys.argv[1]); os.rmdir(sys.argv[1]); "
+            "os.execv('/bin/zsh', ['/bin/zsh', '-c', sys.argv[2]])"
+        )
+        process = subprocess.Popen(
+            [sys.executable, "-c", launcher, str(deleted), command],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        stdout, stderr = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, stderr)
+        cwd, pid, arguments = json.loads(stdout)
+        self.assertEqual(Path(cwd).resolve(), root.resolve())
+        self.assertEqual(pid, process.pid)
+        self.assertEqual(arguments, ["--tui-mode", "regular", "--session", str(session)])
+
+    def test_respawn_retains_failed_panes_in_same_command_queue(self):
+        root, status_dir, session_dir, now, output, _ = self.fixture()
+        for output in (output, ""):
+            snapshot = restart.snapshots_from_panes(
+                output, project_root=root, status_dir=status_dir,
+                expected_session_dir=session_dir, now=now,
+            )[0]
+            with patch.object(restart, "_run_tmux") as run:
+                run.return_value = subprocess.CompletedProcess([], 0, "", "")
+                restart._respawn(snapshot, root)
+            args = run.call_args.args[0]
+            retain = ["set-option", "-p", "-t", "=jarvis-ios:0.0", "remain-on-exit", "failed"]
+            spawn = restart.respawn_arguments(snapshot, root)
+            self.assertEqual(args, retain + [";"] + spawn if snapshot.pane_id else spawn + [";"] + retain)
 
     def test_fixed_pane_parser_rejects_missing_or_extra_panes(self):
         with self.assertRaisesRegex(restart.RestartError, "missing or ambiguous"):
