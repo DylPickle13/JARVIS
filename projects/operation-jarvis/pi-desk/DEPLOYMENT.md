@@ -1,3 +1,14 @@
+# Heavy pane dividers — 2026-09-25, 00:32 EDT
+
+Set `pane-border-lines heavy` in source and the Mac runtime, retaining purple for
+active borders and grey for inactive borders. Updated the Mac manifest and applied
+only the live border option; no viewers or agents restarted and all display/agent
+pane identities are unchanged. Mac suite: 56 passed.
+
+Partial completion: full left/right/bottom outer framing is not implemented; it
+requires viewer-layout/renderer work beyond the current tiled tmux configuration.
+Pi deployment is pending because SSH to raspberrypi timed out.
+
 # Purple selected-session outline — 2026-09-25, 00:25 EDT
 
 At user request, changed the selected session number, pane-border label, and active

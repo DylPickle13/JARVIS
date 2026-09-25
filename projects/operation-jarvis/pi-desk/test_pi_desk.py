@@ -392,6 +392,11 @@ class DesktopTests(unittest.TestCase):
             self.assertIn('#[norange,bg=#000000,nobold]#[fg=colour238] │ ', tab)
         self.assertNotIn('blink', bar)
 
+    def test_session_borders_use_heavy_lines(self):
+        config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
+        self.assertIn('set -g pane-border-lines heavy', config)
+        self.assertIn("set -g pane-border-style 'fg=colour240,bg=#000000'", config)
+
     def test_active_session_border_uses_brand_purple(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
         self.assertIn("set -g pane-border-format '#[fg=#{?pane_active,#D183E8,colour245}]", config)
