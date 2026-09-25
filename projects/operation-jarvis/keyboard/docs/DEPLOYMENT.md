@@ -96,7 +96,7 @@ Do not disable SIP, Gatekeeper, signature verification, or Input Monitoring chec
 - [ ] USB reconnect and sleep/wake preserve remapping and safety state.
 - [ ] Service restart does not replay a pending request.
 - [ ] An uncertain outcome requires explicit acknowledgment, not an automatic retry.
-- [ ] Final module/path cleanup and removal of compatibility links after live acceptance.
+- [x] Final project-path cleanup: watcher and alert job use `keyboard/`; compatibility links removed.
 
 ## Safety journal
 
@@ -120,6 +120,8 @@ reapprove permissions for the official signer. Do not blindly restore a stale ru
 state snapshot or clear pending markers. Leave lighting paused: official Karabiner
 still conflicts with direct lighting access when it grabs the combined interface.
 
-The old `projects/operation-jarvis/ajazz-keyboard` path remains a compatibility symlink
-for existing launch/scheduler references. The obsolete `projects/key-mappings` symlink
-was removed after cutover; mappings live in `projects/operation-jarvis/keyboard/mappings/`.
+All keyboard project files live under `projects/operation-jarvis/keyboard/`, including
+`mappings/`. Both obsolete project compatibility symlinks have been removed. The live
+watcher plist and existing alert job now reference `keyboard/` directly. The LaunchAgent
+label and private Application Support runtime directory retain their existing names;
+no safety state or daemon journal was moved or reset.

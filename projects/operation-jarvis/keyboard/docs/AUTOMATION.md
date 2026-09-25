@@ -39,7 +39,7 @@ The private alert queue retains at most 64 messages. An extreme prolonged relay 
 
 ## Files and controls
 
-Project: `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/ajazz-keyboard`.
+Project: `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/keyboard`.
 
 Runtime: `~/Library/Application Support/JARVIS/ajazz-keyboard/`, owner-only directory/files:
 
@@ -53,7 +53,7 @@ Runtime: `~/Library/Application Support/JARVIS/ajazz-keyboard/`, owner-only dire
 LaunchAgent plist: `~/Library/LaunchAgents/com.jarvis.ajazz-keyboard-watch.plist`.
 
 ```sh
-cd /Users/dylanrapanan/JARVIS/projects/operation-jarvis/ajazz-keyboard
+cd /Users/dylanrapanan/JARVIS/projects/operation-jarvis/keyboard
 .venv/bin/python cycle.py --status  # local cached state, not device readback
 ./ajazz status                     # connection metadata only
 launchctl print gui/$(id -u)/com.jarvis.ajazz-keyboard-watch
