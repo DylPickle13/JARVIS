@@ -1,0 +1,237 @@
+diff --git a/src/apps/CoreService/include/core_service/daemon/device_grabber.hpp b/src/apps/CoreService/include/core_service/daemon/device_grabber.hpp
+index 5f20e8c..a50ac25 100644
+--- a/src/apps/CoreService/include/core_service/daemon/device_grabber.hpp
++++ b/src/apps/CoreService/include/core_service/daemon/device_grabber.hpp
+@@ -683,6 +683,18 @@ public:
+     });
+   }
+ 
++  std::shared_ptr<hid_device_events_monitor> jarvis_ak820_monitor() const {
++    std::shared_ptr<hid_device_events_monitor> selected;
++    for (const auto& [id, entry] : entries_) {
++      auto monitor = entry->get_hid_device_events_monitor();
++      if (monitor && monitor->jarvis_ak820_matches()) {
++        if (selected) return nullptr; // Never guess between matching devices.
++        selected = monitor;
++      }
++    }
++    return selected && selected->seized() ? selected : nullptr;
++  }
++
+ private:
+   void stop() {
+     configuration_monitor_ = nullptr;
+diff --git a/src/apps/CoreService/include/core_service/daemon/receiver.hpp b/src/apps/CoreService/include/core_service/daemon/receiver.hpp
+index 32462aa..169e067 100644
+--- a/src/apps/CoreService/include/core_service/daemon/receiver.hpp
++++ b/src/apps/CoreService/include/core_service/daemon/receiver.hpp
+@@ -1,4 +1,6 @@
+ #pragma once
++#include "jarvis_ak820/ak820_bridge.hpp"
++#include <map>
+ 
+ // `krbn::core_service::daemon::receiver` can be used safely in a multi-threaded environment.
+ 
+@@ -101,11 +103,12 @@ public:
+       logger::get_logger()->debug("receiver: closed");
+     });
+ 
+-    server_->peer_connected.connect([](auto, auto&&) {
+-      // Do nothing
++    server_->peer_connected.connect([this](auto id, const auto& credentials) {
++      jarvis_peer_uids_[id] = credentials.uid;
+     });
+ 
+     server_->peer_closed.connect([this](auto peer_id) {
++      jarvis_peer_uids_.erase(peer_id);
+       handle_peer_closed(peer_id);
+     });
+ 
+@@ -217,6 +220,30 @@ private:
+ 
+     try {
+       nlohmann::json json = nlohmann::json::from_msgpack(*buffer);
++      if (json.value("operation_type", std::string{}) == "jarvis_ak820_v1") {
++        auto peer = jarvis_peer_uids_.find(peer_id);
++        if (buffer->size() > 2048 || !current_console_user_id_ || *current_console_user_id_ == 0 ||
++            peer == jarvis_peer_uids_.end() || peer->second != current_console_user_id_) {
++          async_respond(peer_id, request_id, {{"status", "rejected"}, {"reason", "authorization_or_size"}});
++          return;
++        }
++        jarvis::ak820::bridge::transport send;
++        if (device_grabber_) {
++          if (auto monitor = device_grabber_->jarvis_ak820_monitor()) {
++            send = [monitor](const auto& request, auto deadline, auto done) {
++              monitor->async_jarvis_ak820_apply(request.values, deadline, std::move(done),
++                                               request.action == "acknowledge");
++            };
++          }
++        }
++        std::weak_ptr<pqrs::unix_domain_stream::server> weak_server = server_;
++        jarvis::ak820::bridge::handle(json, std::move(send), [weak_server, peer_id, request_id](auto response) {
++          if (auto server = weak_server.lock()) {
++            server->async_respond(peer_id, request_id, nlohmann::json::to_msgpack(response));
++          }
++        });
++        return;
++      }
+       switch (json.at("operation_type").get<operation_type>()) {
+         case operation_type::core_service_bundle_permission_check_result:
+           if (auto m = weak_core_service_daemon_state_manager_.lock()) {
+@@ -822,6 +849,7 @@ private:
+   std::weak_ptr<core_service_daemon_state_manager> weak_core_service_daemon_state_manager_;
+   nod::scoped_connection core_service_daemon_state_manager_connection_;
+ 
++  std::map<pqrs::unix_domain_stream::peer_id, std::optional<uid_t>> jarvis_peer_uids_;
+   std::shared_ptr<pqrs::unix_domain_stream::server> server_;
+   std::unique_ptr<device_grabber> device_grabber_;
+   nod::scoped_connection connected_devices_changed_connection_;
+diff --git a/src/bin/cli/src/main.cpp b/src/bin/cli/src/main.cpp
+index 2aa0aa4..1ec83c3 100644
+--- a/src/bin/cli/src/main.cpp
++++ b/src/bin/cli/src/main.cpp
+@@ -7,6 +7,7 @@
+ #include "console_user_server_client.hpp"
+ #include "constants.hpp"
+ #include "core_service_daemon_client.hpp"
++#include "jarvis_ak820/ak820_cli.hpp"
+ #include "dispatcher_utility.hpp"
+ #include "duktape_utility.hpp"
+ #include "environment_variable_utility.hpp"
+@@ -343,6 +344,8 @@ int main(int argc, char** argv) {
+   cxxopts::Options options("karabiner_cli",
+                            "A command line utility of Karabiner-Elements");
+ 
++  options.add_options()("jarvis-ak820", "One authenticated AK820 bridge request", cxxopts::value<std::string>());
++
+   options.add_options()("select-profile",
+                         "Select a profile by name", cxxopts::value<std::string>());
+ 
+@@ -433,6 +436,10 @@ int main(int argc, char** argv) {
+ 
+   try {
+     auto parse_result = options.parse(argc, argv);
++    if (parse_result.count("jarvis-ak820")) {
++      krbn::logger::get_logger()->set_level(spdlog::level::off);
++      return jarvis::ak820::cli(parse_result["jarvis-ak820"].as<std::string>());
++    }
+ 
+     bool silent = parse_result["silent"].as<bool>();
+ 
+diff --git a/src/share/core_service_daemon_client.hpp b/src/share/core_service_daemon_client.hpp
+index b730eb9..c1d2f0e 100644
+--- a/src/share/core_service_daemon_client.hpp
++++ b/src/share/core_service_daemon_client.hpp
+@@ -338,6 +338,22 @@ public:
+     });
+   }
+ 
++  void async_jarvis_ak820(nlohmann::json request,
++                         std::function<void(nlohmann::json)> completion) const {
++    enqueue_to_dispatcher([this, request = std::move(request), completion = std::move(completion)] {
++      if (!client_) { completion({{"status", "rejected"}, {"reason", "not_connected"}}); return; }
++      client_->async_request(nlohmann::json::to_msgpack(request),
++        [completion](auto error, auto buffer) {
++          try {
++            if (error || !buffer || buffer->empty() || buffer->size() > 2048) {
++              completion({{"status", "uncertain"}, {"reason", "ipc"}}); return;
++            }
++            completion(nlohmann::json::from_msgpack(*buffer));
++          } catch (...) { completion({{"status", "uncertain"}, {"reason", "invalid_response"}}); }
++        });
++    });
++  }
++
+ private:
+   using request_completion_handler = std::function<void(const asio::error_code&)>;
+ 
+diff --git a/src/share/hid_device_events_monitor.hpp b/src/share/hid_device_events_monitor.hpp
+index b6a671e..c01494d 100644
+--- a/src/share/hid_device_events_monitor.hpp
++++ b/src/share/hid_device_events_monitor.hpp
+@@ -154,6 +154,17 @@ public:
+     device_events_monitor_->async_stop();
+   }
+ 
++  [[nodiscard]] bool jarvis_ak820_matches() const {
++    return device_events_monitor_->jarvis_ak820_matches();
++  }
++
++  void async_jarvis_ak820_apply(jarvis::ak820::settings settings,
++                              jarvis::ak820::async_sender::clock::time_point deadline,
++                              jarvis::ak820::async_sender::completion done,
++                              bool acknowledge = false) {
++    device_events_monitor_->async_jarvis_ak820_apply(settings, deadline, std::move(done), acknowledge);
++  }
++
+   [[nodiscard]] bool seized() const {
+     return device_events_monitor_->seized();
+   }
+diff --git a/vendor/vendor/include/pqrs/osx/iokit_hid_device_events_monitor.hpp b/vendor/vendor/include/pqrs/osx/iokit_hid_device_events_monitor.hpp
+index 3d567fb..40c12d3 100644
+--- a/vendor/vendor/include/pqrs/osx/iokit_hid_device_events_monitor.hpp
++++ b/vendor/vendor/include/pqrs/osx/iokit_hid_device_events_monitor.hpp
+@@ -7,6 +7,7 @@
+ // (See https://www.boost.org/LICENSE_1_0.txt)
+ 
+ #include <IOKit/hid/IOHIDDevice.h>
++#include "jarvis_ak820/ak820_async.hpp"
+ #include <IOKit/hid/IOHIDQueue.h>
+ #include <chrono>
+ #include <cstdint>
+@@ -186,6 +187,39 @@ public:
+     });
+   }
+ 
++  [[nodiscard]] bool jarvis_ak820_matches() const {
++    auto device = hid_device_.get_device();
++    return device && jarvis::ak820::matches(*device);
++  }
++
++  // JARVIS internal transport; the existing authenticated receiver is the caller.
++  void async_jarvis_ak820_apply(jarvis::ak820::settings settings,
++                              jarvis::ak820::async_sender::clock::time_point deadline,
++                              jarvis::ak820::async_sender::completion done,
++                              bool acknowledge = false) {
++    run_loop_thread_->enqueue(^{
++      auto device = hid_device_.get_device();
++      bool eligible = false;
++      {
++        std::lock_guard<std::mutex> lock(open_options_mutex_);
++        eligible = requested_open_options_ && current_open_options_ &&
++                   (*current_open_options_ & kIOHIDOptionsTypeSeizeDevice) &&
++                   requested_open_options_ == current_open_options_;
++      }
++      if (acknowledge) {
++        const bool ok = device && eligible && jarvis::ak820::matches(*device) &&
++                        jarvis_ak820_sender_.acknowledge();
++        done({ok ? jarvis::ak820::outcome::transport_success : jarvis::ak820::outcome::rejected,
++              ok ? kIOReturnSuccess : kIOReturnNotOpen});
++        return;
++      }
++      if (!device || !eligible || !jarvis::ak820::matches(*device) ||
++          !jarvis_ak820_sender_.submit(*device, settings, true, deadline, done)) {
++        done({jarvis::ak820::outcome::rejected, kIOReturnNotOpen});
++      }
++    });
++  }
++
+   [[nodiscard]] bool seized() const {
+     std::lock_guard<std::mutex> lock(open_options_mutex_);
+ 
+@@ -328,6 +362,7 @@ private:
+   };
+ 
+   void stop(stop_arguments args) {
++    jarvis_ak820_sender_.mark_uncertain();
+     // Since `stop()` can be called from within `start()`,
+     // we must not stop `open_timer_` in `stop()` in order to preserve the retry when `IOHIDDeviceOpen` error.
+ 
+@@ -584,6 +619,7 @@ private:
+   std::optional<IOOptionBits> requested_open_options_;
+   uint64_t requested_open_options_generation_{0};
+   std::optional<IOOptionBits> current_open_options_;
++  jarvis::ak820::async_sender jarvis_ak820_sender_;
+   mutable std::mutex open_options_mutex_;
+   iokit_return last_open_error_;
+   cf::cf_ptr<IOHIDQueueRef> input_values_queue_;

@@ -15,6 +15,7 @@ import tempfile
 import time
 
 import ajazz
+import bridge_client
 
 ROOT = Path(__file__).resolve().parent
 RUNTIME = Path.home() / 'Library/Application Support/JARVIS/ajazz-keyboard'
@@ -147,7 +148,8 @@ def send(config):
         # Only known pre-write failures may be attempted again on a later scheduled tick.
         prewrite = ('Expected exactly one matching AK820 RGB vendor interface',
                     'open failed', 'Another lighting command is running',
-                    'shared-access support; no device opened', 'refusing exclusive access')
+                    'shared-access support; no device opened', 'refusing exclusive access',
+                    'Karabiner bridge rejected before write')
         reason = next((message for message in prewrite if message in p.stderr), None)
         raise CycleError('keyboard', uncertain=reason is None, reason=reason)
     try:
@@ -385,6 +387,12 @@ def main():
                 return 0
             if args.acknowledge_uncertain:
                 state = validate_state(store.load('state.json', initial()))
+                if bridge_client.backend() == 'karabiner':
+                    try:
+                        bridge_client.request('acknowledge')
+                    except bridge_client.BridgeError as exc:
+                        print(f'ERROR: {exc}; local safety block unchanged.')
+                        return 1
                 state.update(pending=False, near_count=0, away_count=0, away_applied=False,
                              mode='paused', last_tick=time.time())
                 store.save('state.json', state)

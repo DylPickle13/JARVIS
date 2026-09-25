@@ -1,10 +1,17 @@
-# AJAZZ AK820 — Mac lighting CLI
+# Operation JARVIS — Keyboard
 
-Project: `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/ajazz-keyboard`
+Unified home for AK820 lighting, presence automation, and [key mappings](mappings/README.md).
+Custom Karabiner transport work is tracked in [the implementation plan](docs/KARABINER-BRIDGE.md).
+
+Migration stage: Python modules remain together at the project root to preserve existing imports. The proposed `lighting/` and `automation/` package split is deferred until transport integration. Legacy project paths are compatibility symlinks; live LaunchAgent and scheduler definitions have not been replaced. Runtime state retains its existing private directory.
+
+## AJAZZ AK820 — Mac lighting CLI
+
+Project: `/Users/dylanrapanan/JARVIS/projects/operation-jarvis/keyboard`
 
 Manual lighting controls for the **base wired RGB AK820**. This unit's 17 effects, RGB/rainbow, five brightness and speed levels, and both directions were visually confirmed in representative tests. Not every effect/control combination was tested; some effects may ignore some controls. Tested does not mean risk-free or full vendor-protocol certification.
 
-The working CLI and presets are unchanged. This project was moved intact under Operation JARVIS (not copied); its runtime environment was recreated at the new path with the same pinned HID dependency. Experimental Windows-driver research, simulators, binary packages and analysis tools remain archived outside this project.
+The existing lighting protocol and presets are preserved. The CLI now supports an optional signed Karabiner bridge backend; it remains on direct HID until explicitly activated after installation. This project was moved intact under Operation JARVIS (not copied); its runtime environment was recreated at the new path with the same pinned HID dependency. Experimental Windows-driver research, simulators, binary packages and analysis tools remain archived outside this project.
 
 ## Presence-gated rotation
 
@@ -14,10 +21,18 @@ Healthy runs are silent. The first failure produces one error, continuing failur
 
 **Both away → purple ripples:** the first fresh away report applies `ripples`, `#9933FF`, highest brightness and fastest speed once. **Either nearby → rotation resumes** on the first fresh nearby report. The collector's 10-second nearby hold is unchanged; the extra keyboard debounce is removed. Unknown/stale leaves lighting unchanged. The former black-RGB away behavior has been superseded. See [automation behavior, controls and limitations](docs/AUTOMATION.md).
 
+## Custom Karabiner bridge
+
+The mod sends RGB output through Karabiner's existing grabbed AK820 interface. It uses the authenticated local socket, verifies the active user's kernel-reported UID, and persists uncertain writes in a root-owned journal. It does not expose raw HID packets or open a competing connection.
+
+Build/deployment instructions: [DEPLOYMENT.md](docs/DEPLOYMENT.md). The bridge is not active merely because source code or a package exists. After a verified installation, `./ajazz bridge-status` checks readiness without changing lighting, and `.venv/bin/python activate_bridge.py --activate` performs the guarded backend cutover. There is no automatic direct-HID fallback.
+
+`cycle.py --acknowledge-uncertain` acknowledges both the daemon and local state when the bridge backend is selected; it sends no lighting report and refuses while an operation remains outstanding.
+
 ## Usage
 
 ```sh
-cd /Users/dylanrapanan/JARVIS/projects/operation-jarvis/ajazz-keyboard
+cd /Users/dylanrapanan/JARVIS/projects/operation-jarvis/keyboard
 ./ajazz --help
 ./ajazz effects
 ./ajazz options

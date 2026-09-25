@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/pqrs-org/Karabiner-Elements",
+  "tag": "v16.3.0",
+  "commit": "9312593e1a3bf72b94c63c524ebabe2637442e8a",
+  "hidapi_reference": "https://github.com/libusb/hidapi/blob/hidapi-0.15.0/mac/hid.c"
+}

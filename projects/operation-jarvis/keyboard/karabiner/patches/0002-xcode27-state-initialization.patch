@@ -1,0 +1,43 @@
+diff --git a/src/apps/Updater/src/Updater.swift b/src/apps/Updater/src/Updater.swift
+index 62500cc..134df4a 100644
+--- a/src/apps/Updater/src/Updater.swift
++++ b/src/apps/Updater/src/Updater.swift
+@@ -74,7 +74,11 @@ final class Updater: ObservableObject {
+ 
+       Task { @MainActor in
+         // Just in case, wait until the update notification window is shown.
+-        try await Task.sleep(for: .seconds(1))
++        do {
++          try await Task.sleep(for: .seconds(1))
++        } catch {
++          return
++        }
+ 
+         if userAttentionRequestIdentifier == nil {
+           userAttentionRequestIdentifier = NSApp.requestUserAttention(.criticalRequest)
+diff --git a/src/apps/share/swift/Views/DoubleTextField.swift b/src/apps/share/swift/Views/DoubleTextField.swift
+index 73beb90..694450a 100644
+--- a/src/apps/share/swift/Views/DoubleTextField.swift
++++ b/src/apps/share/swift/Views/DoubleTextField.swift
+@@ -22,7 +22,7 @@ struct DoubleTextField: View {
+     width: CGFloat
+   ) {
+     _value = value
+-    text = String(value.wrappedValue)
++    _text = State(initialValue: String(value.wrappedValue))
+ 
+     self.step = step
+     self.range = range
+diff --git a/src/apps/share/swift/Views/IntTextField.swift b/src/apps/share/swift/Views/IntTextField.swift
+index 52bdcaf..0d63f63 100644
+--- a/src/apps/share/swift/Views/IntTextField.swift
++++ b/src/apps/share/swift/Views/IntTextField.swift
+@@ -20,7 +20,7 @@ struct IntTextField: View {
+     width: CGFloat
+   ) {
+     _value = value
+-    text = String(value.wrappedValue)
++    _text = State(initialValue: String(value.wrappedValue))
+ 
+     self.step = step
+     self.range = range

@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 import sys
 
+import bridge_client
+
 VID, PID, USAGE_PAGE = 0x320F, 0x505B, 0xFF1C
 # Protocol observations: openajazz commit 800e8fba3ecd04db41c179d765e14867d5b9683f.
 # Static intentionally excluded: upstream maps both Static and Breath to 5.
@@ -162,6 +164,7 @@ def main():
     d = sub.add_parser('discover', help='Read-only HID enumeration')
     d.add_argument('--all', action='store_true', help='Include non-AJAZZ devices (metadata may be private)')
     sub.add_parser('status', help='Read-only connection status; live lighting state is currently unknown')
+    sub.add_parser('bridge-status', help='Read signed bridge safety state; no HID write')
     sub.add_parser('effects', help='List the 17 visually confirmed effect selectors')
     sub.add_parser('options', help='List all allowed controls and default settings')
     sub.add_parser('presets', help='List bundled preset names')
@@ -184,6 +187,8 @@ def main():
     try:
         if args.command == 'effects':
             print(json.dumps(EFFECTS, indent=2))
+        elif args.command == 'bridge-status':
+            print(json.dumps(bridge_client.request('status'), indent=2))
         elif args.command == 'status':
             print(json.dumps(keyboard_status(hid_module()), indent=2))
         elif args.command == 'options':
@@ -220,7 +225,12 @@ def main():
                         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     except BlockingIOError as exc:
                         raise RuntimeError('Another lighting command is running; stopped') from exc
-                    count = send_once(config, hid_module(), args.path_hex)
+                    if bridge_client.backend() == 'karabiner':
+                        if args.path_hex is not None:
+                            raise ValueError('Bridge requires exactly one matching device; explicit paths are not accepted')
+                        count = bridge_client.send(data)
+                    else:
+                        count = send_once(config, hid_module(), args.path_hex)
                 print(json.dumps(dict(settings=config, bytes_written=count,
                     hardware_write=True, note='One report sent; connection closed. '
                     'Visual behavior is not read back.'), indent=2))

@@ -1,0 +1,10 @@
+.venv/
+.venv-legacy/
+.venv-new/
+karabiner/upstream/
+karabiner/build/
+__pycache__/
+*.egg-info/
+.lighting.lock
+transport.json
+.transport-*
