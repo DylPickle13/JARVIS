@@ -3,15 +3,22 @@ import datetime as dt
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import tempfile
 import time
+import threading
 import unittest
 from unittest import mock
 import uuid
 
+import backend
+import cli
 import core
+import install
 import desktop
+import navigate
+import native_navigation
 import health
 import install_pi
 import status_stream
@@ -19,6 +26,9 @@ import status_stream
 
 class StatusTests(unittest.TestCase):
     def setUp(self):
+        transport = mock.patch.object(core, 'load', return_value=backend.Backend())
+        transport.start()
+        self.addCleanup(transport.stop)
         self.now = dt.datetime.now(dt.timezone.utc)
         self.data = {'stale': False, 'subsystems': {'pi': {
             'ok': True, 'stale': False, 'updatedAt': self.now.isoformat(),
@@ -132,8 +142,108 @@ class PaneRecoveryTests(unittest.TestCase):
                 self.assertEqual(focused, str(number))
                 self.assertEqual(desktop.last_session(), number)
             self.assertEqual(self.tags('group-4:0'), ['10'])
-            self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), '2')
+            self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), 'on')
             self.assertEqual(core.tmux('show-options', '-gv', 'status-position').stdout.strip(), 'top')
+
+
+    def test_warning_row_reclaims_terminal_height_and_recovers(self):
+        core.ensure_group('1')
+        before = core.tmux('list-panes', '-t', 'group-1:0', '-F', '#{pane_id}:#{pane_pid}').stdout
+        heights = []
+        master, slave = os.openpty()
+        viewer = subprocess.Popen(['tmux', '-L', core.SOCKET, 'attach-session', '-t', 'group-1'],
+                                  stdin=slave, stdout=slave, stderr=slave,
+                                  env=dict(backend.clean_environment(), TERM='xterm-256color'))
+        try:
+            for _ in range(50):
+                if core.tmux('list-clients').stdout.strip():
+                    break
+                time.sleep(.02)
+            self.assertTrue(core.tmux('list-clients').stdout.strip())
+            for warning, expected in (('', 'on'), ('Warning: disconnected', '2'), ('', 'on')):
+                desktop.render_status((desktop.selector({}), warning))
+                self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), expected)
+                time.sleep(.05)
+                heights.append(int(core.tmux('display-message', '-p', '-t', 'group-1:0.0', '#{pane_height}').stdout))
+        finally:
+            viewer.terminate()
+            os.close(master)
+            os.close(slave)
+            try:
+                viewer.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                viewer.kill()  # Only the isolated test viewer, never a real client.
+                viewer.wait(timeout=3)
+        self.assertEqual(heights[0], heights[1] + 1)
+        self.assertEqual(heights[0], heights[2])
+        self.assertEqual(before, core.tmux('list-panes', '-t', 'group-1:0', '-F', '#{pane_id}:#{pane_pid}').stdout)
+
+
+    def test_lightweight_navigation_all_groups_and_bounds(self):
+        for key in core.GROUPS:
+            core.ensure_group(key)
+        before = core.tmux('list-panes', '-a', '-F', '#{pane_id}:#{pane_pid}').stdout
+        master, slave = os.openpty()
+        viewer = subprocess.Popen(['tmux', '-L', core.SOCKET, 'attach-session', '-t', 'group-1'],
+                                  stdin=slave, stdout=slave, stderr=slave,
+                                  env=dict(backend.clean_environment(), TERM='xterm-256color'))
+        def drain():
+            try:
+                while os.read(master, 65536):
+                    pass
+            except OSError:
+                pass
+        threading.Thread(target=drain, daemon=True).start()
+        try:
+            for _ in range(50):
+                if core.tmux('list-clients').stdout.strip():
+                    break
+                time.sleep(.02)
+            with tempfile.TemporaryDirectory() as directory:
+                expected = 1
+                for direction in [1] * 11 + [-1] * 11:
+                    navigate.step(direction, viewer.pid, socket=core.SOCKET, state=directory)
+                    expected = max(1, min(10, expected + direction))
+                    self.assertEqual((Path(directory)/'last-session').read_text().strip(), str(expected))
+                    actual = core.tmux('list-clients', '-F', '#{@pi-desk-session}').stdout.strip()
+                    self.assertEqual(actual, str(expected))
+                with self.assertRaises(ValueError):
+                    navigate.step(1, -999, socket=core.SOCKET, state=directory)
+            native_navigation.install(core.tmux)
+            client_name = core.tmux('list-clients', '-F', '#{client_name}').stdout.strip()
+            with tempfile.TemporaryDirectory() as directory, mock.patch.object(desktop, 'STATE', Path(directory)):
+                expected = 1
+                for direction in [1] * 11 + [-1] * 11:
+                    key = 'C-Right' if direction == 1 else 'C-Left'
+                    core.tmux('send-keys', '-K', '-c', client_name, key)
+                    expected = max(1, min(10, expected + direction))
+                    for _ in range(30):
+                        actual = core.tmux('list-clients', '-F', '#{@pi-desk-session}').stdout.strip()
+                        if actual == str(expected):
+                            break
+                        time.sleep(.01)
+                    self.assertEqual(actual, str(expected))
+                    self.assertEqual(desktop.last_session(), expected)
+                    desktop.persist_selection()
+                    self.assertEqual((Path(directory)/'last-session').read_text().strip(), str(expected))
+            self.assertEqual(before, core.tmux('list-panes', '-a', '-F', '#{pane_id}:#{pane_pid}').stdout)
+            fallback = ('run-shell -b \'python3 "$HOME/.local/share/pi-desk/navigate.py" '
+                        '1 "#{client_pid}"\'')
+            command = native_navigation.binding(1).replace(fallback, 'set-option -g @fallback yes')
+            core.tmux('bind-key', '-T', 'root', 'C-Right', command)
+            core.tmux('kill-pane', '-t', 'group-1:0.1')
+            core.tmux('send-keys', '-K', '-c', client_name, 'C-Right')
+            self.assertEqual(core.tmux('show-options', '-gv', '@fallback').stdout.strip(), 'yes')
+            self.assertEqual(core.tmux('list-clients', '-F', '#{@pi-desk-session}').stdout.strip(), '1')
+        finally:
+            viewer.terminate()
+            os.close(slave)
+            os.close(master)
+            try:
+                viewer.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                viewer.kill()
+                viewer.wait(timeout=3)
 
 
 class DesktopTests(unittest.TestCase):
@@ -141,7 +251,8 @@ class DesktopTests(unittest.TestCase):
         bar = desktop.selector({'1': 'running'})
         for n in range(1, 11):
             self.assertIn(f'range=user|{n},', bar)
-        for text in ('fg=colour77', 'F12', '#{session_name}', '#{@pi-desk-session}'):
+        for text in ('fg=colour77', 'F12', '#{session_name}', '#{@pi-desk-session}',
+                     '#[align=right,norange', 'Ctrl + ←/→ Switch'):
             self.assertIn(text, bar)
 
     def test_invalid_input(self):
@@ -162,12 +273,47 @@ class DesktopTests(unittest.TestCase):
             (Path(directory)/'last-session').write_text('bad')
             self.assertEqual(desktop.last_session(), 1)
 
+    def test_multiple_displays_share_status_and_take_over(self):
+        entered = [threading.Event(), threading.Event()]
+        stops = [threading.Event(), threading.Event()]
+        def watch(stop):
+            entered[stops.index(stop)].set()
+            stop.wait(5)
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(desktop, 'STATE', Path(directory)), \
+             mock.patch.object(desktop, 'watch_status', side_effect=watch):
+            threads = [threading.Thread(target=desktop.monitor, args=(stop,)) for stop in stops]
+            try:
+                threads[0].start()
+                self.assertTrue(entered[0].wait(2))
+                threads[1].start()
+                self.assertFalse(entered[1].wait(.1))
+                stops[0].set()
+                self.assertTrue(entered[1].wait(2))
+            finally:
+                for stop in stops:
+                    stop.set()
+                for thread in threads:
+                    if thread.ident:
+                        thread.join(3)
+
     def test_health_style_and_escape(self):
-        self.assertIn('colour245', desktop.health_line('live', ('test', 'active')))
+        self.assertEqual('', desktop.health_line('live', ('test', 'active')))
         self.assertIn('colour203', desktop.health_line('live', ('test', 'failed')))
-        for status in ('unavailable', 'reconnecting', 'deactivating'):
+        for status in ('unavailable', 'reconnecting', 'deactivating', 'stale', 'unknown',
+                       'disconnected', 'Connecting to Mac…', 'invalid', 'inactive', '--', 'no reply'):
             self.assertIn('colour179', desktop.health_line(status, ('test', 'active')))
-        self.assertIn('##(bad)', desktop.health_line('live', ('#(bad)', 'active')))
+        self.assertIn('##(bad)', desktop.health_line('live', ('unknown #(bad)', 'active')))
+
+    def test_only_unhealthy_fields_are_shown(self):
+        for healthy in (('macOS | Sessions: local', 'Load: 1.25'),
+                        ('Wi-Fi -50 dBm | Mac ping 2 ms | Pi 45°C', 'Presence service: active')):
+            self.assertEqual(desktop.health_line('Mac connected · Session status live', healthy), '')
+        row = desktop.health_line('Mac connected · Session status live',
+                                  ('Wi-Fi -50 dBm | Mac ping no reply | Pi 45°C', 'Presence service: active'))
+        self.assertIn('Mac ping no reply', row)
+        for field in ('Wi-Fi', '45°C', 'Presence', 'live'):
+            self.assertNotIn(field, row)
 
     def test_navigation_boundaries(self):
         for current, step, wanted in ((4, -1, 3), (3, 1, 4), (9, 1, 10),
@@ -192,6 +338,11 @@ class DesktopTests(unittest.TestCase):
 
 
 class HealthTests(unittest.TestCase):
+    def setUp(self):
+        system = mock.patch.object(health.platform, 'system', return_value='Linux')
+        system.start()
+        self.addCleanup(system.stop)
+
     def test_health_values(self):
         with mock.patch.object(health, 'output', side_effect=[
                 'signal: -49 dBm', 'hostname 192.0.2.1\n',
@@ -256,6 +407,131 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((root/'terminal.py').exists())
             self.assertFalse((root/'__pycache__').exists())
             self.assertTrue((root/'core.py').exists())
+
+
+class BackendTests(unittest.TestCase):
+    def test_local_all_sessions_without_ssh(self):
+        for number in range(1, 11):
+            command = backend.Backend(mode='local').attachment(number)
+            self.assertEqual(command[0], '/opt/homebrew/bin/tmux')
+            self.assertIn('ignore-size', command)
+            self.assertEqual(command[-1], '=jarvis-ios' + (f'-{number}' if number > 1 else ''))
+            self.assertNotIn('ssh', command)
+
+    def test_remote_uses_same_sessions_with_strict_ssh(self):
+        command = backend.Backend().attachment(10)
+        self.assertEqual(command[0], 'ssh')
+        for token in ('StrictHostKeyChecking=yes', 'ClearAllForwardings=yes', '-a', '-x'):
+            self.assertIn(token, command)
+        self.assertEqual(shlex.split(command[-1]), backend.Backend(mode='local').attachment(10))
+
+    @unittest.skipUnless(shutil.which('zsh'), 'zsh required')
+    def test_remote_tokens_survive_zsh_equals_expansion(self):
+        for number in range(1, 11):
+            target = backend.Backend(mode='local').attachment(number)[-1]
+            tokens = [target, "spaces and 'quotes'", '$(exit 99)', '*']
+            command = backend.Backend().run_on_host(['printf', '%s\\n', *tokens])[-1]
+            result = subprocess.run(['zsh', '-f', '-c', command], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines(), tokens)
+
+    def test_invalid_configuration_and_slots(self):
+        for args in ({'mode': 'auto'}, {'host': '-oProxyCommand=bad'}, {'project_root': 'relative'}):
+            with self.assertRaises(ValueError):
+                backend.Backend(**args)
+        for number in (0, 11, True, '1'):
+            with self.assertRaises(ValueError):
+                backend.Backend().attachment(number)
+
+    def test_config_load_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'client.json'
+            self.assertEqual(backend.load(path).mode, 'ssh')
+            path.write_text('{"mode":"local"}')
+            self.assertEqual(backend.load(path).mode, 'local')
+            path.write_text('{"mode":"local", "unexpected":true}')
+            with self.assertRaises(ValueError):
+                backend.load(path)
+            path.write_text('invalid')
+            with self.assertRaises(ValueError):
+                backend.load(path)
+
+    def test_nesting_environment_removed(self):
+        with mock.patch.dict(os.environ, {'TMUX': 'outer', 'TMUX_PANE': '%0'}):
+            cleaned = backend.clean_environment()
+            self.assertNotIn('TMUX', cleaned)
+            self.assertNotIn('TMUX_PANE', cleaned)
+            self.assertEqual(os.environ['TMUX'], 'outer')
+
+    def test_status_and_restart_routing(self):
+        local, remote = backend.Backend(mode='local'), backend.Backend()
+        self.assertTrue(local.status()[-1].endswith('status_stream.py'))
+        self.assertEqual(remote.status()[0], 'ssh')
+        self.assertIn('/pi-desk/status_stream.py', remote.status()[-1])
+        self.assertEqual(local.restart(True)[-2:], ['--all', '--dry-run'])
+        self.assertEqual(shlex.split(remote.restart()[-1]), local.restart())
+
+    def test_restart_requires_interactive_confirmation(self):
+        with mock.patch.object(cli.sys.stdin, 'isatty', return_value=False), \
+             mock.patch.object(cli.subprocess, 'run') as run:
+            self.assertEqual(cli.restart(), 1)
+            run.assert_not_called()
+
+    def test_restart_confirmed_once_and_never_retried(self):
+        with mock.patch.object(cli, 'load', return_value=backend.Backend(mode='local')), \
+             mock.patch.object(cli.sys.stdin, 'isatty', return_value=True), \
+             mock.patch('builtins.input', side_effect=['', '']), \
+             mock.patch.object(cli.subprocess, 'run', return_value=mock.Mock(returncode=1)) as run:
+            self.assertEqual(cli.restart(), 1)
+            run.assert_called_once()
+            self.assertEqual(run.call_args.args[0][-1], '--all')
+
+    def test_restart_cancelled_on_text_eof_or_ctrl_c(self):
+        for response in ('RESTART', ' ', EOFError(), KeyboardInterrupt()):
+            with self.subTest(response=response), \
+                 mock.patch.object(cli.sys.stdin, 'isatty', return_value=True), \
+                 mock.patch('builtins.input', side_effect=[response]), \
+                 mock.patch.object(cli.subprocess, 'run') as run:
+                self.assertEqual(cli.restart(), 1)
+                run.assert_not_called()
+
+    def test_macos_diagnostics_never_run_linux_commands(self):
+        with mock.patch.object(health.platform, 'system', return_value='Darwin'), \
+             mock.patch.object(health, 'load', return_value=backend.Backend(mode='local')), \
+             mock.patch.object(health.os, 'getloadavg', return_value=(1.2, 1, 1)), \
+             mock.patch.object(health, 'output') as output:
+            self.assertEqual(health.collect('mac-mini-64'), ('macOS | Sessions: local', 'Load: 1.20'))
+            output.assert_not_called()
+            self.assertNotIn('Presence', str(health.unknown()))
+
+    def test_mac_install_and_upgrade_are_non_destructive(self):
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(install.Path, 'home', return_value=Path(directory)), \
+             mock.patch.object(install.platform, 'system', return_value='Darwin'), \
+             mock.patch.object(install.subprocess, 'run') as run:
+            home = Path(directory)
+            (home/'.zshrc').write_text('# existing profile\n')
+            install.install('local')
+            app = home/'.local/share/pi-desk'
+            (app/'terminal.py').write_text('retired')
+            install.install('local')
+            self.assertFalse((app/'terminal.py').exists())
+            self.assertEqual((home/'.zshrc').read_text().count(install.PATH_LINE), 1)
+            self.assertTrue((home/'.zshrc').read_text().startswith('# existing profile'))
+            self.assertEqual(backend.load(home/'.config/pi-desk/client.json').mode, 'local')
+            entry = home/'Applications/Pi Desk.app/Contents/MacOS/Pi Desk'
+            self.assertTrue(entry.is_file())
+            self.assertIn('open -a Terminal', entry.read_text())
+            self.assertNotIn('osascript', entry.read_text())
+            profile = install.plistlib.loads((app/'launch.terminal').read_bytes())
+            self.assertIn('pi-desk', profile['CommandString'])
+            self.assertEqual((profile['columnCount'], profile['rowCount']), (173, 47))
+            self.assertIn('cli.py', (home/'.local/bin/pi-desk').read_text())
+            backups = list((home/'.local/state/pi-desk/backups').iterdir())
+            self.assertEqual(len(backups), 2)
+            self.assertTrue(any((p/'app/terminal.py').exists() for p in backups))
+            self.assertFalse(any((p/'home/.zshrc').exists() for p in backups))
+            run.assert_not_called()  # No sudo, service or hosted-session mutation.
 
 
 if __name__ == '__main__':

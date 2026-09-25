@@ -1,9 +1,13 @@
-"""Bounded, read-only Pi health checks, off the curses/UI thread.
+"""Bounded, read-only platform health checks, off the UI thread.
 
 No backend state, radio scanning, SSH connections, sudo, or persistent logs.
 Ping is diagnostic only: blocked ICMP does not imply the Mac is offline.
 """
 from pathlib import Path
+import os
+import platform
+
+from backend import load
 import re
 import subprocess
 import threading
@@ -22,7 +26,19 @@ def output(command):
         return ''
 
 
+def unknown():
+    return ('macOS | Host diagnostics unavailable', 'Load: --') if platform.system() == 'Darwin' else UNKNOWN
+
+
 def collect(host):
+    if platform.system() == 'Darwin':
+        mode = load().mode
+        return (f'macOS | Sessions: {"local" if mode == "local" else "SSH to " + host}',
+                f'Load: {os.getloadavg()[0]:.2f}')
+    return collect_linux(host)
+
+
+def collect_linux(host):
     # `iw link` reads the existing association; it does not scan or reconnect.
     link = output(['iw', 'dev', 'wlan0', 'link'])
     signal = re.search(r'signal:\s*(-?\d+)\s*dBm', link)
@@ -58,14 +74,14 @@ class HealthMonitor:
         self.busy = False
         self.next_check = 0
         self.updated = None
-        self.lines = UNKNOWN
+        self.lines = unknown()
 
     def sample(self):
         try:
             lines = collect(self.host)
         except Exception:
             # Diagnostic failure must never take down the session menu.
-            lines = UNKNOWN
+            lines = unknown()
         with self.lock:
             self.lines = lines
             self.updated = time.monotonic()
@@ -78,4 +94,4 @@ class HealthMonitor:
                 self.busy = True
                 self.next_check = now + INTERVAL
                 threading.Thread(target=self.sample, daemon=True).start()
-            return self.lines if self.updated is not None and now-self.updated <= MAX_AGE else UNKNOWN
+            return self.lines if self.updated is not None and now-self.updated <= MAX_AGE else unknown()

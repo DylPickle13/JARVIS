@@ -6,10 +6,12 @@ import select
 import shlex
 import subprocess
 import time
+import sys
+
+from backend import clean_environment, load
 
 ROOT = Path(__file__).resolve().parent
 SOCKET = 'pi-desk'
-HOST = 'mac-mini-64'
 GROUPS = {'1': (1, 2, 3), '2': (4, 5, 6), '3': (7, 8, 9), '4': (10,)}
 STATES = ('unknown', 'running', 'idle', 'new', 'compacting', 'offline')
 STALE_AFTER = 12
@@ -23,8 +25,9 @@ def valid_states(value):
 
 
 class StatusFeed:
-    """One read-only SSH stream; bounded buffers, freshness, and automatic retry."""
+    """One local/SSH status stream; bounded buffers, freshness, automatic retry."""
     def __init__(self):
+        self.backend = load()
         self.process = None
         self.buffer = b''
         self.states = {}
@@ -51,17 +54,15 @@ class StatusFeed:
     def fail(self):
         self.close()
         self.failed = True
-        self.connection = 'SSH disconnected · Retrying in 3s'
+        self.connection = ('SSH disconnected' if self.backend.mode == 'ssh' else 'Local status disconnected') + ' · Retrying in 3s'
         self.retry_at = time.monotonic() + 3
 
     def poll(self):
         now = time.monotonic()
         if self.process is None and now >= self.retry_at:
             try:
-                self.process = subprocess.Popen([
-                    'ssh', '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
-                    '-o', 'ServerAliveInterval=5', '-o', 'ServerAliveCountMax=2', HOST,
-                    'exec /usr/bin/python3 "$HOME/.local/bin/pi-grid-status"'],
+                self.process = subprocess.Popen(
+                    self.backend.status(), env=clean_environment(),
                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL)
                 self.started = now
@@ -108,7 +109,7 @@ def tmux(*args, check=True):
 
 
 def connection_command(number):
-    return f'/bin/bash {shlex.quote(str(ROOT / "connect.sh"))} {number}'
+    return shlex.join([sys.executable, str(ROOT / 'connect.py'), str(number)])
 
 
 def session_group(number):

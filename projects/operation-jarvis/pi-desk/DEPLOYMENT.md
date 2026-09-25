@@ -1,3 +1,145 @@
+# Native tmux navigation — 2026-09-24, 18:18 EDT
+
+Deployed to Raspberry Pi only. Healthy Ctrl + arrow navigation now runs directly
+inside tmux, validating live workspace pane order/tags/window/liveness before
+switching. Missing/unhealthy groups fall back to the existing Python recovery.
+No Python or shell launch for a normal keypress. tmux records the last selection
+synchronously; the elected status monitor atomically persists it in the background.
+Reopening a viewer also reads the live tmux selection to avoid persistence lag.
+
+41 tests passed on Mac and Pi (one zsh test skipped on Pi). Isolated tests exercise
+actual key bindings, both directions/all groups, clamping, persistence, unchanged
+pane PIDs and refusal of the fast path for a missing pane. Live Pi traversed 1–10
+and back, including recovery of previously uncreated groups, then restored and
+persisted the original selection. Key dispatch plus verification measured 78–96 ms
+(median 90 ms); this is not a physical keyboard-to-screen latency measurement.
+Only the Pi display service was refreshed; hosted agents were not restarted.
+
+Pi backup: `~/.local/state/pi-desk/backups/20260924T221807712278Z-native-navigation/`.
+Rollback restores backed-up desktop/navigation/installer/manifest files, removes
+new `native_navigation.py`, then restarts the Pi display service. Mac installations
+remain on the prior lightweight helper; source/installer include the native path.
+
+# Navigation latency and shortcut labels — 2026-09-24, 18:08 EDT
+
+Measured full display imports at 362–375 ms on Raspberry Pi for every arrow press.
+Added `navigate.py`: lightweight imports, two batched tmux calls, existing selection
+lock and atomic selection persistence. Missing/dead/mistagged groups retain the
+full recovery path. Direct arrow bindings and prefix fallbacks use the new helper.
+Displayed navigation hints now say `Ctrl + ←/→`; the user configured the Mac to
+accept those keys directly. No macOS keyboard settings changed by this patch.
+
+41 tests pass on Mac and Pi (Pi skips the Mac/zsh-specific test). Isolated tmux
+coverage traverses all groups in both directions, checks endpoint clamping,
+selection persistence, invalid-client rejection and unchanged pane identities.
+Live Pi end-to-end navigation measurements: old path 610–735 ms, new 321–403 ms.
+This reduces delay but does not establish zero-latency navigation.
+
+Deployed navigation, desktop, tmux config and installer to Mac/Pi; refreshed only
+viewers. mac-mini-16 untouched. Backups under `~/.local/state/pi-desk/backups/`:
+Mac `20260924T220816052394Z-navigation`; Pi `20260924T220759345425Z-navigation`.
+Rollback restores backed-up files/manifest and removes newly added `navigate.py`.
+
+# SSH attachment quoting fix — 2026-09-24, 17:58 EDT
+
+User reported persistent pane errors despite an active display and healthy status
+projection. Capturing the Pi panes revealed `zsh:1: jarvis-ios not found`: Python's
+`shlex.join()` leaves `=jarvis-ios` unquoted, triggering zsh command-path expansion
+before tmux receives the exact-session target. `Backend.run_on_host()` now quotes
+every argument, including equals-prefixed targets and embedded apostrophes.
+
+40 tests passed on Mac, including execution through real zsh for all ten target
+names. Deployed `backend.py` to Raspberry Pi with manifest update and rollback:
+`~/.local/state/pi-desk/backups/20260924T215819930853Z-ssh-quote/`.
+Respawned only its six existing `pi-desk` display connectors (not hosted agents).
+All six SSH viewers subsequently appeared as attached clients on the host and
+rendered session content. No Mac installation or mac-mini-16 changes in this fix.
+The healthy status projection does not currently prove successful pane attachment;
+service-active/status-row checks alone must not be treated as viewer acceptance.
+
+# Warning-only health row — 2026-09-24, 17:19 EDT
+
+Updated `desktop.py` and `config/tmux.conf` on mac-mini-64 and Raspberry Pi;
+mac-mini-16 deliberately left unchanged because it is no longer used for Pi Desk.
+Healthy displays now use one status row; warnings add a second row only while
+needed. Only unhealthy fields are shown. Selector shortcuts are right-aligned,
+with compact hints below 120 columns; session click ranges are unchanged.
+
+**39 tests passed on each updated machine**, including isolated live-tmux tests
+verifying the warning row removes/restores exactly one line of pane height without
+changing pane PIDs. Tests never attach real agents. Live Mac and Pi displays both
+confirmed one-row healthy mode; Mac shortcuts confirmed right-aligned in the live
+format. Only viewers were refreshed (VS Code integrated terminal on Mac; display
+service on Pi). All ten hosted session/pane/PIDs unchanged. Rollbacks:
+
+- Mac: `~/.local/state/pi-desk/backups/20260924T211619003272Z-warnings/`
+- Pi: `~/.local/state/pi-desk/backups/20260924T211719038733Z-warnings/`
+
+These focused backups contain only `desktop.py`, `config/tmux.conf`, and
+`manifest.json`; restore those to the installed app, then reopen the viewer.
+No reboot or prolonged network-outage test performed for this revision.
+
+# Enter-only restart confirmation — 2026-09-24, 17:02 EDT
+
+Updated `cli.py` on all three machines with per-machine rollback copies and
+refreshed manifests. F10 / `pi-desk restart` now requires only Enter at an
+interactive prompt. Ctrl+C, EOF, nonempty input and noninteractive execution
+cancel without invoking the host helper. Existing host preflight checks remain
+unchanged. **37 tests passed on each machine**; no real agents were restarted.
+An already-open confirmation popup must be closed and reopened to load the change.
+SSH to both remote hosts succeeded again during this update; the earlier network
+failure's cause remains unconfirmed, and the older extended acceptance checks
+below were not rerun as part of this focused patch.
+
+# Portable deployment — 2026-09-24
+
+Installed the same shared app on all three machines. mac-mini-64 is explicitly
+`local`; mac-mini-16 and Raspberry Pi are explicitly `ssh` viewers of its ten
+existing sessions. `pi-desk` opens the current terminal; Mac app shortcuts open
+Terminal using a dedicated `.terminal` profile without AppleScript/Automation
+permission. The Pi's fullscreen service is retained separately.
+
+## Acceptance
+
+- **36 tests passed on each of the three machines.** The existing host restart
+  helper's **17 tests** also passed; that helper and VS Code tasks were not edited.
+- All three interactive viewers were observed running. Both Macs reported live
+  status and the correct local/SSH mode. The Pi's first portable deployment
+  reported live status; the final launcher-only update was observed active and
+  connecting before subsequent LAN access was blocked.
+- Primary Mac: all ten display panes, focus selection, group-boundary navigation,
+  source manifest and F10 popup tested. Popup closed without confirming restart.
+- All ten original host session names, pane IDs and **agent PIDs stayed unchanged**.
+  No real agent restart was attempted while work was running.
+- Observed tmux caveat: with every host client marked `ignore-size`, attaching
+  another viewer can still reflow host pane dimensions. No host resize/layout
+  commands were issued. See README; do not describe this flag as an absolute
+  geometry guarantee.
+- Multiple-viewer monitor election/failover covered by tests; repeated installation
+  preserves profiles, retains backups and adds the PATH marker only once.
+- mac-mini-16 required tmux 3.7c via Homebrew. Its dependency installation also
+  upgraded ca-certificates/OpenSSL; no REAPER/oMLX service restart was requested.
+- Latest backups: primary Mac `20260924T204203879898Z`, secondary Mac
+  `20260924T204335426464Z`, Pi `20260924T204342822825Z`, each under that machine's
+  `~/.local/state/pi-desk/backups/`. Earlier backups retained.
+
+## Remaining acceptance / blocker
+
+After installation and successful Mac GUI checks, new LAN requests from the
+primary Mac began returning **No route to host** for both trusted remote hosts.
+The local interface and routes remained present. macOS Local Network permission
+is a possibility, **not a confirmed diagnosis**; no permission, firewall, route or
+network-service settings were changed to bypass it. Final remote all-ten-pane /
+F10 checks and cross-host manifest comparison remain pending reconnection.
+
+Only allowlisted release staging remains remotely at
+`mac-mini-16:/tmp/pi-desk-portable.e6JLkp` and
+`raspberrypi:/tmp/pi-desk-portable.PQumK1`; remove those after reconnection, not the
+rollback backups. No full reboot or prolonged-disconnection test was performed.
+The existing VS Code workflow remains an untouched fallback.
+
+---
+
 # Initial deployment — 2026-09-22
 
 ## Implemented

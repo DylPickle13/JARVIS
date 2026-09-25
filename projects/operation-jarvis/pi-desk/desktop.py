@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persistent two-row tmux selector; no extra pane or remote layout changes."""
+"""Persistent tmux selector with an optional warning row; no extra pane."""
 import fcntl
 import os
 from pathlib import Path
@@ -8,7 +8,8 @@ import sys
 import threading
 
 from health import HealthMonitor
-from core import ROOT, SOCKET, HOST, StatusFeed, GROUPS, ensure_group, session_group, tmux
+from backend import clean_environment
+from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux
 
 STATE = Path.home() / '.local/state/pi-desk'
 COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': 75,
@@ -22,6 +23,9 @@ def session_number(value):
 
 
 def last_session():
+    live = tmux('show-options', '-gv', '@pi-desk-last', check=False).stdout.strip()
+    if live in tuple(str(n) for n in range(1, 11)):
+        return int(live)
     try:
         return session_number((STATE / 'last-session').read_text().strip())
     except (OSError, ValueError):
@@ -54,6 +58,7 @@ def choose(number=None, client_pid=None, step=None):
         tmux('select-pane', '-t', f'{group}:0.{index}')
         if client is not None:
             tmux('switch-client', '-c', client, '-t', '=' + group)
+        tmux('set-option', '-g', '@pi-desk-last', str(number))
         temporary = STATE / 'last-session.tmp'
         temporary.write_text(str(number) + '\n')
         os.replace(temporary, STATE / 'last-session')
@@ -61,7 +66,7 @@ def choose(number=None, client_pid=None, step=None):
 
 
 def selector(states):
-    parts = ['#[norange,fg=colour80,bg=#000000,nobold] PI DESK ']
+    parts = ['#[align=left,norange,fg=colour80,bg=#000000,nobold] PI DESK ']
     for n in range(1, 11):
         key, _ = session_group(n)
         group = '#{==:#{session_name},group-' + key + '}'
@@ -72,40 +77,73 @@ def selector(states):
         color = COLORS.get(states.get(str(n)), COLORS['unknown'])
         parts.append(f'#[range=user|{n},bg={background},fg={foreground},{weight}] {n} '
                      f'#[fg=colour{color}]● #[norange,bg=#000000,nobold] ')
-    parts.append('#[fg=colour245] F12: select · Ctrl+←/→: session')
+    parts.append('#[align=right,norange,fg=colour245,bg=#000000,nobold] '
+                 '#{?#{>=:#{client_width},120},'
+                 'F12 Select · F10 Restart · Ctrl + ←/→ Switch,'
+                 'F12 · F10 · Ctrl + ←/→} ')
     return ''.join(parts)
 
 
 def health_line(connection, health):
-    # All displayed values come from our bounded, label-only collectors.
+    # Only unhealthy fields are visible; an empty string removes the entire row.
     summary = connection.replace('Mac connected · Session status ', 'Status: ')
-    text = f' {summary} | {health[0]} | {health[1]}'
-    # Escape format introducers, even though collectors currently emit no '#'.
-    text = text.replace('#', '##').replace('\n', ' ')
-    warning = any(s in text.lower() for s in (
-        'disconnected', 'unavailable', 'unknown', 'no reply', '--', 'retry',
-        'invalid', 'inactive', 'reconnecting', 'deactivating',
-    ))
-    color = 203 if 'failed' in text.lower() else 179 if warning else 245
-    return f'#[norange,bg=#000000,fg=colour{color},nobold]{text}'
+    fields = [summary] + [field.strip() for line in health for field in line.split('|')]
+    markers = ('disconnected', 'unavailable', 'unknown', 'no reply', '--', 'retry',
+               'invalid', 'inactive', 'connecting', 'activating', 'failed', 'stale')
+    warnings = [field for field in fields if any(word in field.lower() for word in markers)]
+    if not warnings:
+        return ''
+    text = (' Warning: ' + ' | '.join(warnings)).replace('#', '##').replace('\n', ' ')
+    color = 203 if 'failed' in text.lower() else 179
+    return f'#[align=left,norange,bg=#000000,fg=colour{color},nobold]{text}'
+
+
+def render_status(rows):
+    for index, row in enumerate(rows):
+        tmux('set-option', '-g', f'status-format[{index}]', row)
+    # Clearing a format alone leaves a blank row: change the actual row count.
+    tmux('set-option', '-g', 'status', '2' if rows[1] else 'on')
+
+
+def persist_selection():
+    # Native key events update one server option synchronously. Sample under the
+    # same lock as recovery; never let queued background writers save old keys.
+    with (STATE / 'selection.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        value = tmux('show-options', '-gv', '@pi-desk-last', check=False).stdout.strip()
+        if value not in tuple(str(n) for n in range(1, 11)):
+            return
+        target = STATE / 'last-session'
+        if target.exists() and target.read_text().strip() == value:
+            return
+        temporary = STATE / 'last-session.tmp'
+        temporary.write_text(value + '\n')
+        os.replace(temporary, target)
 
 
 def configure():
+    from native_navigation import install
     tmux('source-file', str(ROOT / 'config/tmux.conf'))
-    tmux('set-option', '-g', 'status-format[0]', selector({}))
-    tmux('set-option', '-g', 'status-format[1]', '#[fg=colour245] Connecting…')
+    install(tmux)
+    current = tmux('show-options', '-gv', 'status-format[0]', check=False).stdout
+    if 'PI DESK' not in current:
+        render_status((selector({}), health_line('Connecting to Mac…', ())))
+    else:
+        warning = tmux('show-options', '-gv', 'status-format[1]', check=False).stdout.strip()
+        tmux('set-option', '-g', 'status', '2' if warning else 'on')
 
 
-def monitor(stop):
-    feed, health = StatusFeed(), HealthMonitor(HOST)
+def watch_status(stop):
+    feed = StatusFeed()
+    health = HealthMonitor(feed.backend.host)
     previous = None
     try:
         while not stop.is_set():
             try:
+                persist_selection()
                 rows = (selector(feed.poll()), health_line(feed.connection, health.poll()))
                 if rows != previous:
-                    for index, row in enumerate(rows):
-                        tmux('set-option', '-g', f'status-format[{index}]', row)
+                    render_status(rows)
                     previous = rows
             except (OSError, RuntimeError, subprocess.TimeoutExpired):
                 feed.close()
@@ -115,26 +153,38 @@ def monitor(stop):
         feed.close()
 
 
+def monitor(stop):
+    # One status stream per machine; another open terminal takes over on exit.
+    with (STATE / 'display.lock').open('a') as lock:
+        while not stop.is_set():
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                stop.wait(.5)
+                continue
+            try:
+                watch_status(stop)
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+            return
+
+
 def main():
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with (STATE / 'display.lock').open('a') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise SystemExit('Pi Desk is already running')
-        group = choose(last_session())
-        configure()
-        stop = threading.Event()
-        worker = threading.Thread(target=monitor, args=(stop,), daemon=True)
-        worker.start()
-        try:
-            return subprocess.run(
-                ['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group],
-                check=False,
-            ).returncode
-        finally:
-            stop.set()
-            worker.join(timeout=12)
+    group = choose(last_session())
+    configure()
+    stop = threading.Event()
+    worker = threading.Thread(target=monitor, args=(stop,), daemon=True)
+    worker.start()
+    try:
+        return subprocess.run(
+            ['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group],
+            env=clean_environment(), check=False,
+        ).returncode
+    finally:
+        stop.set()
+        worker.join(timeout=12)
+        persist_selection()
 
 
 def dispatch(args):
