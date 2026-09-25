@@ -216,7 +216,7 @@ class PaneRecoveryTests(unittest.TestCase):
                 mock.patch.object(desktop, 'tmux', wraps=core.tmux) as commands:
             desktop.configure()
             self.assertEqual(commands.call_count, 4)
-        self.assertIn('PI DESK', core.tmux('show-options', '-gv', 'status-format[0]').stdout)
+        self.assertIn('PI-DESK', core.tmux('show-options', '-gv', 'status-format[0]').stdout)
         self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), '2')
         for warning in ('', desktop.health_line('SSH disconnected', ())):
             rows = (desktop.selector({'1': 'idle'}), warning)
@@ -378,6 +378,35 @@ class DesktopTests(unittest.TestCase):
         for text in ('fg=colour77', 'F12', '#{session_name}', '#{@pi-desk-session}',
                      '#[align=right,norange', 'Ctrl + ←/→ Switch'):
             self.assertIn(text, bar)
+
+    def test_quiet_selector_groups(self):
+        bar = desktop.selector({})
+        self.assertIn(' PI-DESK ', bar)
+        self.assertEqual(bar.count(' │ '), 3)
+        for n in range(1, 11):
+            self.assertIn(f'] {n:02d} ', bar)
+        for n in (3, 6, 9):
+            tab = bar.split(f'range=user|{n},', 1)[1].split('range=user|', 1)[0]
+            self.assertIn('#[norange,bg=#000000,nobold]#[fg=colour238] │ ', tab)
+        self.assertNotIn('blink', bar)
+
+    def test_only_working_dots_pulse(self):
+        states = {'1': 'running', '2': 'compacting', '3': 'idle'}
+        bright = desktop.selector(states)
+        dim = desktop.selector(states, pulse_dim=True)
+        self.assertEqual(bright.replace('fg=colour77]●', 'fg=colour22]●')
+                         .replace('fg=colour75]●', 'fg=colour24]●'), dim)
+        for state in ('idle', 'new', 'offline', 'unknown', 'unrecognized'):
+            values = {'1': state}
+            self.assertEqual(desktop.selector(values), desktop.selector(values, pulse_dim=True))
+        self.assertEqual(desktop.selector({}), desktop.selector({}, pulse_dim=True))
+
+    def test_dot_pulse_uses_quick_full_cycle(self):
+        self.assertEqual(desktop.PULSE_PHASE_SECONDS, 0.75)
+        self.assertFalse(desktop.pulse_is_dim(0.0))
+        self.assertTrue(desktop.pulse_is_dim(0.75))
+        self.assertFalse(desktop.pulse_is_dim(1.5))
+        self.assertTrue(desktop.pulse_is_dim(2.25))
 
     def test_invalid_input(self):
         for value in ('', '11', '-1', '01', '1;exit', 'left'):

@@ -7,6 +7,7 @@ import subprocess
 import signal
 import sys
 import threading
+import time
 
 from health import HealthMonitor
 from backend import clean_environment
@@ -15,6 +16,7 @@ from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, 
 STATE = Path.home() / '.local/state/pi-desk'
 COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': 75,
           'offline': 245, 'unknown': 179}
+PULSE_PHASE_SECONDS = 0.75
 
 
 def session_number(value):
@@ -66,8 +68,13 @@ def choose(number=None, client_pid=None, step=None):
     return group
 
 
-def selector(states):
-    parts = ['#[align=left,norange,fg=colour80,bg=#000000,nobold] PI DESK ']
+def pulse_is_dim(now=None):
+    now = time.monotonic() if now is None else now
+    return bool(int(now / PULSE_PHASE_SECONDS) % 2)
+
+
+def selector(states, *, pulse_dim=False):
+    parts = ['#[align=left,norange,fg=colour80,bg=#000000,nobold] PI-DESK ']
     for n in range(1, 11):
         key, _ = session_group(n)
         group = '#{==:#{session_name},group-' + key + '}'
@@ -75,9 +82,17 @@ def selector(states):
         background = '#{?' + group + ',#16252a,#000000}'
         foreground = '#{?' + active + ',cyan,colour252}'
         weight = '#{?' + active + ',bold,nobold}'
-        color = COLORS.get(states.get(str(n)), COLORS['unknown'])
-        parts.append(f'#[range=user|{n},bg={background},fg={foreground},{weight}] {n} '
-                     f'#[fg=colour{color}]● #[norange,bg=#000000,nobold] ')
+        state = states.get(str(n))
+        color = COLORS.get(state, COLORS['unknown'])
+        # Pulse only working dots; never blink text, selection, or idle sessions.
+        if pulse_dim:
+            color = {'running': 22, 'compacting': 24}.get(state, color)
+        parts.append(f'#[range=user|{n},bg={background},fg={foreground},{weight}] {n:02d} '
+                     f'#[fg=colour{color}]● #[norange,bg=#000000,nobold]')
+        if n in (3, 6, 9):
+            parts.append('#[fg=colour238] │ ')
+        elif n != 10:
+            parts.append(' ')
     parts.append('#[align=right,norange,fg=colour245,bg=#000000,nobold] '
                  '#{?#{>=:#{client_width},120},'
                  'F12 Select · F10 Restart · Ctrl + ←/→ Switch,'
@@ -141,7 +156,7 @@ def configure(force=False):
         current = tmux('source-file', str(ROOT / 'config/tmux.conf'), ';',
                        'source-file', path, ';',
                        'show-options', '-gv', 'status-format[0]').stdout
-    if 'PI DESK' not in current:
+    if 'PI-DESK' not in current and 'PI DESK' not in current:
         render_status((selector({}), health_line('Connecting to Mac…', ())))
     else:
         tmux('if-shell', '-F', '#{==:#{status-format[1]},}',
@@ -158,7 +173,10 @@ def watch_status(stop):
         while not stop.is_set():
             try:
                 persist_selection()
-                rows = (selector(feed.poll()), health_line(feed.connection, health.poll()))
+                # One shared monitor drives a 0.75-second-per-phase brightness cycle.
+                # Static states produce identical rows, so they cause no extra writes.
+                rows = (selector(feed.poll(), pulse_dim=pulse_is_dim()),
+                        health_line(feed.connection, health.poll()))
                 if rows != previous:
                     render_status(rows)
                     previous = rows

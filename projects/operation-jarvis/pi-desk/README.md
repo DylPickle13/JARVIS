@@ -23,10 +23,14 @@ are supported, with one elected status monitor per machine and failover on exit.
 
 ## Interface
 
-The persistent top row contains ten clickable session numbers and lifecycle dots,
-with shortcut hints aligned at the right (abbreviated below 120 columns). A second
-row appears only for connection/diagnostic warnings and disappears when healthy,
-returning its terminal row to the coding panes. Healthy diagnostic values are hidden.
+The persistent `PI-DESK` top row contains ten clickable session numbers and lifecycle
+dots, with shortcut hints aligned at the right (abbreviated below 120 columns). Numbers
+use two digits, with muted separators between 01–03, 04–06, 07–09, and 10; there
+are no group labels. Running and compacting dots alternate between bright
+and clearly dim shades every 0.75 seconds (a 1.5-second full cycle); text, focus
+styling, and other states stay steady. This uses the existing shared monitor, not terminal blink support.
+A second row appears only for connection/diagnostic warnings and disappears when
+healthy, returning its terminal row to the coding panes. Healthy diagnostic values are hidden.
 Coding workspaces remain **1/2/3**, **4/5/6**, **7/8/9**, or **10 alone**. No extra menu pane.
 Last selected session is restored independently on each machine.
 

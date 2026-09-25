@@ -1,3 +1,40 @@
+# Faster header pulse — 2026-09-24, 23:38 EDT
+
+At user request, shortened each bright/dim phase from 1.5s to 0.75s (1.5s full
+cycle). The running/compacting palette and all other header behavior are unchanged.
+Mac suite: 54 passed. Pi focused pulse-phase checks passed. Patched only the pulse
+phase constant/helper in the installed runtimes and updated/verified the desktop
+manifest. Refreshed only the display viewers; live dot alternation and unchanged
+pane identities were verified.
+
+# Header contrast follow-up — 2026-09-24, 23:35 EDT
+
+At user request, changed the header title to `PI-DESK` and increased the working-dot
+contrast: running alternates 77/22 and compacting 75/24 (xterm palette), retaining
+1.5-second phases. Patched only those literals and title detection in both installed
+runtimes; updated and verified desktop manifests. Mac suite: 53 passed; Pi focused
+selector checks passed. Reopened the Mac viewer and refreshed the Pi display service
+with its tmux server outside the display scope. Title and running-dot alternation
+verified live via status output; all display and hosted-agent pane identities unchanged.
+
+# Quiet grouped header — 2026-09-24, 23:30 EDT
+
+Deployed only `selector()`, `watch_status()`, and the `time` import to the existing
+Mac and Pi runtimes. All other installed functions were verified unchanged; this
+was not a reliability rollout. Desktop manifest hashes were updated and verified.
+
+- Two-digit session numbers, muted separators after 03/06/09, no group labels.
+- Running/compacting dots alternate brightness every 1.5 seconds through the
+  existing shared monitor. Text, focus, shortcuts, and warning behavior unchanged.
+- Mac suite: 53 passed. Pi suite: 53 run, one zsh-only skip.
+- Reopened the Mac viewer and detached the old client. Restarted only the Pi's
+  `pi-desk.service` fullscreen display after verifying its tmux server was outside
+  the display's process scope. Both headers and live running-dot palette changes
+  were verified through tmux status output (not a rendered-screen inspection).
+- All Mac/Pi display pane IDs/PIDs and all hosted-agent pane IDs/PIDs were unchanged.
+  No tmux servers or agents restarted. mac-mini-16 and unrelated services untouched.
+- Temporary transfer/test files and rollback copies were removed after validation.
+
 # Startup optimization — 2026-09-24, 22:40 EDT
 
 Deployed startup-only changes to Mac and Pi without restarting any viewer, service,
