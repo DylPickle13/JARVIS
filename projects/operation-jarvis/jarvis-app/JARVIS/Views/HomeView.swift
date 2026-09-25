@@ -132,21 +132,23 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: 10) {
                     ReactorHeaderLayout {
-                        ReactorTitle(connected: app.connectionState == .connected, active: homeMotionActive)
-                            .accessibilityValue("\(connectionHeadline.isEmpty ? "Connected" : connectionHeadline), \(freshnessLabel)")
-                        Text(connectionHeadline)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(app.connectionState == .failed ? Color.red : Color.orange)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .clipped()
-                    }
-                    .frame(minHeight: 84)
-                    .background {
-                        if app.connectionState == .connected {
-                            ReactorHeaderCore(active: homeMotionActive)
+                        VStack(alignment: .leading, spacing: 2) {
+                            ReactorTitle(connected: app.connectionState == .connected, active: homeMotionActive)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                                .accessibilityValue("\(connectionHeadline.isEmpty ? "Connected" : connectionHeadline), \(freshnessLabel)")
+                            if !connectionHeadline.isEmpty {
+                                Text(connectionHeadline)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(app.connectionState == .failed ? Color.red : Color.orange)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
                         }
+                        ReactorHeaderCore(active: homeMotionActive)
+                            .opacity(app.connectionState == .connected ? 1 : 0)
                     }
+                    .frame(height: 84)
 
                     if let operationError = app.operationErrorMessage {
                         OperationErrorCard(message: operationError)

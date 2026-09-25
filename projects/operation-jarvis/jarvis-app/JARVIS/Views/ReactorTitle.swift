@@ -85,27 +85,24 @@ struct ReactorTitlePhase {
     }
 }
 
-/// Keep the title truly centered, irrespective of the trailing status width.
-/// Status is constrained to the remaining side space, never over the title.
+/// Separate leading title/status and trailing artwork, without enlarging the header.
 struct ReactorHeaderLayout: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let title = subviews.first?.sizeThatFits(.unspecified) ?? .zero
-        return CGSize(width: proposal.width ?? title.width, height: max(42, title.height))
+        CGSize(width: proposal.width ?? 358, height: 84)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         guard let title = subviews.first else { return }
-        let size = title.sizeThatFits(.unspecified)
-        title.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center,
-                    proposal: ProposedViewSize(size))
+        let coreWidth = Self.coreWidth(headerWidth: bounds.width)
+        title.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
+                    proposal: ProposedViewSize(width: max(0, bounds.width - coreWidth - 12), height: bounds.height))
         if subviews.count > 1 {
-            let width = Self.statusWidth(headerWidth: bounds.width, titleWidth: size.width)
             subviews[1].place(at: CGPoint(x: bounds.maxX, y: bounds.midY), anchor: .trailing,
-                              proposal: ProposedViewSize(width: width, height: bounds.height))
+                              proposal: ProposedViewSize(width: coreWidth, height: bounds.height))
         }
     }
 
-    static func statusWidth(headerWidth: CGFloat, titleWidth: CGFloat) -> CGFloat {
-        max(0, (headerWidth - titleWidth) / 2 - 12)
+    static func coreWidth(headerWidth: CGFloat) -> CGFloat {
+        min(150, max(0, headerWidth * 0.42))
     }
 }

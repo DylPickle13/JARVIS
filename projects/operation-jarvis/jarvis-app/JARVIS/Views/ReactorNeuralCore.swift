@@ -16,7 +16,7 @@ struct ReactorHeaderCore: View {
 }
 
 /// Reuse the widget's Cathedral renderer, not a second interpretation of it.
-/// ReactorHeaderCore owns visibility, reduced-motion policy, and clipping.
+/// ReactorHeaderCore owns visibility and reduced-motion policy.
 struct ReactorNeuralCore: View {
     let time: TimeInterval
     let energy: Double
@@ -29,15 +29,20 @@ struct ReactorNeuralCore: View {
                 motionPhase: Self.phase(time: time),
                 layerSet: .complete
             )
-            // Render at widget scale, then crop—not shrink—to the header band.
-            // Its architectural wings remain visible beside the opaque wordmark.
-            .frame(width: geometry.size.width, height: max(140, geometry.size.height))
+            // Let the canonical renderer fit its geometry to the dedicated right
+            // column. Two-point insets enlarge the core without cropping it.
+            .frame(width: Self.artworkSize(in: geometry.size).width,
+                   height: Self.artworkSize(in: geometry.size).height)
             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
         .clipped()
         .opacity(0.95 + energy * 0.05)
         .accessibilityHidden(true)
         .allowsHitTesting(false)
+    }
+
+    static func artworkSize(in size: CGSize) -> CGSize {
+        CGSize(width: max(0, size.width - 4), height: max(0, size.height - 4))
     }
 
     static func phase(time: TimeInterval) -> Double {

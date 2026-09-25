@@ -33,9 +33,13 @@ final class ReactorTitleTests: XCTestCase {
         }
     }
 
-    func testStatusStaysOutsideCenteredTitle() {
-        XCTAssertEqual(ReactorHeaderLayout.statusWidth(headerWidth: 358, titleWidth: 140), 97)
-        XCTAssertEqual(ReactorHeaderLayout.statusWidth(headerWidth: 200, titleWidth: 220), 0)
+    func testSeparateTitleAndCoreWidthsFitCompactHeader() {
+        XCTAssertEqual(ReactorHeaderLayout.coreWidth(headerWidth: 358), 150)
+        for width in [280.0, 320, 358, 390, 430] {
+            let coreWidth = ReactorHeaderLayout.coreWidth(headerWidth: width)
+            XCTAssertLessThanOrEqual(coreWidth, 150)
+            XCTAssertGreaterThan(width - coreWidth - 12, 140)
+        }
     }
 
     func testNeuralCoreUsesWidgetTwoSecondCycle() {
@@ -46,13 +50,23 @@ final class ReactorTitleTests: XCTestCase {
         XCTAssertEqual(ReactorNeuralCore.phase(time: 100.5), 0.25)
     }
 
+    func testCoreFitsHeaderWithVerticalBreathingRoom() {
+        for width in [320.0, 358, 390, 430] {
+            for height in [0.0, 8, 84, 160] {
+                let size = CGSize(width: width, height: height)
+                let artwork = ReactorNeuralCore.artworkSize(in: size)
+                XCTAssertEqual(artwork.height, max(0, height - 4))
+                XCTAssertEqual(artwork.width, width - 4)
+            }
+        }
+    }
+
     @MainActor func testFullWidthCorePreview() throws {
         let header = ReactorHeaderLayout {
             ReactorTitle(connected: true, active: false)
-            Text("")
+            ReactorNeuralCore(time: 0.5, energy: 0.7)
         }
         .frame(width: 358, height: 84)
-        .background { ReactorNeuralCore(time: 0.5, energy: 0.7) }
         .background(Color.black)
         .environment(\.colorScheme, .dark)
         let renderer = ImageRenderer(content: header)
