@@ -10,6 +10,22 @@ const HEARTBEAT_MS = 2_000;
 const PRUNE_INTERVAL_MS = 60_000;
 const MAX_STATUS_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
+// Monotonic elapsed time for one continuous activity, including automatic
+// retries/compaction. Consuming even a short/failed run prevents idle replay.
+export class CompletionDurationGate {
+  private startedAt: number | undefined;
+
+  constructor(private readonly now: () => number = () => performance.now()) {}
+
+  start() { this.startedAt ??= this.now(); }
+  reset() { this.startedAt = undefined; }
+  consume(): boolean {
+    const start = this.startedAt;
+    this.reset();
+    return start !== undefined && this.now() - start > 60_000;
+  }
+}
+
 type LocalPiSessionLifecycle = "new" | "idle" | "running" | "compacting" | "unknown";
 
 // Inspect session entries, not visible terminal text or file size. Metadata-only
@@ -63,12 +79,15 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   let idleProbe: (() => boolean) | undefined;
   let completionID: string | undefined;
   let completionEligible = false;
+  const completionDuration = new CompletionDurationGate();
 
   function notifySuccessfulCompletion() {
-    if (lifecycle !== "idle" || !completionID || !completionEligible) return;
+    if (lifecycle !== "idle" || !completionID) return;
+    const shouldNotify = completionDuration.consume() && completionEligible;
     const eventID = completionID;
     completionID = undefined; // consume before I/O; heartbeat/settled coalesce
     completionEligible = false;
+    if (!shouldNotify) return;
     const pane = process.env.TMUX_PANE || "";
     if (!/^%[0-9]+$/.test(pane)) return;
     if (!existsSync(join(root, ".pi", "runtime", "session-notifications", "enabled"))) return;
@@ -204,6 +223,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     statusPath = join(statusDir, `${process.pid}-${suffix}.json`);
     completionID = undefined;
     completionEligible = false; // session changes never replay the previous turn
+    completionDuration.reset();
     idleProbe = () => ctx.isIdle();
     agentRunning = !ctx.isIdle();
     hasConversation = undefined;
@@ -225,6 +245,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   pi.on("agent_start", async (_event, ctx) => {
     cwd = ctx.cwd || cwd;
     sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
+    completionDuration.start();
     completionID = randomUUID();
     completionEligible = false;
     agentRunning = true;
@@ -280,6 +301,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     unsubscribeSiriAdmission?.();
+    completionDuration.reset();
     completionID = undefined;
     completionEligible = false;
     if (heartbeat) clearInterval(heartbeat);

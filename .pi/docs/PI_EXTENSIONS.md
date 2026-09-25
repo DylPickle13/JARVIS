@@ -32,7 +32,7 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `46-local-pi-session-status.ts`: sends lifecycle heartbeats to `jarvisd`, reporting New, Idle, Running, Compacting, or fail-closed Unknown.
   - New means no user/assistant messages or conversation summaries in the in-memory session tree. Metadata alone does not count. A fresh message clears New; restored, forked, or compacted history stays Idle when inactive.
   - After compaction, heartbeats check `ctx.isIdle()`. There is no Waiting mode: open interactive prompts remain Running/busy for restart and completion safety.
-  - A successful, settled mobile turn can call the content-free APNs completion helper only when its private gate is enabled. It does not replay history or reload Pi.
+  - A successful, settled mobile turn can call the content-free APNs completion helper only when its private gate is enabled and the continuous activity lasted strictly more than 60 seconds (monotonic time, including automatic retries/compaction). This shared cutoff applies to both iPhone and Watch. Short/failed completions are consumed, never delayed until idle time crosses the cutoff. Switching sessions/shutdown resets the clock. It does not replay history or reload Pi.
   - `jarvisd` derives Offline and fail-closed Unknown from the fixed tmux sessions.
 - `47-watch-terminal-speech.ts`: publishes only the current tmux-bound Pi session's latest completed assistant text blocks to a private Watch-speech runtime marker; thinking and tool activity are excluded.
 - `50-browser/`: visible Chrome control through a persistent CDP bridge, hard-scoped to a dedicated JARVIS window in the user's signed-in profile.
