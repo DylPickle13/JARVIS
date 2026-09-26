@@ -2,7 +2,7 @@
 
 Unified home for AK820 lighting, presence automation, and [key mappings](mappings/README.md).
 Custom Karabiner transport work is tracked in [the implementation plan](docs/KARABINER-BRIDGE.md).
-Razer side-button suppression and the new owned-handle Karabiner extension (lighting, DPI, polling/readback) are documented in [Razer status](docs/RAZER.md). The Razer extension is installed: lighting commands and brightness/DPI/polling readback are verified through Karabiner. The owner confirmed breathing lights and normal clicking/scrolling; reconnect/sleep acceptance remains pending.
+Razer button suppression and the new owned-handle Karabiner extension (lighting, DPI, polling/readback) are documented in [Razer status](docs/RAZER.md). The Razer extension is installed: lighting commands and brightness/DPI/polling readback are verified through Karabiner. The owner confirmed breathing lights and normal clicking/scrolling; reconnect/sleep acceptance remains pending.
 
 Migration stage: Python modules remain together at the project root to preserve existing imports. The proposed `lighting/` and `automation/` package split is deferred until transport integration. Legacy project paths are compatibility symlinks; live LaunchAgent and scheduler definitions have not been replaced. Runtime state retains its existing private directory.
 

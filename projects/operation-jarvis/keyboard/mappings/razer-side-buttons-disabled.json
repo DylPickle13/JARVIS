@@ -2,7 +2,7 @@
   "title": "Razer DeathAdder Essential 2021",
   "rules": [
     {
-      "description": "Razer DeathAdder Essential: disable both side buttons",
+      "description": "Razer DeathAdder Essential: disable wheel click and both side buttons",
       "manipulators": [
         {
           "type": "basic",
@@ -13,6 +13,12 @@
         {
           "type": "basic",
           "from": {"pointing_button": "button5", "modifiers": {"optional": ["any"]}},
+          "to": [{"key_code": "vk_none"}],
+          "conditions": [{"type": "device_if", "identifiers": [{"vendor_id": 5426, "product_id": 152, "is_pointing_device": true}]}]
+        },
+        {
+          "type": "basic",
+          "from": {"pointing_button": "button3", "modifiers": {"optional": ["any"]}},
           "to": [{"key_code": "vk_none"}],
           "conditions": [{"type": "device_if", "identifiers": [{"vendor_id": 5426, "product_id": 152, "is_pointing_device": true}]}]
         }

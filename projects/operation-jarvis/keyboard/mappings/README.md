@@ -21,11 +21,11 @@ To disable the mapping, remove or disable its rule in Karabiner-Elements **Compl
 | --- | --- | --- |
 | AJAZZ AK820 | Knob press (`mute` media key) | Play/Pause (active; user confirmed working) |
 | AJAZZ AK820 | Knob rotation | Keep volume control |
-| Razer DeathAdder Essential 2021 (`1532:0098`) | Two side buttons (`button4`/`button5`) | Disabled via Karabiner; loaded, physical verification pending |
+| Razer DeathAdder Essential 2021 (`1532:0098`) | Wheel click (`button3`) and two side buttons (`button4`/`button5`) | Disabled via Karabiner |
 
 AJAZZ vendor/product identifiers were obtained from Karabiner's connected-device inventory. An authorized knob-press inspection confirmed `mute`. The rule matches only this vendor/product pair. The combined keyboard/pointing interface requires Modify events enabled as well as the keyboard-only interface. Any other mute key emitting the same event on this device would also be remapped.
 
-External mice require **Devices → Modify events** before Karabiner can remap them. This is now enabled for the Razer pointing interface. `razer-side-buttons-disabled.json` suppresses buttons 4/5, including with modifiers; normal clicks, scrolling and movement are unchanged by the rule. The live configuration was backed up before the rule was added. See [Razer lighting status and limitations](../docs/RAZER.md).
+External mice require **Devices → Modify events** before Karabiner can remap them. This is now enabled for the Razer pointing interface. `razer-side-buttons-disabled.json` suppresses buttons 3/4/5, including with modifiers; normal left/right clicks, scrolling and movement are unchanged by the rule. The live configuration was backed up before the rule was added. See [Razer lighting status and limitations](../docs/RAZER.md).
 
 [Mouse-button documentation](https://karabiner-elements.pqrs.org/docs/help/how-to/mouse-button/)
 

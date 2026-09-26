@@ -7,8 +7,9 @@ mouse-control app.
 
 ## Status (2026-09-25)
 
-- **Live:** side buttons 4/5 suppressed by Karabiner. The active rule matches
-  `mappings/razer-side-buttons-disabled.json`; keyboard mappings remain unchanged.
+- **Live:** wheel click (`button3`) and side buttons 4/5 suppressed by Karabiner.
+  The active rule matches `mappings/razer-side-buttons-disabled.json`; keyboard
+  mappings remain unchanged.
 - **Implemented:** authenticated `--jarvis-razer` IPC, exact interface matching,
   async feature set/get using Karabiner's already-owned mouse handle, validated
   device replies, independent persistent uncertainty journal, Python CLI.
@@ -64,7 +65,7 @@ retained for offline tests, not exposed as a write backend.
 | Logo lighting brightness | 0–100% | Yes, raw 0–255 and rounded percentage |
 | Sensitivity | X/Y 100–6400 DPI | Yes |
 | Polling rate | 125, 500, 1000 Hz | Yes |
-| Buttons | Karabiner mappings; side buttons currently disabled | EventViewer when authorized |
+| Buttons | Karabiner mappings; wheel click and side buttons currently disabled | EventViewer when authorized |
 
 Lighting writes and brightness/DPI/polling queries have been acknowledged on this
 unit. The owner visually confirmed breathing and normal clicking/scrolling.
@@ -167,7 +168,7 @@ The earlier official signed rollback is also retained.
    pending markers. Verify it has exited and no keyboard write is pending.
 2. Install through normal OS approval with an alternate input method available.
 3. Verify signed app/CLI identities, keyboard bridge, keyboard typing/knob, mouse
-   movement/clicks/wheel, and side-button suppression before hardware testing.
+   movement/left-right clicks/scrolling, plus wheel-click and side-button suppression before hardware testing.
 4. Razer bridge-status must show the exact device available and no pending write.
 5. Query brightness, DPI, and polling separately, spaced at least three seconds.
    Stop on the first uncertain response; do not auto-acknowledge or retry.
@@ -190,6 +191,6 @@ Interface 0, feature report ID 0, 90 bytes (no synthetic ID prefix in native IOK
 Lighting transaction `3f`; DPI/poll transaction `ff`. Logo LED `04`;
 XOR bytes 2–87 at byte 88. Read-only query opcodes are allowlisted individually.
 
-To undo side-button suppression, remove the named rule in Karabiner Complex
-Modifications. Disabling Modify events also prevents the owned-handle bridge
+To undo wheel-click/side-button suppression, remove or disable the named rule in
+Karabiner Complex Modifications. Disabling Modify events also prevents the owned-handle bridge
 from selecting that interface. Never restore an old full config over newer edits.
