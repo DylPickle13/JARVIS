@@ -20,7 +20,7 @@ Back up or be prepared to recreate:
 | Pi auth/session provider state | `~/.pi/agent/` | Usually | Contains Pi login/auth and session history unless API keys are used. |
 | Project Pi sessions | `~/.pi/agent/sessions/<project-session-dir>` | Optional but valuable | Used for direct historical lookup with baseline coding tools; record the project-specific path in `.pi/APPEND_SYSTEM.md`. |
 | Durable JARVIS memory | `.pi/memory/memory.sqlite*` | Optional but valuable | Project memories; ignored by git. |
-| Scheduled jobs and retained results | `.pi/scheduler/scheduler.sqlite*` | Optional but valuable | If absent, recreate jobs with the scheduler CLI or `jarvis_cron`. |
+| Scheduled jobs and retained results | `projects/operation-jarvis/data/scheduler/scheduler.sqlite*` | Optional but valuable | If absent, recreate jobs with the scheduler CLI or `jarvis_cron`. |
 | Browser profile | `~/.pi/agent/browser-profile` or `PI_BROWSER_PROFILE_DIR` | Optional | Preserves visible-browser cookies/session state. Do not commit. |
 | Google Workspace OAuth | external `gws` token/config store | If Workspace tools are used | Run `gws auth ...` if not restored. |
 | Operation data artifacts | `projects/operation-jarvis/data/*` | Optional | Runtime state (greeting history, logs); ignored by git. |
@@ -76,7 +76,7 @@ install -m 600 .env.example .env
 install -m 600 .pi/settings.example.json .pi/settings.json
 install -m 600 .pi/APPEND_SYSTEM.example.md .pi/APPEND_SYSTEM.md
 install -m 600 .pi/ssh-hosts.example.json .pi/ssh-hosts.json
-install -d -m 700 .pi/runtime .pi/memory .pi/scheduler
+install -d -m 700 .pi/runtime .pi/memory projects/operation-jarvis/data/scheduler
 ```
 
 Customize these ignored local files before starting Pi:
@@ -184,7 +184,7 @@ If you have backups, restore them now before smoke tests:
 ```bash
 # Examples only; adjust backup paths.
 cp /backup/JARVIS/.pi/memory/memory.sqlite* .pi/memory/ 2>/dev/null || true
-cp /backup/JARVIS/.pi/scheduler/scheduler.sqlite* .pi/scheduler/ 2>/dev/null || true
+cp /backup/JARVIS/projects/operation-jarvis/data/scheduler/scheduler.sqlite* projects/operation-jarvis/data/scheduler/ 2>/dev/null || true
 # Optional browser profile restore, if backed up:
 # rsync -a /backup/pi-browser-profile/ ~/.pi/agent/browser-profile/
 ```
@@ -208,7 +208,7 @@ For more detail, these status commands open the local SQLite-backed runners:
 cd /path/to/JARVIS
 pi list
 .venv/bin/python .pi/memory/memory.py --json status
-.venv/bin/python .pi/scheduler/runner.py --json status
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json status
 ```
 
 Operation JARVIS safe checks:
@@ -286,17 +286,17 @@ node --test .pi/scripts/tests/pi-attach-*.test.mjs .pi/scripts/tests/jarvis-pi-s
 
 ## 9. Recreate private scheduled jobs
 
-If `.pi/scheduler/scheduler.sqlite*` was restored, check status:
+If `projects/operation-jarvis/data/scheduler/scheduler.sqlite*` was restored, check status:
 
 ```bash
-.venv/bin/python .pi/scheduler/runner.py --json status
-.venv/bin/python .pi/scheduler/runner.py --json list
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json status
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json list
 ```
 
 Add jobs either through the Pi tool (`load_tools({ groups: ["cron"] })`) or directly:
 
 ```bash
-.venv/bin/python .pi/scheduler/runner.py --json add \
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json add \
   --name example-job \
   --schedule '+5m' \
   --prompt 'Say hello from the rebuilt scheduler.'
@@ -305,7 +305,7 @@ Add jobs either through the Pi tool (`load_tools({ groups: ["cron"] })`) or dire
 On macOS, install the one-minute launchd runner explicitly:
 
 ```bash
-.venv/bin/python .pi/scheduler/runner.py --json install
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json install
 ```
 
 The owner-only database keeps up to 500 sanitized results from successes with output and from failures. A successful check with no output updates job health without adding an inbox item.
@@ -318,12 +318,12 @@ The owner-only database keeps up to 500 sanitized results from successes with ou
 - [ ] Browser extension dependencies exist under `.pi/extensions/50-browser/node_modules`.
 - [ ] `.env`, `.pi/settings.json`, `.pi/APPEND_SYSTEM.md`, and `.pi/ssh-hosts.json` were privately restored or created from their tracked templates.
 - [ ] All four local files remain ignored by git and have mode `0600`.
-- [ ] `.pi/runtime`, `.pi/memory`, and `.pi/scheduler` have mode `0700`; private databases and sidecars have mode `0600`.
+- [ ] `.pi/runtime`, `.pi/memory`, and `projects/operation-jarvis/data/scheduler` have mode `0700`; private databases and sidecars have mode `0600`.
 - [ ] `.pi/settings.json` retains `npm:pi-web-access@0.28.0`; `pi list` and the installed package metadata agree.
 - [ ] `/lazy-tools` works in Pi.
 - [ ] `memory.py --json status` works.
 - [ ] The Pi session JSONL directory recorded in `.pi/APPEND_SYSTEM.md` exists and can be searched with baseline coding tools.
-- [ ] `.pi/scheduler/runner.py --json status` reports the expected private jobs.
+- [ ] `projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json status` reports the expected private jobs.
 - [ ] `jarvis-cli --json status --no-cast` works.
 - [ ] `jarvisd` starts and answers `/health`; native app verification passes.
 - [ ] `gws --help` and `google_workspace` work if Workspace access is needed.
@@ -341,7 +341,7 @@ The owner-only database keeps up to 500 sanitized results from successes with ou
 | Maps unavailable | Check `GOOGLE_MAPS_API_KEY`; confirm Places API (New), Geocoding API, and Routes API are enabled for the key. |
 | Browser tools unavailable | Run `npm install` in `.pi/extensions/50-browser`; check Google Chrome path or set `PI_BROWSER_CHROME_PATH`. |
 | PDF reads fail | Check local oMLX `OMLX_PDF_*` settings first; ensure `pdftotext` from `poppler` is installed for fallback. |
-| Scheduled jobs unavailable | Check `.pi/scheduler/scheduler.sqlite`, owner-only permissions, `com.jarvis.pi-scheduler`, and `runner.py --json status`. |
+| Scheduled jobs unavailable | Check `projects/operation-jarvis/data/scheduler/scheduler.sqlite`, owner-only permissions, `com.jarvis.pi-scheduler`, and `runner.py --json status`. |
 | Prior-session lookup fails | Verify the project-specific session JSONL directory in `.pi/APPEND_SYSTEM.md`; use `rg -l` to shortlist files before parsing matching records. |
 | Memory unavailable | Load the `memory` group, run `memory` with `action: "status"`, and verify `.pi/memory/memory.sqlite`; automatic prompt-time recall is intentionally disabled. |
 | `jarvis` tool fails | Run `projects/operation-jarvis/jarvis-cli --json help`; check the Operation venv, Cast, Spotify, Kasa, purifier, and `jarvisd` configuration as appropriate. |

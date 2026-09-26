@@ -133,7 +133,7 @@ ROUTINE_REQUEST_LOG_INTERVAL = min(
     max(10.0, float(os.environ.get("JARVISD_ROUTINE_REQUEST_LOG_INTERVAL", "60"))),
 )
 SCHEDULER_RUNNER = Path(
-    os.environ.get("JARVISD_SCHEDULER_RUNNER", str(JARVIS_ROOT / ".pi" / "scheduler" / "runner.py"))
+    os.environ.get("JARVISD_SCHEDULER_RUNNER", str(JARVIS_ROOT / "projects" / "operation-jarvis" / "jarvisd" / "jarvisd_core" / "scheduler" / "runner.py"))
 ).expanduser().resolve()
 SCHEDULED_JOBS_TIMEOUT = min(15.0, max(1.0, float(os.environ.get("JARVISD_SCHEDULED_JOBS_TIMEOUT", "5"))))
 MAX_SCHEDULED_JOBS = min(500, max(1, int(os.environ.get("JARVISD_MAX_SCHEDULED_JOBS", "100"))))

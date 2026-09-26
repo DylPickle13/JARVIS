@@ -197,12 +197,12 @@ require_mode "project secrets" ".env" "600"
 require_mode "Pi settings" ".pi/settings.json" "600"
 require_mode "local system context" ".pi/APPEND_SYSTEM.md" "600"
 require_mode "SSH host allowlist" ".pi/ssh-hosts.json" "600"
-for directory in .pi/runtime .pi/memory .pi/scheduler attachments; do
+for directory in .pi/runtime .pi/memory projects/operation-jarvis/data/scheduler attachments; do
   require_mode "private directory" "$directory" "700"
 done
 while IFS= read -r path; do
   require_mode "private runtime file" "$path" "600"
-done < <(find .pi .pi/memory .pi/scheduler -maxdepth 1 -type f \
+done < <(find .pi .pi/memory projects/operation-jarvis/data/scheduler -maxdepth 1 -type f \
   \( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -name '*.sqlite-journal' \
      -o -name '*.sqlite.lock' -o -name 'deleted-sessions-*.json' \) -print 2>/dev/null)
 while IFS= read -r path; do
@@ -581,7 +581,7 @@ fi
 run_check "native attachment shell launchers parse" zsh -n .pi/scripts/pi-attach-picker .pi/scripts/jarvis-pi-ssh
 
 section "Native APNs notification checks"
-require_file "fixed APNs registration helper" ".pi/scheduler/apns_registration.py"
+require_file "fixed APNs registration helper" "projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/apns_registration.py"
 require_file "iPhone push entitlement" "projects/operation-jarvis/jarvis-app/JARVIS/JARVIS.entitlements"
 require_file "Watch push entitlement" "projects/operation-jarvis/jarvis-app/JARVISWatch/JARVISWatch.entitlements"
 require_file "shared protected Jobs history store" "projects/operation-jarvis/jarvis-app/JARVISKit/Sources/JARVISKit/ScheduledJobHistoryStore.swift"
@@ -589,7 +589,7 @@ require_file "Watch Jobs state model" "projects/operation-jarvis/jarvis-app/JARV
 require_file "Watch Jobs dashboard page" "projects/operation-jarvis/jarvis-app/JARVISWatch/Views/WatchJobsView.swift"
 require_file "Watch Jobs routing tests" "projects/operation-jarvis/jarvis-app/JARVISTests/WatchJobsModelTests.swift"
 if [[ -n "$PYTHON_BIN" ]]; then
-  run_check "private APNs provider, registration, and scheduler tests" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" -m unittest discover -s .pi/scheduler/tests
+  run_check "private APNs provider, registration, and scheduler tests" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" -m unittest discover -s projects/operation-jarvis/jarvisd/tests/scheduler
   run_check "native APNs capability and privacy assertions" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" - <<'PY'
 from pathlib import Path
 import plistlib
@@ -612,19 +612,19 @@ settings = (root / 'JARVIS/Views/SettingsView.swift').read_text(encoding='utf-8'
 assert 'DeveloperSigningSettingsView' not in settings
 assert 'Developer Signing' not in settings
 transport = (root / 'JARVIS/PushRegistrationSSHTransport.swift').read_text(encoding='utf-8')
-command = '/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/.pi/scheduler/apns_registration.py'
+command = '/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/apns_registration.py'
 assert command in transport
-provider = Path('.pi/scheduler/apns_provider.py').read_text(encoding='utf-8')
+provider = Path('projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/apns_provider.py').read_text(encoding='utf-8')
 assert 'com.operation-jarvis.jarvis"' in provider
 assert 'com.operation-jarvis.jarvis.watchkitapp"' in provider
-assert 'MAX_ALERT_PREVIEW_CHARACTERS = 240' in provider
+assert 'MAX_ALERT_PREVIEW_CHARACTERS = 140' in provider
 assert 'SENSITIVE_CONTEXT_RE' in provider
 assert 'FALLBACK_ALERT_BODY' in provider
 iphone_copy = (root / 'JARVIS/Views/NotificationSettingsView.swift').read_text(encoding='utf-8')
 watch_copy = (root / 'JARVISWatch/Views/WatchConnectView.swift').read_text(encoding='utf-8')
 assert 'Show Previews' in iphone_copy
 assert 'Show Previews' in watch_copy
-runner = Path('.pi/scheduler/runner.py').read_text(encoding='utf-8')
+runner = Path('projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py').read_text(encoding='utf-8')
 assert 'DELETE FROM notification_devices' in runner
 assert '_set_config_value(conn, "apns_dispatch_enabled", "0")' in runner
 coordinator = (root / 'JARVIS/PushNotificationCoordinator.swift').read_text(encoding='utf-8')
@@ -676,14 +676,15 @@ PY
   run_check "memory behavior regression tests" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" -m unittest discover -s .pi/tests -p test_memory.py
   if command -v node >/dev/null 2>&1; then
     run_check "memory extension regression tests" node --test .pi/tests/memory.test.mjs
+    run_check "scheduler adapter regression tests" node --test .pi/tests/cron.test.mjs
   fi
-  run_check "private scheduler CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/scheduler/runner.py --help
+  run_check "private scheduler CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --help
 fi
 run_check "Operation JARVIS CLI help" env PYTHONDONTWRITEBYTECODE=1 JARVIS_EMIT_EVENTS=0 projects/operation-jarvis/jarvis-cli --help
 
 section "Runtime data presence only"
 warn_file "memory DB present" ".pi/memory/memory.sqlite"
-warn_file "private scheduler DB present" ".pi/scheduler/scheduler.sqlite"
+warn_file "private scheduler DB present" "projects/operation-jarvis/data/scheduler/scheduler.sqlite"
 pi_session_dir_name="--${PWD#/}--"
 pi_session_dir_name="${pi_session_dir_name//\//-}"
 warn_file "Pi sessions directory present" "$HOME/.pi/agent/sessions/$pi_session_dir_name"

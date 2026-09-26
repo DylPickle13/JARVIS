@@ -7,7 +7,7 @@ import types
 import unittest
 import uuid
 
-spec = importlib.util.spec_from_file_location("session_completion", Path(__file__).parents[1] / "session_completion.py")
+spec = importlib.util.spec_from_file_location("session_completion", Path(__file__).parents[2] / "jarvisd_core/scheduler/session_completion.py")
 completion = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(completion)
 

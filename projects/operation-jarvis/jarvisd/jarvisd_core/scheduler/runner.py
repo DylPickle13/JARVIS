@@ -24,7 +24,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[5]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -34,7 +34,11 @@ config.load_project_env(ROOT / ".env")
 LOGGER = config.get_logger("jarvis.scheduler")
 
 PI_DIR = ROOT / ".pi"
-SCHEDULER_DIR = Path(os.environ.get("JARVIS_SCHEDULER_DIR", str(PI_DIR / "scheduler"))).expanduser().resolve()
+DATA_DIR = ROOT / "projects" / "operation-jarvis" / "data"
+SCHEDULER_DIR = Path(os.environ.get("JARVIS_SCHEDULER_DIR", str(DATA_DIR / "scheduler"))).expanduser().resolve()
+SESSION_NOTIFICATIONS_DIR = Path(
+    os.environ.get("JARVIS_SESSION_NOTIFICATIONS_DIR", str(DATA_DIR / "session-notifications"))
+).expanduser().resolve()
 DB_PATH = Path(os.environ.get("JARVIS_SCHEDULER_DB_PATH", str(SCHEDULER_DIR / "scheduler.sqlite"))).expanduser().resolve()
 LEGACY_DB_PATH = Path(
     os.environ.get("JARVIS_LEGACY_SCHEDULER_DB_PATH", str(SCHEDULER_DIR / "migration-source.sqlite"))
@@ -446,7 +450,10 @@ def notification_dispatch_enabled(conn: sqlite3.Connection) -> bool:
 
 
 def _provider_configuration():
-    from apns_provider import APNsConfiguration
+    if __package__:
+        from .apns_provider import APNsConfiguration
+    else:
+        from apns_provider import APNsConfiguration
 
     return APNsConfiguration(
         team_id=APNS_TEAM_ID,
@@ -681,7 +688,10 @@ def drain_notifications(conn: sqlite3.Connection) -> dict[str, Any]:
     try:
         configuration = _provider_configuration()
         configuration.validate_for_send()
-        from apns_provider import APNsProvider
+        if __package__:
+            from .apns_provider import APNsProvider
+        else:
+            from apns_provider import APNsProvider
 
         provider = APNsProvider(configuration)
         now = utcnow()

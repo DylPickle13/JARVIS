@@ -90,12 +90,11 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     if (!shouldNotify) return;
     const pane = process.env.TMUX_PANE || "";
     if (!/^%[0-9]+$/.test(pane)) return;
-    if (!existsSync(join(root, ".pi", "runtime", "session-notifications", "enabled"))) return;
     // No prompt, output, path, or credentials in arguments. The fixed helper
     // independently checks this PID belongs to one of the nine approved panes.
     try {
       const child = spawn("/opt/homebrew/bin/python3", [
-        join(root, ".pi", "scheduler", "session_completion.py"),
+        join(root, "projects", "operation-jarvis", "jarvisd", "jarvisd_core", "scheduler", "session_completion.py"),
         pane, String(process.pid), eventID,
       ], { stdio: "ignore", detached: true });
       child.on("error", () => {});

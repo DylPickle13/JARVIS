@@ -18,5 +18,5 @@ When changing a script's output format, update the corresponding digest parser a
 Tests (no live pushes):
 
 ```sh
-PYTHONPATH=.pi/scheduler python3 -m unittest discover -s .pi/scheduler/tests -v
+python3 -m unittest discover -s projects/operation-jarvis/jarvisd/tests/scheduler -v
 ```

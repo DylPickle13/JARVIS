@@ -14,16 +14,11 @@ const PRIVATE_FILES = [
 	join(PROJECT_ROOT, ".pi", "settings.json"),
 	join(PROJECT_ROOT, ".pi", "APPEND_SYSTEM.md"),
 	join(PROJECT_ROOT, ".pi", "ssh-hosts.json"),
-	join(PROJECT_ROOT, ".pi", "scheduler", "scheduler.sqlite"),
-	join(PROJECT_ROOT, ".pi", "scheduler", "scheduler.sqlite-wal"),
-	join(PROJECT_ROOT, ".pi", "scheduler", "scheduler.sqlite-shm"),
-	join(PROJECT_ROOT, ".pi", "scheduler", "scheduler.sqlite-journal"),
 ];
 
 const PRIVATE_DIRS = [
 	join(PROJECT_ROOT, ".pi", "runtime"),
 	join(PROJECT_ROOT, ".pi", "memory"),
-	join(PROJECT_ROOT, ".pi", "scheduler"),
 	ATTACHMENTS_DIR,
 ];
 

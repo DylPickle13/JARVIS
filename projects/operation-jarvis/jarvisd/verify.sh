@@ -20,8 +20,8 @@ export PYTHONDONTWRITEBYTECODE=1
 from pathlib import Path
 import os
 import plistlib
-for path in [*Path('.').glob('*.py'), *Path('jarvisd_core').glob('*.py'),
-             *Path('tests').glob('*.py'), *Path('tests_sdk').glob('*.py')]:
+for path in [*Path('.').glob('*.py'), *Path('jarvisd_core').rglob('*.py'),
+             *Path('tests').rglob('*.py'), *Path('tests_sdk').glob('*.py')]:
     compile(path.read_bytes(), str(path), 'exec')
 vendor_root = Path(os.environ.get('JARVIS_TEST_VENDOR_ROOT', '..'))
 for entry in ('jarvis.py', 'control-cli.py'):

@@ -48,7 +48,7 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(daemon.LOG_FILE, self.source.parent / "logs" / "jarvisd.log")
         self.assertEqual(daemon.SIGNING_RENEWAL_SCRIPT,
                          self.operation / "jarvis-app" / "scripts" / "renew-free-signing.sh")
-        self.assertEqual(daemon.SCHEDULER_RUNNER, self.root / ".pi" / "scheduler" / "runner.py")
+        self.assertEqual(daemon.SCHEDULER_RUNNER, self.root / "projects" / "operation-jarvis" / "jarvisd" / "jarvisd_core" / "scheduler" / "runner.py")
         self.assertEqual(daemon.CODEX_QUOTAS_SCRIPT, self.operation / "quotas" / "quotas.py")
         self.assertEqual(daemon.PORT, 8790)
 

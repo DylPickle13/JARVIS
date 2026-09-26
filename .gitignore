@@ -33,7 +33,6 @@
 /.pi/packages/*/benchmarks/
 /.pi/packages/*/notes/
 /.pi/packages/*/tmp/
-/.pi/scheduler/scheduler.sqlite*
 /.pi/memory/*.sqlite*
 /.pi/scheduled-sessions/
 /.pi/location/

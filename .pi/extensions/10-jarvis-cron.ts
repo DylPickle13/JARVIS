@@ -25,12 +25,14 @@ const ACTIONS = [
   "status",
 ] as const;
 
+const RUNNER_RELATIVE_PATH = "projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py";
+
 function runnerPath(cwd: string): string {
-  return findAncestorFile(cwd, ".pi/scheduler/runner.py") ?? join(cwd, ".pi", "scheduler", "runner.py");
+  return findAncestorFile(cwd, RUNNER_RELATIVE_PATH) ?? join(cwd, RUNNER_RELATIVE_PATH);
 }
 
 function projectRoot(cwd: string): string {
-  return dirname(dirname(dirname(runnerPath(cwd))));
+  return resolve(dirname(runnerPath(cwd)), "../../../../..");
 }
 
 function pythonPath(cwd: string): string {

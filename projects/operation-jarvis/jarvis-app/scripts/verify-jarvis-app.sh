@@ -67,7 +67,7 @@ if [[ "$terminal_tests_ok" != "1" ]]; then
   cat "$terminal_log" >&2
   exit 1
 fi
-python3 -m unittest discover -s ../../../.pi/scheduler/tests -v
+python3 -m unittest discover -s ../jarvisd/tests/scheduler -v
 python3 -m py_compile \
   ../jarvisd/jarvisd.py \
   ../jarvisd/device-worker.py \
@@ -77,8 +77,8 @@ python3 -m py_compile \
   ../room-audio/room_audio_server.py \
   ../voice/voice_pipeline.py \
   ../../../pi_rpc.py \
-  ../../../.pi/scheduler/runner.py \
-  ../../../.pi/scheduler/apns_provider.py
+  ../jarvisd/jarvisd_core/scheduler/runner.py \
+  ../jarvisd/jarvisd_core/scheduler/apns_provider.py
 
 printf '%s\n' '== warm responsive jarvisd collector contract =='
 grep -q 'DEFAULT_ACTIVE_LEASE_SECONDS = 45.0' ../jarvisd/jarvisd_core/state.py
@@ -413,12 +413,12 @@ reject_match 'foreground banners must not auto-navigate' -qE 'present\(resultSeq
 reject_match 'foreground Watch banners must not auto-navigate' -qE 'present\(resultSequence:' < <(sed -n '/willPresent notification:/,/return \[.banner, .sound\]/p' JARVISWatch/WatchPushNotificationCoordinator.swift)
 grep -q 'Show Previews' JARVIS/Views/NotificationSettingsView.swift JARVISWatch/Views/WatchConnectView.swift
 # Match the already-committed notification-summary cap (a810484); no backend change here.
-grep -q 'MAX_ALERT_PREVIEW_CHARACTERS = 140' ../../../.pi/scheduler/apns_provider.py
-grep -q 'SENSITIVE_CONTEXT_RE' ../../../.pi/scheduler/apns_provider.py
-grep -q 'FALLBACK_ALERT_BODY' ../../../.pi/scheduler/apns_provider.py
-grep -q 'DELETE FROM notification_devices' ../../../.pi/scheduler/runner.py
-grep -q '_set_config_value(conn, "apns_dispatch_enabled", "0")' ../../../.pi/scheduler/runner.py
-grep -Fq '/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/.pi/scheduler/apns_registration.py' JARVIS/PushRegistrationSSHTransport.swift
+grep -q 'MAX_ALERT_PREVIEW_CHARACTERS = 140' ../jarvisd/jarvisd_core/scheduler/apns_provider.py
+grep -q 'SENSITIVE_CONTEXT_RE' ../jarvisd/jarvisd_core/scheduler/apns_provider.py
+grep -q 'FALLBACK_ALERT_BODY' ../jarvisd/jarvisd_core/scheduler/apns_provider.py
+grep -q 'DELETE FROM notification_devices' ../jarvisd/jarvisd_core/scheduler/runner.py
+grep -q '_set_config_value(conn, "apns_dispatch_enabled", "0")' ../jarvisd/jarvisd_core/scheduler/runner.py
+grep -Fq '/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/apns_registration.py' JARVIS/PushRegistrationSSHTransport.swift
 grep -q '"/api/v1/notification-status"' ../jarvisd/jarvisd.py
 reject_match 'APNs registration must never enter jarvisd HTTP' -Fq '/api/v1/notification-register' ../jarvisd/jarvisd.py
 reject_match 'Watch must not gain background remote notification modes' -Eq 'remote-notification|<string>fetch</string>|<string>processing</string>' JARVISWatch/Info.plist

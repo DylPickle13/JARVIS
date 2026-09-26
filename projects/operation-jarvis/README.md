@@ -35,7 +35,7 @@ projects/operation-jarvis/
 └── jarvis-cli                  # stable executable wrapper
 ```
 
-The shared Pi RPC code is at [`../../pi_rpc.py`](../../pi_rpc.py). The scheduler is at [`../../.pi/scheduler/`](../../.pi/scheduler/).
+The shared Pi RPC code is at [`../../pi_rpc.py`](../../pi_rpc.py). The scheduler backend is at [`jarvisd/jarvisd_core/scheduler/`](jarvisd/jarvisd_core/scheduler/); Pi exposes only thin adapters.
 
 ## Safe status checks
 
@@ -82,7 +82,7 @@ The Watch preserves native plug/purifier controls and terminal behavior. Each wi
 
 ## Private scheduler
 
-The generic scheduler stores its database at `.pi/scheduler/scheduler.sqlite` under the repository root. It retains at most 500 sanitized results of at most 64 KiB each:
+The generic scheduler stores its database at `projects/operation-jarvis/data/scheduler/scheduler.sqlite` under the repository root. It retains at most 500 sanitized results of at most 64 KiB each:
 
 - a successful run with no output updates health only;
 - a successful run with output creates one result;
@@ -94,8 +94,8 @@ Read-only status:
 
 ```bash
 cd /path/to/JARVIS
-.venv/bin/python .pi/scheduler/runner.py --json status
-.venv/bin/python .pi/scheduler/runner.py --json list-public
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json status
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json list-public
 ```
 
 ## Room audio

@@ -209,7 +209,7 @@ private final class PushRegistrationSessionHandler: ChannelInboundHandler, @unch
 }
 
 struct PushRegistrationSSHTransport {
-    static let command = "/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/.pi/scheduler/apns_registration.py"
+    static let command = "/Users/dylanrapanan/JARVIS/.venv/bin/python /Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/apns_registration.py"
 
     func upload(
         _ registration: JARVISPushRegistration,

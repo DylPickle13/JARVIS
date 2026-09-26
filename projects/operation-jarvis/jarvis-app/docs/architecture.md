@@ -19,7 +19,7 @@ Pi sessions run on the Mac. The apps connect to those sessions and use separate 
 | `terminald` | Fixed-session terminal frames, validated input, and Watch/Siri terminal transport. | Native hardware commands or arbitrary client-selected tmux targets. |
 | Private scheduler | Job execution, bounded retained results, and configured notification dispatch. | A native schedule-editing UI. |
 
-Source entry points: [app root](../JARVIS/JARVISApp.swift), [shared package](../JARVISKit/), [jarvisd](../../jarvisd/jarvisd.py), [terminald](../terminald/jarvis_terminald.py), and [scheduler](../../../../.pi/scheduler/runner.py).
+Source entry points: [app root](../JARVIS/JARVISApp.swift), [shared package](../JARVISKit/), [jarvisd](../../jarvisd/jarvisd.py), [terminald](../terminald/jarvis_terminald.py), and [scheduler](../../jarvisd/jarvisd_core/scheduler/runner.py).
 
 ## Request paths
 

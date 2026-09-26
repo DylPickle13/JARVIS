@@ -9,8 +9,8 @@ import tempfile
 import unittest
 import uuid
 
-ROOT = Path(__file__).resolve().parents[3]
-PROVIDER_PATH = ROOT / ".pi" / "scheduler" / "apns_provider.py"
+ROOT = Path(__file__).resolve().parents[5]
+PROVIDER_PATH = ROOT / "projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/apns_provider.py"
 
 
 def load_provider():

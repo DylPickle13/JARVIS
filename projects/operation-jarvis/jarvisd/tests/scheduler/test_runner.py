@@ -11,8 +11,8 @@ import unittest
 import uuid
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-RUNNER_PATH = ROOT / ".pi" / "scheduler" / "runner.py"
+ROOT = Path(__file__).resolve().parents[5]
+RUNNER_PATH = ROOT / "projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py"
 
 
 def load_runner(temp: Path):

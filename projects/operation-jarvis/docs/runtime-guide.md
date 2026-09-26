@@ -36,7 +36,7 @@ Check the script's scope before running it against a live environment. The docum
 | Pi CLI/RPC process management and persistent sessions | [`pi_rpc.py`](../../../pi_rpc.py) |
 | Tools, lazy schemas, attachments, and integrations | [`.pi/extensions/`](../../../.pi/extensions/) |
 | Explicit durable memory | [`.pi/memory/`](../../../.pi/memory/) |
-| Private scheduler and retained results | [`.pi/scheduler/`](../../../.pi/scheduler/) |
+| Private scheduler and retained results | [`jarvisd/jarvisd_core/scheduler/`](../jarvisd/jarvisd_core/scheduler/) |
 | Shared control backend (`jarvisd`) | [`jarvisd/`](../jarvisd/) |
 | Native apps and `terminald` | [`jarvis-app/`](../jarvis-app/) |
 | Mac-side voice processing | [`voice/`](../voice/) |
@@ -48,16 +48,16 @@ Check the script's scope before running it against a live environment. The docum
 Read-only inventory:
 
 ```bash
-.venv/bin/python .pi/scheduler/runner.py --json status
-.venv/bin/python .pi/scheduler/runner.py --json list
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json status
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json list
 ```
 
-The scheduler uses `.pi/scheduler/scheduler.sqlite`, with directory/file permissions of `0700/0600`. It keeps up to 500 results, each at most 64 KiB. A successful check with no output updates health without adding a result; successes with output and failures are saved. The native Jobs view receives sanitized results, without prompts, models, command lines, credentials, or private paths.
+The scheduler uses `projects/operation-jarvis/data/scheduler/scheduler.sqlite`, with directory/file permissions of `0700/0600`. It keeps up to 500 results, each at most 64 KiB. A successful check with no output updates health without adding a result; successes with output and failures are saved. The native Jobs view receives sanitized results, without prompts, models, command lines, credentials, or private paths.
 
 Inside Pi, load `cron` and use `jarvis_cron`. The native Jobs view is read-only. Installing or changing the scheduler requires owner approval. Once approved, use this command for initial host setup:
 
 ```bash
-.venv/bin/python .pi/scheduler/runner.py --json install
+.venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json install
 ```
 
 This installs the periodic launchd runner; it is not a status check. Notifications also need their own configuration and approval. See [notification setup and privacy](../jarvis-app/docs/architecture.md#notifications-and-privacy) rather than relying on old APNs activation notes.

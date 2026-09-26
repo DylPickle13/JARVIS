@@ -13,6 +13,18 @@ The stdlib-only Python HTTP backend for Operation JARVIS. The native iPhone,
 Watch, and widget clients use its existing API; backend ownership is independent
 of those clients. See the [architecture and phased plan](../docs/backend-architecture.md).
 
+## Private scheduler backend
+
+Scheduling, retained job history, APNs delivery/registration, and completion
+receipts now belong to [`jarvisd_core/scheduler/`](jarvisd_core/scheduler/).
+The launchd worker remains separate from the HTTP process. Runtime state is under
+`../data/scheduler/` and `../data/session-notifications/`, not `.pi`. Pi only
+provides thin tool/lifecycle extensions; the old scheduler directory and runtime
+aliases are removed. See the [scheduler README](jarvisd_core/scheduler/README.md)
+for ownership, consumer paths, tests, and safe migration/rollback. The
+[installed cutover record](docs/scheduler-relocation.md) documents verification
+and remaining `.pi` extraction candidates.
+
 **Exclusive-ownership cutover is not active:** see the historical
 [candidate progress and blocking gates](docs/cutover-status.md). The deployed
 best-effort CLI/Pi and native routing does not require that deferred machinery.

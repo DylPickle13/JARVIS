@@ -9,8 +9,8 @@ import tempfile
 import unittest
 import uuid
 
-ROOT = Path(__file__).resolve().parents[3]
-SCRIPT = ROOT / ".pi" / "scheduler" / "apns_registration.py"
+ROOT = Path(__file__).resolve().parents[5]
+SCRIPT = ROOT / "projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/apns_registration.py"
 
 
 class APNsRegistrationBoundaryTests(unittest.TestCase):

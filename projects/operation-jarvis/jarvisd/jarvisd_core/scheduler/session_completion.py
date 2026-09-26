@@ -130,9 +130,13 @@ def main() -> None:
     slot = resolve_slot(pane, int(raw_pid))
     if slot is None:
         return
-    import runner
-    from apns_provider import APNsProvider
-    directory = runner.ROOT / ".pi/runtime/session-notifications"
+    if __package__:
+        from . import runner
+        from .apns_provider import APNsProvider
+    else:
+        import runner
+        from apns_provider import APNsProvider
+    directory = runner.SESSION_NOTIFICATIONS_DIR
     enabled = directory / "enabled"
     if not enabled.is_file() or enabled.is_symlink():
         return
