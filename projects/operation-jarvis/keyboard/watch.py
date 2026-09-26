@@ -14,6 +14,7 @@ import time
 import cycle
 import copy
 import mouse_cycle
+import display_cycle
 
 POLL = 3
 HEALTH_AGE = 30  # Includes bounded presence + HID calls; not presence freshness.
@@ -45,7 +46,7 @@ def snapshot(store):
 
 
 def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.send,
-         mouse_apply=None):
+         mouse_apply=None, display_apply=None):
     """Called with cycle.lock held. Share one age-adjusted presence snapshot."""
     value = snapshot(store)  # Corrupt outbox blocks both devices before any writes.
     cached = None
@@ -76,6 +77,8 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
                                apply=apply, responsive=True),
         lambda: mouse_cycle.run_once(store, now=now, get_presence=shared_presence,
                                      apply=mouse_apply),
+        lambda: display_cycle.run_once(store, now=now, get_presence=shared_presence,
+                                       apply=display_apply),
     ):
         output, code = run()
         if output:

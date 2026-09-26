@@ -22,6 +22,63 @@ The watcher calls the existing authenticated `presence/status.py` client, sleeps
 - **Mouse nearby → steady; away → off. Never breathing.** `mouse_cycle.py` allowlists only these two effects. The owner's default mouse brightness is **20%**, applied and acknowledged via the bridge. Presence transitions preserve that brightness; they leave DPI and polling untouched. Brightness is not reasserted on every poll or verified across power loss. No repeated command for unchanged presence or a watcher restart; a fresh presence transition can send one command after the three-second cooldown. Unknown/stale presence leaves the mouse unchanged.
 - Mouse and keyboard use separate persisted state/faults and separate daemon journals. A keyboard command failure does not prevent a fresh, safe mouse update. The snapshot's age includes fetch latency and time spent commanding the first device; the mouse refuses a snapshot that has aged out.
 
+## Optional Mac lock and dual-display sleep
+
+`display_cycle.py` extends the same watcher/shared basement snapshot; the cron job
+remains an alert relay. Disabled by default on new installations; **enabled on this
+Mac after owner-confirmed security setup and successful departure/return testing.**
+Existing keyboard/mouse effects are unchanged.
+
+Before enabling, the owner must set a macOS login password, disable automatic
+login, require the password immediately after display sleep/screensaver, and set
+an ordinary inactivity lock timeout. Test Control–Command–Q manually and confirm
+a password is actually required. No credentials are collected or stored by JARVIS.
+The Mac currently has computer sleep and display sleep set to never; this change
+does not modify those system settings. Keep computer sleep off for JARVIS, but set
+a normal display/inactivity timeout in System Settings as a fallback.
+
+- First fresh basement away (same shared signal as the keyboard, no extra delay):
+  request session lock, verify
+  `CGSSessionScreenIsLocked`, then `pmset displaysleepnow` for connected displays.
+- Fresh nearby after successful automated away: declare user activity via IOKit
+  once to wake displays. Never unlock, type credentials, or prevent later idle sleep.
+- Initial nearby does not wake displays; unchanged states and restarts do not replay
+  successful actions. Unknown/stale never triggers an action. The existing backend
+  nearby hold and watcher polling latency remain; this is not instantaneous physical
+  departure detection. The persisted timer fields remain compatible with old state.
+- Persist a pending marker before actions; any failed/uncertain command blocks all
+  subsequent display actions until explicit owner review. No automatic retry.
+- The helper is bounded to eight seconds. The macOS lock API is private and may
+  change on OS updates; absence/failure blocks display sleep rather than claiming a
+  lock. The owner confirmed the original two-minute departure/return behavior worked;
+  the no-extra-delay version still needs a physical timing check.
+- Runtime files: `display-config.json` (opt-in), `display-state.json` (transitions,
+  timer, pending/fault). Messages use the existing minute-based alert outbox.
+
+After manual security setup, enable under the shared watcher lock:
+
+```sh
+cd /Users/dylanrapanan/JARVIS/projects/operation-jarvis/keyboard
+.venv/bin/python display_setup.py --enable --confirm-password-and-immediate-lock
+```
+
+The watcher must be restarted once to load the new code (use the lifecycle steps
+below, wait for exit before bootstrap). Subsequent config changes are read each poll.
+To disable only this extension without waking/unlocking/changing lighting:
+
+```sh
+.venv/bin/python display_setup.py --disable
+```
+
+Re-enabling with existing noninitial state deliberately requires owner review; do
+not delete pending state to recover automatically. Backend proximity is not an
+authentication factor; a phone/watch left downstairs may keep reporting nearby.
+The independent macOS inactivity lock remains necessary.
+
+Validation: 123 offline tests pass (including 10 display tests); read-only session
+inspection succeeds on this Mac. Owner confirmed live lock/sleep/wake worked before
+removal of the extra two-minute delay.
+
 ## Safety and failures
 
 The keyboard uses the existing signed Karabiner owned-handle bridge: one validated 65-byte output report and exact model/interface checks. The mouse uses its installed signed bridge with one validated feature exchange per command. No new driver, daemon, input capture, firmware operation, USB cutoff or automatic recovery write.
