@@ -6,7 +6,7 @@ I built JARVIS to keep a Mac-hosted AI workspace within reach from my iPhone, Ap
 
 It runs on the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent), which handles the agent loop and model interaction. My work is in the custom tools, backend services, and native apps that connect it all.
 
-[Explore the architecture](https://dylpickle13.github.io/) · [Native apps](projects/operation-jarvis/jarvis-app/README.md) · [Setup and operation](projects/operation-jarvis/docs/runtime-guide.md)
+[Explore the architecture](#architecture-at-a-glance) · [Native apps](projects/operation-jarvis/jarvis-app/README.md) · [Setup and operation](projects/operation-jarvis/docs/runtime-guide.md)
 
 ## See the native apps
 
@@ -48,8 +48,6 @@ Watch / Siri terminal access   → terminald → protected Pi sessions
 ```
 
 Sessions and services run on my own hardware, with either a local or cloud model provider. Web research, Google services, and some device integrations still need external services, so local-first does not mean offline.
-
-The [interactive architecture map](https://dylpickle13.github.io/) walks through these request paths; it is a diagram, not a live control panel.
 
 ## Explore the implementation
 
