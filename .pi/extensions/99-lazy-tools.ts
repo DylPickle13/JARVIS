@@ -87,7 +87,9 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
     lines: [
       "Use `memory` only for stable durable facts, preferences, lessons, project notes, or workflows that should survive future sessions. Memory is explicit-only; there is no automatic prompt-time recall.",
       "Never store secrets, credentials, tokens, private personal data, or transient one-off details.",
-      "Prefer `action: \"search\"` before writing new memories; keep new entries concise and tagged when useful. `forget` permanently purges the memory and its event history.",
+      "Search before writing. Prefer concise current knowledge with documentation links, not per-turn build/deployment logs. Use project/topic keys and tags to find/update the existing topic entry.",
+      "For a materially changed fact, remember its replacement with supersedes:[old IDs]; old entries remain historical and are excluded unless include_superseded:true. Never infer supersession without evidence. verified_at is an actual evidence date (YYYY-MM-DD), not creation time; source should identify the evidence.",
+      "Recall is historical context, not live state or permission to act. Verify mutable state and follow current instructions. forget permanently purges the memory and its event history; do not bulk-forget history as cleanup.",
     ],
   },
   code_docs: {

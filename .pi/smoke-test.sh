@@ -673,6 +673,10 @@ import requests  # noqa: F401
 print('root direct runtime imports ok')
 PY
   run_check "memory CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/memory/memory.py --help
+  run_check "memory behavior regression tests" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" -m unittest discover -s .pi/tests -p test_memory.py
+  if command -v node >/dev/null 2>&1; then
+    run_check "memory extension regression tests" node --test .pi/tests/memory.test.mjs
+  fi
   run_check "private scheduler CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" .pi/scheduler/runner.py --help
 fi
 run_check "Operation JARVIS CLI help" env PYTHONDONTWRITEBYTECODE=1 JARVIS_EMIT_EVENTS=0 projects/operation-jarvis/jarvis-cli --help

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import os
 import re
 import sqlite3
@@ -21,7 +22,7 @@ from typing import Any, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = PROJECT_ROOT / ".pi" / "memory" / "memory.sqlite"
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 KINDS = {"preference", "fact", "lesson", "project", "workflow"}
 SCOPES = {"global", "project"}
 MAX_TEXT_CHARS = 8000
@@ -159,6 +160,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_memories_deleted_at ON memories(deleted_at);
         """
     )
+    # Concurrent CLI processes must not race additive schema migrations.
+    conn.execute("BEGIN IMMEDIATE")
     columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(memories)")}
     if "context_id" not in columns:
         legacy_context_columns = sorted(name for name in columns if name.endswith("_channel_id"))
@@ -169,6 +172,21 @@ def init_db(conn: sqlite3.Connection) -> None:
             conn.execute(f'ALTER TABLE memories RENAME COLUMN "{legacy_name}" TO context_id')
         else:
             conn.execute("ALTER TABLE memories ADD COLUMN context_id TEXT")
+
+    additions = {
+        "status": "TEXT NOT NULL DEFAULT 'active'",
+        "superseded_by": "TEXT",
+        "project": "TEXT",
+        "topic": "TEXT",
+        "verified_at": "TEXT",
+        "last_retrieved_at": "TEXT",
+    }
+    for name, declaration in additions.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE memories ADD COLUMN {name} {declaration}")
+    # Legacy last_used_at measured retrieval, not actual use. Preserve it as
+    # historical data, but do not manufacture usage or verification timestamps.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_project_topic ON memories(project, topic)")
 
     normalized = conn.execute(
         "UPDATE memories SET scope='project' WHERE scope NOT IN ('global', 'project')"
@@ -252,21 +270,50 @@ def validate_scope(scope: str) -> str:
     return scope
 
 
+def reject_secrets(text: str) -> None:
+    secret_patterns = [
+        r"sk-[A-Za-z0-9_-]{20,}",
+        r"gh[pousr]_[A-Za-z0-9_]{20,}",
+        r"github_pat_[A-Za-z0-9_]{20,}",
+        r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+        r"xox[baprs]-[A-Za-z0-9-]{20,}",
+        r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*\S{8,}",
+    ]
+    if any(re.search(pattern, text) for pattern in secret_patterns):
+        raise MemoryError("refusing to store a field that looks like a secret/token/password")
+
+
 def clean_text(text: str) -> str:
     text = text.strip()
     if not text:
         raise MemoryError("memory text cannot be empty")
     if len(text) > MAX_TEXT_CHARS:
         raise MemoryError(f"memory text is too long ({len(text)} chars, max {MAX_TEXT_CHARS})")
-    secret_patterns = [
-        r"sk-[A-Za-z0-9_-]{20,}",
-        r"ghp_[A-Za-z0-9_]{20,}",
-        r"xox[baprs]-[A-Za-z0-9-]{20,}",
-        r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*\S{8,}",
-    ]
-    if any(re.search(pattern, text) for pattern in secret_patterns):
-        raise MemoryError("refusing to store text that looks like a secret/token/password")
+    reject_secrets(text)
     return text
+
+
+def validate_metadata(args: argparse.Namespace) -> None:
+    for field in ("source", "tags", "cwd", "context_id", "project", "topic"):
+        value = getattr(args, field, None)
+        if value is not None:
+            if len(value) > MAX_TEXT_CHARS:
+                raise MemoryError(f"{field} is too long")
+            reject_secrets(value)
+    verified = getattr(args, "verified_at", None)
+    if verified:
+        try:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", verified):
+                raise ValueError("invalid date format")
+            dt.datetime.strptime(verified, "%Y-%m-%d")
+        except ValueError as exc:
+            raise MemoryError("verified_at must be a YYYY-MM-DD date") from exc
+
+
+def validate_confidence(value: float) -> float:
+    if not math.isfinite(value) or not 0 <= value <= 1:
+        raise MemoryError("confidence must be finite and between 0 and 1")
+    return value
 
 
 def row_to_memory(row: sqlite3.Row) -> dict[str, Any]:
@@ -298,12 +345,13 @@ def log_event(conn: sqlite3.Connection, action: str, memory_id: str | None, summ
     )
 
 
-def fts_query(query: str) -> str:
-    tokens = re.findall(r"[\w][\w_.:-]*", query.lower())
-    tokens = [token for token in tokens if len(token) > 1]
-    if not tokens:
-        return ""
-    return " OR ".join(f'"{token.replace(chr(34), chr(34) + chr(34))}"' for token in tokens[:20])
+def fts_query(query: str, operator: str = "OR") -> str:
+    # Natural-language filler should not displace meaningful matches. Never
+    # interpolate raw user FTS syntax; each token is a quoted literal.
+    stopwords = {"a", "an", "the", "is", "are", "was", "were", "what", "how", "our", "my", "for", "of", "to", "in", "and", "or", "do", "does", "we"}
+    tokens = list(dict.fromkeys(re.findall(r"[\w][\w_.:-]*", query.lower())))
+    tokens = [token for token in tokens if token not in stopwords][:20]
+    return f" {operator} ".join(f'"{token}"' for token in tokens)
 
 
 def base_filters(args: argparse.Namespace, values: list[Any], *, alias: str = "m") -> list[str]:
@@ -314,6 +362,16 @@ def base_filters(args: argparse.Namespace, values: list[Any], *, alias: str = "m
     if getattr(args, "scope", None):
         filters.append(f"{alias}.scope = ?")
         values.append(validate_scope(args.scope))
+    if not getattr(args, "include_superseded", False):
+        filters.append(f"{alias}.status = 'active'")
+    for field in ("project", "topic"):
+        value = getattr(args, field, None)
+        if value:
+            filters.append(f"{alias}.{field} = ?")
+            values.append(value)
+    for tag in parse_tags(getattr(args, "tags", None)):
+        filters.append(f"EXISTS (SELECT 1 FROM json_each({alias}.tags) WHERE value = ?)")
+        values.append(tag)
     if not getattr(args, "include_deleted", False):
         filters.append(f"{alias}.deleted_at IS NULL")
     return filters
@@ -327,17 +385,28 @@ def search_memories(conn: sqlite3.Connection, args: argparse.Namespace) -> list[
     match = fts_query(query)
 
     if match:
-        where = ["memories_fts MATCH ?", *filters]
-        params: list[Any] = [match, *values]
-        sql = f"""
-            SELECT m.*, bm25(memories_fts) AS rank
-            FROM memories_fts
-            JOIN memories m ON m.id = memories_fts.id
-            WHERE {' AND '.join(where)}
-            ORDER BY rank ASC, m.updated_at DESC
-            LIMIT ?
-        """
-        rows = conn.execute(sql, (*params, limit)).fetchall()
+        # Prefer entries containing every meaningful term, then backfill with
+        # partial matches. BM25 alone can rank a rare single-term hit first.
+        rows = []
+        seen = set()
+        for expression in dict.fromkeys((fts_query(query, "AND"), match)):
+            where = ["memories_fts MATCH ?", *filters]
+            sql = f"""
+                SELECT m.*, bm25(memories_fts, 0, 0, 1, 2, 0) AS rank
+                FROM memories_fts JOIN memories m ON m.id = memories_fts.id
+                WHERE {' AND '.join(where)}
+                ORDER BY rank ASC, m.updated_at DESC, m.id ASC LIMIT ?
+            """
+            for row in conn.execute(sql, (expression, *values, limit)).fetchall():
+                if row["id"] not in seen:
+                    rows.append(row)
+                    seen.add(row["id"])
+            if len(rows) >= limit:
+                break
+        rows = rows[:limit]
+    elif query:
+        # A punctuation/stopword-only search is not a request for recent notes.
+        rows = []
     else:
         where = filters or ["1=1"]
         sql = f"SELECT m.*, 0.0 AS rank FROM memories m WHERE {' AND '.join(where)} ORDER BY m.updated_at DESC LIMIT ?"
@@ -349,20 +418,19 @@ def search_memories(conn: sqlite3.Connection, args: argparse.Namespace) -> list[
         memory = row_to_memory(row)
         memory["score"] = round(float(row["rank"]), 4) if "rank" in row.keys() else 0.0
         results.append(memory)
-    if results:
+    if results and query:
         with conn:
-            conn.executemany("UPDATE memories SET last_used_at = ? WHERE id = ?", [(now, item["id"]) for item in results])
+            conn.executemany("UPDATE memories SET last_retrieved_at = ? WHERE id = ?", [(now, item["id"]) for item in results])
     return results
 
 
 def command_remember(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, Any]:
+    validate_metadata(args)
     text = clean_text(args.text or "")
     kind = validate_kind(args.kind or "fact")
     scope = validate_scope(args.scope or "global")
     tags = parse_tags(args.tags)
-    confidence = float(args.confidence if args.confidence is not None else 0.95)
-    if confidence < 0 or confidence > 1:
-        raise MemoryError("confidence must be between 0 and 1")
+    confidence = validate_confidence(float(args.confidence if args.confidence is not None else 0.95))
     memory_id = uuid.uuid4().hex[:8]
     now = utc_now()
     memory = {
@@ -372,7 +440,7 @@ def command_remember(conn: sqlite3.Connection, args: argparse.Namespace) -> dict
         "tags": tags,
         "scope": scope,
         "confidence": confidence,
-        "source": (args.source or "user").strip() or "user",
+        "source": (args.source or "unknown").strip() or "unknown",
         "cwd": args.cwd or None,
         "context_id": args.context_id or None,
         "created_at": now,
@@ -380,7 +448,25 @@ def command_remember(conn: sqlite3.Connection, args: argparse.Namespace) -> dict
         "last_used_at": None,
         "deleted_at": None,
     }
+    memory.update({field: ((getattr(args, field, None) or "").strip() or None) for field in ("project", "topic", "verified_at")})
+    memory.update(status="active", superseded_by=None, last_retrieved_at=None)
+    supersedes = list(dict.fromkeys(getattr(args, "supersedes", None) or []))
     with conn:
+        # Serialize the check-and-write, including concurrent remember calls.
+        conn.execute("BEGIN IMMEDIATE")
+        for old_id in supersedes:
+            old = require_memory(conn, old_id)
+            if old["status"] != "active":
+                raise MemoryError(f"memory {old_id} is already superseded")
+        duplicate = conn.execute(
+            "SELECT * FROM memories WHERE status='active' AND deleted_at IS NULL "
+            "AND lower(trim(text))=lower(?) AND kind=? AND scope=? AND project IS ? AND topic IS ? LIMIT 1",
+            (text, kind, scope, memory["project"], memory["topic"]),
+        ).fetchone()
+        if duplicate is not None:
+            if supersedes:
+                raise MemoryError(f"duplicate of {duplicate['id']}; update that entry instead")
+            return {"ok": True, "memory": row_to_memory(duplicate), "message": f"Already remembered as {duplicate['id']}; no new entry created."}
         conn.execute(
             """
             INSERT INTO memories(id, kind, text, tags, scope, confidence, source, cwd, context_id, created_at, updated_at, last_used_at, deleted_at)
@@ -402,6 +488,13 @@ def command_remember(conn: sqlite3.Connection, args: argparse.Namespace) -> dict
                 memory["deleted_at"],
             ),
         )
+        conn.execute(
+            "UPDATE memories SET project=?, topic=?, verified_at=? WHERE id=?",
+            (memory["project"], memory["topic"], memory["verified_at"], memory_id),
+        )
+        for old_id in supersedes:
+            conn.execute("UPDATE memories SET status='superseded', superseded_by=? WHERE id=?", (memory_id, old_id))
+            log_event(conn, "supersede", old_id, f"Replaced by {memory_id}")
         upsert_fts(conn, memory)
         log_event(conn, "remember", memory_id, text[:300])
     return {"ok": True, "memory": memory, "message": f"Remembered {kind} memory {memory_id}."}
@@ -417,6 +510,7 @@ def require_memory(conn: sqlite3.Connection, memory_id: str) -> dict[str, Any]:
 def command_update(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, Any]:
     if not args.id:
         raise MemoryError("update requires --id")
+    validate_metadata(args)
     memory = require_memory(conn, args.id)
     if args.text is not None:
         memory["text"] = clean_text(args.text)
@@ -427,10 +521,13 @@ def command_update(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[s
     if args.tags is not None:
         memory["tags"] = parse_tags(args.tags)
     if args.confidence is not None:
-        confidence = float(args.confidence)
-        if confidence < 0 or confidence > 1:
-            raise MemoryError("confidence must be between 0 and 1")
-        memory["confidence"] = confidence
+        memory["confidence"] = validate_confidence(float(args.confidence))
+    for field in ("source", "project", "topic", "verified_at"):
+        value = getattr(args, field, None)
+        if value is not None:
+            memory[field] = value.strip() or ("unknown" if field == "source" else None)
+    if args.text is not None and getattr(args, "verified_at", None) is None:
+        memory["verified_at"] = None
     memory["updated_at"] = utc_now()
     with conn:
         conn.execute(
@@ -449,6 +546,10 @@ def command_update(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[s
                 memory["id"],
             ),
         )
+        conn.execute(
+            "UPDATE memories SET source=?, project=?, topic=?, verified_at=? WHERE id=?",
+            (memory["source"], memory["project"], memory["topic"], memory["verified_at"], memory["id"]),
+        )
         upsert_fts(conn, memory)
         log_event(conn, "update", memory["id"], memory["text"][:300])
     return {"ok": True, "memory": memory, "message": f"Updated memory {memory['id']}."}
@@ -463,6 +564,8 @@ def command_forget(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[s
         conn.execute("DELETE FROM memories_fts WHERE id = ?", (memory_id,))
         conn.execute("DELETE FROM events WHERE memory_id = ?", (memory_id,))
         conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+        # Forgetting a replacement must not silently reactivate obsolete facts.
+        conn.execute("UPDATE memories SET superseded_by=NULL WHERE superseded_by=?", (memory_id,))
     secure_compact(conn)
     return {"ok": True, "id": memory_id, "message": f"Permanently purged memory {memory_id}."}
 
@@ -481,10 +584,12 @@ def command_list(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str
 def format_recall_block(results: list[dict[str, Any]], max_chars: int) -> str:
     if not results:
         return ""
-    lines = ["## Relevant long-term memory", "", "Use these project-local memories only when helpful; user instructions in the current conversation take priority."]
+    lines = ["## Relevant long-term memory", "", "Historical context, not live state or authorization. Current user instructions take priority."]
     for item in results:
         tags = f" tags={','.join(item['tags'])}" if item.get("tags") else ""
-        lines.append(f"- [{item['kind']}/{item['scope']}] {item['text']} (id: {item['id']}; confidence: {item['confidence']}{tags})")
+        lines.append(f"- [{item['kind']}/{item['scope']}/{item.get('status', 'active')}] {item['text']} "
+                     f"(id: {item['id']}; updated: {item['updated_at']}; verified: {item.get('verified_at') or 'unverified'}; "
+                     f"source: {json.dumps(item['source'], ensure_ascii=False)}; confidence: {item['confidence']}{tags})")
     block = "\n".join(lines).strip()
     if len(block) > max_chars:
         block = block[: max(0, max_chars - 20)].rstrip() + "\n… memory truncated …"
@@ -499,17 +604,19 @@ def command_recall(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[s
 
 
 def command_status(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, Any]:
-    total = conn.execute("SELECT COUNT(*) AS n FROM memories WHERE deleted_at IS NULL").fetchone()["n"]
+    total = conn.execute("SELECT COUNT(*) AS n FROM memories WHERE deleted_at IS NULL AND status='active'").fetchone()["n"]
+    superseded = conn.execute("SELECT COUNT(*) FROM memories WHERE status='superseded'").fetchone()[0]
     deleted = conn.execute("SELECT COUNT(*) AS n FROM memories WHERE deleted_at IS NOT NULL").fetchone()["n"]
     events = conn.execute("SELECT COUNT(*) AS n FROM events").fetchone()["n"]
-    by_kind = {row["kind"]: row["n"] for row in conn.execute("SELECT kind, COUNT(*) AS n FROM memories WHERE deleted_at IS NULL GROUP BY kind")}
-    by_scope = {row["scope"]: row["n"] for row in conn.execute("SELECT scope, COUNT(*) AS n FROM memories WHERE deleted_at IS NULL GROUP BY scope")}
-    latest = [row_to_memory(row) for row in conn.execute("SELECT * FROM memories WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 5")]
+    by_kind = {row["kind"]: row["n"] for row in conn.execute("SELECT kind, COUNT(*) AS n FROM memories WHERE deleted_at IS NULL AND status='active' GROUP BY kind")}
+    by_scope = {row["scope"]: row["n"] for row in conn.execute("SELECT scope, COUNT(*) AS n FROM memories WHERE deleted_at IS NULL AND status='active' GROUP BY scope")}
+    latest = [row_to_memory(row) for row in conn.execute("SELECT * FROM memories WHERE deleted_at IS NULL AND status='active' ORDER BY updated_at DESC LIMIT 5")]
     return {
         "ok": True,
         "db_path": str(resolve_path(args.db, DEFAULT_DB_PATH)),
         "schema_version": SCHEMA_VERSION,
         "active_memories": total,
+        "superseded_memories": superseded,
         "deleted_memories": deleted,
         "events": events,
         "by_kind": by_kind,
@@ -540,6 +647,10 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--kind", choices=sorted(KINDS))
         p.add_argument("--scope", choices=sorted(SCOPES))
         p.add_argument("--limit", type=int, default=10)
+        p.add_argument("--project", help="Exact subproject identifier")
+        p.add_argument("--topic", help="Exact durable topic identifier")
+        p.add_argument("--tags", help="Require all these tags")
+        p.add_argument("--include-superseded", action="store_true")
 
     p_search = sub.add_parser("search", help="search memories")
     p_search.add_argument("query", nargs="?", default="")
@@ -562,9 +673,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_remember.add_argument("--tags")
     p_remember.add_argument("--scope", choices=sorted(SCOPES), default="global")
     p_remember.add_argument("--confidence", type=float, default=0.95)
-    p_remember.add_argument("--source", default="user")
+    p_remember.add_argument("--source", default="unknown")
     p_remember.add_argument("--cwd")
     p_remember.add_argument("--context-id")
+    p_remember.add_argument("--project")
+    p_remember.add_argument("--topic")
+    p_remember.add_argument("--verified-at", help="Evidence verification date, YYYY-MM-DD")
+    p_remember.add_argument("--supersedes", action="append", help="Old memory ID to replace; repeatable")
     p_remember.set_defaults(func=command_remember)
 
     p_update = sub.add_parser("update", help="update a memory")
@@ -574,6 +689,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--tags")
     p_update.add_argument("--scope", choices=sorted(SCOPES))
     p_update.add_argument("--confidence", type=float)
+    p_update.add_argument("--source")
+    p_update.add_argument("--project")
+    p_update.add_argument("--topic")
+    p_update.add_argument("--verified-at", help="YYYY-MM-DD; empty clears verification")
     p_update.set_defaults(func=command_update)
 
     p_forget = sub.add_parser("forget", help="permanently purge a memory and its event history")
