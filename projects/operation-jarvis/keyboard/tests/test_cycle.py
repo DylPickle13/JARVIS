@@ -38,7 +38,7 @@ class CycleTests(unittest.TestCase):
     def test_preferences_only_liked_names_and_saved_settings(self):
         effects, values = prefs()
         self.assertEqual(effects, ['corrugated','cloud','serpentine','breath','stars','wave','cartoon','rain','scan'])
-        self.assertEqual(values, {'color':'#FFFFFF','brightness':'highest','speed':'fastest'})
+        self.assertEqual(values, {'color':'#FFFFFF','brightness':'highest','speed':'medium'})
         for text in ('', (cycle.ROOT/'liked-effects.md').read_text().replace('corrugated', 'firmware')):
             with self.assertRaises(cycle.CycleError): cycle.preferences(text)
 
@@ -74,7 +74,7 @@ class CycleTests(unittest.TestCase):
 
     def test_away_configuration_matches_requested_white_ripples(self):
         self.assertEqual(cycle.AWAY, dict(effect='ripples', color='#FFFFFF', brightness='highest',
-                                         speed='fastest', direction='left_to_right'))
+                                         speed='medium', direction='left_to_right'))
         self.assertEqual(ajazz.report(cycle.AWAY)[13:17], bytes([0, 0xff, 0xff, 0xff]))
         self.assertEqual(len(ajazz.report(cycle.AWAY)), 65)
 

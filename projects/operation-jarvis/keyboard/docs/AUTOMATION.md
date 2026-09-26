@@ -11,8 +11,8 @@
 
 The watcher calls the existing authenticated `presence/status.py` client, sleeps three seconds after each bounded check, and repeats. Slow requests extend the interval; there is no catch-up loop. No model calls are involved.
 
-- **Either device nearby:** first fresh basement `nearby` report resumes randomly selected liked effects, white `#FFFFFF`, highest brightness, fastest speed. Ordinary effect changes remain at least 60 seconds apart, excluding presence transitions. Do not repeat the last successful coloured rotation effect.
-- **Both away:** first fresh basement `away` report applies **`ripples`, `#FFFFFF`, `highest`, `fastest`, `left_to_right`** once. Repeated away checks and watcher restarts do not resend a successful away profile. Black RGB is no longer the requested away behavior.
+- **Either device nearby:** first fresh basement `nearby` report resumes randomly selected liked effects, white `#FFFFFF`, highest brightness, medium speed. Ordinary effect changes remain at least 60 seconds apart, excluding presence transitions. Do not repeat the last successful coloured rotation effect.
+- **Both away:** first fresh basement `away` report applies **`ripples`, `#FFFFFF`, `highest`, `medium`, `left_to_right`** once. Repeated away checks and watcher restarts do not resend a successful away profile. Black RGB is no longer the requested away behavior.
 - The collector's **10-second nearby hold remains unchanged**, plus up to roughly three seconds publishing latency. The watcher reacts within a few seconds of a fresh backend transition under normal conditions. This is not literally instant departure detection.
 - The old extra two-check keyboard debounce is bypassed by the watcher. Arrival/away transitions can send a report between minute-spaced rotations; a three-second minimum spacing still prevents overlapping/catch-up bursts.
 - Unknown, stale, invalid, missing or failed presence leaves lighting unchanged. A valid sample must have `stale: false`, age 0–15 seconds; age is rechecked immediately before sending after state persistence. Other-room estimates never override basement.

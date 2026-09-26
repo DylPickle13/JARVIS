@@ -2,7 +2,7 @@
 
 Color: `#FFFFFF` (white)
 Brightness: `highest`
-Speed: `fastest`
+Speed: `medium`
 
 ## Liked (9)
 

@@ -23,7 +23,7 @@ INTERVAL = 60
 MAX_GAP = 150
 # Owner-requested away profile via the unchanged, tested global-lighting CLI.
 AWAY = {'effect': 'ripples', 'color': '#FFFFFF', 'brightness': 'highest',
-        'speed': 'fastest', 'direction': 'left_to_right'}
+        'speed': 'medium', 'direction': 'left_to_right'}
 FAULTS = {'presence', 'preferences', 'keyboard', 'state'}
 MESSAGES = {
     'presence': 'Basement presence unavailable or stale; keyboard cycling paused.',

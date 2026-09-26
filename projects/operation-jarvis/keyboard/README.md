@@ -16,11 +16,11 @@ The existing lighting protocol and presets are preserved. The CLI now supports a
 
 ## Presence-gated rotation
 
-**Enabled:** local LaunchAgent `com.jarvis.ajazz-keyboard-watch` checks authenticated basement proximity approximately every three seconds. Nearby, it cycles liked effects in white once per minute without immediate repeats; keyboard breathing remains included. The same watcher sets the mouse steady nearby and off away, never breathing. The private `Keyboard lights` job (`job_41fb6dd73fce`) relays keyboard/mouse alerts every minute; it does not directly control lighting. No model calls or new keyboard backend endpoint are used.
+**Enabled:** local LaunchAgent `com.jarvis.ajazz-keyboard-watch` checks authenticated basement proximity approximately every three seconds. Nearby, it cycles liked effects in white at medium speed once per minute without immediate repeats; keyboard breathing remains included. The same watcher sets the mouse steady nearby and off away, never breathing. The private `Keyboard lights` job (`job_41fb6dd73fce`) relays keyboard/mouse alerts every minute; it does not directly control lighting. No model calls or new keyboard backend endpoint are used.
 
 Healthy runs are silent. The first failure produces one error, continuing failures stay silent, and confirmed recovery produces one success result. Private persisted state survives process restarts; uncertain write outcomes block further writes pending acknowledgment.
 
-**Both away → white ripples:** the first fresh away report applies `ripples`, `#FFFFFF`, highest brightness and fastest speed once; the mouse switches off. **Either nearby → rotation resumes** on the first fresh nearby report. The collector's 10-second nearby hold is unchanged; the extra keyboard debounce is removed. Unknown/stale leaves lighting unchanged. The former black-RGB away behavior has been superseded. See [automation behavior, controls and limitations](docs/AUTOMATION.md).
+**Both away → white ripples:** the first fresh away report applies `ripples`, `#FFFFFF`, highest brightness and medium speed once; the mouse switches off. **Either nearby → rotation resumes** on the first fresh nearby report. The collector's 10-second nearby hold is unchanged; the extra keyboard debounce is removed. Unknown/stale leaves lighting unchanged. The former black-RGB away behavior has been superseded. See [automation behavior, controls and limitations](docs/AUTOMATION.md).
 
 ## Custom Karabiner bridge
 
