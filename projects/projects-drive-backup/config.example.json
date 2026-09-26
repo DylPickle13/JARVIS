@@ -1,0 +1,9 @@
+{
+  "source": "~/JARVIS",
+  "state_dir": "~/.local/state/jarvis-backup",
+  "repository": "rclone:jarvis-drive:restic-mac-mini-64",
+  "password_file": "~/.config/jarvis-backup/restic-password",
+  "rclone_config": "~/.config/jarvis-backup/rclone.conf",
+  "host": "mac-mini-64",
+  "restic": "/opt/homebrew/bin/restic"
+}

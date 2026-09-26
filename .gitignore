@@ -6,6 +6,10 @@
 /generated_audio/
 /logs/
 /projects/*
+!/projects/projects-drive-backup/
+!/projects/projects-drive-backup/*.py
+!/projects/projects-drive-backup/*.json
+!/projects/projects-drive-backup/*.md
 !/projects/operation-jarvis/
 !/projects/operation-jarvis/**
 /projects/operation-jarvis/.env
