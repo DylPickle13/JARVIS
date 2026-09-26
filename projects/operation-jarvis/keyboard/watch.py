@@ -12,6 +12,8 @@ import threading
 import time
 
 import cycle
+import copy
+import mouse_cycle
 
 POLL = 3
 HEALTH_AGE = 30  # Includes bounded presence + HID calls; not presence freshness.
@@ -42,14 +44,43 @@ def snapshot(store):
     return value
 
 
-def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.send):
-    """Called with cycle.lock held. No scan, new transport, or immediate replay."""
-    value = snapshot(store)
-    output, code = cycle.run_once(store, now=now, get_presence=get_presence,
-                                  apply=apply, responsive=True)
-    if output:
-        value['alerts'].append({'message': output, 'code': code})
-        value['alerts'] = value['alerts'][-QUEUE_LIMIT:]
+def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.send,
+         mouse_apply=None):
+    """Called with cycle.lock held. Share one age-adjusted presence snapshot."""
+    value = snapshot(store)  # Corrupt outbox blocks both devices before any writes.
+    cached = None
+    fetched = False
+    observed = None
+    failure = None
+
+    def shared_presence():
+        nonlocal cached, fetched, observed, failure
+        if not fetched:
+            observed = time.monotonic()
+            fetched = True
+            try:
+                cached = get_presence()
+            except cycle.CycleError as exc:
+                failure = exc
+        if failure is not None:
+            raise failure
+        payload = copy.deepcopy(cached)
+        if isinstance(payload, dict) and isinstance(payload.get('zones'), list):
+            for zone in payload['zones']:
+                if isinstance(zone, dict) and cycle.finite(zone.get('ageSeconds')):
+                    zone['ageSeconds'] += max(0, time.monotonic() - observed)
+        return payload
+
+    for run in (
+        lambda: cycle.run_once(store, now=now, get_presence=shared_presence,
+                               apply=apply, responsive=True),
+        lambda: mouse_cycle.run_once(store, now=now, get_presence=shared_presence,
+                                     apply=mouse_apply),
+    ):
+        output, code = run()
+        if output:
+            value['alerts'].append({'message': output, 'code': code})
+            value['alerts'] = value['alerts'][-QUEUE_LIMIT:]
     value['heartbeat'] = now()
     store.save('watcher.json', value)
 
@@ -65,9 +96,9 @@ def relay(store, *, now=time.time):
     failed = age is None or not 0 <= age <= HEALTH_AGE
     messages = list(value['alerts'])
     if failed and not old:
-        messages.append({'message': 'ERROR: Keyboard presence watcher is not responding; lighting may remain unchanged.', 'code': 1})
+        messages.append({'message': 'ERROR: Keyboard/mouse presence watcher is not responding; lighting may remain unchanged.', 'code': 1})
     elif old and not failed:
-        messages.append({'message': 'RECOVERED: Keyboard presence watcher is responding again (not lighting readback).', 'code': 0})
+        messages.append({'message': 'RECOVERED: Keyboard/mouse presence watcher is responding again (not lighting readback).', 'code': 0})
     # Called under the same lock as the producer. Healthy cycles emit nothing.
     for item in messages:
         print(item['message'], flush=True)

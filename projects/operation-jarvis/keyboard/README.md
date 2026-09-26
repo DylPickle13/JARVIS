@@ -2,6 +2,7 @@
 
 Unified home for AK820 lighting, presence automation, and [key mappings](mappings/README.md).
 Custom Karabiner transport work is tracked in [the implementation plan](docs/KARABINER-BRIDGE.md).
+Razer side-button suppression and the new owned-handle Karabiner extension (lighting, DPI, polling/readback) are documented in [Razer status](docs/RAZER.md). The Razer extension is installed: lighting commands and brightness/DPI/polling readback are verified through Karabiner. The owner confirmed breathing lights and normal clicking/scrolling; reconnect/sleep acceptance remains pending.
 
 Migration stage: Python modules remain together at the project root to preserve existing imports. The proposed `lighting/` and `automation/` package split is deferred until transport integration. Legacy project paths are compatibility symlinks; live LaunchAgent and scheduler definitions have not been replaced. Runtime state retains its existing private directory.
 
@@ -15,11 +16,11 @@ The existing lighting protocol and presets are preserved. The CLI now supports a
 
 ## Presence-gated rotation
 
-**Enabled:** local LaunchAgent `com.jarvis.ajazz-keyboard-watch` checks authenticated basement proximity approximately every three seconds. Nearby, it cycles liked effects once per minute without immediate repeats. The private `Keyboard lights` job (`job_41fb6dd73fce`) now only relays alerts every minute; it does not control lighting. No model calls or new keyboard backend endpoint are used.
+**Enabled:** local LaunchAgent `com.jarvis.ajazz-keyboard-watch` checks authenticated basement proximity approximately every three seconds. Nearby, it cycles liked effects in white once per minute without immediate repeats; keyboard breathing remains included. The same watcher sets the mouse steady nearby and off away, never breathing. The private `Keyboard lights` job (`job_41fb6dd73fce`) relays keyboard/mouse alerts every minute; it does not directly control lighting. No model calls or new keyboard backend endpoint are used.
 
 Healthy runs are silent. The first failure produces one error, continuing failures stay silent, and confirmed recovery produces one success result. Private persisted state survives process restarts; uncertain write outcomes block further writes pending acknowledgment.
 
-**Both away → purple ripples:** the first fresh away report applies `ripples`, `#9933FF`, highest brightness and fastest speed once. **Either nearby → rotation resumes** on the first fresh nearby report. The collector's 10-second nearby hold is unchanged; the extra keyboard debounce is removed. Unknown/stale leaves lighting unchanged. The former black-RGB away behavior has been superseded. See [automation behavior, controls and limitations](docs/AUTOMATION.md).
+**Both away → white ripples:** the first fresh away report applies `ripples`, `#FFFFFF`, highest brightness and fastest speed once; the mouse switches off. **Either nearby → rotation resumes** on the first fresh nearby report. The collector's 10-second nearby hold is unchanged; the extra keyboard debounce is removed. Unknown/stale leaves lighting unchanged. The former black-RGB away behavior has been superseded. See [automation behavior, controls and limitations](docs/AUTOMATION.md).
 
 ## Custom Karabiner bridge
 
@@ -66,7 +67,7 @@ Defaults: `breath`, `#00AACC`, `low`, `slow`, `left_to_right`.
 | `--speed` | `fastest`, `fast`, `medium`, `slow`, `slowest` |
 | `--direction` | `left_to_right`, `right_to_left` |
 
-`lowest` is not a verified off command. Static and dedicated off opcodes, per-key lighting, macros, remapping and firmware commands are not exposed. A historical black-breathing trial was visually confirmed dark, but the owner now requests purple ripples while away. `status` reports connection metadata, **not current lighting state**; `lighting_state` remains null. A successful write confirms transport, not readback or storage behavior.
+`lowest` is not a verified off command. Static and dedicated off opcodes, per-key lighting, macros, remapping and firmware commands are not exposed. A historical black-breathing trial was visually confirmed dark, but the owner now requests white ripples while away. `status` reports connection metadata, **not current lighting state**; `lighting_state` remains null. A successful write confirms transport, not readback or storage behavior.
 
 ## Presets and preferences
 

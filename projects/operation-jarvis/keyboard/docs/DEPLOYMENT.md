@@ -1,5 +1,9 @@
 # Custom Karabiner deployment
 
+The Razer-capable package is now installed with owner approval; deployment and
+live tests are tracked in [RAZER.md](RAZER.md). The keyboard-only deployment below
+is the historical baseline and retained rollback, not the current artifact.
+
 ## Current boundary
 
 Source integration and 84 offline tests are complete. The full package was built;
@@ -36,12 +40,14 @@ Ignored checkout: `karabiner/upstream/`; generated output/logs: `karabiner/build
 ```sh
 cd /Users/dylanrapanan/JARVIS/projects/operation-jarvis/keyboard
 # Use authorized identities from security find-identity; never export private keys.
-export PQRS_ORG_CODE_SIGN_IDENTITY='<local signing identity>'
-export PQRS_ORG_INSTALLER_CODE_SIGN_IDENTITY='<local installer/development identity>'
+export PQRS_ORG_CODE_SIGN_IDENTITY='<40-character identity SHA-1 from security find-identity>'
+export PQRS_ORG_INSTALLER_CODE_SIGN_IDENTITY='<40-character installer/development identity SHA-1>'
 .venv/bin/python karabiner/build.py
 ```
 
-The builder verifies the upstream revision, applies checked patches idempotently,
+The builder first verifies the upstream signing helpers resolve the supplied identity
+hashes (display names are not accepted by those helpers), then verifies the upstream
+revision, applies checked patches idempotently,
 installs the reviewed bridge headers into the checkout, runs offline tests and builds
 the COMPLETE package. It does not install or clean the launch-services database.
 Patch 0002 fixes three upstream Swift initialization/cancellation errors under Xcode 27.

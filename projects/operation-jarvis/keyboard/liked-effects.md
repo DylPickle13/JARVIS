@@ -1,6 +1,6 @@
 # AJAZZ AK820 — Liked Effects
 
-Color: `#9933FF` (purple)
+Color: `#FFFFFF` (white)
 Brightness: `highest`
 Speed: `fastest`
 

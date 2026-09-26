@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parent
 def main():
     for key in ('PQRS_ORG_CODE_SIGN_IDENTITY', 'PQRS_ORG_INSTALLER_CODE_SIGN_IDENTITY'):
         if not os.environ.get(key):
-            raise SystemExit(f'Set {key} to an authorized local signing identity')
+            raise SystemExit(f'Set {key} to an authorized local signing identity SHA-1 (not its display name)')
+    for helper in ('get-codesign-identity.sh', 'get-installer-codesign-identity.sh'):
+        identity = subprocess.check_output(['/bin/bash', str(ROOT / 'upstream/scripts' / helper)], text=True).strip()
+        if not identity:
+            raise SystemExit(f'{helper} could not resolve identity; use the SHA-1 from security find-identity, not its display name')
     subprocess.run([sys.executable, str(ROOT / 'prepare.py')], check=True)
     subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-q'],
                    cwd=ROOT.parent, check=True)

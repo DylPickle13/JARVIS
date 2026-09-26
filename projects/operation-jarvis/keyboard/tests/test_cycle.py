@@ -38,7 +38,7 @@ class CycleTests(unittest.TestCase):
     def test_preferences_only_liked_names_and_saved_settings(self):
         effects, values = prefs()
         self.assertEqual(effects, ['corrugated','cloud','serpentine','breath','stars','wave','cartoon','rain','scan'])
-        self.assertEqual(values, {'color':'#9933FF','brightness':'highest','speed':'fastest'})
+        self.assertEqual(values, {'color':'#FFFFFF','brightness':'highest','speed':'fastest'})
         for text in ('', (cycle.ROOT/'liked-effects.md').read_text().replace('corrugated', 'firmware')):
             with self.assertRaises(cycle.CycleError): cycle.preferences(text)
 
@@ -53,7 +53,7 @@ class CycleTests(unittest.TestCase):
         self.tick(220)
         self.assertEqual(self.apply.call_count, 2)
         self.assertNotEqual(self.apply.call_args_list[0].args[0]['effect'], self.apply.call_args_list[1].args[0]['effect'])
-        self.assertEqual(self.apply.call_args.args[0]['color'], '#9933FF')
+        self.assertEqual(self.apply.call_args.args[0]['color'], '#FFFFFF')
 
     def test_away_applies_once_after_legacy_debounce_and_requires_nearby_reentry(self):
         self.tick(100); self.tick(160)
@@ -69,13 +69,13 @@ class CycleTests(unittest.TestCase):
         self.assertEqual(self.apply.call_count, 2)
         self.tick(460)
         self.assertEqual(self.apply.call_count, 3)
-        self.assertEqual(self.apply.call_args.args[0]['color'], '#9933FF')
+        self.assertEqual(self.apply.call_args.args[0]['color'], '#FFFFFF')
         self.assertFalse(self.state['away_applied'])
 
-    def test_away_configuration_matches_requested_purple_ripples(self):
-        self.assertEqual(cycle.AWAY, dict(effect='ripples', color='#9933FF', brightness='highest',
+    def test_away_configuration_matches_requested_white_ripples(self):
+        self.assertEqual(cycle.AWAY, dict(effect='ripples', color='#FFFFFF', brightness='highest',
                                          speed='fastest', direction='left_to_right'))
-        self.assertEqual(ajazz.report(cycle.AWAY)[13:17], bytes([0, 0x99, 0x33, 0xff]))
+        self.assertEqual(ajazz.report(cycle.AWAY)[13:17], bytes([0, 0xff, 0xff, 0xff]))
         self.assertEqual(len(ajazz.report(cycle.AWAY)), 65)
 
     def test_unknown_never_applies_away_or_counts_as_an_away_check(self):
@@ -124,7 +124,7 @@ class CycleTests(unittest.TestCase):
         old.pop('away_count');old.pop('away_applied');old['version']=1
         old.update(pending=True,last_effect='scan',last_attempt=99)
         upgraded=cycle.validate_state(old)
-        self.assertEqual(upgraded['version'],3)
+        self.assertEqual(upgraded['version'],4)
         self.assertTrue(upgraded['pending'])
         self.assertEqual(upgraded['last_effect'],'scan')
         self.assertFalse(upgraded['away_applied'])

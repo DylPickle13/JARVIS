@@ -1,16 +1,21 @@
 #pragma once
 #include "core_service_daemon_client.hpp"
 #include "ak820_request.hpp"
+#include "razer_request.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
 
 namespace jarvis::ak820 {
-inline int cli(const std::string& text) {
+inline int cli(const std::string& text, bool razer = false) {
   if (text.size() > 2048) return 2;
   json request;
-  try { request = json::parse(text); (void)parse_request(request, wall_time()); }
+  try {
+    request = json::parse(text);
+    if (razer) (void)jarvis::razer::parse_request(request, wall_time());
+    else (void)parse_request(request, wall_time());
+  }
   catch (...) { std::cout << json({{"status", "rejected"}, {"reason", "invalid_request"}}).dump() << '\n'; return 2; }
   struct state {
     std::mutex mutex;

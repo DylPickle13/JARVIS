@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded presence-gated lighting: liked-effect rotation nearby, purple ripples away."""
+"""Bounded presence-gated lighting: liked-effect rotation nearby, white ripples away."""
 import argparse
 import fcntl
 import json
@@ -22,7 +22,7 @@ RUNTIME = Path.home() / 'Library/Application Support/JARVIS/ajazz-keyboard'
 INTERVAL = 60
 MAX_GAP = 150
 # Owner-requested away profile via the unchanged, tested global-lighting CLI.
-AWAY = {'effect': 'ripples', 'color': '#9933FF', 'brightness': 'highest',
+AWAY = {'effect': 'ripples', 'color': '#FFFFFF', 'brightness': 'highest',
         'speed': 'fastest', 'direction': 'left_to_right'}
 FAULTS = {'presence', 'preferences', 'keyboard', 'state'}
 MESSAGES = {
@@ -40,7 +40,7 @@ class CycleError(Exception):
 
 
 def initial():
-    return dict(version=3, last_tick=None, near_count=0, away_count=0,
+    return dict(version=4, last_tick=None, near_count=0, away_count=0,
                 last_effect=None, last_attempt=None, pending=False,
                 away_applied=False, mode='paused')
 
@@ -66,7 +66,12 @@ def validate_state(s):
         s.update(version=3, away_applied=False)
         if s['mode'] == 'dark':
             s['mode'] = 'paused'
-    if set(s) != set(initial()) or type(s['version']) is not int or s['version'] != 3:
+    if type(s.get('version')) is int and s['version'] == 3:
+        if set(s) != set(initial()):
+            raise CycleError('state')
+        # Purple is not white. Reapply the away profile, but NEVER clear uncertainty.
+        s = s | {'version': 4, 'away_applied': False}
+    if set(s) != set(initial()) or type(s['version']) is not int or s['version'] != 4:
         raise CycleError('state')
     if any(v is not None and not finite(v) for v in (s['last_tick'], s['last_attempt'])):
         raise CycleError('state')
@@ -259,7 +264,7 @@ def alert_transition(old, new, mode):
         return 'ERROR: ' + MESSAGES[kind], 1
     if old and not new:
         suffix = (' Cycling resumed.' if mode == 'cycling' else
-                  ' Purple ripples applied while away.' if mode == 'away' else
+                  ' White ripples applied while away.' if mode == 'away' else
                   ' Cycling remains paused pending proximity.')
         return 'RECOVERED: Keyboard automation checks are working again.' + suffix, 0
     return '', 0  # Suppressed failures are successful monitor ticks, not device successes.

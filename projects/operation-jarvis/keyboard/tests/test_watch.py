@@ -92,12 +92,12 @@ class ResponsiveTests(unittest.TestCase):
         self.assertFalse(self.state['pending'])
         self.assertIn('presence', self.faults)
 
-    def test_black_v2_migrates_without_claiming_purple_ripples_already_applied(self):
+    def test_black_v2_migrates_without_claiming_white_ripples_already_applied(self):
         old = cycle.initial()
         old.pop('away_applied')
         old.update(version=2, lighting_dark=True, mode='dark', pending=True, last_effect='scan')
         new = cycle.validate_state(old)
-        self.assertEqual(new['version'], 3)
+        self.assertEqual(new['version'], 4)
         self.assertFalse(new['away_applied'])
         self.assertTrue(new['pending'])
         self.assertEqual(new['last_effect'], 'scan')
@@ -115,6 +115,9 @@ class WatchTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.store = cycle.Store(Path(self.temp.name) / 'runtime')
+        self.mouse_patch = patch('mouse_cycle.send')
+        self.mouse_sender = self.mouse_patch.start()
+        self.addCleanup(self.mouse_patch.stop)
 
     def relay(self, now):
         output = io.StringIO()
@@ -142,7 +145,7 @@ class WatchTests(unittest.TestCase):
                    get_presence=lambda: presence('away'), apply=sender)
         result = self.relay(163)
         self.assertEqual(result[0].count('RECOVERED:'), 1)
-        self.assertIn('Purple ripples', result[0])
+        self.assertIn('White ripples', result[0])
         self.assertEqual(result[1], 0)
         self.assertEqual(self.relay(164), ('', 0))
 

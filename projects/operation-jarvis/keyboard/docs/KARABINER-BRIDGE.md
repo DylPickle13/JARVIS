@@ -1,5 +1,17 @@
 # Karabiner lighting bridge — implementation status
 
+## Razer extension (2026-09-25)
+
+The keyboard bridge below remains live and unchanged. A separate model-specific
+Razer DeathAdder Essential 2021 extension is implemented in patch 0003: owned-handle
+async feature set/get, validated replies, lighting/DPI/polling controls, and an
+independent durable journal. The expanded suite passes 97 tests. The complete
+package is now installed with owner approval; lighting commands and setting
+readbacks are verified. DPI/polling and mappings remain unchanged. The initial
+bring-up test confirmed breathing and normal clicking/scrolling; later presence
+automation uses steady/off only and the owner's mouse brightness default is 20%.
+Reconnect/sleep acceptance remains pending. See [Razer deployment status](RAZER.md).
+
 ## Implemented
 
 - Unified project at `projects/operation-jarvis/keyboard/`; mapping rules, lighting,
