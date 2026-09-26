@@ -608,6 +608,7 @@ public struct ScheduledJob: Codable, Equatable, Identifiable, Sendable {
     public let lastStatus: String?
     public let runCount: Int
     public let description: String?
+    public let category: String?
     public let lastSilentSuccessAt: String?
     public let lastOutputAt: String?
     public let lastErrorAt: String?

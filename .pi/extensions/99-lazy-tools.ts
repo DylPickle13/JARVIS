@@ -134,10 +134,11 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Use `jarvis_cron` for Pi/JARVIS scheduled jobs, including questions like 'what cron jobs are running?', 'what scheduled jobs exist?', or 'is there a briefing job?'.",
       "For existence checks by job name, call `jarvis_cron({ action: \"list\" })` and filter the returned jobs; do not grep the repository or inspect OS crontab unless the user explicitly asks for OS cron/launchd.",
       "The scheduler commits sanitized output-producing successes and every failure to bounded owner-only local history; silent successful checks remain silent.",
-      "Common actions: `status`, `list`, `add`, `remove`, `enable`, `disable`, `run`, `runs`, `output`, `install`, and `uninstall`.",
+      "Common actions: `status`, `list`, `add`, `set_category`, `remove`, `enable`, `disable`, `run`, `runs`, `output`, `install`, and `uninstall`.",
+      "Categories organize jobs only: use `category` on add, `list` with `category` to filter, or `set_category` with `jobId` and `category` to move a job. Empty/Uncategorized clears the assignment; schedules and execution are unchanged.",
       "Adding a job requires `schedule` and `prompt`; schedules can be relative (`+5m`), intervals (`5m`), cron, or ISO depending on the runner.",
       "`run` starts one detached manual run; inspect retained history with `runs` and a specific result with `output`.",
-      "Treat remove/disable/install/uninstall changes as mutating operations: require clear user intent and summarize what changed.",
+      "Treat set_category/remove/disable/install/uninstall changes as mutating operations: require clear user intent and summarize what changed.",
     ],
   },
   reaper: {

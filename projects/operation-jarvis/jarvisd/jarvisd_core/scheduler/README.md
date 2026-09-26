@@ -32,6 +32,48 @@ gitignored. The backend enforces these permissions without requiring Pi startup.
 Pi settings remain in `.pi`: reading model configuration does not make Pi the
 owner of execution or persistence.
 
+## Job categories
+
+Each job has an optional `category` text column, added automatically and
+idempotently to existing databases. Missing, blank, or `Uncategorized` values use
+NULL storage and display as **Uncategorized**. New labels are whitespace-normalized,
+title-cased, limited to 64 characters, and reject control characters/recognized
+credentials or private paths. There is no separate registry or category hierarchy.
+
+From the repository root:
+
+```sh
+RUNNER=projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py
+.venv/bin/python "$RUNNER" list --category Shopping
+.venv/bin/python "$RUNNER" set-category gear-hunter --category Shopping
+.venv/bin/python "$RUNNER" set-category "Keyboard lights" --category "Home Automation"
+# Explicitly clear an assignment:
+.venv/bin/python "$RUNNER" set-category gear-hunter --category ""
+```
+
+`add` also accepts `--category`. `set-category` updates only category/updated-at;
+it does not enable, run, reschedule, recreate, or delete a job or touch its history.
+Mutation requires owner intent. Human-readable `list` groups alphabetically,
+Uncategorized last, preserving existing schedule ordering within each group.
+Filtering is case/whitespace-insensitive; `list --category Uncategorized` finds
+unassigned jobs. Disabled jobs remain in CLI inventory.
+
+`list-public` includes a sanitized `category` label without changing its existing
+job ordering or summary. Older clients ignore the extra field; newer clients
+accept missing/null categories. The iPhone and Watch use shared category grouping
+for enabled jobs only, preserving thread IDs, read state, and notification routes.
+The HTTP daemon also explicitly projects/validates `category`; deploying only the
+runner will not update an already-running/frozen daemon's field allowlist. Native
+rollout requires the updated daemon plus rebuilt iPhone/Watch apps. Deploy/restart
+the daemon and install signed apps only through the owner-approved release flow;
+changing category assignments does not itself restart services. No remote
+category-write API or notification payload change is introduced.
+
+Before applying assignments, create a private SQLite online backup (including WAL
+contents) and verify its integrity. Keep job-specific assignments out of schema
+migrations. Roll back code without restoring an old database over newer executions;
+the additive column is safe for old code to ignore.
+
 ## Worker and consumers
 
 The one-minute launchd worker remains independent of the HTTP process. Its label

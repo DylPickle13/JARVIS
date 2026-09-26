@@ -54,7 +54,7 @@ Read-only inventory:
 
 The scheduler uses `projects/operation-jarvis/data/scheduler/scheduler.sqlite`, with directory/file permissions of `0700/0600`. It keeps up to 500 results, each at most 64 KiB. A successful check with no output updates health without adding a result; successes with output and failures are saved. The native Jobs view receives sanitized results, without prompts, models, command lines, credentials, or private paths.
 
-Inside Pi, load `cron` and use `jarvis_cron`. The native Jobs view is read-only. Installing or changing the scheduler requires owner approval. Once approved, use this command for initial host setup:
+Inside Pi, load `cron` and use `jarvis_cron`. Jobs support one category, defaulting to **Uncategorized**: `list` accepts a `category` filter, and `set_category` with `jobId` and `category` changes only organizational metadata. The native iPhone/Watch Jobs views group enabled jobs by category and remain read-only. See [scheduler categories](../jarvisd/jarvisd_core/scheduler/README.md#job-categories) for CLI usage and compatibility. Installing or changing the scheduler requires owner approval. Once approved, use this command for initial host setup:
 
 ```bash
 .venv/bin/python projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json install

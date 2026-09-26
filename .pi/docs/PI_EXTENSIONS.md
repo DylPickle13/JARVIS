@@ -98,6 +98,26 @@ The `operation_jarvis` group is the household-control suite, distinct from Pi co
 
 Authenticated GitHub CLI access is intentionally lazy: discover its schema by loading `github`. Known valid direct calls also auto-load on the JARVIS runtime. Ordinary local `git` operations continue to use the baseline coding shell.
 
+## Scheduled-job categories
+
+Load `cron` and use `jarvis_cron`. Each job has one optional category; missing or
+blank values display as **Uncategorized**. Labels are whitespace-normalized,
+title-cased, and limited to 64 characters. Categories affect organization only,
+not scheduling, notifications, execution, job identity, or history.
+
+- Add with `category: "Shopping"` alongside the normal schedule/prompt.
+- Filter with `{ action: "list", category: "Shopping" }`.
+- Move with `{ action: "set_category", jobId: "gear-hunter", category: "Shopping" }`.
+- Clear with `category: ""` or `category: "Uncategorized"` on `set_category`.
+- `/jarvis-cron set-category "Keyboard lights" --category "Home Automation"`
+  accepts quoted multiword arguments; no shell expressions are evaluated.
+
+Lists group categories alphabetically, with Uncategorized last. The native
+read-only Jobs views use the same sections for enabled jobs only. Category edits
+require user intent. Existing Pi sessions need an owner-controlled `/reload` or a
+new session to load the extended schema; native UI changes require updated app
+builds and deployment of the daemon's additive category projection.
+
 ## Native file attachments
 
 `05-attach.ts` adds `/attach`, a command with no arguments, aliases, subcommands, or LLM tool. It opens an AppKit dialog where you can select, remove, replace, or clear files. **Done** applies the selection; cancelling or closing keeps the previous queue. The next ordinary interactive prompt consumes the staged set atomically.

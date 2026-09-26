@@ -827,7 +827,10 @@ printf '%s\n' '== integrated Watch Jobs and exact-route contract =='
 grep -q 'case \.jobs:' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'WatchJobsView(' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'if page == \.jobs, jobs.unreadJobCount > 0' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'Text("Scheduled Jobs")\|threadSection(title: "Scheduled Jobs"' JARVISWatch/Views/WatchJobsView.swift
+grep -Fq 'ForEach(model.sections.categories)' JARVISWatch/Views/WatchJobsView.swift
+grep -Fq 'threadSection(title: category.name, threads: category.threads)' JARVISWatch/Views/WatchJobsView.swift
+grep -Fq 'ForEach(sections.categories)' JARVIS/Views/JobsView.swift
+grep -Fq 'jobGroup(title: category.name, threads: category.threads)' JARVIS/Views/JobsView.swift
 grep -q 'Text("Archived Jobs")\|threadSection(title: "Archived Jobs"' JARVISWatch/Views/WatchJobsView.swift
 grep -q 'Image(systemName: "chevron.right")' JARVISWatch/Views/WatchJobsView.swift
 grep -q 'accessibilityLabel("Back to Jobs")' JARVISWatch/Views/WatchJobsView.swift

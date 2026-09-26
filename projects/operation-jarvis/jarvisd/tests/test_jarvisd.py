@@ -1097,6 +1097,7 @@ class DaemonUnitTests(unittest.TestCase):
                 "lastStatus": "success",
                 "runCount": 7,
                 "description": "Daily search from /Users/example/private/source.md",
+                "category": "Shopping",
                 "prompt": "private prompt",
                 "model": "private model",
                 "privateDeliveryId": "private-delivery",
@@ -1105,11 +1106,30 @@ class DaemonUnitTests(unittest.TestCase):
         })
         self.assertTrue(result["ok"])
         self.assertEqual(result["summary"], {"total": 1, "enabled": 1, "running": 0, "errors": 0})
+        self.assertEqual(result["jobs"][0]["category"], "Shopping")
         encoded = json.dumps(result)
         self.assertNotIn("private prompt", encoded)
         self.assertNotIn("private model", encoded)
         self.assertNotIn("private-delivery", encoded)
         self.assertNotIn("/Users/", encoded)
+
+    def test_scheduled_job_categories_are_additive_bounded_and_sanitized(self):
+        job = {"id": "job_category", "name": "category", "kind": "interval", "schedule": "1h",
+               "enabled": True, "runCount": 0}
+        payload = {"ok": True, "jobs": [job]}
+        self.assertEqual(jarvisd._public_scheduled_jobs(payload)["jobs"][0]["category"], "Uncategorized")
+        for value, expected in [(None, "Uncategorized"), ("  ", "Uncategorized"),
+                                (" Home  Automation ", "Home Automation")]:
+            job["category"] = value
+            self.assertEqual(jarvisd._public_scheduled_jobs(payload)["jobs"][0]["category"], expected)
+        job["category"] = "TOKEN=supersecret /Users/example/private"
+        clean = jarvisd._public_scheduled_jobs(payload)["jobs"][0]["category"]
+        self.assertNotIn("supersecret", clean)
+        self.assertNotIn("/Users/", clean)
+        for invalid in [42, True, [], "x" * 257]:
+            job["category"] = invalid
+            with self.subTest(value=invalid), self.assertRaises(ValueError):
+                jarvisd._public_scheduled_jobs(payload)
 
     def test_scheduled_jobs_runner_is_fixed_bounded_and_fail_closed(self):
         payload = {
@@ -1117,6 +1137,7 @@ class DaemonUnitTests(unittest.TestCase):
             "jobs": [{
                 "id": "job_demo",
                 "name": "demo",
+                "category": "Maintenance",
                 "kind": "interval",
                 "schedule": "5m",
                 "enabled": False,
@@ -1132,6 +1153,7 @@ class DaemonUnitTests(unittest.TestCase):
              mock.patch.object(jarvisd.subprocess, "run", return_value=completed) as run:
             result = jarvisd._scheduled_jobs()
         self.assertTrue(result["ok"])
+        self.assertEqual(result["jobs"][0]["category"], "Maintenance")
         argv = run.call_args.args[0]
         self.assertEqual(argv[-2:], ["--json", "list-public"])
         self.assertNotIn("private stderr", json.dumps(result))

@@ -55,8 +55,8 @@ struct JobsView: View {
                             color: .secondary
                         )
                     } else {
-                        if !sections.scheduled.isEmpty {
-                            jobGroup(title: "Scheduled Jobs", threads: sections.scheduled)
+                        ForEach(sections.categories) { category in
+                            jobGroup(title: category.name, threads: category.threads)
                         }
                         if !sections.archived.isEmpty {
                             jobGroup(title: "Archived Jobs", threads: sections.archived)

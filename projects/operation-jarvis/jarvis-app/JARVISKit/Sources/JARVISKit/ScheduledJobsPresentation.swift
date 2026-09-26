@@ -17,9 +17,18 @@ public struct ScheduledJobThread: Identifiable, Sendable {
     public var isArchived: Bool { job == nil }
 }
 
+public struct ScheduledJobCategorySection: Identifiable, Sendable {
+    public let name: String
+    public let threads: [ScheduledJobThread]
+    public var id: String { name }
+}
+
 public struct ScheduledJobThreadSections: Sendable {
     public let scheduled: [ScheduledJobThread]
     public let archived: [ScheduledJobThread]
+    public var categories: [ScheduledJobCategorySection] {
+        JobsPresentation.categoryGroups(scheduled)
+    }
 
     public init(scheduled: [ScheduledJobThread], archived: [ScheduledJobThread]) {
         self.scheduled = scheduled
@@ -29,6 +38,25 @@ public struct ScheduledJobThreadSections: Sendable {
 
 /// Pure Jobs grouping and presentation policy shared by iPhone and Apple Watch.
 public enum JobsPresentation {
+    public static func categoryName(_ value: String?) -> String {
+        let label = (value ?? "")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .capitalized(with: Locale(identifier: "en_US_POSIX"))
+        return label.isEmpty ? "Uncategorized" : label
+    }
+
+    /// Stable alphabetical sections; retain scheduler order and thread identities within each.
+    public static func categoryGroups(_ threads: [ScheduledJobThread]) -> [ScheduledJobCategorySection] {
+        let grouped = Dictionary(grouping: threads) { categoryName($0.job?.category) }
+        let names = grouped.keys.sorted { lhs, rhs in
+            if lhs == "Uncategorized" { return false }
+            if rhs == "Uncategorized" { return true }
+            return lhs < rhs
+        }
+        return names.map { ScheduledJobCategorySection(name: $0, threads: grouped[$0] ?? []) }
+    }
+
     /// The Jobs surface contains only currently enabled schedules. Retained
     /// history is not deleted, but absent/disabled jobs never become root rows.
     public static func visibleThreads(

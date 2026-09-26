@@ -44,8 +44,8 @@ struct WatchJobsView: View {
                 } else if model.sections.scheduled.isEmpty && model.sections.archived.isEmpty {
                     emptyCard
                 } else {
-                    if !model.sections.scheduled.isEmpty {
-                        threadSection(title: "Scheduled Jobs", threads: model.sections.scheduled)
+                    ForEach(model.sections.categories) { category in
+                        threadSection(title: category.name, threads: category.threads)
                     }
                     if !model.sections.archived.isEmpty {
                         threadSection(title: "Archived Jobs", threads: model.sections.archived)

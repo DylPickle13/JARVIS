@@ -66,6 +66,79 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(self.runner.DB_PATH.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.runner.DB_PATH.parent.stat().st_mode & 0o777, 0o700)
 
+    def test_category_migration_is_repeat_safe_and_preserves_existing_job(self) -> None:
+        job_id = self.add_direct_job()
+        with closing(self.runner.connect()) as conn:
+            conn.execute("ALTER TABLE jobs DROP COLUMN category")
+            before = dict(conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
+            self.runner.init_db(conn)
+            self.runner.init_db(conn)
+            after = dict(conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
+        self.assertIsNone(after.pop("category"))
+        self.assertEqual(before, after)
+        self.assertEqual(self.runner.list_public_jobs(argparse.Namespace())["jobs"][0]["category"], "Uncategorized")
+
+    def test_category_add_normalizes_and_list_filters_in_group_order(self) -> None:
+        parser = self.runner.build_parser()
+        ids = {}
+        for name, category in [("plain", None), ("gear", " shopping "), ("keys", "HOME  automation"),
+                               ("apple", "SHOPPING"), ("backup", "Maintenance")]:
+            argv = ["add", "--name", name, "--schedule", "1h", "--prompt", "not executed"]
+            if category is not None:
+                argv += ["--category", category]
+            ids[name] = self.runner.add_job(parser.parse_args(argv))["job"]["id"]
+        listing = self.runner.list_jobs(parser.parse_args(["list"]))
+        self.assertEqual([job["category"] for job in listing["jobs"]],
+                         ["Home Automation", "Maintenance", "Shopping", "Shopping", None])
+        self.assertEqual(listing["message"].count("  Shopping:"), 1)
+        shopping = self.runner.list_jobs(parser.parse_args(["list", "--category", "  sHopping"]))["jobs"]
+        self.assertEqual({job["id"] for job in shopping}, {ids["gear"], ids["apple"]})
+        plain = self.runner.list_jobs(parser.parse_args(["list", "--category", "Uncategorized"]))["jobs"]
+        self.assertEqual([job["id"] for job in plain], [ids["plain"]])
+        self.assertEqual(self.runner.list_jobs(parser.parse_args(["list", "--category", "Unknown"]))["jobs"], [])
+        public = self.runner.list_public_jobs(argparse.Namespace())["jobs"]
+        self.assertEqual(next(job["category"] for job in public if job["id"] == ids["gear"]), "Shopping")
+        self.assertTrue(all(not {"prompt", "model"} & job.keys() for job in public))
+
+    def test_category_change_only_updates_metadata_and_keeps_history_and_disabled_state(self) -> None:
+        job_id = self.add_direct_job(prompt="/bin/echo retained-category-test")
+        self.runner.run_one(argparse.Namespace(job_id=job_id))
+        self.runner.set_enabled(argparse.Namespace(job_id=job_id), False)
+        with closing(self.runner.connect()) as conn:
+            before = dict(conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
+            history = [tuple(row) for row in conn.execute("SELECT * FROM results")]
+            outbox = [tuple(row) for row in conn.execute("SELECT * FROM notification_outbox")]
+        for target, expected in [(" maintenance ", "Maintenance"), ("Shopping", "Shopping"),
+                                 ("", None), ("Uncategorized", None)]:
+            # Exercise name lookup, not just ID lookup.
+            updated = self.runner.set_category(argparse.Namespace(job_id=before["name"], category=target))["job"]
+            self.assertEqual(updated["category"], expected)
+            self.assertEqual({k: v for k, v in updated.items() if k not in {"category", "updated_at"}},
+                             {k: v for k, v in before.items() if k not in {"category", "updated_at"}})
+        with closing(self.runner.connect()) as conn:
+            self.assertEqual([tuple(row) for row in conn.execute("SELECT * FROM results")], history)
+            self.assertEqual([tuple(row) for row in conn.execute("SELECT * FROM notification_outbox")], outbox)
+
+    def test_invalid_categories_and_missing_job_do_not_mutate_jobs(self) -> None:
+        job_id = self.add_direct_job()
+        before = self.runner.list_jobs(argparse.Namespace())["jobs"]
+        for category in ["x" * 65, "bad\x00label", "TOKEN=supersecret", "/Users/example/private"]:
+            with self.subTest(category=category), self.assertRaises(ValueError):
+                self.runner.set_category(argparse.Namespace(job_id=job_id, category=category))
+        with self.assertRaisesRegex(ValueError, "Job not found"):
+            self.runner.set_category(argparse.Namespace(job_id="missing", category="Shopping"))
+        self.assertEqual(self.runner.list_jobs(argparse.Namespace())["jobs"], before)
+        self.assertEqual(self.runner.normalize_category("  home\t automation  "), "Home Automation")
+        self.assertIsNone(self.runner.normalize_category("   "))
+
+    def test_category_public_projection_sanitizes_even_legacy_raw_metadata(self) -> None:
+        job_id = self.add_direct_job()
+        with closing(self.runner.connect()) as conn, conn:
+            conn.execute("UPDATE jobs SET category=? WHERE id=?", ("TOKEN=supersecret /Users/example/private", job_id))
+        category = self.runner.list_public_jobs(argparse.Namespace())["jobs"][0]["category"]
+        self.assertNotIn("supersecret", category)
+        self.assertNotIn("/Users/", category)
+
     def test_silent_direct_success_updates_health_without_result(self) -> None:
         job_id = self.add_direct_job()
         result = self.runner.run_one(argparse.Namespace(job_id=job_id))["run"]

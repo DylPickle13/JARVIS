@@ -25,6 +25,17 @@ for ownership, consumer paths, tests, and safe migration/rollback. The
 [installed cutover record](docs/scheduler-relocation.md) documents verification
 and remaining `.pi` extraction candidates.
 
+**Job categories deployed 2026-09-25 EDT:** release
+`20260926T022259Z-job-categories` adds the sanitized `category` field to the
+installed daemon's scheduled-jobs projection for native build 226. The release
+preserves the previous frozen backend and all configuration, changing only the
+projection and focused tests (690 frozen-backend tests passed). Authenticated
+jobs/history, diagnostics, and health reads passed; Shopping, Maintenance, and
+Home Automation assignments were verified. Only jarvisd was restarted; scheduler,
+watchdog, terminal/audio services, and Pi pane identities were preserved. The
+initial launchd registration race was rolled back before an unload-aware retry
+succeeded. Physical UI acceptance remains separate from API verification.
+
 **Exclusive-ownership cutover is not active:** see the historical
 [candidate progress and blocking gates](docs/cutover-status.md). The deployed
 best-effort CLI/Pi and native routing does not require that deferred machinery.

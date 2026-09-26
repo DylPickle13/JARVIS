@@ -105,6 +105,59 @@ final class ScheduledJobsTests: XCTestCase {
         XCTAssertEqual(JobsPresentation.cadence(kind: "interval", schedule: "5m"), "Every 5 minutes")
     }
 
+    func testCategoryDecodingAcceptsOldMissingAndNullMetadata() throws {
+        XCTAssertNil(try job(id: "old", enabled: true).category)
+        let explicitNull: ScheduledJob = try decode([
+            "id": "null", "name": "null", "kind": "interval", "schedule": "1m",
+            "enabled": true, "runCount": 0, "category": NSNull(),
+        ])
+        XCTAssertNil(explicitNull.category)
+        XCTAssertEqual(JobsPresentation.categoryName(nil), "Uncategorized")
+        XCTAssertEqual(JobsPresentation.categoryName(" \t "), "Uncategorized")
+        XCTAssertEqual(JobsPresentation.categoryName(" home  AUTOMATION "), "Home Automation")
+    }
+
+    func testCategoriesAreAlphabeticalWithUncategorizedLastAndStableJobOrder() throws {
+        let jobs = [
+            try job(id: "plain", enabled: true),
+            try job(id: "gear", enabled: true, category: "Shopping"),
+            try job(id: "keys", enabled: true, category: "Home Automation"),
+            try job(id: "apple", enabled: true, category: " shopping "),
+            try job(id: "backup", enabled: true, category: "Maintenance"),
+            try job(id: "blank", enabled: true, category: " "),
+            try job(id: "disabled", enabled: false, category: "Hidden Category"),
+        ]
+        let messages = [try result(sequence: 1, jobID: "gear"), try result(sequence: 2, jobID: "removed")]
+        let sections = JobsPresentation.visibleThreads(jobs: jobs, results: messages)
+        XCTAssertEqual(sections.categories.map(\.name), ["Home Automation", "Maintenance", "Shopping", "Uncategorized"])
+        XCTAssertEqual(sections.categories[2].threads.map(\.id), ["gear", "apple"])
+        XCTAssertEqual(sections.categories.last?.threads.map(\.id), ["plain", "blank"])
+        XCTAssertEqual(sections.categories[2].threads.first?.messages.map(\.sequence), [1])
+        XCTAssertTrue(sections.archived.isEmpty)
+        XCTAssertTrue(JobsPresentation.visibleThreads(jobs: [], results: messages).categories.isEmpty)
+    }
+
+    func testMovingCategoryPreservesThreadIdentityMessagesAndReadWatermark() throws {
+        let message = try result(sequence: 41, jobID: "gear")
+        var readState = ScheduledJobReadState.empty
+        readState.establishBaseline(40)
+        readState.markRead(jobID: "gear", through: 41)
+        let before = JobsPresentation.visibleThreads(
+            jobs: [try job(id: "gear", enabled: true, category: "Shopping")], results: [message]
+        )
+        let after = JobsPresentation.visibleThreads(
+            jobs: [try job(id: "gear", enabled: true, category: "Maintenance")], results: [message]
+        )
+        let original = try XCTUnwrap(before.categories.first?.threads.first)
+        let moved = try XCTUnwrap(after.categories.first?.threads.first)
+        XCTAssertEqual(original.id, moved.id)
+        XCTAssertEqual(original.messages, moved.messages)
+        XCTAssertEqual(readState.readSequence(for: moved.id), 41)
+        let route = try XCTUnwrap(ScheduledJobNavigationRequest(resultSequence: 41))
+        XCTAssertEqual(moved.messages.first?.sequence, route.resultSequence)
+        XCTAssertEqual(after.categories.map(\.name), ["Maintenance"])
+    }
+
     func testRichTextPermitsOnlyBoundedCredentialFreeHTTPLinks() {
         let attributed = JobResultRichText.attributedString(
             "[good](https://example.com/a) [bad](ftp://example.com/a) "
@@ -115,8 +168,8 @@ final class ScheduledJobsTests: XCTestCase {
         XCTAssertEqual(String(attributed.characters), "good bad credentials")
     }
 
-    private func job(id: String, enabled: Bool) throws -> ScheduledJob {
-        try decode([
+    private func job(id: String, enabled: Bool, category: String? = nil) throws -> ScheduledJob {
+        var payload: [String: Any] = [
             "id": id,
             "name": id,
             "kind": "interval",
@@ -131,7 +184,9 @@ final class ScheduledJobsTests: XCTestCase {
             "lastOutputAt": NSNull(),
             "lastErrorAt": NSNull(),
             "consecutiveErrors": 0,
-        ])
+        ]
+        if let category { payload["category"] = category }
+        return try decode(payload)
     }
 
     private func result(sequence: Int, jobID: String) throws -> ScheduledJobResult {

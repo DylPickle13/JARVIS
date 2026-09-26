@@ -947,6 +947,10 @@ def _public_scheduled_jobs(payload: Any) -> dict:
         next_run_at = _scheduled_job_string(raw.get("nextRunAt"), limit=64, optional=True)
         last_run_at = _scheduled_job_string(raw.get("lastRunAt"), limit=64, optional=True)
         description = _scheduled_job_string(raw.get("description"), limit=300, optional=True)
+        category = _scheduled_job_string(
+            _scheduled_result_text(raw.get("category"), maximum_bytes=256, optional=True),
+            limit=64, optional=True,
+        ) or "Uncategorized"
         if description:
             description = re.sub(
                 r"(/Users/[^\s,;]+|/private/[^\s,;]+|/tmp/[^\s,;]+)",
@@ -967,6 +971,7 @@ def _public_scheduled_jobs(payload: Any) -> dict:
             "lastStatus": last_status,
             "runCount": min(run_count, 2_147_483_647),
             "description": description,
+            "category": category,
             "lastSilentSuccessAt": _scheduled_job_string(raw.get("lastSilentSuccessAt"), limit=64, optional=True),
             "lastOutputAt": _scheduled_job_string(raw.get("lastOutputAt"), limit=64, optional=True),
             "lastErrorAt": _scheduled_job_string(raw.get("lastErrorAt"), limit=64, optional=True),

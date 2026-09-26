@@ -13,6 +13,7 @@ import { truncate } from "./lib/text";
 const ACTIONS = [
   "add",
   "list",
+  "set_category",
   "remove",
   "enable",
   "disable",
@@ -41,6 +42,40 @@ function pythonPath(cwd: string): string {
   if (env.PI_PYTHON) return resolve(root, env.PI_PYTHON);
   const venvPython = join(root, ".venv", "bin", "python");
   return existsSync(venvPython) ? venvPython : "python3";
+}
+
+// Tokenize quoted CLI arguments without evaluating shell expressions.
+export function parseCronArguments(input: string): string[] {
+  const args: string[] = [];
+  let value = "";
+  let quote = "";
+  let escaped = false;
+  let started = false;
+  for (const char of input) {
+    if (escaped) {
+      value += char;
+      escaped = false;
+    } else if (char === "\\" && quote !== "'") {
+      escaped = true;
+      started = true;
+    } else if (quote) {
+      if (char === quote) quote = "";
+      else value += char;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+      started = true;
+    } else if (/\s/.test(char)) {
+      if (started) args.push(value);
+      value = "";
+      started = false;
+    } else {
+      value += char;
+      started = true;
+    }
+  }
+  if (quote || escaped) throw new Error("Unclosed quote or trailing escape in cron command");
+  if (started) args.push(value);
+  return args;
 }
 
 function commandName(action: string): string {
@@ -73,6 +108,7 @@ export default function registerJarvisCron(pi: ExtensionAPI) {
     parameters: Type.Object({
       action: StringEnum(ACTIONS, { description: "Operation." }),
       name: Type.Optional(Type.String({ description: "Job name." })),
+      category: Type.Optional(Type.String({ description: "Category for add/set_category, or list filter. Empty/Uncategorized clears assignment." })),
       schedule: Type.Optional(Type.String({ description: "+5m, ISO, 5m interval, or cron." })),
       prompt: Type.Optional(Type.String({ description: "Job prompt." })),
       jobId: Type.Optional(Type.String({ description: "Job id/name." })),
@@ -93,6 +129,12 @@ export default function registerJarvisCron(pi: ExtensionAPI) {
         if (params.kind) args.push("--kind", params.kind);
         if (params.model) args.push("--model", params.model);
         if (params.description) args.push("--description", params.description);
+        if (params.category !== undefined) args.push("--category", params.category);
+      } else if (params.action === "set_category") {
+        if (!params.jobId || params.category === undefined) throw new Error("set_category requires jobId and category");
+        args.push(params.jobId, "--category", params.category);
+      } else if (params.action === "list") {
+        if (params.category !== undefined) args.push("--category", params.category);
       } else if (["remove", "enable", "disable", "run"].includes(params.action)) {
         if (!params.jobId) throw new Error(`${params.action} requires jobId`);
         args.push(params.jobId);
@@ -128,7 +170,7 @@ export default function registerJarvisCron(pi: ExtensionAPI) {
     description: "Manage private Pi/JARVIS scheduled jobs. With no args, show status.",
     handler: async (args, ctx) => {
       const runner = runnerPath(ctx.cwd);
-      const parts = args.trim() ? args.trim().split(/\s+/) : ["status"];
+      const parts = args.trim() ? parseCronArguments(args) : ["status"];
       const commandIndex = parts[0] === "--json" ? 1 : 0;
       if (parts[commandIndex] === "run" && parts[commandIndex + 1]) {
         const pid = startDetached(ctx.cwd, [runner, ...parts]);

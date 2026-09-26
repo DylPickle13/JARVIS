@@ -150,6 +150,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           description TEXT,
+          category TEXT,
           last_silent_success_at TEXT,
           last_output_at TEXT,
           last_error_at TEXT,
@@ -235,6 +236,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     )
     columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
     additions = {
+        "category": "TEXT",
         "last_silent_success_at": "TEXT",
         "last_output_at": "TEXT",
         "last_error_at": "TEXT",
@@ -1161,7 +1163,27 @@ def result_row_to_public(row: sqlite3.Row | None) -> dict[str, Any] | None:
     }
 
 
+def normalize_category(value: str | None) -> str | None:
+    """One bounded, title-cased label; NULL represents Uncategorized."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or any(not char.isprintable() and not char.isspace() for char in value):
+        raise ValueError("Category must be printable text")
+    label = " ".join(value.split())
+    if sanitize_text(label) != label:
+        raise ValueError("Category must not contain credentials or private paths")
+    label = label.title()
+    if len(label) > 64:
+        raise ValueError("Category must be at most 64 characters")
+    return None if not label or label == "Uncategorized" else label
+
+
+def category_label(value: str | None) -> str:
+    return normalize_category(value) or "Uncategorized"
+
+
 def add_job(args: argparse.Namespace) -> dict[str, Any]:
+    category = normalize_category(getattr(args, "category", None))
     kind = infer_kind(args.schedule, args.kind)
     next_run = compute_next_run(args.schedule, kind)
     job_id = args.job_id or f"job_{uuid.uuid4().hex[:12]}"
@@ -1171,26 +1193,48 @@ def add_job(args: argparse.Namespace) -> dict[str, Any]:
         with conn:
             conn.execute(
                 """
-                INSERT INTO jobs(id,name,schedule,kind,prompt,enabled,model,next_run_at,created_at,updated_at,description)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO jobs(id,name,schedule,kind,prompt,enabled,model,next_run_at,created_at,updated_at,description,category)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
-                (job_id, name, args.schedule, kind, args.prompt, 1, args.model, next_run, now, now, args.description),
+                (job_id, name, args.schedule, kind, args.prompt, 1, args.model, next_run, now, now, args.description, category),
             )
         job = dict(conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
     return {"ok": True, "message": f"Scheduled {name} ({job_id}) next at {next_run}", "job": job}
 
 
-def list_jobs(_args: argparse.Namespace) -> dict[str, Any]:
+def list_jobs(args: argparse.Namespace) -> dict[str, Any]:
     with closing(connect()) as conn:
         jobs = [dict(row) for row in conn.execute("SELECT * FROM jobs ORDER BY enabled DESC,next_run_at ASC,created_at DESC")]
+    category = getattr(args, "category", None)
+    if category is not None:
+        wanted = category_label(category)
+        jobs = [job for job in jobs if category_label(job["category"]) == wanted]
+    jobs.sort(key=lambda job: (category_label(job["category"]) == "Uncategorized", category_label(job["category"]).casefold()))
     lines = ["Scheduled Pi jobs:"]
-    lines.extend(
-        f"  {'✓' if job['enabled'] else '✗'} {job['name']} ({job['id']}) {job['kind']} {job['schedule']} next={job['next_run_at'] or '-'} runs={job['run_count']}"
-        for job in jobs
-    )
+    previous_category = None
+    for job in jobs:
+        label = category_label(job["category"])
+        if label != previous_category:
+            lines.append(f"  {label}:")
+            previous_category = label
+        lines.append(
+            f"    {'✓' if job['enabled'] else '✗'} {job['name']} ({job['id']}) {job['kind']} {job['schedule']} next={job['next_run_at'] or '-'} runs={job['run_count']}"
+        )
     if not jobs:
         lines.append("  none")
     return {"ok": True, "message": "\n".join(lines), "jobs": jobs}
+
+
+def set_category(args: argparse.Namespace) -> dict[str, Any]:
+    category = normalize_category(args.category)
+    with closing(connect()) as conn:
+        with conn:
+            job = conn.execute("SELECT id,name FROM jobs WHERE id=? OR name=?", (args.job_id, args.job_id)).fetchone()
+            if not job:
+                raise ValueError(f"Job not found: {args.job_id}")
+            conn.execute("UPDATE jobs SET category=?,updated_at=? WHERE id=?", (category, iso(), job["id"]))
+        updated = dict(conn.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone())
+    return {"ok": True, "message": f"Moved {job['name']} to {category_label(category)}", "job": updated}
 
 
 def list_public_jobs(_args: argparse.Namespace) -> dict[str, Any]:
@@ -1198,7 +1242,7 @@ def list_public_jobs(_args: argparse.Namespace) -> dict[str, Any]:
         rows = conn.execute(
             """
             SELECT id,name,kind,schedule,enabled,next_run_at,last_run_at,last_status,
-                   run_count,description,last_silent_success_at,last_output_at,
+                   run_count,description,category,last_silent_success_at,last_output_at,
                    last_error_at,consecutive_errors
               FROM jobs
              ORDER BY enabled DESC,next_run_at ASC,created_at DESC
@@ -1216,6 +1260,7 @@ def list_public_jobs(_args: argparse.Namespace) -> dict[str, Any]:
             "lastStatus": row["last_status"],
             "runCount": int(row["run_count"] or 0),
             "description": sanitize_text(row["description"]) if row["description"] else None,
+            "category": sanitize_text(row["category"]) if row["category"] else "Uncategorized",
             "lastSilentSuccessAt": row["last_silent_success_at"],
             "lastOutputAt": row["last_output_at"],
             "lastErrorAt": row["last_error_at"],
@@ -1710,7 +1755,12 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--prompt", required=True)
     add.add_argument("--model")
     add.add_argument("--description")
-    sub.add_parser("list")
+    add.add_argument("--category", help="One category (default: Uncategorized)")
+    listing = sub.add_parser("list")
+    listing.add_argument("--category", help="Filter by category, including Uncategorized")
+    category = sub.add_parser("set-category")
+    category.add_argument("job_id")
+    category.add_argument("--category", required=True, help="New category; empty or Uncategorized clears it")
     sub.add_parser("list-public")
     results = sub.add_parser("list-results-public")
     results.add_argument("--after")
@@ -1745,6 +1795,7 @@ def main(argv: list[str] | None = None) -> int:
         commands = {
             "add": add_job,
             "list": list_jobs,
+            "set-category": set_category,
             "list-public": list_public_jobs,
             "list-results-public": list_public_results,
             "remove": remove_job,
