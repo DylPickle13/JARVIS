@@ -6,7 +6,6 @@ import time
 
 import cycle
 
-AWAY_DELAY = 0  # Use the keyboard's fresh away transition; no extra display delay.
 MAX_GAP = 30
 
 
@@ -54,7 +53,7 @@ def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=No
     try:
         presence = cycle.basement(get_presence())
     except cycle.CycleError:
-        state['away_since'] = None  # Unknown never contributes to an away delay.
+        state['away_since'] = None  # Unknown breaks consecutive away confirmation.
         save()
         return '', 0
     action = None
@@ -68,7 +67,9 @@ def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=No
     elif state['mode'] != 'away':
         if state['away_since'] is None:
             state['away_since'] = current
-        if current - state['away_since'] >= AWAY_DELAY:
+        elif current > state['away_since']:
+            # A second consecutive fresh watcher check confirms away. The
+            # post-save freshness recheck below is not another watcher check.
             action = 'lock-sleep'
     save()
     if action is None:

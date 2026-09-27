@@ -37,21 +37,22 @@ The Mac currently has computer sleep and display sleep set to never; this change
 does not modify those system settings. Keep computer sleep off for JARVIS, but set
 a normal display/inactivity timeout in System Settings as a fallback.
 
-- First fresh basement away (same shared signal as the keyboard, no extra delay):
-  request session lock, verify
+- Two consecutive fresh basement away watcher checks (normally about 3 seconds
+  apart): request session lock, verify
   `CGSSessionScreenIsLocked`, then `pmset displaysleepnow` for connected displays.
 - Fresh nearby after successful automated away: declare user activity via IOKit
   once to wake displays. Never unlock, type credentials, or prevent later idle sleep.
 - Initial nearby does not wake displays; unchanged states and restarts do not replay
   successful actions. Unknown/stale never triggers an action. The existing backend
   nearby hold and watcher polling latency remain; this is not instantaneous physical
-  departure detection. The persisted timer fields remain compatible with old state.
+  departure detection. Nearby, unknown/stale, clock reversal, or a polling gap over
+  30 seconds resets away confirmation. Persisted fields remain compatible with old state.
 - Persist a pending marker before actions; any failed/uncertain command blocks all
   subsequent display actions until explicit owner review. No automatic retry.
 - The helper is bounded to eight seconds. The macOS lock API is private and may
   change on OS updates; absence/failure blocks display sleep rather than claiming a
   lock. The owner confirmed the original two-minute departure/return behavior worked;
-  the no-extra-delay version still needs a physical timing check.
+  the two-check safeguard still needs a physical timing check.
 - Runtime files: `display-config.json` (opt-in), `display-state.json` (transitions,
   timer, pending/fault). Messages use the existing minute-based alert outbox.
 
@@ -75,9 +76,9 @@ not delete pending state to recover automatically. Backend proximity is not an
 authentication factor; a phone/watch left downstairs may keep reporting nearby.
 The independent macOS inactivity lock remains necessary.
 
-Validation: 123 offline tests pass (including 10 display tests); read-only session
-inspection succeeds on this Mac. Owner confirmed live lock/sleep/wake worked before
-removal of the extra two-minute delay.
+Validation: 126 offline tests pass (including 13 display tests). Owner confirmed
+live lock/sleep/wake worked before removal of the extra two-minute delay; the
+subsequent two-check safeguard has offline coverage but awaits physical validation.
 
 ## Safety and failures
 

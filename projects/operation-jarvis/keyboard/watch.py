@@ -48,7 +48,7 @@ def snapshot(store):
 def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.send,
          mouse_apply=None, display_apply=None):
     """Called with cycle.lock held. Share one age-adjusted presence snapshot."""
-    value = snapshot(store)  # Corrupt outbox blocks both devices before any writes.
+    value = snapshot(store)  # Corrupt outbox blocks all three controllers before any writes.
     cached = None
     fetched = False
     observed = None
@@ -89,7 +89,7 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
 
 
 def relay(store, *, now=time.time):
-    """Scheduler-only reporting; never reads presence or sends lighting commands."""
+    """Computer presence alert relay; never reads presence or controls devices."""
     value = snapshot(store)
     old = store.load('watcher-health.json', False)
     if type(old) is not bool:
@@ -99,9 +99,9 @@ def relay(store, *, now=time.time):
     failed = age is None or not 0 <= age <= HEALTH_AGE
     messages = list(value['alerts'])
     if failed and not old:
-        messages.append({'message': 'ERROR: Keyboard/mouse presence watcher is not responding; lighting may remain unchanged.', 'code': 1})
+        messages.append({'message': 'ERROR: Computer presence watcher is not responding; keyboard, mouse, and monitor automation may not respond to presence changes.', 'code': 1})
     elif old and not failed:
-        messages.append({'message': 'RECOVERED: Keyboard/mouse presence watcher is responding again (not lighting readback).', 'code': 0})
+        messages.append({'message': 'RECOVERED: Computer presence watcher is responding again for keyboard, mouse, and monitors (not device-state verification).', 'code': 0})
     # Called under the same lock as the producer. Healthy cycles emit nothing.
     for item in messages:
         print(item['message'], flush=True)
@@ -155,15 +155,18 @@ def main():
             result = relay(store)
             if cycle.bootstrap_exists():
                 cycle.bootstrap_path().unlink()
-                print('RECOVERED: Keyboard alert storage is accessible again.', flush=True)
+                print('RECOVERED: Computer presence alert storage is accessible again for keyboard, mouse, and monitors.', flush=True)
             return result
     except BlockingIOError:
         return 0  # Next scheduler tick can drain the durable queue.
     except (OSError, ValueError, TypeError, KeyError, cycle.CycleError):
         try:
             message, code = cycle.bootstrap_error()
+            if message:
+                message = ('ERROR: Computer presence alert relay cannot access its private state; '
+                           'keyboard, mouse, and monitor status is unavailable. Repair state access.')
         except (OSError, cycle.CycleError):
-            message, code = 'ERROR: Keyboard alert relay cannot persist its failure latch; repair storage.', 1
+            message, code = 'ERROR: Computer presence alert relay cannot persist its failure latch; keyboard, mouse, and monitor status is unavailable. Repair storage.', 1
         if message:
             print(message, flush=True)
         return code

@@ -150,13 +150,18 @@ class WatchTests(unittest.TestCase):
         self.assertEqual(self.relay(164), ('', 0))
 
     def test_missing_watcher_reports_once_then_recovers_without_hid_from_relay(self):
-        self.assertEqual(self.relay(100)[1], 1)
+        result = self.relay(100)
+        self.assertEqual(result[1], 1)
+        self.assertIn('Computer presence', result[0])
+        self.assertIn('keyboard, mouse, and monitor', result[0])
         self.assertEqual(self.relay(160), ('', 0))
         watch.step(self.store, now=lambda: 163, get_presence=lambda: presence(), apply=Mock())
         with patch.object(cycle, 'send', side_effect=AssertionError('No relay HID')):
             result = self.relay(166)
         self.assertIn('RECOVERED:', result[0])
-        self.assertIn('not lighting readback', result[0])
+        self.assertIn('not device-state verification', result[0])
+        self.assertIn('Computer presence', result[0])
+        self.assertIn('keyboard, mouse, and monitors', result[0])
         self.assertEqual(self.relay(169), ('', 0))
 
     def test_stale_heartbeat_alert_is_latched(self):
