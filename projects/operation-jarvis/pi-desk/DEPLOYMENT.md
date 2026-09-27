@@ -1,3 +1,71 @@
+# Full-colour two-pane divider — 2026-09-27, 14:12 EDT
+
+Disabled tmux's default `pane-border-indicators colour` behaviour with
+`pane-border-indicators off`. The default intentionally colours only half of a
+shared border when there are exactly two panes; the shared active divider now
+uses the full purple border style. Focus remains indicated by the selected number
+and pane label. The four top-bar separators still mark the five pairs of session
+numbers; they are not extra pane dividers.
+
+**77 tests passed**, including both focus positions in two-pane mode. Installed
+locally with manifest verification and applied only this live display option.
+Viewer focus and all display/agent pane identities were unchanged; no restart and
+no remote rollout. Backup: `~/.local/state/pi-desk/backups/20260927T181242893478Z/`.
+
+# Smaller responsive width target — 2026-09-27, 14:09 EDT
+
+Reduced the default target from 60 to **52 columns per pane**, calibrated against
+the user's open 110×45 terminal. Initial thresholds are now 105 columns for two
+sessions and 158 for three; the four-column growth buffer remains (109/162).
+Updated documentation and threshold tests, including an isolated live-preference
+change and shrink/grow regression at 110 columns. **76 tests passed**.
+
+Installed locally with a verified manifest and applied the preference to the
+existing viewer without restarting it. Live verification: session 1 is 55 columns,
+session 2 is 54 columns and remains selected; the header has four two-session-group
+dividers. All ten hosted-agent pane identities and all pre-existing display pane
+identities were preserved. Remote installations were not touched.
+
+Rollback backup: `~/.local/state/pi-desk/backups/20260927T180931405080Z/`.
+
+# Responsive viewer layouts — 2026-09-27, 14:04 EDT
+
+Implemented and installed on mac-mini-64 using the local backend. All installed
+source files and manifest hashes verified. Existing viewers were not reconfigured,
+restarted, or detached: six display pane identities and all ten hosted-agent pane
+identities were unchanged across installation. Close and reopen all local viewers
+to activate the new workspace/renderer and replace the old elected status monitor.
+No remote machine or long-running service was changed.
+
+- Initial width thresholds: one session below 121 columns, two at 121–181, three
+  at 182+. The observed 184×45 viewer retains three approximately 60-column panes.
+- 180 ms resize debounce, four-column growth buffer, and configurable per-viewer
+  `PI_DESK_MIN_COLUMNS` (default 60). A direct terminal-size watcher avoids idle
+  subprocess polling and waits for tmux to observe the new dimensions.
+- Viewer-private workspaces preserve focus and reuse attachment processes by
+  parking off-screen panes; simultaneous viewers can use different group sizes.
+  Normal exit/hangup removes only the owned display workspace.
+- Header group dividers, group tint, density and shortcut hints adapt to width;
+  narrow headers keep the selected tab visible and clickable. Warning rows are
+  explicitly included in session-local status arrays. Escaped conditional purple
+  values prevent tmux interpreting `#D` as its pane-ID shorthand.
+- Native in-group navigation validates live window/pane order and liveness.
+  Cross-group navigation and recovery serialize pane reconciliation. Legacy
+  fixed-group navigation remains supported until old viewers are closed.
+
+Validation: **75 tests passed** on mac-mini-64, plus shell syntax and whitespace
+checks. New coverage uses isolated tmux sockets, real PTYs and dummy sleep
+processes: all ten selections in all modes, actual native arrow keys and bounds,
+independent viewers, pane PID preservation, missing/dead/parked-pane recovery,
+missing visible-window recovery, warning-row height changes, narrow header format
+expansion, debounce, delayed SIGWINCH handling, and the full viewer's automatic
+resizing and SIGHUP cleanup. No hosted agents were restarted during tests.
+
+Rollback backup:
+`~/.local/state/pi-desk/backups/20260927T180407187615Z/`.
+Raspberry Pi/mac-mini-16 rollout and physical-screen acceptance remain pending;
+this does not remove the documented nested-tmux host reflow caveat.
+
 # Heavy pane dividers — 2026-09-25, 00:32 EDT
 
 Set `pane-border-lines heavy` in source and the Mac runtime, retaining purple for

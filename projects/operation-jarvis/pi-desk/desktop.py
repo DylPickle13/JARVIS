@@ -9,6 +9,8 @@ import sys
 import threading
 import time
 
+import workspace
+from layout import RESIZE_DELAY
 from health import HealthMonitor
 from backend import clean_environment
 from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, recover_closed_displays
@@ -52,6 +54,14 @@ def choose(number=None, client_pid=None, step=None):
                 current = session_number(tmux('display-message', '-p', '-t', match[2],
                                               '#{@pi-desk-session}').stdout.strip())
                 number = max(1, min(10, current + step))
+        if client is not None:
+            details = tmux('display-message', '-p', '-t', match[2],
+                           '#{session_name}\t#{window_width}').stdout.strip().split('\t')
+            if len(details) == 2 and workspace.is_viewer(details[0]):
+                group = details[0]
+                workspace.reconcile(group, number, int(details[1]))
+                save_selection(number)
+                return group
         key, index = session_group(number)
         group = f'group-{key}'
         existing = tmux('list-panes', '-t', f'{group}:0', '-F',
@@ -61,11 +71,16 @@ def choose(number=None, client_pid=None, step=None):
         tmux('select-pane', '-t', f'{group}:0.{index}')
         if client is not None:
             tmux('switch-client', '-c', client, '-t', '=' + group)
-        tmux('set-option', '-g', '@pi-desk-last', str(number))
-        temporary = STATE / 'last-session.tmp'
-        temporary.write_text(str(number) + '\n')
-        os.replace(temporary, STATE / 'last-session')
+        save_selection(number)
     return group
+
+
+def save_selection(number):
+    # Caller holds selection.lock.
+    tmux('set-option', '-g', '@pi-desk-last', str(number))
+    temporary = STATE / 'last-session.tmp'
+    temporary.write_text(str(number) + '\n')
+    os.replace(temporary, STATE / 'last-session')
 
 
 def pulse_is_dim(now=None):
@@ -80,7 +95,7 @@ def selector(states, *, pulse_dim=False):
         group = '#{==:#{session_name},group-' + key + '}'
         active = '#{==:#{@pi-desk-session},' + str(n) + '}'
         background = '#{?' + group + ',#16252a,#000000}'
-        foreground = '#{?' + active + ',#D183E8,colour252}'
+        foreground = '#{?' + active + ',##D183E8,colour252}'
         weight = '#{?' + active + ',bold,nobold}'
         state = states.get(str(n))
         color = COLORS.get(state, COLORS['unknown'])
@@ -98,6 +113,80 @@ def selector(states, *, pulse_dim=False):
                  'F12 Select · F10 Restart · Ctrl + ←/→ Switch,'
                  'F12 · F10 · Ctrl + ←/→} ')
     return ''.join(parts)
+
+
+def responsive_selector(states, width, count, selected, *, pulse_dim=False):
+    """Fit actual terminal cells; retain clickable numbers even on tiny displays."""
+    width = max(1, width)
+    compact = width < 100
+    brand = ' PI-DESK ' if width >= 30 else ''
+    tab_width = 4 if compact else 6
+    separator = '│' if compact else ' │ '
+    boundaries = tuple(n for n in range(1, 10) if count > 1 and n % count == 0)
+    total = len(brand) + 10 * tab_width + len(boundaries) * len(separator)
+    numbers = list(range(1, 11))
+    overflow = total > width
+    if width < 4:
+        numbers, boundaries, overflow = [selected], (), False
+    elif overflow:
+        # Reserve cells for explicit hidden-tab indicators; omit group separators.
+        available = max(1, (width - len(brand) - 2) // tab_width)
+        first = max(1, min(selected - available // 2, 11 - available))
+        numbers = list(range(first, min(11, first + available)))
+        boundaries = ()
+    parts = [f'#[align=left,norange,fg=#D183E8,bg=#000000,nobold]{brand}']
+    used = len(brand)
+    if overflow and numbers[0] > 1 and used + len(numbers) * tab_width < width:
+        parts.append('#[fg=colour245]‹')
+        used += 1
+    for n in numbers:
+        active = '#{==:#{@pi-desk-session},' + str(n) + '}'
+        visible = '#{&&:#{e|>=:' + str(n) + ',#{@pi-desk-first}},#{e|<=:' + str(n) + ',#{@pi-desk-end}}}'
+        bg = '#{?' + visible + ',#16252a,#000000}'
+        fg = '#{?' + active + ',##D183E8,colour252}'
+        weight = '#{?' + active + ',bold,nobold}'
+        state = states.get(str(n))
+        color = COLORS.get(state, COLORS['unknown'])
+        if pulse_dim:
+            color = {'running': 22, 'compacting': 24}.get(state, color)
+        # Below four columns show just the selected number (no clipped dot).
+        label = f'{n:02d}' if width >= 2 else str(n % 10)
+        dot = '' if width < 4 else f'#[fg=colour{color}]● '
+        text = label if compact else f' {label} '
+        parts.append(f'#[range=user|{n},bg={bg},fg={fg},{weight}]{text}{dot}'
+                     '#[norange,bg=#000000,nobold]')
+        used += len(text) + (2 if dot else 0)
+        if n in boundaries:
+            parts.append('#[fg=colour238]' + separator)
+            used += len(separator)
+    if overflow and numbers[-1] < 10 and used < width:
+        parts.append('#[fg=colour245]›')
+        used += 1
+    for hint in (' F12 Select · F10 Restart · Ctrl + ←/→ Switch ',
+                 ' F12 · F10 · Ctrl + ←/→ ', ' F12 Select ', ''):
+        if len(hint) + used <= width:
+            parts.append('#[align=right,norange,fg=colour245,bg=#000000,nobold]' + hint)
+            break
+    return ''.join(parts)
+
+
+def render_viewers(states, dim, previous, warning=None):
+    # A local tmux array shadows the entire global array, not just index 0.
+    if warning is None:
+        warning = tmux('show-options', '-gv', 'status-format[1]').stdout.rstrip('\n')
+    rows = tmux('list-sessions', '-F',
+                '#{session_name}\t#{window_width}\t#{@pi-desk-capacity}\t#{@pi-desk-session}').stdout
+    current = {}
+    for row in rows.splitlines():
+        name, width, count, selected = row.split('\t')
+        if not workspace.is_viewer(name) or not all(v.isdecimal() for v in (width, count, selected)):
+            continue
+        bar = responsive_selector(states, int(width), int(count), int(selected), pulse_dim=dim)
+        current[name] = (bar, warning)
+        if previous.get(name) != current[name]:
+            tmux('set-option', '-t', name, 'status-format[0]', bar, ';',
+                 'set-option', '-t', name, 'status-format[1]', warning)
+    return current
 
 
 def health_line(connection, health):
@@ -140,7 +229,8 @@ def persist_selection():
 def configuration_version():
     import hashlib
     digest = hashlib.sha256(str(ROOT).encode())
-    for name in ('desktop.py', 'native_navigation.py', 'config/tmux.conf'):
+    for name in ('desktop.py', 'native_navigation.py', 'core.py', 'layout.py',
+                 'workspace.py', 'navigate.py', 'config/tmux.conf'):
         digest.update((ROOT / name).read_bytes())
     return digest.hexdigest()
 
@@ -169,20 +259,24 @@ def watch_status(stop):
     feed = StatusFeed()
     health = HealthMonitor(feed.backend.host)
     previous = None
+    viewer_rows = {}
     try:
         while not stop.is_set():
             try:
                 persist_selection()
                 # One shared monitor drives a 0.75-second-per-phase brightness cycle.
                 # Static states produce identical rows, so they cause no extra writes.
-                rows = (selector(feed.poll(), pulse_dim=pulse_is_dim()),
+                states, dim = feed.poll(), pulse_is_dim()
+                rows = (selector(states, pulse_dim=dim),
                         health_line(feed.connection, health.poll()))
                 if rows != previous:
                     render_status(rows)
                     previous = rows
+                viewer_rows = render_viewers(states, dim, viewer_rows, rows[1])
             except (OSError, RuntimeError, subprocess.TimeoutExpired):
                 feed.close()
                 previous = None
+                viewer_rows = {}
             stop.wait(.5)
     finally:
         feed.close()
@@ -204,10 +298,55 @@ def monitor(stop):
             return
 
 
+def terminal_size():
+    try:
+        return os.get_terminal_size(sys.stdin.fileno())
+    except (OSError, ValueError):
+        return os.terminal_size((184, 45))
+
+
+def resize_viewer(client_pid, expected_size=None):
+    """Read tmux's latest size/focus, not the dimensions of a stale resize event."""
+    with (STATE / 'selection.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        clients = tmux('list-clients', '-F',
+                       '#{client_pid}\t#{session_name}\t#{client_width}\t#{client_height}').stdout.splitlines()
+        match = next((row.split('\t') for row in clients
+                      if row.split('\t', 1)[0] == str(client_pid)), None)
+        if match is None:
+            return False  # Initial attach may not yet be registered.
+        if expected_size is not None and tuple(map(int, match[2:4])) != tuple(expected_size):
+            return False  # tmux has not handled SIGWINCH yet; do not lose the event.
+        if workspace.is_viewer(match[1]):
+            workspace.reconcile(match[1], None, int(match[2]))
+        return True
+
+
+def watch_dimensions(stop, client_pid):
+    # Query the parent terminal directly: no subprocess polling during idle use,
+    # and no Python process per resize event. tmux still handles pane geometry.
+    pending = None
+    applied = None
+    changed_at = 0
+    while not stop.wait(.05):
+        size = terminal_size()
+        if size != pending:
+            pending, changed_at = size, time.monotonic()
+        if pending != applied and time.monotonic() - changed_at >= RESIZE_DELAY:
+            try:
+                if resize_viewer(client_pid, pending):
+                    applied = pending
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                # Leave the size pending for recovery; never restart an agent.
+                changed_at = time.monotonic() + .5
+
+
 def attach_viewer(group):
     """Own only this display client; reap it on terminal hangup or termination."""
     child = None
     handlers = {}
+    resize_stop = threading.Event()
+    resize_worker = None
 
     def interrupted(number, frame):
         raise SystemExit(128 + number)
@@ -219,13 +358,20 @@ def attach_viewer(group):
             ['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group],
             env=clean_environment(),
         )
+        if workspace.is_viewer(group):
+            resize_worker = threading.Thread(target=watch_dimensions,
+                args=(resize_stop, child.pid), daemon=True)
+            resize_worker.start()
         return child.wait()
     finally:
+        resize_stop.set()
         # Ignore repeated shutdown signals while reaping our own child. Never
         # signal the server, a process group, or any hosted agent.
         for number in handlers:
             signal.signal(number, signal.SIG_IGN)
         try:
+            if resize_worker is not None:
+                resize_worker.join(timeout=10)
             if child is not None and child.poll() is None:
                 child.terminate()
                 try:
@@ -241,17 +387,25 @@ def attach_viewer(group):
 def main():
     recover_closed_displays()
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
-    group = choose(last_session())
-    configure()
+    size = terminal_size()
+    with (STATE / 'selection.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        group = workspace.create(last_session(), size.columns, size.lines)
     stop = threading.Event()
-    worker = threading.Thread(target=monitor, args=(stop,), daemon=True)
-    worker.start()
+    worker = None
     try:
+        configure()
+        worker = threading.Thread(target=monitor, args=(stop,), daemon=True)
+        worker.start()
         return attach_viewer(group)
     finally:
         stop.set()
-        worker.join(timeout=12)
-        persist_selection()
+        if worker is not None:
+            worker.join(timeout=12)
+        try:
+            persist_selection()
+        finally:
+            workspace.destroy(group)
 
 
 def dispatch(args):

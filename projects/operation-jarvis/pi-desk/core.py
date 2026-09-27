@@ -123,7 +123,9 @@ def recover_closed_displays():
             args = shlex.split(command)
             if (not args or Path(args[0]).name != 'tmux' or
                     args[1:5] != ['-L', SOCKET, 'attach-session', '-t'] or
-                    len(args) != 6 or args[5] not in {'=group-' + k for k in GROUPS}):
+                    len(args) != 6 or not (
+                        args[5] in {'=group-' + k for k in GROUPS} or
+                        re.fullmatch(r'=viewer-[0-9a-f]{32}', args[5]))):
                 continue
             files = subprocess.run(
                 ['/usr/sbin/lsof', '-a', '-p', pid, '-d', '0', '-Fn'],

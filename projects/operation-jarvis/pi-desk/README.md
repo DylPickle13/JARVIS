@@ -25,23 +25,61 @@ are supported, with one elected status monitor per machine and failover on exit.
 
 The persistent `PI-DESK` top row uses the JARVIS app's dark accent purple
 (`#D183E8`); the selected session number and its pane borders use it too. Pane
-dividers use heavy lines, with unselected borders kept grey. The current tiled
+dividers use heavy lines, with unselected borders kept grey. Shared active dividers
+are purple along their full length, including in two-pane mode (tmux's default
+half-border focus indicator is disabled). The current tiled
 layout does not draw a complete outer frame at the left, right, and bottom edges.
 It contains
 ten clickable session numbers and lifecycle dots, with shortcut hints aligned at
-the right (abbreviated below 120 columns). Numbers use two digits, with muted
-separators between 01–03, 04–06, 07–09, and 10; there are no group labels. Running
+the right. Hints shorten or disappear as space runs out; below 100 columns the
+tabs tighten. Extremely narrow terminals show a sliding subset with hidden-tab
+indicators, always keeping the focused session clickable; F12 still reaches all
+ten sessions. Numbers use two digits, with muted separators matching the current
+one-, two-, or three-session groups; there are no group labels. Running
 and compacting dots alternate between bright and clearly dim shades every 0.75
 seconds (a 1.5-second full cycle); other states stay steady. This uses the existing
 shared monitor, not terminal blink support. A second row appears only for
 connection/diagnostic warnings and disappears when healthy, returning its terminal
 row to the coding panes. Healthy diagnostic values are hidden.
-Coding workspaces remain **1/2/3**, **4/5/6**, **7/8/9**, or **10 alone**. No extra menu pane.
-Last selected session is restored independently on each machine.
+Coding workspaces adapt automatically to the terminal width, keeping the selected
+session visible and focused. No extra menu pane. Last selected session is restored
+independently on each machine.
+
+### Responsive layout
+
+| Terminal columns (initial open) | Maximum visible sessions | Groups |
+| --- | --- | --- |
+| 1–104 | 1 | Selected session only |
+| 105–157 | 2 | 1/2, 3/4, 5/6, 7/8, 9/10 |
+| 158+ | 3 | 1/2/3, 4/5/6, 7/8/9, 10 alone |
+
+The default target is 52 columns per pane plus one column per divider. A 110×45
+terminal shows two panes; a 184×45 terminal retains three panes. Panes remain horizontal; terminal height
+controls content height, not the group size. Resizing or changing terminal font
+size automatically regroups after approximately 180 ms without further size
+changes. Shrinking uses the table boundaries; growing requires four extra columns
+(109 for two, 162 for three) to avoid oscillation at a boundary.
+
+Focus is preserved: session 5 stays selected through `4/5/6` → `5/6` → `5`.
+The header separators follow the group size and disappear in one-session mode.
+The final group is not padded with empty panes. Each viewer has a private local
+display workspace, so a narrow window cannot rearrange another wider window.
+Existing display attachment processes are parked in hidden windows and reused
+when groups change; opening additional groups creates their attachments lazily.
+Closing a viewer removes only that viewer's display workspace, never the agents.
+
+To tune the target pane width, set `PI_DESK_MIN_COLUMNS` before opening a viewer:
+
+```sh
+PI_DESK_MIN_COLUMNS=60 pi-desk  # prefer wider panes (the original thresholds)
+```
+
+Accepted values are 20–300; invalid values use 52. Each viewer retains its own
+setting until it closes.
 
 | Control | Action |
 | --- | --- |
-| Click a number | Open its group and focus that session |
+| Click a number | Open its current-size group and focus that session |
 | F12, number, Enter | Select session 1–10 |
 | Ctrl+A, then g | Selection alternative for Mac function/media keys |
 | Ctrl + ←/→ | Previous/next session, crossing group boundaries |
@@ -97,7 +135,9 @@ viewer. **tmux sizing caveat:** when *all* attached clients have `ignore-size`,
 tmux can fall back to the latest client's dimensions and reflow a hosted pane.
 The flag is not an absolute guarantee against reflow; this was observed during
 Mac acceptance. Agent identities/conversations are unaffected. Only local display
-panes are equalized on terminal resize.
+panes are regrouped and equalized on terminal resize. Display panes remain stable
+through regrouping, but different viewers still attach to the same underlying
+agents and can encounter that host-side reflow caveat.
 
 ## Status and diagnostics
 
@@ -141,7 +181,9 @@ does not touch system services, Terminal defaults, VS Code tasks or other apps.
 Only an explicit PATH line is appended to `.zshrc` (Mac) or `.bashrc` (Pi).
 The host repository path for maintenance can be set with `--project-root`.
 
-Reopen viewers after updating Python code. If resetting display panes is needed,
+Close and reopen **all local viewers** after updating Python code so the elected
+status monitor also uses the new renderer. Existing fixed-group viewers are not
+live-migrated or forcibly detached. Remote installations must be updated separately. If resetting display panes is needed,
 stop only the dedicated `pi-desk` socket, **never `jarvis-mobile`**. The Pi service
 owns only its compositor/display and does not control presence/audio/Bluetooth/SSH.
 
@@ -150,11 +192,15 @@ owns only its compositor/display and does not control presence/audio/Bluetooth/S
 - `cli.py`: common `pi-desk` entry point and confirmed maintenance.
 - `backend.py`: validated local/SSH commands and cleaned nesting environment.
 - `connect.py`: reconnecting attachment; `connect.sh` is a compatibility shim.
-- `desktop.py`, `core.py`: shared UI, selection, status stream and pane recovery.
-- `native_navigation.py`: in-tmux arrow switching with live pane validation; the status
-  monitor saves selection in the background. No Python process per healthy keypress.
-- `navigate.py`: fallback for missing or unhealthy workspaces; imports full recovery
-  only when needed.
+- `desktop.py`, `core.py`: UI, selection, shared status stream and pane recovery.
+  Each viewer watches its terminal dimensions without idle subprocess polling.
+- `layout.py`: width policy, hysteresis, group mapping and navigation shapes.
+- `workspace.py`: private viewer workspaces, focus-preserving pane parking/reuse,
+  and display-only cleanup. Legacy fixed-group helpers remain for old viewers.
+- `native_navigation.py`: in-tmux, in-group arrow switching with live pane validation;
+  the status monitor saves selection in the background. Cross-group keys reconcile
+  the display through Python, as do missing/dead-pane repairs.
+- `navigate.py`: fallback for adaptive and legacy workspaces.
 - `health.py`, `status_stream.py`: bounded diagnostics and host lifecycle projection.
 - `install.py`: common deployment, manifest and allowlisted rollback copies.
 - `launch.sh`, `config/`: optional Pi fullscreen adapter, shared tmux configuration,
@@ -175,7 +221,7 @@ An initial Mac install can be removed by deleting its dedicated app, launcher an
 configuration, and removing the exact added PATH line; leave hosted sessions alone.
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_pi_desk
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_pi_desk test_responsive
 sh -n connect.sh && sh -n launch.sh
 pi-desk --help
 tmux -L pi-desk list-clients -F '#{session_name} focus=#{@pi-desk-session}'

@@ -23,29 +23,34 @@ def step(direction, client_pid, socket='pi-desk', state=None):
     fallback = False
     with open(os.path.join(state, 'selection.lock'), 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        rows = tmux('list-clients', '-F', 'C\t#{client_pid}\t#{client_name}\t#{@pi-desk-session}',
+        rows = tmux('list-clients', '-F', 'C\t#{client_pid}\t#{client_name}\t#{@pi-desk-session}\t#{session_name}',
                     ';', 'list-panes', '-a', '-F',
                     'P\t#{session_name}\t#{pane_index}\t#{@pi-desk-session}\t#{pane_dead}').splitlines()
         clients = [row.split('\t') for row in rows if row.startswith('C\t')]
         match = next((row for row in clients if row[1] == str(client_pid)), None)
         if match is None or not match[3].isdigit() or not 1 <= int(match[3]) <= 10:
             raise ValueError('Display client is unavailable')
-        number = max(1, min(10, int(match[3]) + direction))
-        key = (number - 1) // 3 + 1
-        group = f'group-{key}'
-        expected = [f'P\t{group}\t{i}\t{n}\t0'
-                    for i, n in enumerate(range((key - 1) * 3 + 1, min(key * 3, 10) + 1))]
-        actual = [row for row in rows if row.startswith(f'P\t{group}\t')]
-        if actual != expected:
+        if match[4].startswith('viewer-'):
+            # Cross-group adaptive navigation needs pane reconciliation. The
+            # native binding handles healthy in-group keys without Python.
             fallback = True
         else:
-            tmux('select-pane', '-t', f'{group}:0.{(number - 1) % 3}',
-                 ';', 'switch-client', '-c', match[2], '-t', '=' + group,
-                 ';', 'set-option', '-g', '@pi-desk-last', str(number))
-            temporary = os.path.join(state, 'last-session.tmp')
-            with open(temporary, 'w') as output:
-                output.write(str(number) + '\n')
-            os.replace(temporary, os.path.join(state, 'last-session'))
+            number = max(1, min(10, int(match[3]) + direction))
+            key = (number - 1) // 3 + 1
+            group = f'group-{key}'
+            expected = [f'P\t{group}\t{i}\t{n}\t0'
+                        for i, n in enumerate(range((key - 1) * 3 + 1, min(key * 3, 10) + 1))]
+            actual = [row for row in rows if row.startswith(f'P\t{group}\t')]
+            if actual != expected:
+                fallback = True
+            else:
+                tmux('select-pane', '-t', f'{group}:0.{(number - 1) % 3}',
+                     ';', 'switch-client', '-c', match[2], '-t', '=' + group,
+                     ';', 'set-option', '-g', '@pi-desk-last', str(number))
+                temporary = os.path.join(state, 'last-session.tmp')
+                with open(temporary, 'w') as output:
+                    output.write(str(number) + '\n')
+                os.replace(temporary, os.path.join(state, 'last-session'))
     if fallback:
         # Re-read the current selection under the recovery path's own lock.
         import desktop

@@ -17,7 +17,8 @@ from backend import Backend
 
 SOURCE = Path(__file__).resolve().parent
 FILES = ('backend.py', 'cli.py', 'connect.py', 'core.py', 'desktop.py', 'health.py',
-         'connect.sh', 'launch.sh', 'status_stream.py', 'install.py', 'install_pi.py', 'navigate.py', 'native_navigation.py')
+         'connect.sh', 'launch.sh', 'status_stream.py', 'install.py', 'install_pi.py', 'navigate.py', 'native_navigation.py',
+         'layout.py', 'workspace.py')
 PATH_LINE = 'export PATH="$HOME/.local/bin:$PATH" # Pi Desk CLI'
 
 

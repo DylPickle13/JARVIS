@@ -75,6 +75,13 @@ class ClosedDisplayRecoveryTests(unittest.TestCase):
         flush.assert_called_once_with(99, core.termios.TCOFLUSH)
         closed.assert_called_once_with(99)
 
+    def test_recognizes_private_viewer_targets(self):
+        command = 'tmux -L pi-desk attach-session -t =viewer-' + 'a' * 32
+        opened, closed, flush = self.recover('42 ?? ' + command, '?? ' + command)
+        opened.assert_called_once()
+        flush.assert_called_once_with(99, core.termios.TCOFLUSH)
+        closed.assert_called_once_with(99)
+
     def test_ignores_live_displays_and_agent_clients(self):
         for row in ('42 ttys036 tmux -L pi-desk attach-session -t =group-1',
                     '42 ?? tmux -L jarvis-mobile attach-session -t =jarvis-ios',
@@ -353,7 +360,7 @@ class PaneRecoveryTests(unittest.TestCase):
             self.assertEqual(before, core.tmux('list-panes', '-a', '-F', '#{pane_id}:#{pane_pid}').stdout)
             fallback = ('run-shell -b \'python3 "$HOME/.local/share/pi-desk/navigate.py" '
                         '1 "#{client_pid}"\'')
-            command = native_navigation.binding(1).replace(fallback, 'set-option -g @fallback yes')
+            command = native_navigation.legacy_binding(1).replace(fallback, 'set-option -g @fallback yes')
             core.tmux('bind-key', '-T', 'root', 'C-Right', command)
             core.tmux('kill-pane', '-t', 'group-1:0.1')
             core.tmux('send-keys', '-K', '-c', client_name, 'C-Right')
@@ -383,7 +390,7 @@ class DesktopTests(unittest.TestCase):
         bar = desktop.selector({})
         self.assertIn(' PI-DESK ', bar)
         self.assertIn('fg=#D183E8', bar)
-        self.assertIn('fg=#{?#{==:#{@pi-desk-session},1},#D183E8,colour252}', bar)
+        self.assertIn('fg=#{?#{==:#{@pi-desk-session},1},##D183E8,colour252}', bar)
         self.assertEqual(bar.count(' │ '), 3)
         for n in range(1, 11):
             self.assertIn(f'] {n:02d} ', bar)
@@ -399,7 +406,7 @@ class DesktopTests(unittest.TestCase):
 
     def test_active_session_border_uses_brand_purple(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
-        self.assertIn("set -g pane-border-format '#[fg=#{?pane_active,#D183E8,colour245}]", config)
+        self.assertIn("set -g pane-border-format '#[fg=#{?pane_active,##D183E8,colour245}]", config)
         self.assertIn("set -g pane-active-border-style 'fg=#D183E8,bg=#000000'", config)
 
     def test_only_working_dots_pulse(self):
