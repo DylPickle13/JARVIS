@@ -110,6 +110,10 @@ Runtime: `~/Library/Application Support/JARVIS/ajazz-keyboard/`, owner-only dire
 - `watcher.json`: heartbeat and bounded alert outbox; `watcher-health.json`: relay health latch.
 - `last-command-error.json`: latest sanitized error class, never raw child stderr. May be historical after recovery.
 - `watcher.log`: bounded 64 KiB log with one backup for watcher storage failures.
+- `diagnostics.json`: last 32 sanitized timestamped presence/controller/start events, including snapshot age and listener reason when available. No raw backend responses or device identifiers.
+- `error-history.json`: last 32 keyboard-controller failures, including transport/validation deadlines and sanitized keyboard rejection reasons. `last-command-error.json` remains the latest keyboard command failure only.
+- `watcher-started.json`: watcher start time. The relay defers notifications for the first 30 seconds, preserving its queue and health latch; device safety checks and polling are unchanged. Persistent failures are reported after grace expires.
+- A queued error followed by recovery for the same controller is informational (`Brief interruption—recovered`), not a failed scheduler run. Unresolved errors and errors after a recovery still fail the report. This does not imply device-state verification.
 - `black-colour-test.json`: historical authorized black trial, visual/typing confirmation and normal-lighting restoration. Not current away configuration.
 
 LaunchAgent plist: `~/Library/LaunchAgents/com.jarvis.ajazz-keyboard-watch.plist`.

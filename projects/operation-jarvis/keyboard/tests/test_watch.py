@@ -169,6 +169,53 @@ class WatchTests(unittest.TestCase):
         self.assertEqual(self.relay(131)[1], 1)
         self.assertEqual(self.relay(200), ('', 0))
 
+    def test_recovered_blip_is_informational_but_later_failure_is_error(self):
+        error = {'message': 'ERROR: Basement presence unavailable or stale; keyboard cycling paused.', 'code': 1}
+        recovery = {'message': 'RECOVERED: Keyboard automation checks are working again.', 'code': 0}
+        self.assertEqual([m['code'] for m in watch.classify([error, recovery])], [0, 0])
+        self.assertIn('Brief interruption', watch.classify([error, recovery])[0]['message'])
+        self.assertEqual(watch.classify([error, recovery, error])[-1]['code'], 1)
+        mouse = {'message': 'RECOVERED: Mouse automation checks are working again.', 'code': 0}
+        self.assertEqual(watch.classify([error, mouse])[0]['code'], 1)
+
+    def test_startup_grace_preserves_queue_and_expires(self):
+        self.store.save('watcher-started.json', 100)
+        self.store.save('watcher.json', {'version': 1, 'heartbeat': None, 'alerts': [
+            {'message': 'ERROR: Keyboard lighting command failed.', 'code': 1}]})
+        self.assertEqual(self.relay(106), ('', 0))
+        self.assertEqual(len(watch.snapshot(self.store)['alerts']), 1)
+        self.assertEqual(self.relay(131)[1], 1)
+
+    def test_backend_timeout_reason_survives_helper(self):
+        with patch.object(cycle.subprocess, 'run', return_value=Mock(
+                returncode=1, stdout='{"ok":false,"reason":"backend-timeout"}')):
+            with self.assertRaises(cycle.CycleError) as caught:
+                cycle.read_presence()
+        self.assertEqual(caught.exception.reason, 'backend-timeout')
+
+    def test_transport_failure_diagnostic_does_not_send(self):
+        sender = Mock()
+        watch.step(self.store, now=lambda: 100,
+                   get_presence=Mock(side_effect=cycle.CycleError('presence', reason='backend-timeout')),
+                   apply=sender)
+        sender.assert_not_called()
+        entries = self.store.load('diagnostics.json', [])
+        self.assertEqual(entries[0]['reason'], 'backend-timeout')
+        self.assertEqual(entries[0]['at'], 100)
+
+    def test_diagnostics_are_bounded_and_capture_stale_age(self):
+        for n in range(40):
+            watch.diagnose(self.store, 'test', at=n)
+        self.assertEqual(len(self.store.load('diagnostics.json', [])), 32)
+        sender = Mock()
+        watch.step(self.store, now=lambda: 100,
+                   get_presence=lambda: presence(ageSeconds=20, stale=True), apply=sender)
+        sender.assert_not_called()
+        entries = self.store.load('diagnostics.json', [])
+        failure = next(e for e in entries if e['event'] == 'presence-failure')
+        self.assertEqual(failure['reason'], 'snapshot-stale')
+        self.assertGreaterEqual(failure['ageSeconds'], 20)
+
     def test_corrupt_outbox_blocks_step_before_any_hid(self):
         self.store.save('watcher.json', {'alerts': []})
         sender = Mock()

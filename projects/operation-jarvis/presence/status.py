@@ -19,8 +19,11 @@ def main():
             raise ValueError()
         print(json.dumps(json.loads(raw)))
         return 0
-    except Exception:
-        print(json.dumps({"ok": False, "error": "Presence backend unavailable; location unknown."}))
+    except Exception as exc:
+        reason = ('backend-timeout' if isinstance(exc, TimeoutError) else
+                  'backend-connection' if isinstance(exc, OSError) else 'backend-response')
+        print(json.dumps({"ok": False, "reason": reason,
+                          "error": "Presence backend unavailable; location unknown."}))
         return 1
     finally:
         connection.close()

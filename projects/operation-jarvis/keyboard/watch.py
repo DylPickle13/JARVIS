@@ -19,6 +19,43 @@ import display_cycle
 POLL = 3
 HEALTH_AGE = 30  # Includes bounded presence + HID calls; not presence freshness.
 QUEUE_LIMIT = 64
+STARTUP_GRACE = 30
+
+
+def diagnose(store, event, *, at, **details):
+    """Bounded private history; callers supply sanitized fields, never raw responses."""
+    history = store.load('diagnostics.json', [])
+    if not isinstance(history, list):
+        raise cycle.CycleError('state')
+    history.append({'at': at, 'event': event, **details})
+    store.save('diagnostics.json', history[-32:])
+
+
+def alert_component(message):
+    for component, prefix in (
+        ('keyboard', 'Keyboard '), ('mouse', 'Mouse '), ('display', 'Display '),
+        ('watcher', 'Computer presence watcher '),
+    ):
+        if message.split(': ', 1)[-1].startswith(prefix):
+            return component
+    if 'Basement presence' in message:
+        return 'mouse' if 'mouse' in message else 'keyboard'
+    return None
+
+
+def classify(messages):
+    """Only a later recovery for the SAME controller resolves a queued error."""
+    result = []
+    for index, item in enumerate(messages):
+        component = alert_component(item['message'])
+        recovered = component is not None and any(
+            later['message'].startswith('RECOVERED:')
+            and alert_component(later['message']) == component
+            for later in messages[index + 1:])
+        if item['code'] and recovered:
+            item = {'message': 'Brief interruption—recovered: ' + item['message'][7:], 'code': 0}
+        result.append(item)
+    return result
 
 
 @contextlib.contextmanager
@@ -53,9 +90,10 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
     fetched = False
     observed = None
     failure = None
+    diagnosed = False
 
     def shared_presence():
-        nonlocal cached, fetched, observed, failure
+        nonlocal cached, fetched, observed, failure, diagnosed
         if not fetched:
             observed = time.monotonic()
             fetched = True
@@ -64,12 +102,28 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
             except cycle.CycleError as exc:
                 failure = exc
         if failure is not None:
+            if not diagnosed:
+                diagnose(store, 'presence-failure', at=now(), reason=failure.reason or 'unclassified')
+                diagnosed = True
             raise failure
         payload = copy.deepcopy(cached)
         if isinstance(payload, dict) and isinstance(payload.get('zones'), list):
             for zone in payload['zones']:
                 if isinstance(zone, dict) and cycle.finite(zone.get('ageSeconds')):
                     zone['ageSeconds'] += max(0, time.monotonic() - observed)
+        try:
+            cycle.basement(payload)
+        except cycle.CycleError as exc:
+            if not diagnosed:
+                zones = payload.get('zones', []) if isinstance(payload, dict) else []
+                zone = next((z for z in zones if isinstance(z, dict) and z.get('zone') == 'basement'), {}) if isinstance(zones, list) else {}
+                age = zone.get('ageSeconds')
+                reason = zone.get('reason')
+                diagnose(store, 'presence-failure', at=now(), reason=exc.reason or 'snapshot-invalid',
+                         ageSeconds=age if cycle.finite(age) else None,
+                         listenerReason=reason if reason in ('listener-stale', 'listener-unavailable', 'not-ready', 'not-enrolled', 'ble-proximity') else None)
+                diagnosed = True
+            raise
         return payload
 
     for run in (
@@ -82,6 +136,7 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
     ):
         output, code = run()
         if output:
+            diagnose(store, 'controller-alert', at=now(), message=output)
             value['alerts'].append({'message': output, 'code': code})
             value['alerts'] = value['alerts'][-QUEUE_LIMIT:]
     value['heartbeat'] = now()
@@ -96,12 +151,17 @@ def relay(store, *, now=time.time):
         raise cycle.CycleError('state')
     heartbeat = value['heartbeat']
     age = None if heartbeat is None else now() - heartbeat
+    started = store.load('watcher-started.json', None)
+    initializing = cycle.finite(started) and 0 <= now() - started < STARTUP_GRACE
+    if initializing:
+        return 0  # Defer notifications only; retain the outbox and all safety latches.
     failed = age is None or not 0 <= age <= HEALTH_AGE
     messages = list(value['alerts'])
     if failed and not old:
         messages.append({'message': 'ERROR: Computer presence watcher is not responding; keyboard, mouse, and monitor automation may not respond to presence changes.', 'code': 1})
     elif old and not failed:
         messages.append({'message': 'RECOVERED: Computer presence watcher is responding again for keyboard, mouse, and monitors (not device-state verification).', 'code': 0})
+    messages = classify(messages)
     # Called under the same lock as the producer. Healthy cycles emit nothing.
     for item in messages:
         print(item['message'], flush=True)
@@ -123,6 +183,8 @@ def watch():
     handler = RotatingFileHandler(log_path, maxBytes=65536, backupCount=1)
     logger.addHandler(handler)
     with locked(store, 'watcher.lock'):
+        store.save('watcher-started.json', time.time())
+        diagnose(store, 'watcher-start', at=time.time())
         failing = False
         while not stop.is_set():
             try:

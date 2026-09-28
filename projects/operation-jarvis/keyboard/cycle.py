@@ -123,7 +123,9 @@ def basement(payload):
     age = zone.get('ageSeconds')
     if (zone.get('subject') != 'dylan' or zone.get('stale') is not False
             or not finite(age) or age > 15 or zone.get('state') not in ('nearby', 'away')):
-        raise CycleError('presence')
+        reason = ('snapshot-stale' if finite(age) and age > 15 else
+                  'snapshot-unknown' if zone.get('state') == 'unknown' else 'snapshot-invalid')
+        raise CycleError('presence', reason=reason)
     return zone['state']
 
 
@@ -132,11 +134,19 @@ def read_presence():
     script = ROOT.parent / 'presence/status.py'
     try:
         p = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=8)
-        if p.returncode != 0 or len(p.stdout) > 16384:
+        if len(p.stdout) > 16384:
             raise ValueError()
-        return json.loads(p.stdout)
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        raise CycleError('presence') from None
+        payload = json.loads(p.stdout)
+        if p.returncode != 0:
+            reason = payload.get('reason') if isinstance(payload, dict) else None
+            if reason not in ('backend-timeout', 'backend-connection', 'backend-response'):
+                reason = 'backend-response'
+            raise CycleError('presence', reason=reason)
+        return payload
+    except subprocess.TimeoutExpired:
+        raise CycleError('presence', reason='helper-timeout') from None
+    except (OSError, ValueError):
+        raise CycleError('presence', reason='helper-response') from None
 
 
 def send(config):
@@ -188,9 +198,10 @@ def tick(state, faults, *, now, get_presence, get_preferences, apply, save, choo
         age = next(z['ageSeconds'] for z in payload['zones'] if type(z) is dict and z.get('zone') == 'basement')
         deadline = observed + 15 - age  # Conservatively include the HTTP/helper latency.
         if time.monotonic() > deadline:
-            raise CycleError('presence')
+            raise CycleError('presence', reason='validation-deadline')
         faults.discard('presence')
-    except CycleError:
+    except CycleError as exc:
+        on_error(exc)
         state.update(near_count=0, away_count=0, mode='paused')
         faults.add('presence')
         save(state)
@@ -242,6 +253,7 @@ def tick(state, faults, *, now, get_presence, get_preferences, apply, save, choo
         state.update(pending=False, near_count=0, away_count=0, mode='paused')
         faults.add('presence')
         save(state)
+        on_error(CycleError('presence', reason='prewrite-deadline'))
         return  # Presence aged out while validating preferences/persisting state.
     try:
         apply(config)
@@ -316,6 +328,16 @@ class Store:
                 os.unlink(temp)
 
 
+def record_error(store, exc, at):
+    entry = {'kind': exc.kind, 'uncertain': exc.uncertain, 'reason': exc.reason, 'at': at}
+    history = store.load('error-history.json', [])
+    if not isinstance(history, list):
+        raise CycleError('state')
+    store.save('error-history.json', (history + [entry])[-32:])
+    if exc.kind == 'keyboard':
+        store.save('last-command-error.json', entry)
+
+
 def run_once(store, *, now=time.time, get_presence=read_presence, apply=send, responsive=False):
     old = store.load('alerts.json', [])
     if type(old) is not list or any(type(f) is not str or f not in FAULTS for f in old):
@@ -331,8 +353,7 @@ def run_once(store, *, now=time.time, get_presence=read_presence, apply=send, re
                 raise CycleError('preferences') from None
         tick(state, faults, now=now(), get_presence=get_presence, get_preferences=get_preferences,
              apply=apply, save=lambda s: store.save('state.json', s), responsive=responsive,
-             on_error=lambda exc: store.save('last-command-error.json',
-                 {'kind': exc.kind, 'uncertain': exc.uncertain, 'reason': exc.reason, 'at': now()}))
+             on_error=lambda exc: record_error(store, exc, now()))
     except (CycleError, OSError, ValueError, TypeError, KeyError):
         faults.add('state')
     output, code = alert_transition(old, faults, state.get('mode', 'paused'))
