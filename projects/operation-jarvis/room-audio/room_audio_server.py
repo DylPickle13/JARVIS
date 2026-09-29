@@ -63,6 +63,7 @@ import pi_rpc  # noqa: E402
 import voice_pipeline  # noqa: E402
 from asr_backends import AppleSpeechASRBackend, AppleSpeechASRSettings  # noqa: E402
 from voice_commands import STOP_COMMAND, parse_voice_interrupt_command  # noqa: E402
+from room_tts_prerender import RoomTTSPrerender  # noqa: E402
 
 LOGGER = config.get_logger("operation_jarvis.room_audio")
 
@@ -303,6 +304,9 @@ class RoomAudioBridge:
             ),
         )
         self._pipeline = voice_pipeline.VoicePipeline(pipeline_config, response_callback=self._run_pi_response)
+        self._tts_prerender_enabled = self.conversation_session_id == 10 and config.get_str_env(
+            'JARVIS_ROOM_AUDIO_TTS_PRERENDER', '1'
+        ).lower() not in {'0', 'false', 'no', 'off', ''}
         # Independent, local-only verification with no wake-word hints or fallback.
         # Keep ordinary command ASR and busy-only stop ASR unchanged.
         self._wake_verifier = AppleSpeechASRBackend(AppleSpeechASRSettings(
@@ -397,7 +401,10 @@ class RoomAudioBridge:
                 self._active_pi_turn_id = turn_id
             try:
                 raise_if_cancelled()
-                self._session.run_prompt(prompt, on_event=handle_event, timeout_seconds=pi_rpc.PI_CODING_AGENT_RPC_TIMEOUT_SECONDS)
+                prerender = context.get('ttsPrerender')
+                options = {'on_candidate': prerender.on_candidate} if prerender is not None else {}
+                self._session.run_prompt(prompt, on_event=handle_event,
+                    timeout_seconds=pi_rpc.PI_CODING_AGENT_RPC_TIMEOUT_SECONDS, **options)
                 raise_if_cancelled()
             finally:
                 with self._active_pi_turn_lock:
@@ -494,6 +501,7 @@ class RoomAudioBridge:
     ) -> dict[str, Any]:
         ack_path: Path | None = None
         audio_paths: list[Path] = []
+        prerender: RoomTTSPrerender | None = None
 
         def raise_if_cancelled() -> None:
             if cancel_event is not None and cancel_event.is_set():
@@ -507,17 +515,28 @@ class RoomAudioBridge:
                 except Exception:
                     LOGGER.warning("Failed to synthesize room-audio processing acknowledgement", exc_info=True)
 
+            if getattr(self, '_tts_prerender_enabled', False):
+                prerender = RoomTTSPrerender(self._pipeline, cancel_event=cancel_event,
+                    check_cancelled=raise_if_cancelled)
+            context = {"turnId": turn_id, "cancelEvent": cancel_event}
+            synthesis_options = {}
+            if prerender is not None:
+                context['ttsPrerender'] = prerender
+                synthesis_options['final_synthesis'] = prerender.commit
             result = self._pipeline.synthesize_turn(
                 wav_path,
                 None,
-                {"turnId": turn_id, "cancelEvent": cancel_event},
+                context,
                 transcript=transcript,
                 input_seconds=input_seconds,
                 asr_seconds=asr_seconds,
                 started_at=started_at,
+                **synthesis_options,
             )
-            raise_if_cancelled()
+            # Take ownership before the cancellation check so every committed
+            # WAV is removed even when stop races final-answer confirmation.
             audio_paths = ([ack_path] if ack_path is not None else []) + list(result.audio_paths)
+            raise_if_cancelled()
             audio_bytes = combine_wavs(audio_paths)
             raise_if_cancelled()
             return {
@@ -533,11 +552,14 @@ class RoomAudioBridge:
                 "asrSeconds": result.asr_seconds,
                 "llmSeconds": result.llm_seconds,
                 "ttsSeconds": result.tts_seconds,
+                "ttsPrerender": prerender.stats() if prerender is not None else None,
                 "totalSeconds": result.total_seconds,
                 "model": self.model,
                 "thinking": self.thinking,
             }
         finally:
+            if prerender is not None:
+                prerender.close()
             paths_to_remove = list(audio_paths)
             if ack_path is not None and ack_path not in paths_to_remove:
                 paths_to_remove.append(ack_path)
@@ -1030,6 +1052,7 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 "thinking": self.server.bridge.thinking,
                 "asr": self.server.bridge.asr_status,
                 "ttsLeadingSilenceMs": DEFAULT_TTS_LEADING_SILENCE_MS,
+                "ttsPrerenderEnabled": getattr(self.server.bridge, '_tts_prerender_enabled', False),
                 "processingAckEnabled": PROCESSING_ACK_ENABLED,
                 "processingAckText": PROCESSING_ACK_TEXT if PROCESSING_ACK_ENABLED else "",
                 "greetingSupported": True,

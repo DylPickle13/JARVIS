@@ -22,6 +22,8 @@ this directory owns the documented conversational microphone/speaker endpoints.
 
 - `room_audio_server.py`: Apple ASR, wake verification, follow-up authorization,
   agent responses, TTS, and room controls. Shared ASR/TTS lives in [`../voice/`](../voice/).
+- `room_tts_prerender.py`: bounded silent sentence synthesis during Session 10
+  generation; audio is reusable only after matching the confirmed final answer.
 - `pi_room_audio_client.py`: shared client with Core Audio, camera, and legacy ALSA
   backends. The historical filename is retained for compatibility, not hardware ownership.
 - `room_audio_coreaudio.py` / `room_audio_camera.py`: device-specific transports.
@@ -36,6 +38,22 @@ Say “Hey Jarvis”, wait for “Yes sir?”, then start a separate request wit
 seconds. During a response, exact `stop` interrupts. Endpoint capture is continuous;
 idle ordinary speech is discarded by wake gating. Keep credentials, transcripts,
 and endpoint state private; do not add them to the repository.
+
+## Silent TTS pre-rendering
+
+Shared Session 10 room turns can synthesize ordinary text while it is generated,
+without speaking it early. Tool-call/replaced messages are invalidated; only WAVs
+matching the confirmed final answer are reused. Existing PowerConf/camera
+whole-WAV playback and stop/ownership behavior remain unchanged.
+
+`JARVIS_ROOM_AUDIO_TTS_PRERENDER=0` disables this server feature (default `1` for
+shared Session 10 only). The owner must advertise `tts-candidates-v1`; old owners
+remain compatible through the legacy final-only prompt. `/health` reports server
+configuration and turn results include `ttsPrerender` reuse/timing counters.
+See [implementation, tests, activation, and rollback](STREAMING-TTS-PLAN.md).
+Owner-approved activation on September 29, 2026 verified the Session 10 capability
+and both servers enabled with freshly idle clients. Human spoken-turn validation
+remains pending; health/telemetry alone does not prove acoustic performance.
 
 ## Checks
 

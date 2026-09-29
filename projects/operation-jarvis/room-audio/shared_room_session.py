@@ -1,7 +1,8 @@
 """Voice adapter for the real, interactive mobile Pi Session 10.
 
 Both audio servers use this single owner. No RPC subprocess, idle reset, queue,
-reconnect, prompt replay or fallback to separate conversations.
+reconnect, prompt replay or fallback to separate conversations. Candidate text
+is opt-in and speculative; only the terminal reply is the confirmed answer.
 """
 import json
 import os
@@ -44,51 +45,86 @@ class SharedRoomSession:
             raise RuntimeError('Private room socket unavailable')
         return data
 
-    def exchange(self, action, *, timeout=3, **values):
+    def exchange(self, action, *, timeout=3, on_candidate=None, **values):
         deadline = time.monotonic() + timeout
         descriptor = self._descriptor()
         payload = {'version': 1, 'generation': descriptor['generation'], 'action': action, **values}
+        streaming = action == 'prompt_stream'
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
             connection.settimeout(max(.01, deadline - time.monotonic()))
             connection.connect(descriptor['socketPath'])
             connection.sendall(json.dumps(payload, ensure_ascii=False).encode() + b'\n')
             raw = bytearray()
-            while not raw.endswith(b'\n'):
+            total = 0
+            while True:
+                while b'\n' in raw:
+                    line, _, rest = raw.partition(b'\n')
+                    raw = bytearray(rest)
+                    reply = json.loads(line)
+                    if type(reply) is not dict or type(reply.get('ok')) is not bool:
+                        raise RuntimeError('Invalid room response; never replay')
+                    if not streaming:
+                        return reply
+                    if reply.get('generation') != descriptor['generation'] or reply.get('requestID') != values.get('id'):
+                        raise RuntimeError('Room response identity changed; never replay')
+                    if reply.get('event') == 'done':
+                        return reply
+                    if reply.get('event') != 'candidate' or reply.get('ok') is not True:
+                        raise RuntimeError('Invalid room candidate response; never replay')
+                    if on_candidate is not None:
+                        try:
+                            on_candidate(reply)
+                        except Exception:
+                            # Speculation is optional; retain the single admitted
+                            # request and its final reply if rendering fails.
+                            on_candidate = None
                 left = deadline - time.monotonic()
-                if left <= 0 or len(raw) > 1_048_576:
+                if left <= 0 or len(raw) > 1_048_576 or total > 2_097_152:
                     raise RuntimeError('Room response unavailable; never replay')
                 connection.settimeout(left)
                 chunk = connection.recv(8192)
-                if not chunk: raise RuntimeError('Room response lost; never replay')
+                if not chunk:
+                    raise RuntimeError('Room response lost; never replay')
                 raw.extend(chunk)
-            reply = json.loads(raw)
-            if type(reply) is not dict or type(reply.get('ok')) is not bool:
-                raise RuntimeError('Invalid room response; never replay')
-            return reply
+                total += len(chunk)
 
-    def run_prompt(self, prompt, *, on_event=None, timeout_seconds=1800, **kwargs):
+    def run_prompt(self, prompt, *, on_event=None, on_candidate=None, timeout_seconds=1800, **kwargs):
         request_id = uuid.uuid4().hex
         with self._lock:
-            if self._active is not None: raise RuntimeError('Room conversation busy')
+            if self._active is not None:
+                raise RuntimeError('Room conversation busy')
             self._active = request_id
         try:
-            reply = self.exchange('prompt', id=request_id, text=prompt, timeout=timeout_seconds)
+            # Negotiate before submitting once. An old owner still accepts the
+            # legacy prompt; an uncertain streamed request is NEVER replayed.
+            streaming = on_candidate is not None and 'tts-candidates-v1' in self._descriptor().get('capabilities', [])
+            options = {'on_candidate': on_candidate} if streaming else {}
+            reply = self.exchange('prompt_stream' if streaming else 'prompt', id=request_id,
+                                  text=prompt, timeout=timeout_seconds, **options)
             if reply.get('ok') is not True or reply.get('requestID') != request_id:
                 raise RuntimeError('Room conversation busy, cancelled or unknown; never replay automatically')
             if on_event:
                 on_event({'type': 'message_update', 'assistantMessageEvent': {'type': 'text_delta', 'delta': reply.get('text', '')}})
         finally:
-            with self._lock: self._active = None
+            with self._lock:
+                self._active = None
 
     def abort_active(self):
-        with self._lock: request_id = self._active
-        if request_id is None: return False
+        with self._lock:
+            request_id = self._active
+        if request_id is None:
+            return False
         return self.exchange('abort', id=request_id).get('ok') is True
 
     def stop(self):
         # Closing a speaker server never terminates the shared interactive Pi.
-        try: self.abort_active()
-        except Exception: pass
+        try:
+            self.abort_active()
+        except Exception:
+            pass
 
-    def seconds_since_last_activity(self): return None
-    def start_new_session_if_idle(self, *args, **kwargs): return False
+    def seconds_since_last_activity(self):
+        return None
+
+    def start_new_session_if_idle(self, *args, **kwargs):
+        return False

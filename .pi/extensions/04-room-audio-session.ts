@@ -6,8 +6,28 @@ import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-a
 import { exactMobileTmuxIdentity } from './lib/attach/mobile-server.ts';
 import { RoomSessionGate } from './lib/room-session.ts';
 
-/** Only loaded into the separately provisioned Room Audio pane; never reloads 1–9. */
+export const ROOM_AUDIO_VOICE_PROMPT = [
+  'You are JARVIS, speaking through shared Room Audio Session 10. Your final response is spoken aloud through a room speaker.',
+  'Keep final responses concise and natural, usually one or two short sentences. For a simple action, give only a brief confirmation after verified success.',
+  'Address the speaker as sir. Do not narrate your reasoning or routine tool use.',
+  'Avoid emojis, Markdown, bullets, tables, and code blocks unless explicitly requested. Write abbreviations and units out in words when helpful for clear speech. Use short sentences and periods.',
+  'Give more detail when explicitly requested, while remaining speech-friendly. Never omit essential safety information or truthful uncertainty merely to be brief.',
+].join(' ');
+
+export function registerRoomAudioVoicePrompt(
+  pi: ExtensionAPI,
+  identify: () => Promise<{ slot: number } | undefined> = exactMobileTmuxIdentity,
+) {
+  pi.on('before_agent_start', async event => {
+    // Check the actual pane identity, not its name, history, or model selection.
+    if ((await identify())?.slot !== 10) return;
+    event.systemPromptOptions.sections.room_audio_voice = ROOM_AUDIO_VOICE_PROMPT;
+  });
+}
+
+/** Only activates in the separately provisioned Room Audio pane. */
 export default function(pi: ExtensionAPI) {
+  registerRoomAudioVoicePrompt(pi);
   let ctx: ExtensionContext | undefined;
   let gate: RoomSessionGate | undefined;
   let close: (() => Promise<void>) | undefined;
@@ -49,12 +69,22 @@ export default function(pi: ExtensionAPI) {
           if (request.generation !== generation || request.version !== 1) throw new Error();
           let result: object;
           if (request.action === 'status' && Object.keys(request).length === 3) result = gate!.status();
-          else if (request.action === 'prompt' && Object.keys(request).length === 5)
-            result = await gate!.prompt(request.id, request.text);
+          else if (['prompt', 'prompt_stream'].includes(request.action) && Object.keys(request).length === 5) {
+            let frames = 0, bytes = 0;
+            result = await gate!.prompt(request.id, request.text, request.action === 'prompt_stream' ? event => {
+              const line = JSON.stringify({ ok: true, event: 'candidate', generation,
+                requestID: request.id, ...event }) + '\n';
+              // Drop speculative frames rather than block Pi or lose its final reply.
+              bytes += Buffer.byteLength(line);
+              if (++frames > 2048 || bytes > 262144 || socket.destroyed || socket.writableLength > 131072) return;
+              socket.write(line);
+            } : undefined);
+          }
           else if (request.action === 'abort' && Object.keys(request).length === 4 && typeof request.id === 'string')
             result = await gate!.abort(request.id);
           else throw new Error();
-          socket.end(JSON.stringify(result) + '\n');
+          socket.end(JSON.stringify(request.action === 'prompt_stream'
+            ? { ...result, event: 'done', generation, requestID: request.id } : result) + '\n');
         } catch { socket.end(JSON.stringify({ ok: false, error: 'room-session-unavailable; never replay' }) + '\n'); }
       });
     });
@@ -63,7 +93,7 @@ export default function(pi: ExtensionAPI) {
     publish = async () => {
       const temporary = descriptor + '.' + randomBytes(8).toString('hex');
       await writeFile(temporary, JSON.stringify({ version: 1, sessionID: 10, pid: process.pid,
-        generation, socketPath, sessionFile: ctx?.sessionManager.getSessionFile() }), { mode: 0o600, flag: 'wx' });
+        generation, socketPath, capabilities: ['tts-candidates-v1'], sessionFile: ctx?.sessionManager.getSessionFile() }), { mode: 0o600, flag: 'wx' });
       await rename(temporary, descriptor);
     };
     await publish();
@@ -79,6 +109,20 @@ export default function(pi: ExtensionAPI) {
     return { action: 'handled' as const };
   });
   pi.on('agent_start', (_event, context) => { ctx = context; gate?.started(); });
+  pi.on('message_start', event => {
+    if (event.message.role === 'assistant') gate?.candidateStarted();
+  });
+  pi.on('message_update', event => {
+    const update = event.assistantMessageEvent;
+    if (update.type === 'text_delta') gate?.candidateDelta(update.delta);
+    else if (update.type === 'toolcall_start') gate?.candidateInvalidated();
+  });
+  pi.on('message_end', event => {
+    if (event.message.role !== 'assistant') return;
+    const message = event.message;
+    const text = message.content.filter(p => p.type === 'text').map(p => p.text).join('\n');
+    gate?.candidateEnded(text, message.stopReason !== 'stop' || message.content.some(p => p.type === 'toolCall'));
+  });
   pi.on('agent_settled', async (_event, context) => {
     ctx = context;
     if (!gate || !context.isIdle()) return;

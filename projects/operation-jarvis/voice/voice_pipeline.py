@@ -680,13 +680,16 @@ class VoicePipeline:
         input_seconds: float | None = None,
         asr_seconds: float | None = None,
         started_at: float | None = None,
+        final_synthesis: Callable[[str], list[Path]] | None = None,
     ) -> VoicePipelineResult:
         """Run one user voice turn through ASR -> voice LLM -> TTS.
 
         When TTS streaming is enabled and a callback is supplied, complete
         sentence chunks are synthesized as the LLM stream arrives.  Each WAV
         path is passed to the callback as soon as it is ready, so local playback
-        can begin before the LLM has finished the whole reply.
+        can begin before the LLM has finished the whole reply. An optional
+        final_synthesis renderer is invoked only after a successful completed
+        response, allowing room callers to reuse matching silent pre-rendered WAVs.
         """
         started_at = started_at if started_at is not None else time.monotonic()
         if transcript is None:
@@ -704,6 +707,8 @@ class VoicePipeline:
         stream_tts = self.streams_tts_while_llm_generates and audio_path_callback is not None
         llm_started_at = time.monotonic()
         tts_seconds = 0.0
+        if stream_tts and final_synthesis is not None:
+            raise VoicePipelineError("Final-only synthesis cannot emit speculative streaming audio.")
         try:
             if stream_tts:
                 reply_text, tts_seconds = self._complete_and_synthesize_streaming(
@@ -735,17 +740,20 @@ class VoicePipeline:
             tts_started_at = time.monotonic()
             spoken_tts_segment_keys: set[str] = set()
             try:
-                for segment in self._split_for_tts(reply_text):
-                    cleaned_segment = self._clean_text_for_tts(segment)
-                    if not cleaned_segment:
-                        continue
-                    segment_key = _tts_segment_dedupe_key(cleaned_segment)
-                    if segment_key and segment_key in spoken_tts_segment_keys:
-                        LOGGER.debug("Skipping duplicate voice TTS segment: %r", cleaned_segment[:160])
-                        continue
-                    audio_paths.append(self._synthesize_segment(cleaned_segment))
-                    if segment_key:
-                        spoken_tts_segment_keys.add(segment_key)
+                if final_synthesis is not None:
+                    audio_paths = final_synthesis(reply_text)
+                else:
+                    for segment in self._split_for_tts(reply_text):
+                        cleaned_segment = self._clean_text_for_tts(segment)
+                        if not cleaned_segment:
+                            continue
+                        segment_key = _tts_segment_dedupe_key(cleaned_segment)
+                        if segment_key and segment_key in spoken_tts_segment_keys:
+                            LOGGER.debug("Skipping duplicate voice TTS segment: %r", cleaned_segment[:160])
+                            continue
+                        audio_paths.append(self._synthesize_segment(cleaned_segment))
+                        if segment_key:
+                            spoken_tts_segment_keys.add(segment_key)
             except Exception:
                 for path in audio_paths:
                     try:
