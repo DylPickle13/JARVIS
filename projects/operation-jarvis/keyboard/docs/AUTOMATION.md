@@ -37,8 +37,8 @@ The Mac currently has computer sleep and display sleep set to never; this change
 does not modify those system settings. Keep computer sleep off for JARVIS, but set
 a normal display/inactivity timeout in System Settings as a fallback.
 
-- Two consecutive fresh basement away watcher checks (normally about 3 seconds
-  apart): request session lock, verify
+- Three consecutive fresh basement away watcher checks (normally about 3 seconds
+  apart, roughly 6 seconds from first to third): request session lock, verify
   `CGSSessionScreenIsLocked`, then `pmset displaysleepnow` for connected displays.
 - Fresh nearby after successful automated away: declare user activity via IOKit
   once to wake displays. Never unlock, type credentials, or prevent later idle sleep.
@@ -46,13 +46,14 @@ a normal display/inactivity timeout in System Settings as a fallback.
   successful actions. Unknown/stale never triggers an action. The existing backend
   nearby hold and watcher polling latency remain; this is not instantaneous physical
   departure detection. Nearby, unknown/stale, clock reversal, or a polling gap over
-  30 seconds resets away confirmation. Persisted fields remain compatible with old state.
+  30 seconds resets away confirmation. Old persisted state migrates with its confirmation
+  count reset; repeated timestamps and post-save freshness checks do not count.
 - Persist a pending marker before actions; any failed/uncertain command blocks all
   subsequent display actions until explicit owner review. No automatic retry.
 - The helper is bounded to eight seconds. The macOS lock API is private and may
   change on OS updates; absence/failure blocks display sleep rather than claiming a
   lock. The owner confirmed the original two-minute departure/return behavior worked;
-  the two-check safeguard still needs a physical timing check.
+  the three-check safeguard still needs a physical timing check.
 - Runtime files: `display-config.json` (opt-in), `display-state.json` (transitions,
   timer, pending/fault). Messages use the existing minute-based alert outbox.
 
@@ -78,7 +79,7 @@ The independent macOS inactivity lock remains necessary.
 
 Validation: 126 offline tests pass (including 13 display tests). Owner confirmed
 live lock/sleep/wake worked before removal of the extra two-minute delay; the
-subsequent two-check safeguard has offline coverage but awaits physical validation.
+subsequent three-check safeguard has offline coverage but awaits physical validation.
 
 ## Safety and failures
 

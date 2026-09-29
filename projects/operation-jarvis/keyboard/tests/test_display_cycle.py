@@ -40,11 +40,13 @@ class DisplayTests(unittest.TestCase):
         self.away()
         self.assertEqual(self.actions, [])
 
-    def test_two_away_checks_once_and_return_once(self):
+    def test_three_away_checks_once_and_return_once(self):
         self.tick(0, 'nearby')
         self.tick(3)
         self.assertEqual(self.actions, [])
         self.tick(6)
+        self.assertEqual(self.actions, [])
+        self.tick(9)
         self.assertEqual(self.actions, ['lock-sleep'])
         self.tick(120)
         self.tick(130)
@@ -64,6 +66,8 @@ class DisplayTests(unittest.TestCase):
         self.tick(9)
         self.assertEqual(self.actions, [])
         self.tick(12)
+        self.assertEqual(self.actions, [])
+        self.tick(15)
         self.assertEqual(self.actions, ['lock-sleep'])
 
     def test_gap_and_clock_reversal_reset_confirmation(self):
@@ -72,6 +76,8 @@ class DisplayTests(unittest.TestCase):
         self.tick(90)
         self.assertEqual(self.actions, [])
         self.tick(93)
+        self.assertEqual(self.actions, [])
+        self.tick(96)
         self.assertEqual(self.actions, ['lock-sleep'])
 
     def test_single_false_away_does_not_sleep(self):
@@ -81,6 +87,8 @@ class DisplayTests(unittest.TestCase):
         self.tick(9)
         self.assertEqual(self.actions, [])
         self.tick(12)
+        self.assertEqual(self.actions, [])
+        self.tick(15)
         self.assertEqual(self.actions, ['lock-sleep'])
 
     def test_unknown_or_stale_breaks_confirmation(self):
@@ -93,12 +101,35 @@ class DisplayTests(unittest.TestCase):
                 self.tick(6)
                 self.assertEqual(self.actions, [])
                 self.tick(9)
+                self.assertEqual(self.actions, [])
+                self.tick(12)
                 self.assertEqual(self.actions, ['lock-sleep'])
 
     def test_same_timestamp_does_not_confirm(self):
         self.tick(0)
         self.tick(0)
         self.assertEqual(self.actions, [])
+
+    def test_two_false_away_checks_reset_on_nearby(self):
+        self.tick(0)
+        self.tick(3)
+        self.tick(6, 'nearby')
+        self.tick(9)
+        self.tick(12)
+        self.assertEqual(self.actions, [])
+        self.tick(15)
+        self.assertEqual(self.actions, ['lock-sleep'])
+
+    def test_old_state_migrates_without_counting_previous_check(self):
+        state = display.initial()
+        del state['away_checks']
+        state.update(away_since=0, last_tick=0)
+        self.store.data['display-state.json'] = state
+        self.tick(3)
+        self.tick(6)
+        self.assertEqual(self.actions, [])
+        self.tick(9)
+        self.assertEqual(self.actions, ['lock-sleep'])
 
     def test_persisted_away_does_not_repeat(self):
         self.away()
@@ -109,6 +140,7 @@ class DisplayTests(unittest.TestCase):
         self.tick(0, 'nearby')
         def fail(action):
             raise subprocess.TimeoutExpired('helper', 8)
+        self.tick(114)
         self.tick(117)
         output, code = self.tick(120, apply=fail)
         self.assertEqual(code, 1)
