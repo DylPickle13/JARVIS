@@ -139,9 +139,17 @@ class StatusTests(unittest.TestCase):
         for delta in (16, -6):
             self.assertEqual(status_stream.extract(self.data, self.now+dt.timedelta(seconds=delta)), {})
 
-    def test_backend_stale(self):
+    def test_unrelated_backend_staleness_does_not_hide_pi(self):
         self.data['stale'] = True
-        self.assertEqual(status_stream.extract(self.data, self.now), {})
+        self.assertEqual(status_stream.extract(self.data, self.now), {'1': 'idle'})
+
+    def test_pi_stale_or_unhealthy(self):
+        for field, value in (('stale', True), ('ok', False)):
+            with self.subTest(field=field):
+                pi = dict(self.data['subsystems']['pi'])
+                pi[field] = value
+                data = {'stale': False, 'subsystems': {'pi': pi}}
+                self.assertEqual(status_stream.extract(data, self.now), {})
 
     def test_missing_timestamp(self):
         del self.data['subsystems']['pi']['updatedAt']

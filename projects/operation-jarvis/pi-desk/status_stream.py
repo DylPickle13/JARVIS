@@ -10,7 +10,8 @@ URL = 'http://127.0.0.1:8790/api/v1/state'
 
 
 def extract(data, now=None):
-    if not isinstance(data, dict) or data.get('stale', True):
+    # Aggregate staleness includes unrelated hardware; only Pi freshness matters here.
+    if not isinstance(data, dict):
         return {}
     pi = data.get('subsystems', {}).get('pi', {})
     if pi.get('ok') is not True or pi.get('stale') is not False:
