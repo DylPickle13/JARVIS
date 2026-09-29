@@ -320,7 +320,7 @@ fi
 section "Extension inventory"
 expected_extension_roots=(
   .pi/extensions/00-private-permissions.ts
-  .pi/extensions/01-omlx-provider-setup-and-recovery.ts
+  .pi/extensions/01-omlx.ts
   .pi/extensions/02-web-search-policy.ts
   .pi/extensions/03-codex-fast.ts
   .pi/extensions/04-delete-current-session.ts
@@ -369,6 +369,8 @@ expected_extension_files=(
   .pi/scripts/pi-attach-picker.swift
   .pi/scripts/tests/local-pi-session-status.test.mjs
   .pi/tests/session-autoname.test.mjs
+  .pi/tests/omlx.test.mjs
+  .pi/scripts/smoke-omlx.mjs
   .pi/scripts/tests/siri-new-session.test.mjs
   .pi/extensions/lib/siri-new-session.ts
   .pi/extensions/lib/operation-jarvis-security.ts
@@ -558,6 +560,11 @@ fi
 section "Operation JARVIS focused tools (offline mocks only)"
 if command -v node >/dev/null 2>&1; then
   run_check "focused controls, security gates and provider schemas" node --test .pi/scripts/tests/jarvis-purifiers.test.mjs .pi/tests/operation-jarvis-security.test.mjs .pi/tests/slim-provider-payload.test.mjs .pi/tests/apple-notes.test.mjs
+fi
+
+section "oMLX bridge checks (offline fixtures only)"
+if command -v node >/dev/null 2>&1; then
+  run_check "oMLX discovery, recovery and wire compatibility" node --test .pi/tests/omlx.test.mjs
 fi
 
 section "Local Pi lifecycle telemetry checks"

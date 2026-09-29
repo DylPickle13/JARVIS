@@ -199,7 +199,7 @@ For this project, the relevant slimming files have been:
 - `.pi/extensions/98-slim-provider-payload.ts`
 - `.pi/extensions/99-lazy-tools.ts`
 - `.pi/APPEND_SYSTEM.md`
-- `.pi/extensions/01-omlx-provider-setup-and-recovery.ts` for local model/provider registration and recovery behavior
+- `.pi/extensions/01-omlx.ts` for local model/provider registration and recovery behavior
 
 The measurements and tool-group description below are historical. For the maintained inventory, use [Pi extensions](PI_EXTENSIONS.md); rerun the measurement when comparing new changes.
 
