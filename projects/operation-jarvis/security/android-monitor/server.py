@@ -2,6 +2,10 @@
 """Read-only, dedicated TLS endpoint for the Android monitor. No device writes."""
 import argparse
 import hmac
+import hashlib
+import ipaddress
+import signal
+import subprocess
 import http.client
 import json
 import math
@@ -73,6 +77,22 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def local_peer(address):
+    """Only loopback/RFC1918 clients; never accept public/VPN address ranges."""
+    ip = ipaddress.ip_address(address)
+    return any(ip in ipaddress.ip_network(net) for net in
+               ('127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'))
+
+
+def advertise(root, port):
+    der = ssl.PEM_cert_to_DER_cert((root / 'server.crt').read_text())
+    name = 'JARVIS-' + hashlib.sha256(der).hexdigest()[:32]
+    # Only a public certificate fingerprint and port; no token or presence in mDNS.
+    return subprocess.Popen(['/usr/bin/dns-sd', '-R', name,
+                             '_jarvis-monitor._tcp', 'local.', str(port)],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 class Server(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -86,6 +106,9 @@ class Server(ThreadingHTTPServer):
 
     def get_request(self):
         sock, addr = super().get_request()
+        if not local_peer(addr[0]):
+            sock.close()
+            raise OSError('Non-LAN peer rejected')
         sock.settimeout(4)
         try:
             return self.context.wrap_socket(sock, server_side=True), addr
@@ -122,9 +145,26 @@ def main():
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(root / 'server.crt', root / 'server.key')
-    server = Server((config['bind'], config['port']), ctx, config['token'])
-    print('Android monitor read-only TLS endpoint ready.', flush=True)
-    server.serve_forever(poll_interval=0.5)
+    discovery = config.get('discovery', False) is True
+    server = Server(('0.0.0.0' if discovery else config['bind'], config['port']), ctx, config['token'])
+    publisher = None
+    def terminate(signum, frame):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, terminate)
+    try:
+        if discovery: publisher = advertise(root, config['port'])
+        print('Android monitor read-only TLS endpoint ready.', flush=True)
+        # A publisher failure restarts this dedicated relay through launchd.
+        server.timeout = 0.5
+        while publisher is None or publisher.poll() is None:
+            server.handle_request()
+    finally:
+        server.server_close()
+        if publisher is not None:
+            publisher.terminate()
+            try: publisher.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                publisher.kill(); publisher.wait()
 
 
 if __name__ == '__main__':

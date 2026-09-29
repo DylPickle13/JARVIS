@@ -13,7 +13,7 @@ import subprocess
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--host', required=True, help='Mac home-LAN IPv4 address (reserve in DHCP)')
+    p.add_argument('--host', required=True, help='Initial Mac home-LAN IPv4 address (paired certificate identity/fallback)' )
     p.add_argument('--private-dir', type=Path, required=True)
     p.add_argument('--java-home', type=Path, required=True)
     args = p.parse_args()
@@ -37,7 +37,7 @@ def main():
         '-config', str(root/'openssl.cnf'), '-keyout', str(root/'server.key'), '-out', str(root/'server.crt')],
         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     der = ssl.PEM_cert_to_DER_cert((root/'server.crt').read_text())
-    (root/'server.json').write_text(json.dumps({'bind': str(ip), 'port': 8794, 'token': token}))
+    (root/'server.json').write_text(json.dumps({'bind': str(ip), 'port': 8794, 'token': token, 'discovery': True}))
     (root/'client.json').write_text(json.dumps({'url': f'https://{ip}:8794/v1/presence',
         'certificateSha256': hashlib.sha256(der).hexdigest(), 'token': token}))
     subprocess.run([str(args.java_home/'bin/keytool'), '-genkeypair', '-keystore', str(root/'signing.p12'),

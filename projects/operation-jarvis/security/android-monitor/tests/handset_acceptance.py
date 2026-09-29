@@ -13,7 +13,7 @@ import sys
 import threading
 import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server import Server
+from server import Server, advertise
 
 
 def main():
@@ -37,18 +37,22 @@ def main():
         actual = next(line.strip() for line in text.splitlines() if 'Display Power: state=' in line)
         print(actual, flush=True)
         if actual != 'Display Power: state=' + expected: raise AssertionError('Expected ' + expected)
-    server = thread = None
+    server = thread = publisher = None
     subprocess.run(['launchctl', 'bootout', domain + '/' + label], check=True)
     try:
         # launchctl removal can return before the old process releases its socket.
         for attempt in range(10):
             try:
-                server = Server((config['bind'], config['port']), context, config['token'], response)
+                server = Server(('0.0.0.0' if config.get('discovery') else config['bind'], config['port']), context, config['token'], response)
                 break
             except OSError as exc:
                 if exc.errno != 48 or attempt == 9: raise
                 time.sleep(1)
         thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        if config.get('discovery'):
+            publisher = advertise(root, config['port'])
+            # Allow a discovery refresh after the production advertisement vanished.
+            time.sleep(35)
         state.update(state='nearby', ageSeconds=1)
         time.sleep(8); power('ON')
         state.update(state='away', ageSeconds=1)
@@ -65,6 +69,11 @@ def main():
             raise AssertionError('tinyCam live view not resumed (secure lock may need manual PIN).')
         print('tinyCam live view resumed; fresh away/nearby and unknown/stale gates passed.', flush=True)
     finally:
+        if publisher:
+            publisher.terminate()
+            try: publisher.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                publisher.kill(); publisher.wait()
         if server:
             if thread: server.shutdown()
             server.server_close()

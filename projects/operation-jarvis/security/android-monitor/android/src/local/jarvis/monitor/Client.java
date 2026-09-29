@@ -14,6 +14,7 @@ import org.json.JSONObject;
 public final class Client {
     private final JSONObject config;
     private final SSLContext tls;
+    private final Discovery discovery;
     public Client(Context context) throws Exception {
         InputStream in = context.openFileInput("client.json");
         try { config = new JSONObject(read(in, 4096)); } finally { in.close(); }
@@ -35,7 +36,9 @@ public final class Client {
                 } catch (Exception e) { throw new java.security.cert.CertificateException("Certificate pin mismatch or expired certificate"); }
             }
         }}, null);
+        discovery = new Discovery(context, pin);
     }
+    public void close() { discovery.close(); }
     private static String read(InputStream in, int limit) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[512];
@@ -47,11 +50,20 @@ public final class Client {
         return out.toString("UTF-8");
     }
     public JSONObject poll() throws Exception {
-        URL url = new URL(config.getString("url"));
-        if (!url.getProtocol().equals("https")) throw new Exception("TLS required");
+        final URL identity = new URL(config.getString("url"));
+        if (!identity.getProtocol().equals("https")) throw new Exception("TLS required");
+        String discovered = discovery.endpoint();
+        URL url = discovered == null ? identity : new URL(discovered);
         HttpsURLConnection c = (HttpsURLConnection)url.openConnection();
         c.setSSLSocketFactory(tls.getSocketFactory());
-        // Keep Android's normal hostname verification in addition to the certificate pin.
+        // Authenticate the originally paired SAN identity, NOT the untrusted routing
+        // hint. The trust manager still requires the exact pinned, unexpired cert.
+        final javax.net.ssl.HostnameVerifier verifier = HttpsURLConnection.getDefaultHostnameVerifier();
+        c.setHostnameVerifier(new javax.net.ssl.HostnameVerifier() {
+            public boolean verify(String host, javax.net.ssl.SSLSession session) {
+                return verifier.verify(identity.getHost(), session);
+            }
+        });
         c.setConnectTimeout(3000); c.setReadTimeout(3000);
         c.setInstanceFollowRedirects(false); c.setUseCaches(false);
         c.setRequestProperty("Authorization", "Bearer " + config.getString("token"));

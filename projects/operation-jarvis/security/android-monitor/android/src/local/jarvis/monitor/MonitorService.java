@@ -163,6 +163,7 @@ public final class MonitorService extends Service {
     @Override public void onDestroy() {
         destroyed = true;
         main.removeCallbacksAndMessages(null);
+        if (client != null) client.close();
         if (worker != null) worker.removeCallbacksAndMessages(null);
         if (thread != null) thread.quitSafely();
         locks(false);

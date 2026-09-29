@@ -42,7 +42,10 @@ cron alert relay. BLE presence is an estimate, not proof that a person is presen
 
 ## Security / private state
 
-The dedicated relay binds only the configured Mac LAN IPv4 address on TCP 8794.
+With discovery enabled, the dedicated relay listens on IPv4 TCP 8794 across Mac
+interfaces so address changes do not require a restart. Before TLS it rejects peers
+outside loopback and RFC1918 private-LAN ranges. The legacy fixed-address mode remains
+available by setting `discovery` false in private `server.json`.
 There is no port forwarding, public relay, cloud service, CORS API or write route.
 `GET /v1/presence` requires a random monitor-only bearer credential and returns only
 protocol version, `nearby`/`away`/`unknown`, and age. Main JARVIS/camera credentials,
@@ -50,11 +53,32 @@ BLE identifiers, room inventory and RSSI never reach the phone. Request logging 
 disabled. Backend failure yields unknown, not cached away.
 
 The app requires HTTPS, pins the exact SHA-256 server certificate, checks certificate
-validity and normal hostname/IP SAN matching, rejects redirects, and bounds response
-size and timeouts. A different certificate fails closed. The generated certificate
-expires after 825 days; renewal requires deliberate re-pairing. Use a stable/reserved
-Mac LAN address; an IP change requires updating the certificate and pairing, not
-relaxing TLS validation.
+validity and the **originally paired** hostname/IP SAN identity, rejects redirects,
+and bounds response size and timeouts. The discovered address is only a routing hint;
+it never becomes the trusted identity. A different certificate fails closed before
+the bearer credential is sent. The generated certificate expires after 825 days;
+renewal requires deliberate re-pairing, but an IP change does not.
+
+### Automatic LAN discovery (v1.2)
+
+The Mac advertises `_jarvis-monitor._tcp` through its built-in Bonjour (`dns-sd`).
+The instance name contains only a public certificate fingerprint prefix, never tokens,
+presence, or camera details. Android's `NsdManager` resolves that instance directly,
+without depending on Android 6's unsupported ordinary `.local` hostname lookup.
+Discovery refreshes every 30 seconds and is stopped when the helper is disabled.
+Only RFC1918 IPv4 destinations are accepted. The original configured endpoint remains
+a fallback when no discovered address is available; failed discovery/TLS leaves the
+screen unchanged. Spoofed advertisements can disrupt availability, not bypass pairing.
+
+Different Wi-Fi names work **if both networks permit local traffic and multicast DNS**.
+Guest isolation, different routed subnets, or blocked multicast may prevent discovery;
+this is not remote/internet access. A DHCP reservation is an optional fallback, not
+required on a reachable Bonjour-enabled LAN. No router or Wi-Fi settings are changed.
+
+For an existing installation, rebuild/install the helper and set `"discovery": true`
+in the private Mac `server.json`, then restart only `com.jarvis.android-monitor`.
+Keep the original client URL, certificate, and bearer credential: no re-pairing or
+app-data reset is required. New provisioning enables discovery by default.
 
 Private runtime: `~/Library/Application Support/JARVIS/android-monitor/` (0700;
 keys/configs 0600). Includes separate TLS/signing keys, token, provision file, signed
@@ -132,8 +156,8 @@ mkdir -p /tmp/jarvis-monitor-policy-test
 "$JAVA/bin/java" -cp /tmp/jarvis-monitor-policy-test PolicyTest
 ```
 
-Six Python tests cover sanitization, auth, minimal/no-store responses and no proxy/write
-routes. Twenty standalone Java policy assertions cover transitions, debounce, stale,
+Eight Python tests cover sanitization, auth, minimal/no-store responses, no proxy/write
+routes, LAN-only peer admission and credential-free discovery advertisements. Twenty standalone Java policy assertions cover transitions, debounce, stale,
 unknown, age/clock/gap bounds, power gating, persisted states and no replay.
 
 `tests/handset_acceptance.py` is an **explicit, physical screen test**, not an automatic
@@ -146,6 +170,20 @@ if interrupted outside normal cleanup, bootstrap the LaunchAgent above.
 python3 tests/handset_acceptance.py --confirm-phone-screen-test \
   --serial <USB_SERIAL> --private-dir "$PRIVATE"
 ```
+
+Live v1.2 verification: the Nexus discovered the Mac's new LAN address from a different
+home Wi-Fi while keeping the old paired identity and token. Authenticated polling and
+phone-only fixtures passed across relay/advertisement restarts. A spoofed-discovery test using the same service name and a different certificate
+(with the same SAN) produced repeated TLS rejection and **zero HTTP requests**;
+production polling recovered afterward. Run explicitly with:
+
+```sh
+python3 tests/handset_pin_acceptance.py --confirm-phone-discovery-test \
+  --private-dir "$PRIVATE"
+```
+
+This temporarily replaces only the monitor relay and restores it in `finally`.
+Actual future Wi-Fi switching and multicast-blocked networks are not covered by these tests.
 
 Live verification: authenticated pinned-TLS Wi-Fi polling (no ADB reverse), screen-off
 on two fresh away samples, remaining off for unknown/stale samples, screen-on on fresh
