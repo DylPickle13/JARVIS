@@ -1,0 +1,18 @@
+# Source/docs/tests are public-trackable; runtime lives outside this repository.
+__pycache__/
+*.py[cod]
+*.class
+*.dex
+*.apk
+*.idsig
+*.p12
+*.jks
+*.key
+*.crt
+*.pem
+client.json
+server.json
+signing-password
+build/
+runtime/
+*.log

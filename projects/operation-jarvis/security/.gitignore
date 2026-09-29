@@ -3,6 +3,7 @@
 /*
 !/.gitignore
 !/README.md
+!/android-monitor/
 !/CLI.md
 !/security
 !/security_cli.py

@@ -37,6 +37,14 @@ read-only devices/status/capabilities and cloud list/describe. Automation
 enable/disable is live-accepted (owner approval 2026-09-20); the extension
 checks the exact revision again and verifies readback.
 
+## Android doorbell monitor
+
+The [Android monitor subproject](android-monitor/README.md) adds a small Android 6
+helper that sleeps/wakes a tinyCam display using the existing authenticated basement
+presence signal. It has a separate read-only, pinned-TLS Mac relay and monitor-only
+credential; no camera settings, security polling, computer watcher or cron schedules
+are changed. Source/tests/docs are trackable; credentials and runtime stay private.
+
 ## Local setup
 
 Use a separate Python 3.13 environment; do not upgrade a working plug/purifier SDK:
