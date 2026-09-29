@@ -66,7 +66,11 @@ The final group is not padded with empty panes. Each viewer has a private local
 display workspace, so a narrow window cannot rearrange another wider window.
 Existing display attachment processes are parked in hidden windows and reused
 when groups change; opening additional groups creates their attachments lazily.
-Closing a viewer removes only that viewer's display workspace, never the agents.
+Group changes batch pane moves, ordering, focus and readiness updates into one
+tmux command queue, with one final layout equalization, to reduce intermediate
+redraws. tmux can still deliver resize notifications; this is not a guarantee of
+flicker-free rendering. Closing a viewer removes only that viewer's display
+workspace, never the agents.
 
 To tune the target pane width, set `PI_DESK_MIN_COLUMNS` before opening a viewer:
 
@@ -86,6 +90,11 @@ setting until it closes.
 | Click a pane | Focus that pane |
 | F10 or Ctrl+A, then Shift+R | Explicit start/restart confirmation popup |
 | Ctrl+A, then d | Leave this viewer; agents keep running |
+
+Clicks and F12 selections within a ready visible group use a focus-only path,
+validating current pane indices, session tags, liveness and responsive capacity
+before switching focus. Stale, dead, missing or out-of-group panes still use the
+normal recovery/regrouping path; healthy selections do not equalize the layout.
 
 Navigation stops at 1 and 10. Plain arrows are unchanged. Font/fullscreen controls
 belong to the terminal: Cmd+Plus/Minus and Ctrl+Cmd+F on macOS; Ctrl+Plus/Minus and
@@ -158,6 +167,12 @@ jarvisd endpoint every 3 seconds. Local viewing uses a local subprocess; remote
 viewing streams the same installed helper over SSH. No transcript data is sent
 by the status stream. Samples older than 15 seconds become Unknown; a stream
 silent for 12 seconds is retried. Failures never imply that the host is off.
+The shared monitor fetches selection and viewer metadata in one tmux client call
+per tick. Changed global and viewer headers are written with at most one further
+client call through a short-lived private command file, avoiding tmux's argv-size
+limit. Unchanged headers and saved selections are not rewritten; closed viewers
+are skipped at execution time. Polling intervals and warning-row behaviour are
+unchanged.
 
 Mac diagnostics show local/SSH mode and local load, without Linux-only commands.
 Pi diagnostics retain Wi-Fi association signal, host ping, CPU temperature and

@@ -5,12 +5,14 @@ import os
 from pathlib import Path
 import subprocess
 import signal
+import shlex
 import sys
+import tempfile
 import threading
 import time
 
 import workspace
-from layout import RESIZE_DELAY
+from layout import RESIZE_DELAY, capacity, group as session_members, shape
 from health import HealthMonitor
 from backend import clean_environment
 from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, recover_closed_displays
@@ -19,6 +21,28 @@ STATE = Path.home() / '.local/state/pi-desk'
 COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': 75,
           'offline': 245, 'unknown': 179}
 PULSE_PHASE_SECONDS = 0.75
+VIEWER_STATUS_FORMAT = ('#{session_name}\t#{window_width}\t'
+                        '#{@pi-desk-capacity}\t#{@pi-desk-session}')
+FOCUS_FORMAT = ('#{session_name}\t#{window_width}\t#{@pi-desk-capacity}\t'
+                '#{@pi-desk-min-columns}\t#{@pi-desk-changing}\t#{window_index}\t'
+                '#{P:#{pane_index}:#{@pi-desk-session}:#{pane_dead}|}')
+
+
+def ready_focus(number, details):
+    """Validate live pane order/liveness and current sizing policy, never a cache."""
+    if len(details) != 7:
+        return False
+    _, width, count, minimum, changing, window, actual = details
+    if not all(value.isdecimal() for value in (width, count, minimum)):
+        return False
+    count, minimum = int(count), int(minimum)
+    if count not in (1, 2, 3) or not 20 <= minimum <= 300:
+        return False
+    return (changing == '0' and window == '0'
+            and capacity(int(width), count, minimum) == count
+            # tmux's pane loop may iterate by pane ID, not pane index. Match
+            # indexed entries rather than mistaking loop order for visual order.
+            and sorted(actual.split('|')) == sorted(shape(session_members(number, count)).split('|')))
 
 
 def viewer_attach_command(group, environ=None):
@@ -65,11 +89,17 @@ def choose(number=None, client_pid=None, step=None):
                 number = max(1, min(10, current + step))
         if client is not None:
             details = tmux('display-message', '-p', '-t', match[2],
-                           '#{session_name}\t#{window_width}').stdout.strip().split('\t')
-            if len(details) == 2 and workspace.is_viewer(details[0]):
+                           FOCUS_FORMAT).stdout.rstrip('\n').split('\t')
+            if len(details) >= 2 and workspace.is_viewer(details[0]):
                 group = details[0]
-                workspace.reconcile(group, number, int(details[1]))
-                save_selection(number)
+                if ready_focus(number, details):
+                    index = session_members(number, int(details[2])).index(number)
+                    tmux('select-pane', '-t', f'{group}:0.{index}', ';',
+                         'set-option', '-g', '@pi-desk-last', str(number))
+                    save_selection(number, publish=False)
+                else:
+                    workspace.reconcile(group, number, int(details[1]))
+                    save_selection(number)
                 return group
         key, index = session_group(number)
         group = f'group-{key}'
@@ -84,12 +114,23 @@ def choose(number=None, client_pid=None, step=None):
     return group
 
 
-def save_selection(number):
-    # Caller holds selection.lock.
-    tmux('set-option', '-g', '@pi-desk-last', str(number))
+def write_selection(value):
+    # Caller holds selection.lock; avoid rewriting an unchanged selection.
+    if value not in tuple(str(n) for n in range(1, 11)):
+        return
+    target = STATE / 'last-session'
+    if target.exists() and target.read_text().strip() == value:
+        return
     temporary = STATE / 'last-session.tmp'
-    temporary.write_text(str(number) + '\n')
-    os.replace(temporary, STATE / 'last-session')
+    temporary.write_text(value + '\n')
+    os.replace(temporary, target)
+
+
+def save_selection(number, publish=True):
+    # Focus-only navigation already publishes in the same queue as select-pane.
+    if publish:
+        tmux('set-option', '-g', '@pi-desk-last', str(number))
+    write_selection(str(number))
 
 
 def pulse_is_dim(now=None):
@@ -179,22 +220,51 @@ def responsive_selector(states, width, count, selected, *, pulse_dim=False):
     return ''.join(parts)
 
 
-def render_viewers(states, dim, previous, warning=None):
+def apply_status_commands(commands):
+    if not commands:
+        return
+    # Several full headers can exceed tmux's argv message-size limit. A private
+    # command file batches every write without truncating headers or extra clients.
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.tmux') as stream:
+        stream.write('\n'.join(shlex.join(command) for command in commands) + '\n')
+        stream.flush()
+        tmux('source-file', stream.name)
+
+
+def render_viewers(states, dim, previous, warning=None, *, session_rows=None, global_rows=None):
     # A local tmux array shadows the entire global array, not just index 0.
     if warning is None:
-        warning = tmux('show-options', '-gv', 'status-format[1]').stdout.rstrip('\n')
-    rows = tmux('list-sessions', '-F',
-                '#{session_name}\t#{window_width}\t#{@pi-desk-capacity}\t#{@pi-desk-session}').stdout
+        warning = (global_rows[1] if global_rows is not None else
+                   tmux('show-options', '-gv', 'status-format[1]').stdout.rstrip('\n'))
+    if session_rows is None:
+        session_rows = tmux('list-sessions', '-F', VIEWER_STATUS_FORMAT).stdout
+    commands = []
+    if global_rows is not None:
+        commands.extend([
+            ['set-option', '-g', 'status-format[0]', global_rows[0]],
+            ['set-option', '-g', 'status-format[1]', global_rows[1]],
+            ['set-option', '-g', 'status', '2' if global_rows[1] else 'on'],
+        ])
     current = {}
-    for row in rows.splitlines():
-        name, width, count, selected = row.split('\t')
-        if not workspace.is_viewer(name) or not all(v.isdecimal() for v in (width, count, selected)):
+    for row in session_rows.splitlines():
+        fields = row.split('\t')
+        if len(fields) != 4:
+            continue
+        name, width, count, selected = fields
+        if (not workspace.is_viewer(name) or not all(v.isdecimal() for v in fields[1:])
+                or int(count) not in (1, 2, 3) or int(selected) not in range(1, 11)):
             continue
         bar = responsive_selector(states, int(width), int(count), int(selected), pulse_dim=dim)
         current[name] = (bar, warning)
         if previous.get(name) != current[name]:
-            tmux('set-option', '-t', name, 'status-format[0]', bar, ';',
-                 'set-option', '-t', name, 'status-format[1]', warning)
+            writes = [['set-option', '-t', name, 'status-format[0]', bar],
+                      ['set-option', '-t', name, 'status-format[1]', warning]]
+            # A viewer may close after the snapshot. Guard at execution time so
+            # its disappearance cannot abort updates for the surviving viewers.
+            exists = '#{S:#{?#{==:#{session_name},' + name + '},1,}}'
+            commands.append(['if-shell', '-F', exists,
+                             ' ; '.join(shlex.join(command) for command in writes)])
+    apply_status_commands(commands)
     return current
 
 
@@ -219,20 +289,20 @@ def render_status(rows):
          'set-option', '-g', 'status', '2' if rows[1] else 'on')
 
 
-def persist_selection():
-    # Native key events update one server option synchronously. Sample under the
-    # same lock as recovery; never let queued background writers save old keys.
+def persist_selection(*, include_viewers=False):
+    # Native key events update one server option synchronously. Sample and write
+    # under the recovery lock; optionally fetch viewer metadata in the same client.
     with (STATE / 'selection.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        value = tmux('show-options', '-gv', '@pi-desk-last', check=False).stdout.strip()
-        if value not in tuple(str(n) for n in range(1, 11)):
-            return
-        target = STATE / 'last-session'
-        if target.exists() and target.read_text().strip() == value:
-            return
-        temporary = STATE / 'last-session.tmp'
-        temporary.write_text(value + '\n')
-        os.replace(temporary, target)
+        if include_viewers:
+            output = tmux('display-message', '-p', '#{@pi-desk-last}', ';',
+                          'list-sessions', '-F', VIEWER_STATUS_FORMAT).stdout
+            value, _, session_rows = output.partition('\n')
+        else:
+            value = tmux('show-options', '-gv', '@pi-desk-last', check=False).stdout.strip()
+            session_rows = None
+        write_selection(value)
+        return session_rows
 
 
 def configuration_version():
@@ -272,16 +342,15 @@ def watch_status(stop):
     try:
         while not stop.is_set():
             try:
-                persist_selection()
+                session_rows = persist_selection(include_viewers=True)
                 # One shared monitor drives a 0.75-second-per-phase brightness cycle.
                 # Static states produce identical rows, so they cause no extra writes.
                 states, dim = feed.poll(), pulse_is_dim()
                 rows = (selector(states, pulse_dim=dim),
                         health_line(feed.connection, health.poll()))
-                if rows != previous:
-                    render_status(rows)
-                    previous = rows
-                viewer_rows = render_viewers(states, dim, viewer_rows, rows[1])
+                viewer_rows = render_viewers(states, dim, viewer_rows, rows[1],
+                    session_rows=session_rows, global_rows=rows if rows != previous else None)
+                previous = rows
             except (OSError, RuntimeError, subprocess.TimeoutExpired):
                 feed.close()
                 previous = None

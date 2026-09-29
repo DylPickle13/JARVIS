@@ -1,3 +1,90 @@
+# Ready-group selection and batched status — 2026-09-29, 17:14 EDT
+
+Implemented the user's requested optimizations in `desktop.py` only:
+
+- Ready visible-group clicks/F12 validate actual pane indices, tags, liveness,
+  sizing policy and reconciliation gate, then change focus and publish selection
+  in one queue. They no longer trigger layout reconciliation. Stale/dead/missing
+  panes, group boundaries and changed capacity retain the recovery fallback.
+- The shared monitor combines selection/viewer metadata reads into one tmux
+  client and writes changed global/per-viewer headers through at most one further
+  client. Private temporary command files bypass the argv message-size limit;
+  writes guard viewer existence. Unchanged rows and saved selections are not
+  rewritten. Intervals, pulse, warning rows and monitor election are unchanged.
+
+**92 source tests and 32 installed-module responsive tests passed**. New coverage
+includes focus-only click/F12 dispatch, stale/dead/missing/order/capacity fallback,
+actual pane-loop ordering, hysteresis, selection persistence, empty selection
+snapshots, >8192-byte/private/deleted command files, literal quoted warnings,
+closed viewers, pulse/idle tick client counts and failure retry. An existing
+wall-clock debounce unit test was made deterministic after load-induced timing
+flakiness; no production resize behaviour was modified.
+
+Isolated synchronous software comparison, three dummy viewers:
+
+| Operation | Previous → updated median | tmux clients |
+| --- | --- | --- |
+| In-group selection, 36 samples each | 39.00 → 15.48 ms | 8 → 3 |
+| Idle unchanged tick, 15 warm samples each | 8.86 → 5.07 ms | 2 → 1 |
+| Pulsing tick, 15 warm samples each | 30.33 → 11.49 ms | 6 → 2 |
+
+Not physical screen/click latency or measured CPU usage. Methodology and scope:
+`docs/focus-status-optimization.md`.
+
+Installed only `desktop.py` locally by atomic replacement, updating and verifying
+the full manifest. Every other runtime file was preserved. All **31 display pane
+IDs/PIDs and 10 hosted-agent pane IDs/PIDs** were unchanged across deployment.
+No viewer, service or hosted agent restarted; no remote rollout.
+
+Click/F12 helper invocations pick up the update immediately. Reopen local viewers
+to activate the lighter status monitor. With multiple old viewers open, close all
+of them so monitor election cannot pass to another old imported implementation;
+hosted agents keep running.
+
+Rollback backup: `~/.local/state/pi-desk/backups/20260929T211439672325Z/`
+(previous desktop, manifest, deployment metadata and identity verification).
+
+# Batched group switching — 2026-09-29, 16:57 EDT
+
+At user request, chose batching rather than cached whole-group windows.
+`workspace.reconcile()` plans pane moves/order against a snapshot and submits
+respawns, titles, moves, final equalization, focus and readiness metadata in one
+tmux mutation queue. Existing attachments, lazy creation, layout capacity and
+per-viewer isolation are retained. There is only one final even-horizontal layout
+operation and no pane-index queries between mutations. Failed batches leave
+native navigation gated until recovery. This reduces unnecessary redraws; it does
+not eliminate tmux's resize notifications or guarantee zero visible flicker.
+
+**84 source tests passed**, plus **16 isolated workspace tests against the actual
+installed module**. Coverage includes all sessions/modes and native keys,
+identities, responsive sizing, independent viewers, dead/missing pane recovery,
+missing window recovery with existing parked attachments, failed batches,
+scrambled order and small custom panes.
+
+An isolated synthetic comparison (12 warm three-pane switches per version) found
+median command duration **140.30 → 46.32 ms**, resize notifications across six dummy
+apps **10 → 6**, and terminal bytes **101,935 → 28,585** (about 72% less output).
+These are software/terminal-stream measurements, not real screen latency.
+See `docs/navigation-flicker-research.md` for methodology and limits.
+
+Installed **only `workspace.py` locally**, with an atomic file replacement and
+verified manifest. Three pre-existing stale manifest entries (`status_stream.py`,
+`desktop.py`, `config/tmux.conf`) were reconciled only after confirming their
+installed contents exactly matched reviewed source. No contents of those files
+were changed; all other runtime files, including machine-specific Foot settings,
+were preserved. All **22 display pane IDs/PIDs and 10 hosted-agent pane IDs/PIDs**
+were unchanged across deployment. No viewer, service, or agent was restarted;
+no remote machine was changed.
+
+Existing cross-group helpers import the updated module on their next invocation.
+A running viewer's imported resize watcher retains its old code until that viewer
+is reopened; detach with Ctrl+A then d and run `pi-desk` to activate the update
+throughout. Hosted agents remain running.
+
+Rollback backup:
+`~/.local/state/pi-desk/backups/20260929T205756332805Z/` (previous workspace and
+manifest, deployment metadata and identity verification).
+
 # Full-colour two-pane divider — 2026-09-27, 14:12 EDT
 
 Disabled tmux's default `pane-border-indicators colour` behaviour with

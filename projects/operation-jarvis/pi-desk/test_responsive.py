@@ -59,6 +59,27 @@ class LayoutTests(unittest.TestCase):
             self.assertTrue(desktop.resize_viewer(123, os.terminal_size((184, 45))))
             reconcile.assert_called_once_with('viewer-' + 'a' * 32, None, 184)
 
+    def test_focus_readiness_checks_live_shape_and_sizing_policy(self):
+        details = ['viewer-' + 'a' * 32, '184', '3', '52', '0', '0', layout.shape((4, 5, 6))]
+        self.assertTrue(desktop.ready_focus(5, details))
+        details[6] = '1:5:0|0:4:0|2:6:0|'
+        self.assertTrue(desktop.ready_focus(5, details))  # Pane-ID loop order differs.
+        details[6] = layout.shape((4, 5, 6))
+        self.assertFalse(desktop.ready_focus(7, details))
+        for index, value in ((1, '150'), (2, ''), (2, '4'), (3, '19'),
+                             (4, '1'), (5, '1'), (6, layout.shape((6, 5, 4))),
+                             (6, '0:4:0|1:5:1|2:6:0|')):
+            broken = details[:]
+            broken[index] = value
+            self.assertFalse(desktop.ready_focus(5, broken), (index, value))
+        self.assertFalse(desktop.ready_focus(5, details[:2]))
+        # Hysteresis keeps an existing two-pane group until the growth buffer.
+        details[1:4] = ['158', '2', '52']
+        details[6] = layout.shape((5, 6))
+        self.assertTrue(desktop.ready_focus(5, details))
+        details[1] = '162'
+        self.assertFalse(desktop.ready_focus(5, details))
+
     def test_groups(self):
         for count in (1, 2, 3):
             for selected in range(1, 11):
@@ -87,27 +108,35 @@ class LayoutTests(unittest.TestCase):
                          .replace('fg=colour75]●', 'fg=colour24]●'), dim)
 
     def test_debounces_size_changes_without_subprocess_polling(self):
-        stop = threading.Event()
+        # Script time and samples: wall-clock sleeps can legitimately exceed the
+        # debounce interval under load and make a correct watcher look broken.
+        samples = iter(((0, 184), (.06, 180), (.12, 160), (.18, 140), (.24, 100),
+                        (.30, 100), (.45, 100), (.55, 100), (.75, 100), (1, 100)))
+        clock = [0]
         size = [os.terminal_size((184, 45))]
         applied = []
+
+        def wait(timeout):
+            try:
+                clock[0], width = next(samples)
+                size[0] = os.terminal_size((width, 45))
+                return False
+            except StopIteration:
+                return True
+
         def resize(pid, expected_size):
             applied.append(expected_size)
             return True
-        with mock.patch.object(desktop, 'terminal_size', side_effect=lambda: size[0]), \
-             mock.patch.object(desktop, 'resize_viewer', side_effect=resize):
-            thread = threading.Thread(target=desktop.watch_dimensions, args=(stop, 123))
-            thread.start()
-            try:
-                for width in (180, 160, 140, 100):
-                    size[0] = os.terminal_size((width, 45))
-                    time.sleep(.06)
-                time.sleep(.32)
-                self.assertEqual(applied, [os.terminal_size((100, 45))])
-                time.sleep(.25)
-                self.assertEqual(len(applied), 1)
-            finally:
-                stop.set()
-                thread.join(2)
+
+        stop = mock.Mock()
+        stop.wait.side_effect = wait
+        with mock.patch.object(desktop.time, 'monotonic', side_effect=lambda: clock[0]), \
+             mock.patch.object(desktop, 'terminal_size', side_effect=lambda: size[0]), \
+             mock.patch.object(desktop, 'resize_viewer', side_effect=resize), \
+             mock.patch.object(desktop, 'tmux') as commands:
+            desktop.watch_dimensions(stop, 123)
+        self.assertEqual(applied, [os.terminal_size((100, 45))])
+        commands.assert_not_called()
 
 
 @unittest.skipUnless(shutil.which('tmux'), 'tmux not installed')
@@ -200,6 +229,249 @@ class WorkspaceTests(unittest.TestCase):
                 self.assertEqual(after[n], identity)
         self.assertEqual(len(self.identities(name)), 10)
 
+    def test_click_and_f12_focus_ready_group_without_layout_mutations(self):
+        for width, count in ((184, 3), (110, 2), (80, 1)):
+            name = workspace.create(5, width, 45)
+            client, _ = self.attach(name, width)
+            before = self.identities(name)
+            for action in ('click', 'select'):
+                for number in layout.group(5, count):
+                    with mock.patch.object(workspace, 'reconcile') as reconcile, \
+                         mock.patch.object(desktop, 'tmux', wraps=core.tmux) as commands:
+                        self.assertEqual(desktop.dispatch([action, str(number), str(client.pid)]), 0)
+                    reconcile.assert_not_called()
+                    calls = [call.args for call in commands.call_args_list]
+                    self.assertEqual(len(calls), 3)  # Client, live shape, focus/publication.
+                    self.assertEqual(calls[-1][0], 'select-pane')
+                    self.assertIn('@pi-desk-last', calls[-1])
+                    self.assertFalse(any('select-layout' in call for call in calls))
+                    self.assertEqual(self.visible(name), layout.group(5, count))
+                    self.assertEqual(self.focus(name), number)
+                    self.assertEqual(desktop.last_session(), number)
+                    self.assertEqual((self.state / 'last-session').read_text().strip(), str(number))
+                    self.assertEqual(self.identities(name), before)
+            # Re-selecting a focused pane must not replace the persistence file.
+            stamp = (self.state / 'last-session').stat().st_mtime_ns
+            desktop.choose(number, client.pid)
+            self.assertEqual((self.state / 'last-session').stat().st_mtime_ns, stamp)
+
+    def test_focus_fast_path_falls_back_for_stale_or_broken_layouts(self):
+        name = workspace.create(5, 184, 45)
+        client, _ = self.attach(name)
+        for defect in ('changing', 'order', 'dead', 'missing', 'capacity'):
+            if defect == 'changing':
+                core.tmux('set-option', '-t', name, '@pi-desk-changing', '1')
+            elif defect == 'order':
+                core.tmux('swap-pane', '-d', '-s', name + ':0.0', '-t', name + ':0.2')
+            elif defect == 'dead':
+                core.tmux('respawn-pane', '-k', '-t', name + ':0.0', 'exit 0')
+                time.sleep(.1)
+            elif defect == 'missing':
+                core.tmux('kill-pane', '-t', name + ':0.0')
+            else:
+                core.tmux('set-option', '-t', name, '@pi-desk-capacity', '2')
+            with mock.patch.object(workspace, 'reconcile', wraps=workspace.reconcile) as reconcile:
+                desktop.choose(5, client.pid)
+            reconcile.assert_called_once_with(name, 5, 184)
+            self.assertEqual(self.visible(name), (4, 5, 6))
+            self.assertEqual(self.focus(name), 5)
+        with mock.patch.object(workspace, 'reconcile', wraps=workspace.reconcile) as reconcile:
+            desktop.choose(8, client.pid)
+        reconcile.assert_called_once_with(name, 8, 184)
+        self.assertEqual(self.visible(name), (7, 8, 9))
+
+    def test_combined_status_snapshot_persists_selection_without_extra_read(self):
+        name = workspace.create(5, 184, 45)
+        self.attach(name)
+        core.tmux('set-option', '-g', '@pi-desk-last', '5')
+        with mock.patch.object(desktop, 'tmux', wraps=core.tmux) as calls:
+            rows = desktop.persist_selection(include_viewers=True)
+        self.assertEqual(calls.call_count, 1)
+        self.assertIn('list-sessions', calls.call_args.args)
+        self.assertEqual(rows, core.tmux('list-sessions', '-F', desktop.VIEWER_STATUS_FORMAT).stdout)
+        self.assertEqual((self.state / 'last-session').read_text(), '5\n')
+        stamp = (self.state / 'last-session').stat().st_mtime_ns
+        desktop.persist_selection(include_viewers=True)
+        self.assertEqual((self.state / 'last-session').stat().st_mtime_ns, stamp)
+        core.tmux('set-option', '-g', '@pi-desk-last', 'invalid')
+        desktop.persist_selection(include_viewers=True)
+        self.assertEqual((self.state / 'last-session').read_text(), '5\n')
+        core.tmux('set-option', '-gu', '@pi-desk-last')
+        rows = desktop.persist_selection(include_viewers=True)
+        self.assertIn(name, rows)  # Empty selection must not consume the first viewer row.
+
+    def test_status_writes_batch_all_viewers_and_preserve_quoted_warning(self):
+        names = [workspace.create(n, width, 45) for n, width in ((2, 184), (5, 110), (9, 80))]
+        before = {name: self.identities(name) for name in names}
+        states = {'2': 'running', '5': 'compacting', '9': 'idle'}
+        warning = 'Warning: quotes \' and " ; $HOME # literal'
+        rows = core.tmux('list-sessions', '-F', desktop.VIEWER_STATUS_FORMAT).stdout
+        global_rows = (desktop.selector(states), warning)
+        files = []
+
+        def send(*args, **kwargs):
+            if args[0] == 'source-file':
+                info = Path(args[1]).stat()
+                files.append((info.st_size, info.st_mode & 0o777))
+            return core.tmux(*args, **kwargs)
+
+        with mock.patch.object(desktop, 'tmux', side_effect=send) as calls:
+            current = desktop.render_viewers(states, False, {}, warning,
+                                             session_rows=rows, global_rows=global_rows)
+        self.assertEqual(calls.call_count, 1)
+        self.assertEqual(calls.call_args.args[0], 'source-file')
+        self.assertFalse(Path(calls.call_args.args[1]).exists())
+        self.assertGreater(files[0][0], 8192)  # More than a single argv IPC message.
+        self.assertEqual(files[0][1], 0o600)
+        for name in names:
+            for i, expected in enumerate(current[name]):
+                self.assertEqual(core.tmux('show-options', '-Av', '-t', name,
+                                          f'status-format[{i}]').stdout.rstrip('\n'), expected)
+            self.assertEqual(self.identities(name), before[name])
+        self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), '2')
+        self.assertEqual(core.tmux('show-options', '-gv', 'status-format[1]').stdout.rstrip('\n'), warning)
+        with mock.patch.object(desktop, 'tmux', wraps=core.tmux) as calls:
+            unchanged = desktop.render_viewers(states, False, current, warning, session_rows=rows)
+        calls.assert_not_called()
+        self.assertEqual(unchanged, current)
+        desktop.render_viewers(states, True, current, '', session_rows=rows,
+                               global_rows=(desktop.selector(states, pulse_dim=True), ''))
+        self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), 'on')
+        for name in names:
+            self.assertEqual(core.tmux('show-options', '-Av', '-t', name,
+                                      'status-format[1]').stdout.rstrip('\n'), '')
+
+    def test_closed_viewer_does_not_abort_batched_header_updates(self):
+        closed = workspace.create(2, 184, 45)
+        survivor = workspace.create(5, 110, 45)
+        rows = core.tmux('list-sessions', '-F', desktop.VIEWER_STATUS_FORMAT).stdout
+        workspace.destroy(closed)
+        current = desktop.render_viewers({}, False, {}, 'warning', session_rows=rows,
+                                         global_rows=(desktop.selector({}), 'warning'))
+        self.assertEqual(core.tmux('show-options', '-Av', '-t', survivor,
+                                  'status-format[0]').stdout.rstrip('\n'), current[survivor][0])
+        rows = core.tmux('list-sessions', '-F', desktop.VIEWER_STATUS_FORMAT).stdout
+        self.assertNotIn(closed, desktop.render_viewers({}, False, current, 'warning', session_rows=rows))
+
+    def test_status_monitor_uses_one_read_and_at_most_one_write_per_tick(self):
+        for number, width in ((2, 184), (5, 110), (9, 80)):
+            workspace.create(number, width, 45)
+        core.tmux('set-option', '-g', '@pi-desk-last', '5')
+        for state, expected_writes in (('idle', 1), ('running', 3)):
+            feed = mock.Mock(backend=mock.Mock(host='test'),
+                             connection='Mac connected · Session status live')
+            feed.poll.return_value = {'1': state}
+            health = mock.Mock()
+            health.poll.return_value = ()
+            stop = mock.Mock()
+            stop.is_set.side_effect = [False, False, False, True]
+            with mock.patch.object(desktop, 'StatusFeed', return_value=feed), \
+                 mock.patch.object(desktop, 'HealthMonitor', return_value=health), \
+                 mock.patch.object(desktop, 'pulse_is_dim', side_effect=[False, True, False]), \
+                 mock.patch.object(desktop, 'tmux', wraps=core.tmux) as calls:
+                desktop.watch_status(stop)
+            args = [call.args for call in calls.call_args_list]
+            self.assertEqual(sum('list-sessions' in call for call in args), 3)
+            self.assertEqual(sum(call[0] == 'source-file' for call in args), expected_writes)
+            self.assertEqual(len(args), 3 + expected_writes)
+            feed.close.assert_called_once()
+
+    def test_status_monitor_retries_failed_batch_without_caching_it(self):
+        name = workspace.create(5, 184, 45)
+        feed = mock.Mock(backend=mock.Mock(host='test'),
+                         connection='Mac connected · Session status live')
+        feed.poll.return_value = {'5': 'idle'}
+        health = mock.Mock()
+        health.poll.return_value = ()
+        stop = mock.Mock()
+        stop.is_set.side_effect = [False, False, True]
+        failed = []
+
+        def send(*args, **kwargs):
+            if args[0] == 'source-file' and not failed:
+                failed.append(args[1])
+                raise RuntimeError('Synthetic status batch failure')
+            return core.tmux(*args, **kwargs)
+
+        with mock.patch.object(desktop, 'StatusFeed', return_value=feed), \
+             mock.patch.object(desktop, 'HealthMonitor', return_value=health), \
+             mock.patch.object(desktop, 'pulse_is_dim', return_value=False), \
+             mock.patch.object(desktop, 'tmux', side_effect=send) as calls:
+            desktop.watch_status(stop)
+        self.assertEqual(sum(call.args[0] == 'source-file' for call in calls.call_args_list), 2)
+        self.assertFalse(Path(failed[0]).exists())
+        self.assertEqual(feed.close.call_count, 2)
+        self.assertIn('range=user|5,', core.tmux('show-options', '-Av', '-t', name,
+                                               'status-format[0]').stdout)
+
+    def test_warm_regrouping_batches_mutations_and_equalizes_once(self):
+        name = workspace.create(2, 184, 45)
+        self.attach(name)
+        workspace.reconcile(name, 5, 184)
+        before = self.identities(name)
+        real_tmux = core.tmux
+        for number in (2, 6, 1, 4, 3, 5):
+            with mock.patch.object(core, 'tmux', wraps=real_tmux) as calls:
+                workspace.reconcile(name, number, 184)
+            call_args = [call.args for call in calls.call_args_list]
+            mutation_calls = [args for args in call_args if 'select-layout' in args]
+            self.assertEqual(len(mutation_calls), 1)
+            batch = mutation_calls[0]
+            self.assertEqual(batch.count('select-layout'), 1)
+            for args in call_args:
+                if any(command in args for command in
+                       ('swap-pane', 'break-pane', 'join-pane', 'select-pane')):
+                    self.assertEqual(args, batch)
+            self.assertEqual(batch[-5:], ('set-option', '-t', name, '@pi-desk-changing', '0'))
+            self.assertEqual(len(call_args), 5)  # Gate, preferences, snapshot, batch.
+            self.assertEqual(self.visible(name), layout.group(number, 3))
+            self.assertEqual(self.focus(name), number)
+            self.assertEqual(self.identities(name), before)
+            widths = list(map(int, real_tmux('list-panes', '-t', name + ':0',
+                                           '-F', '#{pane_width}').stdout.splitlines()))
+            self.assertLessEqual(max(widths) - min(widths), 1)
+
+    def test_failed_mutation_batch_keeps_navigation_gated_and_recovers(self):
+        name = workspace.create(2, 184, 45)
+        self.attach(name)
+        workspace.reconcile(name, 5, 184)
+        before = self.identities(name)
+        real_tmux = core.tmux
+
+        def fail_join(*args, **kwargs):
+            if 'join-pane' in args:
+                broken = list(args)
+                source = broken.index('-s', broken.index('join-pane')) + 1
+                broken[source] = '%99999999'  # Invalid only on the isolated socket.
+                return real_tmux(*broken, **kwargs)
+            return real_tmux(*args, **kwargs)
+
+        with mock.patch.object(core, 'tmux', side_effect=fail_join):
+            with self.assertRaises(RuntimeError):
+                workspace.reconcile(name, 2, 184)
+        self.assertEqual(real_tmux('show-options', '-v', '-t', name,
+                                  '@pi-desk-changing').stdout.strip(), '1')
+        workspace.reconcile(name, 2, 184)
+        self.assertEqual(self.visible(name), (1, 2, 3))
+        self.assertEqual(self.focus(name), 2)
+        self.assertEqual(self.identities(name), before)
+        self.assertEqual(real_tmux('show-options', '-v', '-t', name,
+                                  '@pi-desk-changing').stdout.strip(), '0')
+
+    def test_batch_recovers_scrambled_order_and_small_custom_panes(self):
+        with mock.patch.dict(os.environ, PI_DESK_MIN_COLUMNS='20'):
+            name = workspace.create(2, 62, 45)
+        self.attach(name, 62)
+        before = self.identities(name)
+        core.tmux('swap-pane', '-d', '-s', name + ':0.0', '-t', name + ':0.2')
+        workspace.reconcile(name, 2, 62)
+        self.assertEqual(self.visible(name), (1, 2, 3))
+        self.assertEqual(self.identities(name), before)
+        for number in (5, 8, 10, 9, 6, 3, 1):
+            workspace.reconcile(name, number, 62)
+            self.assertEqual(self.visible(name), layout.group(number, 3))
+            self.assertEqual(self.focus(name), number)
+
     def test_110_columns_supports_two_panes_after_live_threshold_change(self):
         with mock.patch.dict(os.environ, PI_DESK_MIN_COLUMNS='60'):
             name = workspace.create(2, 110, 45)
@@ -288,6 +560,24 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(self.identities(name)[n], before[n])
         self.resize(client, slave, 190)
         self.assertEqual(self.visible(name), (4, 5, 6))
+
+    def test_missing_visible_window_reuses_existing_parked_group_in_batch(self):
+        name = workspace.create(5, 184, 45)
+        self.attach(name)
+        workspace.reconcile(name, 8, 184)
+        core.tmux('kill-window', '-t', name + ':0')
+        before = self.identities(name)
+        real_tmux = core.tmux
+        with mock.patch.object(core, 'tmux', wraps=real_tmux) as calls:
+            workspace.reconcile(name, 5, 184)
+        args = [call.args for call in calls.call_args_list]
+        self.assertFalse(any('new-window' in call for call in args))
+        batches = [call for call in args if 'move-window' in call]
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(batches[0].count('select-layout'), 1)
+        self.assertEqual(self.visible(name), (4, 5, 6))
+        self.assertEqual(self.focus(name), 5)
+        self.assertEqual(self.identities(name), before)
 
     def test_header_fits_and_selected_tab_is_clickable(self):
         name = workspace.create(1, 184, 45)
