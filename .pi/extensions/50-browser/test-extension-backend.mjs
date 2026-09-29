@@ -30,6 +30,33 @@ test('seed/personal tabs are never adopted or closed',async()=>{
   await extensionAction(seed,'/close',{all:false});
   assert.deepEqual(await extensionAction(seed,'/status',{}),{activeIndex:-1,pages:[]});
 });
+test('window inventory recovers existing duplicate-URL tabs and excludes moved/personal tabs',async()=>{
+  let inventory = [{tabId:11,active:true},{tabId:12,active:false}];
+  const page = id => ({isClosed:()=>false,url:()=> 'https://example.com/same',title:async()=> 'same',evaluate:async()=>JSON.stringify({tabId:id}),bringToFront:async()=>{},close:async()=>{throw new Error('must not close during discovery');}});
+  const a=page(11), b=page(12), personal=page(99);
+  const anchor={url:()=> 'chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html#jarvis-automation-anchor-v2',evaluate:async()=>JSON.stringify({tabs:inventory}),isClosed:()=>false};
+  const context={pages:()=>[anchor,a,b,personal],__jarvisOwnedTabs:{pages:[],active:null,anchor}};
+  const seed={context:()=>context};
+  let result=await extensionAction(seed,'/tabs',{action:'list'});
+  assert.deepEqual(result.pages.map(p=>p.tabId),[11,12]);
+  assert.equal(result.activeIndex,0);
+  // A tab moved out is removed on the next action; duplicate URLs never merge.
+  inventory=[{tabId:12,active:true}];
+  result=await extensionAction(seed,'/status',{});
+  assert.deepEqual(result.pages.map(p=>p.tabId),[12]);
+  assert.equal(result.activeIndex,0);
+  // Reconnect loses in-memory ownership, but the same Chrome inventory restores it.
+  context.__jarvisOwnedTabs={pages:[],active:null,anchor};
+  result=await extensionAction(seed,'/tabs',{action:'list'});
+  assert.deepEqual(result.pages.map(p=>p.tabId),[12]);
+  inventory=[];
+  assert.deepEqual(await extensionAction(seed,'/status',{}),{activeIndex:-1,pages:[]});
+});
+test('failed inventory discovery does not create, navigate, or close tabs',async()=>{
+  const anchor={evaluate:async()=>{throw new Error('Connection anchor identity mismatch');}};
+  const context={pages:()=>[],__jarvisOwnedTabs:{pages:[],active:null,anchor},newPage:()=>{throw new Error('must not create');}};
+  await assert.rejects(extensionAction({context:()=>context},'/open',{url:'about:blank'}),/anchor identity/);
+});
 test('unsafe navigation is rejected before a tab is created',async()=>{
   const seed={context:()=>({newPage(){throw new Error('unexpected creation');}})};
   await assert.rejects(extensionAction(seed,'/open',{url:'javascript:alert(1)'}),/Only HTTP/);

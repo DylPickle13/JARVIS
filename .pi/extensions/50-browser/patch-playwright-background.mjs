@@ -1,6 +1,7 @@
 // Version-pinned local adaptation of Microsoft's extension relay.
 // All tab creation/selection uses Chrome extension APIs, NOT foreground APIs.
 import { createRequire } from 'node:module';
+import { syncWindowTabs } from './window-tab-sync.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 const require=createRequire(import.meta.url);
 const file=require.resolve('playwright-core/lib/coreBundle');
@@ -38,6 +39,46 @@ if (!source.includes(focus)) {
     if(source.split(oldFocus).length!==2)throw new Error('Tab selection patch anchor changed');
     source=source.replace(oldFocus,focus);
   }
+}
+const syncAnchor='async sendCommand(sessionId, method, params2) {';
+const syncPatch=`${syncAnchor}\n        // JARVIS_WINDOW_TAB_SYNC_V1`;
+// Migrate the development-only CDP command; the extension disallows newCDPSession.
+source=source.replace(/\/\/ JARVIS_WINDOW_TAB_SYNC_V1\n        if \(method === "Jarvis.syncWindowTabs"\)[\s\S]*?\n        let tabSession/, '// JARVIS_WINDOW_TAB_SYNC_V1\n        let tabSession');
+if (!source.includes(syncPatch)) {
+  if (source.split(syncAnchor).length!==2) throw new Error('Tab sync patch anchor changed');
+  source=source.replace(syncAnchor,syncPatch);
+}
+const identityAnchor='// JARVIS_BACKGROUND_SELECTION_V2';
+const identityPatch=`// JARVIS_INTERNAL_EVALUATION_V1
+        if (method === "Runtime.callFunctionOn" && params2?.returnByValue) {
+          const expression = params2.arguments?.[3]?.value;
+          if (expression === '\"JARVIS_INTERNAL_SYNC_WINDOW_TABS_V1\"') {
+            const identity = JSON.parse(require("fs").readFileSync(process.env.JARVIS_EXTENSION_WINDOW_FILE, "utf8"));
+            if (tabSession.tabId !== identity.connectionTabId) throw new Error("Tab discovery requires authenticated anchor");
+            const inventory = await (${syncWindowTabs.toString()}).call(this);
+            return {result:{type:"string",value:JSON.stringify(inventory)}};
+          }
+          if (expression === '\"JARVIS_INTERNAL_TAB_IDENTITY_V1\"') return {result:{type:"string",value:JSON.stringify({tabId:tabSession.tabId})}};
+        }
+        ` + identityAnchor;
+source=source.replace('if (method === "Jarvis.tabIdentity") return {tabId:tabSession.tabId};\n        ', '');
+if (!source.includes(identityPatch)) {
+  if (source.includes('// JARVIS_INTERNAL_EVALUATION_V1')) source=source.replace(/\/\/ JARVIS_INTERNAL_EVALUATION_V1[\s\S]*?\/\/ JARVIS_BACKGROUND_SELECTION_V2/,identityPatch);
+  else source=source.replace(identityAnchor,identityPatch);
+}
+const attachAnchor='async _attachTab(tabId) {';
+const attachPatch=`// JARVIS_SERIAL_TAB_ATTACH_V1
+      async _attachTab(tabId) {
+        this._jarvisPendingAttach ||= new Map();
+        if (this._jarvisPendingAttach.has(tabId)) return await this._jarvisPendingAttach.get(tabId);
+        const pending = this._jarvisAttachTab(tabId);
+        this._jarvisPendingAttach.set(tabId, pending);
+        try { return await pending; } finally { this._jarvisPendingAttach.delete(tabId); }
+      }
+      async _jarvisAttachTab(tabId) {`;
+if (!source.includes('JARVIS_SERIAL_TAB_ATTACH_V1')) {
+  if (source.split(attachAnchor).length !== 2) throw new Error('Tab attachment patch anchor changed');
+  source=source.replace(attachAnchor,attachPatch);
 }
 writeFileSync(file,source);
 console.log('Pinned background creation/selection patches verified.');

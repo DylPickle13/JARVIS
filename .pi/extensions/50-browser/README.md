@@ -57,6 +57,25 @@ No Chrome restart or macOS reboot was forced during testing; bridge restarts and
 token-authenticated reconnection were tested. Reboot/login behavior still needs a
 real-world check after the user's next restart.
 
+## Automation-window tab recovery
+
+The bridge reconciles the live Chrome inventory **before each browser action**,
+including status/list, rather than keeping only tabs created in the current
+connection. Tabs already open or moved into the verified automation window are
+rediscovered after reconnects. Chrome tab IDs distinguish duplicate URLs; no
+navigation, reload, or form replay is used. Tabs moved out disappear from the
+next inventory. Personal windows and extension connection pages are excluded.
+This is on-demand reconciliation, not a continuously running inventory timer.
+
+The pinned relay uses the authenticated anchor to query `chrome.tabs.query` with
+the verified window ID and attach existing work tabs. Fixed internal evaluation
+markers return relay tab identity/inventory through Playwright's existing page
+transport: the extension disallows `Target.attachToBrowserTarget`, so ordinary
+`newCDPSession` cannot be used. No arbitrary-code endpoint is exposed.
+
+Chrome tab IDs survive bridge reconnects, not Chrome restarts. Recovery cannot
+restore unsaved forms if Chrome itself discards/reloads/closes the underlying tab.
+
 ## Implementation and safety
 
 - `extension-browser-backend.mjs` uses the supported Playwright MCP in-process
@@ -84,6 +103,9 @@ npm --prefix .pi/extensions/50-browser test
 JARVIS_TEST_BROWSER_URL=http://127.0.0.1:17323 \
   python3 .pi/extensions/50-browser/test-extension-live.py
 python3 .pi/extensions/50-browser/test-extension-focus.py
+# Opt-in: restarts the live bridge; only opens/closes its own local fixture tab.
+JARVIS_TEST_BROWSER_URL=http://127.0.0.1:17323 \
+  python3 .pi/extensions/50-browser/test-window-tab-recovery.py
 ```
 
 The live test uses a temporary localhost fixture and temporary upload file, not an
@@ -91,7 +113,12 @@ external account or personal tab. The focus test checks the foreground applicati
 Chrome window, and selected personal tab throughout the fixture test. Run with the
 personal window foreground (not the automation window) for a meaningful comparison.
 
-Verified: five unit tests, live navigation/typing/empty clear/click/wait/extraction/
+Tab-recovery update verified: seven unit tests, an externally created automation-window
+fixture discovered without navigation, and the same Chrome tab ID plus unsaved input
+preserved across a live bridge restart. Existing application tabs were left untouched.
+The full live fixture regression also passed after the update.
+
+Previously verified: five unit tests, live navigation/typing/empty clear/click/wait/extraction/
 links/PNG/scroll/upload/tab selection/cleanup, automatic reconnection after closing
 only the automation connection tab, and foreground stability across 113 samples
 in the final complete live run. Dependency audit reported zero vulnerabilities.

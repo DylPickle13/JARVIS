@@ -21,6 +21,35 @@ export async function extensionAction(seed, action, b) {
     context.__jarvisOwnedTabs = state;
   }
   state.pages = state.pages.filter(p => !p.isClosed());
+  // Reconcile Chrome's verified window; /connect remains inert until anchor verification.
+  if (state.anchor && action !== '/prepare-anchor') {
+    state.anchor = context.pages().find(p => p.url().startsWith('chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html') && p.url().endsWith('#jarvis-automation-anchor-v2')) || state.anchor;
+    const inventory = JSON.parse(await state.anchor.evaluate('"JARVIS_INTERNAL_SYNC_WINDOW_TABS_V1"').catch(e => { throw new Error('Anchor inventory: ' + e.message); }));
+    const allowed = new Map(inventory.tabs.map(t => [t.tabId, t]));
+    const pages = [];
+    state.tabIds = new Map();
+    let selected = null;
+    const seen = new Set();
+    const deadline = Date.now() + 10000;
+    // Target attachment emits before Playwright finishes initializing the Page.
+    do {
+      for (const page of context.pages()) {
+        if (page === state.anchor || page.isClosed() || seen.has(page)) continue;
+        const identity = JSON.parse(await page.evaluate('"JARVIS_INTERNAL_TAB_IDENTITY_V1"').catch(e => { throw new Error('Work-tab identity: ' + e.message); }));
+        seen.add(page);
+        const tab = allowed.get(identity.tabId);
+        if (!tab) continue;
+        pages.push(page);
+        state.tabIds.set(page, tab.tabId);
+        if (tab.active) selected = page;
+      }
+      if (pages.length === allowed.size) break;
+      if (Date.now() >= deadline) throw new Error('Automation tab initialization incomplete; retry listing tabs');
+      await seed.waitForTimeout(50);
+    } while (true);
+    state.pages = pages;
+    if (!pages.includes(state.active)) state.active = selected || pages[0] || null;
+  }
   const create = async () => {
     const p = await context.newPage();
     state.pages.push(p);
@@ -31,7 +60,7 @@ export async function extensionAction(seed, action, b) {
     if (!state.pages.includes(state.active)) state.active = state.pages[0] || null;
     return state.active || await create();
   };
-  const info = async p => ({url:p.url(), title:await p.title()});
+  const info = async p => ({url:p.url(), title:await p.title(), ...(state.tabIds?.has(p) ? {tabId:state.tabIds.get(p)} : {})});
   const status = async () => ({
     activeIndex:state.pages.indexOf(state.active),
     pages:await Promise.all(state.pages.map(async (p,index) => ({index,...await info(p)}))),
@@ -49,6 +78,7 @@ export async function extensionAction(seed, action, b) {
       const tabs=await chrome.tabs.query({windowId});
       for (const old of tabs) if (old.id!==t.id && old.title==='JARVIS Browser — Automation Only' && old.url?.startsWith('data:text/html')) await chrome.tabs.remove(old.id);
     },b);
+    state.anchor = seed;
     return status();
   }
   if (action === '/connect' || action === '/status') return status();
@@ -197,7 +227,7 @@ export class ExtensionBrowserBackend {
   async init() {
     if (this.client) return;
     const relaySource=readFileSync(require.resolve('playwright-core/lib/coreBundle'),'utf8');
-    if (!['JARVIS_BACKGROUND_TABS_V2','JARVIS_BACKGROUND_SELECTION_V2'].every(marker=>relaySource.includes(marker))) throw new Error('Background-tab patch missing; run npm install in .pi/extensions/50-browser before using extension mode');
+    if (!['JARVIS_BACKGROUND_TABS_V2','JARVIS_BACKGROUND_SELECTION_V2','JARVIS_WINDOW_TAB_SYNC_V1'].every(marker=>relaySource.includes(marker))) throw new Error('Background-tab patch missing; run npm install in .pi/extensions/50-browser before using extension mode');
     const token=(await readFile(this.tokenPath,'utf8')).trim();
     if (!token) throw new Error('Playwright extension token is empty');
     this.secret=token;
@@ -215,7 +245,7 @@ export class ExtensionBrowserBackend {
     if (!this.runTool) throw new Error('Pinned Playwright version lacks code tool');
   }
   status() {
-    return {launchMode:'extension',running:this.connected,connected:this.connected,profileDir:this.profileDir,profileDirectory:this.profileDirectory || '(automation-window profile; token authenticated)',automationWindow:{dedicated:true,windowId:this.window?.windowId,title:'JARVIS Browser — Automation Only',anchorOpen:!!this.window,avoidsForegroundActivation:true,sessionOwnedTabsOnly:true},daemon:{connectedAt:this.connectedAt || null,lastError:this.lastError,connecting:!!this.connecting},...this.cached};
+    return {launchMode:'extension',running:this.connected,connected:this.connected,profileDir:this.profileDir,profileDirectory:this.profileDirectory || '(automation-window profile; token authenticated)',automationWindow:{dedicated:true,windowId:this.window?.windowId,title:'JARVIS Browser — Automation Only',anchorOpen:!!this.window,avoidsForegroundActivation:true,sessionOwnedTabsOnly:false,automationWindowTabsOnly:true},daemon:{connectedAt:this.connectedAt || null,lastError:this.lastError,connecting:!!this.connecting},...this.cached};
   }
   sanitize(message) {
     let text=String(message);
