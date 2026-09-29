@@ -415,18 +415,18 @@ class DesktopTests(unittest.TestCase):
             self.assertIn(f'] {n:02d} ', bar)
         for n in (3, 6, 9):
             tab = bar.split(f'range=user|{n},', 1)[1].split('range=user|', 1)[0]
-            self.assertIn('#[norange,bg=#000000,nobold]#[fg=colour238] │ ', tab)
+            self.assertIn('#[norange,bg=#1e1e1e,nobold]#[fg=colour238] │ ', tab)
         self.assertNotIn('blink', bar)
 
     def test_session_borders_use_heavy_lines(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
         self.assertIn('set -g pane-border-lines heavy', config)
-        self.assertIn("set -g pane-border-style 'fg=colour240,bg=#000000'", config)
+        self.assertIn("set -g pane-border-style 'fg=colour240,bg=#1e1e1e'", config)
 
     def test_active_session_border_uses_brand_purple(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
         self.assertIn("set -g pane-border-format '#[fg=#{?pane_active,##D183E8,colour245}]", config)
-        self.assertIn("set -g pane-active-border-style 'fg=#D183E8,bg=#000000'", config)
+        self.assertIn("set -g pane-active-border-style 'fg=#D183E8,bg=#1e1e1e'", config)
 
     def test_only_working_dots_pulse(self):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}

@@ -302,8 +302,8 @@ class WorkspaceTests(unittest.TestCase):
         bar = desktop.responsive_selector({}, 184, 3, 1)
         expanded = core.tmux('display-message', '-p', '-t', name + ':0', '-F', bar).stdout
         self.assertIn('range=user|1,bg=#16252a,fg=#D183E8,bold', expanded)
-        self.assertIn('range=user|4,bg=#000000,', expanded)
-        self.assertIn('range=user|10,bg=#000000,', expanded)
+        self.assertIn('range=user|4,bg=#1e1e1e,', expanded)
+        self.assertIn('range=user|10,bg=#1e1e1e,', expanded)
 
     def test_warning_row_and_heights_with_session_specific_header(self):
         name = workspace.create(5, 184, 45)

@@ -98,12 +98,12 @@ def pulse_is_dim(now=None):
 
 
 def selector(states, *, pulse_dim=False):
-    parts = ['#[align=left,norange,fg=#D183E8,bg=#000000,nobold] PI-DESK ']
+    parts = ['#[align=left,norange,fg=#D183E8,bg=#1e1e1e,nobold] PI-DESK ']
     for n in range(1, 11):
         key, _ = session_group(n)
         group = '#{==:#{session_name},group-' + key + '}'
         active = '#{==:#{@pi-desk-session},' + str(n) + '}'
-        background = '#{?' + group + ',#16252a,#000000}'
+        background = '#{?' + group + ',#16252a,#1e1e1e}'
         foreground = '#{?' + active + ',##D183E8,colour252}'
         weight = '#{?' + active + ',bold,nobold}'
         state = states.get(str(n))
@@ -112,12 +112,12 @@ def selector(states, *, pulse_dim=False):
         if pulse_dim:
             color = {'running': 22, 'compacting': 24}.get(state, color)
         parts.append(f'#[range=user|{n},bg={background},fg={foreground},{weight}] {n:02d} '
-                     f'#[fg=colour{color}]● #[norange,bg=#000000,nobold]')
+                     f'#[fg=colour{color}]● #[norange,bg=#1e1e1e,nobold]')
         if n in (3, 6, 9):
             parts.append('#[fg=colour238] │ ')
         elif n != 10:
             parts.append(' ')
-    parts.append('#[align=right,norange,fg=colour245,bg=#000000,nobold] '
+    parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold] '
                  '#{?#{>=:#{client_width},120},'
                  'F12 Select · F10 Restart · Ctrl + ←/→ Switch,'
                  'F12 · F10 · Ctrl + ←/→} ')
@@ -143,7 +143,7 @@ def responsive_selector(states, width, count, selected, *, pulse_dim=False):
         first = max(1, min(selected - available // 2, 11 - available))
         numbers = list(range(first, min(11, first + available)))
         boundaries = ()
-    parts = [f'#[align=left,norange,fg=#D183E8,bg=#000000,nobold]{brand}']
+    parts = [f'#[align=left,norange,fg=#D183E8,bg=#1e1e1e,nobold]{brand}']
     used = len(brand)
     if overflow and numbers[0] > 1 and used + len(numbers) * tab_width < width:
         parts.append('#[fg=colour245]‹')
@@ -151,7 +151,7 @@ def responsive_selector(states, width, count, selected, *, pulse_dim=False):
     for n in numbers:
         active = '#{==:#{@pi-desk-session},' + str(n) + '}'
         visible = '#{&&:#{e|>=:' + str(n) + ',#{@pi-desk-first}},#{e|<=:' + str(n) + ',#{@pi-desk-end}}}'
-        bg = '#{?' + visible + ',#16252a,#000000}'
+        bg = '#{?' + visible + ',#16252a,#1e1e1e}'
         fg = '#{?' + active + ',##D183E8,colour252}'
         weight = '#{?' + active + ',bold,nobold}'
         state = states.get(str(n))
@@ -163,7 +163,7 @@ def responsive_selector(states, width, count, selected, *, pulse_dim=False):
         dot = '' if width < 4 else f'#[fg=colour{color}]● '
         text = label if compact else f' {label} '
         parts.append(f'#[range=user|{n},bg={bg},fg={fg},{weight}]{text}{dot}'
-                     '#[norange,bg=#000000,nobold]')
+                     '#[norange,bg=#1e1e1e,nobold]')
         used += len(text) + (2 if dot else 0)
         if n in boundaries:
             parts.append('#[fg=colour238]' + separator)
@@ -174,7 +174,7 @@ def responsive_selector(states, width, count, selected, *, pulse_dim=False):
     for hint in (' F12 Select · F10 Restart · Ctrl + ←/→ Switch ',
                  ' F12 · F10 · Ctrl + ←/→ ', ' F12 Select ', ''):
         if len(hint) + used <= width:
-            parts.append('#[align=right,norange,fg=colour245,bg=#000000,nobold]' + hint)
+            parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold]' + hint)
             break
     return ''.join(parts)
 
@@ -209,7 +209,7 @@ def health_line(connection, health):
         return ''
     text = (' Warning: ' + ' | '.join(warnings)).replace('#', '##').replace('\n', ' ')
     color = 203 if 'failed' in text.lower() else 179
-    return f'#[align=left,norange,bg=#000000,fg=colour{color},nobold]{text}'
+    return f'#[align=left,norange,bg=#1e1e1e,fg=colour{color},nobold]{text}'
 
 
 def render_status(rows):
