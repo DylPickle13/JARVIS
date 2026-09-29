@@ -378,6 +378,17 @@ class PaneRecoveryTests(unittest.TestCase):
 
 
 class DesktopTests(unittest.TestCase):
+    def test_vscode_viewer_advertises_hyperlinks(self):
+        self.assertEqual(desktop.viewer_attach_command('viewer-test', {'TERM_PROGRAM': 'vscode'}),
+                         ['tmux', '-L', desktop.SOCKET, '-T', 'hyperlinks',
+                          'attach-session', '-t', '=viewer-test'])
+
+    def test_other_viewers_keep_terminal_auto_detection(self):
+        for program in ('Apple_Terminal', 'foot', ''):
+            command = desktop.viewer_attach_command('viewer-test', {'TERM_PROGRAM': program})
+            self.assertNotIn('-T', command)
+            self.assertEqual(command[-3:], ['attach-session', '-t', '=viewer-test'])
+
     def test_all_click_targets(self):
         bar = desktop.selector({'1': 'running'})
         for n in range(1, 11):

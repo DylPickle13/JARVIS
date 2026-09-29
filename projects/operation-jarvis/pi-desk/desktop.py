@@ -21,6 +21,15 @@ COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': 75,
 PULSE_PHASE_SECONDS = 0.75
 
 
+def viewer_attach_command(group, environ=None):
+    """Advertise OSC 8 per viewer, not for every xterm-256color terminal."""
+    environ = os.environ if environ is None else environ
+    command = ['tmux', '-L', SOCKET]
+    if environ.get('TERM_PROGRAM') == 'vscode':
+        command += ['-T', 'hyperlinks']
+    return command + ['attach-session', '-t', '=' + group]
+
+
 def session_number(value):
     if value not in tuple(str(n) for n in range(1, 11)):
         raise ValueError('Choose a session from 1 to 10')
@@ -355,7 +364,7 @@ def attach_viewer(group):
         for number in (signal.SIGHUP, signal.SIGTERM):
             handlers[number] = signal.signal(number, interrupted)
         child = subprocess.Popen(
-            ['tmux', '-L', SOCKET, 'attach-session', '-t', '=' + group],
+            viewer_attach_command(group),
             env=clean_environment(),
         )
         if workspace.is_viewer(group):

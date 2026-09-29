@@ -93,6 +93,17 @@ Alt+F11 in the Pi desktop. The Pi retains 1080p, 14 pt DejaVu/Noto Emoji and a b
 background. The Mac app requests a 173×47 terminal; ordinary CLI usage preserves
 the user's terminal size/profile.
 
+### Links in VS Code's terminal
+
+Pi Desk advertises OSC 8 hyperlink support to VS Code (`TERM_PROGRAM=vscode`)
+without assuming every `xterm-256color` terminal supports embedded links. After
+updating, detach with Ctrl+A then d and run `pi-desk` again to apply the viewer
+capability; agents keep running. To enable embedded Markdown links in an already
+running Pi session, set **Terminal → Hyperlinks** to **true** with Pi's `/settings`,
+then run `/reload` in that session. Pi caches terminal capability detection, so
+reopening the viewer alone may not update a running agent. Use VS Code's normal
+link gesture (Cmd-click on macOS). Plain URL detection is provided by VS Code.
+
 ## Start/restart agents without VS Code
 
 ```sh
