@@ -83,7 +83,7 @@ final class SystemHealthTests: XCTestCase {
         let previousTick = request.addingTimeInterval(-3)
         XCTAssertEqual(SystemHealthPresentation(snapshot: snapshot,
             requestStartedAt: request, now: previousTick).summary, "Status unknown")
-        // This is the exact initializer used by SystemHealthCard on each render.
+        // Dashboards use this actual-render-time initializer, not the timeline tick.
         XCTAssertEqual(SystemHealthPresentation(snapshot: snapshot,
             requestStartedAt: request).summary, "1 issue")
     }
@@ -214,6 +214,104 @@ final class SystemHealthTests: XCTestCase {
         object["subsystems"] = subsystems
         let decoded = try JSONDecoder().decode(StateSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
         XCTAssertEqual(health(decoded).rows.first { $0.id == "purifier" }?.state, .issue)
+    }
+
+    func testDashboardRetainsUnverifiedInventoryWhenCollectorIsUnavailable() throws {
+        for overrides in [["stale": true], ["ok": false, "error": "read failed"], ["ageSeconds": 661]] as [[String: Any]] {
+            let value = try snapshot(overrides: ["services": overrides], services: ["scheduler": periodic])
+            let dashboard = SystemDashboardPresentation(snapshot: value, requestStartedAt: now, now: now)
+            XCTAssertEqual(dashboard.services.count, 1)
+            XCTAssertEqual(dashboard.services.first?.row.state, .unknown)
+            XCTAssertTrue(dashboard.services.first?.row.detail.contains("unverified") == true)
+            XCTAssertEqual(dashboard.healthyServiceCount, 0)
+            XCTAssertEqual(dashboard.unknownServiceCount, 1)
+            XCTAssertEqual(dashboard.state, .issue, "Collector issue remains in the aggregate")
+        }
+        let missingMeta = SystemDashboardPresentation(snapshot: try snapshot(omitMetadata: true), requestStartedAt: now, now: now)
+        XCTAssertEqual(missingMeta.services.first?.row.state, .unknown)
+    }
+
+    func testDashboardSortsIssuesFirstThenUnknownThenConfiguredOrder() throws {
+        var broken = required; broken["running"] = false; broken["sortOrder"] = 99
+        var first = periodic; first["sortOrder"] = 1; first["displayName"] = "Runner"
+        first["description"] = "Runs scheduled jobs"; first["label"] = "com.test.runner"
+        first["pid"] = 42
+        var last = required; last["sortOrder"] = 20
+        let optional: [String: Any] = ["ok": true, "running": false, "critical": false, "sortOrder": 10]
+        let unknown: [String: Any] = ["ok": true, "running": false, "sortOrder": 0]
+        let dashboard = SystemDashboardPresentation(snapshot: try snapshot(services: [
+            "broken": broken, "runner": first, "last": last, "optional": optional, "unknown": unknown
+        ]), requestStartedAt: now, now: now)
+        XCTAssertEqual(dashboard.services.map(\.id), ["broken", "unknown", "runner", "optional", "last"])
+        XCTAssertEqual(dashboard.healthyServiceCount, 2)
+        XCTAssertEqual(dashboard.issueServiceCount, 1)
+        XCTAssertEqual(dashboard.unknownServiceCount, 1)
+        XCTAssertEqual(dashboard.inactiveServiceCount, 1)
+        XCTAssertFalse(dashboard.subsystemRows.contains { $0.id.hasPrefix("service:") })
+        let runner = dashboard.services.first { $0.id == "runner" }!
+        XCTAssertEqual(runner.row.title, "Runner")
+        XCTAssertEqual(runner.description, "Runs scheduled jobs")
+        XCTAssertEqual(runner.requirement, "Required")
+        XCTAssertEqual(runner.executionMode, "Scheduled")
+        XCTAssertTrue(runner.technicalDetails.contains("PID: 42"))
+        XCTAssertTrue(runner.technicalDetails.contains("Last exit code: 0"))
+        XCTAssertEqual(runner.row.state, .healthy)
+    }
+
+    func testOfflineDashboardNeverClaimsCachedServicesOrSubsystemsAreHealthy() throws {
+        let dashboard = SystemDashboardPresentation(snapshot: try snapshot(), requestStartedAt: now,
+            isConnected: false, now: now)
+        XCTAssertEqual(dashboard.summary, "Offline · cached data")
+        XCTAssertEqual(dashboard.state, .unknown)
+        XCTAssertEqual(dashboard.services.first?.row.state, .unknown)
+        XCTAssertTrue(dashboard.subsystemRows.allSatisfy { $0.state == .unknown })
+        XCTAssertEqual(dashboard.healthyServiceCount, 0)
+    }
+
+    func testWatchUsesSnapshotGenerationNotReceiptTimeToExpireRelayAndDiskData() throws {
+        var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(try snapshot())) as! [String: Any]
+        for generatedAt in ["1970-01-01T00:16:40Z", "1970-01-01T00:16:40.000Z"] {
+            object["generatedAt"] = generatedAt
+            let value = try JSONDecoder().decode(StateSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
+            let generated = SystemDashboardPresentation.snapshotGeneratedAt(value)
+            XCTAssertEqual(generated, now)
+            let expired = SystemDashboardPresentation(snapshot: value, requestStartedAt: generated,
+                now: now.addingTimeInterval(661))
+            XCTAssertEqual(expired.services.first?.row.state, .unknown)
+            XCTAssertEqual(expired.healthyServiceCount, 0)
+        }
+        XCTAssertNil(SystemDashboardPresentation.snapshotGeneratedAt(try snapshot()))
+        let unknown = SystemDashboardPresentation(snapshot: try snapshot(), requestStartedAt: nil, now: now)
+        XCTAssertEqual(unknown.services.first?.row.state, .unknown)
+        let future = SystemDashboardPresentation(snapshot: try snapshot(), requestStartedAt: now.addingTimeInterval(1), now: now)
+        XCTAssertEqual(future.services.first?.row.state, .unknown)
+    }
+
+    func testDashboardFreshnessBarsUseCollectorLimitsAndClampStaleAges() throws {
+        let dashboard = SystemDashboardPresentation(snapshot: try snapshot(overrides: ["plugs": ["ageSeconds": 15],
+            "network": ["ageSeconds": 5000]]), requestStartedAt: now, now: now)
+        let plugs = dashboard.subsystemRows.first { $0.id == "plugs" }!
+        let network = dashboard.subsystemRows.first { $0.id == "network" }!
+        XCTAssertEqual(dashboard.freshnessFraction(for: plugs), 0.5)
+        XCTAssertEqual(dashboard.freshnessFraction(for: network), 1)
+        let services = dashboard.subsystemRows.first { $0.id == "services" }!
+        XCTAssertEqual(services.state, .healthy)
+        XCTAssertEqual(dashboard.freshnessFraction(for: services), 0, "Fresh service collector keeps its own age panel")
+        let unknown = SystemDashboardPresentation(snapshot: try snapshot(), requestStartedAt: nil, now: now)
+        XCTAssertNil(unknown.freshnessFraction(for: unknown.subsystemRows.first!))
+        XCTAssertNil(dashboard.freshnessFraction(for: dashboard.services.first!.row), "No invented per-process metrics")
+    }
+
+    func testDashboardMissingEmptyAndLoadingInventory() throws {
+        let loading = SystemDashboardPresentation(snapshot: nil, requestStartedAt: nil, now: now)
+        XCTAssertEqual(loading.state, .checking)
+        XCTAssertTrue(loading.services.isEmpty)
+        let missing = SystemDashboardPresentation(snapshot: try snapshot(omitServiceMap: true), requestStartedAt: now, now: now)
+        XCTAssertEqual(missing.state, .unknown)
+        XCTAssertTrue(missing.services.isEmpty)
+        let empty = SystemDashboardPresentation(snapshot: try snapshot(services: [:]), requestStartedAt: now, now: now)
+        XCTAssertEqual(empty.state, .healthy)
+        XCTAssertEqual(empty.subsystemRows.first { $0.id == "services" }?.detail, "No services configured")
     }
 
     func testCheckingUnknownFailureAndRefreshAreDistinct() throws {

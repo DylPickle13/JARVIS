@@ -12,6 +12,7 @@ struct WatchDashboardContent: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedPage: WatchDashboardPage = .terminal
+    @State private var showsSystemDetails = false
     @State private var showsPurifierModeChoices = false
     @State private var showsPurifierFanChoices = false
     private struct PurifierDetailRoute: Identifiable {
@@ -21,9 +22,9 @@ struct WatchDashboardContent: View {
     @State private var purifierDetail: PurifierDetailRoute?
 
     private var overlayOwnsInput: Bool {
-        showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered
+        showsSystemDetails || showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered
     }
-    private var systemInteractive: Bool { scenePhase == .active && selectedPage == .system }
+    private var overviewInteractive: Bool { scenePhase == .active && selectedPage == .overview }
 
     private static let iso8601 = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
 
@@ -60,6 +61,8 @@ struct WatchDashboardContent: View {
             #if DEBUG && targetEnvironment(simulator)
             if CommandLine.arguments.contains("-jarvisOpenWatchSystem") {
                 selectedPage = .system
+            } else if CommandLine.arguments.contains("-jarvisOpenWatchOverview") {
+                selectedPage = .overview
             } else if CommandLine.arguments.contains("-jarvisOpenWatchJobs") {
                 selectedPage = .jobs
             }
@@ -70,7 +73,7 @@ struct WatchDashboardContent: View {
         .onChange(of: selectedPage) { _, page in
             model.setJobsPageVisible(page == .jobs)
             updateOMLXPresentation()
-            if page == .system {
+            if page == .overview {
                 Task { await model.refreshCodexQuotaWhenVisible() }
                 Task { await model.refreshPurifierReadings() }
             } else {
@@ -100,7 +103,7 @@ struct WatchDashboardContent: View {
     }
 
     private func updateOMLXPresentation() {
-        model.setOMLXPresentation(systemVisible: selectedPage == .system,
+        model.setOMLXPresentation(systemVisible: selectedPage == .overview,
             covered: showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered)
     }
 
@@ -111,20 +114,27 @@ struct WatchDashboardContent: View {
             WatchTerminalView(
                 controller: model.terminal,
                 isActive: true,
-                onAdvancePage: { selectedPage = .plugs }
+                onAdvancePage: { selectedPage = .plugs },
+                onPreviousPage: { selectedPage = .system }
             )
         case .plugs:
             resolvedPlugsPage
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
         case .system:
-            resolvedSystemPage
+            WatchSystemHealthView(model: model,
+                active: scenePhase == .active && !overlayOwnsInput,
+                onDetailVisibilityChanged: { showsSystemDetails = $0 })
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        case .overview:
+            resolvedOverviewPage
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
         case .jobs:
             WatchJobsView(
                 model: jobs,
-                onPreviousPage: { selectedPage = .system },
+                onPreviousPage: { selectedPage = .overview },
                 resolveRoute: model.resolveScheduledJobRoute,
                 onRouteConsumed: onJobRouteConsumed
             )
@@ -155,7 +165,7 @@ struct WatchDashboardContent: View {
         DragGesture(minimumDistance: 24, coordinateSpace: .global)
             .onEnded { value in
                 // An outgoing view must never navigate the newly selected page.
-                guard selectedPage == page, !overlayOwnsInput,
+                guard selectedPage == page, page != .terminal, !overlayOwnsInput,
                       let destination = page.destination(
                         verticalTranslation: Double(value.translation.height),
                         horizontalTranslation: Double(value.translation.width)
@@ -174,12 +184,12 @@ struct WatchDashboardContent: View {
     }
 
     @ViewBuilder
-    private var resolvedSystemPage: some View {
-        WatchSystemCrownViewport(active: systemInteractive && !overlayOwnsInput) {
+    private var resolvedOverviewPage: some View {
+        WatchSystemCrownViewport(active: overviewInteractive && !overlayOwnsInput) {
             if dynamicTypeSize.isAccessibilitySize {
-                accessibilitySystemPage
+                accessibilityOverviewPage
             } else {
-                systemPage
+                overviewPage
             }
         }
     }
@@ -233,11 +243,11 @@ struct WatchDashboardContent: View {
         .accessibilityHint(stale ? "Wait for automatic refresh before changing this plug" : "Double tap to set the opposite state")
     }
 
-    // MARK: - System
+    // MARK: - Overview
 
-    private var systemPage: some View {
+    private var overviewPage: some View {
         VStack(spacing: 7) {
-            pageHeader("System", symbol: "waveform.path.ecg")
+            pageHeader("Overview", symbol: "waveform.path.ecg")
             purifierPanel
             codexQuotaPanel
             omlxCard
@@ -469,12 +479,12 @@ struct WatchDashboardContent: View {
     }
 
     private var omlxCard: some View {
-        WatchOMLXCard(model: model.omlx, active: systemInteractive && !overlayOwnsInput)
+        WatchOMLXCard(model: model.omlx, active: overviewInteractive && !overlayOwnsInput)
     }
 
-    private var accessibilitySystemPage: some View {
+    private var accessibilityOverviewPage: some View {
         VStack(alignment: .leading, spacing: 10) {
-            pageHeader("System", symbol: "waveform.path.ecg")
+            pageHeader("Overview", symbol: "waveform.path.ecg")
             purifierPanel
             codexQuotaPanel
             omlxCard

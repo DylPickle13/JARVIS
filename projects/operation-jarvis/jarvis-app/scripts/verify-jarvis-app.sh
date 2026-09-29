@@ -172,14 +172,15 @@ for forbidden in ['Timer', 'TimelineView', 'repeatForever', 'Task.sleep', 'numer
 for forbidden in ['modelRow', 'ProgressView', 'memoryUsedBytes', 'ScrollView']:
     assert forbidden not in summary
 watch = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
-for name, end in [('private var systemPage:', 'private var purifierPanel:'),
-                  ('private var accessibilitySystemPage:', 'private func accessiblePlugButton')]:
+for name, end in [('private var overviewPage:', 'private var purifierPanel:'),
+                  ('private var accessibilityOverviewPage:', 'private func accessiblePlugButton')]:
     block = watch.split(name,1)[1].split(end,1)[0]
     assert block.index('purifierPanel') < block.index('codexQuotaPanel') < block.index('omlxCard')
     assert 'ScrollView' not in block
 assert 'including: overlayOwnsInput ? .none' in watch
-assert 'guard selectedPage == page, !overlayOwnsInput' in watch
-assert 'WatchSystemCrownViewport(active: systemInteractive && !overlayOwnsInput)' in watch
+assert 'guard selectedPage == page, page != .terminal, !overlayOwnsInput' in watch
+assert 'WatchSystemCrownViewport(active: overviewInteractive && !overlayOwnsInput)' in watch
+assert 'WatchSystemHealthView(model: model,' in watch
 viewport = Path('JARVISWatch/Views/WatchSystemCrownViewport.swift').read_text().split('var body:',1)[1]
 assert '.digitalCrownRotation' in viewport and '.clipped()' in viewport
 assert '.padding(.bottom, max(18, viewport.safeAreaInsets.bottom))' in viewport
@@ -762,7 +763,7 @@ grep -Fq 'for subsystem in query.get("refresh", []):' ../jarvisd/jarvisd.py
 grep -Fq 'if subsystem in {"codexQuota", "purifier"}:' ../jarvisd/jarvisd.py
 grep -q 'stateRefreshingCodexQuota' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 grep -q 'model.refreshCodexQuotaWhenVisible()' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'page == .system' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'page == .overview' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})' ../jarvisd/jarvisd_core/state.py
 reject_match 'Watch System page must not restore the removed Direct to Mac panel' -Fq 'Direct to Mac' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'configuration.candidateBaseURLs' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
@@ -779,8 +780,27 @@ from pathlib import Path
 source = Path('JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift').read_text(encoding='utf-8')
 block = source.split('public enum WatchDashboardPage', 1)[1].split('public func destination', 1)[0]
 assert [line.strip() for line in block.splitlines() if line.strip().startswith('case ')] == [
-    'case terminal', 'case plugs', 'case system', 'case jobs'
+    'case system', 'case terminal', 'case plugs', 'case overview', 'case jobs'
 ]
+root = Path('JARVIS/JARVISApp.swift').read_text()
+assert root.index('HomeView(') < root.index('SystemView()') < root.index('PiTerminalView()')
+assert 'case "system": selection = .system' in root
+assert 'SystemHealthCard' not in Path('JARVIS/Views/HomeView.swift').read_text()
+health = Path('JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift').read_text()
+assert 'DisclosureGroup' not in health  # unavailable on watchOS
+overview = health.split('.sheet(item: $selectedDetail)', 1)[0]
+assert 'ScrollView' not in overview and 'ViewThatFits(in: .vertical)' in overview
+assert 'statTile(' not in health and 'expandedServices' not in health
+assert 'phoneServices(dense:' in health and 'phoneIntegrations(dense:' in health
+assert 'ScrollView' not in Path('JARVIS/Views/SystemView.swift').read_text()
+assert '.refreshable' not in Path('JARVIS/Views/SystemView.swift').read_text()
+assert 'Last observed details' in health
+watch_health = Path('JARVISWatch/Views/WatchSystemHealthView.swift').read_text()
+assert 'WatchSystemCrownViewport' not in watch_health
+assert 'showsSystemDetails || showsPurifierModeChoices' in Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
+assert 'snapshotGeneratedAt(model.lastState)' in watch_health
+for forbidden in ['ScrollView', 'client.', 'Task {', 'refreshPurifier', 'refreshCodex', 'serviceAction']:
+    assert forbidden not in watch_health
 PYCODE
 grep -q '@State private var selectedPage: WatchDashboardPage = .terminal' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'pageDragGesture(page: selectedPage)' JARVISWatch/Views/WatchDashboardContent.swift
@@ -794,7 +814,9 @@ pager = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 assert pager.index('.highPriorityGesture(') > pager.index('pageIndicator\n        }')
 PYCROWN
 
-grep -q 'case .jobs: return upward ? nil : .system' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
+grep -q 'case .jobs: return upward ? nil : .overview' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
+grep -Fq 'case .terminal: return upward ? .plugs : .system' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
+grep -Fq 'case .system: return upward ? .terminal : nil' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
 grep -q 'alwaysOnInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'The shorter Plugs grid must not collapse the page before the bottom edge.' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'GeometryReader { geometry in' JARVISWatch/Views/WatchDashboardContent.swift

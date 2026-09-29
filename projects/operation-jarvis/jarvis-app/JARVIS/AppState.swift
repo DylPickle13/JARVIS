@@ -6,6 +6,7 @@ import JARVISKit
 
 public enum AppSection: String, Sendable {
     case home
+    case system
     case pi
     case jobs
     case settings
@@ -317,7 +318,7 @@ public final class AppState: ObservableObject {
     public func setActiveSection(_ section: AppSection) {
         guard activeSection != section else { return }
         activeSection = section
-        restartPolling(refreshImmediately: section == .home || section == .jobs)
+        restartPolling(refreshImmediately: section == .home || section == .system || section == .jobs)
     }
 
     private func startPathMonitorIfNeeded() {
@@ -400,6 +401,8 @@ public final class AppState: ObservableObject {
             errorMessage = nil
             if activeSection == .home {
                 await refreshHome()
+            } else if activeSection == .system {
+                await fetchState()
             } else {
                 await refreshJobs()
             }
@@ -1099,6 +1102,8 @@ public final class AppState: ObservableObject {
             if refreshImmediately {
                 if self.activeSection == .home {
                     await self.refreshHome()
+                } else if self.activeSection == .system {
+                    await self.fetchState()
                 } else {
                     await self.refreshJobs()
                 }

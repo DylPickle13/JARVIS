@@ -128,6 +128,10 @@ private struct RootTabView: View {
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(AppSection.home)
 
+            SystemView()
+                .tabItem { Label("System", systemImage: "server.rack") }
+                .tag(AppSection.system)
+
             PiTerminalView()
                 .tabItem { Label("JARVIS", systemImage: "terminal.fill") }
                 .tag(AppSection.pi)
@@ -160,6 +164,7 @@ private struct RootTabView: View {
             }
             guard url.scheme?.lowercased() == "jarvis" else { return }
             switch url.host?.lowercased() {
+            case "system": selection = .system
             case "settings": selection = .settings
             case "pi": selection = .pi
             case "jobs":

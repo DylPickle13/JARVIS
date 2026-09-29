@@ -925,6 +925,7 @@ struct WatchTerminalView: View {
     @ObservedObject var controller: WatchTerminalController
     let isActive: Bool
     let onAdvancePage: (() -> Void)?
+    let onPreviousPage: (() -> Void)?
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     @State private var showingKeyPalette = false
     @State private var keyboardDraft = ""
@@ -945,11 +946,13 @@ struct WatchTerminalView: View {
     init(
         controller: WatchTerminalController,
         isActive: Bool = true,
-        onAdvancePage: (() -> Void)? = nil
+        onAdvancePage: (() -> Void)? = nil,
+        onPreviousPage: (() -> Void)? = nil
     ) {
         self.controller = controller
         self.isActive = isActive
         self.onAdvancePage = onAdvancePage
+        self.onPreviousPage = onPreviousPage
     }
 
     var body: some View {
@@ -1048,12 +1051,13 @@ struct WatchTerminalView: View {
                         _ = controller.selectAdjacentSlot(horizontal < 0 ? 1 : -1)
                         return
                     }
-                    guard vertical < -60,
-                          abs(vertical) > abs(horizontal),
-                          let onAdvancePage else { return }
+                    guard let destination = WatchDashboardPage.terminal.destination(
+                        verticalTranslation: Double(vertical), horizontalTranslation: Double(horizontal)
+                    ) else { return }
                     // Vertical touch remains dashboard navigation. History is
                     // controlled exclusively by the focused Digital Crown.
-                    onAdvancePage()
+                    if destination == .system { onPreviousPage?() }
+                    if destination == .plugs { onAdvancePage?() }
                 }
             )
         }

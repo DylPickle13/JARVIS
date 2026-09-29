@@ -2,7 +2,22 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current iPhone build:** 221, installation and launch verified on 2026-09-23 EDT.
+**Current iPhone and Watch build:** 228, installation, launch and final build
+readback independently verified on both devices on 2026-09-29 at 19:50 EDT.
+[System](docs/system-dashboard.md) now uses compact Home-style cards with a
+one-screen overview; technical details open in separate sheets. No overview
+scrolling, large stat tiles, or inline expansion. iPhone keeps Home → System →
+JARVIS → Jobs → Settings. On Watch, swipe down from Terminal to System and up to
+return; the former System page remains Overview.
+
+The exact signed archive and all four bundles were audited with unchanged
+entitlements. 267 tests pass, with 3 expected live-test skips. Build 227 is retained
+for rollback; no app data removed, backend services or Pi sessions restarted.
+The Watch connection dropped before its install step and was re-established;
+neither device received a duplicate install. Physical visual and gesture
+acceptance remains pending owner review.
+
+**Earlier iPhone UI (build 221):** installation and launch verified on 2026-09-23 EDT.
 Visibility fix: widget artwork renders at 140-point height behind the full header
 width, cropped to an owner-approved 84-point band (double the previous height).
 A rendered preview confirms visible core and filaments around JARVIS.

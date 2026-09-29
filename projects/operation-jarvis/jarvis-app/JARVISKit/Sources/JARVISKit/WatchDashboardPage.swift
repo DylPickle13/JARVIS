@@ -1,11 +1,12 @@
 import Foundation
 
-/// Direction policy for the Watch's non-wrapping custom pager.
-/// Up advances; down returns. Terminal owns its editor gestures.
+/// Non-wrapping Watch pager, ordered top to bottom. Up advances; down returns.
+/// Terminal applies this policy locally so horizontal session gestures remain its own.
 public enum WatchDashboardPage: Hashable, CaseIterable {
+    case system
     case terminal
     case plugs
-    case system
+    case overview
     case jobs
 
     public func destination(
@@ -17,10 +18,11 @@ public enum WatchDashboardPage: Hashable, CaseIterable {
               abs(verticalTranslation) > abs(horizontalTranslation) else { return nil }
         let upward = verticalTranslation < 0
         switch self {
-        case .terminal: return nil // Terminal owns its editor gestures.
-        case .plugs: return upward ? .system : .terminal
-        case .system: return upward ? .jobs : .plugs
-        case .jobs: return upward ? nil : .system
+        case .system: return upward ? .terminal : nil
+        case .terminal: return upward ? .plugs : .system
+        case .plugs: return upward ? .overview : .terminal
+        case .overview: return upward ? .jobs : .plugs
+        case .jobs: return upward ? nil : .overview
         }
     }
 }

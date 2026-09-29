@@ -168,8 +168,6 @@ struct HomeView: View {
                             OMLXStatusCard(client: app.client,
                                 endpoint: app.currentEndpoint.map { JarvisEndpoint(baseURL: $0, token: app.store.token ?? "") },
                                 active: scenePhase == .active && app.activeSection == .home && !showsPurifierControls)
-                            SystemHealthCard(snapshot: state, requestStartedAt: app.lastStateRequestStartedAt,
-                                active: scenePhase == .active && app.activeSection == .home && !showsPurifierControls)
                         }
                     } else {
                         compactOfflineCard

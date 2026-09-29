@@ -2,27 +2,26 @@ import XCTest
 @testable import JARVISKit
 
 final class WatchDashboardPageTests: XCTestCase {
-    func testJobsFollowsNormalOrderAndDoesNotWrapPastLastPage() {
-        XCTAssertNil(WatchDashboardPage.jobs.destination(verticalTranslation: -52, horizontalTranslation: 0))
-        XCTAssertNil(WatchDashboardPage.jobs.destination(verticalTranslation: -200, horizontalTranslation: 0))
-        XCTAssertEqual(WatchDashboardPage.jobs.destination(verticalTranslation: 52, horizontalTranslation: 0), .system)
-        XCTAssertEqual(WatchDashboardPage.jobs.destination(verticalTranslation: 200, horizontalTranslation: 0), .system)
+    func testSystemIsAboveTerminalAndExistingPagesRetainTheirOrder() {
+        XCTAssertEqual(WatchDashboardPage.allCases, [.system, .terminal, .plugs, .overview, .jobs])
+        XCTAssertEqual(WatchDashboardPage.terminal.destination(verticalTranslation: 80, horizontalTranslation: 0), .system)
+        XCTAssertEqual(WatchDashboardPage.system.destination(verticalTranslation: -80, horizontalTranslation: 0), .terminal)
+        XCTAssertEqual(WatchDashboardPage.terminal.destination(verticalTranslation: -80, horizontalTranslation: 0), .plugs)
     }
 
-    func testForwardAndReverseRoutesAgreeForEveryNonTerminalPage() {
-        XCTAssertEqual(WatchDashboardPage.plugs.destination(verticalTranslation: -80, horizontalTranslation: 0), .system)
-        XCTAssertEqual(WatchDashboardPage.system.destination(verticalTranslation: 80, horizontalTranslation: 0), .plugs)
-        XCTAssertEqual(WatchDashboardPage.system.destination(verticalTranslation: -80, horizontalTranslation: 0), .jobs)
-        XCTAssertEqual(WatchDashboardPage.jobs.destination(verticalTranslation: 80, horizontalTranslation: 0), .system)
+    func testForwardAndReverseRoutesAgreeForEveryAdjacentPage() {
+        let pages = WatchDashboardPage.allCases
+        for index in 0..<(pages.count - 1) {
+            XCTAssertEqual(pages[index].destination(verticalTranslation: -80, horizontalTranslation: 0), pages[index + 1])
+            XCTAssertEqual(pages[index + 1].destination(verticalTranslation: 80, horizontalTranslation: 0), pages[index])
+        }
     }
 
-    func testOtherPagesKeepTheirDirectionsAndTerminalOwnsItsGestures() {
-        XCTAssertEqual(WatchDashboardPage.plugs.destination(verticalTranslation: -80, horizontalTranslation: 0), .system)
-        XCTAssertEqual(WatchDashboardPage.plugs.destination(verticalTranslation: 80, horizontalTranslation: 0), .terminal)
-        XCTAssertEqual(WatchDashboardPage.system.destination(verticalTranslation: -80, horizontalTranslation: 0), .jobs)
-        XCTAssertEqual(WatchDashboardPage.system.destination(verticalTranslation: 80, horizontalTranslation: 0), .plugs)
-        XCTAssertNil(WatchDashboardPage.terminal.destination(verticalTranslation: -80, horizontalTranslation: 0))
-        XCTAssertNil(WatchDashboardPage.terminal.destination(verticalTranslation: 80, horizontalTranslation: 0))
+    func testNeitherEndWraps() {
+        for distance in [52.0, 200] {
+            XCTAssertNil(WatchDashboardPage.system.destination(verticalTranslation: distance, horizontalTranslation: 0))
+            XCTAssertNil(WatchDashboardPage.jobs.destination(verticalTranslation: -distance, horizontalTranslation: 0))
+        }
     }
 
     func testShortHorizontalDiagonalAndInvalidDragsDoNotNavigate() {

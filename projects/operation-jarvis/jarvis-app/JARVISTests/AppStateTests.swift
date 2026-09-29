@@ -292,7 +292,7 @@ final class AppStateTests: XCTestCase {
     }
 
     func testPassiveTabsReadCacheOnceWithoutActivatingOrConverging() async {
-        for section: AppSection in [.pi, .jobs, .settings] {
+        for section: AppSection in [.system, .pi, .jobs, .settings] {
             let stale = StateSnapshot(ok: true, refreshing: true, stale: true)
             let fresh = StateSnapshot(ok: true, refreshing: false, stale: false)
             let api = FakeAPI(stateResponses: [stale, fresh])
@@ -318,6 +318,26 @@ final class AppStateTests: XCTestCase {
             XCTAssertEqual(api.stateCalls, 2)
             XCTAssertEqual(app.lastState?.stale, false)
         }
+    }
+
+    func testSystemConnectionReadsOnlyCachedStateWithoutDeviceOrServiceFanOut() async {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.system-connect.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        app.endpointDraft = "http://fake.jarvis:8790"
+        app.setActiveSection(.system)
+
+        await app.connect()
+
+        XCTAssertEqual(app.connectionState, .connected)
+        XCTAssertEqual(api.cachedStateCalls, 1)
+        XCTAssertEqual(api.stateCalls, 1)
+        XCTAssertEqual(api.purifierRefreshCalls, 0)
+        XCTAssertEqual(api.codexRefreshCalls, 0)
+        XCTAssertEqual(api.servicesCalls, 0)
+        XCTAssertEqual(api.scheduledJobsCalls, 0)
     }
 
     func testStateFetchDoesNotRetryCompletedStaleSnapshot() async {
@@ -935,7 +955,9 @@ final class AppStateTests: XCTestCase {
         )
         app.endpointDraft = "http://fake.jarvis:8790"
         app.sceneDidBecomeActive()
-        for _ in 0..<40 where app.connectionState != .connected {
+        // Connected is published before the initial Home refresh finishes.
+        // Wait for that work before measuring Jobs-only page-entry requests.
+        for _ in 0..<40 where app.connectionState != .connected || app.isRefreshing || app.isStateLoading {
             try await Task.sleep(for: .milliseconds(25))
         }
         app.setActiveSection(.jobs)

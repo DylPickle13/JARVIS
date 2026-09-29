@@ -1,5 +1,10 @@
 # Compact iPhone Home: oMLX and system health
 
+> The Home health disclosure described below is now replaced by the dedicated
+> iPhone/Watch [System dashboard](system-dashboard.md). These notes retain the
+> underlying health semantics and earlier deployment history. The new dashboard
+> is installed as build 228 on iPhone and Watch; see its deployment notes.
+
 The iPhone Home card below oMLX is a read-only disclosure. It projects the
 existing `/api/v1/state` response; it does not call `/api/v1/services`, monitoring
 URLs, diagnostics, recovery, or device APIs. Expansion adds no network work.

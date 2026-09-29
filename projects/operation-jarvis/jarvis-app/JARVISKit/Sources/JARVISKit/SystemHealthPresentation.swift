@@ -26,6 +26,10 @@ public struct SystemHealthRow: Identifiable, Equatable, Sendable {
 /// the new Pi/services/network expiry rules. Explicit server stale/error flags
 /// always win; local elapsed time also expires a frozen or older-host snapshot.
 public struct SystemHealthPresentation: Equatable, Sendable {
+    public static let freshnessLimits: [String: Double] = [
+        "services": 660, "pi": 180, "plugs": 30, "purifier": 90,
+        "network": 1260, "codexQuota": 900,
+    ]
     public let rows: [SystemHealthRow]
     public var issueCount: Int { rows.filter { $0.state == .issue }.count }
     public var unknownCount: Int { rows.filter { [.unknown, .checking].contains($0.state) }.count }
@@ -52,17 +56,18 @@ public struct SystemHealthPresentation: Equatable, Sendable {
     public init(snapshot: StateSnapshot?, requestStartedAt: Date?, now: Date = Date()) {
         let elapsed = requestStartedAt.map { now.timeIntervalSince($0) }
         let validElapsed = elapsed.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
-        let categories: [(String, String, Double)] = [
-            ("services", "Background services", 660), ("pi", "Pi session data", 180),
-            ("plugs", "Plugs", 30), ("purifier", "Air purifiers", 90),
-            ("network", "Network data", 1260), ("codexQuota", "Codex usage", 900),
+        let categories: [(String, String)] = [
+            ("services", "Background services"), ("pi", "Pi session data"),
+            ("plugs", "Plugs"), ("purifier", "Air purifiers"),
+            ("network", "Network data"), ("codexQuota", "Codex usage"),
         ]
         var result: [SystemHealthRow] = []
         if snapshot?.ok == false {
             result.append(.init(id: "backend", title: "Backend", state: .issue,
                                 detail: "State request reported a failure", ageSeconds: nil))
         }
-        for (id, title, limit) in categories {
+        for (id, title) in categories {
+            let limit = Self.freshnessLimits[id]!
             let meta = snapshot?.subsystemsMeta?[id]
             let age: Double? = {
                 guard let value = meta?.ageSeconds, value.isFinite, value >= 0,
