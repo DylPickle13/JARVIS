@@ -93,11 +93,11 @@ The keyboard uses the existing signed Karabiner owned-handle bridge: one validat
 
 ## Notifications
 
-Healthy checks and successful ordinary transitions are silent. The existing durable fault latch emits one error when entering failure, stays silent during continuing failure, and emits one recovery once confirmed. A keyboard fault requires a successful lighting command to recover, not just healthy presence.
+Healthy checks and successful ordinary transitions are silent. Controller safety fault latches and pauses still take effect immediately. The relay sends one error only when the same controller's failure remains unresolved for at least **60 seconds**. Recovery before notification is silent: no error, informational blip, or recovery message. Continuing failure is silent after its first error; later confirmed recovery emits one recovery only if that failure was previously notified. A keyboard fault requires a successful lighting command to recover, not just healthy presence.
 
-The watcher queues these messages privately; the minute-based alert relay delivers them to the existing bounded JARVIS job history. Thus lighting transitions are responsive, but notification delivery can take about a minute. The relay also reports a missing/stale watcher heartbeat once and recovers once when the watcher responds; this is explicitly not device readback.
+The watcher timestamps transitions privately; the minute-based alert relay persists independent pending/notified state per controller and delivers only due notifications to the existing bounded JARVIS job history. Typical notification latency is about 1–2 minutes from failure onset. A stale/missing watcher heartbeat follows the same 60-second rule after its 30-second health deadline; watcher recovery is explicitly not device readback. Restarting a relay or watcher does not reset persisted notification timers or replay already-sent errors.
 
-The private alert queue retains at most 64 messages. An extreme prolonged relay outage can discard oldest messages. Queue/latch persistence is not an exactly-once transaction across process crashes and scheduler delivery. Storage inaccessibility uses the existing bootstrap error marker; if both storage locations are inaccessible, durable deduplication is impossible.
+The private alert queue retains at most 64 messages. An extreme prolonged relay outage can discard oldest messages; the relay reconciles controller fault latches when the watcher is responding, preventing stale pending errors after recovery and detecting ongoing failures even if their queued events were lost. Queue/latch persistence is not an exactly-once transaction across process crashes and scheduler delivery. Runtime storage failures use an independent owner-only temporary-directory notification latch and the same delay/recovery rules. If both storage locations are inaccessible, durable delay/deduplication is impossible and a last-resort storage error remains immediate.
 
 ## Files and controls
 
@@ -108,13 +108,14 @@ Runtime: `~/Library/Application Support/JARVIS/ajazz-keyboard/`, owner-only dire
 - `state.json` version 4: timestamps, counters, last effect, `away_applied`, pending marker and mode. Versions 1–3 migrate without clearing pending. Previously applied black/purple is not treated as already-applied white ripples.
 - `mouse-state.json` version 1: last tick/attempt, last acknowledged `steady`/`off`, succeeded and pending markers. `mouse-alerts.json` stores a separate fault latch. The mouse daemon journal also survives restarts.
 - `alerts.json`: persistent device/presence/preferences/state fault latch.
-- `watcher.json`: heartbeat and bounded alert outbox; `watcher-health.json`: relay health latch.
+- `watcher.json`: heartbeat and bounded timestamped alert outbox (legacy untimestamped events remain readable and begin their 60-second grace at first relay); `watcher-health.json`: relay health latch.
+- `notifications.json` version 1: per-controller failure start, sanitized message, and whether its error was notified. Independent runtime-storage notifications use `${TMPDIR}/jarvis-computer-presence-notifications-<uid>/notifications.json`, with an owner-only directory/files.
 - `last-command-error.json`: latest sanitized error class, never raw child stderr. May be historical after recovery.
 - `watcher.log`: bounded 64 KiB log with one backup for watcher storage failures.
 - `diagnostics.json`: last 32 sanitized timestamped presence/controller/start events, including snapshot age and listener reason when available. No raw backend responses or device identifiers.
 - `error-history.json`: last 32 keyboard-controller failures, including transport/validation deadlines and sanitized keyboard rejection reasons. `last-command-error.json` remains the latest keyboard command failure only.
-- `watcher-started.json`: watcher start time. The relay defers notifications for the first 30 seconds, preserving its queue and health latch; device safety checks and polling are unchanged. Persistent failures are reported after grace expires.
-- A queued error followed by recovery for the same controller is informational (`Brief interruption—recovered`), not a failed scheduler run. Unresolved errors and errors after a recovery still fail the report. This does not imply device-state verification.
+- `watcher-started.json`: watcher start time. The relay defers notifications for the first 30 seconds, preserving its queue and health latch; device safety checks and polling are unchanged. The 60-second unresolved-failure threshold still applies after startup grace.
+- Short-lived failures remain in private diagnostics only. A due, unresolved error fails that scheduler report; suppressed checks and already-recovered interruptions remain completely silent. This does not imply device-state verification.
 - `black-colour-test.json`: historical authorized black trial, visual/typing confirmation and normal-lighting restoration. Not current away configuration.
 
 LaunchAgent plist: `~/Library/LaunchAgents/com.jarvis.ajazz-keyboard-watch.plist`.
@@ -145,7 +146,7 @@ Do not immediately bootstrap while bootout is still completing. Do not use privi
 
 ## Validation
 
-113 offline tests pass, including the keyboard/bridge suite and new mouse transition, shared-snapshot freshness, never-breathing allowlist, restart suppression, independent faults, state migration and uncertainty tests. Tests use mocks and send no device reports.
+147 offline tests pass, including the keyboard/bridge suite, mouse transitions, shared-snapshot freshness, never-breathing allowlist, restart suppression, independent faults, state migration, uncertainty, and persistent-failure notification tests (60-second boundary, silent blips, conditional recovery, legacy queue events, queue/latch reconciliation, and independent storage fallback). Tests use mocks and send no device reports.
 
 Live deployment: keyboard switched to white immediately, mouse acknowledged steady mode, and the restarted watcher reports keyboard cycling plus mouse steady, no faults and no pending writes. Mouse steady/off follows fresh backend basement state; physical departure/return acceptance remains pending.
 

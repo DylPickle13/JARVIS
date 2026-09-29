@@ -10,6 +10,8 @@ import os
 import signal
 import threading
 import time
+import tempfile
+from pathlib import Path
 
 import cycle
 import copy
@@ -20,6 +22,8 @@ POLL = 3
 HEALTH_AGE = 30  # Includes bounded presence + HID calls; not presence freshness.
 QUEUE_LIMIT = 64
 STARTUP_GRACE = 30
+FAILURE_DELAY = 60
+COMPONENTS = {'keyboard', 'mouse', 'display', 'watcher', 'storage'}
 
 
 def diagnose(store, event, *, at, **details):
@@ -35,6 +39,7 @@ def alert_component(message):
     for component, prefix in (
         ('keyboard', 'Keyboard '), ('mouse', 'Mouse '), ('display', 'Display '),
         ('watcher', 'Computer presence watcher '),
+        ('storage', 'Computer presence alert '),
     ):
         if message.split(': ', 1)[-1].startswith(prefix):
             return component
@@ -43,18 +48,93 @@ def alert_component(message):
     return None
 
 
-def classify(messages):
-    """Only a later recovery for the SAME controller resolves a queued error."""
+def notification_state(store):
+    value = store.load('notifications.json', {'version': 1, 'pending': {}})
+    if (type(value) is not dict or set(value) != {'version', 'pending'}
+            or type(value['version']) is not int or value['version'] != 1
+            or type(value['pending']) is not dict
+            or not set(value['pending']) <= COMPONENTS):
+        raise cycle.CycleError('state')
+    for component, entry in value['pending'].items():
+        if (type(entry) is not dict or set(entry) != {'since', 'notified', 'message'}
+                or not cycle.finite(entry['since']) or type(entry['notified']) is not bool
+                or type(entry['message']) is not str or len(entry['message']) > 512
+                or not entry['message'].startswith('ERROR:')
+                or alert_component(entry['message']) != component):
+            raise cycle.CycleError('state')
+    return value
+
+
+def notifications(value, messages, *, at, active=None):
+    """Defer unresolved faults only; never emit an error already followed by recovery."""
+    if not cycle.finite(at):
+        raise cycle.CycleError('state')
+    pending = value['pending']
     result = []
-    for index, item in enumerate(messages):
+
+    def recover(component, message):
+        entry = pending.pop(component, None)
+        if entry is not None and entry['notified']:
+            result.append({'message': message, 'code': 0})
+
+    for item in messages:
         component = alert_component(item['message'])
-        recovered = component is not None and any(
-            later['message'].startswith('RECOVERED:')
-            and alert_component(later['message']) == component
-            for later in messages[index + 1:])
-        if item['code'] and recovered:
-            item = {'message': 'Brief interruption—recovered: ' + item['message'][7:], 'code': 0}
-        result.append(item)
+        if component is None:
+            raise cycle.CycleError('state')
+        if item['code']:
+            # Legacy/future-dated events start their grace period at this relay.
+            since = min(at, item.get('at', at))
+            if component not in pending:
+                pending[component] = {'since': since, 'notified': False,
+                                      'message': item['message']}
+            else:
+                pending[component]['message'] = item['message']
+        else:
+            recover(component, item['message'])
+
+    # Reconcile durable controller latches so a truncated outbox cannot leave a
+    # recovered fault pending or hide an ongoing failure. None means unknown.
+    for component, status in (active or {}).items():
+        if status is None:
+            continue
+        error, recovery = status
+        if error is None:
+            recover(component, recovery)
+        elif component not in pending:
+            pending[component] = {'since': at, 'notified': False, 'message': error}
+
+    for entry in pending.values():
+        if not entry['notified'] and at - entry['since'] >= FAILURE_DELAY:
+            result.append({'message': entry['message'], 'code': 1})
+            entry['notified'] = True
+    return result
+
+
+def controller_status(store):
+    result = {}
+    for component, filename, faults, descriptions in (
+        ('keyboard', 'alerts.json', cycle.FAULTS, cycle.MESSAGES),
+        ('mouse', 'mouse-alerts.json', mouse_cycle.FAULTS, mouse_cycle.MESSAGES),
+    ):
+        latch = store.load(filename, None)
+        if latch is None:
+            continue
+        if type(latch) is not list or any(type(f) is not str or f not in faults for f in latch):
+            raise cycle.CycleError('state')
+        fault = next((f for f in ('state', 'presence', component, 'preferences') if f in latch), None)
+        result[component] = (
+            'ERROR: ' + descriptions[fault] if fault else None,
+            f'RECOVERED: {component.capitalize()} automation checks are working again.',
+        )
+    display = store.load('display-state.json', None)
+    if display is not None:
+        if type(display) is not dict or type(display.get('fault')) is not bool:
+            raise cycle.CycleError('state')
+        result['display'] = (
+            'ERROR: Display automation blocked after an uncertain action; owner review required.'
+            if display['fault'] else None,
+            'RECOVERED: Display automation fault cleared (not device-state verification).',
+        )
     return result
 
 
@@ -74,10 +154,13 @@ def snapshot(store):
             or type(value['alerts']) is not list or len(value['alerts']) > QUEUE_LIMIT):
         raise cycle.CycleError('state')
     for item in value['alerts']:
-        if (type(item) is not dict or set(item) != {'message', 'code'}
+        if (type(item) is not dict or set(item) not in ({'message', 'code'}, {'message', 'code', 'at'})
                 or type(item['message']) is not str or len(item['message']) > 512
                 or not item['message'].startswith(('ERROR:', 'RECOVERED:'))
-                or type(item['code']) is not int or item['code'] not in (0, 1)):
+                or type(item['code']) is not int or item['code'] not in (0, 1)
+                or bool(item['code']) != item['message'].startswith('ERROR:')
+                or alert_component(item['message']) is None
+                or ('at' in item and not cycle.finite(item['at']))):
             raise cycle.CycleError('state')
     return value
 
@@ -137,7 +220,7 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
         output, code = run()
         if output:
             diagnose(store, 'controller-alert', at=now(), message=output)
-            value['alerts'].append({'message': output, 'code': code})
+            value['alerts'].append({'message': output, 'code': code, 'at': now()})
             value['alerts'] = value['alerts'][-QUEUE_LIMIT:]
     value['heartbeat'] = now()
     store.save('watcher.json', value)
@@ -149,25 +232,35 @@ def relay(store, *, now=time.time):
     old = store.load('watcher-health.json', False)
     if type(old) is not bool:
         raise cycle.CycleError('state')
+    current = now()
+    if not cycle.finite(current):
+        raise cycle.CycleError('state')
     heartbeat = value['heartbeat']
-    age = None if heartbeat is None else now() - heartbeat
+    age = None if heartbeat is None else current - heartbeat
     started = store.load('watcher-started.json', None)
-    initializing = cycle.finite(started) and 0 <= now() - started < STARTUP_GRACE
+    initializing = cycle.finite(started) and 0 <= current - started < STARTUP_GRACE
     if initializing:
         return 0  # Defer notifications only; retain the outbox and all safety latches.
     failed = age is None or not 0 <= age <= HEALTH_AGE
+    state = notification_state(store)
     messages = list(value['alerts'])
-    if failed and not old:
-        messages.append({'message': 'ERROR: Computer presence watcher is not responding; keyboard, mouse, and monitor automation may not respond to presence changes.', 'code': 1})
-    elif old and not failed:
-        messages.append({'message': 'RECOVERED: Computer presence watcher is responding again for keyboard, mouse, and monitors (not device-state verification).', 'code': 0})
-    messages = classify(messages)
-    # Called under the same lock as the producer. Healthy cycles emit nothing.
-    for item in messages:
-        print(item['message'], flush=True)
+    watcher_error = 'ERROR: Computer presence watcher is not responding; keyboard, mouse, and monitor automation may not respond to presence changes.'
+    watcher_recovery = 'RECOVERED: Computer presence watcher is responding again for keyboard, mouse, and monitors (not device-state verification).'
+    if failed:
+        since = heartbeat + HEALTH_AGE if heartbeat is not None and heartbeat <= current else current
+        messages.append({'message': watcher_error, 'code': 1, 'at': since})
+    # Controller latches cannot prove recovery while the producer is unresponsive.
+    active = controller_status(store) if not failed else {}
+    active['watcher'] = (watcher_error if failed else None, watcher_recovery)
+    messages = notifications(state, messages, at=current, active=active)
+    # Called under the same lock as the producer. Persist before publishing; no
+    # exactly-once guarantee across a crash between persistence and delivery.
+    store.save('notifications.json', state)
     value['alerts'] = []
     store.save('watcher.json', value)
     store.save('watcher-health.json', failed)
+    for item in messages:
+        print(item['message'], flush=True)
     return max((item['code'] for item in messages), default=0)
 
 
@@ -202,6 +295,27 @@ def watch():
     return 0
 
 
+def storage_notifications(failed, *, now=time.time):
+    """Independent private fallback keeps runtime-storage blips silent too."""
+    directory = Path(tempfile.gettempdir()) / f'jarvis-computer-presence-notifications-{os.getuid()}'
+    if not failed and not directory.exists():
+        return 0
+    store = cycle.Store(directory)
+    with locked(store, 'notifications.lock'):
+        state = notification_state(store)
+        error = ('ERROR: Computer presence alert relay cannot access its private state; '
+                 'keyboard, mouse, and monitor status is unavailable. Repair state access.')
+        recovery = ('RECOVERED: Computer presence alert storage is accessible again '
+                    'for keyboard, mouse, and monitors.')
+        messages = [{'message': error, 'code': 1}] if failed else []
+        output = notifications(state, messages, at=now(),
+                               active={'storage': (error if failed else None, recovery)})
+        store.save('notifications.json', state)
+    for item in output:
+        print(item['message'], flush=True)
+    return max((item['code'] for item in output), default=0)
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -218,20 +332,19 @@ def main():
             if cycle.bootstrap_exists():
                 cycle.bootstrap_path().unlink()
                 print('RECOVERED: Computer presence alert storage is accessible again for keyboard, mouse, and monitors.', flush=True)
-            return result
+            return max(result, storage_notifications(False))
     except BlockingIOError:
         return 0  # Next scheduler tick can drain the durable queue.
     except (OSError, ValueError, TypeError, KeyError, cycle.CycleError):
         try:
-            message, code = cycle.bootstrap_error()
-            if message:
-                message = ('ERROR: Computer presence alert relay cannot access its private state; '
-                           'keyboard, mouse, and monitor status is unavailable. Repair state access.')
-        except (OSError, cycle.CycleError):
-            message, code = 'ERROR: Computer presence alert relay cannot persist its failure latch; keyboard, mouse, and monitor status is unavailable. Repair storage.', 1
-        if message:
-            print(message, flush=True)
-        return code
+            return storage_notifications(True)
+        except BlockingIOError:
+            return 0
+        except (OSError, ValueError, TypeError, KeyError, cycle.CycleError):
+            # Both independent storage locations failed: durable delay/deduplication
+            # is impossible. Preserve the fail-loud last-resort safety behavior.
+            print('ERROR: Computer presence alert relay cannot persist its failure latch; keyboard, mouse, and monitor status is unavailable. Repair storage.', flush=True)
+            return 1
 
 
 if __name__ == '__main__':
