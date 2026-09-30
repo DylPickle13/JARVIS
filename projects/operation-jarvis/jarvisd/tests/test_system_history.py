@@ -261,7 +261,7 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store._db.execute('SELECT count(*) FROM samples').fetchone()[0], 1)
 
     def test_full_retention_and_max_component_capacity_remain_bounded(self):
-        ids = list(health.COMPONENTS) + ['service:s%d' % i for i in range(24)]
+        ids = list(health.COMPONENTS) + ['service:s%d' % i for i in range(health.MAX_COMPONENTS-len(health.COMPONENTS))]
         def payload(at):
             return json.dumps({key: health.observation('healthy', 'current', source=at, valid_until=at+90)
                                for key in ids}, separators=(',', ':'))

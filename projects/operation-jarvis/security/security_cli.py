@@ -1241,6 +1241,17 @@ async def execute(alias, command, **kwargs):
         raise
 
 
+def new_hub_read_http_session():
+    """Avoid H200 disconnects between login steps; scoped to read invocations.
+
+    Caller owns cleanup. No authentication, TLS or retry policy is changed.
+    """
+    import aiohttp
+    return aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(force_close=True),
+        cookie_jar=aiohttp.CookieJar(unsafe=True, quote_cookie=False))
+
+
 async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
                         audible=False, env_file=ROOT / '.env', registry_path=ROOT / 'devices.json'):
     devices = registry(registry_path)
@@ -1267,6 +1278,7 @@ async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
     progress = {}
     stage = 'preflight'
     device = None
+    hub_http_session = None
     from kasa import Discover
     try:
         with device_lock(entry['hub'] if is_sensor else alias):
@@ -1289,7 +1301,9 @@ async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
                     return await original(request, retry_count=0)
                 device.protocol.query = once
                 if connection_model == 'H200':
-
+                    if command in ('status', 'capabilities'):
+                        hub_http_session = new_hub_read_http_session()
+                        device.config.http_client = hub_http_session
                     install_empty_child_lists_compat(device.protocol)
                 # Authenticate identity before inventory or writes.
                 response = await device.protocol.query({'getDeviceInfo': {
@@ -1326,6 +1340,8 @@ async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
                 await asyncio.wait_for(device.disconnect(), 2)
             except Exception:
                 pass
+        if hub_http_session is not None:
+            await hub_http_session.close()
 
 
 # ========================================================================

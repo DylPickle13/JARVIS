@@ -797,7 +797,10 @@ class DaemonUnitTests(unittest.TestCase):
     def test_collect_state_renews_client_activity(self):
         snapshot = {"ok": True}
         with mock.patch.object(jarvisd.STATE_COORDINATOR, "snapshot", return_value=snapshot) as read:
-            self.assertEqual(jarvisd.collect_state(), snapshot)
+            result = jarvisd.collect_state()
+            self.assertEqual({key: value for key, value in result.items() if key != 'health'}, snapshot)
+            self.assertIn('security', result['health']['components'])
+            self.assertFalse(result['health']['healthy'])
         read.assert_called_once_with(client_active=True)
 
     def test_state_coordinator_is_single_flight_and_preserves_last_good(self):
@@ -851,13 +854,13 @@ class DaemonUnitTests(unittest.TestCase):
 
         # Inspect cached expiry only; a foreground lease can race this fake clock
         # by scheduling a successful collector and replacing lastGoodAt.
-        recent = coordinator.snapshot(client_active=False)["subsystems"]["plugs"]
+        recent = coordinator.snapshot(client_active=False, start_collectors=False)["subsystems"]["plugs"]
         self.assertEqual(recent["value"], "confirmed")
         self.assertFalse(recent["stale"])
         self.assertEqual(recent["lastError"], "temporary")
 
         clock[0] = 121.0
-        expired = coordinator.snapshot(client_active=False)["subsystems"]["plugs"]
+        expired = coordinator.snapshot(client_active=False, start_collectors=False)["subsystems"]["plugs"]
         self.assertTrue(expired["stale"])
 
     def test_partial_plug_failure_retains_and_expires_only_that_devices_last_good(self):

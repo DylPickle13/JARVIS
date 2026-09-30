@@ -240,8 +240,9 @@ class HistoryStore:
 
 class HistoryRecorder:
     """Called by the existing monitor cycle, independently of incident storage."""
-    def __init__(self, store, cached_snapshot, *, clock=time.time, monotonic=time.monotonic):
-        self.store, self.cached_snapshot = store, cached_snapshot
+    def __init__(self, store, cached_snapshot, *, clock=time.time, monotonic=time.monotonic,
+                 projector=project):
+        self.store, self.cached_snapshot, self.projector = store, cached_snapshot, projector
         self.clock, self.monotonic = clock, monotonic
         self.run_id = uuid.uuid4().hex
         self.storage_available = True
@@ -270,7 +271,7 @@ class HistoryRecorder:
                 if self._last_wall is not None and abs((now-self._last_wall[0])-(mono-self._last_wall[1])) > 5:
                     self.run_id = uuid.uuid4().hex
                 self._last_wall = (now, mono)
-                self.store.append(project(snapshot, now), at=now, run_id=self.run_id)
+                self.store.append(self.projector(snapshot, now), at=now, run_id=self.run_id)
                 self.storage_available = True
             except Exception:
                 # Failed writes leave a hole, not a success or a replay backlog.

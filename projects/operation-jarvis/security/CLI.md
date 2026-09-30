@@ -26,6 +26,14 @@ features remain `unknown`; the backend reports unavailable if required door or
 motion state is absent. Successful CLI reads include `read_attempts` and
 `transient_recovered`. These are source changes, not deployment evidence.
 
+H200-backed `status`/`capabilities` reads use an invocation-owned HTTP session
+with fresh connections per request. This avoids the observed disconnect between
+SDK login steps when reusing a connection. The session is closed on success,
+failure or cancellation; camera reads and all write commands retain their existing
+transport behavior. Authentication, TLS and retry policy are unchanged. A local
+hub identity check and door-sensor snapshot succeeded with this workaround;
+this does not establish physical contact state or sensor radio freshness.
+
 The backend can opt into serial background polling; the CLI itself remains a
 single bounded invocation. See [native jarvisd monitoring](../jarvisd/docs/monitoring-native.md).
 The monitoring dashboard checks cached health, never invokes this CLI or retries

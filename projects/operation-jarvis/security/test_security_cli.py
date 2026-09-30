@@ -485,6 +485,8 @@ class control_OperationTests(unittest.IsolatedAsyncioTestCase):
                 child = NS(model='T110', alias='Test door', features={'is_open': feature})
                 d = control_device()
                 d.model, d.device_type = 'H200', NS(value='hub')
+                d.config = NS(http_client=None)
+                session = NS(close=AsyncMock())
                 d.children = [] if failure == 'missing' else [child]
                 d.protocol.query.return_value = {'getDeviceInfo': {'device_info': {
                     'basic_info': {'device_model': 'H200'}}}}
@@ -495,6 +497,7 @@ class control_OperationTests(unittest.IsolatedAsyncioTestCase):
                 with patch('kasa.Discover.discover_single', new=AsyncMock(return_value=d)) as discover, \
                      patch('security_cli.device_lock', return_value=nullcontext()), \
                      patch('security_cli.install_empty_child_lists_compat'), \
+                     patch('security_cli.new_hub_read_http_session', return_value=session) as http_factory, \
                      patch('security_cli.load_settings', return_value=NS(host='', username='u', password='p')), \
                      patch('security_cli.asyncio.timeout', wraps=asyncio.timeout) as budget:
                     if failure in ('timeout', 'missing'):
@@ -515,6 +518,9 @@ class control_OperationTests(unittest.IsolatedAsyncioTestCase):
                     discover.assert_awaited_once()
                     d.update.assert_awaited_once()
                     d.disconnect.assert_awaited_once()
+                    http_factory.assert_called_once_with()
+                    self.assertIs(d.config.http_client, session)
+                    session.close.assert_awaited_once_with()
                     feature.set_value.assert_not_awaited()
 
     async def test_execute_paths(self):

@@ -227,6 +227,16 @@ polling/monitoring, not notifications.
 See [configuration and acceptance checks](docs/monitoring-native.md).
 Purifier recovery protections remain unchanged.
 
+## Sensor-inclusive backend health (deployed 2026-09-30 EDT)
+
+Release `20260930T153603Z-sensor-health` includes existing configured sensor-read
+availability in backend current health and future `devices`/`overall` history.
+State and `/api/v1/health` add `health.components.security`; failed reads are
+unavailable and expired/missing observations unknown. No additional device polls,
+alerts, sensor-state exposure or native-app rebuild. `/health` remains liveness.
+747 frozen backend tests, 149 reader tests, and live cached-health/history checks
+passed. See [deployment details](docs/monitoring-native.md).
+
 ## System health chart history (deployed 2026-09-29 EDT)
 
 Release **`20260930T010227Z-system-history`** enables the optional

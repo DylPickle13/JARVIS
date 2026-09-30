@@ -1742,9 +1742,30 @@ def collect_omlx() -> dict:
 STATE_COORDINATOR = StateCoordinator()
 
 
+def _project_system_health(snapshot, now):
+    """Shared current/history projection; consume existing sensor poll results only."""
+    from jarvisd_core import system_health
+    security = system_health.security_reads(read_health.SECURITY_HEALTH.snapshot(),
+        SECURITY_POLL_ALIASES, enabled=MONITORING_ENABLED,
+        ttl=read_health.SECURITY_HEALTH.ttl, now=now)
+    return system_health.project(snapshot, now, security=security)
+
+
+def _with_system_health(snapshot):
+    from jarvisd_core.system_health import stamp
+    rows = _project_system_health(snapshot, time.time())
+    components = {key: {**row,
+        'sourceObservedAt': stamp(row['sourceObservedAt']) if row['sourceObservedAt'] is not None else None,
+        'validUntil': stamp(row['validUntil']) if row['validUntil'] is not None else None}
+        for key, row in rows.items()}
+    return {**snapshot, 'health': {'scope': 'cached_status_health',
+        'healthy': rows['overall']['state'] in ('healthy', 'inactive'),
+        'components': components}}
+
+
 def collect_state() -> dict:
     """Return state after renewing the bounded foreground-client lease."""
-    return STATE_COORDINATOR.snapshot(client_active=True)
+    return _with_system_health(STATE_COORDINATOR.snapshot(client_active=True))
 
 
 def _on_demand_observations():
@@ -2281,8 +2302,12 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                 return
             observations = (read_health.SECURITY_HEALTH.snapshot()
                             if path == "/api/v1/security/health" else read_health.endpoint_snapshot())
-            self._send(200, {"ok": True, "scope": "recorded_read_outcomes",
-                             "monitoring": False, "observations": observations})
+            body = {"ok": True, "scope": "recorded_read_outcomes",
+                    "monitoring": False, "observations": observations}
+            if path == "/api/v1/health":
+                snapshot = STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False)
+                body['health'] = _with_system_health(snapshot)['health']
+            self._send(200, body)
             return
         if path == "/api/v1/diagnostics":
             if self._reject_origin():
@@ -2350,7 +2375,8 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                 if query != {"mode": ["cached"]}:
                     self._send(400, {"ok": False, "error": "cached mode cannot request refresh"})
                     return
-                self._send(200, STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False))
+                self._send(200, _with_system_health(
+                    STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False)))
                 return
             # Authenticated hosts may request an immediate refresh of the
             # read-only Codex usage collector. The response remains the fast
@@ -2681,7 +2707,8 @@ def main(*, control_factory=None, local_control=False) -> int:
                 try:
                     history_store = HistoryStore(Path.home() / 'Library/Application Support/JARVIS/system-history/history.sqlite3')
                     SYSTEM_HISTORY_RECORDER = HistoryRecorder(history_store,
-                        lambda: STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False))
+                        lambda: STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False),
+                        projector=_project_system_health)
                 except Exception:
                     # Optional chart storage must not prevent backend startup or
                     # change controls, sampling, incident history or alerts.

@@ -1,13 +1,16 @@
 # System health chart history — backend
 
-**Deployed and recording:** `20260930T010227Z-system-history` on 2026-09-29 EDT.
-Native apps remain unchanged; historical UI is not implemented/deployed.
+**Initial recording:** `20260930T010227Z-system-history` on 2026-09-29 EDT.
+**Sensor-health extension deployed:** `20260930T153603Z-sensor-health` on 2026-09-30.
+Native app installation/UI changes are separate; this extension is backend-only.
 
 This adds bounded chart history to the existing in-process monitoring cycle.
 It does not add device polling, start collectors, renew foreground leases,
 request purifier recovery, run diagnostics, issue commands, restart services,
 or change incident thresholds/notifications. No new Python dependency is used.
-Existing `/api/v1/state` and `/api/v1/monitor/*` contracts remain unchanged.
+Existing fields and `/api/v1/monitor/*` contracts remain unchanged. State and
+`/api/v1/health` now add a sanitized `health` summary; HTTP 200/top-level `ok`
+mean the query succeeded, not that all components are healthy.
 
 ## Explicit activation
 
@@ -49,13 +52,23 @@ silently turn it into a background cloud poller.
 Recorded components:
 
 - `services`, `pi`, `network`, `plugs`, `purifier`, `codexQuota`;
-- `devices`: worst status of plugs and purifier;
-- `overall`: worst status of the six current System dashboard collectors;
-- up to 24 registered `service:<key>` components (32 total).
+- `security`: aggregate availability of all configured sensor status reads;
+- `devices`: worst status of plugs, purifier and configured sensor-read health;
+- `overall`: worst status of the six collectors and configured sensor-read health;
+- up to 23 registered `service:<key>` components when security is included (32 total).
 
-This matches the current native System dashboard's collector scope. It does not
-fold security/presence or oMLX's different activity/read-health freshness into
-System health. Existing oMLX incident monitoring is unchanged.
+Sensor health consumes the existing serial poller's cached read outcomes only.
+A failed read is unavailable immediately; missing/expired evidence is unknown,
+never healthy. Disabled/unconfigured sensor monitoring is inactive. The existing
+sensor observation TTL (at least 120 seconds) is preserved. No sensor contact or
+motion values, aliases, raw errors, or radio-freshness claims enter this summary
+or chart storage. Presence and oMLX's different freshness policies remain separate.
+
+Security chart coverage starts with the new deployment; prior samples are not
+backfilled or reclassified. Older overall/device samples retain their original
+six-collector scope. `/health` remains daemon liveness, so a sensor failure cannot
+cause the watchdog to restart the backend. Native clients must consume the new
+summary for current-health badges; no native app is rebuilt by this extension.
 
 Required continuous services must run. Loaded periodic services idle after a
 successful check are healthy. Failed/signal-terminated scheduled completions

@@ -1,5 +1,28 @@
 # Native jarvisd monitoring
 
+## Sensor-inclusive backend health — 2026-09-30 EDT
+
+Release `20260930T153603Z-sensor-health` adds existing door/motion read availability
+to `health.components.security`, `devices`, and `overall` in `/api/v1/health` and
+`/api/v1/state`, and to new System history samples. No second poller, faster
+cadence, contact-state disclosure, physical connectivity guarantee or alert is
+introduced. Failed reads are unavailable; expired/unchecked evidence is unknown.
+`/health` retains its liveness-only watchdog contract; HTTP 200 on diagnostics
+means query success, not aggregate health.
+
+747 frozen-backend tests and 149 frozen-reader tests passed. Live cache-only health,
+state, security-history, auth and liveness checks passed; both configured sensor
+reads were available. Security work counters stayed at 8 across the bounded
+verification burst. The release freezes the tested fresh-HTTP hub-read workaround;
+private hub configuration/credentials remain at the existing runtime root.
+Notifications remain disabled; native apps are unchanged.
+
+The manual bootstrap conflicted with watchdog loading; the watchdog activated
+the tested candidate. Active process/path and health were verified, then the disk
+plist was reconciled to that exact running candidate without another restart.
+Prior plist/source and verification records remain in the private deployment
+folder. No protected service restart or device write was issued.
+
 ## Passive coverage — 2026-09-22 EDT
 
 Active release: `20260922T143035Z-passive-monitoring`. Adds separate `onDemand`

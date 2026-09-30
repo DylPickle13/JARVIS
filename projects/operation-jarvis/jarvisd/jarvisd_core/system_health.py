@@ -2,8 +2,9 @@
 
 Chart colours describe observation/service health, never physical connectivity.
 Expired evidence is unknown, not a prolonged healthy or physical-offline claim.
-The six System dashboard collectors define overall health; optional stopped
-services are inactive and successful periodic services may be idle.
+Overall health includes the six dashboard collectors and configured sensor-read
+health when supplied. Optional stopped services are inactive; successful periodic
+services may be idle. Sensor state and radio freshness are never inferred.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from datetime import datetime, timezone
 
 from .state import StateCoordinator
 
-COMPONENTS = ('services', 'pi', 'network', 'plugs', 'purifier', 'codexQuota', 'devices', 'overall')
+COMPONENTS = ('services', 'pi', 'network', 'plugs', 'purifier', 'codexQuota', 'security', 'devices', 'overall')
 MAX_COMPONENTS = 32
 SERVICE_ID = re.compile(r'service:[A-Za-z0-9_-]{1,48}\Z')
 STATES = ('inactive', 'healthy', 'unknown', 'degraded', 'unavailable')
@@ -23,7 +24,8 @@ REASONS = frozenset({
     'required_service_missing', 'required_service_stopped', 'service_read_failed',
     'scheduled_check_failed', 'scheduled_completion_unknown', 'service_state_unknown',
     'device_observation_failed', 'device_observation_unknown', 'snapshot_failed',
-    'inventory_limit',
+    'inventory_limit', 'monitoring_disabled', 'not_checked',
+    'sensor_read_failed', 'sensor_read_unknown',
 })
 LIMITS = StateCoordinator.DEFAULT_FRESHNESS_LIMITS
 
@@ -124,8 +126,38 @@ def _service(data):
     return observation('unknown', 'service_state_unknown')
 
 
-def project(snapshot, now):
-    """At most 32 components, with no names, raw errors, device IDs or values."""
+def security_reads(observations, aliases, *, enabled, ttl, now):
+    """Project existing sensor-read evidence only; no device I/O or contact state."""
+    if not enabled or not aliases:
+        return observation('inactive', 'monitoring_disabled')
+    if not isinstance(observations, dict) or not number(ttl) or ttl == 0 or len(aliases) > 8:
+        return observation('unknown', 'sensor_read_unknown')
+    rows = []
+    for alias in aliases:
+        row = observations.get(alias)
+        if not isinstance(row, dict):
+            rows.append(observation('unknown', 'not_checked'))
+            continue
+        source = timestamp(row.get('lastAttemptAt'))
+        age = row.get('ageSeconds')
+        if source is None or source > now or not number(age):
+            rows.append(observation('unknown', 'timestamp_invalid'))
+            continue
+        age = max(age, now-source)
+        if row.get('reason') == 'observation_expired' or age > ttl:
+            rows.append(observation('unknown', 'observation_expired', source=source))
+        elif row.get('availability') == 'unavailable':
+            rows.append(observation('unavailable', 'sensor_read_failed', source=source))
+        elif row.get('availability') == 'available' and row.get('reason') is None:
+            rows.append(observation('healthy', 'current', source=source,
+                                    valid_until=now+ttl-age))
+        else:
+            rows.append(observation('unknown', 'sensor_read_unknown', source=source))
+    return aggregate(rows)
+
+
+def project(snapshot, now, *, security=None):
+    """At most 32 components; optional security is a sanitized cache projection."""
     if not isinstance(snapshot, dict):
         snapshot = {}
     # Malformed containers from an older/failed backend must fail closed.
@@ -133,13 +165,16 @@ def project(snapshot, now):
                 'subsystems': snapshot.get('subsystems') if isinstance(snapshot.get('subsystems'), dict) else {},
                 'subsystemsMeta': snapshot.get('subsystemsMeta') if isinstance(snapshot.get('subsystemsMeta'), dict) else {}}
     rows = {name: _collector(snapshot, name, now) for name in COMPONENTS[:6]}
+    if security is not None:
+        rows['security'] = security
+    service_slots = MAX_COMPONENTS-len(rows)-2  # Reserve devices and overall.
     subsystems = snapshot['subsystems']
     services = subsystems.get('services', {})
     inventory = services.get('services') if isinstance(services, dict) else None
     if isinstance(inventory, dict):
         keys = sorted(key for key in inventory if isinstance(key, str) and SERVICE_ID.fullmatch('service:' + key))
         service_rows = []
-        for key in keys[:MAX_COMPONENTS-len(COMPONENTS)]:
+        for key in keys[:service_slots]:
             base = rows['services']
             if base['state'] == 'healthy':
                 row = {**_service(inventory[key]), 'sourceObservedAt': base['sourceObservedAt'],
@@ -149,7 +184,7 @@ def project(snapshot, now):
             rows['service:' + key] = row
             service_rows.append(row)
         if rows['services']['state'] == 'healthy':
-            if len(keys) != len(inventory) or len(keys) > MAX_COMPONENTS-len(COMPONENTS):
+            if len(keys) != len(inventory) or len(keys) > service_slots:
                 service_rows.append(observation('unknown', 'inventory_limit'))
             if service_rows:
                 rows['services'] = aggregate(service_rows)
@@ -176,8 +211,9 @@ def project(snapshot, now):
         else:
             continue
         rows[name] = {**rows[name], 'state': state, 'reason': reason}
-    rows['devices'] = aggregate([rows['plugs'], rows['purifier']])
-    rows['overall'] = aggregate([rows[name] for name in COMPONENTS[:6]])
+    sensor_rows = [rows['security']] if 'security' in rows else []
+    rows['devices'] = aggregate([rows['plugs'], rows['purifier'], *sensor_rows])
+    rows['overall'] = aggregate([rows[name] for name in COMPONENTS[:6]] + sensor_rows)
     if snapshot.get('ok') is False:
         rows['overall'] = observation('unavailable', 'snapshot_failed')
     return rows

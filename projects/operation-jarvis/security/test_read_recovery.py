@@ -55,3 +55,50 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(TimeoutError):
                 await cli.execute('fixture', 'status')
             self.assertEqual(run.await_count, 1)
+
+    async def test_hub_http_session_forces_fresh_connections(self):
+        session = cli.new_hub_read_http_session()
+        try:
+            self.assertTrue(session.connector.force_close)
+            self.assertIsNotNone(session.cookie_jar)
+            self.assertFalse(session.closed)
+        finally:
+            await session.close()
+        self.assertTrue(session.closed)
+
+    async def test_hub_read_http_scope_and_cleanup(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace as NS
+        cases = [('H200', 'status', None), ('H200', 'capabilities', None),
+                 ('H200', 'status', RuntimeError('private')),
+                 ('H200', 'status', asyncio.CancelledError()),
+                 ('H200', 'action', None), ('C230', 'status', None)]
+        for model, command, failure in cases:
+            with self.subTest(model=model, command=command, failure=type(failure).__name__):
+                session = NS(close=AsyncMock())
+                device = NS(model=model, device_type=NS(value='hub' if model == 'H200' else 'camera'),
+                            config=NS(http_client=None), update=AsyncMock(), disconnect=AsyncMock(),
+                            protocol=NS(query=AsyncMock(side_effect=failure, return_value={
+                                'getDeviceInfo': {'device_info': {'basic_info': {'device_model': model}}}})))
+                with patch.object(cli, 'registry', return_value={'fixture': {'model': model, 'host': '@hub'}}), \
+                     patch.object(cli, 'load_settings', return_value=NS(host='192.0.2.1', username='u', password='p')), \
+                     patch.object(cli, 'device_lock', return_value=nullcontext()), \
+                     patch.object(cli, 'validate_request'), \
+                     patch.object(cli, 'install_empty_child_lists_compat'), \
+                     patch.object(cli, 'new_hub_read_http_session', return_value=session) as factory, \
+                     patch.object(cli, 'operate', new=AsyncMock(return_value={'result': 'read_succeeded'})), \
+                     patch('kasa.Discover.discover_single', new=AsyncMock(return_value=device)):
+                    if failure is not None:
+                        with self.assertRaises(type(failure)):
+                            await cli._execute_once('fixture', command)
+                    else:
+                        await cli._execute_once('fixture', command)
+                device.disconnect.assert_awaited_once()
+                if model == 'H200' and command in ('status', 'capabilities'):
+                    factory.assert_called_once_with()
+                    self.assertIs(device.config.http_client, session)
+                    session.close.assert_awaited_once_with()
+                else:
+                    factory.assert_not_called()
+                    self.assertIsNone(device.config.http_client)
+                    session.close.assert_not_awaited()
