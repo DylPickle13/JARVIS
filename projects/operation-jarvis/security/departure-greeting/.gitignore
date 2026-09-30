@@ -1,0 +1,25 @@
+# Publish only reviewed source/docs/tests; never observations or runtime.
+/*
+!/.gitignore
+!/README.md
+!/departure
+!/departure.py
+!/runtime.py
+!/speaker.py
+!/watcher.py
+!/person_gate.py
+!/install.py
+!/tests/
+/tests/*
+!/tests/test_departure.py
+!/tests/test_trial.py
+!/tests/test_person_gate.py
+__pycache__/
+*.py[cod]
+*.log
+*.json
+*.jsonl
+*.sqlite*
+*.db
+/runtime/
+/data/

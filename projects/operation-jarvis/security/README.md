@@ -13,7 +13,8 @@ JARVIS voice worker in `security_tts.py` and offline tests in
 for full-length speech/files, gain, looping, status and stop.
 See [CLI.md](CLI.md) for commands and safety limits. The backend's
 [on-demand status endpoint](../docs/security-integration-plan.md) wraps the existing
-CLI; it does not expose controls or media. No security polling service is installed.
+CLI; it does not expose controls or media and does not poll. The separate,
+owner-authorized departure trial below has its own background sensor observer.
 
 The experimental D100C adapter (`security_chime.py`, `security_chime_worker.mjs`)
 provides authenticated status/capabilities and confirmation-gated preset ring/stop
@@ -44,6 +45,18 @@ helper that sleeps/wakes a tinyCam display using the existing authenticated base
 presence signal. It has a separate read-only, pinned-TLS Mac relay and monitor-only
 credential; no camera settings, security polling, computer watcher or cron schedules
 are changed. Source/tests/docs are trackable; credentials and runtime stay private.
+
+## Departure greeting (owner-authorized trial)
+
+The separate [departure-greeting subproject](departure-greeting/README.md) implements
+outdoor-doorbell farewells only: **“Have a good trip, sir.”** Its explicitly opted-in
+background trial correlates paired foyer-motion/door-contact hub snapshots and
+requires a fresh doorbell person event before speech, 24/7. The mandatory event
+gate defaults unverified/silent pending physical commissioning. It retains a durable
+two-minute cooldown, expiring playback and no replay after uncertain outcomes.
+The bounded `observe` and `person-preview` commands remain silent. Hub snapshots
+do not prove fresh radio events or actual departure; physical detection/audio timing
+acceptance remains pending. The main CLI, backend and Android monitor are unchanged.
 
 ## Local setup
 
