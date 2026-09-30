@@ -1,5 +1,0 @@
-used_state*.json
-used_state*.json.lock
-.used-state-*
-*.log
-__pycache__/
