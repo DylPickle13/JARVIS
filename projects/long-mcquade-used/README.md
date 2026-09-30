@@ -4,7 +4,7 @@ Separate nationwide watcher for the regular Long & McQuade catalogue's **Used An
 
 ## Coverage and alerts
 
-- Discovers all department IDs linked from the public navigation (currently 87 distinct departments, across all categories, including print music and accessories).
+- Discovers all inventory department IDs linked from the public navigation (currently 86 distinct inventory departments, across all categories, including print music and accessories). Gift Cards (department 56) is a special unfiltered sales page, not a used-stock catalogue, and is explicitly excluded. Existing checkpoints containing it resume safely without resetting history.
 - Paginates every department's filtered results; deduplicates products by SKU.
 - Follows each product's public store-inventory view without a province/store filter.
 - Loads serial-level availability for **every** store with used/demo availability, not just the three nearby stores that the website expands automatically.
@@ -69,4 +69,4 @@ Serial: M2S5472
 ------------------------------
 ```
 
-Live parser validation confirmed used and demo/return units with their actual prices. Site markup is subject to change; parser failures intentionally stop instead of silently dropping national coverage.
+Live parser validation confirmed used and demo/return units with their actual prices. Site markup is subject to change; parser failures intentionally stop instead of silently dropping national coverage. Catalogue errors include the department and URL for diagnosis; an inactive Used Anywhere filter on any inventory department remains a hard failure.

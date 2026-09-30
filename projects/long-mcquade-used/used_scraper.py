@@ -25,6 +25,8 @@ HEADERS = {
     "Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8",
 }
 SCHEMA = 1
+# Gift Cards is a special, unfiltered sales page, not a used-stock catalogue.
+NON_INVENTORY_DEPARTMENT_IDS = {"56"}
 
 
 def text(value):
@@ -44,13 +46,18 @@ def public_url(href):
     return url
 
 
+def department_id(url):
+    match = re.match(r"/departments/(\d+)(?:/|$)", urlparse(url).path)
+    return match[1] if match else None
+
+
 def discover_departments(html):
     found = {}
     for anchor in soup(html).select("a[href]"):
         url = public_url(anchor["href"]) if "/departments/" in anchor["href"] else None
-        match = re.match(r"/departments/(\d+)/", urlparse(url).path) if url else None
-        if match:
-            found.setdefault(match[1], {"url": url.split("?", 1)[0], "name": text(anchor.get_text(" ", strip=True))})
+        identifier = department_id(url) if url else None
+        if identifier and identifier not in NON_INVENTORY_DEPARTMENT_IDS:
+            found.setdefault(identifier, {"url": url.split("?", 1)[0], "name": text(anchor.get_text(" ", strip=True))})
     if len(found) < 40:
         raise ValueError(f"Only {len(found)} departments found; refusing incomplete nationwide discovery")
     return list(found.values())
@@ -270,6 +277,7 @@ def record_units(state, units):
 
 
 def step(state, client):
+    requested = True
     if state["stage"] == "discover":
         departments = discover_departments(client.get(BASE + "/"))
         state.update(stage="catalogue", departments=departments, cycle_started_at=now(),
@@ -277,7 +285,17 @@ def step(state, client):
     elif state["stage"] == "catalogue":
         task = state["catalogue_queue"][0]
         url = task["url"] + "?" + urlencode({"StockFilter": 6, "PerPage": 64, "Current": task["offset"]})
-        products, last, total = parse_catalogue(client.get(url))
+        if department_id(task["url"]) in NON_INVENTORY_DEPARTMENT_IDS:
+            # Old checkpoints may still contain Gift Cards. Advance only that
+            # known non-inventory task without resetting discovery or history.
+            products, last, total = [], 0, 0
+            requested = False
+        else:
+            html = client.get(url)
+            try:
+                products, last, total = parse_catalogue(html)
+            except ValueError as exc:
+                raise ValueError(f"{task.get('name', 'Department')} catalogue ({url}): {exc}") from exc
         if total and last <= task["offset"]:
             raise ValueError("Pagination did not advance")
         state["products"].update({p["sku"]: p for p in products})
@@ -306,7 +324,7 @@ def step(state, client):
             if "baseline_completed_at" not in state:
                 state["baseline_completed_at"] = now()
             return False  # Stop at cycle boundary, even if the budget remains.
-    state["requests_total"] += 1
+    state["requests_total"] += int(requested)
     state["last_checked_at"] = now()
     return True
 

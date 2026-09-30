@@ -55,9 +55,60 @@ class FakeClient:
 class WatcherTests(unittest.TestCase):
     def test_discover_all_departments_deduplicates_id(self):
         html = ''.join(f'<a href="/departments/{i}/Category.htm">Category {i}</a>' for i in range(88))
-        self.assertEqual(len(watcher.discover_departments(html + html)), 88)
+        departments = watcher.discover_departments(html + html)
+        self.assertEqual(len(departments), 87)
+        self.assertNotIn("56", {watcher.department_id(d["url"]) for d in departments})
         with self.assertRaises(ValueError):
             watcher.discover_departments('<h1>Home page changed</h1>')
+
+    def test_cached_gift_cards_task_resumes_without_fetch_or_reset(self):
+        state = watcher.fresh_state()
+        unit = watcher.parse_units(details(), TASK)[0]
+        watcher.record_units(state, [unit])
+        state.update(stage="catalogue", catalogue_queue=[
+            {"url": watcher.BASE + "/departments/56/", "name": "Gift Cards", "offset": 0},
+            {"url": watcher.BASE + "/departments/10/Acoustic.htm", "name": "Acoustic Guitars", "offset": 0},
+        ])
+        client = FakeClient([catalogue(total=2)], limit=1)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            watcher.run_batch(state, path, client)
+            resumed = watcher.load_state(path)
+        self.assertEqual(len(client.calls), 1)
+        self.assertIn("/departments/10/", client.calls[0])
+        self.assertEqual(resumed["requests_total"], 1)
+        self.assertEqual(resumed["catalogue_queue"][0]["offset"], 1)
+        self.assertEqual(resumed["known_units"], state["known_units"])
+        self.assertIn(unit["id"], resumed["known_units"])
+        self.assertFalse(resumed["baseline_complete"])
+        self.assertEqual(resumed["pending_alerts"], [])
+
+    def test_other_unfiltered_departments_fail_with_url_and_preserve_queue(self):
+        for identifier in ("10", "560"):
+            with self.subTest(identifier=identifier), tempfile.TemporaryDirectory() as directory:
+                task = {"url": watcher.BASE + f"/departments/{identifier}/", "name": "Test", "offset": 0}
+                state = watcher.fresh_state()
+                state.update(stage="catalogue", catalogue_queue=[task])
+                path = Path(directory) / "state.json"
+                watcher.save_state(path, state)
+                before = path.read_bytes()
+                with self.assertRaisesRegex(ValueError, "Used Anywhere filter is not active") as error:
+                    watcher.run_batch(state, path, FakeClient([catalogue().replace(" checked", "")]))
+                self.assertIn(task["url"], str(error.exception))
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(state["catalogue_queue"], [task])
+
+    def test_last_cached_gift_cards_task_enters_inventory(self):
+        state = watcher.fresh_state()
+        state.update(stage="catalogue", products={PRODUCT["sku"]: PRODUCT}, catalogue_queue=[
+            {"url": watcher.BASE + "/departments/56/", "name": "Gift Cards", "offset": 0},
+        ])
+        client = FakeClient([])
+        self.assertTrue(watcher.step(state, client))
+        self.assertEqual(client.calls, [])
+        self.assertEqual(state["requests_total"], 0)
+        self.assertEqual(state["stage"], "inventory")
+        self.assertEqual(state["product_queue"], [PRODUCT["sku"]])
 
     def test_catalogue_ignores_new_retail_price_and_requires_used_filter(self):
         products, last, total = watcher.parse_catalogue(catalogue())
