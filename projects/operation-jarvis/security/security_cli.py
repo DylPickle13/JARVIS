@@ -1210,6 +1210,13 @@ async def execute(alias, command, **kwargs):
     """One overall sensor-read budget; fresh connections, never replay writes."""
     import random
     devices = registry(kwargs.get('registry_path', ROOT / 'devices.json'))
+    # These status aliases have exactly one reader. Never connect to the hub
+    # when its paired snapshot is unavailable, including when the trial is off.
+    from security_shared_status import ALIASES, read as read_shared_status
+    if command == 'status' and alias in ALIASES:
+        if devices.get(alias, {}).get('model') != ALIASES[alias]:
+            raise ControlError('device_identity_mismatch')
+        return read_shared_status(alias)
     sensor_read = (command in ('status', 'capabilities') and
                    devices.get(alias, {}).get('model') in SENSOR_MODELS)
     if not sensor_read:
@@ -1478,7 +1485,8 @@ def control_main(argv=None):
                   'OSError': 'network_or_local_io_error'}.get(type(exc).__name__, 'operation_failed')
         result, code = {'result': 'error', 'reason': reason,
                         'stage': getattr(exc, 'security_stage', 'unknown')}, 2
-    result.update(security_assessment='not_assessed', observed_at=datetime.now(timezone.utc).isoformat())
+    result.update(security_assessment='not_assessed')
+    result.setdefault('observed_at', datetime.now(timezone.utc).isoformat())
     if machine or result.get('result') == 'error':
         print(json.dumps(result, indent=2))
     else:

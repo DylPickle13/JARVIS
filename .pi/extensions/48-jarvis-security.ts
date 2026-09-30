@@ -15,7 +15,7 @@ const SAFE_FAILURE_REASONS = new Set([
   "device_busy", "sensor_missing_or_ambiguous", "device_identity_mismatch", "unknown_device",
   "unreachable", "authentication_failed", "timeout", "operation_failed", "dependency_unavailable",
   "private_credentials_unavailable", "invalid_device_registry", "network_or_local_io_error",
-  "invalid_output", "output_limit", "worker_failed", "cancelled",
+  "invalid_output", "output_limit", "worker_failed", "cancelled", "shared_snapshot_unavailable",
 ]);
 const PREFLIGHT_FAILURES = new Set(["device_busy", "unknown_device", "invalid_device_registry", "private_credentials_unavailable"]);
 const CONNECTION_FAILURES = new Set(["unreachable", "authentication_failed", "dependency_unavailable", "network_or_local_io_error", "device_identity_mismatch"]);

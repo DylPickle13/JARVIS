@@ -24,6 +24,20 @@ unavailable; speech/person-check work can also temporarily age out the snapshot.
 No snapshot can authorize departure speech. Explicit operations from other clients
 can still interrupt the shared reader; continuity must never be fabricated.
 
+## Security tool status reads
+
+The repository security CLI now routes `status motion-sensor` and `status door-sensor`
+through `security_shared_status.py`, reusing this same strict snapshot validator.
+This also covers `operation_jarvis_security` without reloading the watcher or
+jarvisd: its subprocess loads the updated CLI on each invocation. The snapshot
+location is fixed to the owner's departure runtime; there is no network fallback.
+Missing, stale, or malformed snapshots return `shared_snapshot_unavailable`.
+Sample timestamps are preserved and battery/RSSI/radio freshness remain unknown.
+Other aliases, explicit `capabilities` reads, and device writes retain their
+existing behavior and may still compete for the hub. The Pi extension's new
+allowlisted unavailable reason takes effect on extension reload; older loaded
+extensions safely report a generic read failure instead.
+
 ## Validation
 
 - Departure tests: 91 passed.

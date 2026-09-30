@@ -31,6 +31,7 @@ test('read failures expose only fixed reasons and stages without retrying', asyn
   for (const [payload, reason, stage] of [
     [{ reason: 'timeout', stage: 'state_read' }, 'timeout', 'state_read'],
     [{ reason: 'device_busy' }, 'device_busy', 'preflight'],
+    [{ reason: 'shared_snapshot_unavailable', stage: 'state_read' }, 'shared_snapshot_unavailable', 'state_read'],
     [{ reason: 'sensor_missing_or_ambiguous' }, 'sensor_missing_or_ambiguous', 'state_read'],
     [{ reason: 'SECRET /private/path', stage: 'SECRET' }, 'security_read_or_preflight_failed', 'unknown'],
   ]) {

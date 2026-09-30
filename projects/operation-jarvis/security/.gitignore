@@ -10,6 +10,8 @@
 !/security_cli.py
 !/test_security_cli.py
 !/test_read_recovery.py
+!/security_shared_status.py
+!/test_security_shared_status.py
 !/security_doorbell.py
 !/security_doorbell_direct.py
 !/test_security_doorbell.py
