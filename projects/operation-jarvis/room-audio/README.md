@@ -39,6 +39,29 @@ seconds. During a response, exact `stop` interrupts. Endpoint capture is continu
 idle ordinary speech is discarded by wake gating. Keep credentials, transcripts,
 and endpoint state private; do not add them to the repository.
 
+## Shared core prompt, voice-only presentation
+
+Session 10 uses the same Pi prompt discovery, tools, permissions, and local
+context as normal sessions. The supervisor launches from the repository root
+without a separate `--system-prompt` or `--append-system-prompt` override.
+Do not restore the old `.pi/runtime/room-audio-session/system.md` policy snapshot.
+
+The identity-gated `.pi/extensions/04-room-audio-session.ts` adds only spoken
+presentation from [`../voice/APPEND_SYSTEM.md`](../voice/APPEND_SYSTEM.md): short
+natural sentences, spoken units, appropriate JARVIS wit, and no routine narration.
+Only the confirmed final response is spoken, not reasoning or tool chatter.
+Sessions 1–9 do not receive this overlay. Standalone room RPC uses the current
+`.pi/APPEND_SYSTEM.md` followed by the same presentation file, not copied device
+instructions. Prompt edits require an idle Session 10 `/reload`, never `/new`;
+retain the owner/history and leave other panes alone.
+
+An already-running legacy Session 10 may still have `--append-system-prompt`
+pointing to the runtime file. For that process, migrate the runtime path to a
+symlink to the canonical `.pi/APPEND_SYSTEM.md` before an idle `/reload`; this
+avoids another stale copy while preserving the PID/history. Keep a private backup
+of the old snapshot outside Git. The new supervisor does not use this alias.
+No server restart is needed for the shared Session 10 overlay.
+
 ## Silent TTS pre-rendering
 
 Shared Session 10 room turns can synthesize ordinary text while it is generated,

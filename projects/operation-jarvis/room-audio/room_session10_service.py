@@ -21,6 +21,15 @@ def run(*args, check=True):
     return subprocess.run([TMUX, '-L', 'jarvis-mobile', *args], check=check, capture_output=True, text=True)
 
 
+def pi_command(session_file, config):
+    # Match normal Pi sessions: discover the current shared prompt from ROOT.
+    # The identity-gated extension adds spoken presentation only. Never load
+    # the historical runtime/system.md snapshot or the standalone voice policy.
+    return shlex.join(['/opt/homebrew/bin/pi', '--tui-mode', 'regular',
+        '--session', str(session_file), '--model', config['model'],
+        '--thinking', config.get('thinking', 'high')])
+
+
 def main():
     os.environ['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
     config = json.loads((STATE / 'bootstrap.json').read_text())
@@ -38,9 +47,7 @@ def main():
             allowed = Path.home() / '.pi/agent/sessions'
             if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(allowed.resolve()):
                 raise RuntimeError('Retained Room Audio history unavailable; refusing a replacement conversation')
-            command = shlex.join(['/opt/homebrew/bin/pi', '--tui-mode', 'regular', '--session', str(path),
-                '--model', config['model'], '--thinking', config.get('thinking', 'high'),
-                '--append-system-prompt', str(STATE / 'system.md')])
+            command = pi_command(path, config)
             if dead:
                 run('respawn-pane', '-t', SESSION + ':0.0', '-c', str(ROOT), 'exec ' + command + ' 2>' + shlex.quote(str(STATE / 'startup-error.log')))
             else:

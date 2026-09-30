@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { chmod, lstat, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
 import { join } from 'node:path';
@@ -6,13 +7,11 @@ import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-a
 import { exactMobileTmuxIdentity } from './lib/attach/mobile-server.ts';
 import { RoomSessionGate } from './lib/room-session.ts';
 
-export const ROOM_AUDIO_VOICE_PROMPT = [
-  'You are JARVIS, speaking through shared Room Audio Session 10. Your final response is spoken aloud through a room speaker.',
-  'Keep final responses concise and natural, usually one or two short sentences. For a simple action, give only a brief confirmation after verified success.',
-  'Address the speaker as sir. Do not narrate your reasoning or routine tool use.',
-  'Avoid emojis, Markdown, bullets, tables, and code blocks unless explicitly requested. Write abbreviations and units out in words when helpful for clear speech. Use short sentences and periods.',
-  'Give more detail when explicitly requested, while remaining speech-friendly. Never omit essential safety information or truthful uncertainty merely to be brief.',
-].join(' ');
+// One presentation-only source for interactive Session 10 and standalone voice.
+// Core instructions remain Pi's normal discovered prompt, never a copied voice policy.
+export const ROOM_AUDIO_VOICE_PROMPT = readFileSync(
+  new URL('../../projects/operation-jarvis/voice/APPEND_SYSTEM.md', import.meta.url), 'utf8',
+).trim();
 
 export function registerRoomAudioVoicePrompt(
   pi: ExtensionAPI,

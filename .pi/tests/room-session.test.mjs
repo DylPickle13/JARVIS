@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { RoomSessionGate } from '../extensions/lib/room-session.ts';
 import { ROOM_AUDIO_VOICE_PROMPT, registerRoomAudioVoicePrompt } from '../extensions/04-room-audio-session.ts';
 let sends=[],aborts=0,ready=true;
@@ -23,7 +24,15 @@ for (const slot of [undefined, ...Array.from({ length: 10 }, (_, i) => i + 1)]) 
     async () => currentSlot === undefined ? undefined : { slot: currentSlot },
   );
   assert.deepEqual([...handlers.keys()], ['before_agent_start']);
-  const event = { systemPromptOptions: { sections: { existing: 'Preserve existing instructions.' } } };
+  const event = { systemPromptOptions: {
+    customPrompt: 'Normal identity and instructions.',
+    appendSystemPrompt: 'Current canonical local context.',
+    selectedTools: ['read', 'load_tools'],
+    toolGuidelines: { load_tools: ['Use the actual registered tools.'] },
+    promptGuidelines: ['Preserve permissions and safety gates.'],
+    contextFiles: [{ path: '/fixture/AGENTS.md', content: 'Project rules.' }],
+    sections: { existing: 'Preserve existing instructions.' },
+  } };
   const original = structuredClone(event);
   const apply = handlers.get('before_agent_start');
   await apply(event);
@@ -32,7 +41,9 @@ for (const slot of [undefined, ...Array.from({ length: 10 }, (_, i) => i + 1)]) 
     continue;
   }
   assert.equal(event.systemPromptOptions.sections.room_audio_voice, ROOM_AUDIO_VOICE_PROMPT);
-  assert.equal(event.systemPromptOptions.sections.existing, original.systemPromptOptions.sections.existing);
+  const withoutOverlay = structuredClone(event);
+  delete withoutOverlay.systemPromptOptions.sections.room_audio_voice;
+  assert.deepEqual(withoutOverlay, original, 'Voice may change presentation only, not core policy or tools');
   const once = structuredClone(event);
   await apply(event);
   assert.deepEqual(event, once, 'Repeated turns must not duplicate the prompt');
@@ -41,6 +52,12 @@ for (const slot of [undefined, ...Array.from({ length: 10 }, (_, i) => i + 1)]) 
   await apply(unidentified);
   assert.deepEqual(unidentified, original, 'Identity must be verified on every turn');
 }
+assert.equal(ROOM_AUDIO_VOICE_PROMPT, readFileSync(
+  new URL('../../projects/operation-jarvis/voice/APPEND_SYSTEM.md', import.meta.url), 'utf8',
+).trim(), 'Interactive and standalone voice must use the same overlay');
+assert.match(ROOM_AUDIO_VOICE_PROMPT, /presentation only/);
+assert.match(ROOM_AUDIO_VOICE_PROMPT, /Only the confirmed final response is spoken/);
+assert.doesNotMatch(ROOM_AUDIO_VOICE_PROMPT, /jarvis-cli|purifier-set|cast-spotify|shell fallback|everything you think/i);
 assert.match(ROOM_AUDIO_VOICE_PROMPT, /one or two short sentences/);
 assert.match(ROOM_AUDIO_VOICE_PROMPT, /verified success/);
 assert.match(ROOM_AUDIO_VOICE_PROMPT, /essential safety information or truthful uncertainty/);

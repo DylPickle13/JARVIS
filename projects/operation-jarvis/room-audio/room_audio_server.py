@@ -171,10 +171,10 @@ def select_room_greeting() -> str:
 
 def load_room_append_system_prompt() -> str:
     parts = [
-        _load_text(VOICE_ROOT / "APPEND_SYSTEM.md"),
         _load_text(PROJECT_ROOT / ".pi" / "APPEND_SYSTEM.md"),
+        _load_text(VOICE_ROOT / "APPEND_SYSTEM.md"),
         (
-            "You are currently speaking through the Raspberry Pi room audio endpoint. "
+            "You are currently speaking through a room audio endpoint. "
             "The microphone and speaker are in the room, so answer naturally and briefly. "
             "Keep responses suitable for spoken room audio."
         ),

@@ -8,7 +8,7 @@ The Mac-side speech code for JARVIS. Room audio uses it to transcribe speech and
 - `asr_backends.py`: strict Apple Speech helper adapter plus the in-process oMLX callback adapter.
 - `apple_asr/`: compiled Swift command-line helper using macOS 26 `SpeechAnalyzer`, `SpeechTranscriber`, and `DictationTranscriber`.
 - `voice_commands.py`: exact busy-only `stop` control policy.
-- `APPEND_SYSTEM.md`: concise spoken-response guidance used by room-audio Pi RPC sessions.
+- `APPEND_SYSTEM.md`: presentation-only overlay shared by interactive Room Audio Session 10 and standalone room Pi RPC. Core tools, safety, permissions, and local context come from the normal Pi prompt; do not duplicate device instructions here.
 - `test_asr_backends.py`, `test_voice_pipeline.py`, `test_pi_rpc.py`: backend, pipeline, and Pi RPC regression tests.
 
 The persistent Pi RPC implementation lives at repository root in [`../../../pi_rpc.py`](../../../pi_rpc.py). The active room bridge lives in [`../room-audio/room_audio_server.py`](../room-audio/room_audio_server.py).
