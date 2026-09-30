@@ -146,6 +146,60 @@ For ordinary app code updates, rebuild and `adb install -r` with the retained si
 key. Pairing data and permission survive. Open the helper and re-enable after updates;
 no package-replaced auto-start assumption. Never clear its data casually.
 
+## Video recovery and launcher task reuse (v1.3)
+
+On 2026-09-30, two separate faults were isolated on the Nexus 5 / Android 6.0.1
+with tinyCam 6.7.9:
+
+- **Band-specific LAN reachability:** the handset's doorbell ARP entry remained
+  `INCOMPLETE`/`FAILED` on home 2.4 GHz while it could reach the Pi and indoor
+  camera. The Pi, on the same access point, reached the doorbell's RTSP service;
+  the owner also confirmed Tapo live view worked. Wi-Fi reconnects did not repair
+  this path. A temporary suspend-optimization test was unsuccessful and reverted.
+  Moving only the handset to the owner's home 5 GHz network restored ARP, RTSP,
+  and hardware-decoded video. The precise AP/driver fault is not established.
+  Existing Wi-Fi credentials, camera URL/authentication, RTSP-over-TCP, Hub Storage,
+  and doorbell power settings were not changed by this recovery.
+- **Duplicate live-view activities on wake:** Android 6 treated the extra package
+  restriction in `getLaunchIntentForPackage()` differently from the normal
+  launcher intent. Repeated launches stacked tinyCam live-view activities; one
+  long-idle test returned to a frozen frame with 0 fps despite working RTSP.
+  `WakeActivity` and the helper's Open tinyCam button now remove that restriction
+  from the already-explicit component and add `FLAG_ACTIVITY_RESET_TASK_IF_NEEDED`.
+  They resume the existing task instead of starting another player.
+
+The signed v1.3 update was installed with `adb install -r` and the retained signing
+key, without provisioning again or clearing app data. Pairing and administrator
+permission survived. After checking for a pending-action warning, the helper was
+re-enabled through its owner UI. Fresh camera screenshots showed advancing
+camera timestamps and H264 hardware decoding at 19–20 fps. Two consecutive
+8-second automatic sleep/wake tests retained exactly one live view. A separate
+90-second screen-off test kept RTSP reachable and resumed live video with one
+activity. These are bounded checks, not proof of overnight stability or physical
+BLE walk-away/return accuracy.
+
+For a phone-only regression check (does not replace/stop the Mac relay):
+
+```sh
+python3 tests/handset_launch_acceptance.py --confirm-phone-screen-test \
+  --serial <USB_SERIAL> --cycles 2
+```
+
+Requires external power, an enabled helper with fresh nearby status and no
+pending-action error, and one existing tinyCam live view. It checks automatic
+sleep/wake and task reuse, not decoded-video liveness; verify advancing camera
+timestamps and nonzero FPS separately.
+
+**Avoid stale diagnostic evidence:** a failed `uiautomator dump` can leave an old
+XML file intact, especially with the display off. Remove both remote and local
+previous dumps first, require a fresh successful dump, and do not interpret a
+cached FPS label as current playback. Use fresh screenshots with the display on
+and compare the camera's timestamp across samples. Delete temporary camera images
+after inspection and keep any temporary captures private.
+
+Duplicate TTL-255/TTL-64 ping replies alone are not proof of an IP conflict:
+[TP-Link documents this D235 ping behavior](https://community.tp-link.com/en/smart-home/forum/topic/726482).
+
 ## Tests and current acceptance
 
 ```sh

@@ -54,7 +54,11 @@ public final class MainActivity extends Activity {
         }});
         button(body, "Open tinyCam", new View.OnClickListener() { public void onClick(View v) {
             Intent i = getPackageManager().getLaunchIntentForPackage("com.alexvas.dvr");
-            if (i != null) startActivity(i);
+            if (i != null) {
+                i.setPackage(null); // Explicit component; match launcher task identity.
+                i.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                startActivity(i);
+            }
         }});
     }
     private void button(LinearLayout parent, String text, View.OnClickListener listener) {
