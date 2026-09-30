@@ -105,8 +105,9 @@ Open **JARVIS Monitor** on the phone (or tap its persistent notification):
 Before uninstalling, disable the helper, then remove JARVIS Monitor under Android
 Settings → Security → Device administrators. Do not change the camera app credentials.
 
-Mac LaunchAgent: `com.jarvis.android-monitor`. Only this new relay service is installed.
-To stop it without touching other services:
+Mac LaunchAgent: `com.jarvis.android-monitor`. This is the only Mac relay service.
+The optional Pi ARP repair below is separate. To stop the Mac relay without touching
+other services:
 
 ```sh
 launchctl bootout gui/$(id -u)/com.jarvis.android-monitor
@@ -151,13 +152,15 @@ no package-replaced auto-start assumption. Never clear its data casually.
 On 2026-09-30, two separate faults were isolated on the Nexus 5 / Android 6.0.1
 with tinyCam 6.7.9:
 
-- **Band-specific LAN reachability:** the handset's doorbell ARP entry remained
+- **Intermittent LAN reachability (initially observed on 2.4 GHz):** the handset's doorbell ARP entry remained
   `INCOMPLETE`/`FAILED` on home 2.4 GHz while it could reach the Pi and indoor
   camera. The Pi, on the same access point, reached the doorbell's RTSP service;
   the owner also confirmed Tapo live view worked. Wi-Fi reconnects did not repair
   this path. A temporary suspend-optimization test was unsuccessful and reverted.
   Moving only the handset to the owner's home 5 GHz network restored ARP, RTSP,
-  and hardware-decoded video. The precise AP/driver fault is not established.
+  and hardware-decoded video temporarily. The failure subsequently recurred on
+  5 GHz too; changing bands is not a durable fix. See the directed ARP repair below.
+  The precise AP-versus-doorbell firmware responsibility is not established.
   Existing Wi-Fi credentials, camera URL/authentication, RTSP-over-TCP, Hub Storage,
   and doorbell power settings were not changed by this recovery.
 - **Duplicate live-view activities on wake:** Android 6 treated the extra package
@@ -200,6 +203,114 @@ after inspection and keep any temporary captures private.
 Duplicate TTL-255/TTL-64 ping replies alone are not proof of an IP conflict:
 [TP-Link documents this D235 ping behavior](https://community.tp-link.com/en/smart-home/forum/topic/726482).
 
+## Optional Pi directed ARP repair
+
+A later 2026-09-30 recurrence isolated an address-resolution failure, not another
+player launch failure. The Nexus still had strong 5 GHz association, one live-view
+activity and the enabled foreground helper, but its doorbell neighbour entry was
+`FAILED`/`INCOMPLETE` and TCP reported `No route to host`. The Pi reached RTSP using
+its known doorbell MAC. Scoped packet tests showed:
+
+- Ordinary **broadcast ARP** sometimes received no doorbell reply, while otherwise
+  identical **unicast ARP** received replies. Gateway, indoor-camera and Nexus
+  control probes answered broadcast requests.
+- During 20 alternating active-video probe cycles, doorbell broadcast replies
+  were absent in 3 cycles, unicast replied in all 20, and the indoor-camera broadcast
+  control replied in all 20. Both doorbell reply variants used the same MAC.
+- After verifying the phone and doorbell IP/MAC pairs, one directed request carrying
+  the handset's ARP sender identity made the doorbell reply directly to the handset.
+  The Nexus neighbour entry changed from `STALE` to `REACHABLE` without an intervening
+  handset RTSP probe or a camera-setting change.
+
+This narrows the failing mechanism to intermittent broadcast ARP delivery/handling
+on the doorbell's LAN path. It does **not** establish which AP or doorbell firmware
+component drops it, or prove that loss of the cached entry was caused by a specific
+sleep/roam event. Duplicate replies alone are not an IP-conflict diagnosis. A later
+fresh-cache Wi-Fi reconnect also worked without repair: the fault is intermittent,
+not reproducible on every reconnect. The stale JARVIS device-registry routing hint
+was separately corrected to the already-verified current address; the registered
+read-only security status then authenticated the D235 successfully.
+
+`arp_repair.py` bypasses that discovery fault on a Linux host on the same LAN:
+
+1. Send ordinary directed queries and validate **both** current, configured IP/MAC
+   associations. Discard queued old replies, reject inconsistent identities, and
+   fail closed on timeouts, receive floods or a different subnet.
+2. Relay the verified handset's lookup as a directed request to the doorbell. Keep
+   the **Ethernet source as the Pi**, so neither device's bridge/FDB entry moves.
+   Only the ARP sender fields carry the verified handset identity.
+3. The **doorbell supplies its own real reply** directly to the handset. The repair
+   process never fabricates an ARP reply, redirects camera traffic, opens a network
+   listener or receives/decodes video. Successful dispatch is not proof of receipt.
+
+The ten-second interval maintains/retries discovery; all video still flows directly
+between tinyCam and the doorbell using the original URL, credentials, RTSP-over-TCP
+and hardware decoder. Android's `arp_accept=0` can ignore an unsolicited reply when
+no neighbour entry exists yet; recovery may wait for tinyCam's next connection
+attempt to create an unresolved entry. This does not change that kernel setting.
+No router configuration, camera RPC, pairing, Hub Storage, power mode, Android
+preferences or presence policy is changed. No credential is
+required by this process. MAC checks are LAN routing checks, **not cryptographic
+identity authentication**; existing camera authentication remains unchanged.
+
+### Explicit Linux installation / rollback
+
+The reviewed source is installed at `/opt/jarvis-monitor-arp/arp_repair.py` and the
+unit at `/etc/systemd/system/jarvis-monitor-arp.service`, root-owned and not writable
+by its service user. The owner-created `/etc/jarvis-monitor-arp.env` (root 0600)
+contains only `INTERFACE`, `PHONE_IP`, `PHONE_MAC`, `DOORBELL_IP`, `DOORBELL_MAC`.
+Use actual, verified unicast MACs, not Android's `02:00:00:00:00:00` privacy placeholder.
+Do not put camera passwords, bearer credentials or the security `.env` in this file.
+
+After explicit installation on the chosen Linux host:
+
+```sh
+sudo systemd-analyze verify /etc/systemd/system/jarvis-monitor-arp.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now jarvis-monitor-arp.service
+sudo journalctl -u jarvis-monitor-arp.service -n 20 --no-pager
+# Stop/retire just this optional support service:
+sudo systemctl disable --now jarvis-monitor-arp.service
+```
+
+The unit uses a dynamic unprivileged user with **only `CAP_NET_RAW`**, no
+`CAP_NET_ADMIN`, read-only system/home protections and restricted socket families.
+It does not replace or restart the Pi presence service, Mac relay or any other host
+service. It is enabled for boot; actual host reboot acceptance is separate.
+
+**Operational limits:** this is a targeted workaround, not an AP/doorbell firmware
+fix. The Pi must be available, and this service is independent of the handset's
+Enable/Disable button. Stop it too when retiring the monitor. Configured phone and
+doorbell addresses must still match their verified MACs; DHCP reservations are
+recommended. It re-reads its own interface address every cycle, but does not implement
+phone/doorbell IP rediscovery. Wrong or changed mappings fail closed. An actual
+unreachable doorbell or failed decoder cannot be repaired by ARP requests.
+
+Live acceptance on 2026-09-30:
+
+- Two automatic eight-second sleep/wake cycles retained one player and resumed
+  hardware-decoded video at 19 fps.
+- A separate **900-second screen-off interval** retained the correct doorbell MAC
+  in all 31 thirty-second samples, with no `FAILED`/`INCOMPLETE` entries. Three
+  samples were normal `STALE` (a resolved, aged mapping), not lost resolution.
+  No handset RTSP probes were run during this interval. Manual wake resumed the
+  existing player at 19 fps without a restart; fresh camera timestamps advanced.
+- With repair running, an explicit Wi-Fi off/on test cleared the handset neighbour
+  cache, rejoined the original 5 GHz network, regained authenticated nearby status,
+  and returned to one live view at 19 fps. A reconnect without repair also succeeded
+  earlier, so this is recovery acceptance, not a deterministic failure-injection test.
+- Subsequent fresh screenshots at 17:42:56, 17:51:41 and 17:55:26 EDT showed
+  advancing camera timestamps and H264 hardware decoding at 18–19 fps across
+  a 12.5-minute playback-check span. The support unit ran without crash restarts,
+  and a deliberate restart of only this unit resumed lookup dispatch.
+  Its installed source/unit checksums matched the reviewed files. The existing Pi
+  presence service and Android foreground helper remained active.
+
+These are bounded checks, not proof of overnight stability, actual BLE walk-away/
+return, cold boot, future DHCP changes, or repair of arbitrary network/player faults.
+Temporary camera screenshots and UI dumps are private diagnostic artifacts and are
+removed after inspection, not stored in this repository.
+
 ## Tests and current acceptance
 
 ```sh
@@ -210,8 +321,10 @@ mkdir -p /tmp/jarvis-monitor-policy-test
 "$JAVA/bin/java" -cp /tmp/jarvis-monitor-policy-test PolicyTest
 ```
 
-Eight Python tests cover sanitization, auth, minimal/no-store responses, no proxy/write
-routes, LAN-only peer admission and credential-free discovery advertisements. Twenty standalone Java policy assertions cover transitions, debounce, stale,
+Eighteen Python tests cover sanitization, auth, minimal/no-store responses, no proxy/write
+routes, LAN-only peer admission, credential-free discovery advertisements and the ARP
+repair's frame construction, identity/subnet checks, fresh-reply requirement, bounded
+receive draining and fail-closed dispatch. Twenty standalone Java policy assertions cover transitions, debounce, stale,
 unknown, age/clock/gap bounds, power gating, persisted states and no replay.
 
 `tests/handset_acceptance.py` is an **explicit, physical screen test**, not an automatic

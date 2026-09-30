@@ -1,0 +1,40 @@
+[Unit]
+Description=JARVIS monitor directed ARP lookup repair
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/jarvis-monitor-arp.env
+ExecStart=/usr/bin/python3 /opt/jarvis-monitor-arp/arp_repair.py --interface ${INTERFACE} --phone-ip ${PHONE_IP} --phone-mac ${PHONE_MAC} --doorbell-ip ${DOORBELL_IP} --doorbell-mac ${DOORBELL_MAC} --interval 10
+DynamicUser=yes
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_PACKET AF_INET
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=3
+
+[Install]
+WantedBy=multi-user.target
