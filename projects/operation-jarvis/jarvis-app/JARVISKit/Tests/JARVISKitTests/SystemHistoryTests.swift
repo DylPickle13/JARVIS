@@ -85,6 +85,36 @@ final class SystemHistoryTests: XCTestCase {
         XCTAssertThrowsError(try r.validated(window: .hour))
     }
 
+    func testSensorReasonsAreAcceptedInDevicesAndOverallWithoutChangingCoverageRules() throws {
+        for (reason, state) in [("monitoring_disabled", "inactive"), ("not_checked", "unknown"),
+                                ("sensor_read_failed", "unavailable"), ("sensor_read_unknown", "unknown")] {
+            for component in ["devices", "overall", "security"] {
+                for partial in [false, true] {
+                    var object = HistoryFixture.object(window: .hour, component: component, partial: partial)
+                    var series = object["series"] as! [[String: Any]]
+                    var buckets = series[0]["buckets"] as! [[String: Any]]
+                    let observed = SystemHistoryState(rawValue: state)!
+                    let worst = partial && observed.priority < SystemHistoryState.unknown.priority ? "unknown" : state
+                    buckets[0]["state"] = worst
+                    buckets[0]["stateSeconds"] = [state: partial ? 30 : 60]
+                    buckets[0]["mixed"] = partial && state != "unknown"
+                    buckets[0]["reasonCodes"] = [reason]
+                    series[0]["buckets"] = buckets; object["series"] = series
+                    let response = try HistoryFixture.decode(object)
+                    XCTAssertNoThrow(try response.validated(window: .hour, component: component))
+                    XCTAssertEqual(response.series[0].buckets[0].hasGap, partial)
+                }
+            }
+        }
+        var object = HistoryFixture.object(window: .hour, component: "security")
+        var series = object["series"] as! [[String: Any]]
+        var buckets = series[0]["buckets"] as! [[String: Any]]
+        buckets[0]["reasonCodes"] = ["raw-sensor-error-fixture"]
+        series[0]["buckets"] = buckets; object["series"] = series
+        XCTAssertThrowsError(try HistoryFixture.decode(object).validated(window: .hour, component: "security"))
+        XCTAssertEqual(try HistoryFixture.response(window: .hour, component: "security").series[0].title, "Sensor reads")
+    }
+
     func testPartialHealthyEvidenceRemainsUnknownWithExplicitGap() throws {
         let r = try HistoryFixture.response(window: .hour, partial: true)
         XCTAssertNoThrow(try r.validated(window: .hour))

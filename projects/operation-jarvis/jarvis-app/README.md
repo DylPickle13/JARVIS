@@ -2,7 +2,18 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current iPhone and Watch build: 230**, installation, launch/process and final
+**Current iPhone and Watch build: 231**, installed once on each device and independently
+version/launch/process verified on 2026-09-30 at **12:59 EDT**. The isolated signed
+release includes cached sensor-read health, backend overall guards and history
+compatibility, with no extra polling or credential setup. Four bundles/profiles,
+unchanged entitlements and the pinned dependency lock were audited; frozen validation
+passed **307 app tests, with 3 expected skips**. Build 230 is retained for rollback;
+owner-approved cleanup retires superseded build 229 and sensor-update build caches. Sixteen protected service identities/configuration
+hashes, tmux panes, credentials and production database identities were unchanged.
+No backend/Pi restart or app-data removal. Cached localhost state/history checks
+returned 200; physical visual, gesture and direct-route acceptance await owner review.
+
+**Previous checkpoint: build 230**, installation, launch/process and final
 version readbacks independently verified on both devices on 2026-09-30 at 08:35 EDT.
 [System history UI](docs/system-history-ui.md) preserves the segmented current-check
 ring, four 24-hour iPhone bands and one-hour Watch band, with missing/partial coverage,
@@ -15,6 +26,15 @@ device; no app data removal, backend service or Pi-session restarts during insta
 Sixteen protected service identities/configuration hashes and tmux panes matched
 before/after. Tokenless localhost history reads returned 200; physical history UI
 and visual/gesture acceptance await owner review.
+
+**Installed sensor-health update (build 231):** shared phone/Watch System
+presentation consumes cached `health.components.security` and guards against an
+unhealthy/unverified backend overall summary. Sensor read failures are issues;
+expired, missing or malformed evidence stays unknown. The compact Watch grid
+still has six chips, with service-data details retained in its existing inspector.
+History accepts the new sanitized sensor reasons without changing coverage,
+authorization, request cadence or routes.
+See [sensor-health behavior](docs/system-dashboard.md#sensor-inclusive-update-build-231).
 
 **History access correction:** [Existing dashboard authorization](docs/api-authentication.md)
 removes the additional history-only token requirement at the owner's request.

@@ -64,6 +64,7 @@ public struct SystemHistorySeries: Codable, Equatable, Identifiable, Sendable {
         case "network": return "Network"
         case "devices": return "Devices"
         case "overall": return "System"
+        case "security": return "Sensor reads"
         default: return id
     } }
 }
@@ -86,6 +87,13 @@ public struct SystemHistoryResponse: Codable, Equatable, Sendable {
     public var end: Date? { SystemHistoryDates.parse(to) }
     public var latestSample: Date? { latestSampleAt.flatMap(SystemHistoryDates.parse) }
 
+    /// Shared sanitized reason vocabulary for history and cached current health.
+    static let allowedReasonCodes: Set<String> = ["current", "optional_inactive", "metadata_missing", "timestamp_invalid",
+        "observation_expired", "collector_failed", "loading", "details_missing", "required_service_missing",
+        "required_service_stopped", "service_read_failed", "scheduled_check_failed", "scheduled_completion_unknown",
+        "service_state_unknown", "device_observation_failed", "device_observation_unknown", "snapshot_failed", "inventory_limit",
+        "monitoring_disabled", "not_checked", "sensor_read_failed", "sensor_read_unknown"]
+
     public func validated(window expected: SystemHistoryWindow, component: String? = nil, now: Date = Date()) throws -> Self {
         func require(_ value: Bool) throws { if !value { throw JarvisError.decoding("Invalid bounded System history response.") } }
         try require(ok && schemaVersion == 1 && scope == "cached_status_health" && window == expected)
@@ -101,10 +109,7 @@ public struct SystemHistoryResponse: Codable, Equatable, Sendable {
         try require(latestSampleAt == nil || latest != nil)
         if let earliest { try require(earliest <= end) }
         if let latest { try require(latest <= end && earliest != nil && latest >= earliest!) }
-        let reasons: Set<String> = ["current", "optional_inactive", "metadata_missing", "timestamp_invalid",
-            "observation_expired", "collector_failed", "loading", "details_missing", "required_service_missing",
-            "required_service_stopped", "service_read_failed", "scheduled_check_failed", "scheduled_completion_unknown",
-            "service_state_unknown", "device_observation_failed", "device_observation_unknown", "snapshot_failed", "inventory_limit"]
+        let reasons = Self.allowedReasonCodes
         for series in series {
             try require(series.buckets.count == expected.bucketCount)
             for (index, bucket) in series.buckets.enumerated() {

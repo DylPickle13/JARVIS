@@ -1,7 +1,19 @@
 # System history UI — iPhone and Watch
 
-**Current installed: build 230**, independently verified on both devices on
-2026-09-30 at 08:35 EDT; see the access correction below.
+**Current installed: build 231**, installed once and independently version/launch/
+process/final-version verified on both devices on **2026-09-30 at 12:59 EDT**.
+Sensor read-health and history compatibility are included; fixed layouts, existing
+access and polling are preserved. Four signed bundles/profiles, unchanged entitlements
+and the pinned dependency lock were audited. Frozen validation: 307 passes,
+3 expected skips. Build 230 is retained for rollback; owner-approved cleanup retires
+superseded build 229 and sensor-update build caches.
+Sixteen protected services/configuration hashes, tmux panes, credentials and database
+identities were unchanged; no backend/Pi restart or app-data removal. Cached localhost
+state/history reads returned 200; physical UI/gesture/direct-route acceptance is
+pending owner review.
+
+**Previous access checkpoint: build 230**, independently verified on both devices
+on 2026-09-30 at 08:35 EDT; see the correction below.
 
 **Original history checkpoint: build 229.** Installation, launch/process and final version readbacks
 independently verified on both devices on 2026-09-29 at 23:13 EDT. The exact isolated
@@ -28,6 +40,23 @@ Tokenless localhost phone/Watch history reads returned 200;
 physical history UI acceptance remains owner review.
 No provisioning UI, credential file, Keychain injection or new Watch credential
 relay is included. See [history access](api-authentication.md).
+
+## Sensor-inclusive compatibility update (installed build 231)
+
+The shared client accepts `monitoring_disabled`, `not_checked`, `sensor_read_failed`
+and `sensor_read_unknown` in Devices/System buckets. `security` is a bounded valid
+component selector, but the overview still requests the existing five phone series
+and single Watch `overall` series; no new history request or credential is added.
+All existing window, bucket, gap, source-date and evidence-lease validation remains.
+
+Current-state sensor health and overall-summary guards are described in
+[System dashboard](system-dashboard.md#sensor-inclusive-update-build-231).
+Device/System history inspectors explain the scope transition: sensor-read health
+joins recording only after the backend extension; older buckets keep their original
+collector scope and are never backfilled or reclassified. Availability is not proof
+of radio freshness, door/motion state, continuous uptime or home security.
+**Build 231 is installed and launch/version-verified on both devices.** Physical
+history rendering, gestures and direct Watch route acceptance remain owner review.
 
 ## Presentation
 

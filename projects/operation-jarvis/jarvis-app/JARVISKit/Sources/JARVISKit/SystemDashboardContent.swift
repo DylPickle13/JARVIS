@@ -145,7 +145,7 @@ public struct SystemDashboardContent: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
                             // Backend request failure is already prominent in the
                             // aggregate header; its full explanation is in Details.
-                            ForEach(presentation.subsystemRows.filter { $0.id != "backend" }) { row in
+                            ForEach(presentation.compactSubsystemRows) { row in
                                 HStack(spacing: 3) {
                                     Image(systemName: symbol(row.state)).foregroundStyle(color(row.state))
                                     Text(shortTitle(row)).lineLimit(1).minimumScaleFactor(0.8)
@@ -396,6 +396,8 @@ public struct SystemDashboardContent: View {
         case "pi": return "Pi sessions"
         case "plugs": return "Plugs"
         case "purifier": return "Purifiers"
+        case "security": return compact ? "Sensors" : "Sensor reads"
+        case "backendHealth": return "Backend health"
         case "network": return "Network"
         case "codexQuota": return compact ? "Codex" : "Codex usage"
         default: return row.title
@@ -419,8 +421,8 @@ public struct SystemDashboardContent: View {
             VStack(alignment: .leading, spacing: 12) {
                 Label(presentation.summary, systemImage: symbol(presentation.state)).foregroundStyle(color(presentation.state))
                 Text(connectionLabel)
-                if let backend = presentation.subsystemRows.first(where: { $0.id == "backend" }) {
-                    Label(backend.detail, systemImage: symbol(backend.state)).foregroundStyle(color(backend.state))
+                ForEach(presentation.subsystemRows.filter { ["backend", "backendHealth", "security"].contains($0.id) }) { row in
+                    Label(row.detail, systemImage: symbol(row.state)).foregroundStyle(color(row.state))
                 }
                 if let connectionError { Text(connectionError).foregroundStyle(warning) }
                 Text("Services: \(presentation.healthyServiceCount) healthy · \(presentation.issueServiceCount) issues · \(presentation.unknownServiceCount) unknown · \(presentation.inactiveServiceCount) inactive")

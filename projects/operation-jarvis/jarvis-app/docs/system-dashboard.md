@@ -1,6 +1,18 @@
 # System dashboard — iPhone and Watch
 
-**Current installed build: 230.** [System history UI](system-history-ui.md) preserves
+**Current installed build: 231.** Installed once on each approved iPhone/Watch,
+with independent version, launch/process and final-version readbacks on 2026-09-30
+at **12:59 EDT**. The signed release uses the exact build-230 source baseline plus
+only reviewed sensor-health/history compatibility changes. All four bundles/profiles
+and unchanged entitlements/dependencies were audited. Frozen tests: 307 passes,
+3 expected skips. Build 230 is the retained rollback; owner-approved cleanup retires
+superseded build 229 and sensor-update temporary build data.
+Sixteen protected service identities/configuration hashes, tmux panes, credentials
+and production database identities were unchanged; no backend/Pi restart or app-data
+removal. Physical visual/gesture and actual-device history route acceptance awaits
+owner review; localhost cached state and phone/Watch history returned 200.
+
+**Previous checkpoint: build 230.** [System history UI](system-history-ui.md) preserves
 the current-check ring and real backend history bands, and removes the extra
 history-only missing-token gates. Both device installs, final version and
 launch/process readbacks were independently verified on 2026-09-30 at 08:35 EDT.
@@ -23,6 +35,41 @@ The Watch developer connection dropped before its install step; read-only checks
 re-established it, then only the pending Watch installation resumed. Neither
 app was installed twice. No app data removed, backend services or Pi sessions
 restarted. Physical layout/gesture acceptance awaits owner review.
+
+## Sensor-inclusive update (build 231)
+
+Installed on both clients after backend release `20260930T153603Z-sensor-health`.
+Shared `StateSnapshot` now preserves the sanitized cached health
+summary through existing current-state serialization and confirmed plug projection.
+No new endpoint, polling loop, foreground lease, credential setup or relay is added.
+
+- Sensor status-read availability contributes a current ring segment and aggregate
+  badge. Failed reads are issues; unchecked/expired/malformed evidence is unknown.
+  Disabled/unconfigured monitoring is inactive, not an invented successful read.
+- Absolute backend `validUntil` expires positive evidence locally; fresh receipt,
+  generation or cache-write time cannot renew it. Missing/future timestamps fail
+  closed. Sensor age labels describe status-read attempts, never failed attempts
+  mislabeled as last-good reads. Availability is not radio freshness or home security.
+- Backend overall failure/uncertainty cannot be overridden by local green; existing
+  collector expiry, service requirements and periodic completion rules still win
+  over an optimistic backend summary. Underlying issues are not double-counted.
+- Watch retains six integration chips: **Sensors** uses the former service-data
+  slot. Service rows remain in the Services panel; full service-data metadata stays
+  in the integration inspector. Phone retains full integration details; overview and sheet
+  input ownership, navigation and lifecycle gates are unchanged.
+- Unknown raw states/reasons, malformed dates and unsupported component identifiers
+  are not serialized into the new health field. Bad optional health data cannot
+  break existing state/control decoding. Older hosts lacking `health` retain their
+  original six-collector scope; no sensor evidence is invented for them.
+
+Validation: **307 app tests passed, 3 expected live-test skips** (251 package
+executed, including 3 skips; 59 iOS AppState/dashboard tests). Watch simulator build
+passed. Normal/accessibility Watch and phone portrait/landscape layouts fit without
+an overview scroll view; inspected synthetic light/dark attachments include sensor
+success/failure. The Swift client validated live sanitized cached health and 1h/24h/7d
+history, plus Watch overall and security drilldowns. These localhost/simulator checks
+are not physical-device UI, route or gesture acceptance. Physical installation,
+version and launch/process were independently verified as recorded above.
 
 ## Navigation
 

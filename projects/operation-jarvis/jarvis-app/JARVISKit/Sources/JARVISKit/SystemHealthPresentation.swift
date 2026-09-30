@@ -9,15 +9,16 @@ public struct SystemHealthRow: Identifiable, Equatable, Sendable {
     public let title: String
     public let state: SystemHealthState
     public let detail: String
-    /// Last-good observation age, not time since a failed attempt.
+    /// Collector last-good age; sensor read health uses the last status-read attempt.
     public let ageSeconds: Double?
 
     public var ageText: String {
         guard let ageSeconds, ageSeconds.isFinite, ageSeconds >= 0 else { return "Observation age unknown" }
-        if ageSeconds < 60 { return "Last good read \(Int(ageSeconds))s ago" }
-        if ageSeconds < 3600 { return "Last good read \(Int(ageSeconds / 60))m ago" }
-        if ageSeconds < 86400 { return "Last good read \(Int(ageSeconds / 3600))h ago" }
-        return "Last good read \(Int(min(ageSeconds / 86400, 999999)))d ago"
+        let label = id == "security" ? "Last status read" : "Last good read"
+        if ageSeconds < 60 { return "\(label) \(Int(ageSeconds))s ago" }
+        if ageSeconds < 3600 { return "\(label) \(Int(ageSeconds / 60))m ago" }
+        if ageSeconds < 86400 { return "\(label) \(Int(ageSeconds / 3600))h ago" }
+        return "\(label) \(Int(min(ageSeconds / 86400, 999999)))d ago"
     }
 }
 
@@ -164,6 +165,90 @@ public struct SystemHealthPresentation: Equatable, Sendable {
                 result.append(row(.healthy, meta.refreshing == true ? "Current; refreshing" : "Observation current"))
             }
         }
+        // Older hosts retain their original six-collector scope. Once a health
+        // summary is supplied, missing/malformed sensor evidence is never green.
+        if let summary = snapshot?.health {
+            // Keep the sensor check inside the ring's bounded segment prefix,
+            // even when a host advertises a large service inventory.
+            result.insert(Self.sensorRow(summary, validElapsed: validElapsed, now: now),
+                          at: snapshot?.ok == false ? 1 : 0)
+            // An optimistic local collector projection cannot override a failed,
+            // expired or malformed backend overall summary. Avoid double-counting
+            // when the underlying issue/uncertainty is already represented.
+            let overall = Self.overallRow(summary, validElapsed: validElapsed, now: now)
+            if (overall.state == .issue && !result.contains(where: { $0.state == .issue }))
+                || (overall.state == .unknown && !result.contains(where: { [.issue, .unknown, .checking].contains($0.state) })) {
+                result.insert(overall, at: 0)
+            }
+        }
         rows = result
+    }
+
+    private static func overallRow(_ summary: CachedSystemHealthSummary,
+                                   validElapsed: Double?, now: Date) -> SystemHealthRow {
+        func row(_ state: SystemHealthState, _ detail: String) -> SystemHealthRow {
+            .init(id: "backendHealth", title: "Backend health summary", state: state, detail: detail, ageSeconds: nil)
+        }
+        guard validElapsed != nil, summary.scope == "cached_status_health",
+              let component = summary.components?["overall"] else {
+            return row(.unknown, "Backend health summary unverified")
+        }
+        switch component.state {
+        case "unavailable", "degraded":
+            return row(.issue, "Cached backend summary reports an issue")
+        case "healthy":
+            guard component.reason == "current",
+                  let source = component.sourceObservedAt.flatMap(SystemHistoryDates.parse), source <= now,
+                  let expiry = component.validUntil.flatMap(SystemHistoryDates.parse), expiry >= source, now <= expiry else {
+                return row(.unknown, "Backend health evidence expired or incomplete")
+            }
+            return row(.healthy, "Backend cached checks current")
+        case "inactive" where component.reason == "optional_inactive" || component.reason == "monitoring_disabled":
+            return row(.inactive, "Backend checks inactive")
+        default:
+            return row(.unknown, "Backend health summary unverified")
+        }
+    }
+
+    private static func sensorRow(_ summary: CachedSystemHealthSummary,
+                                  validElapsed: Double?, now: Date) -> SystemHealthRow {
+        func row(_ state: SystemHealthState, _ detail: String, age: Double? = nil) -> SystemHealthRow {
+            .init(id: "security", title: "Sensor status reads", state: state, detail: detail, ageSeconds: age)
+        }
+        guard validElapsed != nil, summary.scope == "cached_status_health",
+              let component = summary.components?["security"] else {
+            return row(.unknown, "Sensor read summary unavailable or unverified")
+        }
+        if component.state == "inactive", component.reason == "monitoring_disabled" {
+            return row(.inactive, "Sensor monitoring disabled or unconfigured")
+        }
+        let source = component.sourceObservedAt.flatMap(SystemHistoryDates.parse)
+        let age = source.flatMap { $0 <= now ? now.timeIntervalSince($0) : nil }
+        guard let state = component.state, let reason = component.reason else {
+            return row(.unknown, "Sensor read evidence is incomplete", age: age)
+        }
+        // Do not expose arbitrary server errors, aliases or sensor values.
+        switch state {
+        case "unavailable", "degraded":
+            guard reason == "sensor_read_failed", source != nil, age != nil else {
+                return row(.unknown, "Sensor read failure could not be verified", age: age)
+            }
+            return row(.issue, "Cached sensor status read failed; not proof of a physical outage", age: age)
+        case "healthy":
+            guard reason == "current", let source, age != nil,
+                  let expiry = component.validUntil.flatMap(SystemHistoryDates.parse), expiry >= source else {
+                return row(.unknown, "Sensor read freshness could not be verified", age: age)
+            }
+            guard now <= expiry else {
+                return row(.unknown, "Sensor read evidence expired", age: age)
+            }
+            return row(.healthy, "Cached status reads available; radio freshness unverified", age: age)
+        case "unknown":
+            return row(.unknown, reason == "observation_expired" ? "Sensor read evidence expired"
+                       : reason == "not_checked" ? "Sensor status reads not yet checked"
+                       : "Sensor read evidence unverified", age: age)
+        default:
+            return row(.unknown, "Sensor read state unrecognized", age: age)
+        }
     }
 }

@@ -248,7 +248,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
 
     /// Database/cache-only chart read: no discovery, hardware refresh or retry.
     public func systemHistory(_ endpoint: JarvisEndpoint, window: SystemHistoryWindow, component: String? = nil) async throws -> SystemHistoryResponse {
-        let fixed = ["services", "pi", "network", "plugs", "purifier", "codexQuota", "devices", "overall"]
+        let fixed = ["services", "pi", "network", "plugs", "purifier", "codexQuota", "security", "devices", "overall"]
         if let component, !fixed.contains(component),
            component.range(of: #"^service:[A-Za-z0-9_-]{1,48}\z"#, options: .regularExpression) == nil {
             throw JarvisError.badURL("Invalid history component")

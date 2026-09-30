@@ -42,6 +42,24 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertEqual(result.series.count, 1);XCTAssertEqual(calls, 1)
     }
 
+    func testSensorHistorySelectorUsesExistingBoundedTokenlessTransportOnly() async throws {
+        let object = HistoryFixture.object(window: .hour, component: "security")
+        let body = String(data: try JSONSerialization.data(withJSONObject: object), encoding: .utf8)!
+        var calls = 0
+        MockURLProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.url?.path, "/api/v1/system/history")
+            XCTAssertEqual(request.url?.query, "window=1h&component=security")
+            XCTAssertEqual(request.httpMethod, "GET"); XCTAssertNil(request.httpBody)
+            XCTAssertEqual(request.timeoutInterval, 10)
+            XCTAssertNil(request.value(forHTTPHeaderField: "x-jarvis-token"))
+            return MockURLProtocol.response(request, status: 200, body: body)
+        }
+        let response = try await client.systemHistory(.init(baseURL: endpoint.baseURL, token: ""), window: .hour, component: "security")
+        XCTAssertEqual(response.series.first?.id, "security")
+        XCTAssertEqual(calls, 1)
+    }
+
     func testHistoryOldHostAndStorageFailuresNeverFallbackOrRetry() async {
         for status in [401, 404, 503] {
             var calls = 0

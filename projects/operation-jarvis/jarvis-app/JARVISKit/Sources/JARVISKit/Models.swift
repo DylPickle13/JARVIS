@@ -125,6 +125,49 @@ public struct SigningRenewalStatus: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - Cached system read health
+
+/// Sanitized backend evidence, not sensor contact/motion state or connectivity.
+/// Unknown/malformed additions cannot make the existing state/control decode fail.
+public struct CachedSystemHealthComponent: Codable, Equatable, Sendable {
+    public let state: String?
+    public let reason: String?
+    public let sourceObservedAt: String?
+    public let validUntil: String?
+
+    private enum CodingKeys: String, CodingKey { case state, reason, sourceObservedAt, validUntil }
+    public init(from decoder: Decoder) throws {
+        let values = try? decoder.container(keyedBy: CodingKeys.self)
+        let rawState = try? values?.decode(String.self, forKey: .state)
+        state = rawState.flatMap { SystemHistoryState(rawValue: $0) == nil ? nil : $0 }
+        let rawReason = try? values?.decode(String.self, forKey: .reason)
+        reason = rawReason.flatMap { SystemHistoryResponse.allowedReasonCodes.contains($0) ? $0 : nil }
+        let rawSource = try? values?.decode(String.self, forKey: .sourceObservedAt)
+        sourceObservedAt = rawSource.flatMap { SystemHistoryDates.parse($0) == nil ? nil : $0 }
+        let rawExpiry = try? values?.decode(String.self, forKey: .validUntil)
+        validUntil = rawExpiry.flatMap { SystemHistoryDates.parse($0) == nil ? nil : $0 }
+    }
+}
+
+public struct CachedSystemHealthSummary: Codable, Equatable, Sendable {
+    public let scope: String?
+    public let components: [String: CachedSystemHealthComponent]?
+
+    private enum CodingKeys: String, CodingKey { case scope, components }
+    public init(from decoder: Decoder) throws {
+        let values = try? decoder.container(keyedBy: CodingKeys.self)
+        let rawScope = try? values?.decode(String.self, forKey: .scope)
+        scope = rawScope == "cached_status_health" ? rawScope : nil
+        let rows = try? values?.decode([String: CachedSystemHealthComponent].self, forKey: .components)
+        let fixed = ["services", "pi", "network", "plugs", "purifier", "codexQuota", "security", "devices", "overall"]
+        components = rows.flatMap { values in
+            guard values.count <= 32 else { return nil }
+            return values.filter { fixed.contains($0.key)
+                || $0.key.range(of: #"^service:[A-Za-z0-9_-]{1,48}\z"#, options: .regularExpression) != nil }
+        }
+    }
+}
+
 // MARK: - State snapshot
 
 public struct StateSnapshot: Codable, Equatable, Sendable {
@@ -139,6 +182,7 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
     public let summary: Summary?
     public let subsystems: Subsystems?
     public let subsystemsMeta: [String: SubsystemMetadata]?
+    public let health: CachedSystemHealthSummary?
 
     public init(
         ok: Bool,
@@ -151,7 +195,8 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
         uptimeSeconds: Double? = nil,
         summary: Summary? = nil,
         subsystems: Subsystems? = nil,
-        subsystemsMeta: [String: SubsystemMetadata]? = nil
+        subsystemsMeta: [String: SubsystemMetadata]? = nil,
+        health: CachedSystemHealthSummary? = nil
     ) {
         self.ok = ok
         self.loading = loading
@@ -164,6 +209,7 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
         self.summary = summary
         self.subsystems = subsystems
         self.subsystemsMeta = subsystemsMeta
+        self.health = health
     }
 }
 
@@ -273,7 +319,8 @@ public extension StateSnapshot {
             uptimeSeconds: uptimeSeconds,
             summary: updatedSummary,
             subsystems: updatedSubsystems,
-            subsystemsMeta: subsystemsMeta
+            subsystemsMeta: subsystemsMeta,
+            health: health
         )
     }
 }

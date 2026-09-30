@@ -37,6 +37,14 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                          detail: "Offline · current status unverified", ageSeconds: row.ageSeconds)
         }
     }
+    /// Six Watch chips remain fixed: service data stays in the Services panel
+    /// and full inspector when a sensor chip occupies its former grid slot.
+    public var compactSubsystemRows: [SystemHealthRow] {
+        let includesSensors = subsystemRows.contains { $0.id == "security" }
+        return subsystemRows.filter {
+            $0.id != "backend" && $0.id != "backendHealth" && (!includesSensors || $0.id != "services")
+        }
+    }
     public var summary: String { isConnected ? health.summary : "Offline · cached data" }
     public var state: SystemHealthState { isConnected ? health.state : .unknown }
     public var healthyServiceCount: Int { services.filter { $0.row.state == .healthy }.count }

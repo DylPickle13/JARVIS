@@ -5,7 +5,7 @@ import JARVISKit
 
 @MainActor
 final class SystemDashboardViewTests: XCTestCase {
-    private func presentation(offline: Bool = false, includeExtraService: Bool = true) throws -> SystemDashboardPresentation {
+    private func presentation(offline: Bool = false, includeExtraService: Bool = true, sensorState: String? = nil) throws -> SystemDashboardPresentation {
         let meta: [String: Any] = Dictionary(uniqueKeysWithValues:
             ["services", "pi", "plugs", "purifier", "network", "codexQuota"].map {
                 ($0, ["ok": true, "stale": false, "ageSeconds": 10] as [String: Any])
@@ -17,13 +17,26 @@ final class SystemDashboardViewTests: XCTestCase {
         if includeExtraService {
             services["broken"] = ["ok": true, "displayName": "Required daemon", "critical": true, "running": false, "executionMode": "continuous"]
         }
-        let object: [String: Any] = ["ok": true, "version": "test-fixture", "uptimeSeconds": 90000,
+        var object: [String: Any] = ["ok": true, "version": "test-fixture", "uptimeSeconds": 90000,
             "subsystemsMeta": meta, "subsystems": [
                 "services": ["ok": true, "services": services],
                 "plugs": ["ok": true, "stale": false, "plugs": [:]],
                 "purifier": ["ok": true, "stale": false]]]
-        let state = try JSONDecoder().decode(StateSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
         let now = Date()
+        if let sensorState {
+            let reason = sensorState == "unavailable" ? "sensor_read_failed"
+                : sensorState == "unknown" ? "not_checked"
+                : sensorState == "inactive" ? "monitoring_disabled" : "current"
+            func evidence(_ state: String, _ reason: String) -> [String: Any] {
+                ["state": state, "reason": reason,
+                 "sourceObservedAt": now.addingTimeInterval(-10).formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)),
+                 "validUntil": now.addingTimeInterval(120).formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))]
+            }
+            object["health"] = ["scope": "cached_status_health", "components": [
+                "security": evidence(sensorState, reason), "overall": evidence("healthy", "current")]]
+            object["generatedAt"] = now.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
+        }
+        let state = try JSONDecoder().decode(StateSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
         return .init(snapshot: state, requestStartedAt: now, isConnected: !offline, now: now)
     }
 
@@ -88,6 +101,52 @@ final class SystemDashboardViewTests: XCTestCase {
                 attachment.lifetime = .keepAlways;add(attachment)
             }
             model.configure(.init(endpoint: nil, surface: compact ? .watch : .phone, visible: false, interactive: false, connected: false))
+        }
+    }
+
+    func testSensorInclusiveOverviewFitsPhoneAndWatchWithoutAddingScrollOrDroppingSensor() throws {
+        for sensorState in ["healthy", "unavailable", "unknown", "inactive"] {
+            for offline in [false, true] {
+                let dashboard = try presentation(offline: offline, includeExtraService: false, sensorState: sensorState)
+                XCTAssertEqual(dashboard.compactSubsystemRows.count, 6)
+                XCTAssertTrue(dashboard.compactSubsystemRows.contains { $0.id == "security" })
+                if !offline && sensorState == "unavailable" { XCTAssertEqual(dashboard.state, .issue) }
+                if !offline && sensorState == "unknown" { XCTAssertEqual(dashboard.state, .unknown) }
+                for (compact, viewport, textSize) in [
+                    (true, CGSize(width: 162, height: 197), DynamicTypeSize.large),
+                    (true, CGSize(width: 162, height: 197), .accessibility3),
+                    (false, CGSize(width: 375, height: 650), .large),
+                    (false, CGSize(width: 320, height: 450), .large),
+                    (false, CGSize(width: 750, height: 270), .large),
+                    (false, CGSize(width: 375, height: 650), .accessibility3)
+                ] {
+                    let host = UIHostingController(rootView: content(dashboard, compact: compact).dynamicTypeSize(textSize))
+                    let measured = host.sizeThatFits(in: viewport)
+                    XCTAssertLessThanOrEqual(measured.width, viewport.width + 0.5)
+                    XCTAssertLessThanOrEqual(measured.height, viewport.height + 0.5,
+                        "sensor=\(sensorState), offline=\(offline), viewport=\(viewport), text=\(textSize)")
+                    host.view.frame = CGRect(origin: .zero, size: viewport); host.view.layoutIfNeeded()
+                    func countScrolls(_ view: UIView) -> Int {
+                        (view is UIScrollView ? 1 : 0) + view.subviews.reduce(0) { $0 + countScrolls($1) }
+                    }
+                    XCTAssertEqual(countScrolls(host.view), 0)
+                }
+                if !offline && ["healthy", "unavailable"].contains(sensorState) {
+                    for compact in [false, true] {
+                        let viewport = compact ? CGSize(width: 162, height: 197) : CGSize(width: 375, height: 650)
+                        for scheme in [ColorScheme.light, .dark] {
+                            let renderer = ImageRenderer(content: content(dashboard, compact: compact)
+                                .frame(width: viewport.width, height: viewport.height, alignment: .top)
+                                .background(scheme == .dark ? Color.black : Color(.systemGroupedBackground))
+                                .environment(\.colorScheme, scheme))
+                            renderer.scale = 3
+                            let attachment = XCTAttachment(image: try XCTUnwrap(renderer.uiImage))
+                            attachment.name = "sensor-health-synthetic-\(compact ? "watch" : "phone")-\(sensorState)-\(scheme)"
+                            attachment.lifetime = .keepAlways; add(attachment)
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -115,6 +115,10 @@ public struct SystemHistoryDetails: View {
             Text("Recorded observations, not physical outages").font(.headline)
             Text("Hatches mean missing coverage. A coloured cap marks observed evidence in a partial bucket. Colours preserve the worst observation; they do not establish its exact duration or order within a bucket.")
                 .font(.caption).foregroundStyle(.secondary)
+            if ["devices", "overall", "security"].contains(component) {
+                Text("Sensor status-read health contributes after sensor-inclusive recording begins. Earlier buckets retain their original collector scope; they are not backfilled. Read availability is not proof of radio freshness or home security.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let response, let series = response.series.first(where: { $0.id == component }) {
                 Text(series.title).font(.headline)
                 if let start = response.start, let end = response.end {
