@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 *.egg-info/
 .DS_Store
+# Private DHCP recovery counters and cross-process lock.
+.*.ip-recovery.json
+.*.ip-recovery.lock

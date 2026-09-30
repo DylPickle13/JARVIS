@@ -8,6 +8,7 @@ from typing import Any
 from kasa import Discover
 
 from .config import PlugConfig, Settings, normalize_name, write_plug_config
+from .ip_recovery import recover_failed_hosts
 
 
 @dataclass(frozen=True)
@@ -39,8 +40,8 @@ class SmartPlugController:
     async def status_all(self) -> dict[str, dict]:
         """One read-only process, bounded concurrency and per-item failures.
 
-        Configuration is loaded once by the caller. No discovery broadcast,
-        writes, or recovery beyond the existing status-read policy.
+        Repeated failures may trigger bounded, MAC-verified DHCP recovery.
+        Only the batch-read path can update configured IPs; never power state.
         """
         if len(self.settings.plugs) > 64:
             raise ValueError('Too many configured plugs')
@@ -60,8 +61,9 @@ class SmartPlugController:
                 return name, {'ok': False, 'host': plug.host, 'is_on': None,
                               'error': 'Plug read unavailable'}
 
-        return dict(await asyncio.gather(*(read(name, plug)
-                    for name, plug in self.settings.plugs.items())))
+        results = dict(await asyncio.gather(*(read(name, plug)
+                       for name, plug in self.settings.plugs.items())))
+        return await recover_failed_hosts(self, results)
 
     async def discover(self) -> dict[str, PlugStatus]:
         kwargs = self._primary_auth_kwargs()

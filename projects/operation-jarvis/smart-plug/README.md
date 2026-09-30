@@ -174,6 +174,43 @@ Or direct:
 KASA_DISCOVERY_TARGET=<private-lan-ip> plugctl discover
 ```
 
+## Automatic DHCP recovery
+
+The backend's existing `status-all` collector automatically recovers changed IPs
+without a daemon restart. After **three consecutive failed batch reads** for a
+configured plug, it may broadcast discovery on that plug's private IPv4 `/24` LAN.
+There is at most **one discovery attempt per config every five minutes**, including
+failed/cancelled attempts; persistent counters and a nonblocking process lock keep
+short-lived workers and simultaneous callers from bypassing that limit. Healthy
+reads reset the consecutive-failure count and never initiate discovery.
+
+Only a unique discovery **MAC matching the MAC recorded in `plugs.json`** is
+eligible. Recovery refreshes that exact device, rechecks its MAC/host and requires
+an actual boolean power reading before atomically changing only its `host` field.
+Aliases are not identities. Existing metadata and file permissions are preserved;
+ambiguous MACs, host collisions, out-of-subnet addresses, intervening config edits
+and environment-overridden hosts fail closed. Unconfigured devices are not refreshed
+or added. Missing MACs, legacy config formats, multiple failed subnets, blocked
+broadcasts or failed authentication still require manual diagnosis. This is LAN
+identity matching, not cryptographic MAC attestation; router DHCP reservations
+remain the preferred prevention.
+
+Recovery has a three-second discovery/verification budget plus 250ms cleanup,
+within the existing batch worker deadline. It never sends power commands, retries
+failed mutations, changes credentials, or runs on the individual `status`/write
+paths. Failed recovery retains the normal per-device failed/stale result. Private
+state is stored next to the selected config as `.plugs.json.ip-recovery.json` and
+`.plugs.json.ip-recovery.lock` (git-ignored); keep the lock inode in place while
+workers run. No dependencies or SDK audit hashes are changed.
+
+Offline verification (synthetic devices/configs; no household operations):
+
+```bash
+cd /path/to/JARVIS/projects/operation-jarvis/smart-plug
+.venv/bin/python -m unittest discover -s tests -v
+../jarvisd/verify-kasa-sdk.sh
+```
+
 ## Troubleshooting
 
 ### `Device response did not match our challenge`
