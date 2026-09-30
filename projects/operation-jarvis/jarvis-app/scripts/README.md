@@ -45,6 +45,22 @@ once with `xcodebuild -downloadComponent MetalToolchain` if needed.
   issuing a resize, and then attaches the phone PTY. No arguments retain Slot 1
   compatibility; `--slot 1|2|3|4|5|6 --ensure-only` lets the Watch bridge create a
   fixed session without attaching another client or changing its dimensions.
+- `jarvis-mobile-copy-refresh.py`: keeps the ten fixed regular-mode Pi sessions'
+  tmux copy views live using tmux 3.7c's `refresh-from-pane`. The profile's
+  `after-copy-mode[90]` hook (and profile reload) starts one locked worker per
+  server, which exits when no allowlisted copy view remains. It samples at most
+  10 Hz, compares the live ANSI grid before cloning history, and refreshes only
+  changed panes. Active/present selections and unfinished synchronized-output
+  frames are checked both before sampling and inside tmux before execution.
+  Only clients viewing the refreshed session are repainted. Scroll anchors,
+  regular Pi layout, one-line wheel bindings, and the Watch's base-pane capture
+  are retained; no application keystrokes, resizes, session replacements, or
+  app rebuilds are involved. Run `python3 scripts/tests/test-copy-refresh.py`
+  from the app directory for the isolated-server regression tests. To disable
+  immediately: `tmux -L jarvis-mobile set -g @jarvis-copy-refresh-enabled off`.
+  For a persistent rollback, remove the copy-refresh block from
+  `config/jarvis-mobile.tmux.conf`, unset `after-copy-mode[90]`, and reload the
+  profile. Reattaching otherwise re-enables the checked-in setting.
 - `install-jarvis-terminald.sh`: installs and starts the separate authenticated
   HTTPS Watch/Siri terminal bridge on TCP `8792`. Build 39 captures a bounded
   ANSI-styled tmux-history grid for local Crown scrolling; build 40 atomically

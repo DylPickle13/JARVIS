@@ -500,6 +500,7 @@ reject_match 'Mobile Pi launcher must not restore fullscreen TUI mode' -Fq -- '-
 grep -q 'source-file "$TMUX_CONFIG"' scripts/jarvis-mobile-terminal.sh
 grep -q 'send-keys -X -N 1 scroll-up' config/jarvis-mobile.tmux.conf
 grep -q 'send-keys -X -N 1 scroll-down' config/jarvis-mobile.tmux.conf
+python3 scripts/tests/test-copy-refresh.py
 reject_match 'Pi terminal must not assign a special Pi session name' -Fq -- '--name' scripts/jarvis-mobile-terminal.sh
 reject_match 'Pi launcher must not interpolate a client-supplied tmux session' -E 'TMUX_SESSION=.*\$slot|TMUX_SESSION=.*\$[12]' scripts/jarvis-mobile-terminal.sh
 grep -q 'static func remoteCommand(for slot: JARVISTerminalSlot)' JARVIS/Terminal/PiTerminalSettings.swift
