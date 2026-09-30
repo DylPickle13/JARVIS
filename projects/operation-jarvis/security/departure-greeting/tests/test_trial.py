@@ -45,7 +45,7 @@ class TrialTests(unittest.TestCase):
     def write_proof(self, at=START):
         event = {'start': int(at.timestamp()) + 1, 'end': int(at.timestamp()) + 1, 'code': 7}
         runtime.save_json(self.root / 'person-proof.json', {'version': 1, 'attempt': 'one',
-            'opened_at': at.timestamp(), 'expires': at.timestamp() + 8,
+            'opened_at': at.timestamp(), 'expires': at.timestamp() + person_gate.VOICE_ONSET_SECONDS,
             'checked_at': at.timestamp() + 1, 'event_start': event['start'], 'event_end': event['end'],
             'event_key': person_gate.event_key('a' * 64, event), 'person_code': 7, 'binding': 'a' * 64})
 
@@ -53,7 +53,7 @@ class TrialTests(unittest.TestCase):
         return departure.Sample(0, at, True, True, 0.1)
 
     def test_phrase_is_exact(self):
-        self.assertEqual(runtime.PHRASE, 'Have a good trip, sir.')
+        self.assertEqual(runtime.PHRASE, 'Have a good day, sir')
         self.assertEqual(departure.status()['phrase'], runtime.PHRASE)
 
     def test_reservation_is_durable_before_worker(self):
@@ -61,7 +61,7 @@ class TrialTests(unittest.TestCase):
             state = runtime.read_json(root / 'state.json')
             self.assertEqual(state['pending'], attempt)
             self.assertEqual(state['last_attempt'], START.timestamp())
-            self.assertEqual(expires, START.timestamp() + 8)
+            self.assertEqual(expires, START.timestamp() + person_gate.VOICE_ONSET_SECONDS)
             return 'completed'
         result = self.deliver(self.root, self.journal, self.sample(), now=lambda: START.timestamp(), speaker=play)
         self.assertEqual(result, 'completed')
@@ -200,7 +200,7 @@ class TrialTests(unittest.TestCase):
 
     def test_phrase_hash_and_non_d235_block_worker(self):
         self.journal.reserve('one', START.timestamp())
-        request = {'attempt': 'one', 'expires': START.timestamp() + 8}
+        request = {'attempt': 'one', 'expires': START.timestamp() + person_gate.VOICE_ONSET_SECONDS}
         with patch.object(departure.cli, 'registry', return_value={}), patch.object(speaker.audio, 'CameraSession') as session:
             self.assertEqual(speaker.play_once(self.root, request, clock=lambda: START.timestamp()), 'failed_before_play')
         session.assert_not_called()
@@ -214,7 +214,8 @@ class TrialTests(unittest.TestCase):
 
     def test_preplay_path_deadline_and_unknown_after_send(self):
         for mode, expected in (('success', 'completed'), ('success_night', 'completed'),
-                               ('slow', 'expired_before_play'), ('send_error', 'unknown')):
+                               ('late_start', 'completed'), ('slow', 'expired_before_play'),
+                               ('send_error', 'unknown')):
             at = START.replace(hour=2) if mode == 'success_night' else START
             runtime.save_json(self.root / 'state.json', runtime.default_state())
             self.journal = runtime.Journal(self.root)
@@ -225,12 +226,12 @@ class TrialTests(unittest.TestCase):
             os.chmod(source, 0o600)
             runtime.save_json(self.root / 'phrase.json', {'phrase': runtime.PHRASE,
                 'sha256': hashlib.sha256(source.read_bytes()).hexdigest()})
-            tick = [at.timestamp() + 1]
+            tick = [at.timestamp() + (10 if mode == 'late_start' else 1)]
             sent = []
             class FakeSession:
                 def __init__(self, *args): pass
                 def start(self):
-                    if mode == 'slow': tick[0] += 7
+                    if mode == 'slow': tick[0] += person_gate.VOICE_ONSET_SECONDS - 1
                 def play(self, file):
                     sent.append(file)
                     if mode == 'send_error': raise OSError('fixture')
@@ -248,12 +249,95 @@ class TrialTests(unittest.TestCase):
                  patch.object(speaker.audio, 'CameraSession', FakeSession), \
                  patch.object(speaker.audio, 'interruptible', side_effect=nullcontext), \
                  patch.object(speaker.audio, 'playback_loop', side_effect=loop):
-                result = speaker.play_once(self.root, {'attempt': 'one', 'expires': at.timestamp() + 8},
+                result = speaker.play_once(self.root, {'attempt': 'one', 'expires': at.timestamp() + person_gate.VOICE_ONSET_SECONDS},
                                            clock=lambda: tick[0])
             self.assertEqual(result, expected)
             self.assertEqual(len(sent), 0 if mode == 'slow' else 1)
             marker = runtime.read_json(self.root / 'playback.json')
             if mode != 'slow': self.assertTrue(marker['started'])
+
+    def test_worker_process_budget_tracks_longer_onset_window(self):
+        process = Mock(returncode=0)
+        process.communicate.return_value = ('{"outcome":"completed"}', None)
+        process.poll.return_value = 0
+        with patch.object(watcher.subprocess, 'Popen', return_value=process):
+            result = watcher.run_speaker(self.root, 'one', START.timestamp() + person_gate.VOICE_ONSET_SECONDS)
+        self.assertEqual(result, 'completed')
+        self.assertEqual(process.communicate.call_args.kwargs['timeout'], 30)
+
+    def test_shared_snapshot_publication_and_invalidation(self):
+        sample = departure.Sample(10., START, False, True, 0.1)
+        watcher.publish_snapshot(self.root, self.value, sample)
+        value = runtime.read_json(self.root / 'sensor-snapshot.json')
+        self.assertEqual(value['observed_at'], START.isoformat())
+        self.assertEqual(value['tick'], 10.)
+        self.assertEqual(value['sensors']['door-sensor'], {'model': 'T110', 'state': True})
+        self.assertEqual((self.root / 'sensor-snapshot.json').stat().st_mode & 0o777, 0o600)
+        watcher.publish_snapshot(self.root, self.value, departure.Sample(11., START, None, True, 0.1))
+        self.assertFalse((self.root / 'sensor-snapshot.json').exists())
+        watcher.clear_snapshot(self.root)
+
+    def test_busy_reconnects_promptly_and_rebaselines_without_speech(self):
+        def sample(tick, motion, opened):
+            return departure.Sample(tick, START + timedelta(seconds=tick), motion, opened, 0.1)
+        reader = NS(device=object(), person_camera=object(), phase='paired_read',
+                    connect=AsyncMock(), close=AsyncMock(),
+                    sample=AsyncMock(side_effect=[sample(1, False, False), sample(3, True, False),
+                        departure.cli.ControlError('device_busy'),
+                        departure.cli.ControlError('device_busy'), sample(5, True, True),
+                        asyncio.CancelledError()]))
+        sleeps = AsyncMock()
+        with patch.object(watcher, 'HubSession', return_value=reader) as factory, \
+             patch.object(departure, 'validate_devices', return_value=('hub', {}, {}, {})), \
+             patch.object(departure.cli, 'registry', return_value={
+                 'front-doorbell': {'model': 'D235', 'host': 'fixture', 'hub': 'hub'}}), \
+             patch.object(watcher.asyncio, 'sleep', sleeps), \
+             patch.object(watcher, 'deliver', new_callable=AsyncMock) as deliver:
+            with self.assertRaises(asyncio.CancelledError): asyncio.run(watcher.watch(self.root))
+        self.assertEqual(factory.call_count, 3)
+        self.assertEqual(reader.connect.await_count, 3)
+        self.assertEqual(reader.close.await_count, 3)  # Busy sessions and final cancellation.
+        deliver.assert_not_awaited()
+        self.assertEqual([call.args[0] for call in sleeps.await_args_list], [2, 2, 0.5, 0.5, 2])
+        events = runtime.Journal(self.root).state['events']
+        self.assertEqual(sum(e['reason'] == 'hub_busy' for e in events), 1)
+        self.assertEqual(events[-1]['reason'], 'baseline')
+        self.assertTrue(events[-1]['door_open'])
+
+    def test_retryable_read_recovers_silently_and_exhaustion_latches(self):
+        from kasa.exceptions import _RetryableError, AuthenticationError
+        self.assertTrue(watcher.transient(_RetryableError('private response')))
+        self.assertFalse(watcher.transient(AuthenticationError('private response')))
+        for exhausted in (False, True):
+            runtime.save_json(self.root / 'state.json', runtime.default_state())
+            fail = lambda: _RetryableError('private response must not be logged')
+            samples = ([fail(), fail(), fail()] if exhausted else [
+                departure.Sample(1., START, False, False, 0.1),
+                departure.Sample(3., START + timedelta(seconds=2), True, False, 0.1),
+                fail(), departure.Sample(5., START + timedelta(seconds=4), True, True, 0.1),
+                asyncio.CancelledError()])
+            reader = NS(device=object(), person_camera=object(), phase='paired_read',
+                        connect=AsyncMock(), close=AsyncMock(), sample=AsyncMock(side_effect=samples))
+            async def sleep(seconds):
+                if exhausted and seconds == 15: raise asyncio.CancelledError()
+            with patch.object(watcher, 'HubSession', return_value=reader), \
+                 patch.object(departure, 'validate_devices', return_value=('hub', {}, {}, {})), \
+                 patch.object(departure.cli, 'registry', return_value={
+                     'front-doorbell': {'model': 'D235', 'host': 'fixture', 'hub': 'hub'}}), \
+                 patch.object(watcher.asyncio, 'sleep', side_effect=sleep), \
+                 patch.object(watcher, 'deliver', new_callable=AsyncMock) as deliver:
+                with self.assertRaises(asyncio.CancelledError): asyncio.run(watcher.watch(self.root))
+            state = runtime.Journal(self.root).state
+            self.assertEqual(state['fault'], 'sensor_read_requires_review' if exhausted else None)
+            self.assertEqual(reader.connect.await_count, 3 if exhausted else 2)
+            deliver.assert_not_awaited()
+            self.assertNotIn('private response', json.dumps(state))
+            self.assertFalse((self.root / 'sensor-snapshot.json').exists())
+            if exhausted:
+                self.assertTrue(state['events'][-1]['recovery_exhausted'])
+                self.assertEqual(state['events'][-1]['read_failure_count'], 3)
+            else:
+                self.assertEqual(state['events'][-1]['reason'], 'baseline')
 
     def test_sensor_query_uses_shared_lock_and_paired_getter(self):
         device = NS(protocol=NS(query=AsyncMock(return_value={'getChildDeviceList': {'child_device_list': [

@@ -16,7 +16,14 @@ import departure
 import runtime
 
 MAX_ROWS = 20
-MAX_WAIT = 2
+MAX_WAIT = 10
+MAX_READS = 10
+POLL_SECONDS = 1
+MAX_READ_SECONDS = 2
+# Preserve the original six seconds of audio setup/padding headroom.
+VOICE_ONSET_SECONDS = MAX_WAIT + 6
+MAX_WORKER_START_AGE = VOICE_ONSET_SECONDS - 2
+LEADING_SILENCE_SECONDS = 1.5
 SOURCE = 'h200_detection_history'
 
 
@@ -48,11 +55,42 @@ def policy(root):
     return value
 
 
-def status(root):
+def effective_policy(root):
+    """Owner-authorized trial is distinct from physical commissioning."""
     value = policy(root)
+    if value['verified']:
+        return value
+    trial = runtime.read_json(root / 'person-trial.json')
+    if trial is None:
+        return value
+    if (set(trial) != {'version', 'authorized', 'authorized_at', 'binding', 'person_code'}
+            or type(trial['version']) is not int or trial['version'] != 1
+            or trial['authorized'] is not True
+            or type(trial['person_code']) is not int or trial['person_code'] != 6
+            or type(trial['binding']) is not str or not re.fullmatch('[0-9a-f]{64}', trial['binding'])
+            or type(trial['authorized_at']) is not str):
+        raise runtime.TrialError('invalid_person_trial_authorization')
+    try:
+        if datetime.fromisoformat(trial['authorized_at']).utcoffset() is None:
+            raise ValueError()
+    except ValueError:
+        raise runtime.TrialError('invalid_person_trial_authorization') from None
+    return {**value, 'trial_authorized': True, 'person_code': trial['person_code'],
+            'binding': trial['binding'], 'timestamp_basis': 'assumed_unix_utc_seconds'}
+
+
+def permitted(value):
+    return value['verified'] or value.get('trial_authorized') is True
+
+
+def status(root):
+    value = effective_policy(root)
     return {'person_gate_required': True, 'person_gate_verified': value['verified'],
             'person_event_source': SOURCE, 'person_gate_max_wait_seconds': MAX_WAIT,
-            'person_gate_state': 'commissioned' if value['verified'] else 'awaiting_physical_verification'}
+            'voice_onset_deadline_seconds': VOICE_ONSET_SECONDS,
+            'person_trial_authorized': value.get('trial_authorized', False),
+            'person_gate_state': ('commissioned' if value['verified'] else
+                'owner_authorized_unverified_trial' if permitted(value) else 'awaiting_physical_verification')}
 
 
 async def read_one(reader, method, params):
@@ -107,6 +145,29 @@ async def bind(reader):
         reader.person_camera, reader.person_binding = camera_binding(response, reader.hub_info)
 
 
+def event_codes(row):
+    """Normalize explicit single-code or H200 multi-label metadata.
+
+    events_1 bit n corresponds to alarm code n+1 (community-documented).
+    Decoding does not commission the person mapping or timestamp semantics.
+    Only the documented 1..16 bit range is accepted; no primary-alarm fallback
+    when flags are missing, malformed, contradictory or unknown.
+    """
+    if 'alarm_type' in row or 'events_1' in row:
+        primary, flags = row.get('alarm_type'), row.get('events_1')
+        if (type(primary) is not int or not 1 <= primary <= 16
+                or type(flags) is not int or not 0 < flags < (1 << 16)
+                or not flags & (1 << (primary - 1))
+                or ('event_type' in row and (type(row['event_type']) is not int
+                    or row['event_type'] != primary))):
+            raise runtime.TrialError('person_event_schema_or_time_unverified')
+        return [code for code in range(1, 17) if flags & (1 << (code - 1))]
+    code = row.get('event_type')
+    if type(code) is not int or not 0 <= code <= 65535:
+        raise runtime.TrialError('person_event_schema_or_time_unverified')
+    return [code]
+
+
 def event_rows(response, query_start, query_end):
     section = response.get('playback') if type(response) is dict else None
     rows = section.get('search_detection_list') if type(section) is dict else None
@@ -117,13 +178,14 @@ def event_rows(response, query_start, query_end):
     for row in rows:
         if type(row) is not dict:
             raise runtime.TrialError('person_events_invalid_or_truncated')
-        start, end, code = (row.get(key) for key in ('start_time', 'end_time', 'event_type'))
-        if (type(start) is not int or type(end) is not int or type(code) is not int
-                or not 0 < start <= end or not 0 <= code <= 65535
+        start, end = (row.get(key) for key in ('start_time', 'end_time'))
+        codes = event_codes(row)
+        if (type(start) is not int or type(end) is not int
+                or not 0 < start <= end
                 or not query_start <= start <= end <= query_end):
             # Unknown ongoing-record schemas and device-clock errors are NOT fresh evidence.
             raise runtime.TrialError('person_event_schema_or_time_unverified')
-        events.append({'start': start, 'end': end, 'code': code})
+        events.extend({'start': start, 'end': end, 'code': code} for code in codes)
     return events
 
 
@@ -151,23 +213,26 @@ class Result:
 
 
 async def confirm(root, reader, attempt, opened_at, expires, *, now=time.time, sleep=asyncio.sleep):
-    value = policy(root)
-    if not value['verified']:
+    value = effective_policy(root)
+    if not permitted(value):
         return Result(False, 'person_gate_unverified')
     if reader is None or getattr(reader, 'person_binding', None) != value['binding']:
         return Result(False, 'person_source_binding_mismatch')
-    # Entire invocation is additionally bounded by the caller's 2-second timeout.
-    for index in range(2):
+    # The caller bounds the whole invocation, including reads/sleeps, to 10 s.
+    # Explicit polls are bounded separately; no SDK paging or request replay.
+    for index in range(MAX_READS):
         current = now()
-        if not runtime.config(root)['enabled'] or not 0 <= current - opened_at < 6:
+        if not runtime.config(root)['enabled'] or not 0 <= current - opened_at < MAX_WORKER_START_AGE:
             return Result(False, 'person_event_expired')
-        events = await history(reader, int(opened_at) - 1, int(current))
+        async with asyncio.timeout(MAX_READ_SECONDS):
+            events = await history(reader, int(opened_at) - 1, int(current))
         checked = now()
         for event in events:
             # Strictly AFTER observed opening. Same-second records are ambiguous.
-            # Exact commissioned code only: no guessed enums, bitmasks or motion fallback.
+            # Exact commissioned code only, including explicitly decoded multi-label
+            # flags. Primary package/motion labels never substitute for person.
             if (event['code'] == value['person_code'] and opened_at < event['start']
-                    and event['end'] <= checked < expires - 1.5):
+                    and event['end'] <= checked < expires - LEADING_SILENCE_SECONDS):
                 proof = {'version': 1, 'attempt': attempt, 'opened_at': opened_at, 'expires': expires,
                     'checked_at': checked, 'event_start': event['start'], 'event_end': event['end'],
                     'event_key': event_key(value['binding'], event), 'person_code': event['code'],
@@ -176,17 +241,17 @@ async def confirm(root, reader, attempt, opened_at, expires, *, now=time.time, s
                 if valid_proof(root, attempt, expires, now=checked):
                     return Result(True, 'fresh_person_after_opening')
                 return Result(False, 'person_proof_invalid')
-        if index == 0:
-            await sleep(0.25)
+        if index < MAX_READS - 1:
+            await sleep(POLL_SECONDS)
     return Result(False, 'no_fresh_person_after_opening')
 
 
 def valid_proof(root, attempt, expires, *, now):
-    value = policy(root)
+    value = effective_policy(root)
     proof = runtime.read_json(root / 'person-proof.json')
     fields = {'version', 'attempt', 'opened_at', 'expires', 'checked_at', 'event_start',
               'event_end', 'event_key', 'person_code', 'binding'}
-    if not value['verified'] or not proof or set(proof) != fields:
+    if not permitted(value) or not proof or set(proof) != fields:
         return False
     if (type(proof['version']) is not int or proof['version'] != 1 or proof['attempt'] != attempt
             or proof['binding'] != value['binding'] or type(proof['person_code']) is not int
@@ -197,9 +262,9 @@ def valid_proof(root, attempt, expires, *, now):
         return False
     if any(type(proof[key]) is not int for key in ('event_start', 'event_end')):
         return False
-    if (proof['expires'] != expires or expires != proof['opened_at'] + 8
+    if (proof['expires'] != expires or expires != proof['opened_at'] + VOICE_ONSET_SECONDS
             or not proof['opened_at'] < proof['event_start'] <= proof['event_end']
-            <= proof['checked_at'] <= now < expires - 1.5):
+            <= proof['checked_at'] <= now < expires - LEADING_SILENCE_SECONDS):
         return False
     event = {'start': proof['event_start'], 'end': proof['event_end'], 'code': proof['person_code']}
     return proof['event_key'] == event_key(value['binding'], event)

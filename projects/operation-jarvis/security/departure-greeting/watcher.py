@@ -94,7 +94,7 @@ def run_speaker(root, attempt, expires):
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         text=True, start_new_session=True)
     try:
-        output, _ = process.communicate(json.dumps({'attempt': attempt, 'expires': expires}), timeout=22)
+        output, _ = process.communicate(json.dumps({'attempt': attempt, 'expires': expires}), timeout=person_gate.VOICE_ONSET_SECONDS + 14)
         if len(output) > 4096:
             return 'unknown'
         result = json.loads(output)
@@ -121,7 +121,7 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
     if (not value['enabled'] or journal.blocked or not 0 <= age <= 1
             or sample.read_seconds > 2 or sample.motion is None or sample.door_open is not True):
         return 'suppressed'
-    if not person_gate.policy(root)['verified']:
+    if not person_gate.permitted(person_gate.effective_policy(root)):
         journal.event('person_gate_unverified')
         journal.flush()
         return 'suppressed'
@@ -133,7 +133,7 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
     if now() - sample.observed_at.timestamp() > 1:
         journal.finish(attempt, 'expired_before_play')
         return 'expired_before_play'
-    expires = sample.observed_at.timestamp() + 8
+    expires = sample.observed_at.timestamp() + person_gate.VOICE_ONSET_SECONDS
     try:
         async with asyncio.timeout(person_gate.MAX_WAIT):
             evidence = await confirm(root, reader, attempt, sample.observed_at.timestamp(), expires)
@@ -153,7 +153,7 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
         journal.event(evidence.reason)
         journal.finish(attempt, 'failed_before_play')
         return 'failed_before_play'
-    if not runtime.config(root)['enabled'] or not 0 <= now() - sample.observed_at.timestamp() < 6:
+    if not runtime.config(root)['enabled'] or not 0 <= now() - sample.observed_at.timestamp() < person_gate.MAX_WORKER_START_AGE:
         journal.finish(attempt, 'expired_before_play')
         return 'expired_before_play'
     journal.event('fresh_person_after_opening')
@@ -167,21 +167,41 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
 
 def transient(exc):
     # Retry only read transport failures, never credentials/identity/schema.
-    from kasa.exceptions import _ConnectionError as KasaConnectionError
-    return isinstance(exc, (TimeoutError, ConnectionError, OSError, KasaConnectionError))
+    from kasa.exceptions import _ConnectionError as KasaConnectionError, _RetryableError
+    return isinstance(exc, (TimeoutError, ConnectionError, OSError, KasaConnectionError, _RetryableError))
+
+
+def clear_snapshot(root):
+    (root / 'sensor-snapshot.json').unlink(missing_ok=True)
+
+
+def publish_snapshot(root, value, sample):
+    """Private dashboard projection, never a source for departure decisions."""
+    if (type(sample.motion) is not bool or type(sample.door_open) is not bool
+            or not 0 <= sample.read_seconds <= 2):
+        clear_snapshot(root)
+        return
+    runtime.save_json(root / 'sensor-snapshot.json', {
+        'version': 1, 'observed_at': sample.observed_at.isoformat(), 'tick': sample.tick,
+        'sensors': {value['motion_device']: {'model': 'T100', 'state': sample.motion},
+                    value['door_device']: {'model': 'T110', 'state': sample.door_open}}})
 
 
 async def watch(root):
     root = runtime.private_dir(root)
     lock = runtime.singleton(root)
     journal = runtime.Journal(root)
+    clear_snapshot(root)
     detector = departure.DepartureDetector()
     reader = None
     last_pair = None
+    busy_reported = False
+    read_failures = 0
     try:
         while True:
             value = runtime.config(root)
             if not value['enabled'] or journal.blocked:
+                clear_snapshot(root)
                 detector.reset()
                 if reader is not None:
                     await reader.close()
@@ -190,6 +210,7 @@ async def watch(root):
                 journal.flush()
                 await asyncio.sleep(10)
                 continue
+            reading = True
             try:
                 if reader is None:
                     args = departure.parser().parse_args(['observe',
@@ -205,13 +226,17 @@ async def watch(root):
                     detector.reset()
                     last_pair = None
                     journal.event('connected_baseline_required')
-                gate_policy = person_gate.policy(root)
-                if gate_policy['verified'] and reader.person_camera is None:
+                gate_policy = person_gate.effective_policy(root)
+                if person_gate.permitted(gate_policy) and reader.person_camera is None:
                     await person_gate.bind(reader)
                 sample = await reader.sample()
+                reading = False
+                read_failures = 0
+                publish_snapshot(root, value, sample)
+                busy_reported = False
                 decision = detector.accept(sample)
                 journal.state['read_count'] += 1
-                journal.state['health'] = 'observing' if gate_policy['verified'] else 'awaiting_person_verification'
+                journal.state['health'] = 'observing' if person_gate.permitted(gate_policy) else 'awaiting_person_verification'
                 pair = (sample.motion, sample.door_open)
                 # Bounded PRIVATE history of changes, not constant sensor logs.
                 if pair != last_pair or decision['decision'] == 'candidate':
@@ -226,11 +251,31 @@ async def watch(root):
                     journal.flush()
                 await asyncio.sleep(2)
             except Exception as exc:
+                clear_snapshot(root)
                 detector.reset()
                 last_pair = None
                 busy = isinstance(exc, departure.cli.ControlError) and str(exc) == 'device_busy'
-                retry = busy or transient(exc)
+                # Another hub client can invalidate this session. Reconnect, but
+                # do not add the transport-failure 15 s backoff to lock contention.
+                # Detector was reset above: never bridge an unobserved sequence.
+                if busy:
+                    journal.state['health'] = 'waiting'
+                    if not busy_reported:
+                        journal.event('hub_busy', phase=reader.phase if reader else 'configuration')
+                        busy_reported = True
+                    journal.flush()
+                    if reader is not None:
+                        await reader.close()
+                        reader = None
+                    await asyncio.sleep(0.5)
+                    continue
                 phase = reader.phase if reader is not None else 'configuration'
+                # Only retry reads, never configuration, delivery, or uncertain playback.
+                recoverable = (reading and transient(exc) and not journal.blocked and phase in {
+                    'discovery', 'identity', 'initial_state', 'paired_read'})
+                if recoverable:
+                    read_failures += 1
+                retry = recoverable and read_failures < 3
                 if reader is not None:
                     await reader.close()
                     reader = None
@@ -239,7 +284,8 @@ async def watch(root):
                     journal.state['fault'] = 'sensor_read_requires_review'
                 error_type = type(exc).__name__
                 allowed = {'TimeoutError', 'ConnectionError', '_ConnectionError', 'AuthenticationError',
-                           'OSError', 'ControlError', 'TrialError', 'UnboundLocalError', 'KeyError', 'ValueError', 'AttributeError'}
+                           'OSError', 'ControlError', 'TrialError', 'UnboundLocalError', 'KeyError', 'ValueError', 'AttributeError',
+                           'SmartError', 'DeviceError', 'KasaException', '_RetryableError'}
                 cause = exc.__cause__
                 cause_name = type(cause).__name__ if cause is not None else 'none'
                 cause_allowed = {'ClientConnectorError', 'ClientConnectorSSLError', 'ClientOSError',
@@ -254,13 +300,21 @@ async def watch(root):
                                 'send_secure_passthrough'}:
                         transport_phase = name
                     trace = trace.tb_next
-                journal.event('hub_busy' if busy else 'read_interrupted' if retry else 'sensor_read_requires_review',
+                from kasa.exceptions import SmartErrorCode
+                code = getattr(exc, 'error_code', None)
+                # Never log exception messages: they may contain decrypted responses.
+                safe_code = code.value if isinstance(code, SmartErrorCode) else None
+                journal.event('read_interrupted' if retry else 'sensor_read_requires_review',
+                              read_failure_count=read_failures,
+                              recovery_exhausted=bool(recoverable and not retry),
+                              device_error_code=safe_code,
                               phase=phase, error_type=error_type if error_type in allowed else 'other',
                               cause_type=cause_name if cause_name in cause_allowed else 'other',
                               errno=errno if type(errno) is int else None, transport_phase=transport_phase)
                 journal.flush()
-                await asyncio.sleep(15)
+                await asyncio.sleep(2 if retry else 15)
     finally:
+        clear_snapshot(root)
         if reader is not None:
             await reader.close()
         journal.state['health'] = 'stopped'

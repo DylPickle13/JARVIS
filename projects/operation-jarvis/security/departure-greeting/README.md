@@ -1,17 +1,94 @@
 # Departure greeting — outdoor doorbell only
 
 Standalone security subproject, like `android-monitor/`. All departure-task code,
-its tests, and documentation live here. Main security CLI/backend/Android monitor
-code is unchanged. Credentials/registry and the approved audio app are reused, not
-copied. Only the private saved hub address was corrected with owner approval;
+its tests, and documentation live here. The shared security CLI/audio/Android
+behavior is unchanged; jarvisd changes are limited to the opt-in paired-snapshot
+reader documented below. Credentials/registry and the approved audio app are reused,
+not copied. Only the private saved hub address was corrected with owner approval;
 credentials and registry contents remain unchanged.
+
+Current owner-selected greeting: **“Have a good day, sir”** (updated 2026-09-30).
+The private offline-generated WAV and its hash metadata use this wording; no
+immediate playback accompanies the change.
+
+## Current trial authorization (2026-09-30)
+
+The owner explicitly approved speech **without physical commissioning**, while
+retaining the mandatory person-event check. An owner-only private `person-trial.json`
+now authorizes code 6 against a freshly resolved source/firmware binding. This is
+separate from `person-gate.json`, which remains unchanged and **unverified**.
+Status reports `owner_authorized_unverified_trial`, `person_trial_authorized: true`,
+`person_gate_verified: false`, and physical verification pending. Delivery may be
+enabled in this state; “commissioned” is reserved for a verified policy.
+
+The trial assumes community person-code/bitmask mappings and UTC seconds; latency
+and physical departure accuracy are unverified. Motion → opening → fresh person
+is still mandatory, with a 10-second check, 16-second onset deadline and 120-second
+cooldown. No sensor-only fallback or immediate test playback was added. Revoking
+the private trial authorization invalidates trial proofs before playback; the
+existing disable command stops future automatic delivery. Malformed authorization
+fails closed. Statements below about commissioning-required silence describe the
+default mode, without this explicit owner override.
+
+## Retryable sensor-read recovery (2026-09-30)
+
+The SDK's `_RetryableError` is now treated as recoverable during sensor connection
+and reads only, alongside transport failures. Each failure closes the session,
+invalidates the shared snapshot and resets departure arming. Two reconnect attempts
+are allowed with two-second backoff; a third consecutive failed read/connection
+latches `sensor_read_requires_review`. Only a successful paired sample resets the
+failure count. Existing per-read/connection timeouts remain in force. Authentication,
+identity/schema failures and uncertain playback are not retried. Recovery always
+starts from a silent baseline; missed openings cannot be replayed.
+
+Private diagnostics record failure count, exhaustion and an SDK-enum device error
+code when available, never raw response/exception text. An error without such a
+code remains unknown; `_RetryableError` alone does not prove session contention.
+
+## Shared hub contention recovery
+
+Dashboard sensor polling also holds the hub lock. The watcher now retries lock
+contention after 0.5 seconds instead of applying the 15-second transport backoff.
+It reconnects because another client's hub access can invalidate the old session;
+retaining that session failed a live check. Every interrupted sequence is reset,
+and the next paired read establishes a silent baseline. Locks are never bypassed,
+other services are unchanged, and non-contention faults still fail closed.
+
+A 110-second live check after deployment recovered from contention in about nine
+seconds, with no fault or playback. That first repair reduced self-imposed downtime but did not eliminate competing
+readers. The later owner-authorized shared-reader deployment below removes the
+dashboard's competing sessions; unrelated explicit hub operations can still cause gaps.
+
+### Shared dashboard reader (deployed 2026-09-30)
+
+The watcher atomically publishes owner-only `sensor-snapshot.json` after each valid
+paired read. jarvisd opts in through `JARVISD_SECURITY_SHARED_SNAPSHOT`; both its
+background poller and authenticated sensor-status endpoint use this same snapshot
+for `motion-sensor` and `door-sensor`. They never fall back to hub access when the
+snapshot is missing, malformed or stale. Other aliases retain their existing path.
+
+Snapshots preserve the actual observation time, require matching wall/monotonic
+ages no greater than eight seconds, and retain unknown radio freshness. Battery
+and RSSI are currently unavailable rather than invented. The snapshot is removed
+on interruption, disabled/faulted state and normal shutdown; abrupt death expires
+by age. Disabling the departure watcher therefore also makes these dashboard
+sensor readings unavailable. Departure decisions never consume this file.
+
+Deployment `20260930T180949Z-shared-sensor-reader` copies the prior installed daemon
+release and changes only `security_status.py` plus new `security_snapshot.py`.
+The private launch plist backup and deployment audit are in the trial runtime.
+A 150-second live check returned 264/264 HTTP 200 shared-snapshot responses, observed
+57 paired samples, maximum sample gap 3.244 seconds and maximum response sample age
+2.885 seconds. No hub contention, fault, candidate or playback occurred in that
+window. This is a continuity check, not physical departure/audio commissioning.
 
 ## Owner-authorized audible trial
 
 On 2026-09-29 the owner explicitly requested background activation for testing the
-next day, then specified the exact phrase: **“Have a good trip, sir.”** The installer
-opts in to an **experimental audible trial**, not a claim of physically verified
-departure detection. The owner subsequently requested **24/7 operation**, with no
+next day, initially specifying **“Have a good trip, sir.”** On 2026-09-30 the owner
+changed the phrase to **“Have a good day, sir”**; the private WAV and hash metadata
+were replaced without test playback. The installer opts in to an **experimental
+audible trial**, not a claim of physically verified departure detection. The owner subsequently requested **24/7 operation**, with no
 quiet hours. The owner then required **a fresh D235 person event after the door
 opens**, to reduce package-pickup false farewells. There are no arrival greetings
 or indoor speaker actions. Sensor-only speech is no longer permitted.
@@ -29,17 +106,21 @@ Defaults:
 - Initial/recovery readings establish silent baselines. Armed motion is never saved
   or reconstructed after restart, reconnect, a read gap, or playback.
 - One candidate per door-opening session; **120 s durable household-wide cooldown**.
-- Mandatory fresh, commissioned **person** event, strictly after the observed door
-  opening. No old/ongoing person event, generic motion, guessed numeric code or
-  unreadable response can authorize speech. Same-second records are ambiguous.
-- Person-event reads have a **2 s total budget**, at most two explicit getters;
-  this time is included in the original 8 s voice-onset deadline, never added to it.
+- Mandatory fresh **person** event, strictly after the observed door opening. In
+  the explicitly authorized unverified trial, code 6 is bound to the live source but
+  relies on a community mapping; this is not commissioning. No old/ongoing event,
+  generic motion, or unreadable response can authorize speech. Same-second records
+  are ambiguous.
+- Person-event checks have an owner-requested **10 s total budget**, including
+  at most ten explicit getters spaced 1 s apart; each getter remains capped at 2 s.
+  The overall voice-onset deadline is **16 s from the observed opening**, preserving
+  six seconds of audio setup/padding headroom. Gate time never extends that deadline.
 - Audible eligibility **24/7**, including overnight; no quiet-hours restriction.
 - Digital playback gain **60%**, consistent with earlier owner-confirmed D235 voice
   playback. Persistent camera speaker settings/saved CLI defaults are unchanged.
 - New samples must be complete; reads over 2 s, sample gaps over 8 s, unknown states,
   duplicate/out-of-order samples, or clock discontinuities break continuity.
-- No queued/backfilled/late greetings. At most 8 s from the observed door edge to
+- No queued/backfilled greetings or speech past expiry. At most 16 s from the observed door edge to
   voice onset, including the D235's existing 1.5 s leading-silence padding.
 - Pre-generated local Piper/JARVIS phrase; existing approved go2rtc app, identity
   validation, hub-first device locks, PCMA/8 kHz transport, and 2 s trailing padding.
@@ -55,12 +136,23 @@ preview successfully obtained the H200/D235 identity binding and an empty detect
 history response. That is not verification of real person events, their numeric
 codes, UTC timestamps or publication latency. A later preview failed; the live
 source is not yet reliable/commissioned. No code is inferred from unit tests.
+The reader now accepts this H200's `alarm_type` + `events_1` schema as well as
+single-code `event_type` rows. Multi-label flags normalize to individual alarm codes:
+bit n means code n+1, limited to the documented 1–16 range. Missing/malformed flags,
+unknown bits, a primary alarm absent from its flags, or conflicting `event_type`
+fail closed. There is no fallback to a primary package/motion alarm as person evidence.
+A live read of the owner-identified archived event decoded codes 2, 6 and 15
+(motion/person/package under community mappings); offline tests cover combined labels
+and rejection paths. This verifies parsing, **not** fresh publication latency or departure.
+Supervised person mapping/timing verification is still required; the policy stays unverified.
+References: [playback codes](https://github.com/JurajNyiri/pytapo/issues/199),
+[bitmask](https://github.com/PeterkoCZ91/tapo-monitoring/blob/main/docs/events1-bitmask.md).
 
 At an owner-supervised test, run `person-preview` below and have someone walk outside
 into the doorbell's view, noting the exact time and the corresponding Tapo-app person
 label. Compare against separate generic motion/package activity. Verify the event
 code, UTC-second time basis, source binding and whether records appear within the
-2 s gate budget while leaving enough of the 8 s deadline for audio startup. Completed
+10 s gate budget while leaving enough of the 16 s deadline for audio startup. Completed
 archive records may arrive too late: in that case this source is unsuitable and
 must remain unverified. Do not loosen freshness or play an old event as a workaround.
 
@@ -72,9 +164,15 @@ commission/enable command or guessed mapping. Missing/invalid policy cannot reve
 to sensor-only speech. Revalidate after firmware, camera or hub changes; identity and
 reported firmware participate in the binding, but unreported changes need manual review.
 
-A pre-existing `sensor_read_requires_review` fault was found during this update and
-preserved, along with cooldown/pending/history. It also requires review before the
-watcher can deliver; commissioning must not clear unknown/pending playback state.
+An earlier `sensor_read_requires_review` fault was cleared only after owner-authorized
+review and fresh paired reads; cooldown, outcome, counters, configuration and the
+unverified person policy were preserved. A later SDK `_RetryableError` during a
+paired read was initially latched because it was not recognized as retryable. The
+watcher now performs at most two bounded reconnect attempts, resets departure arming,
+and latches review after three consecutive failures. After owner-authorized recovery,
+the watcher returned to a silent baseline; current trial authorization remains
+separate from physical commissioning. No greeting has been sent. Unknown/pending
+playback state must never be cleared as a sensor-read recovery.
 
 ## Controls
 
@@ -132,10 +230,12 @@ matching on the same getter, bypassing the installed SDK's failing child cloud-s
 initialization. A supported per-device HTTP client uses fresh connections to avoid
 closed-socket reuse; SDK files, authentication and TLS policy are unchanged. It takes the existing hub lock only during setup/read; locks
 are released before speaker work. Existing on-demand commands can still use the hub.
-Poll delay is 2 s after a completed read, with no catch-up loop. Busy/transport
-failures reset continuity and wait 15 s before read-only reconnection. Credentials,
-identity, child schema/selection, or other unexpected failures latch for review;
-there is no automatic authentication recovery.
+Poll delay is 2 s after a completed read, with no catch-up loop. Hub-lock contention
+resets continuity and retries after 0.5 s. Retryable transport/read failures close the
+session, invalidate the shared snapshot, reset departure arming and reconnect after
+2 s; the third consecutive failure latches review. Credentials, identity, child
+schema/selection, and other unexpected failures latch immediately. There is no
+automatic authentication recovery.
 
 After commissioning, the authenticated session resolves exactly one D235 from
 `getGeneralDeviceList`, bound to its private child ID/MAC and H200 identity/reported
@@ -166,7 +266,7 @@ uses the existing session-specific helper; unrelated audio processes are never k
 The short clip can finish once started, but is never replayed. “Completed” means
 transport completion, not microphone-verified hearing.
 
-## Limitations / tomorrow's physical test
+## Limitations / supervised trial test
 
 **Hub state changes are not verified fresh sensor radio events or proof of actual
 departure.** `radio_freshness` stays `unknown`, and physical acceptance is pending.
@@ -181,10 +281,15 @@ be silently missed. Fast motion/open sequences may fall between polls and be
 suppressed as simultaneous. People may walk out of earshot before audio starts.
 Network failures/unknowns prefer silence, not guesses.
 
-First perform the **silent person-event commissioning** described above. Speech
-remains blocked until the mapping/timing are verified and the saved sensor fault is
-reviewed. After owner-approved commissioning and fault recovery, test the audible
-trial at any time, including overnight:
+The owner has separately authorized an audible trial while the person mapping,
+timing, radio freshness and departure accuracy remain unverified. This does not
+commission the gate; false farewells and missed departures remain possible. For each
+supervised trial, start indoors with the door closed and foyer motion clear, walk into
+the foyer, pause about 2 seconds, then open the door and step outside. Stay in
+doorbell view and earshot for up to 16 seconds; allow at least 120 seconds between
+attempts. Review the private event/outcome record afterward and do not replay a missed
+or uncertain greeting. If performing formal commissioning, follow the separate
+silent person-event preview procedure above.
 
 1. Walk through the foyer and leave normally; confirm the phrase/timing/loudness.
 2. Several people leave together: only one phrase.
@@ -202,23 +307,27 @@ projects/operation-jarvis/security/.venv-313/bin/python -m unittest discover \
   -s projects/operation-jarvis/security/departure-greeting/tests -v
 ```
 
-**76 subproject tests pass**, plus **286 existing security tests** (two optional
-skips). Tests are offline with synthetic fixtures and mocked network/speaker operations.
+Tests are offline with synthetic fixtures and mocked network/speaker operations.
+Run the suites for current totals; shared security work may add unrelated tests.
 Gate coverage includes absent/unverified policy, exact-type/identity matching,
 old/same-second/unknown/empty/truncated events, finite deadlines, private proof
 validation/revocation, cancellation/pending safety and no sensor-only fallback.
+Timeout coverage includes person publication beyond the former eight-second deadline,
+bounded polling/slow-read suppression, rejection of old-deadline proofs, and matching
+coordinator/worker onset and process budgets.
 
-Initial deployment checks verified the agent and paired sensor reads. This update
-preserves unknown radio freshness and the existing sensor fault; the event query
-accepted an empty response but physical person mapping/timing remain unverified.
+Initial deployment checks verified the agent and paired sensor reads. Radio freshness
+remains unknown; physical person mapping/timing remain unverified.
 Connection diagnostics later found the H200 at a different LAN address. With owner
 approval, only `JARVIS_SECURITY_HUB_HOST` in the ignored private `.env` was corrected.
 Three paired reads through the saved configuration then succeeded; all other env
-lines and private permissions were unchanged. The existing fault remains latched
-and the person gate remains unverified: no automatic speech is enabled by this repair.
-No playback attempt was made. Only this trial's agent is installed/restarted;
-other security services and the shared CLI/audio implementation are unchanged.
-Tomorrow's owner test remains necessary before automatic speech can resume.
+lines and private permissions were unchanged. That address-only repair did not clear
+the fault. A later owner-authorized review cleared it after bounded retry recovery;
+the person gate remains unverified while the separate audible-trial authorization
+remains active. No greeting has been sent. Only the trial agent and jarvisd shared
+reader were reloaded; other security services and shared CLI/audio behavior are
+unchanged. A supervised test is still required before treating physical event mapping
+or departure accuracy as commissioned.
 
 - `departure.py`: policy, bounded silent observer, local status/disable command.
 - `watcher.py`: singleton background reader and guarded delivery coordinator.

@@ -118,6 +118,12 @@ def _read_status(cli_path: str, alias: str, *, runner=run_cli) -> tuple[int, dic
     cli = Path(cli_path)
     if not cli.is_absolute():
         return 503, {**base, "errorCode": "invalid_configuration"}
+    # Explicit deployment opt-in: both dashboard polling and HTTP reads use the
+    # same fresh paired samples as departure detection. Never fall back on staleness.
+    from . import security_snapshot
+    snapshot = os.environ.get('JARVISD_SECURITY_SHARED_SNAPSHOT', '')
+    if snapshot and alias in security_snapshot.ALIASES:
+        return security_snapshot.read(snapshot, alias)
     if not _READ_LOCK.acquire(blocking=False):
         return 503, {**base, "errorCode": "device_busy"}
     try:

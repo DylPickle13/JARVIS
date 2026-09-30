@@ -27,7 +27,7 @@ def play_once(root, request, *, clock=time.time):
     attempt = request.get('attempt')
     expires = request.get('expires')
     if (type(attempt) is not str or journal.state['pending'] != attempt
-            or type(expires) not in (int, float) or not 0 < expires - clock() <= 8):
+            or type(expires) not in (int, float) or not 0 < expires - clock() <= person_gate.VOICE_ONSET_SECONDS):
         return 'expired_before_play'
     if (not value['enabled'] or journal.state['fault'] is not None
             or not person_gate.valid_proof(root, attempt, expires, now=clock())):
@@ -64,7 +64,7 @@ def play_once(root, request, *, clock=time.time):
             nonlocal attempted
             check()
             # Leading silence is 1.5 s; the voice must begin before expiry.
-            if clock() + 1.5 > expires:
+            if clock() + person_gate.LEADING_SILENCE_SECONDS > expires:
                 raise Expired()
             # Durable marker BEFORE the possibly audible request. Parent regards
             # malformed/missing results or worker death as unknown, never retry.

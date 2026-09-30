@@ -10,7 +10,7 @@ import tempfile
 import time
 
 ROOT = Path.home() / 'Library/Application Support/JARVIS/departure-greeting'
-PHRASE = 'Have a good trip, sir.'
+PHRASE = 'Have a good day, sir'
 
 
 class TrialError(Exception):
@@ -173,7 +173,8 @@ def installed_status(root):
     blocked = state.get('pending') is not None or state.get('fault') is not None
     return {'installed': True, 'enabled': value['enabled'], 'running': fresh,
             'delivery_enabled': value['enabled'] and fresh and not blocked
-                and gate['person_gate_verified'] and state.get('health') == 'observing',
+                and (gate['person_gate_verified'] or gate['person_trial_authorized'])
+                and state.get('health') == 'observing',
             'health': state.get('health', 'unknown'), 'fault': state.get('fault'),
             'pending': state.get('pending') is not None,
             'last_reason': state.get('last_reason'), 'last_outcome': state.get('last_outcome'),

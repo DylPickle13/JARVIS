@@ -21,6 +21,7 @@ BASE = datetime(2026, 9, 29, 16, tzinfo=timezone.utc).timestamp()
 BINDING = 'a' * 64
 # Arbitrary synthetic code, NOT a claim about real Tapo person-event values.
 CODE = 7
+EXPIRES = BASE + 0.1 + gate.VOICE_ONSET_SECONDS
 
 
 class GateTests(unittest.TestCase):
@@ -53,9 +54,78 @@ class GateTests(unittest.TestCase):
     def proof(self, attempt='one'):
         event = {'start': int(BASE + 1), 'end': int(BASE + 1), 'code': CODE}
         return {'version': 1, 'attempt': attempt, 'opened_at': BASE + 0.1,
-            'expires': BASE + 8.1, 'checked_at': BASE + 1.25, 'event_start': event['start'],
+            'expires': EXPIRES, 'checked_at': BASE + 1.25, 'event_start': event['start'],
             'event_end': event['end'], 'event_key': gate.event_key(BINDING, event),
             'person_code': CODE, 'binding': BINDING}
+
+    def test_h200_combined_package_person_motion_metadata(self):
+        row = {'start_time': 1790781131, 'end_time': 1790781151,
+               'alarm_type': 15, 'events_1': 16418}
+        events = gate.event_rows(self.result([row]), 1790781000, 1790781200)
+        self.assertEqual([event['code'] for event in events], [2, 6, 15])
+        self.assertFalse(gate.policy(self.root)['verified'])
+
+    def test_h200_malformed_flags_and_conflicting_labels_fail_closed(self):
+        row = {'start_time': int(BASE + 1), 'end_time': int(BASE + 1),
+               'alarm_type': 15, 'events_1': 16418}
+        variants = [dict(row, events_1=value) for value in (True, '16418', 0, -1, 1 << 16, 32)]
+        variants += [dict(row, alarm_type=value) for value in (True, '15', 0, 17)]
+        variants += [dict(row, event_type=value) for value in (6, None, True)]
+        variants += [{k: v for k, v in row.items() if k != missing}
+                     for missing in ('alarm_type', 'events_1')]
+        for variant in variants:
+            with self.subTest(row=variant), self.assertRaises(runtime.TrialError):
+                gate.event_rows(self.result([variant]), int(BASE), int(BASE + 2))
+        self.assertEqual(gate.event_codes(dict(row, event_type=15)), [2, 6, 15])
+
+    def test_h200_gate_requires_commissioned_bit_not_primary_package(self):
+        value = self.commission()
+        runtime.save_json(self.root / 'person-gate.json', {**value, 'person_code': 6})
+        for flags, expected in ((16418, True), (16386, False)):
+            row = {'start_time': int(BASE + 1), 'end_time': int(BASE + 1),
+                   'alarm_type': 15, 'events_1': flags}
+            events = gate.event_rows(self.result([row]), int(BASE), int(BASE + 2))
+            with patch.object(gate, 'history', new_callable=AsyncMock, return_value=events):
+                result = asyncio.run(gate.confirm(self.root, NS(person_binding=BINDING), 'one',
+                    BASE + 0.1, EXPIRES, now=lambda: BASE + 1.25, sleep=AsyncMock()))
+            self.assertEqual(result.confirmed, expected)
+
+    def authorize_trial(self):
+        value = {'version': 1, 'authorized': True, 'person_code': 6, 'binding': BINDING,
+                 'authorized_at': datetime.fromtimestamp(BASE, timezone.utc).isoformat()}
+        runtime.save_json(self.root / 'person-trial.json', value)
+        return value
+
+    def test_trial_is_explicit_unverified_and_revocable(self):
+        self.authorize_trial()
+        self.assertFalse(gate.policy(self.root)['verified'])
+        self.assertTrue(gate.status(self.root)['person_trial_authorized'])
+        self.assertFalse(gate.status(self.root)['person_gate_verified'])
+        events = [{'start': int(BASE + 1), 'end': int(BASE + 1), 'code': 6}]
+        with patch.object(gate, 'history', new_callable=AsyncMock, return_value=events):
+            result = asyncio.run(gate.confirm(self.root, NS(person_binding=BINDING), 'one',
+                BASE + 0.1, EXPIRES, now=lambda: BASE + 1.25))
+        self.assertTrue(result.confirmed)
+        self.assertTrue(gate.valid_proof(self.root, 'one', EXPIRES, now=BASE + 1.5))
+        (self.root / 'person-trial.json').unlink()
+        self.assertFalse(gate.valid_proof(self.root, 'one', EXPIRES, now=BASE + 1.5))
+
+    def test_trial_rejects_bad_authorization(self):
+        for key, bad in (('authorized', False), ('authorized', 1), ('person_code', 2),
+                         ('binding', 'unknown'), ('authorized_at', '2026-09-30'), ('version', True)):
+            value = self.authorize_trial()
+            runtime.save_json(self.root / 'person-trial.json', {**value, key: bad})
+            with self.assertRaises(runtime.TrialError): gate.effective_policy(self.root)
+
+    def test_trial_does_not_accept_motion_or_wrong_binding(self):
+        self.authorize_trial()
+        with patch.object(gate, 'history', new_callable=AsyncMock,
+                          return_value=[{'start': int(BASE + 1), 'end': int(BASE + 1), 'code': 2}]):
+            for binding in (BINDING, 'b' * 64):
+                result = asyncio.run(gate.confirm(self.root, NS(person_binding=binding), 'one',
+                    BASE + 0.1, EXPIRES, now=lambda: BASE + 1.25, sleep=AsyncMock()))
+                self.assertFalse(result.confirmed)
+        self.assertFalse((self.root / 'person-proof.json').exists())
 
     def test_missing_policy_is_mandatory_and_unverified(self):
         self.assertEqual(gate.policy(self.root), gate.default_policy())
@@ -139,11 +209,67 @@ class GateTests(unittest.TestCase):
         reader = NS(person_binding=BINDING)
         with patch.object(gate, 'history', new_callable=AsyncMock, return_value=[
             {'start': int(BASE + 1), 'end': int(BASE + 1), 'code': CODE}]):
-            result = asyncio.run(gate.confirm(self.root, reader, 'one', BASE + 0.1, BASE + 8.1,
+            result = asyncio.run(gate.confirm(self.root, reader, 'one', BASE + 0.1, EXPIRES,
                 now=lambda: BASE + 1.25))
         self.assertTrue(result.confirmed)
-        self.assertTrue(gate.valid_proof(self.root, 'one', BASE + 8.1, now=BASE + 1.5))
-        self.assertFalse(gate.valid_proof(self.root, 'another', BASE + 8.1, now=BASE + 1.5))
+        self.assertTrue(gate.valid_proof(self.root, 'one', EXPIRES, now=BASE + 1.5))
+        self.assertFalse(gate.valid_proof(self.root, 'another', EXPIRES, now=BASE + 1.5))
+
+    def test_ten_second_budget_and_sixteen_second_onset_are_reported(self):
+        self.assertEqual(gate.MAX_WAIT, 10)
+        self.assertEqual(gate.VOICE_ONSET_SECONDS, 16)
+        self.assertEqual(gate.status(self.root)['person_gate_max_wait_seconds'], 10)
+        self.assertEqual(gate.status(self.root)['voice_onset_deadline_seconds'], 16)
+
+    def test_person_published_after_old_eight_second_deadline_can_confirm(self):
+        self.commission()
+        tick = [BASE + 0.1]
+        async def read(reader, start, end):
+            if tick[0] < BASE + 9:
+                return []
+            return [{'start': int(BASE + 9), 'end': int(BASE + 9), 'code': CODE}]
+        async def sleep(seconds):
+            tick[0] += seconds
+        with patch.object(gate, 'history', side_effect=read) as history:
+            result = asyncio.run(gate.confirm(self.root, NS(person_binding=BINDING), 'one',
+                BASE + 0.1, EXPIRES, now=lambda: tick[0], sleep=sleep))
+        self.assertTrue(result.confirmed)
+        self.assertEqual(history.call_count, gate.MAX_READS)
+        self.assertTrue(gate.valid_proof(self.root, 'one', EXPIRES, now=BASE + 10))
+
+    def test_empty_history_poll_count_is_bounded(self):
+        self.commission()
+        with patch.object(gate, 'history', new_callable=AsyncMock, return_value=[]) as history:
+            result = asyncio.run(gate.confirm(self.root, NS(person_binding=BINDING), 'one',
+                BASE + 0.1, EXPIRES, now=lambda: BASE + 1.25, sleep=AsyncMock()))
+        self.assertFalse(result.confirmed)
+        self.assertEqual(history.await_count, gate.MAX_READS)
+        self.assertFalse((self.root / 'person-proof.json').exists())
+
+    def test_old_eight_second_proof_cannot_be_replayed_after_window_change(self):
+        self.commission()
+        old = {**self.proof(), 'expires': BASE + 8.1}
+        runtime.save_json(self.root / 'person-proof.json', old)
+        self.assertFalse(gate.valid_proof(self.root, 'one', BASE + 8.1, now=BASE + 1.5))
+        self.assertFalse(gate.valid_proof(self.root, 'one', EXPIRES, now=BASE + 1.5))
+
+    def test_single_slow_getter_times_out_without_speech_or_retry(self):
+        self.commission()
+        async def slow(*args):
+            await asyncio.sleep(1)
+        async def check(root, reader, attempt, opened, expires):
+            return await gate.confirm(root, reader, attempt, opened, expires, now=lambda: BASE + 0.1)
+        play = Mock()
+        with patch.object(gate, 'history', side_effect=slow) as history, \
+             patch.object(gate, 'MAX_READ_SECONDS', 0.01):
+            result = asyncio.run(watcher.deliver(self.root, self.journal, self.sample(),
+                reader=NS(person_binding=BINDING), now=lambda: BASE + 0.1, speaker=play, confirm=check))
+        self.assertEqual(result, 'failed_before_play')
+        self.assertEqual(self.journal.state['last_reason'], 'failed_before_play')
+        self.assertFalse(self.journal.blocked)
+        history.assert_awaited_once()
+        self.assertIn('person_event_timeout', [event['reason'] for event in self.journal.state['events']])
+        play.assert_not_called()
 
     def test_old_same_second_motion_and_empty_events_do_not_confirm(self):
         self.commission()
@@ -151,7 +277,7 @@ class GateTests(unittest.TestCase):
                        [{'start': int(BASE + 1), 'end': int(BASE + 1), 'code': CODE + 1}]):
             with patch.object(gate, 'history', new_callable=AsyncMock, return_value=events):
                 result = asyncio.run(gate.confirm(self.root, NS(person_binding=BINDING), 'one',
-                    BASE + 0.1, BASE + 8.1, now=lambda: BASE + 1.25, sleep=AsyncMock()))
+                    BASE + 0.1, EXPIRES, now=lambda: BASE + 1.25, sleep=AsyncMock()))
             self.assertFalse(result.confirmed)
             self.assertFalse((self.root / 'person-proof.json').exists())
 
@@ -175,13 +301,13 @@ class GateTests(unittest.TestCase):
                          ('person_code', True), ('event_key', 'wrong'), ('binding', 'b' * 64),
                          ('opened_at', float('nan')), ('expires', BASE + 10)):
             runtime.save_json(self.root / 'person-proof.json', {**original, key: bad})
-            self.assertFalse(gate.valid_proof(self.root, 'one', BASE + 8.1, now=BASE + 1.5))
+            self.assertFalse(gate.valid_proof(self.root, 'one', EXPIRES, now=BASE + 1.5))
         runtime.save_json(self.root / 'person-proof.json', original)
-        for now in (BASE, BASE + 6.6, BASE + 8.1):
-            self.assertFalse(gate.valid_proof(self.root, 'one', BASE + 8.1, now=now))
+        for now in (BASE, EXPIRES - gate.LEADING_SILENCE_SECONDS, EXPIRES):
+            self.assertFalse(gate.valid_proof(self.root, 'one', EXPIRES, now=now))
         value = self.commission()
         runtime.save_json(self.root / 'person-gate.json', {**value, 'person_code': CODE + 1})
-        self.assertFalse(gate.valid_proof(self.root, 'one', BASE + 8.1, now=BASE + 1.5))
+        self.assertFalse(gate.valid_proof(self.root, 'one', EXPIRES, now=BASE + 1.5))
 
     def test_unverified_gate_suppresses_coordinator_without_reservation_or_speaker(self):
         play = Mock()
@@ -212,10 +338,11 @@ class GateTests(unittest.TestCase):
         self.commission()
         async def check(root, reader, attempt, opened, expires):
             self.assertEqual(runtime.read_json(root / 'state.json')['pending'], attempt)
-            self.assertEqual(expires, BASE + 8.1)
+            self.assertEqual(expires, EXPIRES)
             return gate.Result(True, 'fresh_person_after_opening')
         play = Mock(return_value='completed')
-        ticks = iter((BASE + 0.1, BASE + 0.1, BASE + 0.1, BASE + 6.2))
+        ticks = iter((BASE + 0.1, BASE + 0.1, BASE + 0.1,
+                      BASE + gate.MAX_WORKER_START_AGE + 0.2))
         result = asyncio.run(watcher.deliver(self.root, self.journal, self.sample(),
             now=lambda: next(ticks), speaker=play, confirm=check))
         self.assertEqual(result, 'expired_before_play')
@@ -226,7 +353,7 @@ class GateTests(unittest.TestCase):
         self.commission()
         self.journal.reserve('one', BASE)
         with patch.object(departure.cli, 'registry') as registry:
-            result = speaker.play_once(self.root, {'attempt': 'one', 'expires': BASE + 8.1},
+            result = speaker.play_once(self.root, {'attempt': 'one', 'expires': EXPIRES},
                 clock=lambda: BASE + 1.5)
         self.assertEqual(result, 'failed_before_play')
         registry.assert_not_called()
@@ -279,7 +406,7 @@ class GateTests(unittest.TestCase):
              patch.object(speaker.audio, 'CameraSession', FakeSession), \
              patch.object(speaker.audio, 'interruptible', side_effect=nullcontext), \
              patch.object(speaker.audio, 'playback_loop') as playback:
-            result = speaker.play_once(root, {'attempt': 'one', 'expires': BASE + 8.1},
+            result = speaker.play_once(root, {'attempt': 'one', 'expires': EXPIRES},
                 clock=lambda: BASE + 1.5)
         self.assertEqual(result, 'expired_before_play')
         playback.assert_not_called()
