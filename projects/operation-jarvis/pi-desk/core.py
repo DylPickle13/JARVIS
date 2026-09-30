@@ -102,6 +102,18 @@ class StatusFeed:
         return self.states if now - self.received < STALE_AFTER else {}
 
 
+def is_display_attach(args):
+    """Recognize only our display clients, including VS Code capabilities."""
+    if not args or Path(args[0]).name != 'tmux' or args[1:3] != ['-L', SOCKET]:
+        return False
+    tail = args[3:]
+    if tail[:2] == ['-T', 'hyperlinks']:
+        tail = tail[2:]
+    return (len(tail) == 3 and tail[:2] == ['attach-session', '-t'] and
+            (tail[2] in {'=group-' + k for k in GROUPS} or
+             re.fullmatch(r'=viewer-[0-9a-f]{32}', tail[2]) is not None))
+
+
 def recover_closed_displays():
     """Unblock macOS tmux tty teardown without signalling clients or agents.
 
@@ -121,11 +133,7 @@ def recover_closed_displays():
                 continue
             pid, _, command = fields
             args = shlex.split(command)
-            if (not args or Path(args[0]).name != 'tmux' or
-                    args[1:5] != ['-L', SOCKET, 'attach-session', '-t'] or
-                    len(args) != 6 or not (
-                        args[5] in {'=group-' + k for k in GROUPS} or
-                        re.fullmatch(r'=viewer-[0-9a-f]{32}', args[5]))):
+            if not is_display_attach(args):
                 continue
             files = subprocess.run(
                 ['/usr/sbin/lsof', '-a', '-p', pid, '-d', '0', '-Fn'],
@@ -147,6 +155,104 @@ def recover_closed_displays():
     except (OSError, ValueError, termios.error, subprocess.SubprocessError):
         # Best effort; the normal bounded workspace probe reports any failure.
         return
+
+
+def display_server_files(pid):
+    """Fail closed unless this user's tmux process owns the exact display socket."""
+    row = subprocess.run(
+        ['ps', '-p', str(pid), '-o', 'uid=,command='],
+        capture_output=True, text=True, timeout=3, check=True).stdout.split(None, 1)
+    if len(row) != 2 or row[0] != str(os.getuid()):
+        return ''
+    args = shlex.split(row[1])
+    if not args or Path(args[0]).name != 'tmux' or args[1:3] != ['-L', SOCKET]:
+        return ''
+    files = subprocess.run(
+        ['/usr/sbin/lsof', '-a', '-p', str(pid), '-Ffn'],
+        capture_output=True, text=True, timeout=3, check=True).stdout
+    socket = (Path(os.environ.get('TMUX_TMPDIR', '/tmp')) /
+              f'tmux-{os.getuid()}' / SOCKET).resolve()
+    if not any(line.startswith('n/') and Path(line[1:]).resolve() == socket
+               for line in files.splitlines()):
+        return ''
+    return files
+
+
+def recover_blocked_display_output():
+    """Last-resort macOS output flush after a read-only workspace probe times out.
+
+    A killed attach client can leave the server blocked in writev even while its
+    VS Code PTY still looks live. Discover the server through its UNIX socket,
+    not through surviving attach clients. Touch only server-owned tty slaves;
+    never PTY masters, agent sockets, terminal settings, or process signals.
+    """
+    if sys.platform != 'darwin':
+        return
+    try:
+        rows = subprocess.run(
+            ['/usr/sbin/lsof', '-a', '-U', '-u', str(os.getuid()), '-Fpcn'],
+            capture_output=True, text=True, timeout=3, check=True).stdout
+        socket = (Path(os.environ.get('TMUX_TMPDIR', '/tmp')) /
+                  f'tmux-{os.getuid()}' / SOCKET).resolve()
+        pid, command = None, None
+        candidates = set()
+        for line in rows.splitlines():
+            if re.fullmatch(r'p\d+', line):
+                pid, command = int(line[1:]), None
+            elif line.startswith('c'):
+                command = line[1:]
+            elif (pid is not None and command == 'tmux' and line.startswith('n/')
+                  and Path(line[1:]).resolve() == socket):
+                candidates.add(pid)
+        for pid in candidates:
+            try:
+                files = display_server_files(pid)
+                terminals = set(line[1:] for line in files.splitlines()
+                                if re.fullmatch(r'n/dev/ttys\d+', line))
+                descriptors = []
+                try:
+                    for terminal in terminals:
+                        # Revalidate process identity AND socket/tty ownership.
+                        if 'n' + terminal not in display_server_files(pid).splitlines():
+                            continue
+                        descriptors.append(os.open(
+                            terminal, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK))
+                    if not descriptors:
+                        continue
+                    # A single blocked writev can exceed the kernel tty queue.
+                    # Flush until it completes and tmux processes the lost client,
+                    # stopping immediately once a read-only probe responds.
+                    for _ in range(20):
+                        for fd in descriptors:
+                            termios.tcflush(fd, termios.TCOFLUSH)
+                        try:
+                            subprocess.run(['tmux', '-L', SOCKET, 'list-sessions'],
+                                           capture_output=True, text=True, timeout=.1)
+                            return
+                        except subprocess.TimeoutExpired:
+                            pass
+                finally:
+                    for fd in descriptors:
+                        os.close(fd)
+            except (OSError, ValueError, termios.error, subprocess.SubprocessError):
+                continue
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return
+
+
+def prepare_workspace():
+    """Recover before creating panes; never replay a timed-out mutation."""
+    recover_closed_displays()
+    if sys.platform != 'darwin':
+        return
+    try:
+        subprocess.run(['tmux', '-L', SOCKET, 'list-sessions'],
+                       capture_output=True, text=True, timeout=2)
+    except subprocess.TimeoutExpired:
+        recover_blocked_display_output()
+        # Only the read-only probe is retried. If still blocked, report the
+        # normal bounded error rather than killing a server or restarting agents.
+        tmux('list-sessions', check=False)
 
 
 def tmux(*args, check=True):

@@ -82,6 +82,13 @@ class ClosedDisplayRecoveryTests(unittest.TestCase):
         flush.assert_called_once_with(99, core.termios.TCOFLUSH)
         closed.assert_called_once_with(99)
 
+    def test_recognizes_closed_vscode_viewer(self):
+        command = 'tmux -L pi-desk -T hyperlinks attach-session -t =viewer-' + 'a' * 32
+        opened, closed, flush = self.recover('42 ?? ' + command, '?? ' + command)
+        opened.assert_called_once()
+        flush.assert_called_once_with(99, core.termios.TCOFLUSH)
+        closed.assert_called_once_with(99)
+
     def test_ignores_live_displays_and_agent_clients(self):
         for row in ('42 ttys036 tmux -L pi-desk attach-session -t =group-1',
                     '42 ?? tmux -L jarvis-mobile attach-session -t =jarvis-ios',

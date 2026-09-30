@@ -1,3 +1,44 @@
+# Automatic blocked-terminal recovery — 2026-09-29, 20:13 EDT
+
+User requested close/kill/reopen without requiring graceful detachment. The live
+incident was a `pi-desk` server blocked in `tty_write_callback → writev` on a
+still-present VS Code terminal, with no surviving display attach client. Flushing
+that display's output restored responsiveness without restarting anything.
+
+- `desktop.main()` now calls `core.prepare_workspace()` before creating panes.
+  Existing hung-up-client recovery remains, now also recognizing VS Code's
+  `-T hyperlinks` attach command.
+- A macOS-only, two-second read-only startup probe gates the new fallback.
+  Recovery discovers the server through the exact current-user Pi Desk UNIX
+  socket, revalidates UID/command/socket/tty ownership, and flushes only its
+  tty-slave output. It covers a terminal that still appears live and a vanished
+  display client. PTY masters and the hosted agent socket are excluded.
+- Large blocked writes may require several flushes. Up to 20 short probe/flush
+  passes stop at the first responsive read-only query. No signals, server kills,
+  terminal-setting changes, agent restarts, or mutation retries are used.
+  Unrecoverable stalls still report the normal bounded error. A hard kill may
+  leave orphan display panes; the fallback does not indiscriminately destroy
+  unattached workspaces, which could belong to a concurrently starting viewer.
+
+**106 source tests passed**, followed by **45 tests against installed modules**
+(13 recovery tests plus 32 responsive tests). A real macOS PTY/private tmux test
+reproduces a blocked write by removing the shared descriptor's `O_NONBLOCK` while
+the emulator stops reading, kills the attach client while keeping the terminal
+open, invokes startup recovery, and creates a new display session. Server and
+original pane IDs/PIDs remain unchanged. That regression also passed three
+additional consecutive runs. Tests use private sockets and dummy processes,
+never hosted agents. Healthy installed startup probe measured 0.099 seconds.
+
+Installed only `core.py` and `desktop.py` locally by atomic replacement, with
+full manifest verification and baseline-content checks. All **35 display pane
+IDs/PIDs and 10 hosted-agent pane IDs/PIDs** were unchanged during deployment.
+No viewer, server, service, agent, or remote installation restarted/changed.
+New `pi-desk` launches use the fix immediately; existing imported viewers need
+not be restarted for next-launch recovery to work.
+
+Rollback backup: `~/.local/state/pi-desk/backups/20260930T001330141279Z/`
+(previous core, desktop, manifest, and before/after identity metadata).
+
 # Ready-group selection and batched status — 2026-09-29, 17:14 EDT
 
 Implemented the user's requested optimizations in `desktop.py` only:

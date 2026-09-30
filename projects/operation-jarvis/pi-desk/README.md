@@ -69,8 +69,19 @@ when groups change; opening additional groups creates their attachments lazily.
 Group changes batch pane moves, ordering, focus and readiness updates into one
 tmux command queue, with one final layout equalization, to reduce intermediate
 redraws. tmux can still deliver resize notifications; this is not a guarantee of
-flicker-free rendering. Closing a viewer removes only that viewer's display
-workspace, never the agents.
+flicker-free rendering. Closing a viewer normally removes only that viewer's display
+workspace, never the agents. You may close or kill the terminal and run
+`pi-desk` again; graceful detachment is not required. On macOS, startup probes
+only the display server. If terminal output is wedged after a close/kill, it
+verifies the current user's exact Pi Desk socket and server, then clears only
+that server's terminal-output queues until the read-only probe responds. This
+also covers a VS Code terminal that still appears live after its display client
+has disappeared. Recovery may take a few seconds and discard pending display
+bytes; it never signals/restarts agents, kills a server, changes terminal
+settings, or retries a potentially partially executed workspace mutation. Healthy
+live displays are not flushed by this fallback. A hard kill can leave orphaned
+display panes, but does not end the hosted conversations. Unrecoverable stalls
+still produce a bounded error instead of restarting agents.
 
 To tune the target pane width, set `PI_DESK_MIN_COLUMNS` before opening a viewer:
 

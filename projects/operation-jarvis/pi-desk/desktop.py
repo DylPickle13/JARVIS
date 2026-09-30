@@ -15,7 +15,7 @@ import workspace
 from layout import RESIZE_DELAY, capacity, group as session_members, shape
 from health import HealthMonitor
 from backend import clean_environment
-from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, recover_closed_displays
+from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, prepare_workspace
 
 STATE = Path.home() / '.local/state/pi-desk'
 COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': 75,
@@ -463,7 +463,7 @@ def attach_viewer(group):
 
 
 def main():
-    recover_closed_displays()
+    prepare_workspace()
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     size = terminal_size()
     with (STATE / 'selection.lock').open('a') as lock:

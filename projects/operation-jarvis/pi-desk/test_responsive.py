@@ -683,7 +683,7 @@ class WorkspaceTests(unittest.TestCase):
             + f'core.SOCKET = desktop.SOCKET = {self.socket!r}\n'
             + f'desktop.STATE = Path({str(self.state)!r})\n'
             + 'core.connection_command = lambda n: "sleep 120"\n'
-            + 'desktop.recover_closed_displays = lambda: None\n'
+            + 'desktop.prepare_workspace = lambda: None\n'
             + 'desktop.StatusFeed = lambda: SimpleNamespace(backend=SimpleNamespace(host="test"), '
               'connection="Mac connected · Session status live", poll=lambda: {"5": "idle"}, close=lambda: None)\n'
             + 'desktop.HealthMonitor = lambda host: SimpleNamespace(poll=lambda: ())\n'
