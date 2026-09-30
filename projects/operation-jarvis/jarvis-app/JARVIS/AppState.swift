@@ -113,9 +113,15 @@ public final class AppState: ObservableObject {
     }
 
     public let client: any JarvisAPI
+    public let systemHistory: SystemHistoryModel
+    private var systemDetailsCovered = false
+    private var systemViewVisible = false
+    private let historyEndpointProvider: @MainActor (EndpointStore) -> JarvisEndpoint?
     let watchTerminalProvisioning: WatchTerminalProvisioningSettings
 
-    @Published public var connectionState: ConnectionState = .idle
+    @Published public var connectionState: ConnectionState = .idle {
+        didSet { updateSystemHistoryPresentation() }
+    }
     @Published public var errorMessage: String?
     @Published public var operationErrorMessage: String?
     @Published public var lastState: StateSnapshot?
@@ -182,11 +188,14 @@ public final class AppState: ObservableObject {
         staleConvergenceAttempts: Int = JARVISRefreshPolicy.staleConvergenceAttempts,
         preferences: UserDefaults = .standard,
         resultCacheURL: URL? = nil,
-        resultReadStateURL: URL? = nil
+        resultReadStateURL: URL? = nil,
+        historyEndpointProvider: @escaping @MainActor (EndpointStore) -> JarvisEndpoint? = { $0.endpoint }
     ) {
         let resolvedStore = store ?? EndpointStore(defaults: JARVISSharedStore.defaults)
         self.store = resolvedStore
         self.client = client
+        self.systemHistory = SystemHistoryModel(fetch: { try await client.systemHistory($0, window: $1, component: $2) })
+        self.historyEndpointProvider = historyEndpointProvider
         self.watchTerminalProvisioning = WatchTerminalProvisioningSettings()
         self.activeRefreshInterval = activeRefreshInterval
         self.controlRefreshInterval = controlRefreshInterval
@@ -295,6 +304,7 @@ public final class AppState: ObservableObject {
     public func sceneDidBecomeActive() {
         guard !appIsActive else { return }
         appIsActive = true
+        updateSystemHistoryPresentation()
         startPathMonitorIfNeeded()
         if connectionState != .connected {
             startConnectionLoop()
@@ -305,6 +315,7 @@ public final class AppState: ObservableObject {
 
     public func sceneWillResignActive() {
         appIsActive = false
+        updateSystemHistoryPresentation()
         pollingTask?.cancel()
         pollingTask = nil
         refreshTask?.cancel()
@@ -318,7 +329,25 @@ public final class AppState: ObservableObject {
     public func setActiveSection(_ section: AppSection) {
         guard activeSection != section else { return }
         activeSection = section
+        updateSystemHistoryPresentation()
         restartPolling(refreshImmediately: section == .home || section == .system || section == .jobs)
+    }
+
+    public func setSystemViewVisible(_ visible: Bool) {
+        systemViewVisible = visible
+        if !visible { systemDetailsCovered = false }
+        updateSystemHistoryPresentation()
+    }
+
+    public func setSystemDetailsCovered(_ covered: Bool) {
+        systemDetailsCovered = covered
+        updateSystemHistoryPresentation()
+    }
+
+    private func updateSystemHistoryPresentation() {
+        systemHistory.configure(.init(endpoint: historyEndpointProvider(store), surface: .phone,
+            visible: activeSection == .system && systemViewVisible, interactive: appIsActive && !systemDetailsCovered,
+            connected: connectionState == .connected && networkAvailable))
     }
 
     private func startPathMonitorIfNeeded() {
@@ -329,6 +358,7 @@ public final class AppState: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.networkAvailable = path.status == .satisfied
+                self.updateSystemHistoryPresentation()
                 if self.networkAvailable, self.appIsActive, self.connectionState != .connected {
                     self.startConnectionLoop()
                 }

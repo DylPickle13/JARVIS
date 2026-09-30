@@ -15,6 +15,7 @@ struct WatchSystemHealthView: View {
                 connectionLabel: model.statusText, compact: true,
                 accent: WatchJarvisStyle.accent, warning: WatchJarvisStyle.warning,
                 surface: WatchJarvisStyle.surface, connectionError: model.errorMessage,
+                historyModel: model.systemHistory,
                 onDetailVisibilityChanged: onDetailVisibilityChanged)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 7)

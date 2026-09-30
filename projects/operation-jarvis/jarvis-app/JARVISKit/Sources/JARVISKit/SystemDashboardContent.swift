@@ -2,7 +2,10 @@ import SwiftUI
 
 /// A fixed, Home-style overview. Only explicitly opened detail sheets scroll.
 /// Platforms retain ownership of visibility, refresh policy and networking.
+@MainActor
 public struct SystemDashboardContent: View {
+    @ObservedObject private var historyModel: SystemHistoryModel
+    @Environment(\.colorScheme) private var scheme
     public let presentation: SystemDashboardPresentation
     public let connectionLabel: String
     public let compact: Bool
@@ -18,8 +21,9 @@ public struct SystemDashboardContent: View {
     public init(presentation: SystemDashboardPresentation, connectionLabel: String,
                 compact: Bool = false, accent: Color, warning: Color, surface: Color,
                 connectionError: String? = nil, refreshing: Bool = false,
-                onRefresh: (() -> Void)? = nil,
+                onRefresh: (() -> Void)? = nil, historyModel: SystemHistoryModel? = nil,
                 onDetailVisibilityChanged: @escaping (Bool) -> Void = { _ in }) {
+        self.historyModel = historyModel ?? SystemHistoryModel()
         self.presentation = presentation
         self.connectionLabel = connectionLabel
         self.compact = compact
@@ -40,6 +44,7 @@ public struct SystemDashboardContent: View {
                 ViewThatFits(in: .vertical) {
                     overview(dense: false).fixedSize(horizontal: false, vertical: true)
                     overview(dense: true).fixedSize(horizontal: false, vertical: true)
+                    overview(dense: true, condensed: true).fixedSize(horizontal: false, vertical: true)
                     overview(dense: true, horizontal: true).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -71,25 +76,34 @@ public struct SystemDashboardContent: View {
     /// Large group tap targets, rather than tiny buttons for every Watch chip.
     /// Six integrations and the two registered services fit the 40mm canvas.
     private var compactOverview: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button { selectedDetail = .overview } label: {
-                panel {
-                    HStack(spacing: 4) {
-                        Text("System").font(.system(size: 14, weight: .semibold)).foregroundStyle(accent)
-                        Spacer(minLength: 0)
-                        let requestWarning = connectionError != nil && presentation.state == .healthy
-                        Image(systemName: symbol(requestWarning ? .issue : presentation.state))
-                            .foregroundStyle(color(requestWarning ? .issue : presentation.state))
-                        Text(requestWarning ? "Warning" : presentation.isConnected ? presentation.summary : "Offline")
-                            .foregroundStyle(color(requestWarning ? .issue : presentation.state))
-                            .lineLimit(1).minimumScaleFactor(0.8)
-                    }
-                    .font(.system(size: 10, weight: .medium))
+        VStack(alignment: .leading, spacing: 3) {
+            panel {
+                VStack(alignment: .leading, spacing: 3) {
+                    Button { selectedDetail = .overview } label: {
+                        HStack(spacing: 4) {
+                            Text("System").font(.system(size: 14, weight: .semibold)).foregroundStyle(accent)
+                            Spacer(minLength: 0)
+                            let requestWarning = connectionError != nil && presentation.state == .healthy
+                            Text(requestWarning ? "Warning" : presentation.isConnected ? presentation.summary : "Offline")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(color(requestWarning ? .issue : presentation.state))
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                            SystemCurrentHealthRing(presentation: presentation, diameter: 16)
+                        }
+                    }.buttonStyle(.plain)
+                        .accessibilityLabel("System health, \(presentation.summary), \(connectionLabel). \(connectionError ?? "")")
+                    Button { selectedDetail = .history("overall") } label: {
+                        VStack(spacing: 2) {
+                            SystemHistoryBand(series: historyModel.snapshot?.series.first { $0.id == "overall" }, height: 7)
+                            HStack {
+                                Text(historyModel.notice != nil || historyModel.isStale() || !historyModel.isPolling ? "Cached / unavailable" : "Past hour")
+                                Spacer(minLength: 0)
+                                Text(historyEndTime)
+                            }.font(.system(size: 7)).foregroundStyle(.secondary)
+                        }
+                    }.buttonStyle(.plain).accessibilityHint("Opens recorded times, coverage and observation details")
                 }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("System health, \(presentation.summary), \(connectionLabel)")
-            .accessibilityHint("Opens connection details. \(connectionError ?? "")")
             Button { selectedDetail = .services } label: {
                 panel {
                     VStack(alignment: .leading, spacing: 3) {
@@ -110,7 +124,7 @@ public struct SystemDashboardContent: View {
                                 Text(service.row.title).lineLimit(1).minimumScaleFactor(0.8)
                                 Spacer(minLength: 0)
                             }
-                            .font(.system(size: 10, weight: .medium)).frame(minHeight: 18)
+                            .font(.system(size: 10, weight: .medium)).frame(minHeight: 15)
                         }
                     }
                 }
@@ -137,7 +151,7 @@ public struct SystemDashboardContent: View {
                                     Text(shortTitle(row)).lineLimit(1).minimumScaleFactor(0.8)
                                     Spacer(minLength: 0)
                                 }
-                                .font(.system(size: 9, weight: .medium)).frame(minHeight: 15)
+                                .font(.system(size: 9, weight: .medium)).frame(minHeight: 12)
                             }
                         }
                     }
@@ -152,14 +166,19 @@ public struct SystemDashboardContent: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func overview(dense: Bool, horizontal: Bool = false) -> some View {
+    private func overview(dense: Bool, horizontal: Bool = false, condensed: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("System", systemImage: "server.rack")
                     .font(.title2.weight(.semibold)).foregroundStyle(accent)
                 Spacer(minLength: 4)
                 if horizontal {
-                    Button(presentation.summary) { selectedDetail = .overview }
+                    Button { selectedDetail = .overview } label: {
+                        HStack(spacing: 4) {
+                            SystemCurrentHealthRing(presentation: presentation, diameter: 26)
+                            Text(presentation.summary)
+                        }
+                    }
                         .font(.caption.weight(.semibold)).foregroundStyle(color(presentation.state))
                         .buttonStyle(.plain)
                         .accessibilityLabel("System health, \(presentation.summary), \(connectionLabel)")
@@ -175,24 +194,29 @@ public struct SystemDashboardContent: View {
             if !horizontal {
                 Button { selectedDetail = .overview } label: {
                     panel {
-                        VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: dense ? 10 : 16) {
+                            SystemCurrentHealthRing(presentation: presentation, diameter: condensed ? 36 : dense ? 48 : 60)
+                            VStack(alignment: .leading, spacing: 5) {
+                            Text("CURRENT CACHED CHECKS").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
                             HStack(spacing: 5) {
                                 Image(systemName: symbol(presentation.state))
-                                Text(presentation.summary).fontWeight(.semibold)
+                                Text(connectionError == nil ? presentation.summary : "Warning · cached checks").fontWeight(.semibold)
                                     .lineLimit(1).minimumScaleFactor(0.75)
                                 Spacer(minLength: 0)
                                 Image(systemName: "chevron.right").font(.caption2)
                             }
-                            .foregroundStyle(color(presentation.state)).font(.subheadline)
+                            .foregroundStyle(color(connectionError == nil ? presentation.state : .issue))
+                            .font(dense ? .system(size: 13, weight: .semibold) : .title3.weight(.semibold))
                             HStack {
                                 Text(connectionLabel)
                                 Spacer(minLength: 4)
                                 Text("\(presentation.services.count) services")
                             }
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            .font(.system(size: dense ? 10 : 11)).foregroundStyle(.secondary).lineLimit(1)
                             if connectionError != nil {
                                 Label("Last request failed · tap for details", systemImage: "exclamationmark.triangle")
-                                    .font(.caption2).foregroundStyle(warning).lineLimit(1)
+                                    .font(.system(size: 9)).foregroundStyle(warning).lineLimit(1)
+                            }
                             }
                         }
                     }
@@ -201,23 +225,81 @@ public struct SystemDashboardContent: View {
                 .accessibilityLabel("System health, \(presentation.summary), \(connectionLabel)")
                 .accessibilityHint("Opens connection and cached observation details")
             }
-            let layout = horizontal
+            if !horizontal { phoneHistory(dense: dense) }
+            let layout = horizontal || condensed
                 ? AnyLayout(HStackLayout(alignment: .top, spacing: 10))
                 : AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
             layout {
+                if horizontal { phoneHistory(dense: true) }
                 phoneServices(dense: dense)
                 phoneIntegrations(dense: dense)
             }
-            Text("Cached checks · read-only · tap a row for details")
-                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            Text("Read-only observations · tap history to inspect coverage")
+                .font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
         }
+    }
+
+    private var historyEndTime: String {
+        historyModel.snapshot?.end?.formatted(date: .omitted, time: .shortened) ?? "—"
+    }
+
+    private func phoneHistory(dense: Bool) -> some View {
+        panel {
+            VStack(alignment: .leading, spacing: dense ? 4 : 6) {
+                HStack {
+                    sectionHeading("Health history", symbol: "clock.arrow.circlepath")
+                    Spacer(minLength: 0)
+                    Text("24h").font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(accent).padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(accent.opacity(0.1), in: Capsule())
+                }
+                ForEach(["services", "pi", "network", "devices"], id: \.self) { id in
+                    let series = historyModel.snapshot?.series.first { $0.id == id }
+                    Button { selectedDetail = .history(id) } label: {
+                        HStack(spacing: 6) {
+                            Text(series?.title ?? (id == "pi" ? "Pi" : id.capitalized))
+                                .font(.system(size: dense ? 9 : 11)).foregroundStyle(.secondary)
+                                .frame(width: dense ? 46 : 56, alignment: .leading)
+                            SystemHistoryBand(series: series, height: dense ? 8 : 12)
+                        }
+                        .frame(minHeight: dense ? 12 : 18)
+                    }.buttonStyle(.plain)
+                        .accessibilityLabel("\(series?.title ?? id) historical observations")
+                        .accessibilityHint("Opens bucket times, observed states and missing coverage")
+                }
+                HStack {
+                    Text("−24h")
+                    Spacer(minLength: 0)
+                    Text("Through \(historyEndTime)")
+                }.font(.system(size: 8)).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    historyKey("Healthy", state: .healthy)
+                    historyKey("Degraded", state: .degraded)
+                    historyKey("Unavailable", state: .unavailable)
+                    historyKey("Unknown", state: .unknown)
+                }
+                Text(historyModel.notice ?? (historyModel.isLoading && historyModel.snapshot == nil ? "Loading recorded history…" :
+                    historyModel.snapshot == nil ? "No history loaded · no invented coverage" :
+                    historyModel.snapshot?.latestSample == nil ? "No observations in this window" :
+                    historyModel.isStale() || !historyModel.isPolling ? "Cached history · hatches mark gaps" : "Hatches: gaps · cap: partial evidence"))
+                    .font(.system(size: dense ? 8 : 9)).foregroundStyle(.secondary).lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+        .accessibilityIdentifier("system-health-history")
+    }
+
+    private func historyKey(_ title: String, state: SystemHistoryState) -> some View {
+        Label { Text(title) } icon: {
+            Image(systemName: state.symbol).foregroundStyle(SystemHistoryPalette.color(state, dark: scheme == .dark))
+        }.font(.system(size: 7)).foregroundStyle(.secondary)
     }
 
     private func phoneServices(dense: Bool) -> some View {
         panel {
             VStack(alignment: .leading, spacing: 7) {
                 sectionHeading("Services", symbol: "gearshape.2")
-                let limit = dense ? 2 : 4
+                let limit = 2
                 if presentation.services.isEmpty {
                     Text("Service inventory unavailable").font(.caption).foregroundStyle(.secondary)
                 }
@@ -227,7 +309,7 @@ public struct SystemDashboardContent: View {
                             Image(systemName: symbol(service.row.state))
                                 .foregroundStyle(color(service.row.state)).accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(service.row.title).font(.subheadline.weight(.medium))
+                                Text(service.row.title).font(dense ? .system(size: 11, weight: .medium) : .subheadline.weight(.medium))
                                     .lineLimit(1).minimumScaleFactor(0.75)
                                 if !dense {
                                     Text("\(service.requirement) · \(service.executionMode)")
@@ -239,7 +321,7 @@ public struct SystemDashboardContent: View {
                             Image(systemName: "chevron.right").font(.system(size: 10))
                                 .foregroundStyle(.secondary).accessibilityHidden(true)
                         }
-                        .frame(minHeight: dense ? 32 : 42).contentShape(Rectangle())
+                        .frame(minHeight: dense ? 24 : 32).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(service.row.title), \(service.row.state.rawValue), \(service.row.detail), \(service.row.ageText)")
@@ -259,37 +341,17 @@ public struct SystemDashboardContent: View {
         panel {
             VStack(alignment: .leading, spacing: 7) {
                 sectionHeading("Integrations", symbol: "waveform.path.ecg")
-                if dense {
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                        ForEach(presentation.subsystemRows) { row in
-                            Button { selectedDetail = .subsystem(row.id) } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: symbol(row.state)).foregroundStyle(color(row.state))
-                                        .accessibilityHidden(true)
-                                    Text(shortTitle(row)).lineLimit(1).minimumScaleFactor(0.75)
-                                    Spacer(minLength: 0)
-                                }
-                                .font(.caption.weight(.medium)).frame(minHeight: 30).contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(row.title), \(row.state.rawValue), \(row.detail), \(row.ageText)")
-                            .accessibilityIdentifier("system-integration-\(row.id)")
-                        }
-                    }
-                } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                     ForEach(presentation.subsystemRows) { row in
                         Button { selectedDetail = .subsystem(row.id) } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: symbol(row.state)).foregroundStyle(color(row.state))
-                                    .accessibilityHidden(true)
-                                Text(shortTitle(row)).font(.subheadline).lineLimit(1).minimumScaleFactor(0.8)
-                                Spacer(minLength: 4)
-                                Text(age(row)).font(.caption2).monospacedDigit().foregroundStyle(.secondary)
-                                statusBadge(row, service: false)
+                            HStack(spacing: 4) {
+                                Image(systemName: symbol(row.state)).foregroundStyle(color(row.state)).accessibilityHidden(true)
+                                Text(shortTitle(row)).lineLimit(1).minimumScaleFactor(0.75)
+                                Spacer(minLength: 0)
                             }
-                            .frame(minHeight: 30).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                            .font(.system(size: dense ? 10 : 12, weight: .medium))
+                            .frame(minHeight: dense ? 20 : 26).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
                         .accessibilityLabel("\(row.title), \(row.state.rawValue), \(row.detail), \(row.ageText)")
                         .accessibilityIdentifier("system-integration-\(row.id)")
                     }
@@ -300,19 +362,19 @@ public struct SystemDashboardContent: View {
 
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content().frame(maxWidth: .infinity, alignment: .leading)
-            .padding(compact ? 5 : 12)
+            .padding(compact ? 4 : 12)
             .background(surface, in: RoundedRectangle(cornerRadius: compact ? 10 : 14, style: .continuous))
     }
 
     private func sectionHeading(_ title: String, symbol: String) -> some View {
         Label(title, systemImage: symbol)
-            .font(compact ? .system(size: 10, weight: .semibold) : .subheadline.weight(.semibold))
+            .font(.system(size: compact ? 9 : 12, weight: .semibold))
             .foregroundStyle(.secondary)
     }
 
     private func statusBadge(_ row: SystemHealthRow, service: Bool) -> some View {
         Text(status(row, service: service))
-            .font(.caption2.weight(.medium)).lineLimit(1)
+            .font(.system(size: 10, weight: .medium)).lineLimit(1)
             .foregroundStyle(color(row.state))
             .padding(.horizontal, 6).padding(.vertical, 3)
             .background(color(row.state).opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
@@ -351,6 +413,8 @@ public struct SystemDashboardContent: View {
     @ViewBuilder
     private func detailContent(_ route: Detail) -> some View {
         switch route {
+        case .history(let id):
+            SystemHistoryDetails(response: historyModel.snapshot, component: id, notice: historyModel.notice)
         case .overview:
             VStack(alignment: .leading, spacing: 12) {
                 Label(presentation.summary, systemImage: symbol(presentation.state)).foregroundStyle(color(presentation.state))
@@ -422,9 +486,10 @@ public struct SystemDashboardContent: View {
     }
 
     private enum Detail: Identifiable {
-        case overview, services, integrations, service(String), subsystem(String)
+        case overview, services, integrations, service(String), subsystem(String), history(String)
         var id: String {
             switch self {
+            case .history(let id): return "history:\(id)"
             case .overview: return "overview"
             case .services: return "services"
             case .integrations: return "integrations"

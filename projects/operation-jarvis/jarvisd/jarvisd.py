@@ -110,6 +110,8 @@ SECURITY_CLI = os.environ.get("JARVISD_SECURITY_CLI", "")
 MONITORING_ENABLED = False
 SECURITY_POLL_ALIASES = ()
 MONITOR_WORKER = None
+SYSTEM_HISTORY_ENABLED = False
+SYSTEM_HISTORY_RECORDER = None
 TRUSTED_CIDRS_RAW = os.environ.get(
     "JARVISD_TRUSTED_CIDRS",
     "127.0.0.0/8,::1/128,192.168.21.0/24,100.64.0.0/10",
@@ -2166,6 +2168,36 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                 return
             self._send(200, {"ok": True, "version": VERSION, "uptimeSeconds": round(time.time() - START_TIME, 1)})
             return
+        if path == "/api/v1/system/history":
+            # Same API policy as cached state: trusted network OR configured
+            # token mode, never public access or a separate history credential.
+            if not self._auth_or_respond():
+                return
+            if len(self.headers.get_all("x-jarvis-token", [])) > 1:
+                self._send(401, {"ok": False, "error": "ambiguous authentication"})
+                return
+            from jarvisd_core.system_history import selectors
+            try:
+                window, component = selectors(parsed.query)
+            except ValueError:
+                self._send(400, {"ok": False, "error": "Invalid history query"})
+                return
+            if not SYSTEM_HISTORY_ENABLED:
+                self._send(503, {"ok": False, "error": "system_history_disabled"})
+                return
+            if SYSTEM_HISTORY_RECORDER is None:
+                self._send(503, {"ok": False, "error": "system_history_unavailable"})
+                return
+            try:
+                data = SYSTEM_HISTORY_RECORDER.read(window, component)
+            except KeyError:
+                self._send(404, {"ok": False, "error": "Unknown history component"})
+                return
+            except Exception:
+                self._send(503, {"ok": False, "error": "system_history_unavailable"})
+                return
+            self._send(200, data)
+            return
         if path.startswith("/api/v1/monitor/"):
             if self._reject_origin():
                 return
@@ -2560,11 +2592,18 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
 
 def main(*, control_factory=None, local_control=False) -> int:
     global EVENTS, MONITORING_ENABLED, SECURITY_POLL_ALIASES, MONITOR_WORKER
+    global SYSTEM_HISTORY_ENABLED, SYSTEM_HISTORY_RECORDER
     from jarvisd_core.security_polling import SecurityPoller, aliases_from_config
     enabled = os.environ.get("JARVISD_MONITORING_ENABLED", "false")
     if enabled not in {"true", "false"}:
         raise ValueError("Invalid monitoring enabled setting")
     MONITORING_ENABLED = enabled == "true"
+    history_enabled = os.environ.get('JARVISD_SYSTEM_HISTORY_ENABLED', 'false')
+    if history_enabled not in {'true', 'false'}:
+        raise ValueError('Invalid system history setting')
+    SYSTEM_HISTORY_ENABLED = history_enabled == 'true'
+    if SYSTEM_HISTORY_ENABLED and not MONITORING_ENABLED:
+        raise ValueError('System history requires existing monitoring')
     SECURITY_POLL_ALIASES = aliases_from_config(os.environ.get("JARVISD_SECURITY_POLL_ALIASES", ""))
     try:
         poll_interval = float(os.environ.get("JARVISD_SECURITY_POLL_INTERVAL", "60"))
@@ -2625,7 +2664,25 @@ def main(*, control_factory=None, local_control=False) -> int:
                     + [f'security/{alias}' for alias in SECURITY_POLL_ALIASES])
             store = MonitorStore(Path.home() / 'Library/Application Support/JARVIS/monitoring/history.sqlite3',
                 keys, notifier=notify_local if notification_mode == 'true' else None)
-            MONITOR_WORKER = MonitorWorker(store, lambda: _monitor_observations(integrations))
+            if SYSTEM_HISTORY_ENABLED:
+                from jarvisd_core.system_history import HistoryStore, HistoryRecorder
+                history_store = None
+                try:
+                    history_store = HistoryStore(Path.home() / 'Library/Application Support/JARVIS/system-history/history.sqlite3')
+                    SYSTEM_HISTORY_RECORDER = HistoryRecorder(history_store,
+                        lambda: STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False))
+                except Exception:
+                    # Optional chart storage must not prevent backend startup or
+                    # change controls, sampling, incident history or alerts.
+                    SYSTEM_HISTORY_RECORDER = None
+                    if history_store is not None:
+                        try:
+                            history_store.close()
+                        except Exception:
+                            pass
+                    sys.stderr.write('[jarvisd] system history storage unavailable\n')
+            MONITOR_WORKER = MonitorWorker(store, lambda: _monitor_observations(integrations),
+                on_tick=SYSTEM_HISTORY_RECORDER.tick if SYSTEM_HISTORY_RECORDER is not None else None)
             MONITOR_WORKER.start()
         sys.stderr.write(f"[jarvisd] listening on {HOST}:{PORT} (version {VERSION})\n")
         server.serve_forever()
@@ -2641,6 +2698,13 @@ def main(*, control_factory=None, local_control=False) -> int:
             if MONITOR_WORKER is not None:
                 MONITOR_WORKER.stop()
                 MONITOR_WORKER = None
+            if SYSTEM_HISTORY_RECORDER is not None:
+                try:
+                    SYSTEM_HISTORY_RECORDER.close()
+                except Exception:
+                    sys.stderr.write('[jarvisd] system history close failed\n')
+                finally:
+                    SYSTEM_HISTORY_RECORDER = None
             poller.stop()
             STATE_COORDINATOR.stop()
             OMLX_COORDINATOR.stop()

@@ -802,6 +802,21 @@ assert 'showsSystemDetails || showsPurifierModeChoices' in Path('JARVISWatch/Vie
 assert 'snapshotGeneratedAt(model.lastState)' in watch_health
 for forbidden in ['ScrollView', 'client.', 'Task {', 'refreshPurifier', 'refreshCodex', 'serviceAction']:
     assert forbidden not in watch_health
+history_model = Path('JARVISKit/Sources/JARVISKit/SystemHistoryModel.swift').read_text()
+assert 'visible && interactive && connected' in history_model
+assert 'await self.sleep(60)' in history_model and 'generation == owner' in history_model
+assert 'snapshot = nil; notice = nil' in history_model
+for forbidden in ['cachedState(', 'state(', 'command(', 'discover(', 'WatchBridge', 'UserDefaults', 'SnapshotStore']:
+    assert forbidden not in history_model
+assert 'SystemCurrentHealthRing' in health and 'SystemHistoryBand' in health
+assert 'case .history(let id)' in health
+watch_model = Path('JARVISWatch/Views/WatchConnectView.swift').read_text()
+assert 'connected: connectionState == .connected && !isViaPhone' in watch_model
+assert 'appIsForeground && appIsInteractive && !historyCovered' in watch_model
+app_model = Path('JARVIS/AppState.swift').read_text()
+assert 'activeSection == .system && systemViewVisible' in app_model
+assert 'appIsActive && !systemDetailsCovered' in app_model
+assert 'setSystemViewVisible(false)' in Path('JARVIS/Views/SystemView.swift').read_text()
 PYCODE
 grep -q '@State private var selectedPage: WatchDashboardPage = .terminal' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'pageDragGesture(page: selectedPage)' JARVISWatch/Views/WatchDashboardContent.swift

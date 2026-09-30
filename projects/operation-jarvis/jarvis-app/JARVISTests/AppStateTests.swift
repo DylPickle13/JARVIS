@@ -320,6 +320,52 @@ final class AppStateTests: XCTestCase {
         }
     }
 
+    func testSystemHistoryIsInteractiveOnlyAndFailureDoesNotInvalidateControls() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.system-history.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api, activeRefreshInterval: .seconds(3600),
+            historyEndpointProvider: { _ in .init(baseURL: URL(string: "http://fake.jarvis:8790")!, token: "fixture-history-only") })
+        defer { app.sceneWillResignActive() }
+        app.connectionState = .connected
+        app.setActiveSection(.system)
+        app.setSystemViewVisible(true)
+        await Task.yield();XCTAssertEqual(api.historyCalls, 0, "Inactive scene must not fetch history")
+        app.sceneDidBecomeActive()
+        for _ in 0..<100 where api.historyCalls < 1 || app.systemHistory.isLoading {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertEqual(api.historyCalls, 1)
+        XCTAssertEqual(app.systemHistory.notice, "History not supported by this backend")
+        XCTAssertEqual(app.connectionState, .connected, "History failures cannot invalidate device/state connectivity")
+        XCTAssertEqual(api.purifierRefreshCalls, 0);XCTAssertEqual(api.codexRefreshCalls, 0)
+        XCTAssertEqual(api.servicesCalls, 0);XCTAssertEqual(api.scheduledJobsCalls, 0)
+        app.setSystemDetailsCovered(true);XCTAssertFalse(app.systemHistory.isPolling)
+        app.setSystemDetailsCovered(false)
+        for _ in 0..<100 where api.historyCalls < 2 { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(api.historyCalls, 2)
+        app.setSystemViewVisible(false);XCTAssertFalse(app.systemHistory.isPolling)
+        app.sceneWillResignActive();XCTAssertFalse(app.systemHistory.isPolling)
+        app.setActiveSection(.jobs);await Task.yield();XCTAssertEqual(api.historyCalls, 2)
+    }
+
+    func testExistingEndpointCanRequestHistoryWithoutProvisioningOrProviderOverride() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.history-existing.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let expectedToken = store.token ?? "" // No owner/shared Keychain writes.
+        let app = AppState(store: store, client: api, activeRefreshInterval: .seconds(3600))
+        defer { app.sceneWillResignActive() }
+        app.connectionState = .connected
+        app.setActiveSection(.system); app.setSystemViewVisible(true); app.sceneDidBecomeActive()
+        for _ in 0..<100 where api.historyCalls == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(api.historyEndpointTokens, [expectedToken])
+        XCTAssertEqual(app.connectionState, .connected)
+        XCTAssertEqual(api.purifierRefreshCalls, 0); XCTAssertEqual(api.codexRefreshCalls, 0)
+    }
+
     func testSystemConnectionReadsOnlyCachedStateWithoutDeviceOrServiceFanOut() async {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.system-connect.\(UUID().uuidString)")!
@@ -1262,6 +1308,8 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var purifierRefreshCalls = 0
     var codexRefreshCalls = 0
     var healthCalls = 0
+    var historyCalls = 0
+    var historyEndpointTokens: [String] = []
     var servicesCalls = 0
     var scheduledJobsCalls = 0
     struct ScheduledJobResultRequest: Equatable {
@@ -1379,6 +1427,12 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
 
     func events(_ endpoint: JarvisEndpoint, since: Int?, limit: Int) async throws -> EventsResponse {
         try! JSONDecoder().decode(EventsResponse.self, from: Data(#"{"ok":true,"count":0,"events":[]}"#.utf8))
+    }
+
+    func systemHistory(_ endpoint: JarvisEndpoint, window: SystemHistoryWindow, component: String?) async throws -> SystemHistoryResponse {
+        historyCalls += 1; historyEndpointTokens.append(endpoint.token)
+        XCTAssertEqual(window, .day);XCTAssertNil(component)
+        throw JarvisError.http(status: 404, body: "fixture history not supported")
     }
 
     func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse {

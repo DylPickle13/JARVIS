@@ -34,6 +34,63 @@ final class SystemDashboardViewTests: XCTestCase {
             .padding(8)
     }
 
+    private func historyFixture(compact: Bool) async throws -> SystemHistoryModel {
+        let window: SystemHistoryWindow = compact ? .hour : .day
+        let end = Date()
+        let start = end.addingTimeInterval(-window.seconds)
+        func stamp(_ value: Date) -> String { value.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)) }
+        let ids = compact ? ["overall"] : ["services", "pi", "network", "devices", "overall"]
+        let object: [String: Any] = ["ok": true, "schemaVersion": 1, "scope": "cached_status_health", "window": window.rawValue,
+            "from": stamp(start), "to": stamp(end), "sampleIntervalSeconds": 60,
+            "resolutionSeconds": Int(window.resolution), "coverageLeaseSeconds": 90, "retentionSeconds": 604800,
+            "earliestSampleAt": stamp(start), "latestSampleAt": stamp(end.addingTimeInterval(-10)),
+            "series": ids.map { id in ["id": id, "buckets": (0..<window.bucketCount).map { index -> [String: Any] in
+                let lo = start.addingTimeInterval(Double(index)*window.resolution)
+                let partial = index % 7 == 0
+                let unavailable = index % 13 == 0 && !partial
+                let state = partial ? "unknown" : unavailable ? "unavailable" : "healthy"
+                return ["from": stamp(lo), "to": stamp(lo.addingTimeInterval(window.resolution)),
+                    "state": state, "reasonCodes": [unavailable ? "collector_failed" : "current"],
+                    "coverageSeconds": partial ? window.resolution/2 : window.resolution,
+                    "missingSeconds": partial ? window.resolution/2 : 0,
+                    "stateSeconds": [(partial ? "healthy" : state): partial ? window.resolution/2 : window.resolution],
+                    "mixed": partial, "sourceObservedAt": stamp(lo)]
+            }] }]
+        let response = try JSONDecoder().decode(SystemHistoryResponse.self, from: JSONSerialization.data(withJSONObject: object))
+        let model = SystemHistoryModel(fetch: { _, _, _ in response })
+        model.configure(.init(endpoint: .init(baseURL: URL(string: "http://fixture.invalid")!, token: "fixture-only"),
+            surface: compact ? .watch : .phone, visible: true, interactive: true, connected: true))
+        for _ in 0..<100 where model.snapshot == nil { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertNotNil(model.snapshot)
+        return model
+    }
+
+    func testRecordedHistoryRendersAndFitsPhoneAndWatchWithRealCoverageStates() async throws {
+        let dashboard = try presentation(includeExtraService: false)
+        for compact in [false, true] {
+            let model = try await historyFixture(compact: compact)
+            let view = SystemDashboardContent(presentation: dashboard, connectionLabel: "Synthetic fixture · no network",
+                compact: compact, accent: .purple, warning: .orange, surface: Color.white.opacity(0.075), historyModel: model).padding(8)
+            let viewport = compact ? CGSize(width: 162, height: 197) : CGSize(width: 375, height: 650)
+            for size: DynamicTypeSize in [.large, .accessibility3] {
+                let host = UIHostingController(rootView: view.dynamicTypeSize(size))
+                let extent = host.sizeThatFits(in: viewport)
+                XCTAssertLessThanOrEqual(extent.width, viewport.width+0.5)
+                XCTAssertLessThanOrEqual(extent.height, viewport.height)
+            }
+            for scheme in [ColorScheme.light, .dark] {
+                let renderer = ImageRenderer(content: view.frame(width: viewport.width, height: viewport.height, alignment: .top)
+                    .background(scheme == .dark ? Color.black : Color(.systemGroupedBackground)).environment(\.colorScheme, scheme))
+                renderer.scale = 3
+                let image = try XCTUnwrap(renderer.uiImage)
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "system-history-synthetic-\(compact ? "watch" : "phone")-\(scheme)"
+                attachment.lifetime = .keepAlways;add(attachment)
+            }
+            model.configure(.init(endpoint: nil, surface: compact ? .watch : .phone, visible: false, interactive: false, connected: false))
+        }
+    }
+
     func testCompactDashboardFitsWatchWidthAndSupportsAccessibilityText() throws {
         let dashboard = try presentation()
         for size: DynamicTypeSize in [.large, .accessibility3] {

@@ -11,6 +11,8 @@ Start with architecture to understand the app, or operations to build and run it
 | [Architecture](architecture.md) | How the components connect, security rules, and source links. |
 | [Operations](operations.md) | Builds, tests, signing, installation, and recovery. |
 | [System dashboard](system-dashboard.md) | Compact Home-style iPhone/Watch health dashboards, navigation, cached-data rules, and validation. |
+| [System history UI](system-history-ui.md) | Installed build-230 ring/timelines with existing dashboard authorization; honest coverage, lifecycle, audited deployment and pending physical acceptance. |
+| [History access](api-authentication.md) | Same dashboard authorization; no additional credential setup for existing trusted-network connections. |
 | [Talk to JARVIS complication](watch-talk-complication.md) | Native Watch prompt entry, Siri retirement, and pending physical acceptance. |
 | [Pending work and status](planned-work.md) | Build and deployment details to check, plus the media review checklist. |
 

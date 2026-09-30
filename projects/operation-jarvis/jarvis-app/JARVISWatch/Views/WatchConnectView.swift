@@ -125,10 +125,10 @@ struct WatchConnectView: View {
 
 @MainActor
 final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
-    @Published var connectionState: ConnectionState = .idle
+    @Published var connectionState: ConnectionState = .idle { didSet { updateHistoryPolling() } }
     @Published var errorMessage: String?
     @Published var lastState: StateSnapshot?
-    @Published var isViaPhone = false
+    @Published var isViaPhone = false { didSet { updateHistoryPolling() } }
     @Published var cachedAt: Date?
     @Published var busyPlug: String?
     @Published var purifierBusy = false
@@ -185,6 +185,9 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     let client: JarvisClient
     let jobs: WatchJobsModel
     let omlx: OMLXStatusModel
+    let systemHistory: SystemHistoryModel
+    private var historyVisible = false
+    private var historyCovered = false
     private var omlxSystemVisible = false
     private var omlxCovered = false
     let snapshotStore = SnapshotStore()
@@ -197,6 +200,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         self.client = client
         self.jobs = WatchJobsModel(store: store, client: client)
         self.omlx = OMLXStatusModel(fetch: { try await client.omlxStatus($0) })
+        self.systemHistory = SystemHistoryModel(fetch: { try await client.systemHistory($0, window: $1, component: $2) })
         self.activeRefreshInterval = activeRefreshInterval
         #if DEBUG
         let arguments = CommandLine.arguments
@@ -275,6 +279,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         appIsInteractive = true
         appIsForeground = true
         updateOMLXPolling()
+        updateHistoryPolling()
         jobs.sceneDidBecomeInteractive()
         // A wrist raise must immediately refresh buttons and re-establish the
         // terminal long poll in case watchOS suspended work while dimmed.
@@ -287,6 +292,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         let resumedAsFrontmost = !appIsForeground
         appIsForeground = true
         updateOMLXPolling()
+        updateHistoryPolling()
         // Always forward active -> inactive wrist-down transitions. The terminal
         // must know the scene is inactive so a suspended long poll is retained
         // as the last live frame instead of being reported as a disconnect.
@@ -301,6 +307,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         appIsInteractive = false
         appIsForeground = false
         updateOMLXPolling()
+        updateHistoryPolling()
         refreshLoopTask?.cancel()
         refreshLoopTask = nil
         refreshGeneration += 1
@@ -311,6 +318,18 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         isRefreshing = false
         jobs.sceneDidEnterBackground()
         terminal.sceneDidEnterBackground()
+    }
+
+    func setSystemHistoryPresentation(visible: Bool, covered: Bool) {
+        historyVisible = visible; historyCovered = covered
+        updateHistoryPolling()
+    }
+
+    private func updateHistoryPolling() {
+        let endpoint = store.endpointURL.map { JarvisEndpoint(baseURL: $0, token: authenticationToken) }
+        systemHistory.configure(.init(endpoint: endpoint, surface: .watch, visible: historyVisible,
+            interactive: appIsForeground && appIsInteractive && !historyCovered,
+            connected: connectionState == .connected && !isViaPhone))
     }
 
     func setOMLXPresentation(systemVisible: Bool, covered: Bool) {

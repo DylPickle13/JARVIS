@@ -70,6 +70,7 @@ public protocol JarvisAPI: Sendable {
     func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult
     func events(_ endpoint: JarvisEndpoint, since: Int?, limit: Int) async throws -> EventsResponse
+    func systemHistory(_ endpoint: JarvisEndpoint, window: SystemHistoryWindow, component: String?) async throws -> SystemHistoryResponse
     func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse
     func scheduledJobs(_ endpoint: JarvisEndpoint) async throws -> ScheduledJobsResponse
     func scheduledJobResults(
@@ -91,6 +92,11 @@ public protocol JarvisAPI: Sendable {
 }
 
 public extension JarvisAPI {
+    /// Older/mock clients must not fall back to a device/active-state request.
+    func systemHistory(_ endpoint: JarvisEndpoint, window: SystemHistoryWindow, component: String?) async throws -> SystemHistoryResponse {
+        throw JarvisError.transport("System history unavailable.")
+    }
+
     func omlxStatus(_ endpoint: JarvisEndpoint) async throws -> OMLXSnapshot {
         throw JarvisError.transport("oMLX status unavailable.")
     }
@@ -198,6 +204,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         requestTimeout: TimeInterval? = nil,
         deviceWrite: Bool = false,
         refuseRedirect: Bool = false,
+        responseByteLimit: Int? = nil,
         as type: T.Type
     ) async throws -> T {
         var request = try makeRequest(endpoint, path, method: method)
@@ -221,6 +228,9 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
             throw JarvisError.transport(deviceWrite ? "Device command delivery may be unknown. Refresh state; do not retry automatically. \(error.localizedDescription)" : error.localizedDescription)
         }
 
+        if let responseByteLimit, data.count > responseByteLimit {
+            throw JarvisError.decoding("Response exceeds accepted size.")
+        }
         guard let http = response as? HTTPURLResponse else {
             throw JarvisError.transport("Invalid server response.")
         }
@@ -234,6 +244,20 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         } catch {
             throw JarvisError.decoding(error.localizedDescription)
         }
+    }
+
+    /// Database/cache-only chart read: no discovery, hardware refresh or retry.
+    public func systemHistory(_ endpoint: JarvisEndpoint, window: SystemHistoryWindow, component: String? = nil) async throws -> SystemHistoryResponse {
+        let fixed = ["services", "pi", "network", "plugs", "purifier", "codexQuota", "devices", "overall"]
+        if let component, !fixed.contains(component),
+           component.range(of: #"^service:[A-Za-z0-9_-]{1,48}\z"#, options: .regularExpression) == nil {
+            throw JarvisError.badURL("Invalid history component")
+        }
+        var path = "/api/v1/system/history?window=\(window.rawValue)"
+        if let component { path += "&component=\(component)" }
+        let response = try await perform(endpoint, path, requestTimeout: 10,
+            refuseRedirect: true, responseByteLimit: 2 * 1024 * 1024, as: SystemHistoryResponse.self)
+        return try response.validated(window: window, component: component)
     }
 
     // MARK: - Discovery

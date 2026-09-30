@@ -1,6 +1,17 @@
 # System dashboard — iPhone and Watch
 
-**Installed: build 228**, installation, launch/process and final build readback
+**Current installed build: 230.** [System history UI](system-history-ui.md) preserves
+the current-check ring and real backend history bands, and removes the extra
+history-only missing-token gates. Both device installs, final version and
+launch/process readbacks were independently verified on 2026-09-30 at 08:35 EDT.
+The signed archive has unchanged entitlements/dependencies; 291 tests pass, with
+3 expected live-test skips. Build 229 is the retained app rollback; superseded
+227/228 artifacts and temporary build data are approved for cleanup.
+No app data removal, backend/Pi-session restarts or duplicate installs. Physical
+visual/gesture acceptance awaits owner review. The following is the prior compact
+layout checkpoint; navigation and current-health semantics remain unchanged.
+
+**Previous installed checkpoint: build 228**, installation, launch/process and final build readback
 independently verified on iPhone and Watch on 2026-09-29 at 19:50 EDT. Exact sealed
 signed archive used; all four bundles, unchanged entitlements and device profiles
 verified. 267 tests pass, with 3 expected live-test skips. The overview fits one

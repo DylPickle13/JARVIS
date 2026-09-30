@@ -80,6 +80,7 @@ struct WatchDashboardContent: View {
                 model.cancelCodexQuotaViewRefresh()
             }
         }
+        .onChange(of: showsSystemDetails) { _, _ in updateOMLXPresentation() }
         .onChange(of: showsPurifierModeChoices) { _, _ in updateOMLXPresentation() }
         .onChange(of: showsPurifierFanChoices) { _, _ in updateOMLXPresentation() }
         .onChange(of: purifierDetail?.id) { _, _ in updateOMLXPresentation() }
@@ -99,10 +100,12 @@ struct WatchDashboardContent: View {
         .onDisappear {
             model.setJobsPageVisible(false)
             model.setOMLXPresentation(systemVisible: false, covered: true)
+            model.setSystemHistoryPresentation(visible: false, covered: true)
         }
     }
 
     private func updateOMLXPresentation() {
+        model.setSystemHistoryPresentation(visible: selectedPage == .system, covered: overlayOwnsInput)
         model.setOMLXPresentation(systemVisible: selectedPage == .overview,
             covered: showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered)
     }

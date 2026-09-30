@@ -18,8 +18,11 @@ def notify_local(kind):
 
 
 class MonitorWorker:
-    def __init__(self, store, collector):
+    def __init__(self, store, collector, *, on_tick=None):
         self.store, self.collector = store, collector
+        # Optional chart recording is independent of incident thresholds,
+        # notification delivery and incident-store availability.
+        self.on_tick = on_tick
         self._stop = threading.Event()
         self._thread = None
         self.storage_available = True
@@ -35,6 +38,12 @@ class MonitorWorker:
         except Exception:
             # No raw SQLite/filesystem/collector errors in public responses/logs.
             self.storage_available = False
+        if self.on_tick is not None:
+            try:
+                self.on_tick()
+            except Exception:
+                # Chart failures must not change incident status or stop polling.
+                pass
 
     def _run(self):
         while not self._stop.is_set():

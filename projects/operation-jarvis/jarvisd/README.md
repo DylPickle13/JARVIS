@@ -9,6 +9,14 @@
 
 # jarvisd — shared control backend
 
+**History access correction deployed (2026-09-30 EDT):**
+`20260930T041842Z-history-dashboard-access` now applies the same authorization as
+cached dashboard state. Trusted-network history needs no token; token mode still
+requires the existing API token. No global auth/CIDR/credential changes. Only
+jarvisd restarted (0.572s); 735 frozen tests passed, tokenless reads returned 200,
+protected services/Pi/configuration and existing database files were preserved.
+The original history release remains retained for this correction's rollback.
+
 The stdlib-only Python HTTP backend for Operation JARVIS. The native iPhone,
 Watch, and widget clients use its existing API; backend ownership is independent
 of those clients. See the [architecture and phased plan](../docs/backend-architecture.md).
@@ -177,6 +185,31 @@ notifications default off in source; the installed activation above enables only
 polling/monitoring, not notifications.
 See [configuration and acceptance checks](docs/monitoring-native.md).
 Purifier recovery protections remain unchanged.
+
+## System health chart history (deployed 2026-09-29 EDT)
+
+Release **`20260930T010227Z-system-history`** enables the optional
+[System history backend](docs/system-history.md). Recording began at **21:08:02
+EDT on 2026-09-29**, with no invented earlier coverage. The isolated installed
+candidate passed **732 backend tests** using the runtime interpreter; the broader
+working-tree implementation passed 789. Authenticated `1h`/`24h`/`7d` reads,
+component drill-down, auth/query rejection, private storage and ordinary recording
+growth passed live read-only verification. All 158 prior incident records remained.
+Only jarvisd was restarted (0.426 seconds); watchdog, scheduler, terminal/audio,
+10 Pi process identities and native apps were unchanged. Verification evidence
+is retained in the private deployment directory. At the owner's request, the
+just-completed backend rollback folder and unreferenced prior job-categories
+release were removed at 21:23 EDT; active dependencies, production databases and
+all unrelated app artifacts were retained.
+
+Cached-health evaluations use the existing monitoring cycle and separate bounded
+SQLite storage. Explicit freshness/recording gaps and worst-state-preserving
+aggregation remain mandatory: unavailable observations are not proven physical
+outages. A bounded history-read burst incremented no collector, adapter, security
+or oMLX work counters; concurrent clients were not excluded from the longer
+sample. No extra device polling, foreground leases, commands or alerts were added.
+`JARVISD_SYSTEM_HISTORY_ENABLED` still defaults to `false` in source; the installed
+plist explicitly enables it. Native history UI has not been implemented/deployed.
 
 ## Current responsibilities
 

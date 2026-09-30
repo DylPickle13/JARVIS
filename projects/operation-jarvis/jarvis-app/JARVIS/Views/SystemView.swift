@@ -4,11 +4,12 @@ import JARVISKit
 struct SystemView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showsDetails = false
 
     var body: some View {
         NavigationStack {
             TimelineView(.animation(minimumInterval: 5,
-                paused: scenePhase != .active || app.activeSection != .system)) { _ in
+                paused: scenePhase != .active || app.activeSection != .system || showsDetails)) { _ in
                 // Timeline ticks schedule redraws, not the evaluation clock.
                 SystemDashboardContent(presentation: .init(snapshot: app.lastState,
                     requestStartedAt: app.lastStateRequestStartedAt,
@@ -20,9 +21,14 @@ struct SystemView: View {
                     onRefresh: {
                         Task {
                             guard scenePhase == .active, app.activeSection == .system else { return }
+                            app.systemHistory.refresh()
                             if app.connectionState == .connected { await app.fetchState() }
                             else { await app.connect() }
                         }
+                    }, historyModel: app.systemHistory,
+                    onDetailVisibilityChanged: { covered in
+                        showsDetails = covered
+                        app.setSystemDetailsCovered(covered)
                     })
             }
             .padding(.horizontal, 16)
@@ -30,6 +36,8 @@ struct SystemView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(JarvisBackdrop())
             .toolbar(.hidden, for: .navigationBar)
+            .onAppear { app.setSystemViewVisible(true) }
+            .onDisappear { app.setSystemViewVisible(false) }
         }
     }
 

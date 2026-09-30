@@ -24,6 +24,66 @@ final class JarvisClientTests: XCTestCase {
         super.tearDown()
     }
 
+    func testHistoryUsesOneAuthenticatedBoundedReadWithoutStateRefresh() async throws {
+        let object = HistoryFixture.object(window: .hour, component: "overall")
+        let body = String(data: try JSONSerialization.data(withJSONObject: object), encoding: .utf8)!
+        var calls = 0
+        MockURLProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.url?.path, "/api/v1/system/history")
+            XCTAssertEqual(request.url?.query, "window=1h&component=overall")
+            XCTAssertEqual(request.httpMethod, "GET");XCTAssertNil(request.httpBody)
+            XCTAssertEqual(request.timeoutInterval, 10)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            return MockURLProtocol.response(request, status: 200, body: body)
+        }
+        let api: any JarvisAPI = client
+        let result = try await api.systemHistory(endpoint, window: .hour, component: "overall")
+        XCTAssertEqual(result.series.count, 1);XCTAssertEqual(calls, 1)
+    }
+
+    func testHistoryOldHostAndStorageFailuresNeverFallbackOrRetry() async {
+        for status in [401, 404, 503] {
+            var calls = 0
+            MockURLProtocol.handler = { request in
+                calls += 1;XCTAssertEqual(request.url?.path, "/api/v1/system/history")
+                return MockURLProtocol.response(request, status: status, body: #"{"ok":false}"#)
+            }
+            do { _ = try await client.systemHistory(endpoint, window: .day);XCTFail("Expected failure") }
+            catch {}
+            XCTAssertEqual(calls, 1)
+        }
+    }
+
+    func testHistoryWithTrustedNetworkEndpointDoesNotRequireOrInventToken() async throws {
+        let body = String(data: try JSONSerialization.data(withJSONObject: HistoryFixture.object(window: .hour, component: "overall")), encoding: .utf8)!
+        var calls = 0
+        MockURLProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.url?.path, "/api/v1/system/history")
+            XCTAssertEqual(request.url?.query, "window=1h&component=overall")
+            XCTAssertNil(request.value(forHTTPHeaderField: "x-jarvis-token"))
+            XCTAssertEqual(request.timeoutInterval, 10)
+            return MockURLProtocol.response(request, status: 200, body: body)
+        }
+        _ = try await client.systemHistory(.init(baseURL: endpoint.baseURL, token: ""), window: .hour, component: "overall")
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testHistoryRejectsUnsafeSelectorsAndOversizeResponses() async {
+        MockURLProtocol.handler = { _ in XCTFail("Rejected selectors must not hit transport");throw URLError(.badURL) }
+        for component in ["../devices", "overall&refresh=true", "service:jobs\n", "service:"+String(repeating: "a", count: 49)] {
+            do { _ = try await client.systemHistory(endpoint, window: .day, component: component);XCTFail("Expected selector rejection") }
+            catch {}
+        }
+        MockURLProtocol.handler = { request in
+            MockURLProtocol.response(request, status: 200, body: String(repeating: "x", count: 2*1024*1024+1))
+        }
+        do { _ = try await client.systemHistory(endpoint, window: .day);XCTFail("Expected byte-bound rejection") }
+        catch let JarvisError.decoding(message) { XCTAssertEqual(message, "Response exceeds accepted size.") }
+        catch { XCTFail("Unexpected error") }
+    }
+
     func testOMLXUsesOneBoundedAuthenticatedReadAndFailsClosedOnOldHosts() async throws {
         MockURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/api/v1/omlx")

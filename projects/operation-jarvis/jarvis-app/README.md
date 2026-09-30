@@ -2,7 +2,26 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current iPhone and Watch build:** 228, installation, launch and final build
+**Current iPhone and Watch build: 230**, installation, launch/process and final
+version readbacks independently verified on both devices on 2026-09-30 at 08:35 EDT.
+[System history UI](docs/system-history-ui.md) preserves the segmented current-check
+ring, four 24-hour iPhone bands and one-hour Watch band, with missing/partial coverage,
+separate inspectors and visibility-only reads. Build 230 removes the history-only
+missing-token gates; 291 tests pass, with 3 expected live-test skips. The isolated
+signed archive and all four bundles were audited with unchanged entitlements and
+dependencies. Build 229 is the retained app rollback; owner-approved cleanup
+retires superseded builds 227/228 and temporary build data. One install per
+device; no app data removal, backend service or Pi-session restarts during installation.
+Sixteen protected service identities/configuration hashes and tmux panes matched
+before/after. Tokenless localhost history reads returned 200; physical history UI
+and visual/gesture acceptance await owner review.
+
+**History access correction:** [Existing dashboard authorization](docs/api-authentication.md)
+removes the additional history-only token requirement at the owner's request.
+Trusted-network users need no credential setup; token-mode backends retain their
+existing API-token policy. No credentials are exported or injected.
+
+**Previous iPhone and Watch build:** 228, installation, launch and final build
 readback independently verified on both devices on 2026-09-29 at 19:50 EDT.
 [System](docs/system-dashboard.md) now uses compact Home-style cards with a
 one-screen overview; technical details open in separate sheets. No overview
