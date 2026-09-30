@@ -1472,8 +1472,9 @@ def _collect_network() -> dict:
 OMLX_SERVER_IDS = ("mac-mini-64", "mac-mini-16")
 OMLX_MAX_BODY = 256 * 1024
 OMLX_FRESH_SECONDS = 6.0
-OMLX_UPDATE_INTERVAL = 3600.0
-OMLX_UPDATE_FRESH_SECONDS = 7200.0
+OMLX_UPDATE_INTERVAL = 2.0
+OMLX_UPDATE_IDLE_INTERVAL = 60.0
+OMLX_UPDATE_FRESH_SECONDS = 6.0
 HOST_MEMORY_FRESH_SECONDS = 30.0
 
 
@@ -1586,8 +1587,8 @@ def _omlx_collect_update(server_id: str) -> dict:
 
 
 def _omlx_read(server_id: str, *, path: str, parser, timeout: float, unavailable: str) -> dict:
-    """Bounded GET to two operator-configured private IPs. No login, redirects,
-    inference, automatic model loading or other writes, including on failure.
+    """Bounded GET to two operator-configured private IPs. Opt-in key files
+    permit cached admin login only; no redirects, inference or settings writes.
     """
     if path not in ("/admin/api/activity", "/admin/api/update-check"):
         return {"ok": False, "error": unavailable}
@@ -1602,9 +1603,15 @@ def _omlx_read(server_id: str, *, path: str, parser, timeout: float, unavailable
             return {"ok": False, "error": "Invalid oMLX host configuration."}
         headers = {"Accept": "application/json"}
         cookie_file = os.environ.get(f"JARVISD_OMLX_{suffix}_COOKIE_FILE")
+        key_file = os.environ.get(f"JARVISD_OMLX_{suffix}_API_KEY_FILE")
+        if cookie_file and key_file:
+            raise ValueError("Configure one oMLX authentication source")
+        if key_file:
+            from jarvisd_core.omlx_auth import ADMIN_SESSIONS
+            headers["Cookie"] = ADMIN_SESSIONS.cookie(host, key_file)
         if cookie_file:
-            # Optional session cookie provisioned by the owner. Current servers
-            # allow the read without one. Never log its value or transmit it to
+            # Optional legacy session cookie provisioned by the owner.
+            # Never log its value or transmit it to
             # a redirect destination; no credential appears in app snapshots.
             cookie_path = Path(cookie_file)
             stat = cookie_path.lstat()
@@ -1634,6 +1641,8 @@ def _omlx_read(server_id: str, *, path: str, parser, timeout: float, unavailable
         transport.settimeout(max(0.001, deadline - time.monotonic()))
         response = connection.getresponse()
         if response.status in (401, 403):
+            if key_file:
+                ADMIN_SESSIONS.invalidate(host, key_file)
             return {"ok": False, "error": "Authentication required."}
         if response.status != 200:
             return {"ok": False, "error": unavailable}
@@ -1676,12 +1685,14 @@ OMLX_COORDINATOR = StateCoordinator(
 )
 
 
-# Independent workers and an hourly cadence: an upstream release lookup must
-# never delay activity samples or inherit the two-second dashboard cadence.
+# Independent, single-flight workers read oMLX's cached update comparison at
+# dashboard cadence. oMLX owns the hourly GitHub cache; another hourly cache here
+# would retain pre-upgrade availability after the server restarts. Slow release
+# lookups must still never delay activity samples.
 OMLX_UPDATE_COORDINATOR = StateCoordinator(
     collectors={server: (lambda server=server: _omlx_collect_update(server)) for server in OMLX_SERVER_IDS},
     intervals={server: OMLX_UPDATE_INTERVAL for server in OMLX_SERVER_IDS},
-    idle_intervals={server: OMLX_UPDATE_INTERVAL for server in OMLX_SERVER_IDS},
+    idle_intervals={server: OMLX_UPDATE_IDLE_INTERVAL for server in OMLX_SERVER_IDS},
     freshness_limits={server: OMLX_UPDATE_FRESH_SECONDS for server in OMLX_SERVER_IDS},
     active_lease_seconds=6.0,
 )

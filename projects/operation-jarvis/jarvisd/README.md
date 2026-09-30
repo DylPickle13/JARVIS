@@ -50,18 +50,59 @@ best-effort CLI/Pi and native routing does not require that deferred machinery.
 
 ## oMLX update indicator (deployed 2026-09-20)
 
+**Fast polling correction deployed 2026-09-30:**
+`20260930T164539Z-omlx-fast-update` changes only the installed backend's update
+cadence/freshness policy. All 750 frozen-backend tests and four native indicator
+tests passed; live local update timestamps advanced every ~2 seconds. Existing
+native freshness gates need no app reinstall. Only jarvisd and its watchdog were
+cycled; oMLX and protected terminal/audio processes were unchanged.
+
+**Authenticated LAN access restored 2026-09-30:**
+`20260930T165244Z-omlx-auth` adds opt-in renewable admin sessions. oMLX 0.7.0
+had migrated unauthenticated LAN bindings to `127.0.0.1`; both servers now use
+separate random API keys, mandatory authentication (including inference), and
+their original `0.0.0.0:8000` binding. Both dashboard rows were verified fresh,
+both update results unavailable/false, authenticated generation returned OK on
+both Macs, and unauthenticated model/admin requests were rejected with HTTP 401.
+All 756 frozen-backend tests passed. Pi's private `.env` and model-provider
+credentials were updated; existing Pi sessions need `/reload`. No iPhone
+reinstall is required. HTTP remains private-LAN-only, not public/TLS service.
+
 Deployment record: `20260920T230414Z-omlx-update-indicator`. Read-only health and
 both server checks passed; protected terminal/audio services and pane identities
 were unchanged. Only the backend daemon was replaced; oMLX was not restarted.
 
-`GET /api/v1/omlx` includes optional per-server `update` metadata. Independent
-hourly workers read each configured oMLX server's `/admin/api/update-check`,
-using that server's installed-version comparison and selected release channel.
+`GET /api/v1/omlx` includes optional per-server `update` metadata. Independent,
+single-flight workers read each configured oMLX server's `/admin/api/update-check`
+every **2 seconds with an active dashboard lease**, or **60 seconds idle**, using
+that server's installed-version comparison and selected release channel. An
+idle-to-active transition wakes the checks immediately without blocking the read.
+oMLX owns its hourly GitHub cache; jarvisd does not force upstream release checks.
 Only availability, a validated release version, and cache health/age are exposed;
 no release URLs, credentials, downloads, installs, or service restarts.
-The iPhone/Watch title dot requires fresh activity and a successful, non-stale
-update result no older than two hours. Missing/unsupported checks show no dot.
-Release checks do not block or change the existing activity polling cadence.
+Update samples expire after **6 seconds**, and failed checks mark retained data
+stale immediately. The existing iPhone/Watch title dot already requires non-stale
+update metadata AND activity fresh within six seconds (including elapsed client
+time), so this backend correction needs no native app replacement. The legacy
+native two-hour update-age ceiling is not the effective freshness policy against
+this backend. Missing/unsupported checks show no dot. A slow update check never
+blocks activity or the other server; its existing seven-second timeout remains.
+
+### oMLX authentication
+
+Configure `JARVISD_OMLX_64_API_KEY_FILE` and `JARVISD_OMLX_16_API_KEY_FILE` with
+owner-only regular files (0600) containing each server's primary API key. The
+installed files live under `~/Library/Application Support/JARVIS/omlx-auth/`
+(0700). Never commit keys or put their values in command arguments or logs.
+`jarvisd_core/omlx_auth.py` logs in only at the fixed private server's
+`POST /admin/api/login`; ordinary activity/update requests remain GET-only.
+Cookies stay in memory, renew after 12 hours (before the 24-hour server expiry),
+and are invalidated on 401/403 for a later poll to reauthenticate. Login is
+single-flight per host/file, with a 30-second attempt cooldown, bounded response,
+three-second connect timeout and three-second post-connect deadline. It never
+follows redirects or changes oMLX settings/models. Failures expose only generic
+status, never credentials. Legacy `JARVISD_OMLX_*_COOKIE_FILE` remains supported;
+configuring both auth sources for a host fails closed.
 
 ## Whole-Mac RAM telemetry
 

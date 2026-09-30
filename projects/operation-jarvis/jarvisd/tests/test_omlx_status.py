@@ -90,12 +90,88 @@ class OMLXTests(unittest.TestCase):
             self.assertEqual(result["ok"], status == 200)
             connection.close.assert_called_once()
 
-    def test_update_checks_have_independent_hourly_cadence(self):
+    def test_update_checks_have_independent_dashboard_cadence(self):
         coordinator = self.update_coordinator
         self.assertIsNot(coordinator, jarvisd.OMLX_COORDINATOR)
         for server in jarvisd.OMLX_SERVER_IDS:
-            self.assertEqual(coordinator.intervals[server], 3600)
-            self.assertEqual(coordinator.idle_intervals[server], 3600)
+            self.assertEqual(coordinator.intervals[server], 2)
+            self.assertEqual(coordinator.idle_intervals[server], 60)
+            self.assertEqual(coordinator.freshness_limits[server], 6)
+        self.assertEqual(coordinator.active_lease_seconds, 6)
+
+    def test_update_install_failure_expiry_and_peer_independence(self):
+        now = [100]
+        ids = jarvisd.OMLX_SERVER_IDS
+        coordinator = self.coordinator({s: lambda: {} for s in ids}, now=lambda: now[0])
+        coordinator.start = lambda: None
+        for server in ids:
+            self.complete(coordinator, server, jarvisd._omlx_update(
+                {"update_available": True, "latest_version": "0.7.0"}))
+        with mock.patch.object(jarvisd, "OMLX_UPDATE_COORDINATOR", coordinator), mock.patch.object(
+                jarvisd, "OMLX_COORDINATOR", coordinator):
+            now[0] = 102
+            self.complete(coordinator, ids[0], jarvisd._omlx_update({"update_available": False}))
+            rows = jarvisd.collect_omlx()["servers"]
+            self.assertFalse(rows[0]["update"]["available"])
+            self.assertIsNone(rows[0]["update"]["latestVersion"])
+            self.assertTrue(rows[1]["update"]["available"])
+            self.complete(coordinator, ids[1], {"ok": False, "error": "Read failed"})
+            self.assertTrue(jarvisd.collect_omlx()["servers"][1]["update"]["stale"])
+            now[0] = 109
+            self.assertTrue(jarvisd.collect_omlx()["servers"][0]["update"]["stale"])
+            self.complete(coordinator, ids[1], jarvisd._omlx_update({"update_available": False}))
+            self.assertFalse(jarvisd.collect_omlx()["servers"][1]["update"]["stale"])
+
+    def test_update_foreground_wakes_idle_schedule_without_waiting(self):
+        now = [100]
+        ids = jarvisd.OMLX_SERVER_IDS
+        coordinator = self.coordinator({s: lambda: {} for s in ids}, now=lambda: now[0])
+        coordinator.start = lambda: None
+        now[0] = 110  # Let the constructor's initial active lease expire.
+        for server in ids:
+            self.complete(coordinator, server, jarvisd._omlx_update({"update_available": False}))
+        now[0] = 120
+        for server in ids:
+            self.assertGreater(coordinator._records[server]["nextDue"], now[0])
+        coordinator.snapshot(client_active=True)
+        for server in ids:
+            self.assertEqual(coordinator._records[server]["nextDue"], 0)
+            self.assertEqual(coordinator._interval_locked(server, now[0]), 2)
+        now[0] = 127
+        for server in ids:
+            self.assertEqual(coordinator._interval_locked(server, now[0]), 60)
+
+    def test_slow_update_is_single_flight_and_does_not_block_activity_or_peer(self):
+        release = threading.Event()
+        calls = []
+        ids = jarvisd.OMLX_SERVER_IDS
+        def slow():
+            calls.append(1)
+            release.wait(3)
+            return jarvisd._omlx_update({"update_available": False})
+        updates = self.coordinator({ids[0]: slow, ids[1]: lambda:
+            jarvisd._omlx_update({"update_available": False})}, now=time.time)
+        activity_coordinator = self.coordinator({s: lambda:
+            jarvisd._omlx_activity(activity()) for s in ids}, now=time.time)
+        self.addCleanup(release.set)
+        with mock.patch.object(jarvisd, "OMLX_UPDATE_COORDINATOR", updates), mock.patch.object(
+                jarvisd, "OMLX_COORDINATOR", activity_coordinator):
+            deadline = time.monotonic() + 1.5
+            while time.monotonic() < deadline:
+                started = time.monotonic()
+                rows = jarvisd.collect_omlx()["servers"]
+                self.assertLess(time.monotonic() - started, 0.2)
+                if calls and all(not r["stale"] for r in rows) and rows[1]["update"].get("ok"):
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail("Slow update blocked activity or healthy peer")
+            for _ in range(10):
+                updates.request_refresh(ids[0])
+                jarvisd.collect_omlx()
+            self.assertEqual(len(calls), 1)
+            self.assertTrue(rows[0]["update"]["stale"])
+            self.assertFalse(rows[1]["update"]["stale"])
 
     def test_update_metadata_is_independent_of_activity_freshness(self):
         ids = jarvisd.OMLX_SERVER_IDS

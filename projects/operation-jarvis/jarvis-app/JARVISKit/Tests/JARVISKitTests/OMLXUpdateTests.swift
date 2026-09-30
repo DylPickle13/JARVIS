@@ -41,6 +41,19 @@ final class OMLXUpdateTests: XCTestCase {
         }
     }
 
+    func testIndicatorExpiresWithActivityEvenWithLegacyUpdateAgeLimit() throws {
+        let json = """
+        {"id":"mac-mini-64","ok":true,"stale":false,"ageSeconds":0,"models":[],"update":\(confirmed)}
+        """
+        let server = try JSONDecoder().decode(OMLXServerStatus.self, from: Data(json.utf8))
+        let fresh = OMLXServerSummary(id: server.id, server: server, now: now,
+            requestStartedAt: now, available: true)
+        let expired = OMLXServerSummary(id: server.id, server: server, now: now.addingTimeInterval(7),
+            requestStartedAt: now, available: true)
+        XCTAssertTrue(fresh.updateAvailable)
+        XCTAssertFalse(expired.updateAvailable)
+    }
+
     func testUpdateAgeIncludesElapsedTimeSinceRequest() throws {
         let update = try JSONDecoder().decode(OMLXUpdateStatus.self, from: Data(confirmed.utf8))
         XCTAssertTrue(update.isAvailable(requestStartedAt: now, now: now.addingTimeInterval(7190)))
