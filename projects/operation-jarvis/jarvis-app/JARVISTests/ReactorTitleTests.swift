@@ -61,6 +61,28 @@ final class ReactorTitleTests: XCTestCase {
         }
     }
 
+    func testSettingsGridUsesSingleColumnForAccessibility() {
+        XCTAssertEqual(SettingsView.columnCount(for: .large), 2)
+        XCTAssertEqual(SettingsView.columnCount(for: .xxxLarge), 2)
+        XCTAssertEqual(SettingsView.columnCount(for: .accessibility1), 1)
+        XCTAssertEqual(SettingsView.columnCount(for: .accessibility5), 1)
+    }
+
+    @MainActor func testSettingsCardRendersWithAccessibilityText() throws {
+        for size in [DynamicTypeSize.large, .accessibility3] {
+            let card = SettingsNavigationCard(title: "iPhone Terminal", systemImage: "terminal.fill",
+                                              value: "Setup required", color: .orange)
+                .environment(\.dynamicTypeSize, size)
+                .frame(width: size.isAccessibilitySize ? 358 : 174)
+            let renderer = ImageRenderer(content: card)
+            let image = try XCTUnwrap(renderer.uiImage)
+            XCTAssertGreaterThan(image.size.height, 44)
+            if size == .large {
+                try XCTUnwrap(image.pngData()).write(to: URL(fileURLWithPath: "/tmp/jarvis-settings-card-preview.png"))
+            }
+        }
+    }
+
     @MainActor func testRootTabHeadersUseSameHeight() throws {
         for title in ["JARVIS", "Jobs", "System", "Settings"] {
             let header = TabPageHeader(title: title, animated: title == "JARVIS")

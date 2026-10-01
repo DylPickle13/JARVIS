@@ -150,11 +150,11 @@ struct HomeView: View {
                             piCard(state)
                             roomAudioCard
                             codexQuotaCard(state)
-                            plugsSection(state)
-                            purifierSection(state)
                             OMLXStatusCard(client: app.client,
                                 endpoint: app.currentEndpoint.map { JarvisEndpoint(baseURL: $0, token: app.store.token ?? "") },
                                 active: scenePhase == .active && app.activeSection == .home && !showsPurifierControls)
+                            plugsSection(state)
+                            purifierSection(state)
                         }
                     } else {
                         compactOfflineCard
