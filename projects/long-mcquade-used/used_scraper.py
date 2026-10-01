@@ -357,8 +357,9 @@ def enable_initial_output(state):
 def record_units(state, units):
     for unit in units:
         if unit["id"] not in state["known_units"]:
-            if state["baseline_complete"] or state.get("initial_output_enabled", False):
-                state["pending_alerts"].append({**unit, "initial_inventory": not state["baseline_complete"]})
+            detect_now = state.get("alert_on_first_detection", False)
+            if state["baseline_complete"] or state.get("initial_output_enabled", False) or detect_now:
+                state["pending_alerts"].append({**unit, "initial_inventory": not (state["baseline_complete"] or detect_now)})
             state["known_units"][unit["id"]] = {"first_seen": now(), **unit}
         else:
             state["known_units"][unit["id"]].update(unit)
@@ -465,7 +466,8 @@ def status(state):
         "catalogue_pages_pending": len(state["catalogue_queue"]), "products_pending": len(state["product_queue"]),
         "store_groups_pending": len(state["store_queue"]), "known_units": len(state["known_units"]),
         "alerts_pending": len(state["pending_alerts"]),
-        "initial_output_enabled": state.get("initial_output_enabled", False)}
+        "initial_output_enabled": state.get("initial_output_enabled", False),
+        "alert_on_first_detection": state.get("alert_on_first_detection", False)}
 
 
 def main(argv=None):

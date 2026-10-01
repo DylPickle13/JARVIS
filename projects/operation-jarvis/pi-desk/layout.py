@@ -1,7 +1,7 @@
 """Pure responsive-layout policy; dimensions are terminal cells, not pixels."""
 import os
 
-DEFAULT_MIN_COLUMNS = 52
+DEFAULT_MIN_COLUMNS = 50
 GROW_BUFFER = 4
 RESIZE_DELAY = 0.18
 
