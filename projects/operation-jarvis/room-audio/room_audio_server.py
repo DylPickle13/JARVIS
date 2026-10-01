@@ -190,9 +190,14 @@ def normalize_wake_words(transcript: str) -> str:
 
 
 def has_verified_wake_phrase(transcript: str) -> bool:
-    """Require exact leading words, ignoring punctuation/case but not spelling."""
+    """Accept exact consecutive wake words anywhere, ignoring case/punctuation.
+
+    Preceding speech is unrestricted, including quoted mentions. Acoustic wake
+    detection remains independent; spelling aliases and substrings do not match.
+    """
     words = re.findall(r"[^\W_]+", transcript.casefold(), flags=re.UNICODE)
-    return words[:2] == ["hey", "jarvis"]
+    return any(first == "hey" and second == "jarvis"
+               for first, second in zip(words, words[1:]))
 
 
 def is_followup_cancellation(transcript: str) -> bool:
@@ -1052,7 +1057,7 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 "wakeVerification": {
                     "backend": "apple-dictation",
                     "phrase": VERIFIED_WAKE_PHRASE,
-                    "match": "strict-prefix",
+                    "match": "exact-phrase-anywhere",
                     "failClosed": True,
                     "contextualHints": False,
                 },

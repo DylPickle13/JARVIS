@@ -39,6 +39,17 @@ seconds. During a response, exact `stop` interrupts. Endpoint capture is continu
 idle ordinary speech is discarded by wake gating. Keep credentials, transcripts,
 and endpoint state private; do not add them to the repository.
 
+Wake verification retains up to two seconds of the active capture preceding local
+wake detection, plus the existing ~300 ms tail, rather than sending a long preceding
+VAD segment. Follow-up commands and interrupts are not cropped. Apple verification
+requires the exact consecutive words `hey jarvis` anywhere in the verification
+transcript, ignoring case and punctuation, with no restriction on preceding speech.
+Quoted or TV mentions can therefore pass if the acoustic detector also triggers;
+spelling aliases and substrings remain rejected. The acoustic detector and
+independent server verification are both retained. These Python changes require
+an explicitly authorized restart of affected endpoint clients and room servers to
+activate; they do not require replacing or resetting Session 10.
+
 ## Shared core prompt, voice-only presentation
 
 Session 10 uses the same Pi prompt discovery, tools, permissions, and local

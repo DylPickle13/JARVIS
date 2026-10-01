@@ -17,10 +17,21 @@ class WakePhraseTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertTrue(server.has_verified_wake_phrase(text))
 
-    def test_no_aliases_substrings_or_mid_sentence_mentions(self):
+    def test_exact_phrase_anywhere_in_speech(self):
+        for text in ("Okay, hey Jarvis", "Um, hey Jarvis", "OK uh hey Jarvis",
+                     "Uh, okay, hey Jarvis turn on the light",
+                     "I was talking about something else. HEY, JARVIS!",
+                     "They said hey Jarvis", "Don't say hey Jarvis",
+                     "okay don't say hey Jarvis", "um they said hey Jarvis",
+                     "okay um uh hey Jarvis", "hey Travis then hey Jarvis please"):
+            with self.subTest(text=text):
+                self.assertTrue(server.has_verified_wake_phrase(text))
+
+    def test_no_aliases_substrings_or_nonconsecutive_words(self):
         for text in ("", "Jarvis", "Hey Travis turn on the light", "Hey Jarvison",
-                     "They said hey Jarvis", "Don't say hey Jarvis", "Hey, how are you?",
-                     "hey jarvis2", "hey järvis", "heyjarvis", "hey charvis"):
+                     "Hey, how are you?", "hey there Jarvis", "Jarvis hey",
+                     "hey jarvis2", "hey järvis", "heyjarvis", "hey charvis",
+                     "okay hey Travis", "they said hey Jarvison"):
             with self.subTest(text=text):
                 self.assertFalse(server.has_verified_wake_phrase(text))
 

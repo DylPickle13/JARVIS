@@ -84,6 +84,12 @@ class WakeClipEndpointTests(unittest.TestCase):
             self.assertIsNone(endpoint.deadline)
 
     def test_vad_loop_submits_confirmed_wake_without_any_silence(self):
+        self.check_wake_capture(wake_frame=20)
+
+    def test_long_background_speech_is_cropped_before_verification(self):
+        self.check_wake_capture(wake_frame=300)
+
+    def check_wake_capture(self, wake_frame):
         args = client.build_parser().parse_args([
             '--local-wake-word', '--interrupt-while-busy', '--no-startup-greeting',
             '--rate', '16000', '--vad-frame-ms', '20',
@@ -92,12 +98,13 @@ class WakeClipEndpointTests(unittest.TestCase):
         count = [0]
         def read_frame(*unused, **kwargs):
             count[0] += 1
-            if count[0] > 100:
-                raise AssertionError('wake waited beyond two seconds')
+            if count[0] > wake_frame + 100:
+                raise AssertionError('wake waited beyond two seconds after detection')
             clock[0] = 100 + count[0] * .02
-            return b'\xe8\x03' * 320  # Continuous RMS=1000, never silence.
+            # Distinct earlier background speech must not survive the crop.
+            return (b'\xd0\x07' if count[0] < wake_frame - 100 else b'\xe8\x03') * 320
         model = SimpleNamespace(reset_stream=Mock(), last_score=.9, last_model='jarvis')
-        model.process_frame = lambda *a, **kw: {'score': .9, 'model': 'jarvis'} if count[0] == 20 else None
+        model.process_frame = lambda *a, **kw: {'score': .9, 'model': 'jarvis'} if count[0] == wake_frame else None
         controller = Mock()
         controller.is_busy.return_value = False
         controller.reserve_followup.return_value = None
@@ -113,8 +120,14 @@ class WakeClipEndpointTests(unittest.TestCase):
                 client.run_vad_loop(args)
         controller.start_turn.assert_called_once()
         duration = controller.start_turn.call_args.kwargs['duration_seconds']
-        self.assertGreaterEqual(duration, .68)
-        self.assertLess(duration, .8)
+        if wake_frame == 20:
+            self.assertGreaterEqual(duration, .68)
+            self.assertLess(duration, .8)
+        else:
+            self.assertGreaterEqual(duration, 2.3)
+            self.assertLess(duration, 2.4)
+            pcm = controller.start_turn.call_args.args[0]
+            self.assertEqual(pcm, b'\xe8\x03' * (len(pcm) // 2))
         self.assertIsNone(controller.start_turn.call_args.kwargs['followup'])
 
     def test_ineligible_audio_clears_old_deadline(self):

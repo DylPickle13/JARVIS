@@ -1431,6 +1431,19 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                         utterance_wake_max_model = local_wake.last_model
                     if wake_hit:
                         if utterance is not None:
+                            if (not utterance_wake_accepted and utterance_followup is None
+                                    and not utterance_interrupt_candidate):
+                                # Verification should hear the wake, not the entire
+                                # preceding VAD segment (which may contain TV speech).
+                                # Preserve two seconds before detection plus the
+                                # normal WakeClipEndpoint tail. Never crop commands.
+                                keep_frames = max(1, int(2.0 / frame_seconds))
+                                utterance = utterance[-keep_frames:]
+                                utterance_bytes = sum(len(part) for part in utterance)
+                                levels = [pcm_rms_s16le_mono(part) for part in utterance]
+                                voiced_ms = sum(level >= args.vad_rms_threshold for level in levels) * frame_seconds * 1000
+                                max_rms = max(levels, default=0)
+                                speech_started_at = now - utterance_bytes / bytes_per_second
                             utterance_wake_accepted = True
                         print(
                             "local wake detected: "
