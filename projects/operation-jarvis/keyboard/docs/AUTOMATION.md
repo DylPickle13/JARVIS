@@ -22,6 +22,28 @@ The watcher calls the existing authenticated `presence/status.py` client, sleeps
 - **Mouse nearby → steady; away → off. Never breathing.** `mouse_cycle.py` allowlists only these two effects. The owner's default mouse brightness is **20%**, applied and acknowledged via the bridge. Presence transitions preserve that brightness; they leave DPI and polling untouched. Brightness is not reasserted on every poll or verified across power loss. No repeated command for unchanged presence or a watcher restart; a fresh presence transition can send one command after the three-second cooldown. Unknown/stale presence leaves the mouse unchanged.
 - Mouse and keyboard use separate persisted state/faults and separate daemon journals. A keyboard command failure does not prevent a fresh, safe mouse update. The snapshot's age includes fetch latency and time spent commanding the first device; the mouse refuses a snapshot that has aged out.
 
+## Mac arrival greeting
+
+`arrival_cycle.py` runs after the existing controllers using their shared basement
+snapshot. `arrival-config.json` containing `{"enabled": true}` opts in. The minute
+Computer presence job remains an alert relay; its schedule is unchanged.
+
+- After at least 30 seconds of continuously fresh away checks, the first fresh
+  nearby check attempts **“Welcome back, sir”** through the Mac PowerConf room client.
+- Startup/restart, unknown/stale/negative-age samples, backwards time, and gaps
+  over 15 seconds reset absence qualification. No startup arrival greeting.
+- `arrival-state.json` is saved before asynchronous dispatch; uncertain delivery
+  is never retried. A new confirmed absence is required for another attempt.
+- A token-authenticated loopback request targets only port 8793, using the private
+  Mac room environment. Busy/offline clients skip. Pending notices expire after
+  four seconds and are consumed once; client synthesis has a six-second deadline.
+  Follow-up listening is protected; normal stop/cancellation remains available.
+- `arrival-results.json` retains at most 16 sanitized dispatch outcomes. Accepted
+  means handed to the room server, **not proof of audible playback**. No model call,
+  speaker fallback, new scanner, or change to existing device policies.
+- Disable with `{"enabled": false}` under `cycle.lock`; this prevents future
+  requests but does not cancel speech already dispatched.
+
 ## Desk LED strip presence power
 
 `led_cycle.py` adds the registered security alias `led-strip` (Tapo L930-5) to

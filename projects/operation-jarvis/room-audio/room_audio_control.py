@@ -16,6 +16,7 @@ class RoomAudioControl:
         self.phase = "unavailable"
         self.updated = None
         self.cancelled = {}
+        self.arrival = None
 
     def report(self, payload):
         if not isinstance(payload, dict) or set(payload) != {"clientID", "sequence", "turnID", "phase"}:
@@ -39,7 +40,21 @@ class RoomAudioControl:
                 self.client = client
             self.sequence, self.turn, self.phase, self.updated = sequence, turn, phase, self.clock()
             self._prune()
-            return {"ok": True, "cancelTurnID": turn if turn in self.cancelled else None}
+            result = {"ok": True, "cancelTurnID": turn if turn in self.cancelled else None}
+            if self.arrival is not None:
+                owner, expires = self.arrival
+                self.arrival = None  # Consume even if client is busy or delivery is uncertain.
+                if owner == client and phase == 'idle' and self.clock() < expires:
+                    result['arrivalNotice'] = True
+            return result
+
+    def request_arrival(self):
+        with self.lock:
+            status = self._status()
+            if not status['clientOnline'] or status['phase'] != 'idle' or self.arrival is not None:
+                return {'ok': True, 'accepted': False}
+            self.arrival = (self.client, self.clock() + 4)
+            return {'ok': True, 'accepted': True}
 
     def _prune(self):
         now = self.clock()

@@ -445,8 +445,8 @@ class RoomAudioBridge:
         if PROCESSING_ACK_ENABLED and PROCESSING_ACK_TEXT:
             self._synthesize_processing_ack()
 
-    def synthesize_greeting(self) -> dict[str, Any]:
-        greeting_text = select_room_greeting()
+    def synthesize_greeting(self, *, arrival: bool = False) -> dict[str, Any]:
+        greeting_text = 'Welcome back, sir' if arrival else select_room_greeting()
         if not greeting_text:
             return {
                 "ok": True,
@@ -1017,6 +1017,15 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(response)
             return
+        if path == '/arrival-audio':
+            if not (is_loopback_address(self.client_address[0]) and self.server.token and self._authorized()):
+                self._send_json({'ok': False}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                self._send_json(self.server.bridge.synthesize_greeting(arrival=True))
+            except Exception:
+                self._send_json({'ok': False}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
         if path == "/greeting":
             if not self._authorized():
                 self._send_json({"ok": False, "error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
@@ -1140,6 +1149,18 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib method name
         path = urlparse(self.path).path.rstrip("/") or "/"
+        if path == '/control/arrival':
+            if not (is_loopback_address(self.client_address[0]) and self.server.token and self._authorized()):
+                self._send_json({'ok': False}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get('content-length', '0'))
+                if length != 2 or self.rfile.read(length) != b'{}':
+                    raise ValueError('invalid arrival')
+                self._send_json(self.server.bridge.control.request_arrival())
+            except ValueError:
+                self._send_json({'ok': False}, HTTPStatus.BAD_REQUEST)
+            return
         if path == "/wake-followup":
             self._handle_wake_followup()
             return

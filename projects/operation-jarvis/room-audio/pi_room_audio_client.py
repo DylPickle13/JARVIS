@@ -976,12 +976,43 @@ class RoomAudioTurnController:
             result = json.loads(response.read(2048))
         if busy and result.get("cancelTurnID") == turn:
             self.cancel_local(turn)
+        if result.get('arrivalNotice') is True:
+            self.start_arrival_notice()
 
     def _report_loop(self) -> None:
         while not self._report_stop.is_set():
             try: self._report_once()
             except Exception: pass  # Never log authentication headers or private voice data.
             self._report_stop.wait(1)
+
+    def start_arrival_notice(self) -> None:
+        turn, cancel = uuid.uuid4().hex, threading.Event()
+        with self._lock:
+            if (self._turn_id or not self.capture_online or self._reserved_followup
+                    or (self._followup_ticket and time.monotonic() < self._followup_deadline)):
+                return
+            self._turn_id, self._state, self._cancel_event = turn, 'GENERATING', cancel
+        def speak() -> None:
+            started = time.monotonic()
+            try:
+                request = urllib.request.Request(self.args.server_url.rstrip('/') + '/arrival-audio',
+                    headers={'x-jarvis-room-token': self.args.token})
+                with urllib.request.urlopen(request, timeout=6) as response:
+                    audio = json.loads(response.read(2 * 1024 * 1024))
+                if cancel.is_set() or not self.capture_online or time.monotonic() - started > 6:
+                    return
+                self.set_state(turn, 'PLAYING')
+                play_response_audio(audio, device=self.args.playback_device,
+                    drain_seconds=self.args.bt_playback_drain_seconds,
+                    playback_controller=self.playback, cancel_event=cancel)
+            except Exception:
+                pass  # No retry or alternate output on uncertain playback.
+            finally:
+                with self._lock:
+                    if self._turn_id == turn:
+                        self._turn_id, self._state, self._cancel_event = '', 'IDLE', None
+        self._turn_thread = threading.Thread(target=speak, name='room-arrival', daemon=True)
+        self._turn_thread.start()
 
     def play_greeting(self) -> None:
         turn, cancel = uuid.uuid4().hex, threading.Event()

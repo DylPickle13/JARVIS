@@ -18,6 +18,7 @@ import copy
 import mouse_cycle
 import display_cycle
 import led_cycle
+import arrival_cycle
 
 POLL = 3
 HEALTH_AGE = 30  # Includes bounded presence + HID calls; not presence freshness.
@@ -228,6 +229,7 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
             diagnose(store, 'controller-alert', at=now(), message=output)
             value['alerts'].append({'message': output, 'code': code, 'at': now()})
             value['alerts'] = value['alerts'][-QUEUE_LIMIT:]
+    arrival_cycle.run_once(store, now=now, get_presence=shared_presence)
     value['heartbeat'] = now()
     store.save('watcher.json', value)
 

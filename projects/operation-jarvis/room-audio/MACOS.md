@@ -86,6 +86,13 @@ microphone access and Apple ASR permissions/assets must work under the agent.
   cancels playback/generation. Capture stays open during normal replies; the
   existing startup-greeting path briefly releases capture before reopening it.
 - A fixed startup greeting says “The Mac room speaker is online, sir.”
+- The opt-in computer-presence watcher can request “Welcome back, sir” through
+  authenticated loopback `POST /control/arrival` (`{}`). The next idle client
+  report consumes a four-second, client-bound notice; `/arrival-audio` synthesizes
+  only that fixed phrase with the existing JARVIS voice. The client skips busy,
+  offline, or follow-up listening states and drops synthesis taking over six
+  seconds. It never switches outputs or retries uncertain playback. This is
+  separate from startup/reconnect greetings; see `keyboard/docs/AUTOMATION.md`.
 - Continuous capture is private to the local client until a wake candidate (or
   busy-only control clip) is submitted to the local server. No new audio archive
   is created. Temporary WAVs are deleted by the existing handlers. Logs can
