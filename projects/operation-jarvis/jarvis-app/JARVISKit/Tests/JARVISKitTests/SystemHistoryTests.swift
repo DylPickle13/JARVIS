@@ -85,6 +85,36 @@ final class SystemHistoryTests: XCTestCase {
         XCTAssertThrowsError(try r.validated(window: .hour))
     }
 
+    func testTenSecondAndLegacyCadencesAcceptPhoneAndWatchHistory() throws {
+        for cadence in [10, 60] {
+            for window in [SystemHistoryWindow.hour, .day, .week] {
+                for component: String? in [nil, "overall"] {
+                    for partial in [false, true] {
+                        var object = HistoryFixture.object(window: window, component: component, partial: partial)
+                        object["sampleIntervalSeconds"] = cadence
+                        let response = try HistoryFixture.decode(object).validated(window: window, component: component)
+                        XCTAssertEqual(response.series[0].buckets[0].hasGap, partial)
+                        XCTAssertEqual(response.resolutionSeconds, Int(window.resolution))
+                    }
+                }
+            }
+        }
+    }
+
+    func testCadenceCompatibilityDoesNotLoosenOtherHistoryBounds() throws {
+        for invalid in [-10, 0, 1, 9, 11, 30, 61, 600] {
+            var object = HistoryFixture.object(window: .hour)
+            object["sampleIntervalSeconds"] = invalid
+            XCTAssertThrowsError(try HistoryFixture.decode(object).validated(window: .hour))
+        }
+        for (field, invalid) in [("resolutionSeconds", 10), ("coverageLeaseSeconds", 120), ("retentionSeconds", 86400)] {
+            var object = HistoryFixture.object(window: .hour)
+            object["sampleIntervalSeconds"] = 10
+            object[field] = invalid
+            XCTAssertThrowsError(try HistoryFixture.decode(object).validated(window: .hour))
+        }
+    }
+
     func testSensorReasonsAreAcceptedInDevicesAndOverallWithoutChangingCoverageRules() throws {
         for (reason, state) in [("monitoring_disabled", "inactive"), ("not_checked", "unknown"),
                                 ("sensor_read_failed", "unavailable"), ("sensor_read_unknown", "unknown")] {

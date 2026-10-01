@@ -28,16 +28,19 @@ history storage or start workers. This flag does not enable alerts or expand the
 security/device monitor list. No launchd plist or live configuration is changed
 by the implementation.
 
-One optional callback on the existing 60-second monitor cycle reads:
+An optional in-process history worker reads every 10 seconds (completion-relative),
+independently of the unchanged 60-second incident-monitor cycle:
 
 ```python
 STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False)
 ```
 
-The chart callback is independent of incident-store success/failure. Chart
+The chart worker is independent of incident-store success/failure. Chart
 storage failure does not mark incident storage failed or stop existing monitoring.
 No catch-up loop or backlog replay occurs. Storage writes and cache evaluations
-happen on the background monitor thread, never on a history HTTP request.
+happen on the background history thread, never on a history HTTP request. Startup
+and shutdown remain owned by jarvisd; this is not another service or device poller.
+It makes no device requests and does not renew foreground collector leases.
 
 ## Meaning and scope
 
@@ -102,10 +105,11 @@ network 1260s, Codex 900s).
 A stepwise sampled interval ends at the next evaluation, its remaining freshness
 (for healthy/inactive evidence), or a 90-second recording coverage lease, whichever
 is earliest. This is an approximation of sampled evidence, **not an exact outage
-start/end**. In particular a 60-second sampler cannot guarantee continuous coverage
-for a collector with a 30-second freshness limit: those uncovered seconds remain
-explicit gaps even if later observations are healthy. Do not turn such gaps into
-physical outages or invent continuous green coverage.
+start/end**. The former 60-second sampler routinely left gaps for plugs with a
+30-second freshness limit. Sampling cached evidence every 10 seconds captures
+intermediate refreshes without extending that limit. Unrefreshed or expired cache
+still leaves gaps. Earlier minute-sampled history is not rewritten or backfilled.
+Do not turn such gaps into physical outages or invent continuous green coverage.
 
 The last sample of a different process run is conservatively not extended beyond
 its check time. Restart, dropped/failed records, worker stalls, and clock jumps
@@ -141,13 +145,14 @@ New, separate database (existing incident history is neither migrated nor change
 - Only safe component keys, UTC evaluation/source times, allowlisted states/reason
   codes and freshness bounds are persisted. No device IDs/names, sensor state,
   tokens, paths, raw errors, PID values or control payloads.
-- Up to seven days / 10,081 samples, pruned on successful append. Capacity may
+- Up to seven days / 60,481 samples, pruned on successful append. Capacity may
   shorten retained history; `earliestSampleAt` discloses available history.
 - At most 32 components/sample and 16 KiB/sample including accounting overhead.
-- 24 MiB logical payload budget; 8,192 × 4 KiB SQLite pages (32 MiB DB cap).
+- 144 MiB logical payload budget; 49,152 × 4 KiB SQLite pages (192 MiB DB cap).
+  These budgets scale sixfold with recording cadence to preserve retention capacity.
   DELETE rollback journal, no accumulating WAL. Journal can temporarily add up
   to approximately another DB-sized allocation; these bounds are not a total
-  32 MiB disk-footprint claim. Freed pages are reused, not vacuumed per tick.
+  192 MiB disk-footprint claim. Freed pages are reused, not vacuumed per tick.
 - DB contention is bounded (50ms in-process lock acquisition, 250ms SQLite busy
   timeout). At most two history builds concurrently. Decode one stored row at a
   time; no seven-day expanded Python-object copy. Default response is five
@@ -197,7 +202,7 @@ Response fields:
   "window": "24h",
   "from": "<UTC>",
   "to": "<UTC>",
-  "sampleIntervalSeconds": 60,
+  "sampleIntervalSeconds": 10,
   "resolutionSeconds": 300,
   "coverageLeaseSeconds": 90,
   "retentionSeconds": 604800,
@@ -316,3 +321,39 @@ deployment remains a separate approval. Future backend changes/restarts also
 require approval. This release's prior backend rollback has been removed by
 owner request. Any future rollback requires a newly reviewed compatible artifact;
 retain the separate chart DB and existing incident history.
+
+## Ten-second recording deployment — 2026-09-30 EDT
+
+Owner-approved backend-only release **`20261001T032215Z-history-cadence`** forks
+the installed device-coverage release, preserving its runtime/vendor source and
+configuration. Only the recorder cadence/lifecycle and startup wiring changed;
+incident monitoring, collector/device polling, freshness, authentication and
+notifications did not. iPhone/Watch build 236 was not rebuilt or reinstalled at
+that cutover. This exposed a missed native contract: build 236 accepted only
+`sampleIntervalSeconds == 60`, displaying "History unavailable" for valid new
+responses. Owner-approved **build 237** was subsequently installed and verified on
+both devices; it accepts 10 and 60 without relaxing coverage/freshness checks.
+Its actual Swift decoder/validator passed live responses for all three windows
+and both phone/Watch series. See the [app deployment record](../../jarvis-app/docs/operations.md#history-cadence-compatibility--build-237).
+
+- **781 frozen backend tests passed**, including 49 history tests. New tests cover
+  10-second scheduling, worker start/stop, fresh 30-second cache coverage, expiry
+  gaps, unmodified older minute samples, and updated bounded storage capacity.
+- A seven-day simulation with 60,481 samples / 11 components used **82,866,176
+  bytes** on disk (79 MiB). Append at capacity took 27 ms; default `1h`/`24h`/`7d`
+  reads took 5/64/418 ms. Peak benchmark-process RSS was about 124 MiB. These are
+  single-process measurements, not concurrency or future latency guarantees.
+- Live recording intervals were **10.063–10.092 seconds**. Two consecutive new
+  overall minute buckets had **60 seconds healthy, zero missing seconds**.
+- All **26 device checks were available**; aggregate current health was healthy.
+  Five history reads added zero collector, adapter, oMLX or security work starts.
+  Unauthenticated health still returned 401. Notifications remain disabled.
+- Only jarvisd and its watchdog were cycled; terminal/audio/sensor-watcher/keyboard
+  service PIDs were unchanged. A consistent chart DB backup and prior daemon plist
+  were retained. Existing history begins at the same original timestamp; no old
+  gaps were backfilled, including the short restart/collector-warmup interval.
+
+Evidence and reproducible preparation/deployment/verification scripts are in the
+private release directory. Previous chart history ages out normally. As the new
+DB grows, an old 32-MiB-cap backend may reject it: any later rollback must review
+storage capacity compatibility rather than delete or truncate retained history.

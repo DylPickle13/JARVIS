@@ -128,7 +128,7 @@ public struct SystemHistoryDetails: View {
                     Text("Available history begins \(date.formatted(date: .abbreviated, time: .shortened)). Earlier periods have no chart coverage.").font(.caption)
                 }
                 SystemHistoryBand(series: series, height: 24)
-                Text("One evaluation per minute. Unknown and uncovered periods are not healthy. Brief failures between samples may be missed. No automatic recovery.").font(.caption)
+                Text("Periodic cached evaluations. Unknown and uncovered periods are not healthy. Brief failures between samples may be missed. No automatic recovery.").font(.caption)
                 ForEach(Array(series.buckets.enumerated().reversed()), id: \.offset) { item in
                     SystemHistoryBucketDisclosure(bucket: item.element)
                 }

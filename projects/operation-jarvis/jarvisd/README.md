@@ -274,8 +274,14 @@ just-completed backend rollback folder and unreferenced prior job-categories
 release were removed at 21:23 EDT; active dependencies, production databases and
 all unrelated app artifacts were retained.
 
-Cached-health evaluations use the existing monitoring cycle and separate bounded
-SQLite storage. Explicit freshness/recording gaps and worst-state-preserving
+Release **`20261001T032215Z-history-cadence`** decouples chart recording from the
+incident cycle: cached health is recorded every **10 seconds** by an in-process
+history worker. Device polling, 30-second plug freshness, 60-second incident
+monitoring and one-minute chart buckets are unchanged. Earlier gaps are not
+backfilled. The frozen candidate passed **781 backend tests**. Seven-day simulated
+storage used 79 MiB with a 192 MiB database cap; see the history document for limits.
+
+Cached-health evaluations use separate bounded SQLite storage. Explicit freshness/recording gaps and worst-state-preserving
 aggregation remain mandatory: unavailable observations are not proven physical
 outages. A bounded history-read burst incremented no collector, adapter, security
 or oMLX work counters; concurrent clients were not excluded from the longer

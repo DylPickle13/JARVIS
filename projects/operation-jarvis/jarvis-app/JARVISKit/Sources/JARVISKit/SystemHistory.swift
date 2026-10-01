@@ -122,7 +122,9 @@ public struct SystemHistoryResponse: Codable, Equatable, Sendable {
     public func validated(window expected: SystemHistoryWindow, component: String? = nil, now: Date = Date()) throws -> Self {
         func require(_ value: Bool) throws { if !value { throw JarvisError.decoding("Invalid bounded System history response.") } }
         try require(ok && schemaVersion == 1 && scope == "cached_status_health" && window == expected)
-        try require(sampleIntervalSeconds == 60 && resolutionSeconds == Int(expected.resolution)
+        // Accept both deployed recorder cadences; bucket resolution and freshness
+        // validation remain strict and independent of sampling frequency.
+        try require([10, 60].contains(sampleIntervalSeconds) && resolutionSeconds == Int(expected.resolution)
             && coverageLeaseSeconds == 90 && retentionSeconds == 604800)
         guard let start, let end else { throw JarvisError.decoding("Invalid history dates.") }
         try require(abs(end.timeIntervalSince(start) - expected.seconds) < 0.01 && end <= now.addingTimeInterval(5))

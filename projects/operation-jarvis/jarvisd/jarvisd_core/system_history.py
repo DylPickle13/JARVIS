@@ -20,13 +20,15 @@ import uuid
 from .system_health import (COMPONENTS, MAX_COMPONENTS, REASONS, SERVICE_ID,
                             STATES, number, project, stamp)
 
-INTERVAL = 60
+INTERVAL = 10
 COVERAGE_LEASE = 90
 RETENTION = 7 * 86400
 MAX_SAMPLES = RETENTION // INTERVAL + 1
 MAX_PAYLOAD = 16 * 1024
-PAYLOAD_BUDGET = 24 * 1024 * 1024
-MAX_PAGES = 8192  # 32 MiB with the explicitly selected 4 KiB SQLite pages.
+# Six times the former minute-sampling budget preserves the same retention
+# capacity at 10s cadence. Row, payload and physical page limits remain bounded.
+PAYLOAD_BUDGET = 144 * 1024 * 1024
+MAX_PAGES = 49152  # 192 MiB with the explicitly selected 4 KiB SQLite pages.
 WINDOWS = {'1h': (3600, 60), '24h': (86400, 300), '7d': (RETENTION, 1800)}
 DEFAULT_SERIES = ('services', 'pi', 'network', 'devices', 'overall')
 
@@ -239,7 +241,7 @@ class HistoryStore:
 
 
 class HistoryRecorder:
-    """Called by the existing monitor cycle, independently of incident storage."""
+    """In-process cache-only history worker, independent of incident cadence."""
     def __init__(self, store, cached_snapshot, *, clock=time.time, monotonic=time.monotonic,
                  projector=project):
         self.store, self.cached_snapshot, self.projector = store, cached_snapshot, projector
@@ -251,6 +253,21 @@ class HistoryRecorder:
         self._closed = False
         self._lock = threading.RLock()
         self._reads = threading.BoundedSemaphore(2)
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self):
+        with self._lock:
+            if self._closed or self._thread is not None:
+                return
+            self._thread = threading.Thread(target=self._run, name='jarvisd-history', daemon=True)
+            self._thread.start()
+
+    def _run(self):
+        while not self._stop.is_set():
+            self.tick()
+            # No catch-up or backlog: wait after each completed cache evaluation.
+            self._stop.wait(INTERVAL)
 
     def tick(self):
         with self._lock:
@@ -298,6 +315,10 @@ class HistoryRecorder:
             self._reads.release()
 
     def close(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
         with self._lock:
-            self._closed = True
-            self.store.close()
+            if not self._closed:
+                self._closed = True
+                self.store.close()

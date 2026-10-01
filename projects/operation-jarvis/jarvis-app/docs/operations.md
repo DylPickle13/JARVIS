@@ -4,6 +4,27 @@
 
 Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.
 
+## History cadence compatibility — build 237
+
+Owner-approved build **237** was installed and version/process verified on both
+iPhone and Watch on 2026-09-30 EDT. It accepts both 10-second and legacy 60-second
+history sampling while preserving all bucket, freshness, coverage and schema
+validation. Build 236's strict 60-second check rejected the new backend response
+as unavailable; backend-only validation had missed this client contract.
+
+The isolated candidate passed **266 package tests** (3 skipped, zero failures)
+and **62 iOS tests**. Its exact Swift validator also accepted live `1h`/`24h`/`7d`
+responses for both phone and Watch series. Home and the System layout are unchanged;
+only validation and cadence-neutral explanatory text changed. Signed payload,
+profiles, entitlements and source were audited; build 236 is retained as rollback
+but cannot display history from a 10-second backend. The owner subsequently
+confirmed the updated UI looks good. No backend/services were restarted by this app deployment.
+
+Evidence: private signing-renewal artifact
+`20261001T033129Z-build237-history-compat`, including `deployment/result.json`
+and `live-contract-check.log`. Future history API changes must be validated through
+the shipping native decoder, not only backend tests.
+
 ## Prerequisites
 
 - A compatible Mac/Xcode toolchain, XcodeGen, Python, Node, and the project's resolved dependencies.

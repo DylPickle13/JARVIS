@@ -248,6 +248,36 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store._db.execute('PRAGMA page_size').fetchone()[0], 4096)
         self.assertFalse(Path(str(self.path)+'-wal').exists())
 
+    def test_ten_second_samples_cover_fresh_thirty_second_cache_without_extending_ttl(self):
+        for seconds in range(0, 180, history.INTERVAL):
+            # Existing polling refreshes the cache every 20s; history only reads it.
+            source = BASE + (seconds // 20) * 20
+            self.store.append({'pi': health.observation('healthy', 'current',
+                source=source, valid_until=source+30)}, at=BASE+seconds, run_id=RUN)
+        response = self.read(now=BASE+3600)
+        buckets = response['series'][0]['buckets']
+        self.assertEqual(response['sampleIntervalSeconds'], 10)
+        self.assertEqual(response['resolutionSeconds'], 60)
+        self.assertTrue(all(b['coverageSeconds'] == 60 and b['state'] == 'healthy'
+                            for b in buckets[:3]))
+        # Last cached evidence expires at 190, not at the recorder's 90s lease.
+        self.assertEqual(buckets[3]['coverageSeconds'], 10)
+        self.assertEqual(buckets[3]['missingSeconds'], 50)
+        self.assertEqual(buckets[4]['coverageSeconds'], 0)
+
+    def test_legacy_minute_samples_are_not_backfilled_by_new_cadence(self):
+        for seconds in (0, 60):
+            self.store.append({'pi': health.observation('healthy', 'current',
+                source=BASE+seconds, valid_until=BASE+seconds+30)},
+                at=BASE+seconds, run_id=RUN)
+        for seconds in range(120, 180, history.INTERVAL):
+            self.store.append({'pi': health.observation('healthy', 'current',
+                source=BASE+seconds, valid_until=BASE+seconds+30)},
+                at=BASE+seconds, run_id=RUN)
+        buckets = self.read(now=BASE+3600)['series'][0]['buckets']
+        self.assertEqual([b['coverageSeconds'] for b in buckets[:3]], [30, 30, 60])
+        self.assertEqual([b['missingSeconds'] for b in buckets[:3]], [30, 30, 0])
+
     def test_time_row_and_payload_budget_pruning(self):
         for i in range(5):
             self.append(at=BASE+i*60)
@@ -269,8 +299,8 @@ class StoreTests(unittest.TestCase):
         count = min(history.MAX_SAMPLES, history.PAYLOAD_BUDGET//size)
         with self.store._db:
             self.store._db.executemany('INSERT INTO samples VALUES (?,?,?,?)',
-                ((int((BASE+i*60)*1000), RUN, payload(BASE+i*60), size) for i in range(count)))
-        at = BASE+count*60
+                ((int((BASE+i*history.INTERVAL)*1000), RUN, payload(BASE+i*history.INTERVAL), size) for i in range(count)))
+        at = BASE+count*history.INTERVAL
         self.store.append(json.loads(payload(at)), at=at, run_id=RUN)
         response = self.read(now=at+30, window='7d', component=None)
         self.assertEqual(len(response['series']), 5)
@@ -278,7 +308,7 @@ class StoreTests(unittest.TestCase):
         self.assertLess(len(json.dumps(response)), 500000)
         self.assertLessEqual(self.store._db.execute('SELECT sum(bytes) FROM samples').fetchone()[0], history.PAYLOAD_BUDGET)
         self.assertLessEqual(self.store._db.execute('PRAGMA page_count').fetchone()[0], history.MAX_PAGES)
-        self.assertLessEqual(self.path.stat().st_size, 32*1024*1024)
+        self.assertLessEqual(self.path.stat().st_size, history.MAX_PAGES*4096)
         for series in response['series']:
             for bucket in series['buckets']:
                 self.assertGreaterEqual(bucket['missingSeconds'], 0)
@@ -372,7 +402,7 @@ class RecorderTests(unittest.TestCase):
         self.recorder.tick()
         self.recorder.tick()
         self.assertEqual(self.reader.call_count, 1)
-        self.advance(59)
+        self.advance(history.INTERVAL-1)
         self.recorder.tick()
         self.assertEqual(self.reader.call_count, 1)
         self.advance(10000)
@@ -383,6 +413,35 @@ class RecorderTests(unittest.TestCase):
         self.recorder.read('24h')
         self.assertEqual(self.reader.call_count, 2)
         self.store.read.assert_called_once()
+
+    def test_worker_waits_ten_seconds_without_incident_or_device_calls(self):
+        self.assertEqual(history.INTERVAL, 10)
+        def wait(seconds):
+            self.assertEqual(seconds, 10)
+            self.advance(seconds)
+            if self.reader.call_count == 6:
+                self.recorder._stop.set()
+        with patch.object(self.recorder._stop, 'wait', side_effect=wait):
+            self.recorder._run()
+        self.assertEqual(self.reader.call_count, 6)
+        self.assertEqual(self.store.append.call_count, 6)
+
+    def test_worker_start_is_idempotent_and_close_joins(self):
+        written = threading.Event()
+        self.store.append.side_effect = lambda *args, **kwargs: written.set()
+        self.recorder.start()
+        thread = self.recorder._thread
+        self.recorder.start()
+        self.assertIs(self.recorder._thread, thread)
+        try:
+            self.assertTrue(written.wait(2))
+        finally:
+            self.recorder.close()
+        self.assertFalse(thread.is_alive())
+        self.recorder.close()
+        self.recorder.start()
+        self.store.close.assert_called_once()
+        self.assertEqual(self.reader.call_count, 1)
 
     def test_snapshot_failure_records_sanitized_unavailability_not_storage_failure(self):
         self.reader.side_effect = RuntimeError('PRIVATE')
@@ -506,13 +565,12 @@ class CompositionTests(unittest.TestCase):
                 store_cls.side_effect = RuntimeError('PRIVATE path=secret')
             if recorder_error:
                 stack.enter_context(patch.object(history, 'HistoryRecorder', side_effect=RuntimeError('PRIVATE')))
-            def start():
-                callback = worker_cls.call_args.kwargs['on_tick']
-                if callback:
-                    callback()
-                    if close_error:
-                        created[-1].close = Mock(side_effect=RuntimeError('PRIVATE'))
-            worker_cls.return_value.start.side_effect = start
+            def start(recorder):
+                recorder.tick()
+                if close_error:
+                    created[-1].close = Mock(side_effect=RuntimeError('PRIVATE'))
+            if not recorder_error:
+                history_start = stack.enter_context(patch.object(history.HistoryRecorder, 'start', autospec=True, side_effect=start))
             if missing_monitoring or enabled not in ('true', 'false'):
                 with self.assertRaises(ValueError):
                     daemon.main()
@@ -529,8 +587,10 @@ class CompositionTests(unittest.TestCase):
             self.assertIsNone(daemon.SYSTEM_HISTORY_RECORDER)
             self.assertIsNone(daemon.MONITOR_WORKER)
             monitor_store.assert_called_once()
+            self.assertNotIn('on_tick', worker_cls.call_args.kwargs)
             if enabled == 'true' and not storage_error and not recorder_error:
                 store_cls.assert_called_once()
+                history_start.assert_called_once()
                 state.snapshot.assert_called_once_with(client_active=False, start_collectors=False)
                 path = root / 'Library/Application Support/JARVIS/system-history/history.sqlite3'
                 db = sqlite3.connect(path)
@@ -544,7 +604,8 @@ class CompositionTests(unittest.TestCase):
                     original_store.close(created[-1])
             else:
                 state.snapshot.assert_not_called()
-                self.assertIsNone(worker_cls.call_args.kwargs['on_tick'])
+                if not recorder_error:
+                    history_start.assert_not_called()
                 if enabled == 'false':
                     store_cls.assert_not_called()
                 if recorder_error:

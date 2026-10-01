@@ -2740,6 +2740,7 @@ def main(*, control_factory=None, local_control=False) -> int:
                     SYSTEM_HISTORY_RECORDER = HistoryRecorder(history_store,
                         lambda: STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False),
                         projector=_project_system_health)
+                    SYSTEM_HISTORY_RECORDER.start()
                 except Exception:
                     # Optional chart storage must not prevent backend startup or
                     # change controls, sampling, incident history or alerts.
@@ -2752,8 +2753,7 @@ def main(*, control_factory=None, local_control=False) -> int:
                     sys.stderr.write('[jarvisd] system history storage unavailable\n')
             DEVICE_PROBES = ProbeWorker(DEVICE_REGISTRY)
             DEVICE_PROBES.start()
-            MONITOR_WORKER = MonitorWorker(store, lambda: _monitor_observations(integrations),
-                on_tick=SYSTEM_HISTORY_RECORDER.tick if SYSTEM_HISTORY_RECORDER is not None else None)
+            MONITOR_WORKER = MonitorWorker(store, lambda: _monitor_observations(integrations))
             MONITOR_WORKER.start()
         sys.stderr.write(f"[jarvisd] listening on {HOST}:{PORT} (version {VERSION})\n")
         server.serve_forever()
