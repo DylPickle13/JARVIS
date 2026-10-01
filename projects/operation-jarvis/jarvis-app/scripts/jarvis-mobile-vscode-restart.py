@@ -21,7 +21,7 @@ import sys
 import time
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Iterator, Mapping, Sequence
 
@@ -61,6 +61,7 @@ MAX_STATUS_AGE_SECONDS = 10.0
 MAX_STATUS_FUTURE_SKEW_SECONDS = 5.0
 READY_TIMEOUT_SECONDS = 30.0
 POLL_SECONDS = 0.10
+IDLE_TIMEOUT_SECONDS = 30 * 60
 
 # These are removed because a tmux server originally created through SSH can
 # retain the original connection environment for later local respawns. TMUX
@@ -284,6 +285,7 @@ def snapshots_from_panes(
     status_dir: Path = STATUS_DIR,
     expected_session_dir: Path | None = None,
     now: dt.datetime | None = None,
+    allow_busy: bool = False,
 ) -> list[SessionEvidence]:
     """Build and validate all ten immutable preflight snapshots."""
     project_root = project_root.resolve()
@@ -342,8 +344,10 @@ def snapshots_from_panes(
         for snapshot in snapshots
         if snapshot.lifecycle not in QUIESCENT_LIFECYCLES
     ]
-    if busy:
+    if busy and not allow_busy:
         raise RestartError("refusing to restart non-idle Pi process: " + "; ".join(busy))
+    if any(item.lifecycle == "unknown" for item in snapshots):
+        raise RestartError("refusing to restart a Pi process with unknown lifecycle")
     return snapshots
 
 
@@ -370,6 +374,8 @@ def _list_fixed_panes() -> dict[str, PaneEvidence]:
         ]
     )
     if result.returncode != 0:
+        if "no server running" in (result.stderr or "") or "No such file or directory" in (result.stderr or ""):
+            return {}
         detail = (result.stderr or "").strip().splitlines()
         suffix = f": {detail[0][:200]}" if detail else ""
         raise RestartError("jarvis-mobile tmux server is unavailable" + suffix)
@@ -431,58 +437,83 @@ def _respawn(snapshot: SessionEvidence, project_root: Path) -> None:
         raise RestartError(f"slot {snapshot.slot} ({snapshot.name}) could not be respawned{suffix}")
 
 
-def _wait_for_ready(
-    snapshot: SessionEvidence,
-    *,
-    project_root: Path,
-    status_dir: Path,
-    expected_session_dir: Path,
-    timeout_seconds: float = READY_TIMEOUT_SECONDS,
-) -> tuple[PaneEvidence, SessionEvidence]:
-    deadline = time.monotonic() + timeout_seconds
-    last_problem = "Pi has not published its new status descriptor"
-    while time.monotonic() < deadline:
-        try:
-            panes = _list_fixed_panes()
-            pane = panes[snapshot.name]
-            if snapshot.pane_id and pane.pane_id != snapshot.pane_id:
-                raise RestartError(
-                    f"pane identity changed from {snapshot.pane_id} to {pane.pane_id}"
-                )
-            if pane.pane_pid == snapshot.pane_pid:
-                raise RestartError("Pi PID has not changed yet")
-            if pane.pane_dead != "0":
-                raise RestartError("new Pi exited; inspect its retained tmux pane for startup errors")
-            refreshed = snapshots_from_panes(
-                "\n".join(
-                    "\t".join(
-                        [
-                            item.name,
-                            item.window_index,
-                            item.pane_index,
-                            item.pane_id,
-                            item.pane_dead,
-                            str(item.pane_pid),
-                            str(item.width),
-                            str(item.height),
-                        ]
-                    )
-                    for item in panes.values()
-                ),
-                project_root=project_root,
-                status_dir=status_dir,
-                expected_session_dir=expected_session_dir,
-            )
-            current = next(item for item in refreshed if item.slot == snapshot.slot)
-            if current.session_file != snapshot.session_file:
-                raise RestartError("new Pi selected a different session file")
-            if current.lifecycle not in QUIESCENT_LIFECYCLES:
-                raise RestartError(f"new Pi is {current.lifecycle}, not idle/new")
-            return pane, current
-        except (RestartError, KeyError, StopIteration) as error:
-            last_problem = str(error)
+def _slot_status(snapshot: SessionEvidence, *, starting: bool = False) -> tuple[PaneEvidence | None, SessionEvidence]:
+    """Inspect only this slot; other slots may be busy or still starting."""
+    pane = _list_fixed_panes().get(snapshot.name)
+    if snapshot.pane_id and (pane is None or pane.pane_id != snapshot.pane_id):
+        raise RestartError("pane identity changed while restart was pending")
+    if not starting:
+        if not snapshot.pane_id:
+            if pane is not None:
+                raise RestartError("missing slot was created while restart was pending")
+            return pane, snapshot
+        if pane.pane_pid != snapshot.pane_pid:
+            raise RestartError("Pi PID changed while restart was pending")
+        if pane.pane_dead == "1":
+            if snapshot.status_path == STATUS_DIR:
+                return pane, snapshot  # Already dead during initial preflight.
+            raise RestartError("Pi exited while restart was pending; refusing to guess history")
+    elif pane is None or pane.pane_dead != "0" or pane.pane_pid == snapshot.pane_pid:
+        raise RestartError("new Pi is not running yet")
+    _, payload = _read_status_for_pid(STATUS_DIR, pane.pane_pid, PROJECT_ROOT, SESSION_DIR, _utc_now())
+    session_file = _validate_session_file(payload.get("sessionFile"), SESSION_DIR)
+    if session_file != snapshot.session_file:
+        raise RestartError("Pi session file changed; refusing to restart a different conversation")
+    if payload["lifecycle"] == "unknown":
+        raise RestartError("Pi lifecycle is unknown")
+    return pane, replace(snapshot, lifecycle=str(payload["lifecycle"]))
+
+
+def _restart_when_idle(snapshots: list[SessionEvidence], *, progress: Callable[[int], None] | None = None) -> None:
+    pending = {item.slot: item for item in snapshots}
+    starting: dict[int, tuple[SessionEvidence, float]] = {}
+    errors: list[str] = []
+    completed = 0
+    idle_deadline = time.monotonic() + IDLE_TIMEOUT_SECONDS
+    for item in snapshots:
+        print(f"slot {item.slot}: queued; waiting for idle (up to 30 minutes)", flush=True)
+    while pending or starting:
+        for slot, snapshot in list(pending.items()):
+            try:
+                if time.monotonic() >= idle_deadline:
+                    raise RestartError("timed out waiting for idle; session was not restarted")
+                _, current = _slot_status(snapshot)
+                if current.lifecycle not in QUIESCENT_LIFECYCLES:
+                    continue
+                print(f"slot {slot}: restarting {snapshot.session_file.name}", flush=True)
+                _respawn(snapshot, PROJECT_ROOT)
+                # Register before configuration so a successful spawn is still
+                # monitored even if a subsequent tmux policy update fails.
+                starting[slot] = (snapshot, time.monotonic() + READY_TIMEOUT_SECONDS)
+                if not snapshot.pane_id:
+                    _source_profile()
+                _set_latest_window_size(snapshot.name)
+            except RestartError as error:
+                message = f"slot {slot}: {error}"
+                errors.append(message)
+                print(message, flush=True)
+            del pending[slot]
+        for slot, (snapshot, deadline) in list(starting.items()):
+            try:
+                pane, current = _slot_status(snapshot, starting=True)
+                if current.lifecycle not in QUIESCENT_LIFECYCLES:
+                    raise RestartError(f"new Pi is {current.lifecycle}, not idle/new")
+            except RestartError as error:
+                if time.monotonic() < deadline:
+                    continue
+                message = f"slot {slot}: did not become ready: {error}"
+                errors.append(message)
+                print(message, flush=True)
+            else:
+                completed += 1
+                print(f"slot {slot}: ready (PID {snapshot.pane_pid}->{pane.pane_pid}, {current.session_file.name})", flush=True)
+                if progress:
+                    progress(completed)
+            del starting[slot]
+        if pending or starting:
             time.sleep(POLL_SECONDS)
-    raise RestartError(f"slot {snapshot.slot} ({snapshot.name}) did not become ready: {last_problem}")
+    if errors:
+        raise RestartError("; ".join(errors))
 
 
 def _source_profile() -> None:
@@ -546,39 +577,21 @@ def restart_all(*, dry_run: bool = False, progress: Callable[[int], None] | None
             if "no server running" not in detail and "No such file or directory" not in detail:
                 raise RestartError("jarvis-mobile tmux server is unavailable")
             pane_result.stdout = ""
-        snapshots = snapshots_from_panes(pane_result.stdout or "")
+        snapshots = snapshots_from_panes(pane_result.stdout or "", allow_busy=True)
 
         if dry_run:
             for snapshot in snapshots:
                 print(
                     f"slot {snapshot.slot}: {snapshot.name} {snapshot.pane_id} "
-                    f"would reload {snapshot.session_file.name}"
+                    f"would reload {snapshot.session_file.name} when idle ({snapshot.lifecycle})"
                 )
             return
 
-        # Do not mutate any pane until all ten fixed identities, status files,
-        # session paths, and idle states have passed preflight.
+        # Validate every identity and status before mutation. Busy slots wait;
+        # immediately before each respawn, recheck that slot's identity and idle state.
         if any(snapshot.pane_id for snapshot in snapshots):
             _source_profile()
-        for snapshot in snapshots:
-            print(f"Starting slot {snapshot.slot}: {snapshot.name} ({snapshot.session_file.name})", flush=True)
-            _respawn(snapshot, PROJECT_ROOT)
-            if not snapshot.pane_id:
-                _source_profile()
-            _set_latest_window_size(snapshot.name)
-            pane, refreshed = _wait_for_ready(
-                snapshot,
-                project_root=PROJECT_ROOT,
-                status_dir=STATUS_DIR,
-                expected_session_dir=SESSION_DIR,
-            )
-            print(
-                f"slot {snapshot.slot}: {snapshot.name} restarted "
-                f"({snapshot.pane_id}, PID {snapshot.pane_pid}->{pane.pane_pid}, "
-                f"{refreshed.session_file.name})"
-            )
-            if progress:
-                progress(snapshot.slot)
+        _restart_when_idle(snapshots, progress=progress)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

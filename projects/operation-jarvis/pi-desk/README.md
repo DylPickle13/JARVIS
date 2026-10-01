@@ -133,10 +133,17 @@ pi-desk restart --dry-run  # preflight only, no changes
 
 The F10 popup uses this same command. It delegates to the host's existing
 `jarvis-mobile-vscode-restart.py --all` helper rather than duplicating its safety
-logic. All ten identities and status records must pass preflight. Busy, stale or
-ambiguous sessions block the operation. Existing conversations are resumed by
-explicit session path; missing/dead slots start fresh. This affects **every**
-viewer. Partial failures are reported and never automatically retried.
+logic. All ten identities and status records must pass preflight. Stale, unknown,
+or ambiguous status blocks the operation. Each busy session waits until idle
+(up to 30 minutes); idle sessions restart immediately and startups overlap.
+Each slot's identity, conversation path and fresh status are rechecked before
+respawn. A changed conversation or PID fails that slot rather than guessing.
+This is polling, not an input lock: avoid sending new work during the restart.
+Existing conversations resume by explicit session path; initially missing/dead
+slots start fresh. This affects **every** viewer. Progress counts verified ready
+sessions, regardless of completion order. Partial failures are reported, other
+slots continue, and failures are never automatically retried. Ctrl+C cancels
+remaining work, but does not undo already-started restarts.
 
 Opening Pi Desk, switching groups, recovering SSH, and closing a viewer **never
 restart agents**. If hosted slots are absent, explicitly use start/restart after

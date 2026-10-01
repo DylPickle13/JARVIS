@@ -314,6 +314,92 @@ class MobileVscodeRestartTests(unittest.TestCase):
             spawn = restart.respawn_arguments(snapshot, root)
             self.assertEqual(args, retain + [";"] + spawn if snapshot.pane_id else spawn + [";"] + retain)
 
+    def test_busy_preflight_is_opt_in_and_unknown_still_blocks(self):
+        root, status, sessions, now, output, _ = self.fixture(lifecycle_by_slot={1: "running"})
+        kwargs = dict(project_root=root, status_dir=status, expected_session_dir=sessions, now=now)
+        with self.assertRaises(restart.RestartError):
+            restart.snapshots_from_panes(output, **kwargs)
+        snapshots = restart.snapshots_from_panes(output, allow_busy=True, **kwargs)
+        self.assertEqual(snapshots[0].lifecycle, "running")
+        path = status / "10001-session.json"
+        payload = json.loads(path.read_text())
+        payload["lifecycle"] = "unknown"
+        path.write_text(json.dumps(payload))
+        with self.assertRaises(restart.RestartError):
+            restart.snapshots_from_panes(output, allow_busy=True, **kwargs)
+
+    def test_idle_slots_start_without_waiting_for_busy_slot_or_readiness(self):
+        root, status, sessions, now, output, _ = self.fixture()
+        snapshots = restart.snapshots_from_panes(output, project_root=root, status_dir=status,
+                                                expected_session_dir=sessions, now=now)[:3]
+        events = []
+        checks = 0
+        def inspect(snapshot, *, starting=False):
+            nonlocal checks
+            if starting:
+                events.append(("ready", snapshot.slot))
+            elif snapshot.slot == 1:
+                checks += 1
+                if checks == 1:
+                    return None, restart.replace(snapshot, lifecycle="running")
+            pane = restart.PaneEvidence(snapshot.name, "0", "0", snapshot.pane_id,
+                                        "0", snapshot.pane_pid + 100, 80, 24)
+            return pane, snapshot
+        with patch.object(restart, "_slot_status", side_effect=inspect), \
+             patch.object(restart, "_respawn", side_effect=lambda s, r: events.append(("spawn", s.slot))), \
+             patch.object(restart, "_set_latest_window_size"), \
+             patch.object(restart.time, "sleep"):
+            progress = []
+            restart._restart_when_idle(snapshots, progress=progress.append)
+        self.assertEqual(events[:2], [("spawn", 2), ("spawn", 3)])
+        self.assertLess(events.index(("ready", 2)), events.index(("spawn", 1)))
+        self.assertEqual(progress, [1, 2, 3])
+
+    def test_unsafe_slot_and_startup_timeout_do_not_block_other_slots(self):
+        root, status, sessions, now, output, _ = self.fixture()
+        snapshots = restart.snapshots_from_panes(output, project_root=root, status_dir=status,
+                                                expected_session_dir=sessions, now=now)[:3]
+        def inspect(snapshot, *, starting=False):
+            if snapshot.slot == 1:
+                raise restart.RestartError("stale status")
+            if starting and snapshot.slot == 2:
+                raise restart.RestartError("no startup heartbeat")
+            return restart.PaneEvidence(snapshot.name, "0", "0", snapshot.pane_id,
+                                        "0", snapshot.pane_pid + 100, 80, 24), snapshot
+        with patch.object(restart, "_slot_status", side_effect=inspect), \
+             patch.object(restart, "_respawn") as spawn, \
+             patch.object(restart, "_set_latest_window_size"), \
+             patch.object(restart, "READY_TIMEOUT_SECONDS", 0):
+            progress = []
+            with self.assertRaisesRegex(restart.RestartError, "stale status.*no startup heartbeat"):
+                restart._restart_when_idle(snapshots, progress=progress.append)
+        self.assertEqual([call.args[0].slot for call in spawn.call_args_list], [2, 3])
+        self.assertEqual(progress, [1])
+
+    def test_idle_timeout_never_respawns(self):
+        root, status, sessions, now, output, _ = self.fixture()
+        snapshots = restart.snapshots_from_panes(output, project_root=root, status_dir=status,
+                                                expected_session_dir=sessions, now=now)
+        with patch.object(restart, "IDLE_TIMEOUT_SECONDS", 0), patch.object(restart, "_respawn") as spawn:
+            with self.assertRaisesRegex(restart.RestartError, "timed out waiting for idle"):
+                restart._restart_when_idle(snapshots)
+        spawn.assert_not_called()
+
+    def test_slot_recheck_is_independent_and_rejects_changed_conversation(self):
+        root, status, sessions, now, output, _ = self.fixture(lifecycle_by_slot={2: "running"})
+        snapshots = restart.snapshots_from_panes(output, project_root=root, status_dir=status,
+                                                expected_session_dir=sessions, now=now, allow_busy=True)
+        with patch.object(restart, "PROJECT_ROOT", root), patch.object(restart, "STATUS_DIR", status), \
+             patch.object(restart, "SESSION_DIR", sessions), patch.object(restart, "_utc_now", return_value=now), \
+             patch.object(restart, "_list_fixed_panes", return_value=restart.parse_fixed_panes(output)):
+            self.assertEqual(restart._slot_status(snapshots[0])[1].lifecycle, "idle")
+            path = status / "10001-session.json"
+            payload = json.loads(path.read_text())
+            payload["sessionFile"] = str(sessions / "different.jsonl")
+            path.write_text(json.dumps(payload))
+            with self.assertRaisesRegex(restart.RestartError, "different conversation"):
+                restart._slot_status(snapshots[0])
+
     def test_fixed_pane_parser_rejects_missing_or_extra_panes(self):
         with self.assertRaisesRegex(restart.RestartError, "missing or ambiguous"):
             restart.parse_fixed_panes("jarvis-ios\t0\t0\t%0\t0\t1001\t80\t24")

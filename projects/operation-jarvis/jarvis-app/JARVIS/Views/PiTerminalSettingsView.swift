@@ -131,7 +131,7 @@ struct PiTerminalSettingsView: View {
             Button("Cancel", role: .cancel) {}
             Button("Restart Sessions", role: .destructive) { runMaintenance(start: true) }
         } message: {
-            Text("Active conversations will be preserved; quit sessions will reopen fresh. Busy sessions will block the restart. Watch and room-audio sessions are also affected. The restart continues on the Mac if this phone disconnects.")
+            Text("Active conversations will be preserved; quit sessions will reopen fresh. Busy sessions wait until idle, for up to 30 minutes; other sessions restart without waiting. Avoid sending new work during the restart. Watch and room-audio sessions are also affected. The restart continues on the Mac if this phone disconnects.")
         }
         .alert("Forget trusted SSH host?", isPresented: $showForgetHostConfirmation) {
             Button("Cancel", role: .cancel) {}

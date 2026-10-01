@@ -11,7 +11,7 @@ def restart(dry_run=False):
     backend = load()
     if not dry_run:
         print('Start/restart all ten agents on mac-mini-64. Existing conversations are preserved.')
-        print('Busy, stale or ambiguous sessions block the operation. Missing slots start fresh.')
+        print('Busy sessions wait for idle (up to 30 minutes); startups overlap. Unsafe status blocks restart. Missing slots start fresh.')
         print('This affects every viewer. Partial failures are NOT automatically retried.')
         try:
             confirmed = sys.stdin.isatty() and input('Press Enter to start/restart all ten agents (Ctrl+C to cancel): ') == ''
