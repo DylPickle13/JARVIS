@@ -5,7 +5,7 @@ import JARVISKit
 
 @MainActor
 final class SystemDashboardViewTests: XCTestCase {
-    private func presentation(offline: Bool = false, includeExtraService: Bool = true, sensorState: String? = nil) throws -> SystemDashboardPresentation {
+    private func presentation(offline: Bool = false, includeExtraService: Bool = true, sensorState: String? = nil, deviceCoverage: Bool = false) throws -> SystemDashboardPresentation {
         let meta: [String: Any] = Dictionary(uniqueKeysWithValues:
             ["services", "pi", "plugs", "purifier", "network", "codexQuota"].map {
                 ($0, ["ok": true, "stale": false, "ageSeconds": 10] as [String: Any])
@@ -35,6 +35,17 @@ final class SystemDashboardViewTests: XCTestCase {
             object["health"] = ["scope": "cached_status_health", "components": [
                 "security": evidence(sensorState, reason), "overall": evidence("healthy", "current")]]
             object["generatedAt"] = now.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
+        }
+        if deviceCoverage {
+            let ids = ["keyboard-watcher", "keyboard", "mouse", "led-strip", "room-audio-mac",
+                       "hub", "door-sensor", "motion-sensor", "sensor-reader", "front-doorbell",
+                       "indoor-camera", "room-audio-pi", "family-room-tv", "family-room-speaker"]
+            object["deviceHealth"] = ["version": 1, "scope": "device_check_coverage", "devices": ids.map { id in
+                ["id": id, "name": id, "scope": "tcp_reachability", "expectation": "always",
+                 "coverage": "background", "state": "available", "reason": "current",
+                 "ageSeconds": 0, "lastAttemptAt": now.formatted(.iso8601),
+                 "freshnessLimitSeconds": 150, "dependsOn": [], "blockedBy": [], "incidentOpen": false] as [String: Any]
+            }]
         }
         let state = try JSONDecoder().decode(StateSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
         return .init(snapshot: state, requestStartedAt: now, isConnected: !offline, now: now)
@@ -114,6 +125,33 @@ final class SystemDashboardViewTests: XCTestCase {
                 attachment.lifetime = .keepAlways;add(attachment)
             }
             model.configure(.init(endpoint: nil, surface: compact ? .watch : .phone, visible: false, interactive: false, connected: false))
+        }
+    }
+
+    func testOwnerDeviceGroupsFitPhoneAndWatch() throws {
+        for offline in [false, true] {
+            let dashboard = try presentation(offline: offline, includeExtraService: false, sensorState: "healthy", deviceCoverage: true)
+            XCTAssertEqual(dashboard.visualGroups.count, 7)
+            for (compact, viewport) in [(true, CGSize(width: 162, height: 197)),
+                                        (false, CGSize(width: 320, height: 450)),
+                                        (false, CGSize(width: 750, height: 270))] {
+                for textSize in [DynamicTypeSize.large, .accessibility3] {
+                    let host = UIHostingController(rootView: content(dashboard, compact: compact).dynamicTypeSize(textSize))
+                    let measured = host.sizeThatFits(in: viewport)
+                    XCTAssertLessThanOrEqual(measured.width, viewport.width + 0.5)
+                    XCTAssertLessThanOrEqual(measured.height, viewport.height + 0.5)
+                }
+                if !offline {
+                    let renderer = ImageRenderer(content: content(dashboard, compact: compact)
+                        .frame(width: viewport.width, height: viewport.height, alignment: .top)
+                        .background(Color.black).environment(\.colorScheme, .dark))
+                    renderer.scale = 3
+                    let image = try XCTUnwrap(renderer.uiImage)
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "owner-system-groups-\(Int(viewport.width))-\(compact)"
+                    attachment.lifetime = .keepAlways; add(attachment)
+                }
+            }
         }
     }
 

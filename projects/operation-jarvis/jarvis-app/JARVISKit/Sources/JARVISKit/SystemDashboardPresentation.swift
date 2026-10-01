@@ -15,6 +15,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
     public let health: SystemHealthPresentation
     public let services: [SystemDashboardService]
     public let isConnected: Bool
+    public let includesDeviceCoverage: Bool
     public let backendVersion: String?
     public let uptimeText: String?
 
@@ -58,6 +59,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         let health = SystemHealthPresentation(snapshot: snapshot, requestStartedAt: requestStartedAt, now: now)
         self.health = health
         self.isConnected = isConnected
+        self.includesDeviceCoverage = snapshot?.deviceHealth != nil
         self.backendVersion = snapshot?.version
         if let uptime = snapshot?.uptimeSeconds, uptime.isFinite, uptime >= 0 {
             let days = Int(min(uptime / 86400, 999999))

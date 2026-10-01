@@ -122,6 +122,23 @@ class HTTPTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_device_coverage_auth_and_cache_only(self):
+        from jarvisd_core.device_health import validate
+        inventory = validate({'version': 1, 'devices': [
+            {'id': 'speaker', 'name': 'Speaker', 'kind': 'tcp',
+             'host': '192.168.1.2', 'port': 8009, 'expectation': 'always'}]})
+        probes = Mock()
+        probes.snapshot.return_value = {'speaker': {'ok': True, 'ageSeconds': 1}}
+        with patch.object(daemon, 'DEVICE_REGISTRY', inventory), patch.object(daemon, 'DEVICE_PROBES', probes):
+            self.assertEqual(self.request('/api/v1/health', token='')[0], 401)
+            code, body, _ = self.request('/api/v1/health')
+            self.assertEqual(code, 200)
+            self.assertEqual(body['deviceHealth']['devices'][0]['scope'], 'tcp_reachability')
+            self.assertNotIn('192.168.1.2', json.dumps(body))
+            probes.tick.assert_not_called()
+            self.reader.assert_not_called()
+            self.coordinator.snapshot.assert_called_with(client_active=False, start_collectors=False)
+
     def test_dashboard_api_auth_and_private_history(self):
         worker = Mock(storage_available=True)
         worker.store.status.return_value = {'security/door': {'availability': 'unavailable'}}

@@ -181,6 +181,36 @@ public struct SystemHealthPresentation: Equatable, Sendable {
                 result.insert(overall, at: 0)
             }
         }
+        if let coverage = snapshot?.deviceHealth {
+            if coverage.supported {
+                let required = ["keyboard-watcher", "keyboard", "mouse", "led-strip", "room-audio-mac",
+                                "hub", "door-sensor", "motion-sensor", "sensor-reader", "front-doorbell",
+                                "indoor-camera", "room-audio-pi", "family-room-tv", "family-room-speaker"]
+                let present = Set(coverage.devices.map(\.id))
+                for id in required where !present.contains(id) {
+                    result.append(.init(id: "device:\(id)", title: id, state: .unknown,
+                                        detail: "No configured check evidence", ageSeconds: nil))
+                }
+                for device in coverage.devices where !["iphone-usb", "watch", "master-chief"].contains(device.id) {
+                    let state: SystemHealthState
+                    switch validElapsed == nil ? "unknown" : device.effectiveState(now: now) {
+                    case "available": state = .healthy
+                    case "unavailable": state = .issue
+                    default: state = .unknown
+                    }
+                    result.append(.init(id: "device:\(device.id)", title: device.name,
+                        state: state, detail: "\(device.scopeLabel) · \(device.detail(now: now))",
+                        ageSeconds: device.ageSeconds.flatMap { age in
+                            guard age.isFinite, age >= 0, let validElapsed,
+                                  (age + validElapsed).isFinite else { return nil }
+                            return age + validElapsed
+                        }))
+                }
+            } else {
+                result.append(.init(id: "deviceCoverage", title: "Device checks", state: .unknown,
+                                    detail: "Unsupported device coverage", ageSeconds: nil))
+            }
+        }
         rows = result
     }
 

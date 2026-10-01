@@ -110,6 +110,8 @@ SECURITY_CLI = os.environ.get("JARVISD_SECURITY_CLI", "")
 MONITORING_ENABLED = False
 SECURITY_POLL_ALIASES = ()
 MONITOR_WORKER = None
+DEVICE_REGISTRY = ()
+DEVICE_PROBES = None
 SYSTEM_HISTORY_ENABLED = False
 SYSTEM_HISTORY_RECORDER = None
 TRUSTED_CIDRS_RAW = os.environ.get(
@@ -1758,7 +1760,7 @@ def _with_system_health(snapshot):
         'sourceObservedAt': stamp(row['sourceObservedAt']) if row['sourceObservedAt'] is not None else None,
         'validUntil': stamp(row['validUntil']) if row['validUntil'] is not None else None}
         for key, row in rows.items()}
-    return {**snapshot, 'health': {'scope': 'cached_status_health',
+    return {**snapshot, 'deviceHealth': _device_coverage(snapshot), 'health': {'scope': 'cached_status_health',
         'healthy': rows['overall']['state'] in ('healthy', 'inactive'),
         'components': components}}
 
@@ -1766,6 +1768,23 @@ def _with_system_health(snapshot):
 def collect_state() -> dict:
     """Return state after renewing the bounded foreground-client lease."""
     return _with_system_health(STATE_COORDINATOR.snapshot(client_active=True))
+
+
+def _device_coverage(snapshot=None):
+    from jarvisd_core.device_health import project
+    if snapshot is None:
+        snapshot = STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False)
+    incidents = {}
+    if MONITOR_WORKER is not None:
+        try:
+            incidents = MONITOR_WORKER.store.status()
+        except Exception:
+            pass
+    return project(DEVICE_REGISTRY, snapshot, read_health.SECURITY_HEALTH.snapshot(),
+        OMLX_COORDINATOR.snapshot(client_active=False, start_collectors=False),
+        DEVICE_PROBES.snapshot() if DEVICE_PROBES is not None else {},
+        enabled=MONITORING_ENABLED, security_aliases=SECURITY_POLL_ALIASES,
+        security_ttl=read_health.SECURITY_HEALTH.ttl, incidents=incidents)
 
 
 def _on_demand_observations():
@@ -1796,6 +1815,8 @@ def _monitor_observations(integrations):
         code, _ = monitoring.security(alias, enabled=True, configured=SECURITY_POLL_ALIASES,
                                       observations=observations)
         result[f'security/{alias}'] = code == 200
+    from jarvisd_core.device_health import incident_observations
+    result.update(incident_observations(_device_coverage()))
     return result
 
 
@@ -2250,7 +2271,8 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                     return
                 try:
                     data = ({"monitors": MONITOR_WORKER.store.status(),
-                             "onDemand": _on_demand_observations()} if path.endswith('/status')
+                             "onDemand": _on_demand_observations(),
+                             "deviceHealth": _device_coverage()} if path.endswith('/status')
                             else {"events": MONITOR_WORKER.store.history()})
                 except Exception:
                     self._send(503, {"ok": False, "error": "monitoring_storage_unavailable"})
@@ -2306,7 +2328,9 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                     "monitoring": False, "observations": observations}
             if path == "/api/v1/health":
                 snapshot = STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False)
-                body['health'] = _with_system_health(snapshot)['health']
+                projected = _with_system_health(snapshot)
+                body['health'] = projected['health']
+                body['deviceHealth'] = projected['deviceHealth']
             self._send(200, body)
             return
         if path == "/api/v1/diagnostics":
@@ -2629,7 +2653,7 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
 
 def main(*, control_factory=None, local_control=False) -> int:
     global EVENTS, MONITORING_ENABLED, SECURITY_POLL_ALIASES, MONITOR_WORKER
-    global SYSTEM_HISTORY_ENABLED, SYSTEM_HISTORY_RECORDER
+    global SYSTEM_HISTORY_ENABLED, SYSTEM_HISTORY_RECORDER, DEVICE_REGISTRY, DEVICE_PROBES
     from jarvisd_core.security_polling import SecurityPoller, aliases_from_config
     enabled = os.environ.get("JARVISD_MONITORING_ENABLED", "false")
     if enabled not in {"true", "false"}:
@@ -2664,6 +2688,13 @@ def main(*, control_factory=None, local_control=False) -> int:
     if local_control:
         from jarvisd_core.local_control import read_token
         local_token = read_token()
+    from jarvisd_core.device_health import load_registry, ProbeWorker
+    DEVICE_REGISTRY = load_registry(os.environ.get('JARVISD_DEVICE_REGISTRY', ''))
+    device_keys = ['devices/' + row['id'] for row in DEVICE_REGISTRY
+        if row['kind'] != 'unmonitored' and row['expectation'] == 'always'
+        and (row['kind'] != 'security' or row['selector'] in SECURITY_POLL_ALIASES)]
+    if len(device_keys) + len(integrations) + len(OMLX_SERVER_IDS) + len(SECURITY_POLL_ALIASES) > 64:
+        raise ValueError('Too many device monitors')
     validate_config()
     log_writer = configure_bounded_stderr()
     EVENTS = EventStore(persist_path=EVENTS_FILE, max_json_bytes=MAX_JSON_BODY_BYTES)
@@ -2698,7 +2729,7 @@ def main(*, control_factory=None, local_control=False) -> int:
             from jarvisd_core.monitor_worker import MonitorWorker, notify_local
             keys = ([f'integrations/{name}' for name in integrations]
                     + [f'omlx/{name}' for name in OMLX_SERVER_IDS]
-                    + [f'security/{alias}' for alias in SECURITY_POLL_ALIASES])
+                    + [f'security/{alias}' for alias in SECURITY_POLL_ALIASES] + device_keys)
             store = MonitorStore(Path.home() / 'Library/Application Support/JARVIS/monitoring/history.sqlite3',
                 keys, notifier=notify_local if notification_mode == 'true' else None)
             if SYSTEM_HISTORY_ENABLED:
@@ -2719,6 +2750,8 @@ def main(*, control_factory=None, local_control=False) -> int:
                         except Exception:
                             pass
                     sys.stderr.write('[jarvisd] system history storage unavailable\n')
+            DEVICE_PROBES = ProbeWorker(DEVICE_REGISTRY)
+            DEVICE_PROBES.start()
             MONITOR_WORKER = MonitorWorker(store, lambda: _monitor_observations(integrations),
                 on_tick=SYSTEM_HISTORY_RECORDER.tick if SYSTEM_HISTORY_RECORDER is not None else None)
             MONITOR_WORKER.start()
@@ -2733,6 +2766,9 @@ def main(*, control_factory=None, local_control=False) -> int:
         finally:
             if server is not None:
                 server.server_close()
+            if DEVICE_PROBES is not None:
+                DEVICE_PROBES.stop()
+                DEVICE_PROBES = None
             if MONITOR_WORKER is not None:
                 MONITOR_WORKER.stop()
                 MONITOR_WORKER = None

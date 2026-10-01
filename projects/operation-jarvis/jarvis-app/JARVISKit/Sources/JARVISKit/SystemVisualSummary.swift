@@ -22,13 +22,39 @@ public struct SystemVisualGroup: Identifiable, Equatable, Sendable {
 public extension SystemDashboardPresentation {
     var visualGroups: [SystemVisualGroup] {
         let rows = subsystemRows
-        return [
+        var groups: [SystemVisualGroup] = [
             .init(id: "services", title: "Services", rows: services.map(\.row) + rows.filter { ["services", "backend", "backendHealth"].contains($0.id) }),
             .init(id: "pi", title: "Pi", rows: rows.filter { ["pi", "codexQuota"].contains($0.id) }),
-            .init(id: "network", title: "Network", rows: rows.filter { $0.id == "network" }),
-            .init(id: "devices", title: "Devices", rows: rows.filter { ["plugs", "purifier"].contains($0.id) }),
-            .init(id: "security", title: "Sensors", rows: rows.filter { $0.id == "security" })
+            .init(id: "network", title: "Network", rows: rows.filter { $0.id == "network" })
         ]
+        guard includesDeviceCoverage else {
+            // Older hosts retain their aggregate scope; never invent device evidence.
+            return groups + [
+                .init(id: "devices", title: "Devices", rows: rows.filter { ["plugs", "purifier"].contains($0.id) }),
+                .init(id: "security", title: "Security", rows: rows.filter { $0.id == "security" })
+            ]
+        }
+        let computer = ["keyboard-watcher", "keyboard", "mouse", "led-strip", "room-audio-mac"]
+        let security = ["hub", "door-sensor", "motion-sensor", "sensor-reader", "front-doorbell", "indoor-camera", "room-audio-pi"]
+        let cast = ["family-room-tv", "family-room-speaker"]
+        func checks(_ ids: [String]) -> [SystemHealthRow] {
+            ids.map { id in
+                rows.first { $0.id == "device:\(id)" } ?? .init(
+                    id: "device:\(id)", title: id, state: .unknown,
+                    detail: "No configured check evidence", ageSeconds: nil)
+            }
+        }
+        let grouped = Set((computer + security + cast).map { "device:\($0)" })
+        groups += [
+            .init(id: "computer", title: "Computer", rows: checks(computer)),
+            .init(id: "security", title: "Security", rows: checks(security)),
+            .init(id: "cast", title: "Cast playback", rows: checks(cast)),
+            .init(id: "devices", title: "Devices", rows: rows.filter {
+                ["plugs", "purifier", "deviceCoverage"].contains($0.id)
+                    || ($0.id.hasPrefix("device:") && !grouped.contains($0.id))
+            })
+        ]
+        return groups
     }
 
     /// Describe observation age, never pretend it is the failure's start time.

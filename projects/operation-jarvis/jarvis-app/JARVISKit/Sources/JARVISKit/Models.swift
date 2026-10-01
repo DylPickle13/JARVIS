@@ -183,6 +183,7 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
     public let subsystems: Subsystems?
     public let subsystemsMeta: [String: SubsystemMetadata]?
     public let health: CachedSystemHealthSummary?
+    public let deviceHealth: DeviceHealthCoverage?
 
     public init(
         ok: Bool,
@@ -196,7 +197,8 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
         summary: Summary? = nil,
         subsystems: Subsystems? = nil,
         subsystemsMeta: [String: SubsystemMetadata]? = nil,
-        health: CachedSystemHealthSummary? = nil
+        health: CachedSystemHealthSummary? = nil,
+        deviceHealth: DeviceHealthCoverage? = nil
     ) {
         self.ok = ok
         self.loading = loading
@@ -210,6 +212,7 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
         self.subsystems = subsystems
         self.subsystemsMeta = subsystemsMeta
         self.health = health
+        self.deviceHealth = deviceHealth
     }
 }
 
@@ -320,7 +323,8 @@ public extension StateSnapshot {
             summary: updatedSummary,
             subsystems: updatedSubsystems,
             subsystemsMeta: subsystemsMeta,
-            health: health
+            health: health,
+            deviceHealth: deviceHealth
         )
     }
 }

@@ -78,7 +78,7 @@ public struct SystemDashboardContent: View {
     }
 
     private var visualCard: some View {
-        VStack(alignment: .leading, spacing: compact ? 5 : 12) {
+        VStack(alignment: .leading, spacing: compact ? 5 : (presentation.includesDeviceCoverage ? 8 : 12)) {
             HStack(spacing: compact ? 7 : 12) {
                 SystemCurrentHealthRing(presentation: presentation, diameter: compact ? 28 : 48)
                     .accessibilityHidden(true)
@@ -94,13 +94,18 @@ public struct SystemDashboardContent: View {
 
             timeline
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: compact ? 3 : 8), count: compact ? 3 : 5), spacing: compact ? 4 : 8) {
+            LazyVGrid(columns: presentation.visualGroups.count > 5
+                      ? [GridItem(.adaptive(minimum: compact ? 40 : 62), spacing: compact ? 3 : 8)]
+                      : Array(repeating: GridItem(.flexible(), spacing: compact ? 3 : 8), count: compact ? 3 : 5),
+                      spacing: compact ? 4 : 8) {
                 ForEach(presentation.visualGroups) { group in
                     VStack(spacing: compact ? 1 : 4) {
                         Image(systemName: symbol(group.state))
                             .font(.system(size: compact ? 12 : 20, weight: .medium))
                             .foregroundStyle(color(group.state))
-                        Text(group.title).font(.system(size: compact ? 8 : 11))
+                        Text(compact && group.id == "cast" ? "Cast" : group.title)
+                            .font(.system(size: compact ? 8 : 11))
+                            .lineLimit(1).minimumScaleFactor(0.8)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
@@ -114,7 +119,7 @@ public struct SystemDashboardContent: View {
                     .accessibilityLabel(exception + ". " + (historyModel.notice ?? ""))
             }
         }
-        .padding(compact ? 6 : 14)
+        .padding(compact ? 6 : (presentation.includesDeviceCoverage ? 12 : 14))
         .frame(maxWidth: .infinity, alignment: .leading)
         .jarvisGlassSurface(surface,
             in: RoundedRectangle(cornerRadius: compact ? 10 : 14, style: .continuous), glass: true)

@@ -798,7 +798,8 @@ class DaemonUnitTests(unittest.TestCase):
         snapshot = {"ok": True}
         with mock.patch.object(jarvisd.STATE_COORDINATOR, "snapshot", return_value=snapshot) as read:
             result = jarvisd.collect_state()
-            self.assertEqual({key: value for key, value in result.items() if key != 'health'}, snapshot)
+            self.assertEqual({key: value for key, value in result.items() if key not in ('health', 'deviceHealth')}, snapshot)
+            self.assertEqual(result['deviceHealth']['scope'], 'device_check_coverage')
             self.assertIn('security', result['health']['components'])
             self.assertFalse(result['health']['healthy'])
         read.assert_called_once_with(client_active=True)

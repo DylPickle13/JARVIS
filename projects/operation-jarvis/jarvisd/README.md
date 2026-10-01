@@ -7,6 +7,18 @@
 > [Room Audio / Session 10](../jarvis-app/docs/room-session10.md).
 > Installed deployment records remain authoritative.
 
+## Device coverage (2026-09-30 EDT)
+
+The existing health/monitor APIs now include scoped per-device coverage and reuse
+incident history. Active release `20261001T015215Z-device-coverage`: 26 entries,
+26 background checks, including the hardwired doorbell's direct TCP endpoint;
+alerts remain off. iPhone USB, Watch and Master Chief are excluded at the owner's request.
+The [workflow dependency map](docs/workflow-health-map.md) records the System-only
+grouping installed on iPhone and Watch in build 236.
+Build 235's Home coverage card was rejected by the owner; the iPhone was restored
+to audited build 234, then updated to build 236 with System-only grouping.
+Health UI belongs on System, not Home. Backend checks remain active. See [coverage, limitations and rollback](docs/device-coverage.md).
+
 # jarvisd — shared control backend
 
 **History access correction deployed (2026-09-30 EDT):**

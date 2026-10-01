@@ -63,6 +63,11 @@ class MonitorStore:
                 previous = self._current.get(key)
                 if previous and now - previous['time'] < 30:
                     continue
+                # Explicit dependency suppression is neither failure nor recovery.
+                # Keep open incidents, break the failure streak, and let old status expire.
+                if key in observations and observations[key] is None:
+                    self._streaks.pop(key, None)
+                    continue
                 available = observations.get(key) is True
                 self._current[key] = {'available': available, 'time': now, 'observedAt': at}
                 count, first = self._streaks.get(key, (0, now))
@@ -103,12 +108,13 @@ class MonitorStore:
     def status(self):
         now = self.clock()
         with self._lock:
-            active = {row['monitor'] for row in self._db.execute('SELECT monitor FROM active')}
+            active = {row['monitor']: row['started_at'] for row in self._db.execute('SELECT monitor,started_at FROM active')}
             return {key: {
                 'availability': 'available' if self._current.get(key, {}).get('available') is True
                     and now - self._current[key]['time'] <= 90 else 'unavailable',
                 'observedAt': self._current.get(key, {}).get('observedAt'),
                 'incidentOpen': key in active,
+                'incidentStartedAt': active.get(key),
             } for key in self.keys}
 
     def history(self, limit=100):
