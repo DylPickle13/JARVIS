@@ -69,14 +69,40 @@ export function registerSecurity(pi: ExtensionAPI, deps: Dependencies = {}) {
   }
   pi.registerTool({
     name: "operation_jarvis_security", label: "Operation JARVIS · Security",
-    description: "Read Operation JARVIS local Tapo security devices/sensors. devices lists configured aliases offline; status/capabilities read one device. Hub snapshots do not prove sensor freshness or that the home is secure. No media or writes.",
+    description: "Read Tapo security devices and control L930-5 lighting. devices lists aliases; status/capabilities reads one device. light-set changes only strip power, brightness or HSV colour, with readback; never retry uncertain writes. No camera/hub writes or media. Sensor snapshots do not prove freshness or home security.",
     parameters: Type.Object({
-      action: StringEnum(["devices", "status", "capabilities"]),
+      action: StringEnum(["devices", "status", "capabilities", "light-set"]),
+      setting: Type.Optional(StringEnum(["state", "brightness", "hsv"])),
+      value: Type.Optional(Type.String({ maxLength: 16, description: "light-set: state on/off; brightness 0–100 (0 may turn off); hsv H,S,V with ranges 0–360,0–100,1–100. Colour may replace an effect." })),
       device: Type.Optional(Type.String({ pattern: "^[a-z][a-z0-9-]{0,39}$", description: "Configured alias; required for status/capabilities." })),
     }, { additionalProperties: false }),
     executionMode: "sequential",
     async execute(_id, p, signal, _update, ctx) {
       return exclusive(async () => {
+        if (p.action === "light-set") {
+          const device = alias(p.device);
+          const value = p.value;
+          const valid = typeof value === "string" && (
+            (p.setting === "state" && ["on", "off"].includes(value)) ||
+            (p.setting === "brightness" && /^\d{1,3}$/.test(value) && Number(value) <= 100) ||
+            (p.setting === "hsv" && /^\d{1,3},\d{1,3},\d{1,3}$/.test(value) && value.split(",").every((v, i) => Number(v) >= (i === 2 ? 1 : 0) && Number(v) <= (i === 0 ? 360 : 100))));
+          if (!valid) return output({result: "error", reason: "invalid_lighting_value", writes_attempted: 0}, true);
+          const dir = directory(ctx.cwd);
+          const inventory = await read(dir, ["devices"], signal);
+          if (inventory.devices?.[device]?.model !== "L930-5") return output({result: "error", reason: "light_strip_required", writes_attempted: 0}, true);
+          if (signal?.aborted) return output({result: "cancelled", writes_attempted: 0});
+          // The CLI independently enforces the model, authenticates and locks the device.
+          // Once dispatched, any unverified result is uncertain and must not be replayed.
+          try {
+            const r = await run(dir, ["light-set", device, p.setting!, value!, "--confirm"], signal);
+            const expected = p.setting === "state" ? value === "on" : p.setting === "hsv" ? value!.split(",").map(Number) : Number(value);
+            if (r.code === 0 && r.payload.result === "verified" && r.payload.device === device && r.payload.model === "L930-5" && r.payload.setting === p.setting && JSON.stringify(r.payload.value) === JSON.stringify(expected)) {
+              return output({result: "verified", device, setting: p.setting, value: expected, automatic_retry: false});
+            }
+          } catch { /* A timeout or malformed reply may follow delivery. */ }
+          return output({result: "write_outcome_unknown", outcome: "unknown", automatic_retry: false, message: "Read current state; do not repeat the change automatically."}, true);
+        }
+        if (p.setting !== undefined || p.value !== undefined) throw new Error("unexpected_lighting_arguments");
         if (!["devices", "status", "capabilities"].includes(p.action)) throw new Error("unsupported_action");
         if (p.action === "devices" && p.device !== undefined) throw new Error("unexpected_device");
         const args = p.action === "devices" ? ["devices"] : [p.action, alias(p.device)];

@@ -22,6 +22,84 @@ The watcher calls the existing authenticated `presence/status.py` client, sleeps
 - **Mouse nearby → steady; away → off. Never breathing.** `mouse_cycle.py` allowlists only these two effects. The owner's default mouse brightness is **20%**, applied and acknowledged via the bridge. Presence transitions preserve that brightness; they leave DPI and polling untouched. Brightness is not reasserted on every poll or verified across power loss. No repeated command for unchanged presence or a watcher restart; a fresh presence transition can send one command after the three-second cooldown. Unknown/stale presence leaves the mouse unchanged.
 - Mouse and keyboard use separate persisted state/faults and separate daemon journals. A keyboard command failure does not prevent a fresh, safe mouse update. The snapshot's age includes fetch latency and time spent commanding the first device; the mouse refuses a snapshot that has aged out.
 
+## Desk LED strip presence power
+
+`led_cycle.py` adds the registered security alias `led-strip` (Tapo L930-5) to
+this same watcher and shared basement snapshot. Enabled on this installation by
+owner request. The current one-minute scheduler job is named **Computer presence**
+(`job_2cce9751d483`); it remains an alert relay, not a second controller.
+
+- Fresh nearby requests on; fresh away requests off. No extra away debounce beyond
+  the existing basement presence policy. Unknown/stale leaves the strip unchanged.
+- Only power is changed; colour and brightness are not set by this automation.
+- A successful transition is not repeated on unchanged presence or watcher restart.
+  Manual overrides persist until the next presence transition.
+- The same 15-second freshness limit is rechecked by the security CLI after device
+  authentication, immediately before writing. An expired sample sends nothing.
+- Model checks, zero protocol retries and readback use security `light-set`.
+  A durable pending marker is saved before dispatch. Timeouts, crashes, malformed
+  replies and other unverified results block future strip writes until owner review;
+  they do not block the other controllers. No automatic uncertainty acknowledgement.
+- Private runtime files: `led-config.json` (`{"enabled": true}` opt-in; default off),
+  `led-state.json` (last verified mode/pending), `led-alerts.json` (fault latch).
+  All are under the existing runtime directory and cycle lock. Existing minute
+  notifications now include LED faults, with the same 60-second delay.
+- Disable by saving `{"enabled": false}` to `led-config.json` under `cycle.lock`;
+  disabling leaves physical power unchanged. Do not delete a pending marker as
+  automatic recovery. Re-enable retains transition and uncertainty state.
+
+Validation: 161 keyboard/watcher tests, 146 security CLI tests, and 27 chat-tool
+tests pass offline. The initial unverified command correctly latched; recovery
+required explicit owner approval. After the runtime fix below, the watcher verified
+power on and the owner confirmed live automation worked. No colour/brightness
+writes, new BLE scanner, scheduler job, service, or presence policy were introduced.
+
+### macOS background networking and diagnostics
+
+The initial Python 3.14 LaunchAgent could not read the strip even though interactive
+control worked. Unified logs confirmed a Local Network privacy block for the
+watcher. Registering its Python app and toggling permission did not resolve that
+installation's denial; the successful Python 3.13 runtime choice is described below.
+
+Owner action: allow the responsible Python application in **System Settings →
+Privacy & Security → Local Network**, then repeat a status-only probe from the
+watcher. If no identifiable Python entry is available, use Apple's supported
+responsible-app/bundle registration guidance; do not disable privacy controls,
+modify the permission database, or move this watcher to root to evade the gate.
+Apple reference: [TN3179, macOS considerations](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
+Terminal and LaunchAgent permission behavior differs, so an interactive success
+alone is insufficient. Permission changes do not clear the LED latch. Fresh
+explicit owner approval is still required before any recovery/write attempt.
+
+Diagnostic support (all under the existing `cycle.lock`): saving JSON `true` to
+`led-probe-request.json` explicitly requests one status-only probe. It is consumed
+before dispatch, never retried automatically, and leaves `led-state.json` intact.
+`led-probe-result.json` retains only time, duration, exit code and allowlisted
+reason/stage/result labels. `led-failure.json` similarly retains sanitized future
+command errors without clearing pending. No raw stderr, credentials or device
+responses are persisted. Diagnostics are inactive unless explicitly requested.
+161 offline keyboard/watcher tests pass, including read-only probe consumption,
+secret exclusion, timeout behavior and durable failure/no-retry coverage.
+
+### Simplified runtime: successful watcher read
+
+The watcher now uses the security project's already-installed Python 3.13 runtime,
+which the owner had allowed in Local Network settings. All 161 keyboard/watcher
+tests pass under that interpreter. The installed watcher's first `ProgramArguments`
+entry is the absolute path to `projects/operation-jarvis/security/.venv-313/bin/python`.
+The experimental Python 3.14 `AssociatedBundleIdentifiers` entry was removed.
+No new app, service, root execution, permission changes, or network proxy was needed.
+
+After a controlled reload, the status-only probe succeeded. Subsequent explicit
+owner-approved recovery produced a verified on transition and cleared LED alerts;
+independent security status confirmed power on. The owner confirmed live success.
+Credentials, device inventories and detailed runtime diagnostics remain private.
+
+This is the current installed runtime override; `install_watch.py` still defaults
+to the keyboard `.venv` for a new installation and refuses an existing service.
+Preserve the Python 3.13 override when reinstalling this installation. Do not
+replace or remove the security virtualenv while this watcher depends on it.
+
 ## Optional Mac lock and dual-display sleep
 
 `display_cycle.py` extends the same watcher/shared basement snapshot; the cron job

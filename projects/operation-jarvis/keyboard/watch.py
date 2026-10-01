@@ -17,13 +17,14 @@ import cycle
 import copy
 import mouse_cycle
 import display_cycle
+import led_cycle
 
 POLL = 3
 HEALTH_AGE = 30  # Includes bounded presence + HID calls; not presence freshness.
 QUEUE_LIMIT = 64
 STARTUP_GRACE = 30
 FAILURE_DELAY = 60
-COMPONENTS = {'keyboard', 'mouse', 'display', 'watcher', 'storage'}
+COMPONENTS = {'keyboard', 'mouse', 'display', 'led', 'watcher', 'storage'}
 
 
 def diagnose(store, event, *, at, **details):
@@ -38,6 +39,7 @@ def diagnose(store, event, *, at, **details):
 def alert_component(message):
     for component, prefix in (
         ('keyboard', 'Keyboard '), ('mouse', 'Mouse '), ('display', 'Display '),
+        ('led', 'LED strip '),
         ('watcher', 'Computer presence watcher '),
         ('storage', 'Computer presence alert '),
     ):
@@ -115,6 +117,7 @@ def controller_status(store):
     for component, filename, faults, descriptions in (
         ('keyboard', 'alerts.json', cycle.FAULTS, cycle.MESSAGES),
         ('mouse', 'mouse-alerts.json', mouse_cycle.FAULTS, mouse_cycle.MESSAGES),
+        ('led', 'led-alerts.json', led_cycle.FAULTS, led_cycle.MESSAGES),
     ):
         latch = store.load(filename, None)
         if latch is None:
@@ -124,7 +127,7 @@ def controller_status(store):
         fault = next((f for f in ('state', 'presence', component, 'preferences') if f in latch), None)
         result[component] = (
             'ERROR: ' + descriptions[fault] if fault else None,
-            f'RECOVERED: {component.capitalize()} automation checks are working again.',
+            f'RECOVERED: {"LED strip" if component == "led" else component.capitalize()} automation checks are working again.',
         )
     display = store.load('display-state.json', None)
     if display is not None:
@@ -166,9 +169,10 @@ def snapshot(store):
 
 
 def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.send,
-         mouse_apply=None, display_apply=None):
+         mouse_apply=None, display_apply=None, led_apply=None):
     """Called with cycle.lock held. Share one age-adjusted presence snapshot."""
-    value = snapshot(store)  # Corrupt outbox blocks all three controllers before any writes.
+    value = snapshot(store)  # Corrupt outbox blocks all controllers before any writes.
+    led_cycle.probe_once(store)  # Owner-requested status only; never clears a write latch.
     cached = None
     fetched = False
     observed = None
@@ -216,6 +220,8 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
                                      apply=mouse_apply),
         lambda: display_cycle.run_once(store, now=now, get_presence=shared_presence,
                                        apply=display_apply),
+        lambda: led_cycle.run_once(store, now=now, get_presence=shared_presence,
+                                   apply=led_apply),
     ):
         output, code = run()
         if output:

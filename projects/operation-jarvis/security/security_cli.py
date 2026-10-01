@@ -980,11 +980,12 @@ WRITES = {
              'pet_detection', 'baby_cry_detection', 'tamper_detection'},
     'H200': {'led', 'alarm_sound', 'alarm_volume', 'alarm_duration'},
     'D235': set(),
+    'L930-5': {'state', 'brightness', 'color_temp', 'hsv'},
 }
 SENSOR_MODELS = {'T100', 'T110'}
 WRITES.update({model: set() for model in SENSOR_MODELS})
 ACTIONS = {'T100': set(), 'T110': set(), 'C230': {'pan_left', 'pan_right', 'tilt_up', 'tilt_down'},
-           'H200': {'stop_alarm', 'test_alarm'}, 'D235': set()}
+           'H200': {'stop_alarm', 'test_alarm'}, 'D235': set(), 'L930-5': set()}
 READS = set.union(*WRITES.values()) | {'alarm', 'rssi', 'signal_level', 'device_time'}
 
 
@@ -1074,7 +1075,8 @@ def inventory(device, model):
             row = {'type': f.type.name, 'writable': name in WRITES[model],
                    'action': name in ACTIONS[model], 'control_verification': 'not_assessed'}
             if f.type.name != 'Action':
-                row['value'] = clean(f.value)
+                row['value'] = (list(f.value) if model == 'L930-5' and name == 'hsv'
+                                else clean(f.value))
             if f.type.name == 'Choice':
                 row['choices'] = [clean(x) for x in (f.choices or [])]
             if f.type.name == 'Number':
@@ -1172,14 +1174,28 @@ async def operate(device, model, command, name=None, value=None, progress=None):
         progress['write_started'] = True
         await f.set_value(None)
         return {'result': 'acknowledged', 'physical_effect': 'not_verified'}
-    desired = parse_value(f, value)
-    progress['write_started'] = True
-    await f.set_value(desired)
+    if model == 'L930-5' and name == 'hsv':
+        if not isinstance(value, str) or not re.fullmatch(r'\d{1,3},\d{1,3},\d{1,3}', value):
+            raise ControlError('expected_hue_saturation_brightness')
+        desired = tuple(int(part) for part in value.split(','))
+        if not (0 <= desired[0] <= 360 and 0 <= desired[1] <= 100 and 1 <= desired[2] <= 100):
+            raise ControlError('number_out_of_range')
+        progress['write_started'] = True
+        await f.container.set_hsv(*desired)
+    else:
+        desired = parse_value(f, value)
+        progress['write_started'] = True
+        await f.set_value(desired)
     # Force a current observation rather than accepting module throttling/cached values.
     for module in device.modules.values():
         module._last_update_time = None
     await device.update(update_children=False)
     actual = healthy_feature(device, name).value
+    if model == 'L930-5' and name == 'hsv':
+        actual = tuple(actual)
+        if actual != desired or device.sys_info.get('color_temp') != 0:
+            return {'result': 'readback_mismatch', 'outcome': 'unknown'}
+        return {'result': 'verified', 'setting': name, 'value': list(actual)}
     if type(actual) is not type(desired) or actual != desired:
         return {'result': 'readback_mismatch', 'outcome': 'unknown'}
     return {'result': 'verified', 'setting': name, 'value': clean(actual)}
@@ -1260,12 +1276,20 @@ def new_hub_read_http_session():
 
 
 async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
-                        audible=False, env_file=ROOT / '.env', registry_path=ROOT / 'devices.json'):
+                        audible=False, env_file=ROOT / '.env', registry_path=ROOT / 'devices.json',
+                        presence_deadline=None):
     devices = registry(registry_path)
     if alias not in devices:
         raise ControlError('unknown_device')
     entry = devices[alias]
     model = entry['model']
+    if presence_deadline is not None and (command != 'light-set' or
+            not math.isfinite(presence_deadline) or presence_deadline <= time.monotonic()):
+        raise ControlError('presence_deadline_expired')
+    if command == 'light-set':
+        if model != 'L930-5':
+            raise ControlError('light_strip_required')
+        command = 'set'
     if model == 'D235':
         validate_request(model, command, name, value, confirm, audible)
         from security_doorbell import execute as read_doorbell
@@ -1289,7 +1313,7 @@ async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
     from kasa import Discover
     try:
         with device_lock(entry['hub'] if is_sensor else alias):
-            settings = load_settings(env_file)
+            settings = load_settings(ROOT / 'led-strip.env' if model == 'L930-5' and Path(env_file) == ROOT / '.env' else env_file)
             host = settings.host if connection_entry['host'] == '@hub' else connection_entry['host']
             stage = 'connection'
             # A sensor read includes H200 child initialization; keep writes at
@@ -1298,10 +1322,12 @@ async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
                 device = await Discover.discover_single(host, username=settings.username,
                     password=settings.password, discovery_timeout=5 if is_sensor else 3,
                     timeout=10 if is_sensor else 5)
-                expected_type = 'hub' if connection_model == 'H200' else 'camera'
+                expected_type = ('lightstrip' if connection_model == 'L930-5' else
+                                 'hub' if connection_model == 'H200' else 'camera')
+                expected_models = {'L930', 'L930-5'} if connection_model == 'L930-5' else {connection_model}
                 if device is None:
                     raise ControlError('unreachable')
-                if device.model != connection_model or device.device_type.value != expected_type:
+                if device.model not in expected_models or (connection_model != 'L930-5' and device.device_type.value != expected_type):
                     raise ControlError('device_identity_mismatch')
                 original = device.protocol.query
                 async def once(request, *args, **kwargs):
@@ -1313,14 +1339,22 @@ async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
                         device.config.http_client = hub_http_session
                     install_empty_child_lists_compat(device.protocol)
                 # Authenticate identity before inventory or writes.
-                response = await device.protocol.query({'getDeviceInfo': {
-                    'device_info': {'name': ['basic_info']}}})
-                info = response['getDeviceInfo']['device_info']['basic_info']
-                if info.get('device_model') != connection_model:
+                if connection_model == 'L930-5':
+                    response = await device.protocol.query({'get_device_info': None})
+                    raw = response['get_device_info']
+                    info = {'device_model': raw.get('model'), 'hw_version': raw.get('hw_ver'),
+                            'sw_version': raw.get('fw_ver')}
+                else:
+                    response = await device.protocol.query({'getDeviceInfo': {
+                        'device_info': {'name': ['basic_info']}}})
+                    info = response['getDeviceInfo']['device_info']['basic_info']
+                if info.get('device_model') not in expected_models:
                     raise ControlError('device_identity_mismatch')
                 stage = 'state_read'
                 if command != 'storage':
                     await device.update()
+                if connection_model == 'L930-5' and device.device_type.value != expected_type:
+                    raise ControlError('device_identity_mismatch')
                 if is_sensor:
                     child = select_sensor(device, entry)
                     return {'device': alias, 'model': model, 'name': child.alias,
@@ -1331,6 +1365,8 @@ async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
                             'radio_freshness': 'unknown',
                             'sensor_updated_at': None,
                             'features': sensor_inventory(child, model)}
+                if presence_deadline is not None and time.monotonic() >= presence_deadline:
+                    raise ControlError('presence_deadline_expired')
                 result = await operate(device, model, command, name, value, progress)
                 return {'device': alias, 'model': model,
                         'hardware': clean(info.get('hw_version')),
@@ -1381,18 +1417,20 @@ def parser():
     for command in ('status', 'capabilities', 'storage'):
         s = sub.add_parser(command)
         s.add_argument('device')
-    for command in ('set', 'action', 'privacy', 'move'):
+    for command in ('set', 'light-set', 'action', 'privacy', 'move'):
         s = sub.add_parser(command)
         s.add_argument('device')
-        if command in ('set', 'action'):
+        if command in ('set', 'light-set', 'action'):
             s.add_argument('name', help='Allowlisted SDK feature name; see capabilities')
-        if command == 'set':
+        if command in ('set', 'light-set'):
             s.add_argument('value')
         if command == 'privacy':
             s.add_argument('value', choices=('on', 'off'))
         if command == 'move':
             s.add_argument('name', choices=('left', 'right', 'up', 'down'))
             s.add_argument('--degrees', type=int, default=10, help='One movement request, 1–30 degrees')
+        if command == 'light-set':
+            s.add_argument('--presence-deadline', type=float, help=argparse.SUPPRESS)
         s.add_argument('--confirm', action='store_true', help='Explicit approval for this write')
         if command == 'action':
             s.add_argument('--allow-audible', action='store_true', help='Approve audible alarm test')
@@ -1470,6 +1508,7 @@ def control_main(argv=None):
                 value=value,
                 confirm=getattr(args, 'confirm', False),
                 audible=getattr(args, 'allow_audible', False),
+                **({'presence_deadline': args.presence_deadline} if args.command == 'light-set' else {}),
                 env_file=args.env_file, registry_path=args.registry))
         code = 3 if result.get('outcome') == 'unknown' else (2 if result.get('result') == 'error' else 0)
     except ControlError as exc:

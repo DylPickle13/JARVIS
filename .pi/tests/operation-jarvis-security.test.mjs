@@ -8,6 +8,32 @@ const { registerSecurity } = await jiti.import(resolve(import.meta.dirname, '../
 const { projectSecurity, runSecurity } = await jiti.import(resolve(import.meta.dirname, '../extensions/lib/operation-jarvis-security.ts'));
 const rule = { name: 'Example protocol', ref: 'a'.repeat(16), revision: 'b'.repeat(64), kind: 'automation', enabled: false };
 const configuration = { triggers: [{ model: 'T110', event: 'open', deviceId: 'SECRET' }], actions: [{ model: 'H200', configured_duration_seconds: 300, configured_alarm_tone: 'Alarm 4', configured_volume_raw: '10', thingName: 'SECRET' }], all_day: true, raw: 'SECRET' };
+test('light-strip projection preserves bounded lighting values without private metadata', () => {
+  const p = projectSecurity({result: 'read_succeeded', device: 'led-strip', model: 'L930-5', host: 'SECRET', features: {brightness: {value: 75}, hsv: {value: [120, 80, 75]}}});
+  assert.equal(p.model, 'L930-5');
+  assert.equal(p.features.brightness.value, 75);
+  assert.deepEqual(p.features.hsv.value, [120, 80, 75]);
+  assert.equal(p.host, undefined);
+  for (const value of [[361, 0, 0], [0, 101, 0], ['SECRET'], [1, 2, 3, 4]]) {
+    assert.equal(projectSecurity({features: {hsv: {value}}}).features.hsv.value, null);
+  }
+});
+test('lighting writes validate values, enforce model, verify readback and never replay', async () => {
+  for (const mode of ['ok', 'camera', 'timeout', 'mismatch', 'invalid']) {
+    const tools = {}, calls = [];
+    registerSecurity({registerTool(t) { tools[t.name] = t; }}, {directory: () => '/unused', run: async (_dir, args) => {
+      calls.push(args);
+      if (args[0] === 'devices') return {code: 0, payload: {result: 'configured', devices: {'strip': {model: mode === 'camera' ? 'C230' : 'L930-5'}}}};
+      if (mode === 'timeout') throw Error('SECRET');
+      return {code: 0, payload: {result: 'verified', device: 'strip', model: 'L930-5', setting: 'brightness', value: mode === 'mismatch' ? 99 : 50}};
+    }});
+    const r = await tools.operation_jarvis_security.execute('test', {action: 'light-set', device: 'strip', setting: 'brightness', value: mode === 'invalid' ? '101' : '50'}, undefined, undefined, {cwd: '/unused'});
+    const value = JSON.parse(r.content[0].text);
+    assert.equal(value.result, mode === 'ok' ? 'verified' : ['timeout', 'mismatch'].includes(mode) ? 'write_outcome_unknown' : 'error');
+    assert.equal(calls.filter(c => c[0] === 'light-set').length, ['camera', 'invalid'].includes(mode) ? 0 : 1);
+    if (mode === 'ok') assert.deepEqual(calls[1], ['light-set', 'strip', 'brightness', '50', '--confirm']);
+  }
+});
 function fixture(options = {}) {
   const tools = {}, calls = [], confirmations = [];
   let current = { ...rule, ...options.rule };

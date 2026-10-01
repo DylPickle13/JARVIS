@@ -17,6 +17,48 @@ from unittest.mock import patch
 cameras_START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
+class LightStripTests(unittest.IsolatedAsyncioTestCase):
+    async def test_presence_deadline_rejects_before_network(self):
+        for deadline in (0, float('nan'), float('inf')):
+            with patch.object(security_cli, 'registry', return_value={'test': {'model': 'L930-5'}}):
+                with self.assertRaisesRegex(security_cli.ControlError, 'presence_deadline_expired'):
+                    await security_cli._execute_once('test', 'light-set', name='state', value='on',
+                                                     confirm=True, presence_deadline=deadline)
+
+    async def test_light_command_rejects_other_models_before_connection(self):
+        for model in ('C230', 'H200', 'D235', 'T100'):
+            with patch.object(security_cli, 'registry', return_value={'test': {'model': model}}):
+                with self.assertRaisesRegex(security_cli.ControlError, 'light_strip_required'):
+                    await security_cli._execute_once('test', 'light-set', name='state', value='on', confirm=True)
+
+    def test_confirmation_and_allowlist(self):
+        for setting in ('state', 'brightness', 'color_temp', 'hsv'):
+            with self.assertRaises(security_cli.ControlError):
+                security_cli.validate_request('L930-5', 'set', setting, '50', False, False)
+            security_cli.validate_request('L930-5', 'set', setting, '50', True, False)
+        for command in ('privacy', 'move', 'storage', 'action'):
+            with self.assertRaises(security_cli.ControlError):
+                security_cli.validate_request('L930-5', command, 'test_alarm', 'on', True, True)
+
+    async def test_hsv_validation_and_readback(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        f = SimpleNamespace(value=(120, 80, 50), container=SimpleNamespace(set_hsv=AsyncMock()))
+        device = SimpleNamespace(features={'hsv': f}, modules={}, update=AsyncMock(), sys_info={'color_temp': 0})
+        for value in ('361,50,50', '120,101,50', '120,50,0', 'red', '1,2,3,4'):
+            progress = {}
+            with self.assertRaises(security_cli.ControlError):
+                await security_cli.operate(device, 'L930-5', 'set', 'hsv', value, progress)
+            self.assertFalse(progress.get('write_started'))
+        f.container.set_hsv.assert_not_awaited()
+        result = await security_cli.operate(device, 'L930-5', 'set', 'hsv', '120,80,50')
+        self.assertEqual(result['result'], 'verified')
+        f.container.set_hsv.assert_awaited_once_with(120, 80, 50)
+        device.sys_info['color_temp'] = 4000
+        result = await security_cli.operate(device, 'L930-5', 'set', 'hsv', '120,80,50')
+        self.assertEqual(result['outcome'], 'unknown')
+
+
 class cameras_CameraSettingsTests(unittest.TestCase):
     def test_missing_configuration(self):
         self.assertEqual(CameraSettings().missing, "missing_host")

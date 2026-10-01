@@ -13,6 +13,31 @@ Reviewed source/docs/templates are tracked; credentials, inventories, media and
 runtime/commissioning records stay ignored. See [repository privacy](README.md#repository-privacy).
 Aliases below are command examples, not an installed-device inventory.
 
+## Tapo L930-5 light strip
+
+Register an alias in private `devices.json` with model `L930-5` and a private LAN
+`host`. The device may report authenticated model `L930`; discovery model and
+post-authentication lightstrip type are checked. It does not use the H200.
+
+The default credential file for this model is private, owner-only `led-strip.env`,
+using the same three keys as `.env` (including `JARVIS_SECURITY_HUB_HOST`, a legacy
+key name). An explicit `--env-file` overrides this. Do not commit credentials.
+
+`status` and `capabilities` expose power, brightness and HSV. CLI writes require
+`--confirm`: `set <alias> state on`, `set <alias> brightness 50`, or
+`set <alias> hsv 120,80,50`. HSV is hue 0–360, saturation 0–100, brightness 1–100.
+`color_temp` is accepted only if the SDK exposes that feature; not all firmware
+exposes it. Brightness zero may turn the strip off. Colour changes may replace an
+active lighting effect. Effects, segments and music sync are not exposed.
+
+Writes have zero protocol retries and fresh readback; an uncertain write must not
+be replayed. CLI controls are not a claim of physical commissioning. The Pi
+security tool exposes `light-set` for L930-5 power, brightness and HSV only;
+cameras, hubs and sensors remain read-only. The CLI `light-set` command also
+independently rejects non-L930-5 models. Tool changes require an extension reload
+in an already-running Pi session. No service restart is needed
+for the CLI adapter or registry.
+
 ## Sensor read diagnostics
 
 T100/T110 reads allow 60 seconds for discovery, authentication and hub/child

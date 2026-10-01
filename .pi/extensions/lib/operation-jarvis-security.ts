@@ -43,9 +43,9 @@ export const runSecurity: SecurityRunner = (dir, args, signal) => new Promise((r
   });
 });
 
-const MODELS = new Set(["H200", "C230", "D235", "T100", "T110"]);
+const MODELS = new Set(["H200", "C230", "D235", "T100", "T110", "L930-5"]);
 const RESULTS = new Set(["configured", "read_succeeded", "unchanged", "write_verified", "write_outcome_unknown", "error", "cancelled"]);
-const FEATURES = new Set(["state", "led", "motion_detection", "person_detection", "pet_detection", "baby_cry_detection", "tamper_detection", "alarm_sound", "alarm_volume", "alarm_duration", "alarm", "rssi", "signal_level", "device_time", "battery_low", "motion_detected", "is_open"]);
+const FEATURES = new Set(["brightness", "color_temp", "hsv", "state", "led", "motion_detection", "person_detection", "pet_detection", "baby_cry_detection", "tamper_detection", "alarm_sound", "alarm_volume", "alarm_duration", "alarm", "rssi", "signal_level", "device_time", "battery_low", "motion_detected", "is_open"]);
 export function alias(value: unknown): string {
   if (typeof value !== "string" || !/^[a-z][a-z0-9-]{0,39}$/.test(value)) throw new Error("Configured device alias required");
   return value;
@@ -67,6 +67,9 @@ export function resolveRule(payload: any, name: unknown) {
   const matches = rulesFrom(payload).filter((r: any) => r.name.normalize("NFC").toLowerCase() === name.trim().normalize("NFC").toLowerCase());
   if (matches.length !== 1) throw new Error("Automation name missing or ambiguous; list current rules");
   return matches[0];
+}
+function lightHSV(value: unknown): unknown {
+  return Array.isArray(value) && value.length === 3 && value.every((v, i) => Number.isInteger(v) && v >= 0 && v <= (i === 0 ? 360 : 100)) ? value : null;
 }
 function scalar(value: unknown): unknown {
   if (value === null || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) return value;
@@ -90,7 +93,7 @@ export function projectSecurity(payload: any): any {
   }
   if (payload.features && typeof payload.features === "object" && !Array.isArray(payload.features)) {
     result.features = Object.fromEntries(Object.entries(payload.features).filter(([key]) => FEATURES.has(key)).map(([key, feature]: any) => [key,
-      { value: feature?.status === "unknown" ? null : scalar(feature?.value), status: feature?.status === "unknown" || feature?.value === undefined ? "unknown" : "reported" }]));
+      { value: feature?.status === "unknown" ? null : (key === "hsv" ? lightHSV(feature?.value) : scalar(feature?.value)), status: feature?.status === "unknown" || feature?.value === undefined ? "unknown" : "reported" }]));
   }
   if (["T100", "T110"].includes(payload.model)) Object.assign(result, {
     observation_scope: "hub_reported_snapshot", radio_freshness: "unknown", sensor_updated_at: null,
