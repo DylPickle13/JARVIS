@@ -121,6 +121,13 @@ const SCHEMA_STRIP_TOOLS = new Set([
   "browser_close",
 ]);
 
+function compactDescription(description: string, override: string): string {
+  // Pi appends script-call/return-type guidance after preparing the loadout.
+  // Retain it: codemode intentionally does not duplicate direct tool declarations.
+  const marker = description.lastIndexOf("\n\nCodemode: ");
+  return override + (marker >= 0 ? description.slice(marker) : "");
+}
+
 function compactTool(tool: any): any {
   if (!tool || typeof tool !== "object") return tool;
   const name = toolName(tool);
@@ -135,13 +142,13 @@ function compactTool(tool: any): any {
 
   // Preserve terse top-level descriptions; remove nested parameter prose/metadata.
   const override = TOOL_DESCRIPTION_OVERRIDES[name];
-  if (override && typeof copy.description === "string") copy.description = override;
+  if (override && typeof copy.description === "string") copy.description = compactDescription(copy.description, override);
 
   if (copy.parameters) copy.parameters = stripNestedSchemaMetadata(copy.parameters);
   if (copy.input_schema) copy.input_schema = stripNestedSchemaMetadata(copy.input_schema);
   if (copy.function && typeof copy.function === "object") {
     copy.function = { ...copy.function };
-    if (override && typeof copy.function.description === "string") copy.function.description = override;
+    if (override && typeof copy.function.description === "string") copy.function.description = compactDescription(copy.function.description, override);
     if (copy.function.parameters) copy.function.parameters = stripNestedSchemaMetadata(copy.function.parameters);
   }
 

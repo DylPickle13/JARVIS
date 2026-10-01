@@ -63,23 +63,22 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
 };
 
 const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
-  memory: "memory for durable project/local facts/preferences/workflows; never store secrets",
-  code_docs: "code_search for external code/docs/API examples",
-  operation_jarvis: "Operation JARVIS household control: lights/plugs, purifier, Cast/Spotify/speech, Tapo security sensors and cloud automations/protocols",
-  github: "github_cli for guarded official GitHub CLI access using the configured local token",
-  google: "google_workspace for Calendar/events, Gmail/mail, Drive/files/folders, Docs, and Sheets",
-  cron: "jarvis_cron for private scheduled Pi/JARVIS jobs and bounded local result history",
-  reaper: "reaper_ping/reaper_lua for the live REAPER session on mac-mini-16 via inline Lua bridge",
-  browser: "visible Chrome for rendered/interactive web: screenshots/clicks/typing/uploads/extract",
-  apple_notes: "Apple Notes read/write access through macOS Notes automation; iCloud Notes by default",
+  memory: "durable facts/preferences/workflows; no secrets",
+  code_docs: "external code/docs/API examples",
+  operation_jarvis: "home lights/plugs, purifier, Cast/Spotify/speech, Tapo security and automations/door protocols",
+  github: "guarded GitHub CLI",
+  google: "Calendar, Gmail, Drive, Docs, Sheets",
+  cron: "private Pi/JARVIS scheduled jobs/results",
+  reaper: "live REAPER on mac-mini-16; inline Lua",
+  browser: "visible Chrome for rendered/interactive web",
+  apple_notes: "Apple Notes read/write; iCloud default",
 };
 
 const GROUP_NAMES = Object.keys(TOOL_GROUPS) as ConcreteToolGroup[];
-const GROUP_NAMES_WITH_ALL_TEXT = [...GROUP_NAMES, "all"].join(", ");
 const LOADABLE_GROUPS_TEXT = `${GROUP_NAMES.map((name) => `${name}=${GROUP_SUMMARIES[name]}`).join("; ")}; all=all loadable groups`;
 const BASELINE_TOOLS_TEXT = "coding, ssh, web_search/fetch_content/get_search_content, maps";
-const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name. Always-on baseline: ${BASELINE_TOOLS_TEXT}. Available groups: ${LOADABLE_GROUPS_TEXT}. Schemas persist for this session. Registered direct calls auto-load on JARVIS; use this loader for unfamiliar schemas.`;
-const LOAD_TOOLS_PROMPT_SNIPPET = `Load optional tool groups by exact name: ${GROUP_NAMES_WITH_ALL_TEXT}.`;
+const LOAD_TOOLS_DESCRIPTION = `Activate optional tools for this session by exact group name: ${LOADABLE_GROUPS_TEXT}.`;
+const LOAD_TOOLS_PROMPT_SNIPPET = "Activate optional tool groups; see its schema for group names.";
 
 const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly string[] }> = {
   memory: {
@@ -218,7 +217,10 @@ function selectAvailableTools(pi: ExtensionAPI, names: readonly string[]): strin
 }
 
 function applyBaselineToolSet(pi: ExtensionAPI): string[] {
-  const selected = selectAvailableTools(pi, ALWAYS_ON_TOOLS);
+  // Preserve opt-in orchestration selected by settings/CLI. Do not force it on:
+  // project overrides, --exclude-tools and disabled built-in extensions must work.
+  const orchestration = pi.getActiveTools().filter((name) => name === "codemode");
+  const selected = selectAvailableTools(pi, [...ALWAYS_ON_TOOLS, ...orchestration]);
   pi.setActiveTools(selected);
   return selected;
 }
@@ -237,7 +239,10 @@ function resetLoadedGroups(): void {
 }
 
 function loadedTools(pi: ExtensionAPI): string[] {
-  return selectAvailableTools(pi, desiredToolsFor(loadedGroupsArray()));
+  return selectAvailableTools(pi, unique([
+    ...desiredToolsFor(loadedGroupsArray()),
+    ...pi.getActiveTools().filter((name) => name === "codemode"),
+  ]));
 }
 
 function activateToolGroups(pi: ExtensionAPI, groups: readonly ConcreteToolGroup[]) {
@@ -308,15 +313,16 @@ export default function lazyTools(pi: ExtensionAPI) {
     description: LOAD_TOOLS_DESCRIPTION,
     promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET,
     promptGuidelines: [
-      "Use load_tools to discover unfamiliar schemas in optional groups listed in its canonical description (" + GROUP_NAMES_WITH_ALL_TEXT + "). For live REAPER session work, load `reaper` then use `reaper_lua` with inline Lua only. Home controls, security/status, sensors, or door protocols (including explanations) => immediately `load_tools({groups:[\"operation_jarvis\"]})`, then its tools for actual device operations; files/shell/SSH/web remain permitted for diagnosing or maintaining JARVIS integration code. Never claim actions without tool results or bypass safety gates. GitHub/`gh` => load `github`, then use `github_cli`; never bash `gh`. Apple Notes => load `apple_notes`, then use the exact unlocked `apple_notes_*` tool. Local `git` status/diff/add/commit/log/branch => bash. For Google intents, load `google`. Web/search/fetch, maps, and ssh are always on; no removed-tool aliases.",
-      "If the user asks whether a cron/scheduled job exists, or asks to list/check scheduled jobs, load the `cron` group and call `jarvis_cron` first; do not search files or inspect OS crontab unless the user explicitly says OS cron/launchd.",
-      "Web tools use stock pi-web-access descriptions, parameters, and defaults. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
-      "Registered lazy tools auto-load on JARVIS and execute once through normal safety checks. Unknown/removed/excluded tools remain unavailable; use returned schemas/playbooks, not guessed shell substitutes.",
+      "Load groups before use: REAPER => `reaper`, then `reaper_lua` (inline Lua only); GitHub/gh => `github`, then `github_cli` (never bash gh); Apple Notes => `apple_notes`, then exact `apple_notes_*` tools; Google => `google`. Local git => bash. Home controls/security/status/sensors/door protocols, including explanations => immediately load `operation_jarvis`; operate devices only through its tools. Files/shell/SSH/web remain allowed for JARVIS integration diagnosis/maintenance. Never bypass safety gates or claim actions without tool results.",
+      "Scheduled-job existence/list/check => load `cron`, call `jarvis_cron` first; no file search or OS crontab unless explicitly OS cron/launchd.",
+      "Keep pi-web-access descriptions/parameters/defaults stock. Load `browser` without asking for open/use/check, rendered/interactive/logged-in/JS/forms/uploads/downloads/screenshots/web-apps; ask before private/account/purchase/destructive/submit.",
+      "Use returned schemas/playbooks, not guessed shell substitutes or unavailable/excluded tools. Auto-loading, when supported, retains safety checks and executes calls once.",
+      "Codemode: load groups before scripting; use tools.*, return/text(). After one failed correction, use direct tools; check completed actions before retrying.",
     ],
     parameters: Type.Object({
       groups: Type.Array(GroupName, {
         minItems: 1,
-        description: `Tool groups to load for this Pi session: ${LOADABLE_GROUPS_TEXT}.`,
+        description: "Group names from the tool description; no aliases.",
       }),
     }),
     executionMode: "sequential",
