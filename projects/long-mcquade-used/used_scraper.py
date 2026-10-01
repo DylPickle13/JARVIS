@@ -167,7 +167,7 @@ def labeled(card, label):
     return ""
 
 
-def parse_units(html, task):
+def parse_units(html, task, unidentified=None):
     page = soup(html)
     wrapper = page.select_one("div.fw-normal.fs-7")
     if wrapper is None:
@@ -207,7 +207,15 @@ def parse_units(html, task):
             raise ValueError(f"Unexpected inventory condition without used/demo sale link: {condition}")
         serial_missing = serial.casefold() in ("", "n/a", "none", "unknown", "-", "0")
         if serial_missing and not stock_id:
-            raise ValueError("Unit has neither a serial nor a stock ID")
+            if unidentified is None:
+                raise ValueError("Unit has neither a serial nor a stock ID")
+            # Keep these as observations, never as deduplicated inventory units.
+            unidentified.append({"sku": sku, "serial": serial, "price": price,
+                                 "condition": condition, "name": task["product"]["name"],
+                                 "store": task["store"], "store_id": task["store_id"],
+                                 "province": task["province"], "link": stock_url(sku),
+                                 "reason": "Unit has neither a serial nor a stock ID"})
+            continue
         key = f"{sku}:serial:{serial.casefold()}" if not serial_missing else f"{sku}:stock:{task['store_id']}:{stock_id}"
         result.append({"id": key, "sku": sku, "serial": serial, "stock_id": stock_id,
                        "name": task["product"]["name"], "price": price, "condition": condition,
@@ -400,9 +408,18 @@ def step(state, client):
             task = state["store_queue"][0]
             try:
                 html = client.details(task)
-                units = parse_units(html, task)
+                unidentified = []
+                units = parse_units(html, task, unidentified=unidentified)
             except (ValueError, requests.RequestException) as exc:
                 raise ValueError(f"SKU {task['product']['sku']} at {task['store']} (demo={task['demo']}): {exc}") from exc
+            # Replace this endpoint's observations only after the whole response
+            # validates. Repeated scans do not accumulate duplicate observations.
+            group = f"{task['product']['sku']}:{task['store_id']}:{task['demo']}"
+            observations = state.setdefault("unidentified_listings", {})
+            if unidentified:
+                observations[group] = {"last_seen": now(), "listings": unidentified}
+            else:
+                observations.pop(group, None)
             record_units(state, units)
             state["store_queue"].pop(0)
         elif state["product_queue"]:
@@ -467,7 +484,8 @@ def status(state):
         "store_groups_pending": len(state["store_queue"]), "known_units": len(state["known_units"]),
         "alerts_pending": len(state["pending_alerts"]),
         "initial_output_enabled": state.get("initial_output_enabled", False),
-        "alert_on_first_detection": state.get("alert_on_first_detection", False)}
+        "alert_on_first_detection": state.get("alert_on_first_detection", False),
+        "unidentified_listings": sum(len(group["listings"]) for group in state.get("unidentified_listings", {}).values())}
 
 
 def main(argv=None):
