@@ -45,7 +45,7 @@ export const runSecurity: SecurityRunner = (dir, args, signal) => new Promise((r
 
 const MODELS = new Set(["H200", "C230", "D235", "T100", "T110", "L930-5"]);
 const RESULTS = new Set(["configured", "read_succeeded", "unchanged", "write_verified", "write_outcome_unknown", "error", "cancelled"]);
-const FEATURES = new Set(["brightness", "color_temp", "hsv", "state", "led", "motion_detection", "person_detection", "pet_detection", "baby_cry_detection", "tamper_detection", "alarm_sound", "alarm_volume", "alarm_duration", "alarm", "rssi", "signal_level", "device_time", "battery_low", "motion_detected", "is_open"]);
+const FEATURES = new Set(["brightness", "color_temp", "color_temperature", "light_effect", "effect_brightness", "smooth_transitions", "smooth_transition_on", "smooth_transition_off", "hsv", "state", "led", "motion_detection", "person_detection", "pet_detection", "baby_cry_detection", "tamper_detection", "alarm_sound", "alarm_volume", "alarm_duration", "alarm", "rssi", "signal_level", "device_time", "battery_low", "motion_detected", "is_open"]);
 export function alias(value: unknown): string {
   if (typeof value !== "string" || !/^[a-z][a-z0-9-]{0,39}$/.test(value)) throw new Error("Configured device alias required");
   return value;
@@ -73,7 +73,7 @@ function lightHSV(value: unknown): unknown {
 }
 function scalar(value: unknown): unknown {
   if (value === null || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) return value;
-  if (typeof value === "string" && /^[A-Za-z0-9 _().:+/\-]{1,100}$/.test(value)) return value;
+  if (typeof value === "string" && /^[A-Za-z0-9 _().:+/'\-]{1,100}$/.test(value)) return value;
   return null;
 }
 export function projectSecurity(payload: any): any {
@@ -93,7 +93,9 @@ export function projectSecurity(payload: any): any {
   }
   if (payload.features && typeof payload.features === "object" && !Array.isArray(payload.features)) {
     result.features = Object.fromEntries(Object.entries(payload.features).filter(([key]) => FEATURES.has(key)).map(([key, feature]: any) => [key,
-      { value: feature?.status === "unknown" ? null : (key === "hsv" ? lightHSV(feature?.value) : scalar(feature?.value)), status: feature?.status === "unknown" || feature?.value === undefined ? "unknown" : "reported" }]));
+      { value: feature?.status === "unknown" ? null : (key === "hsv" ? lightHSV(feature?.value) : scalar(feature?.value)), status: feature?.status === "unknown" || feature?.value === undefined ? "unknown" : "reported",
+        ...(payload.model === "L930-5" && key === "light_effect" && Array.isArray(feature?.choices) ? { choices: feature.choices.slice(0, 64).filter((x: unknown) => typeof x === "string" && /^[A-Za-z][A-Za-z '\-]{0,63}$/.test(x)) } : {}),
+        ...(payload.model === "L930-5" && Number.isFinite(feature?.minimum) && Number.isFinite(feature?.maximum) ? { minimum: feature.minimum, maximum: feature.maximum } : {}) }]));
   }
   if (["T100", "T110"].includes(payload.model)) Object.assign(result, {
     observation_scope: "hub_reported_snapshot", radio_freshness: "unknown", sensor_updated_at: null,

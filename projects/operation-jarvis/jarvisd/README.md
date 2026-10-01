@@ -21,6 +21,15 @@ The stdlib-only Python HTTP backend for Operation JARVIS. The native iPhone,
 Watch, and widget clients use its existing API; backend ownership is independent
 of those clients. See the [architecture and phased plan](../docs/backend-architecture.md).
 
+## Security light-strip tracking (2026-09-30 EDT)
+
+Deployment `20261001T012512Z-led-backend` adds L930-5 status projection and
+`led-strip` to the existing read-only security poller/health tracking. Power,
+brightness, colour, effect and transition settings are available through the
+existing authenticated security status route. Presence remains power-only;
+no effect was changed and no new HTTP write route or service was introduced.
+See [light-strip backend tracking](docs/led-strip.md) for boundaries and verification.
+
 ## Private scheduler backend
 
 Scheduling, retained job history, APNs delivery/registration, and completion

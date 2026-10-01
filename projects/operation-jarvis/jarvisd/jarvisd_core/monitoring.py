@@ -19,7 +19,7 @@ def security(alias, *, enabled, configured, observations):
     available = row.get('availability') == 'available'
     return (200 if available else 503), {
         'ok': available, 'availability': 'available' if available else 'unavailable',
-        'scope': 'hub_snapshot_read_availability', 'radioFreshness': 'unknown',
+        'scope': 'security_status_read_availability', 'radioFreshness': 'unknown',
         'lastAttemptAt': row.get('lastAttemptAt'), 'lastSuccessAt': row.get('lastSuccessAt'),
         'ageSeconds': row.get('ageSeconds'),
         'reason': row.get('reason'),

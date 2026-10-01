@@ -38,6 +38,50 @@ class ReadTests(unittest.TestCase):
         self.assertNotIn("2999", body["observedAt"])
         runner.assert_called_once_with(Path("/private/security"), "fixture")
 
+    def test_lighting_projection_and_read_health(self):
+        raw = fixture('L930-5')
+        raw['features'].update({key: {'value': value} for key, value in {
+            'state': False, 'brightness': 40, 'hsv': [244, 95, 100],
+            'color_temperature': 0, 'light_effect': 'Aurora',
+            'effect_brightness': 40, 'smooth_transition_on': 1,
+            'smooth_transition_off': 2}.items()})
+        raw['features']['light_effect']['choices'] = ['Off', 'Aurora']
+        runner = Mock(return_value=raw)
+        code, body = security.read_status('/private/security', 'fixture', runner=runner)
+        self.assertEqual(code, 200)
+        self.assertEqual(body['source'], 'device_read')
+        self.assertEqual(body['availability'], 'available')
+        self.assertEqual(body['data'], {'isOn': False, 'brightness': 40,
+            'hsv': [244, 95, 100], 'colorTemperature': 0, 'lightEffect': 'Aurora',
+            'effectBrightness': 40, 'smoothTransitionOn': 1, 'smoothTransitionOff': 2,
+            'rssi': -75})
+        self.assertNotIn(PRIVATE, json.dumps(body))
+        runner.assert_called_once()
+
+    def test_lighting_bad_optional_fields_are_unknown(self):
+        for bad in (None, [], {'value': True}, {'value': -1}, {'value': 99999},
+                    {'value': PRIVATE}, {'value': [True, 10, 10]},
+                    {'value': 40, 'status': 'unknown'}):
+            raw = fixture('L930-5')
+            raw['features'] = {key: bad for key in ('brightness', 'hsv', 'light_effect',
+                'color_temperature', 'effect_brightness', 'smooth_transition_on', 'smooth_transition_off')}
+            raw['features']['state'] = {'value': True}
+            code, body = security.read_status('/private/security', 'fixture', runner=Mock(return_value=raw))
+            self.assertEqual(code, 200)
+            self.assertTrue(all(value is None for key, value in body['data'].items() if key != 'isOn'))
+            self.assertNotIn(PRIVATE, json.dumps(body))
+
+    def test_lighting_requires_known_power_without_retries(self):
+        for state in (None, {'value': 1}, {'value': True, 'status': 'unknown'}):
+            raw = fixture('L930-5')
+            raw['features']['state'] = state
+            runner = Mock(return_value=raw)
+            code, body = security.read_status('/private/security', 'fixture', runner=runner)
+            self.assertEqual(code, 503)
+            self.assertEqual(body['errorCode'], 'required_state_unavailable')
+            self.assertEqual(body['availability'], 'unavailable')
+            runner.assert_called_once()
+
     def test_hub_and_camera_only_expose_read_identity(self):
         for model in ("H200", "C230"):
             code, body = security.read_status("/private/security", "fixture", runner=Mock(return_value=fixture(model)))

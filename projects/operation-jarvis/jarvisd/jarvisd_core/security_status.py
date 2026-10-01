@@ -93,6 +93,38 @@ def _feature(features, name, kind):
     return value
 
 
+def _lighting_data(features):
+    """Strict public lighting projection; missing/errored fields stay unknown."""
+    def value(name):
+        row = features.get(name)
+        return row.get('value') if type(row) is dict and row.get('status') is None else None
+
+    def number(name, minimum, maximum):
+        raw = value(name)
+        return raw if type(raw) is int and minimum <= raw <= maximum else None
+
+    hsv = value('hsv')
+    if not (type(hsv) is list and len(hsv) == 3 and
+            all(type(x) is int and 0 <= x <= bound for x, bound in zip(hsv, (360, 100, 100)))):
+        hsv = None
+    effect = value('light_effect')
+    effect_row = features.get('light_effect')
+    choices = effect_row.get('choices', []) if type(effect_row) is dict else []
+    if not (type(effect) is str and re.fullmatch(r"[A-Za-z][A-Za-z '\-]{0,63}", effect)
+            and type(choices) is list and effect in choices[:64]):
+        effect = None
+    temperature = number('color_temperature', 2500, 6500)
+    if value('color_temperature') == 0 and type(value('color_temperature')) is int:
+        temperature = 0  # Colour mode, not an invalid Kelvin reading.
+    return {'isOn': _feature(features, 'state', bool),
+            'brightness': number('brightness', 0, 100), 'hsv': hsv,
+            'colorTemperature': temperature, 'lightEffect': effect,
+            'effectBrightness': number('effect_brightness', 1, 100),
+            'smoothTransitionOn': number('smooth_transition_on', 0, 60),
+            'smoothTransitionOff': number('smooth_transition_off', 0, 60),
+            'rssi': _feature(features, 'rssi', int)}
+
+
 def read_status(cli_path: str, alias: str, *, runner=run_cli) -> tuple[int, dict]:
     from .read_health import SECURITY_HEALTH
     code, body = METRICS.run('reads', _read_status, cli_path, alias, runner=runner)
@@ -136,7 +168,7 @@ def _read_status(cli_path: str, alias: str, *, runner=run_cli) -> tuple[int, dic
         model = result.get("model")
         features = result.get("features")
         if (result.get("result") != "read_succeeded" or result.get("device") != alias or
-                model not in ("H200", "C230", "T100", "T110") or type(features) is not dict):
+                model not in ("H200", "C230", "T100", "T110", "L930-5") or type(features) is not dict):
             raise ReadError("invalid_output")
         data = {}
         sensor = model in ("T100", "T110")
@@ -148,7 +180,10 @@ def _read_status(cli_path: str, alias: str, *, runner=run_cli) -> tuple[int, dic
                 "rssi": _feature(features, "rssi", int),
                 "radioFreshness": "unknown",
             }
-        required_available = not sensor or data.get('motionDetected' if model == 'T100' else 'isOpen') is not None
+        if model == 'L930-5':
+            data = _lighting_data(features)
+        required_available = (data.get('isOn') is not None if model == 'L930-5' else
+            not sensor or data.get('motionDetected' if model == 'T100' else 'isOpen') is not None)
         attempts = result.get('read_attempts', 1)
         attempts = attempts if type(attempts) is int and 1 <= attempts <= 3 else 1
         return (200 if required_available else 503), {**base, "ok": required_available,

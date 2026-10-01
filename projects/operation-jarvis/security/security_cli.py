@@ -975,12 +975,14 @@ import re
 
 
 ROOT = Path(__file__).resolve().parent
+from security_lighting import SETTINGS as LIGHT_SETTINGS
+
 WRITES = {
     'C230': {'state', 'led', 'motion_detection', 'person_detection',
              'pet_detection', 'baby_cry_detection', 'tamper_detection'},
     'H200': {'led', 'alarm_sound', 'alarm_volume', 'alarm_duration'},
     'D235': set(),
-    'L930-5': {'state', 'brightness', 'color_temp', 'hsv'},
+    'L930-5': LIGHT_SETTINGS,
 }
 SENSOR_MODELS = {'T100', 'T110'}
 WRITES.update({model: set() for model in SENSOR_MODELS})
@@ -1050,7 +1052,7 @@ def clean(value):
         return value
     if isinstance(value, datetime):
         return value.isoformat()
-    if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9 _().:+/\-]{1,100}', value):
+    if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9 _().:+/'\-]{1,100}", value):
         return value
     return None
 
@@ -1084,6 +1086,17 @@ def inventory(device, model):
             result[name] = row
         except Exception:
             result[name] = {'status': 'unknown'}
+    if model == 'L930-5':
+        effect = device.sys_info.get('lighting_effect', {})
+        if 'light_effect' in result:
+            result['effect_brightness'] = ({'status': 'unknown'}
+                if result['light_effect'].get('status') == 'unknown' else {
+                    'value': clean(effect.get('brightness')), 'minimum': 1, 'maximum': 100,
+                    'writable': effect.get('enable') == 1, 'control_verification': 'not_assessed'})
+        components = getattr(device, '_components', {})
+        if components.get('segment_effect', 0) >= 1:
+            result['segment_effect'] = {'experimental': True, 'writable': True,
+                'requires': '--confirm --experimental', 'control_verification': 'not_assessed'}
     if model == 'C230':
         state = result.get('state', {}).get('value')
         result['privacy'] = {'value': not state if type(state) is bool else None,
@@ -1165,6 +1178,17 @@ async def operate(device, model, command, name=None, value=None, progress=None):
         progress['write_started'] = True
         await target.set_value(None)
         return {'result': 'acknowledged', 'physical_position': 'not_verified'}
+    requested_name = name
+    if model == 'L930-5':
+        from security_lighting import ALIASES, effect_write, segment_write
+        name = ALIASES.get(name, name)
+        if name in ('light_effect', 'effect_brightness'):
+            result = await effect_write(device, name, value, progress)
+            if result.get('result') == 'verified':
+                result['setting'] = requested_name
+            return result
+        if name == 'segment_effect':
+            return await segment_write(device, value, progress)
     f = healthy_feature(device, name)
     if command == 'action':
         if name == 'test_alarm':
@@ -1191,6 +1215,10 @@ async def operate(device, model, command, name=None, value=None, progress=None):
         module._last_update_time = None
     await device.update(update_children=False)
     actual = healthy_feature(device, name).value
+    if model == 'L930-5' and name in ('hsv', 'color_temperature'):
+        from security_lighting import effects_idle
+        if not effects_idle(device):
+            return {'result': 'readback_mismatch', 'outcome': 'unknown'}
     if model == 'L930-5' and name == 'hsv':
         actual = tuple(actual)
         if actual != desired or device.sys_info.get('color_temp') != 0:
@@ -1198,7 +1226,7 @@ async def operate(device, model, command, name=None, value=None, progress=None):
         return {'result': 'verified', 'setting': name, 'value': list(actual)}
     if type(actual) is not type(desired) or actual != desired:
         return {'result': 'readback_mismatch', 'outcome': 'unknown'}
-    return {'result': 'verified', 'setting': name, 'value': clean(actual)}
+    return {'result': 'verified', 'setting': requested_name, 'value': clean(actual)}
 
 
 def sensor_inventory(device, model):
@@ -1277,15 +1305,22 @@ def new_hub_read_http_session():
 
 async def _execute_once(alias, command, *, name=None, value=None, confirm=False,
                         audible=False, env_file=ROOT / '.env', registry_path=ROOT / 'devices.json',
-                        presence_deadline=None):
+                        presence_deadline=None, experimental=False):
     devices = registry(registry_path)
     if alias not in devices:
         raise ControlError('unknown_device')
     entry = devices[alias]
     model = entry['model']
-    if presence_deadline is not None and (command != 'light-set' or
+    if presence_deadline is not None and (command != 'light-set' or name != 'state' or
             not math.isfinite(presence_deadline) or presence_deadline <= time.monotonic()):
         raise ControlError('presence_deadline_expired')
+    if experimental and (command != 'light-set' or name != 'segment_effect'):
+        raise ControlError('invalid_arguments')
+    if model == 'L930-5' and command in ('set', 'light-set') and name == 'segment_effect':
+        if not experimental or command != 'light-set':
+            raise ControlError('experimental_confirmation_required')
+        from security_lighting import pattern
+        pattern(value)
     if command == 'light-set':
         if model != 'L930-5':
             raise ControlError('light_strip_required')
@@ -1430,6 +1465,7 @@ def parser():
             s.add_argument('name', choices=('left', 'right', 'up', 'down'))
             s.add_argument('--degrees', type=int, default=10, help='One movement request, 1–30 degrees')
         if command == 'light-set':
+            s.add_argument('--experimental', action='store_true', help='Opt into uncommissioned segment effects')
             s.add_argument('--presence-deadline', type=float, help=argparse.SUPPRESS)
         s.add_argument('--confirm', action='store_true', help='Explicit approval for this write')
         if command == 'action':
@@ -1508,7 +1544,8 @@ def control_main(argv=None):
                 value=value,
                 confirm=getattr(args, 'confirm', False),
                 audible=getattr(args, 'allow_audible', False),
-                **({'presence_deadline': args.presence_deadline} if args.command == 'light-set' else {}),
+                **({'presence_deadline': args.presence_deadline, 'experimental': args.experimental}
+                   if args.command == 'light-set' else {}),
                 env_file=args.env_file, registry_path=args.registry))
         code = 3 if result.get('outcome') == 'unknown' else (2 if result.get('result') == 'error' else 0)
     except ControlError as exc:
@@ -1557,4 +1594,6 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
+    # Helpers import ControlError from this module; keep one exception identity.
+    sys.modules.setdefault('security_cli', sys.modules[__name__])
     raise SystemExit(main())

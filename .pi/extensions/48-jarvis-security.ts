@@ -69,11 +69,11 @@ export function registerSecurity(pi: ExtensionAPI, deps: Dependencies = {}) {
   }
   pi.registerTool({
     name: "operation_jarvis_security", label: "Operation JARVIS · Security",
-    description: "Read Tapo security devices and control L930-5 lighting. devices lists aliases; status/capabilities reads one device. light-set changes only strip power, brightness or HSV colour, with readback; never retry uncertain writes. No camera/hub writes or media. Sensor snapshots do not prove freshness or home security.",
+    description: "Read Tapo security devices and control L930-5 lighting. devices lists aliases; status/capabilities reads one device. light-set controls strip power, brightness, HSV, white temperature, named effects, effect brightness and smooth transitions with readback. Read capabilities for supported settings/effect choices. Never retry uncertain writes. No camera/hub writes or media. Sensor snapshots do not prove freshness or home security.",
     parameters: Type.Object({
       action: StringEnum(["devices", "status", "capabilities", "light-set"]),
-      setting: Type.Optional(StringEnum(["state", "brightness", "hsv"])),
-      value: Type.Optional(Type.String({ maxLength: 16, description: "light-set: state on/off; brightness 0–100 (0 may turn off); hsv H,S,V with ranges 0–360,0–100,1–100. Colour may replace an effect." })),
+      setting: Type.Optional(StringEnum(["state", "brightness", "hsv", "color_temperature", "light_effect", "effect_brightness", "smooth_transitions", "smooth_transition_on", "smooth_transition_off"])),
+      value: Type.Optional(Type.String({ maxLength: 64, description: "state/smooth_transitions: on/off; brightness: 0–100; hsv: H,S,V; color_temperature: 2500–6500 K; light_effect: exact capability choice (Off disables); effect_brightness: 1–100; smooth_transition_on/off: 0–60 seconds, device-dependent. Colour/effects may replace existing effects." })),
       device: Type.Optional(Type.String({ pattern: "^[a-z][a-z0-9-]{0,39}$", description: "Configured alias; required for status/capabilities." })),
     }, { additionalProperties: false }),
     executionMode: "sequential",
@@ -83,7 +83,11 @@ export function registerSecurity(pi: ExtensionAPI, deps: Dependencies = {}) {
           const device = alias(p.device);
           const value = p.value;
           const valid = typeof value === "string" && (
-            (p.setting === "state" && ["on", "off"].includes(value)) ||
+            (["state", "smooth_transitions"].includes(p.setting!) && ["on", "off"].includes(value)) ||
+            (p.setting === "light_effect" && /^[A-Za-z][A-Za-z '\-]{0,63}$/.test(value)) ||
+            (p.setting === "color_temperature" && /^\d{4}$/.test(value) && Number(value) >= 2500 && Number(value) <= 6500) ||
+            (p.setting === "effect_brightness" && /^\d{1,3}$/.test(value) && Number(value) >= 1 && Number(value) <= 100) ||
+            (["smooth_transition_on", "smooth_transition_off"].includes(p.setting!) && /^\d{1,2}$/.test(value) && Number(value) <= 60) ||
             (p.setting === "brightness" && /^\d{1,3}$/.test(value) && Number(value) <= 100) ||
             (p.setting === "hsv" && /^\d{1,3},\d{1,3},\d{1,3}$/.test(value) && value.split(",").every((v, i) => Number(v) >= (i === 2 ? 1 : 0) && Number(v) <= (i === 0 ? 360 : 100))));
           if (!valid) return output({result: "error", reason: "invalid_lighting_value", writes_attempted: 0}, true);
@@ -95,7 +99,7 @@ export function registerSecurity(pi: ExtensionAPI, deps: Dependencies = {}) {
           // Once dispatched, any unverified result is uncertain and must not be replayed.
           try {
             const r = await run(dir, ["light-set", device, p.setting!, value!, "--confirm"], signal);
-            const expected = p.setting === "state" ? value === "on" : p.setting === "hsv" ? value!.split(",").map(Number) : Number(value);
+            const expected = ["state", "smooth_transitions"].includes(p.setting!) ? value === "on" : p.setting === "light_effect" ? value : p.setting === "hsv" ? value!.split(",").map(Number) : Number(value);
             if (r.code === 0 && r.payload.result === "verified" && r.payload.device === device && r.payload.model === "L930-5" && r.payload.setting === p.setting && JSON.stringify(r.payload.value) === JSON.stringify(expected)) {
               return output({result: "verified", device, setting: p.setting, value: expected, automatic_retry: false});
             }

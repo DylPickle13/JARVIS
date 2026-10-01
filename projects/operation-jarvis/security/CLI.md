@@ -23,20 +23,70 @@ The default credential file for this model is private, owner-only `led-strip.env
 using the same three keys as `.env` (including `JARVIS_SECURITY_HUB_HOST`, a legacy
 key name). An explicit `--env-file` overrides this. Do not commit credentials.
 
-`status` and `capabilities` expose power, brightness and HSV. CLI writes require
-`--confirm`: `set <alias> state on`, `set <alias> brightness 50`, or
-`set <alias> hsv 120,80,50`. HSV is hue 0–360, saturation 0–100, brightness 1–100.
-`color_temp` is accepted only if the SDK exposes that feature; not all firmware
-exposes it. Brightness zero may turn the strip off. Colour changes may replace an
-active lighting effect. Effects, segments and music sync are not exposed.
+Read `capabilities <alias>` first: it lists available SDK features, effect choices
+and numeric ranges. All writes require `--confirm`; `light-set` independently
+rejects non-L930-5 models. Examples (run from this directory):
+
+```sh
+./security --json capabilities led-strip
+./security --json light-set led-strip state on --confirm
+./security --json light-set led-strip brightness 50 --confirm
+./security --json light-set led-strip hsv 120,80,50 --confirm
+./security --json light-set led-strip color_temperature 4000 --confirm
+./security --json light-set led-strip light_effect Aurora --confirm
+./security --json light-set led-strip effect_brightness 30 --confirm
+./security --json light-set led-strip light_effect Off --confirm
+./security --json light-set led-strip smooth_transitions on --confirm
+```
+
+- HSV: hue 0–360, saturation 0–100, brightness 1–100. Brightness zero may turn off.
+- White temperature uses the SDK's **`color_temperature`** feature, normally
+  2500–6500 K; `color_temp` remains a CLI alias. The previous feature-name mismatch
+  hid this capability and did **not** establish a firmware limitation.
+- `light_effect` (`effect` alias in CLI): exact names from capabilities. The pinned
+  SDK includes 17 presets plus `Off`. Device readback must match the selected
+  effect identity/enable state, not just an acknowledgement or stale name.
+- `effect_brightness`: 1–100; requires an active lighting effect. Readback must
+  retain its identity. It does not adjust a segment effect.
+- `smooth_transitions`: on/off on supporting firmware. Other versions may expose
+  `smooth_transition_on` / `smooth_transition_off` as durations instead. Zero
+  disables that transition; use reported ranges (chat caps durations at 60 seconds).
+- Colour/effect changes may replace existing effects. A colour readback while
+  an effect remains active is uncertain, not a successful static-colour change.
+  An effect change does not promise to switch on a powered-off strip.
+
+**Experimental segment patterns (CLI only):** `segment_effect` requires both
+`--confirm --experimental`, plus authenticated segment capabilities. Its bounded
+JSON accepts only `type`, `colors` (1–50 HSV triples), and `brightness` (1–100).
+Types: `none`, `circulating`, `breathe`, `chasing`, `flicker`, `bloom`, `stacking`.
+There is no arbitrary RPC or vendor-JSON passthrough.
+
+```sh
+./security --json light-set led-strip segment_effect \
+  '{"type":"none","colors":[[0,100,50],[240,100,50]],"brightness":50}' \
+  --confirm --experimental
+```
+
+The adapter reads the actual segment count (at most 50) and submits a palette
+using the documented `apply_segment_effect_rule` schema. It does **not** yet
+promise exact zone-to-LED mapping. A summary-only `get_segment_effect_rule` response
+blocks the write with `segment_readback_unavailable`; full configuration readback
+support is required **before** dispatch. After dispatch, incomplete/different
+readback is uncertain. No automatic second write, retry or rollback is performed.
+Physical pattern appearance still needs owner acceptance; music sync, arbitrary
+real-time pixel streaming, app-only preset catalogues and white-per-zone patterns
+are not implemented.
 
 Writes have zero protocol retries and fresh readback; an uncertain write must not
-be replayed. CLI controls are not a claim of physical commissioning. The Pi
-security tool exposes `light-set` for L930-5 power, brightness and HSV only;
-cameras, hubs and sensors remain read-only. The CLI `light-set` command also
-independently rejects non-L930-5 models. Tool changes require an extension reload
-in an already-running Pi session. No service restart is needed
-for the CLI adapter or registry.
+be replayed. Extended controls are offline-tested, not physically commissioned.
+The Pi security tool exposes the non-experimental settings above (canonical names);
+cameras, hubs and sensors remain read-only through that tool. Reload extensions
+in an already-running Pi session to obtain the expanded tool schema. No service
+restart or new dependency is needed. Existing presence automation remains
+power-only and never selects a colour, effect or transition configuration.
+
+API references: [python-kasa effects](https://github.com/python-kasa/python-kasa/blob/master/kasa/smart/modules/lightstripeffect.py),
+[Tapo SegmentEffect](https://docs.rs/tapo/latest/tapo/requests/struct.SegmentEffect.html).
 
 ## Sensor read diagnostics
 

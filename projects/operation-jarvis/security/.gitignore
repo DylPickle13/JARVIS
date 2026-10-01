@@ -9,6 +9,8 @@
 !/security
 !/security_cli.py
 !/test_security_cli.py
+!/security_lighting.py
+!/test_security_lighting.py
 !/test_read_recovery.py
 !/security_shared_status.py
 !/test_security_shared_status.py

@@ -34,6 +34,39 @@ test('lighting writes validate values, enforce model, verify readback and never 
     if (mode === 'ok') assert.deepEqual(calls[1], ['light-set', 'strip', 'brightness', '50', '--confirm']);
   }
 });
+test('extended lighting settings validate typed readback and reject raw/experimental controls', async () => {
+  for (const [setting, value, expected] of [
+    ['color_temperature', '4000', 4000], ['light_effect', "Grandma's Christmas Lights", "Grandma's Christmas Lights"],
+    ['effect_brightness', '25', 25], ['smooth_transitions', 'on', true],
+    ['smooth_transition_on', '5', 5], ['smooth_transition_off', '0', 0],
+    ['color_temperature', '2499', undefined], ['effect_brightness', '0', undefined],
+    ['smooth_transition_on', '61', undefined], ['light_effect', '--help', undefined],
+    ['segment_effect', '{}', undefined], ['raw', '{}', undefined],
+  ]) {
+    for (const mismatch of [false, true]) {
+      const tools = {}, calls = [];
+      registerSecurity({registerTool(t) { tools[t.name] = t; }}, {directory: () => '/unused', run: async (_dir, args) => {
+        calls.push(args);
+        if (args[0] === 'devices') return {code: 0, payload: {result: 'configured', devices: {strip: {model: 'L930-5'}}}};
+        return {code: 0, payload: {result: 'verified', device: 'strip', model: 'L930-5', setting, value: mismatch ? null : expected}};
+      }});
+      const r = await tools.operation_jarvis_security.execute('test', {action: 'light-set', device: 'strip', setting, value}, undefined, undefined, {cwd: '/unused'});
+      assert.equal(r.details.result, expected === undefined ? 'error' : mismatch ? 'write_outcome_unknown' : 'verified');
+      assert.equal(calls.filter(c => c[0] === 'light-set').length, expected === undefined ? 0 : 1);
+    }
+  }
+});
+test('lighting capability projection retains bounded choices/ranges without extra metadata', () => {
+  const p = projectSecurity({model: 'L930-5', features: {
+    color_temperature: {value: 4000, minimum: 2500, maximum: 6500, raw: 'SECRET'},
+    light_effect: {value: 'Off', choices: ['Off', 'Aurora', "Grandma's Christmas Lights", {secret: true}, 'x'.repeat(100)]},
+    segment_effect: {raw: 'SECRET'},
+  }});
+  assert.equal(p.features.color_temperature.minimum, 2500);
+  assert.deepEqual(p.features.light_effect.choices, ['Off', 'Aurora', "Grandma's Christmas Lights"]);
+  assert.equal(p.features.segment_effect, undefined);
+  assert.doesNotMatch(JSON.stringify(p), /SECRET/);
+});
 function fixture(options = {}) {
   const tools = {}, calls = [], confirmations = [];
   let current = { ...rule, ...options.rule };
