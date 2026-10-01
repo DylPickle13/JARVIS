@@ -97,7 +97,7 @@ struct WatchConnectView: View {
     private var rootContent: some View {
         #if DEBUG && targetEnvironment(simulator)
         if CommandLine.arguments.contains("-jarvisOpenWatchTerminal") {
-            WatchTerminalView(controller: model.terminal)
+            WatchTerminalView(controller: model.terminal, pi: model.lastState?.subsystems?.pi)
         } else {
             dashboard
         }

@@ -116,6 +116,7 @@ struct WatchDashboardContent: View {
         case .terminal:
             WatchTerminalView(
                 controller: model.terminal,
+                pi: model.lastState?.subsystems?.pi,
                 isActive: true,
                 onAdvancePage: { selectedPage = .plugs },
                 onPreviousPage: { selectedPage = .system }

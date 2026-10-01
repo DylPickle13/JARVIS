@@ -945,6 +945,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
 
 struct WatchTerminalView: View {
     @ObservedObject var controller: WatchTerminalController
+    let pi: PiSubsystem?
     let isActive: Bool
     let onAdvancePage: (() -> Void)?
     let onPreviousPage: (() -> Void)?
@@ -967,11 +968,13 @@ struct WatchTerminalView: View {
 
     init(
         controller: WatchTerminalController,
+        pi: PiSubsystem? = nil,
         isActive: Bool = true,
         onAdvancePage: (() -> Void)? = nil,
         onPreviousPage: (() -> Void)? = nil
     ) {
         self.controller = controller
+        self.pi = pi
         self.isActive = isActive
         self.onAdvancePage = onAdvancePage
         self.onPreviousPage = onPreviousPage
@@ -1294,14 +1297,16 @@ struct WatchTerminalView: View {
                             Spacer().frame(width: 2)
                         }
                         Capsule()
-                            .fill(slot == controller.selectedSlot ? WatchJarvisStyle.accent : Color.secondary.opacity(0.55))
+                            .fill(slot.lifecycle(in: pi).statusColor)
                             .frame(width: slot == controller.selectedSlot ? 8 : 4, height: 2)
+                            .piSessionMotion(lifecycle: slot.lifecycle(in: pi), active: isActive, compact: true)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("JARVIS terminal session \(controller.selectedSlot.displayName) of \(JARVISTerminalSlot.allCases.count)")
+            .accessibilityValue(controller.selectedSlot.lifecycle(in: pi).rawValue)
             .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: 5) {

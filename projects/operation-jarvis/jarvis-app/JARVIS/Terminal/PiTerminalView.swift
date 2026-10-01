@@ -118,8 +118,10 @@ struct PiTerminalView: View {
                         Spacer().frame(width: 3)
                     }
                     Capsule()
-                        .fill(slot == terminal.selectedSlot ? JarvisPalette.accent : Color.white.opacity(0.38))
+                        .fill(slot.lifecycle(in: app.lastState?.subsystems?.pi).statusColor)
                         .frame(width: slot == terminal.selectedSlot ? 15 : 7, height: 4)
+                        .piSessionMotion(lifecycle: slot.lifecycle(in: app.lastState?.subsystems?.pi),
+                                         active: app.activeSection == .pi)
                 }
                 Text(terminal.selectedSlot.displayName)
                     .font(.caption2.bold().monospacedDigit())
@@ -131,6 +133,7 @@ struct PiTerminalView: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Pi terminal session \(terminal.selectedSlot.displayName) of \(JARVISTerminalSlot.allCases.count)")
+        .accessibilityValue(terminal.selectedSlot.lifecycle(in: app.lastState?.subsystems?.pi).rawValue)
         .accessibilityHint("Swipe left or right across the terminal to change session")
     }
 

@@ -12,12 +12,12 @@ enum PiSessionIndicatorTone: Equatable {
 
     var color: Color {
         switch self {
-        case .offline: return .gray
-        case .idle: return .purple
-        case .running: return .green
-        case .new: return .cyan
-        case .compacting: return .blue
-        case .unknown: return JarvisPalette.warning
+        case .offline: return PiSessionLifecycle.offline.statusColor
+        case .idle: return PiSessionLifecycle.idle.statusColor
+        case .running: return PiSessionLifecycle.running.statusColor
+        case .new: return PiSessionLifecycle.new.statusColor
+        case .compacting: return PiSessionLifecycle.compacting.statusColor
+        case .unknown: return PiSessionLifecycle.unknown.statusColor
         }
     }
 }
@@ -88,7 +88,7 @@ struct PiSessionCardContent: View {
                         // Normalize SF Symbol line boxes; glyph choice must not resize a card.
                         .frame(height: iconSize)
                         .foregroundStyle(color)
-                        .activityIconPulse(active: motionActive && presentation.animatesIcon)
+                        .piSessionMotion(lifecycle: lifecycle, active: motionActive)
                         .accessibilityHidden(true)
                 }
                 Text(presentation.label)
@@ -99,8 +99,6 @@ struct PiSessionCardContent: View {
             }
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
         }
-        .activityCardEdge(active: presentation.animatesIcon,
-            allowed: motionActive && presentation.allowsActivityEdge, muted: true)
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Pi session \(sessionID), \(presentation.label.lowercased())")
@@ -236,7 +234,7 @@ struct HomeView: View {
                                     .lineLimit(1).minimumScaleFactor(0.85)
                                 Spacer(minLength: 4)
                                 Image(systemName: presentation.symbol).foregroundStyle(presentation.tone.color)
-                                    .activityIconPulse(active: homeMotionActive && presentation.animatesIcon)
+                                    .piSessionMotion(lifecycle: lifecycle, active: homeMotionActive)
                             }
                             Text(speakerSummary).font(.caption2).foregroundStyle(.secondary)
                                 .lineLimit(1).minimumScaleFactor(0.85)
@@ -257,8 +255,6 @@ struct HomeView: View {
                     .accessibilityLabel("Stop current room audio on both speakers")
                 }
             }
-            .activityCardEdge(active: presentation.animatesIcon,
-                allowed: homeMotionActive && presentation.allowsActivityEdge, muted: true)
         }
     }
 

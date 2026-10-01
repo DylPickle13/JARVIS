@@ -1,0 +1,17 @@
+#if canImport(SwiftUI)
+import SwiftUI
+
+public extension PiSessionLifecycle {
+    /// Shared by Home cards and the phone/Watch terminal session indicators.
+    var statusColor: Color {
+        switch self {
+        case .offline: return .gray
+        case .idle: return .purple
+        case .running: return .green
+        case .new: return .cyan
+        case .compacting: return .blue
+        case .unknown: return Color(red: 0.96, green: 0.58, blue: 0.16)
+        }
+    }
+}
+#endif

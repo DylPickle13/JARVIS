@@ -25,6 +25,12 @@ public enum JARVISTerminalSlot: Int, CaseIterable, Codable, Equatable, Hashable,
         self == .four || self == .seven || self == .roomAudio
     }
 
+    /// Resolve by session ID, not array position; stale or missing status is unknown.
+    public func lifecycle(in pi: PiSubsystem?) -> PiSessionLifecycle {
+        guard let pi, pi.stale != true else { return .unknown }
+        return pi.mobileSessions?.first(where: { $0.sessionID == rawValue })?.resolvedLifecycle ?? .unknown
+    }
+
     public var previous: JARVISTerminalSlot? {
         JARVISTerminalSlot(rawValue: rawValue - 1)
     }
