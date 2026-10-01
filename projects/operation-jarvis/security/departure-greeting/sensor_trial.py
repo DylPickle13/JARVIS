@@ -21,6 +21,9 @@ def authorization(root):
 
 
 def reserve_proof(root, attempt, opened_at, expires, *, now):
+    # Legacy proof-field name: this is the triggering sample timestamp. In the
+    # live close-required watcher it is the door CLOSE, not the earlier opening.
+    # This keeps expiry/cooldown fresh without bounding how long the door is open.
     value = authorization(root)
     state = runtime.Journal(root).state
     if (not value or state['pending'] != attempt or state['fault'] is not None

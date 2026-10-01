@@ -220,7 +220,7 @@ class TrialTests(unittest.TestCase):
         registry.assert_not_called()
 
     def test_preplay_path_deadline_and_unknown_after_send(self):
-        for mode, expected in (('success', 'completed'), ('success_night', 'completed'),
+        for mode, expected in (('success', 'completed'), ('warm', 'completed'), ('success_night', 'completed'),
                                ('late_start', 'completed'), ('slow', 'expired_before_play'),
                                ('send_error', 'unknown')):
             at = START.replace(hour=2) if mode == 'success_night' else START
@@ -256,7 +256,8 @@ class TrialTests(unittest.TestCase):
             with patch.object(departure.cli, 'registry', return_value=devices), \
                  patch.object(departure.cli, 'device_lock', side_effect=lambda *_: nullcontext()), \
                  patch.object(departure.cli, 'load_settings', return_value=NS(password='fixture')), \
-                 patch.object(speaker.audio, 'identify_doorbell', new_callable=AsyncMock), \
+                 patch.object(speaker.identity_preflight, 'valid', return_value=mode == 'warm'), \
+                 patch.object(speaker.audio, 'identify_doorbell', new_callable=AsyncMock) as identify, \
                  patch.object(speaker.audio, 'prepare', side_effect=prepare), \
                  patch.object(speaker.audio, 'CameraSession', FakeSession), \
                  patch.object(speaker.audio, 'interruptible', side_effect=nullcontext), \
@@ -264,6 +265,15 @@ class TrialTests(unittest.TestCase):
                 result = speaker.play_once(self.root, {'attempt': 'one', 'expires': at.timestamp() + person_gate.VOICE_ONSET_SECONDS},
                                            clock=lambda: tick[0])
             self.assertEqual(result, expected)
+            if mode == 'warm': identify.assert_not_awaited()
+            else: identify.assert_awaited_once()
+            timing = runtime.read_json(self.root / 'speaker-timing.json')
+            self.assertFalse(timing['audible_onset_measured'])
+            self.assertEqual(timing['trigger_observed_at'], at.timestamp())
+            self.assertIn('identity_finished', timing['elapsed_seconds'])
+            self.assertIn('cleanup_finished', timing['elapsed_seconds'])
+            if sent:
+                self.assertIn('play_request_started', timing['elapsed_seconds'])
             self.assertEqual(len(sent), 0 if mode == 'slow' else 1)
             if sent:
                 self.assertTrue(sent[0].startswith('"') and sent[0].endswith('"'))
@@ -275,6 +285,17 @@ class TrialTests(unittest.TestCase):
                 self.assertTrue(diagnostic['playback_attempted'])
                 self.assertEqual(diagnostic['error_type'], 'OSError')
                 self.assertNotIn('fixture', json.dumps(diagnostic))
+
+    def test_fast_polling_only_while_waiting_for_close(self):
+        detector = departure.DepartureDetector(allow_simultaneous=True, require_close=True)
+        self.assertEqual(watcher.poll_delay(detector), 2)
+        detector.accept(departure.Sample(0, START, False, False))
+        detector.accept(departure.Sample(2, START+timedelta(seconds=2), True, True))
+        self.assertEqual(watcher.poll_delay(detector), 0.25)
+        detector.accept(departure.Sample(3, START+timedelta(seconds=3), False, False))
+        self.assertEqual(watcher.poll_delay(detector), 2)
+        detector.reset()
+        self.assertEqual(watcher.poll_delay(detector), 2)
 
     def test_go2rtc_playback_path_is_one_quoted_argument(self):
         path = Path('/private/fixture/jarvis-departure-one/playback.wav')

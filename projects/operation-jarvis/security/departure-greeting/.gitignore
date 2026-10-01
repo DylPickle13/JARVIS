@@ -9,6 +9,7 @@
 !/watcher.py
 !/person_gate.py
 !/sensor_trial.py
+!/identity_preflight.py
 !/install.py
 !/tests/
 /tests/*
@@ -16,6 +17,7 @@
 !/tests/test_trial.py
 !/tests/test_person_gate.py
 !/tests/test_sensor_trial.py
+!/tests/test_identity_preflight.py
 __pycache__/
 *.py[cod]
 *.log

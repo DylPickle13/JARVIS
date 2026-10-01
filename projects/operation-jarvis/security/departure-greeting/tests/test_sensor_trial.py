@@ -1,5 +1,7 @@
 import asyncio
 import unittest
+from dataclasses import replace
+from datetime import timedelta
 from unittest.mock import AsyncMock, Mock, patch
 import test_person_gate as fixtures
 BASE, EXPIRES = fixtures.BASE, fixtures.EXPIRES
@@ -32,6 +34,25 @@ class SensorTrialTests(unittest.TestCase):
         self.assertIn('sensor_only_sequence_authorized', [e['reason'] for e in self.journal.state['events']])
         # Durable household cooldown still rejects a second attempt.
         self.assertFalse(self.journal.reserve('second', BASE+60))
+
+    def test_close_trigger_delivery_uses_fresh_close_deadline(self):
+        self.authorize_sensor()
+        original = self.sample()
+        closed = replace(original, motion=False, door_open=False,
+                         observed_at=original.observed_at + timedelta(seconds=600))
+        at = closed.observed_at.timestamp()
+        play = Mock(return_value='completed')
+        async def confirm(root, reader, attempt, trigger, expires):
+            return await person_gate.confirm(root, reader, attempt, trigger, expires, now=lambda: at+.1)
+        # Opening samples cannot bypass the close requirement.
+        self.assertEqual(asyncio.run(watcher.deliver(self.root, self.journal, original,
+            now=lambda: BASE+.2, speaker=play, confirm=confirm, require_close=True)), 'suppressed')
+        play.assert_not_called()
+        result = asyncio.run(watcher.deliver(self.root, self.journal, closed,
+            now=lambda: at+.1, speaker=play, confirm=confirm, require_close=True))
+        self.assertEqual(result, 'completed')
+        self.assertEqual(play.call_args.args[2], at+16)
+        self.assertEqual(self.journal.state['last_attempt'], at+.1)
 
     def test_sensor_proof_expiry_revocation_and_pending(self):
         self.authorize_sensor()

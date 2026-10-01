@@ -13,6 +13,7 @@ import wave
 import departure
 import person_gate
 import runtime
+import identity_preflight
 import security_audio as audio
 
 
@@ -37,6 +38,11 @@ def quoted_playback_path(file):
 
 def play_once(root, request, *, clock=time.time):
     """Reuse identity/locks/approved app/codec/padding, with pre-play expiry."""
+    began = time.monotonic()
+    worker_started_at = clock()
+    timings = {}
+    def mark(name):
+        timings[name] = round(time.monotonic() - began, 6)
     journal = runtime.Journal(root)
     value = runtime.config(root)
     attempt = request.get('attempt')
@@ -102,7 +108,9 @@ def play_once(root, request, *, clock=time.time):
             runtime.save_json(root / 'playback.json', {'attempt': attempt, 'started': True})
             attempted = True
             stage = 'play_request'
+            mark('play_request_started')
             result = super().play(source)
+            mark('play_request_returned')
             stage = 'completion_monitor'
             return result
         def close(self):
@@ -115,7 +123,13 @@ def play_once(root, request, *, clock=time.time):
             async def identify():
                 async with asyncio.timeout(max(0.05, expires - clock())):
                     await audio.identify_doorbell(speaker, departure.SECURITY_ROOT / '.env')
-            asyncio.run(identify())
+            mark('identity_started')
+            if identity_preflight.valid(root, attempt, expires, speaker, departure.SECURITY_ROOT / '.env'):
+                mark('identity_preflight_reused')
+            else:
+                asyncio.run(identify())
+            identity_preflight.clear(root)  # One attempt, never a reusable authorization.
+            mark('identity_finished')
             check()
             settings = departure.cli.load_settings(departure.SECURITY_ROOT / '.env')
             args = departure.cli.parser().parse_args(['audio', 'play', value['speaker_device'], str(source),
@@ -128,16 +142,23 @@ def play_once(root, request, *, clock=time.time):
                 tmp = runtime.private_dir(Path(temporary))
                 quoted_playback_path(tmp / 'playback.wav')  # Fail before any session/send.
                 stage = 'prepare'
+                mark('prepare_started')
                 file, seconds = audio.prepare(args, tmp, value['volume'], check)
+                mark('prepare_finished')
                 session = DeadlineSession(args.app, tmp, speaker['host'], settings.password, check)
                 try:
                     stage = 'session_start'
+                    mark('session_started')
                     session.start()
+                    mark('session_ready')
                     check()
                     result, plays = audio.playback_loop(session, file, seconds, False, 8, check)
+                    mark('playback_loop_finished')
                     return 'completed' if result == 'completed' and plays == 1 else 'unknown'
                 finally:
+                    mark('cleanup_started')
                     session.close()
+                    mark('cleanup_finished')
                     session = None
     except (Expired, TimeoutError) as exc:
         diagnose(exc)
@@ -145,6 +166,16 @@ def play_once(root, request, *, clock=time.time):
     except BaseException as exc:
         diagnose(exc)
         return 'unknown' if attempted else 'failed_before_play'
+    finally:
+        # Persist after cleanup, not on the onset-critical path. This measures
+        # software stages, NOT actual speaker audibility or radio-edge latency.
+        try:
+            runtime.save_json(root / 'speaker-timing.json', {
+                'attempt': attempt, 'worker_started_at': worker_started_at,
+                'trigger_observed_at': expires - person_gate.VOICE_ONSET_SECONDS,
+                'elapsed_seconds': timings, 'audible_onset_measured': False})
+        except Exception:
+            pass
 
 
 def main():

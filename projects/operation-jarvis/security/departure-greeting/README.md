@@ -11,6 +11,70 @@ Current owner-selected greeting: **“Have a good day, sir”** (updated 2026-09
 The private offline-generated WAV and its hash metadata use this wording; no
 immediate playback accompanies the change.
 
+## Opening-time identity preflight (2026-10-01)
+
+The supervised timing sample measured 2.407 s for doorbell identity verification,
+about 0.506 s more through the play-request response, plus the retained 1.5 s
+protective silence. The watcher now attempts the read-only identity check once at
+a qualifying opening, under the same hub/device locks, bounded to 3 s. Sampling
+resumes afterward; it is not concurrent with the check. No audio/session playback
+is started. Timeout produces no cached evidence and leaves the original closure-time
+verification path available; other failures fail closed via the watcher fault path.
+
+Evidence remains in memory until that cycle closes and is usable for at most 10 s
+(wall and monotonic clocks must agree). It is bound to the current registry entry
+and credentials-file digest, never raw credentials. At closure, a private ticket
+binds it to the exact pending attempt and deadline. The worker checks freshness
+and binding again under the playback locks and consumes the ticket. Missing/stale
+or changed-binding evidence uses normal identity verification. Cache/tickets are
+cleared on interruption/restart/completion. Long-open doors still qualify but require
+fresh closure-time verification. All sensor proof, expiry, identity/model, cooldown
+and unknown-playback protections remain. Timing output identifies preflight reuse;
+actual acoustic latency still requires supervised validation.
+
+The owner heard the subsequent greeting and the journal recorded completion with
+no fault. The timing record confirmed preflight reuse: play request started about
+0.47 s after the observed closure and returned by about 0.84 s. These are software
+timings, not physical-door-to-first-word measurements; the owner's untimed estimate
+was still roughly 5 s. Six completed greetings were recorded overall at this point.
+
+## Close-response latency instrumentation (2026-10-01)
+
+While a qualifying opening is awaiting closure, the watcher pauses only 0.25 s
+between paired reads instead of 2 s. Actual sample spacing includes the read time;
+requests remain sequential and retain their existing timeout/lock safeguards. Other
+states keep the 2 s pause, and the faster cadence ends on closure/reset. There is
+still no maximum open duration. This removes up to 1.75 s of scheduled polling wait,
+not a guarantee of a particular acoustic response time.
+
+The worker saves private `speaker-timing.json` after cleanup with attempt-scoped
+monotonic stage offsets: identity, preparation, session setup, play request,
+completion and cleanup. It also records worker start and trigger observation time.
+These timings do not measure physical closure, radio latency or audible onset.
+The existing 1.5 s protective leading silence, transport, identity checks and
+16 s expiry remain unchanged. Further startup optimization requires these timings;
+there is no pre-closure playback or automatic audio test.
+
+## Close-required trial (2026-10-01)
+
+The live watcher now requires **foyer motion → door opening → door closing**.
+Motion/opening in the same paired sample still qualifies. A qualifying opening
+arms an in-memory wait; there is **no maximum time the door may stay open** while
+valid sensor observations continue. Closing consumes that wait exactly once and
+starts the 16-second voice-onset deadline and the durable 120-second cooldown.
+No playback is reserved or sent while waiting for closure. Motion alone while an
+already-open door remains open cannot qualify it.
+
+Restart, read interruption, unknown/slow samples, excessive observation gaps or
+clock discontinuity discard the waiting sequence; recovery remains silent. No
+persisted opening is reconstructed. This is not a maximum open-duration limit.
+The standalone silent observer retains its earlier open-trigger default. Status
+reports `door_close_required: true`, `maximum_door_open_seconds: null` and
+`voice_deadline_basis: observed_door_close`. The sensor-proof legacy `opened_at`
+field now contains the triggering close sample time in this live mode. Historical
+opening-trigger descriptions below are superseded for the live watcher. Visitor
+or same-sample arrival false farewells remain possible.
+
 ## Same-sample edge trial (2026-10-01)
 
 The owner now permits motion and door-opening rising edges in the same paired

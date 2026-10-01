@@ -14,6 +14,7 @@ import time
 import departure
 import person_gate
 import runtime
+import identity_preflight
 
 
 class HubSession:
@@ -25,6 +26,7 @@ class HubSession:
         self.motion_id = self.door_id = None
         self.hub_info = None
         self.person_camera = self.person_binding = None
+        self.identity_evidence = None
         self.phase = 'starting'
 
     async def connect(self):
@@ -76,7 +78,26 @@ class HubSession:
             return departure.Sample(time.monotonic(), datetime.now(timezone.utc),
                                     motion, opened, time.monotonic() - began)
 
+    async def preflight_identity(self, value):
+        import security_audio as audio
+        self.identity_evidence = None
+        entry = departure.cli.registry(self.args.registry)[value['speaker_device']]
+        env_file = departure.SECURITY_ROOT / '.env'
+        self.phase = 'speaker_identity_preflight'
+        with departure.cli.device_lock(self.entries[0]), departure.cli.device_lock(value['speaker_device']):
+            before = identity_preflight.binding(entry, env_file)
+            try:
+                async with asyncio.timeout(3):
+                    await audio.identify_doorbell(entry, env_file)
+            except TimeoutError:
+                return  # No evidence: closure uses the original verified path.
+            evidence = identity_preflight.evidence(entry, env_file)
+            if evidence['binding'] != before:
+                raise runtime.TrialError('preflight_configuration_changed')
+            self.identity_evidence = evidence
+
     async def close(self):
+        self.identity_evidence = None
         device, self.device = self.device, None
         if device is not None:
             try:
@@ -115,11 +136,12 @@ def run_speaker(root, attempt, expires):
 
 
 async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
-                  reader=None, confirm=person_gate.confirm):
+                  reader=None, confirm=person_gate.confirm, require_close=False):
     value = runtime.config(root)
     age = now() - sample.observed_at.timestamp()
     if (not value['enabled'] or journal.blocked or not 0 <= age <= 1
-            or sample.read_seconds > 2 or sample.motion is None or sample.door_open is not True):
+            or sample.read_seconds > 2 or sample.motion is None
+            or sample.door_open is not (not require_close)):
         return 'suppressed'
     if not person_gate.permitted(person_gate.effective_policy(root)):
         journal.event('person_gate_unverified')
@@ -157,6 +179,11 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
         journal.finish(attempt, 'expired_before_play')
         return 'expired_before_play'
     journal.event(evidence.reason)
+    identity_preflight.clear(root)
+    cached = getattr(reader, 'identity_evidence', None)
+    if cached is not None:
+        entry = departure.cli.registry(departure.SECURITY_ROOT / 'devices.json')[value['speaker_device']]
+        identity_preflight.ticket(root, cached, attempt, expires, entry, departure.SECURITY_ROOT / '.env')
     try:
         outcome = speaker(root, attempt, expires)
     except Exception:
@@ -173,6 +200,7 @@ def transient(exc):
 
 def clear_snapshot(root):
     (root / 'sensor-snapshot.json').unlink(missing_ok=True)
+    identity_preflight.clear(root)
 
 
 def publish_snapshot(root, value, sample):
@@ -187,13 +215,19 @@ def publish_snapshot(root, value, sample):
                     value['door_device']: {'model': 'T110', 'state': sample.door_open}}})
 
 
+def poll_delay(detector):
+    # Faster only during an observed qualified open-door session. Reads remain
+    # sequential/bounded; never overlap or bypass the shared hub lock.
+    return 0.25 if detector.awaiting_close else 2
+
+
 async def watch(root):
     root = runtime.private_dir(root)
     lock = runtime.singleton(root)
     journal = runtime.Journal(root)
     clear_snapshot(root)
     # Owner-authorized relaxed sequence: both rising edges in one paired read.
-    detector = departure.DepartureDetector(allow_simultaneous=True)
+    detector = departure.DepartureDetector(allow_simultaneous=True, require_close=True)
     reader = None
     last_pair = None
     busy_reported = False
@@ -244,14 +278,18 @@ async def watch(root):
                 if pair != last_pair or decision['decision'] == 'candidate':
                     journal.event(decision['reason'], motion=sample.motion, door_open=sample.door_open)
                     last_pair = pair
+                if decision['reason'] == 'qualified_opening_waiting_for_close':
+                    await reader.preflight_identity(value)
                 if decision['decision'] == 'candidate':
                     journal.state['candidate_count'] += 1
-                    await deliver(root, journal, sample, reader=reader)
+                    await deliver(root, journal, sample, reader=reader, require_close=True)
+                    reader.identity_evidence = None
+                    identity_preflight.clear(root)
                     detector.reset()  # No replay of events during speaker work.
                     last_pair = None
                 if time.monotonic() - journal.last_save_tick >= 10:
                     journal.flush()
-                await asyncio.sleep(2)
+                await asyncio.sleep(poll_delay(detector))
             except Exception as exc:
                 clear_snapshot(root)
                 detector.reset()

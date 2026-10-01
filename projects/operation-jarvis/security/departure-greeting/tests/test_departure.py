@@ -83,6 +83,36 @@ class DetectorTests(unittest.TestCase):
             if mode == 'arrival': self.feed(1, False, True)
             self.assertEqual(self.feed(10 if mode == 'gap' else 2, True, True)['decision'], 'suppressed')
 
+    def test_close_mode_waits_indefinitely_with_continuous_samples(self):
+        self.detector = departure.DepartureDetector(allow_simultaneous=True, require_close=True)
+        self.feed(0)
+        self.assertEqual(self.feed(2, True, True)['reason'], 'qualified_opening_waiting_for_close')
+        for tick in range(4, 604, 2):
+            self.assertEqual(self.feed(tick, False, True)['decision'], 'suppressed')
+        self.assertEqual(self.feed(604, False, False)['reason'], 'qualified_opening_then_close')
+        self.assertEqual(self.feed(606, False, False)['decision'], 'suppressed')
+        self.feed(608, True, True)
+        self.assertEqual(self.feed(610, False, False)['reason'], 'cooldown')
+
+    def test_close_mode_drops_interrupted_opening_and_unqualified_arrivals(self):
+        for interrupt in ('reset', 'gap', 'unknown', 'slow', 'arrival', 'initial'):
+            self.detector = departure.DepartureDetector(allow_simultaneous=True, require_close=True)
+            if interrupt != 'initial': self.feed(0)
+            self.feed(2, interrupt != 'arrival', True)
+            if interrupt == 'reset': self.detector.reset()
+            if interrupt == 'unknown': self.feed(3, None, True)
+            if interrupt == 'slow': self.feed(3, True, True, read_seconds=3)
+            result = self.feed(20 if interrupt == 'gap' else 4, False, False)
+            self.assertEqual(result['decision'], 'suppressed', interrupt)
+            self.assertEqual(self.feed(22 if interrupt == 'gap' else 6)['decision'], 'suppressed')
+
+    def test_close_mode_accepts_ordered_opening_and_closing_once(self):
+        self.detector = departure.DepartureDetector(require_close=True)
+        self.arm()
+        self.assertEqual(self.feed(4, True, True)['decision'], 'suppressed')
+        self.assertEqual(self.feed(6, False, False)['decision'], 'candidate')
+        self.assertEqual(self.feed(8, False, False)['decision'], 'suppressed')
+
     def test_too_short_motion_lead_is_suppressed(self):
         self.arm()
         self.assertEqual(self.feed(2.1, True, True)['decision'], 'suppressed')

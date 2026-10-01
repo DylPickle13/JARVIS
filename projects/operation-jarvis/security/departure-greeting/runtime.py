@@ -173,6 +173,10 @@ def installed_status(root):
     blocked = state.get('pending') is not None or state.get('fault') is not None
     return {'installed': True, 'enabled': value['enabled'], 'running': fresh,
             'same_sample_edges_allowed': True, 'arrival_false_positive_possible': True,
+            'door_close_required': True, 'maximum_door_open_seconds': None,
+            'voice_deadline_basis': 'observed_door_close',
+            'waiting_for_close_poll_delay_seconds': 0.25,
+            'identity_preflight_on_open': True, 'identity_preflight_max_age_seconds': 10,
             'delivery_enabled': value['enabled'] and fresh and not blocked
                 and (gate['person_gate_verified'] or gate['person_trial_authorized'] or gate.get('sensor_trial_authorized', False))
                 and state.get('health') == 'observing',
