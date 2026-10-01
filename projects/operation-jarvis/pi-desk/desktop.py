@@ -160,8 +160,8 @@ def selector(states, *, pulse_dim=False):
             parts.append(' ')
     parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold] '
                  '#{?#{>=:#{client_width},120},'
-                 'F12 Select · F10 Restart · Ctrl + ←/→ Switch,'
-                 'F12 · F10 · Ctrl + ←/→} ')
+                 'F10 Restart · Ctrl + ←/→ Switch,'
+                 'F10 · Ctrl + ←/→} ')
     return ''.join(parts)
 
 
@@ -212,8 +212,8 @@ def responsive_selector(states, width, count, selected, *, pulse_dim=False):
     if overflow and numbers[-1] < 10 and used < width:
         parts.append('#[fg=colour245]›')
         used += 1
-    for hint in (' F12 Select · F10 Restart · Ctrl + ←/→ Switch ',
-                 ' F12 · F10 · Ctrl + ←/→ ', ' F12 Select ', ''):
+    for hint in (' F10 Restart · Ctrl + ←/→ Switch ',
+                 ' F10 · Ctrl + ←/→ ', ' F10 Restart ', ''):
         if len(hint) + used <= width:
             parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold]' + hint)
             break
@@ -335,6 +335,7 @@ def configure(force=False):
 
 
 def watch_status(stop):
+    from restart_status import status_line
     feed = StatusFeed()
     health = HealthMonitor(feed.backend.host)
     previous = None
@@ -347,7 +348,7 @@ def watch_status(stop):
                 # Static states produce identical rows, so they cause no extra writes.
                 states, dim = feed.poll(), pulse_is_dim()
                 rows = (selector(states, pulse_dim=dim),
-                        health_line(feed.connection, health.poll()))
+                        ' '.join(filter(None, (status_line(), health_line(feed.connection, health.poll())))))
                 viewer_rows = render_viewers(states, dim, viewer_rows, rows[1],
                     session_rows=session_rows, global_rows=rows if rows != previous else None)
                 previous = rows
@@ -506,7 +507,7 @@ def dispatch(args):
             choose(client_pid=int(client), step=int(value))
     except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired):
         # Never expose remote output or inject data into a coding pane.
-        tmux('display-message', 'Pi Desk: selection unavailable; retry with F12', check=False)
+        tmux('display-message', 'Pi Desk: selection unavailable; click a session to retry', check=False)
         return 1
     return 0
 

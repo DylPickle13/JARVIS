@@ -408,7 +408,7 @@ class DesktopTests(unittest.TestCase):
         bar = desktop.selector({'1': 'running'})
         for n in range(1, 11):
             self.assertIn(f'range=user|{n},', bar)
-        for text in ('fg=colour77', 'F12', '#{session_name}', '#{@pi-desk-session}',
+        for text in ('fg=colour77', 'F10', '#{session_name}', '#{@pi-desk-session}',
                      '#[align=right,norange', 'Ctrl + ←/→ Switch'):
             self.assertIn(text, bar)
 

@@ -33,7 +33,7 @@ It contains
 ten clickable session numbers and lifecycle dots, with shortcut hints aligned at
 the right. Hints shorten or disappear as space runs out; below 100 columns the
 tabs tighten. Extremely narrow terminals show a sliding subset with hidden-tab
-indicators, always keeping the focused session clickable; F12 still reaches all
+indicators, always keeping the focused session clickable; Ctrl + ←/→ still reaches all
 ten sessions. Numbers use two digits, with muted separators matching the current
 one-, two-, or three-session groups; there are no group labels. Running
 and compacting dots alternate between bright and clearly dim shades every 0.75
@@ -95,14 +95,13 @@ setting until it closes.
 | Control | Action |
 | --- | --- |
 | Click a number | Open its current-size group and focus that session |
-| F12, number, Enter | Select session 1–10 |
 | Ctrl+A, then g | Selection alternative for Mac function/media keys |
 | Ctrl + ←/→ | Previous/next session, crossing group boundaries |
 | Click a pane | Focus that pane |
-| F10 or Ctrl+A, then Shift+R | Explicit start/restart confirmation popup |
+| F10 or Ctrl+A, then Shift+R | Confirm in the top bar, then restart in the background |
 | Ctrl+A, then d | Leave this viewer; agents keep running |
 
-Clicks and F12 selections within a ready visible group use a focus-only path,
+Clicks and numbered selections within a ready visible group use a focus-only path,
 validating current pane indices, session tags, liveness and responsive capacity
 before switching focus. Stale, dead, missing or out-of-group panes still use the
 normal recovery/regrouping path; healthy selections do not equalize the layout.
@@ -131,7 +130,11 @@ pi-desk restart            # press Enter to confirm; Ctrl+C to cancel
 pi-desk restart --dry-run  # preflight only, no changes
 ```
 
-The F10 popup uses this same command. It delegates to the host's existing
+F10 asks for confirmation in the top bar, then runs in the background with
+progress in the top status area; session navigation and input remain available.
+Completion/failure stays visible for 60 seconds. Full output is saved locally to
+`~/.local/state/pi-desk/restart.log`. Repeated requests while running are ignored.
+The terminal command above remains interactive. Both delegate to the host's existing
 `jarvis-mobile-vscode-restart.py --all` helper rather than duplicating its safety
 logic. All ten identities and status records must pass preflight. Stale, unknown,
 or ambiguous status blocks the operation. Each busy session waits until idle
@@ -142,8 +145,9 @@ This is polling, not an input lock: avoid sending new work during the restart.
 Existing conversations resume by explicit session path; initially missing/dead
 slots start fresh. This affects **every** viewer. Progress counts verified ready
 sessions, regardless of completion order. Partial failures are reported, other
-slots continue, and failures are never automatically retried. Ctrl+C cancels
-remaining work, but does not undo already-started restarts.
+slots continue, and failures are never automatically retried. In the interactive
+terminal command only, Ctrl+C cancels remaining work, but does not undo
+already-started restarts.
 
 Opening Pi Desk, switching groups, recovering SSH, and closing a viewer **never
 restart agents**. If hosted slots are absent, explicitly use start/restart after
