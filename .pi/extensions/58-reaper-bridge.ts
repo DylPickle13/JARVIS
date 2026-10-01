@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import { spawn } from "node:child_process";
 
 const DEFAULT_HOST = "mac-mini-16";
-const DEFAULT_REMOTE_DIR = "/Users/dylanrapanan/reaper-bridge";
+const DEFAULT_REMOTE_DIR = "/Users/dylanrapanan/Library/CloudStorage/GoogleDrive-shredder131517@gmail.com/My Drive/music/reaper/reaper-bridge";
 const DEFAULT_TIMEOUT_SECONDS = 10;
 const MAX_TIMEOUT_SECONDS = 120;
 
