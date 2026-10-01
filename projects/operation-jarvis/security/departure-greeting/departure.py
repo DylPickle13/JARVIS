@@ -74,12 +74,14 @@ class DepartureDetector:
     """Consecutive paired snapshots only; initial/recovery samples are baselines.
 
     A clear->motion edge while the door is closed may arm one candidate. A later
-    closed->open edge consumes it. Simultaneous changes are ambiguous. Unknown,
+    closed->open edge consumes it. Explicit same-sample mode also accepts both
+    rising edges together, without claiming their order or excluding arrivals. Unknown,
     slow, missed, duplicated, or clock-discontinuous samples break continuity.
     A door opening consumes the motion even if suppressed. Motion while the door
     is open is not carried into a later session. No inferred resident identity.
     """
-    def __init__(self):
+    def __init__(self, *, allow_simultaneous=False):
+        self.allow_simultaneous = allow_simultaneous
         self.previous = None
         self.motion_tick = None
         self.last_candidate_tick = None
@@ -116,16 +118,18 @@ class DepartureDetector:
         if opening:
             armed = self.motion_tick
             self.motion_tick = None
-            if motion_edge:
+            simultaneous = motion_edge and self.allow_simultaneous
+            if motion_edge and not simultaneous:
                 return self.decision('simultaneous_changes')
-            if armed is None or not 0.5 <= sample.tick - armed <= 20:
+            if not simultaneous and (armed is None or not 0.5 <= sample.tick - armed <= 20):
                 return self.decision('no_recent_indoor_motion_edge')
             # This is a household/session cooldown, not a per-person counter.
             if (self.last_candidate_tick is not None
                     and sample.tick - self.last_candidate_tick < 120):
                 return self.decision('cooldown')
             self.last_candidate_tick = sample.tick
-            return self.decision('motion_before_door_open', candidate=True)
+            return self.decision('same_sample_motion_and_opening' if simultaneous
+                                 else 'motion_before_door_open', candidate=True)
         if sample.door_open:
             self.motion_tick = None
         elif motion_edge and old.door_open is False:

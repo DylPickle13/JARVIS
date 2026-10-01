@@ -14,6 +14,7 @@ import time
 
 import departure
 import runtime
+import sensor_trial
 
 MAX_ROWS = 20
 MAX_WAIT = 10
@@ -58,6 +59,8 @@ def policy(root):
 def effective_policy(root):
     """Owner-authorized trial is distinct from physical commissioning."""
     value = policy(root)
+    if sensor_trial.authorization(root):
+        return {**value, 'sensor_only': True}
     if value['verified']:
         return value
     trial = runtime.read_json(root / 'person-trial.json')
@@ -80,11 +83,17 @@ def effective_policy(root):
 
 
 def permitted(value):
-    return value['verified'] or value.get('trial_authorized') is True
+    return value['verified'] or value.get('trial_authorized') is True or value.get('sensor_only') is True
 
 
 def status(root):
     value = effective_policy(root)
+    if value.get('sensor_only'):
+        return {'person_gate_required': False, 'person_gate_verified': value['verified'],
+                'person_event_source': None, 'person_gate_max_wait_seconds': 0,
+                'voice_onset_deadline_seconds': VOICE_ONSET_SECONDS,
+                'person_trial_authorized': False, 'sensor_trial_authorized': True,
+                'person_gate_state': 'owner_authorized_sensor_only_trial'}
     return {'person_gate_required': True, 'person_gate_verified': value['verified'],
             'person_event_source': SOURCE, 'person_gate_max_wait_seconds': MAX_WAIT,
             'voice_onset_deadline_seconds': VOICE_ONSET_SECONDS,
@@ -216,6 +225,9 @@ async def confirm(root, reader, attempt, opened_at, expires, *, now=time.time, s
     value = effective_policy(root)
     if not permitted(value):
         return Result(False, 'person_gate_unverified')
+    if value.get('sensor_only'):
+        confirmed = sensor_trial.reserve_proof(root, attempt, opened_at, expires, now=now())
+        return Result(confirmed, 'sensor_only_sequence_authorized' if confirmed else 'sensor_proof_invalid')
     if reader is None or getattr(reader, 'person_binding', None) != value['binding']:
         return Result(False, 'person_source_binding_mismatch')
     # The caller bounds the whole invocation, including reads/sleeps, to 10 s.
@@ -248,6 +260,8 @@ async def confirm(root, reader, attempt, opened_at, expires, *, now=time.time, s
 
 def valid_proof(root, attempt, expires, *, now):
     value = effective_policy(root)
+    if value.get('sensor_only'):
+        return sensor_trial.valid_proof(root, attempt, expires, now=now)
     proof = runtime.read_json(root / 'person-proof.json')
     fields = {'version', 'attempt', 'opened_at', 'expires', 'checked_at', 'event_start',
               'event_end', 'event_key', 'person_code', 'binding'}

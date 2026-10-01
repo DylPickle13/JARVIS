@@ -26,7 +26,8 @@ class TrialTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name) / 'Application Support'
+        self.root.mkdir(mode=0o700)
         self.value = {'version': 1, 'enabled': True, 'motion_device': 'motion-sensor',
                       'door_device': 'door-sensor', 'speaker_device': 'front-doorbell', 'volume': 60}
         runtime.save_json(self.root / 'config.json', self.value)
@@ -51,6 +52,12 @@ class TrialTests(unittest.TestCase):
 
     def sample(self, at=START):
         return departure.Sample(0, at, True, True, 0.1)
+
+    def test_owner_authorized_louder_volume_is_bounded(self):
+        runtime.save_json(self.root / 'config.json', {**self.value, 'volume': 100})
+        self.assertEqual(runtime.config(self.root)['volume'], 100)
+        runtime.save_json(self.root / 'config.json', {**self.value, 'volume': 101})
+        with self.assertRaises(runtime.TrialError): runtime.config(self.root)
 
     def test_phrase_is_exact(self):
         self.assertEqual(runtime.PHRASE, 'Have a good day, sir')
@@ -176,7 +183,7 @@ class TrialTests(unittest.TestCase):
             runtime.Journal(self.root)
 
     def test_unsafe_configuration_rejected(self):
-        for key, value in (('volume', 100), ('enabled', 'yes'), ('version', True), ('speaker_device', '')):
+        for key, value in (('volume', 101), ('enabled', 'yes'), ('version', True), ('speaker_device', '')):
             changed = {**self.value, key: value}
             runtime.save_json(self.root / 'config.json', changed)
             with self.assertRaises(runtime.TrialError):
@@ -236,6 +243,11 @@ class TrialTests(unittest.TestCase):
                     sent.append(file)
                     if mode == 'send_error': raise OSError('fixture')
                 def close(self): pass
+            def prepare(args, tmp, volume, check):
+                self.assertFalse(any(char.isspace() for char in str(tmp)))
+                self.assertEqual(tmp.stat().st_mode & 0o777, 0o700)
+                self.assertFalse(tmp.is_relative_to(self.root))
+                return tmp / 'playback.wav', 5
             def loop(session, file, *args):
                 session.play(file)
                 return 'completed', 1
@@ -245,7 +257,7 @@ class TrialTests(unittest.TestCase):
                  patch.object(departure.cli, 'device_lock', side_effect=lambda *_: nullcontext()), \
                  patch.object(departure.cli, 'load_settings', return_value=NS(password='fixture')), \
                  patch.object(speaker.audio, 'identify_doorbell', new_callable=AsyncMock), \
-                 patch.object(speaker.audio, 'prepare', return_value=(source, 5)), \
+                 patch.object(speaker.audio, 'prepare', side_effect=prepare), \
                  patch.object(speaker.audio, 'CameraSession', FakeSession), \
                  patch.object(speaker.audio, 'interruptible', side_effect=nullcontext), \
                  patch.object(speaker.audio, 'playback_loop', side_effect=loop):
@@ -253,8 +265,24 @@ class TrialTests(unittest.TestCase):
                                            clock=lambda: tick[0])
             self.assertEqual(result, expected)
             self.assertEqual(len(sent), 0 if mode == 'slow' else 1)
+            if sent:
+                self.assertTrue(sent[0].startswith('"') and sent[0].endswith('"'))
             marker = runtime.read_json(self.root / 'playback.json')
             if mode != 'slow': self.assertTrue(marker['started'])
+            if mode == 'send_error':
+                diagnostic = runtime.read_json(self.root / 'speaker-diagnostic.json')
+                self.assertEqual(diagnostic['stage'], 'play_request')
+                self.assertTrue(diagnostic['playback_attempted'])
+                self.assertEqual(diagnostic['error_type'], 'OSError')
+                self.assertNotIn('fixture', json.dumps(diagnostic))
+
+    def test_go2rtc_playback_path_is_one_quoted_argument(self):
+        path = Path('/private/fixture/jarvis-departure-one/playback.wav')
+        self.assertEqual(speaker.quoted_playback_path(path), '"' + str(path) + '"')
+        for bad in ('relative.wav', '/tmp/a"b.wav', '/tmp/a#b.wav', '/tmp/a?b.wav',
+                    '/private/fixture/Application Support/playback.wav', '/tmp/a\tb.wav',
+                    '/tmp/a\nb.wav', '/tmp/a\rb.wav', '/tmp/a\x00b.wav'):
+            with self.assertRaises(ValueError): speaker.quoted_playback_path(bad)
 
     def test_worker_process_budget_tracks_longer_onset_window(self):
         process = Mock(returncode=0)

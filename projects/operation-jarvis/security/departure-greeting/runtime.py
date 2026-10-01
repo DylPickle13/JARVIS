@@ -69,7 +69,7 @@ def config(root):
     required = {'version', 'enabled', 'motion_device', 'door_device', 'speaker_device', 'volume'}
     if (not value or set(value) != required or type(value['version']) is not int
             or value['version'] != 1 or type(value['enabled']) is not bool
-            or type(value['volume']) is not int or not 1 <= value['volume'] <= 60
+            or type(value['volume']) is not int or not 1 <= value['volume'] <= 100
             or any(type(value[key]) is not str or not value[key]
                    for key in ('motion_device', 'door_device', 'speaker_device'))):
         raise TrialError('invalid_trial_configuration')
@@ -172,8 +172,9 @@ def installed_status(root):
     fresh = age is not None and 0 <= age < 30 and state.get('health') != 'stopped'
     blocked = state.get('pending') is not None or state.get('fault') is not None
     return {'installed': True, 'enabled': value['enabled'], 'running': fresh,
+            'same_sample_edges_allowed': True, 'arrival_false_positive_possible': True,
             'delivery_enabled': value['enabled'] and fresh and not blocked
-                and (gate['person_gate_verified'] or gate['person_trial_authorized'])
+                and (gate['person_gate_verified'] or gate['person_trial_authorized'] or gate.get('sensor_trial_authorized', False))
                 and state.get('health') == 'observing',
             'health': state.get('health', 'unknown'), 'fault': state.get('fault'),
             'pending': state.get('pending') is not None,

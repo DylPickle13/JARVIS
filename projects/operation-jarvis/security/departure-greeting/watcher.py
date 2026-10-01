@@ -156,7 +156,7 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
     if not runtime.config(root)['enabled'] or not 0 <= now() - sample.observed_at.timestamp() < person_gate.MAX_WORKER_START_AGE:
         journal.finish(attempt, 'expired_before_play')
         return 'expired_before_play'
-    journal.event('fresh_person_after_opening')
+    journal.event(evidence.reason)
     try:
         outcome = speaker(root, attempt, expires)
     except Exception:
@@ -192,7 +192,8 @@ async def watch(root):
     lock = runtime.singleton(root)
     journal = runtime.Journal(root)
     clear_snapshot(root)
-    detector = departure.DepartureDetector()
+    # Owner-authorized relaxed sequence: both rising edges in one paired read.
+    detector = departure.DepartureDetector(allow_simultaneous=True)
     reader = None
     last_pair = None
     busy_reported = False
@@ -227,7 +228,8 @@ async def watch(root):
                     last_pair = None
                     journal.event('connected_baseline_required')
                 gate_policy = person_gate.effective_policy(root)
-                if person_gate.permitted(gate_policy) and reader.person_camera is None:
+                if (person_gate.permitted(gate_policy) and not gate_policy.get('sensor_only')
+                        and reader.person_camera is None):
                     await person_gate.bind(reader)
                 sample = await reader.sample()
                 reading = False

@@ -65,6 +65,24 @@ class DetectorTests(unittest.TestCase):
         self.feed(6, True, False)
         self.assertEqual(self.feed(8, True, True)['decision'], 'suppressed')
 
+    def test_opted_in_same_sample_edges_and_cooldown(self):
+        self.detector = departure.DepartureDetector(allow_simultaneous=True)
+        self.feed(0)
+        result = self.feed(2, True, True)
+        self.assertEqual(result['reason'], 'same_sample_motion_and_opening')
+        self.assertEqual(result['decision'], 'candidate')
+        self.assertEqual(self.feed(4, True, True)['decision'], 'suppressed')
+        self.feed(6)
+        self.assertEqual(self.feed(8, True, True)['reason'], 'cooldown')
+
+    def test_same_sample_mode_preserves_baselines_gaps_and_separate_arrivals(self):
+        for mode in ('initial', 'reset', 'gap', 'arrival'):
+            self.detector = departure.DepartureDetector(allow_simultaneous=True)
+            if mode != 'initial': self.feed(0)
+            if mode == 'reset': self.detector.reset()
+            if mode == 'arrival': self.feed(1, False, True)
+            self.assertEqual(self.feed(10 if mode == 'gap' else 2, True, True)['decision'], 'suppressed')
+
     def test_too_short_motion_lead_is_suppressed(self):
         self.arm()
         self.assertEqual(self.feed(2.1, True, True)['decision'], 'suppressed')

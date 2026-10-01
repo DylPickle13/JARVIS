@@ -11,7 +11,78 @@ Current owner-selected greeting: **“Have a good day, sir”** (updated 2026-09
 The private offline-generated WAV and its hash metadata use this wording; no
 immediate playback accompanies the change.
 
-## Current trial authorization (2026-09-30)
+## Same-sample edge trial (2026-10-01)
+
+The owner now permits motion and door-opening rising edges in the same paired
+sample. The live watcher opts into this detector mode; silent standalone observation
+retains its stricter default. Both edges must follow a valid consecutive baseline
+showing no motion and a closed door. Initial/recovery samples, gaps, slow/unknown
+readings, already-open doors and separately observed opening-before-motion remain
+suppressed. Cooldown and one candidate per opening are unchanged. Same-sample
+readings cannot establish order: some arrivals may now receive a farewell. Status
+reports `same_sample_edges_allowed` and `arrival_false_positive_possible`; the
+historical `arrival_enabled: false` means no dedicated arrival routine, not a promise
+that this heuristic excludes arrivals. Earlier descriptions of suppressing all
+simultaneous edges apply only to the strict mode.
+
+## Latest physical trial and volume (2026-10-01)
+
+The owner confirmed three audible greetings after the space-free scratch fix;
+the journal recorded three completed playbacks with no fault/pending attempt. The
+latest succeeded with same-sample acceptance enabled. This confirms these playback
+trials, not general departure accuracy or person-event commissioning. The owner
+subsequently requested maximum greeting volume: the private config is now 100% digital gain and
+the config validator permits 1–100. Historical 60% descriptions below refer to the
+earlier trial. No persistent camera speaker setting or shared audio default changed,
+and no immediate test sound accompanied the volume change.
+
+## Departure audio path fix (2026-10-01)
+
+The private runtime lives under `Library/Application Support`. Two go2rtc v1.9.14
+constraints matter: its FFmpeg command parser splits unquoted paths at whitespace,
+and its HTTP source validator rejects whitespace even inside quotes. Quoting alone
+fixed local decoding but NOT playback API validation. Using the installed approved
+binary with only synthetic local sources reproduced HTTP 400 for the quoted runtime
+path (`source with spaces may be insecure`); a private space-free scratch path
+passed validation (HTTP 200) and local decoding (HTTP 200). No camera destination
+or audible request was used in these reproductions.
+
+The departure worker now creates a unique OS scratch directory (0700), verifies its
+path is whitespace-free before preparing audio or opening a session, and removes
+it after session-scoped cleanup. Persistent state/phrase files stay in their original
+private runtime. The source argument is quoted and rejects whitespace, embedded
+quote/URL delimiters and control characters. The shared audio module, installed
+app, timeouts and onset deadline are unchanged. Offline tests use an
+`Application Support` fixture root and assert that playback scratch is private and
+outside it. The owner subsequently confirmed audible success (see above). The
+unknown-playback latch is never cleared merely by changing source code.
+
+Worker failures write private, attempt-scoped `speaker-diagnostic.json` with fixed
+stage/error/reason labels only. No raw transport response, URLs, credentials or
+media are logged. An uncertain playback still latches and is never retried. Fixing
+source code does not clear the pending attempt or authorize replay.
+
+## Sensor-only trial override (2026-10-01)
+
+The owner explicitly authorized trying foyer motion → door opening without person
+confirmation, after being warned about package-pickup/visitor/brief-exit false
+farewells. Private `sensor-trial.json` opts into this mode; absent authorization
+preserves the person-required behavior below. Malformed authorization fails closed.
+Status explicitly reports `person_gate_required: false` and
+`owner_authorized_sensor_only_trial`; no person evidence or commissioning is claimed.
+The watcher skips person-source binding/history in this mode. An attempt-scoped
+sensor proof is checked by the audio worker against current authorization, pending
+reservation, enabled state and expiry, including immediately before playback.
+Removing authorization invalidates sensor proofs. The 16-second onset deadline,
+120-second household cooldown, sensor sequencing, silent baselines, outdoor-only
+identity checks, 60% volume, and no replay/uncertain-playback retry remain unchanged.
+No setup-time audio test is performed. Historical person-gate policies are preserved.
+
+The supervised silent check obtained a person record approximately 39 seconds after
+its recorded start, shortly after its 36-second duration ended. This is evidence of
+late history publication in that test, not proof of universal firmware behavior.
+
+## Previous person-gated trial authorization (2026-09-30)
 
 The owner explicitly approved speech **without physical commissioning**, while
 retaining the mandatory person-event check. An owner-only private `person-trial.json`
