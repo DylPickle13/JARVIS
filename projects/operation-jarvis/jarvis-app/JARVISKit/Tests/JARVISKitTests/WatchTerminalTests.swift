@@ -719,6 +719,97 @@ final class WatchTerminalTests: XCTestCase {
         return data
     }
 
+    func testReusedClientRequestsFreshFrameForSelectedSession() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        let first = fixtureFrame()
+        let next = fixtureFrame(session: .nine)
+        TerminalURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+            XCTAssertTrue(query?.contains(URLQueryItem(name: "after", value: "0")) == true)
+            let frame = query?.contains(URLQueryItem(name: "sessionID", value: "9")) == true ? next : first
+            return (200, try JSONEncoder().encode(frame))
+        }
+        let client = fixtureClient()
+        defer { client.close() }
+        let firstResult = try await client.frame(after: 0)
+        XCTAssertEqual(firstResult.sessionID, 1)
+        let route = client.selectedBaseURL
+        let nextResult = try await client.frame(after: 0, slot: .nine)
+        XCTAssertEqual(nextResult.sessionID, 9)
+        XCTAssertEqual(client.selectedBaseURL, route)
+        XCTAssertEqual(requests.snapshot().count, 2)
+        XCTAssertTrue(requests.snapshot().allSatisfy { $0.httpMethod == "GET" })
+    }
+
+    func testFrameTransportCancellationFallsBackWithoutStoppingPoller() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        let frame = fixtureFrame()
+        TerminalURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            if request.url?.host == "fixture.invalid" { throw URLError(.cancelled) }
+            return (200, try JSONEncoder().encode(frame))
+        }
+        let client = fixtureClient()
+        defer { client.close() }
+        let result = try await client.frame(after: 0)
+        XCTAssertEqual(result, frame)
+        XCTAssertEqual(requests.snapshot().count, 2)
+        XCTAssertEqual(requests.snapshot().first?.timeoutInterval, WatchTerminalClient.frameRequestTimeout)
+        let recoveredRoute = client.selectedBaseURL
+        _ = try await client.frame(after: 1)
+        XCTAssertEqual(requests.snapshot().last?.url?.host, recoveredRoute?.host)
+        XCTAssertGreaterThan(client.wakeRecoveryDelay, WatchTerminalClient.frameResourceTimeout)
+    }
+
+    func testExplicitPollTaskCancellationDoesNotTryRoutes() async {
+        let requests = LockedBox<Int>(0)
+        TerminalURLProtocol.handler = { _ in
+            requests.update { $0 += 1 }
+            throw URLError(.timedOut)
+        }
+        let client = fixtureClient()
+        defer { client.close() }
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            do {
+                _ = try await client.frame(after: 0)
+                XCTFail("A cancelled poll must not continue")
+            } catch {
+                XCTAssertTrue(error is CancellationError)
+            }
+        }
+        await task.value
+        XCTAssertEqual(requests.snapshot(), 0)
+    }
+
+    func testAllCoolingRoutesRemainEligibleForRecovery() async throws {
+        let requests = LockedBox<[String]>([])
+        let frame = fixtureFrame()
+        TerminalURLProtocol.handler = { request in
+            requests.update { $0.append(request.url!.host!) }
+            if request.url?.host == "fixture.invalid" { throw URLError(.timedOut) }
+            // Authentication/application failures must still fail closed.
+            return (503, Data())
+        }
+        let client = fixtureClient()
+        defer { client.close() }
+        do {
+            _ = try await client.frame(after: 0)
+            XCTFail("Expected all routes to fail")
+        } catch {
+            XCTAssertFalse(error is CancellationError)
+        }
+        // All routes remain candidates, even while cooling down.
+        requests.update { $0.removeAll() }
+        TerminalURLProtocol.handler = { request in
+            requests.update { $0.append(request.url!.host!) }
+            return (200, try JSONEncoder().encode(frame))
+        }
+        _ = try await client.frame(after: 0)
+        XCTAssertFalse(requests.snapshot().isEmpty)
+    }
+
     private func fixtureClient() -> WatchTerminalClient {
         let configuration = WatchTerminalConfiguration(
             endpoint: "https://fixture.invalid:8792",

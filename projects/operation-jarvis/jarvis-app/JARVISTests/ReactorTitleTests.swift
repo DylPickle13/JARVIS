@@ -34,11 +34,11 @@ final class ReactorTitleTests: XCTestCase {
     }
 
     func testSeparateTitleAndCoreWidthsFitCompactHeader() {
-        XCTAssertEqual(ReactorHeaderLayout.coreWidth(headerWidth: 358), 150)
+        XCTAssertEqual(ReactorHeaderLayout.coreWidth(headerWidth: 358), 112)
         for width in [280.0, 320, 358, 390, 430] {
             let coreWidth = ReactorHeaderLayout.coreWidth(headerWidth: width)
-            XCTAssertLessThanOrEqual(coreWidth, 150)
-            XCTAssertGreaterThan(width - coreWidth - 12, 140)
+            XCTAssertLessThanOrEqual(coreWidth, 112)
+            XCTAssertGreaterThan(width - coreWidth - 4, 140)
         }
     }
 

@@ -85,7 +85,7 @@ struct ReactorTitlePhase {
     }
 }
 
-/// Separate leading title/status and trailing artwork, without enlarging the header.
+/// Keep the artwork beside the measured title, not pinned to the trailing edge.
 struct ReactorHeaderLayout: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         CGSize(width: proposal.width ?? 358, height: 84)
@@ -94,15 +94,18 @@ struct ReactorHeaderLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         guard let title = subviews.first else { return }
         let coreWidth = Self.coreWidth(headerWidth: bounds.width)
+        let gap: CGFloat = 4
+        let titleProposal = ProposedViewSize(width: max(0, bounds.width - coreWidth - gap), height: bounds.height)
+        let titleWidth = min(title.sizeThatFits(titleProposal).width, titleProposal.width ?? 0)
         title.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
-                    proposal: ProposedViewSize(width: max(0, bounds.width - coreWidth - 12), height: bounds.height))
+                    proposal: ProposedViewSize(width: titleWidth, height: bounds.height))
         if subviews.count > 1 {
-            subviews[1].place(at: CGPoint(x: bounds.maxX, y: bounds.midY), anchor: .trailing,
+            subviews[1].place(at: CGPoint(x: bounds.minX + titleWidth + gap, y: bounds.midY), anchor: .leading,
                               proposal: ProposedViewSize(width: coreWidth, height: bounds.height))
         }
     }
 
     static func coreWidth(headerWidth: CGFloat) -> CGFloat {
-        min(150, max(0, headerWidth * 0.42))
+        min(112, max(0, headerWidth * 0.32))
     }
 }

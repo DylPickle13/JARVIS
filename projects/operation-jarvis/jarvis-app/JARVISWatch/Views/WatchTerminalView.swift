@@ -105,6 +105,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         let spans: [[WatchTerminalANSISpan]]
     }
     private var ansiParseCache: [ANSIParseCacheEntry] = []
+    private var incrementalANSIParser = WatchTerminalANSIParseCache()
     private let logger = Logger(subsystem: "com.operation-jarvis.jarvis.watchkitapp", category: "terminal")
 
     private static let preferredRouteKey = "jarvis.watch-terminal.preferred-route"
@@ -127,6 +128,9 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
             speechFileURL = retained.fileURL
         }
         super.init()
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
+        logger.notice("terminal_start version=\(version, privacy: .public) build=\(build, privacy: .public)")
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(audioSessionWasInterrupted(_:)),
@@ -140,10 +144,15 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     }
 
     func apply(configuration: WatchTerminalConfiguration) {
+        // Every state applicationContext includes the terminal configuration.
+        // Repeated provisioning is not a route change: preserve the healthy
+        // poll, input confirmation, and prepared/playing speech.
+        guard settings.configuration != configuration else { return }
         guard settings.save(configuration) else {
             errorMessage = "Could not save the Watch terminal setup."
             return
         }
+        trace("terminal_configuration_changed")
         stopSpeech()
         restartIfNeeded()
     }
@@ -169,11 +178,13 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         stopSpeech()
         controlLatched = false
         frame = nil
+        ansiParseCache.removeAll()
+        incrementalANSIParser = WatchTerminalANSIParseCache()
         historyPages.removeAll()
         historyRequest = nil
         selectedSlot = target
         target.persist()
-        restartIfNeeded()
+        restartIfNeeded(reuseConnection: true)
         return true
     }
 
@@ -203,7 +214,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         isHistoryLoading = true
         let generation = connectionGeneration
         let slot = selectedSlot
-        historyTask = Task { @MainActor [weak self] in
+        historyTask = Task(priority: .utility) { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 if self.connectionGeneration == generation,
@@ -257,14 +268,14 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
               let speech = frame?.speech,
               speech.available, !speech.generating, !speech.responseID.isEmpty,
               failedSpeechResponseID != speech.responseID,
-              exhaustedSpeechResponseID != speech.responseID,
-              let configuration = settings.configuration else { return }
+              exhaustedSpeechResponseID != speech.responseID else { return }
         if speechResponseID == speech.responseID,
            let speechFileURL,
            FileManager.default.fileExists(atPath: speechFileURL.path) {
             return
         }
 
+        guard let configuration = settings.configuration else { return }
         stopSpeech(resetPreparationFailures: false)
         speechErrorMessage = nil
         isSpeechLoading = true
@@ -280,7 +291,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         self.speechClient = speechClient
         trace("speech_prepare_start attempt=\(speechRetryAttempt + 1)")
         speechPreparationID = preparationID
-        speechTask = Task { @MainActor [weak self] in
+        speechTask = Task(priority: .utility) { @MainActor [weak self] in
             guard let self else { return }
             var downloadedURL: URL?
             defer {
@@ -402,7 +413,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
             ansiParseCache.append(entry)
             return entry.spans
         }
-        let entry = ANSIParseCacheEntry(lines: lines, spans: WatchTerminalANSIParser.parse(lines: lines))
+        let entry = ANSIParseCacheEntry(lines: lines, spans: incrementalANSIParser.parse(lines: lines))
         if ansiParseCache.count >= Self.ansiParseCacheLimit {
             ansiParseCache.removeFirst()
         }
@@ -695,7 +706,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
             data: WatchTerminalKeyBytes.backspace,
             appendReturn: false
         )
-        Task { @MainActor [weak self] in
+        Task(priority: .userInitiated) { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 self.pendingBackspaceIDs.remove(trackingID)
@@ -714,8 +725,11 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         }
     }
 
-    private func restartIfNeeded(preserveLiveStatus: Bool = false) {
+    private func restartIfNeeded(preserveLiveStatus: Bool = false, reuseConnection: Bool = false) {
         let keepsLiveStatus = preserveLiveStatus && frame != nil && status != .notConfigured
+        // Session switches use the same authenticated server. Cancel the old
+        // slot's requests, but retain URLSession's established transport.
+        let retainedClient = reuseConnection && appIsForeground && isVisible ? client : nil
         let previouslySelectedRoute = client?.selectedBaseURL
         // Foreground route recovery must not interrupt active playback, discard
         // a prepared WAV, or cancel the independent speech download. True
@@ -723,16 +737,19 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         stop(
             markOffline: !keepsLiveStatus,
             preserveSpeechPlayback: isSpeechPlaying,
-            preservePreparedSpeech: isSpeechLoading || speechFileURL != nil
+            preservePreparedSpeech: isSpeechLoading || speechFileURL != nil,
+            preserveConnection: retainedClient != nil
         )
         guard appIsForeground, isVisible else { return }
         guard let configuration = settings.configuration else {
+            client?.close()
+            client = nil
             status = .notConfigured
             errorMessage = "Open iPhone JARVIS Settings to provision the Watch terminal."
             return
         }
         let preferredRoute = previouslySelectedRoute ?? rememberedPreferredRoute(for: configuration)
-        let client = WatchTerminalClient(
+        let client = retainedClient ?? WatchTerminalClient(
             configuration: configuration,
             preferredBaseURL: preferredRoute
         )
@@ -741,8 +758,8 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         let generation = connectionGeneration
         status = keepsLiveStatus ? .live : .connecting
         errorMessage = nil
-        trace("route_restart session=\(slot.rawValue) retained_frame=\(keepsLiveStatus) preferred=\(preferredRoute != nil)")
-        pollTask = Task { @MainActor [weak self] in
+        trace("route_restart session=\(slot.rawValue) retained_frame=\(keepsLiveStatus) preferred=\(preferredRoute != nil) reused_connection=\(retainedClient != nil)")
+        pollTask = Task(priority: .userInitiated) { @MainActor [weak self] in
             guard let self else { return }
             // A newly created route must confirm itself immediately instead of
             // long-polling the last foreground sequence before showing recovery.
@@ -844,12 +861,13 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         wakeRecoveryTask?.cancel()
         let generation = connectionGeneration
         let observedPollCount = successfulPollCount
+        guard let client else { return }
+        let recoveryDelay = client.wakeRecoveryDelay
         wakeRecoveryTask = Task { @MainActor [weak self] in
             do {
-                // A normal terminald long poll completes in at most 1.5 seconds.
-                // Seven seconds also covers the pinned session's resource
-                // timeout when a request was frozen during Always On.
-                try await Task.sleep(for: .seconds(7))
+                // Let all candidate routes finish before replacing the session.
+                // A fixed seven-second timer could cancel a valid fallback.
+                try await Task.sleep(for: .seconds(recoveryDelay))
             } catch {
                 return
             }
@@ -860,6 +878,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
                   self.isVisible,
                   self.status == .live,
                   self.successfulPollCount == observedPollCount else { return }
+            self.trace("wake_recovery_stalled")
             self.restartIfNeeded(preserveLiveStatus: true)
         }
     }
@@ -867,7 +886,8 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
     private func stop(
         markOffline: Bool = true,
         preserveSpeechPlayback: Bool = false,
-        preservePreparedSpeech: Bool = false
+        preservePreparedSpeech: Bool = false,
+        preserveConnection: Bool = false
     ) {
         connectionGeneration += 1
         isConnectionConfirmed = false
@@ -881,8 +901,10 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
         isHistoryLoading = false
         pollTask?.cancel()
         pollTask = nil
-        client?.close()
-        client = nil
+        if !preserveConnection {
+            client?.close()
+            client = nil
+        }
         isSending = false
         pendingBackspaceIDs.removeAll()
         pendingBackspaceCount = 0
@@ -902,7 +924,7 @@ final class WatchTerminalController: NSObject, ObservableObject, AVAudioPlayerDe
             data: data,
             appendReturn: appendReturn
         )
-        Task { @MainActor [weak self] in
+        Task(priority: .userInitiated) { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 if self.connectionGeneration == generation { self.isSending = false }

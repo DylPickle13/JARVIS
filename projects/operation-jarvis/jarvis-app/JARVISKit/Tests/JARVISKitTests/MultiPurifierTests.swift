@@ -22,7 +22,7 @@ final class MultiPurifierTests: XCTestCase {
         let state = try JSONDecoder().decode(PurifierSubsystem.self, from: data)
         let rows = state.compactDevices.map { WatchPurifierRow(id: $0.id, state: $0.state, unavailable: false, busy: false) }
         XCTAssertEqual(rows.map(\.deviceID), [a, b])
-        XCTAssertEqual(rows.map(\.shortName), ["Dylan's", "Bran's"])
+        XCTAssertEqual(rows.map(\.name), ["Dylan's Air Purifier", "Bran's Air Purifier"])
         XCTAssertEqual(rows.map(\.status), ["Auto", "Offline"])
         XCTAssertEqual(rows.map(\.pm25), ["1", "—"])
         let stale = WatchPurifierRow(id: a, state: state.selected(a)!, unavailable: true, busy: false)

@@ -2,6 +2,7 @@ import CoreFoundation
 import CryptoKit
 import Foundation
 import Security
+import OSLog
 
 /// Target-local credentials and endpoint for the Watch terminal bridge.
 /// The bearer token is transferred only over WatchConnectivity and stored in
@@ -332,9 +333,18 @@ public final class WatchTerminalClient: @unchecked Sendable {
     private let delegate: WatchTerminalPinnedSessionDelegate
     private let session: URLSession
     private let speechSession: URLSession
+    private let frameSession: URLSession
+    private let logger = Logger(subsystem: "com.operation-jarvis.jarvis", category: "terminal-network")
+    public static let frameRequestTimeout: TimeInterval = 7
+    public static let frameResourceTimeout: TimeInterval = 9
+    /// Allow a full sequential fallback cycle before rebuilding on wake.
+    public var wakeRecoveryDelay: TimeInterval {
+        Self.frameResourceTimeout * Double(max(1, candidateBaseURLs.count)) + 2
+    }
     private let candidateBaseURLs: [URL]
     private let endpointLock = NSLock()
     private var activeBaseURL: URL?
+    private var routeRetryAfter: [URL: Date] = [:]
 
     public convenience init(configuration: WatchTerminalConfiguration) {
         self.init(configuration: configuration, injectedSession: nil, preferredBaseURL: nil)
@@ -359,12 +369,19 @@ public final class WatchTerminalClient: @unchecked Sendable {
         if let injectedSession {
             self.session = injectedSession
             self.speechSession = injectedSession
+            self.frameSession = injectedSession
         } else {
             let sessionConfiguration = URLSessionConfiguration.ephemeral
             sessionConfiguration.timeoutIntervalForRequest = 4
             sessionConfiguration.timeoutIntervalForResource = 6
             sessionConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
             self.session = URLSession(configuration: sessionConfiguration, delegate: delegate, delegateQueue: nil)
+
+            let frameConfiguration = URLSessionConfiguration.ephemeral
+            frameConfiguration.timeoutIntervalForRequest = Self.frameRequestTimeout
+            frameConfiguration.timeoutIntervalForResource = Self.frameResourceTimeout
+            frameConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            self.frameSession = URLSession(configuration: frameConfiguration, delegate: delegate, delegateQueue: nil)
 
             let speechConfiguration = URLSessionConfiguration.ephemeral
             speechConfiguration.timeoutIntervalForRequest = 180
@@ -382,6 +399,7 @@ public final class WatchTerminalClient: @unchecked Sendable {
 
     public func close() {
         session.invalidateAndCancel()
+        if frameSession !== session { frameSession.invalidateAndCancel() }
         if speechSession !== session { speechSession.invalidateAndCancel() }
     }
 
@@ -400,6 +418,8 @@ public final class WatchTerminalClient: @unchecked Sendable {
         var observedInvalidResponse = false
         for baseURL in orderedBaseURLs() {
             if Task.isCancelled { throw CancellationError() }
+            let started = Date()
+            let routeIndex = candidateBaseURLs.firstIndex(of: baseURL) ?? -1
             do {
                 var components = try endpointComponents(baseURL: baseURL, path: "v2/terminal/frame")
                 components.queryItems = [
@@ -409,9 +429,13 @@ public final class WatchTerminalClient: @unchecked Sendable {
                 guard let url = components.url else { throw WatchTerminalClientError.notConfigured }
                 var request = URLRequest(url: url)
                 request.httpMethod = "GET"
-                request.timeoutInterval = 4
+                request.timeoutInterval = Self.frameRequestTimeout
                 authorize(&request)
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await frameSession.data(for: request)
+                try Task.checkCancellation()
+                if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                    logger.notice("frame_http_failure route=\(routeIndex) status=\(http.statusCode)")
+                }
                 try validate(response: response, data: data)
                 let frame: WatchTerminalFrame
                 do {
@@ -422,22 +446,30 @@ public final class WatchTerminalClient: @unchecked Sendable {
                         throw WatchTerminalClientError.invalidResponse
                     }
                 } catch {
-                    observedInvalidResponse = true
-                    continue
+                    throw WatchTerminalClientError.invalidResponse
                 }
+                try Task.checkCancellation()
                 rememberActive(baseURL)
                 delegate.clearRejectedCertificate()
                 return frame
-            } catch let error as URLError where error.code == .cancelled {
-                throw CancellationError()
+            } catch let error as URLError {
+                if Task.isCancelled { throw CancellationError() }
+                // Transport cancellation need not mean the polling task stopped.
+                markRouteFailed(baseURL)
+                let elapsed = Date().timeIntervalSince(started)
+                logger.notice("frame_transport_failure route=\(routeIndex) code=\(error.code.rawValue) elapsed=\(elapsed)")
             } catch is CancellationError {
                 throw CancellationError()
             } catch WatchTerminalClientError.certificateRejected {
-                continue
+                markRouteFailed(baseURL)
+                logger.error("frame_certificate_rejected route=\(routeIndex)")
             } catch WatchTerminalClientError.invalidResponse {
                 observedInvalidResponse = true
+                markRouteFailed(baseURL)
+                logger.error("frame_invalid_response route=\(routeIndex)")
             } catch {
-                continue
+                markRouteFailed(baseURL)
+                logger.notice("frame_request_failed route=\(routeIndex)")
             }
         }
         if delegate.rejectedCertificate { throw WatchTerminalClientError.certificateRejected }
@@ -715,15 +747,31 @@ public final class WatchTerminalClient: @unchecked Sendable {
 
     private func orderedBaseURLs() -> [URL] {
         endpointLock.lock()
-        let active = activeBaseURL
-        endpointLock.unlock()
-        guard let active else { return candidateBaseURLs }
-        return [active] + candidateBaseURLs.filter { $0 != active }
+        defer { endpointLock.unlock() }
+        let ordered = activeBaseURL.map { active in
+            [active] + candidateBaseURLs.filter { $0 != active }
+        } ?? candidateBaseURLs
+        let now = Date()
+        // Deprioritize, never omit: even if every route failed, keep trying.
+        return ordered.filter { (routeRetryAfter[$0] ?? .distantPast) <= now }
+            + ordered.filter { (routeRetryAfter[$0] ?? .distantPast) > now }
     }
 
     private func rememberActive(_ baseURL: URL) {
         endpointLock.lock()
+        let changed = activeBaseURL != baseURL
         activeBaseURL = baseURL
+        routeRetryAfter.removeValue(forKey: baseURL)
+        endpointLock.unlock()
+        if changed {
+            let index = candidateBaseURLs.firstIndex(of: baseURL) ?? -1
+            logger.notice("route_selected route=\(index)")
+        }
+    }
+
+    private func markRouteFailed(_ baseURL: URL) {
+        endpointLock.lock()
+        routeRetryAfter[baseURL] = Date().addingTimeInterval(15)
         endpointLock.unlock()
     }
 
@@ -1196,7 +1244,10 @@ public struct WatchTerminalANSISpan: Equatable, Sendable {
 public enum WatchTerminalANSIParser {
     public static func parse(lines: [String]) -> [[WatchTerminalANSISpan]] {
         var style = WatchTerminalANSIStyle()
-        return lines.map { line in
+        return lines.map { parse(line: $0, style: &style) }
+    }
+
+    static func parse(line: String, style: inout WatchTerminalANSIStyle) -> [WatchTerminalANSISpan] {
             var spans: [WatchTerminalANSISpan] = []
             var buffer = ""
             var index = line.startIndex
@@ -1229,7 +1280,6 @@ public enum WatchTerminalANSIParser {
             }
             flush()
             return spans
-        }
     }
 
     /// Wraps styled terminal rows for the Watch output surface without changing

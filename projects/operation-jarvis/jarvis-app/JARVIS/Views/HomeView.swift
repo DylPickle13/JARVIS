@@ -922,8 +922,7 @@ struct PlugCard: View {
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, minHeight: 54, maxHeight: 54)
-        .jarvisGlassSurface(tileFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous),
-                            glass: true, tint: isOn == true ? JarvisPalette.accent.opacity(0.12) : nil)
+        .jarvisGlassSurface(JarvisPalette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(isOn == true ? JarvisPalette.accent.opacity(0.28) : Color.primary.opacity(0.055), lineWidth: 0.75)
@@ -946,18 +945,6 @@ struct PlugCard: View {
         return isOn.map { $0 ? "ON" : "OFF" } ?? "—"
     }
 
-    private var tileFill: AnyShapeStyle {
-        if isOn == true {
-            return AnyShapeStyle(
-                LinearGradient(
-                    colors: [JarvisPalette.accent.opacity(0.11), JarvisPalette.surface],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-        }
-        return AnyShapeStyle(JarvisPalette.surface)
-    }
 }
 
 #Preview {
@@ -1012,8 +999,7 @@ struct CompactPurifierCard: View {
     }
 
     private func row(_ item: PurifierSubsystem, busy: Bool) -> some View {
-        let name = item.name ?? "Air purifier"
-        let compactName = name.replacingOccurrences(of: " Air Purifier", with: "", options: .caseInsensitive)
+        let name = item.name ?? "Air Purifier"
         let status = busy ? "Working" : item.verificationPending == true ? "Pending" : item.refreshing == true ? "Loading" :
             item.ok != true ? "Offline" : item.stale == true ? "Stale" :
             item.isOn == false ? "Off" : item.mode?.capitalized ?? "—"
@@ -1032,7 +1018,7 @@ struct CompactPurifierCard: View {
                 .foregroundStyle(activeColor)
                 .frame(width: 18, height: 18)
                 .background(activeColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
-            Text(compactName).font(.system(size: 12, weight: .semibold))
+            Text(name).font(.system(size: 12, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(status.uppercased())
                 .font(.system(size: 8, weight: .semibold))

@@ -5,7 +5,6 @@ public struct WatchPurifierRow: Identifiable {
     public let id: String
     public let deviceID: String?
     public let name: String
-    public let shortName: String
     public let status: String
     public let pm25: String
     public let uncertain: Bool
@@ -13,8 +12,7 @@ public struct WatchPurifierRow: Identifiable {
     public init(id: String, state: PurifierSubsystem, unavailable: Bool, busy: Bool) {
         self.id = id
         deviceID = id == "legacy-default" ? state.deviceID : id
-        name = state.name ?? "Air purifier"
-        shortName = name.replacingOccurrences(of: " Air Purifier", with: "", options: .caseInsensitive)
+        name = state.name ?? "Air Purifier"
         uncertain = unavailable || state.ok != true || state.stale == true || state.verificationPending == true
         status = busy ? "Working" : state.verificationPending == true ? "Pending" : state.refreshing == true ? "Loading" :
             state.ok != true ? "Offline" : unavailable || state.stale == true ? "Stale" :
@@ -52,7 +50,9 @@ public struct CompactWatchPurifierCard: View {
                         HStack(spacing: 4) {
                             Image(systemName: "wind").font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(accent).frame(width: 10)
-                            Text(row.shortName).font(.system(size: 11, weight: .semibold))
+                            Text(row.name).font(.system(size: 11, weight: .semibold))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
                                 .frame(maxWidth: .infinity, alignment: .leading).minimumScaleFactor(0.85)
                             Text(row.status.uppercased()).font(.system(size: 8, weight: .semibold))
                                 .foregroundStyle(row.uncertain ? Color.secondary : accent)

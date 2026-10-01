@@ -525,7 +525,7 @@ struct WatchDashboardContent: View {
                 if busy { ProgressView().controlSize(.small) }
             }
             .padding(10)
-            .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous), glass: true)
+            .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         }
         .buttonStyle(JarvisPressStyle())
         .disabled(state == nil || stale || model.busyPlug != nil)
@@ -702,8 +702,7 @@ private struct WatchPlugTile: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .leading)
-        .jarvisGlassSurface(tileFill, in: RoundedRectangle(cornerRadius: 15, style: .continuous),
-                            glass: true, tint: isOn == true ? WatchJarvisStyle.accent.opacity(0.12) : nil)
+        .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .stroke(isOn == true ? WatchJarvisStyle.accent.opacity(0.24) : Color.white.opacity(0.045), lineWidth: 0.8)
@@ -728,18 +727,6 @@ private struct WatchPlugTile: View {
         return isOn.map { $0 ? "ON" : "OFF" } ?? "UNKNOWN"
     }
 
-    private var tileFill: some ShapeStyle {
-        if isOn == true {
-            return AnyShapeStyle(
-                LinearGradient(
-                    colors: [WatchJarvisStyle.accent.opacity(0.20), WatchJarvisStyle.surface],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-        }
-        return AnyShapeStyle(WatchJarvisStyle.surface)
-    }
 }
 
 enum WatchJarvisStyle {
