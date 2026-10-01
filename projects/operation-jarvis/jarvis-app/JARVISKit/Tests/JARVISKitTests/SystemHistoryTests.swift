@@ -171,7 +171,7 @@ final class SystemHistoryTests: XCTestCase {
 
     func testExistingTrustedNetworkEndpointPollsWithoutAdditionalTokenOnPhoneAndWatch() async throws {
         for surface in [SystemHistoryConfiguration.Surface.phone, .watch] {
-            let response = try HistoryFixture.response(window: surface == .phone ? .day : .hour,
+            let response = try HistoryFixture.response(window: .hour,
                 component: surface == .watch ? "overall" : nil)
             let driver = HistoryDriver(response: response)
             let m = model(driver)
@@ -220,6 +220,29 @@ final class SystemHistoryTests: XCTestCase {
         XCTAssertTrue(r.series[0].buckets[0].mixed)
     }
 
+    func testInlineSummarySeparatesErrorsUnknownAndMissingCoverage() throws {
+        func series(_ state: String, coverage: Double, missing: Double) throws -> SystemHistorySeries {
+            let json: [String: Any] = ["id": "overall", "buckets": [[
+                "from": "2026-09-30T12:00:00Z", "to": "2026-09-30T12:01:00Z",
+                "state": state, "reasonCodes": state == "unavailable" ? ["sensor_read_failed"] : [],
+                "coverageSeconds": coverage, "missingSeconds": missing,
+                "stateSeconds": coverage > 0 ? [state: coverage] : [:], "mixed": false
+            ]]]
+            return try JSONDecoder().decode(SystemHistorySeries.self, from: JSONSerialization.data(withJSONObject: json))
+        }
+        let error = try series("unavailable", coverage: 60, missing: 0).inlineSummary
+        XCTAssertTrue(error.contains("1 error buckets"))
+        XCTAssertTrue(error.contains("sensor read failed"))
+        XCTAssertTrue(error.contains("Latest error buckets"))
+        let unknown = try series("unknown", coverage: 60, missing: 0).inlineSummary
+        XCTAssertTrue(unknown.contains("1m unverified"))
+        XCTAssertFalse(unknown.contains("Latest error"))
+        let gap = try series("unknown", coverage: 0, missing: 60).inlineSummary
+        XCTAssertTrue(gap.contains("No recorded observations"))
+        XCTAssertTrue(gap.contains("1m gaps"))
+        XCTAssertFalse(gap.contains("No observed errors"))
+    }
+
     func testOnlyVisibleInteractiveConnectedEndpointContextsPoll() {
         XCTAssertTrue(configuration().shouldPoll)
         XCTAssertFalse(configuration(visible: false).shouldPoll)
@@ -229,11 +252,11 @@ final class SystemHistoryTests: XCTestCase {
         XCTAssertFalse(SystemHistoryConfiguration(endpoint: nil, surface: .phone, visible: true, interactive: true, connected: true).shouldPoll)
         let watch = configuration(surface: .watch)
         XCTAssertEqual(watch.window, .hour);XCTAssertEqual(watch.component, "overall")
-        XCTAssertEqual(configuration().window, .day);XCTAssertNil(configuration().component)
+        XCTAssertEqual(configuration().window, .hour);XCTAssertNil(configuration().component)
     }
 
     func testHiddenAndAlwaysOnContextsNeverFetchAndIdenticalConfigurationDeduplicates() async throws {
-        let driver = HistoryDriver(response: try HistoryFixture.response())
+        let driver = HistoryDriver(response: try HistoryFixture.response(window: .hour))
         let m = model(driver)
         m.configure(configuration(visible: false));m.configure(configuration(interactive: false));await Task.yield()
         let before = await driver.calls;XCTAssertEqual(before, 0)
@@ -246,7 +269,7 @@ final class SystemHistoryTests: XCTestCase {
     }
 
     func testFailurePreservesHistoryAndDoesNotExposeRawErrorsOrChangeCadence() async throws {
-        let driver = HistoryDriver(response: try HistoryFixture.response())
+        let driver = HistoryDriver(response: try HistoryFixture.response(window: .hour))
         let m = model(driver);m.configure(configuration());await wait { m.snapshot != nil }
         let old = m.snapshot
         await driver.setError(.http(status: 503, body: "private-token=fixture-only"))
@@ -257,37 +280,37 @@ final class SystemHistoryTests: XCTestCase {
     }
 
     func testExplicitRefreshCannotDuplicateInFlightRequest() async throws {
-        let driver = HistoryDriver(response: try HistoryFixture.response());await driver.setHold()
+        let driver = HistoryDriver(response: try HistoryFixture.response(window: .hour));await driver.setHold()
         let m = model(driver);m.configure(configuration());await wait { m.isLoading }
         m.refresh();m.refresh();await Task.yield()
         let count = await driver.calls;XCTAssertEqual(count, 1)
-        await driver.complete(1, response: try HistoryFixture.response());await wait { m.snapshot != nil }
+        await driver.complete(1, response: try HistoryFixture.response(window: .hour));await wait { m.snapshot != nil }
         m.configure(configuration(visible: false))
     }
 
     func testEndpointChangeClearsSynchronouslyAndRejectsLateOldReply() async throws {
-        let driver = HistoryDriver(response: try HistoryFixture.response());await driver.setHold()
+        let driver = HistoryDriver(response: try HistoryFixture.response(window: .hour));await driver.setHold()
         let m = model(driver);m.configure(configuration());await wait { await driver.calls == 1 }
         let other = JarvisEndpoint(baseURL: URL(string: "http://other.invalid:8790")!, token: "other-fixture")
         m.configure(configuration(endpoint: other));XCTAssertNil(m.snapshot)
         await wait { await driver.calls == 2 }
-        let fresh = try HistoryFixture.response(end: Date().addingTimeInterval(-10))
+        let fresh = try HistoryFixture.response(window: .hour, end: Date().addingTimeInterval(-10))
         await driver.complete(2, response: fresh);await wait { m.snapshot != nil }
-        await driver.complete(1, response: try HistoryFixture.response(end: Date().addingTimeInterval(-100)))
+        await driver.complete(1, response: try HistoryFixture.response(window: .hour, end: Date().addingTimeInterval(-100)))
         await Task.yield();XCTAssertEqual(m.snapshot, fresh)
         m.configure(configuration(visible: false, endpoint: other))
     }
 
     func testBackgroundCancellationRejectsLateReply() async throws {
-        let driver = HistoryDriver(response: try HistoryFixture.response());await driver.setHold()
+        let driver = HistoryDriver(response: try HistoryFixture.response(window: .hour));await driver.setHold()
         let m = model(driver);m.configure(configuration());await wait { await driver.calls == 1 }
         m.configure(configuration(interactive: false))
-        await driver.complete(1, response: try HistoryFixture.response());await Task.yield()
+        await driver.complete(1, response: try HistoryFixture.response(window: .hour));await Task.yield()
         XCTAssertNil(m.snapshot);XCTAssertFalse(m.isLoading);XCTAssertFalse(m.isPolling)
     }
 
     func testOldResponseAndRecorderGapCannotBeRejuvenatedByReceipt() async throws {
-        let r = try HistoryFixture.response(end: Date().addingTimeInterval(-200))
+        let r = try HistoryFixture.response(window: .hour, end: Date().addingTimeInterval(-200))
         let driver = HistoryDriver(response: r);let m = model(driver)
         m.configure(configuration());await wait { m.snapshot != nil }
         XCTAssertTrue(m.isStale())

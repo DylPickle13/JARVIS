@@ -1,5 +1,71 @@
 # System dashboard — iPhone and Watch
 
+## Visual-only card on both devices (build 234)
+
+Both platforms now show one noninteractive glass card: current ring and short
+status, past-hour timeline, five labeled status symbols (Services, Pi, Network,
+Devices, Sensors), and at most one compact exception line. The Watch uses a small
+three-column icon grid. Phone refresh remains a separate button. Neither platform
+has card buttons, tap handlers, detail routes, sheets or scrolling. Watch gestures
+and Crown ownership are untouched; the retained detail-visibility callback only
+reports false. Backend access, history window/cadence, and lifecycle gates are unchanged.
+
+Grouping preserves the worst evidence: failure precedes unknown/checking, then
+healthy/inactive. Services includes backend/collector evidence; Pi includes cached
+Codex usage; Devices includes plugs/purifier. Missing sensor evidence is unknown,
+not green. Symbols distinguish states independently of colour; gaps remain hatched.
+VoiceOver retains row descriptions/ages, service requirements/technical evidence,
+and history bucket times, states, reasons and observed/missing coverage. The visible
+card omits repeated freshness labels, service paragraphs and history summaries.
+
+Validated with 252 package passes (3 expected skips), 61 iOS AppState/dashboard
+passes, Watch simulator build, and synthetic light/dark/compact previews. These
+changes are **installed as build 234 on both devices**, completed 2026-09-30 at
+21:36 EDT. Each device was installed once, with independent launch/process and
+final-version verification. Frozen tests: 251 package passes plus 61 iOS passes,
+3 expected skips (unrelated working-tree oMLX test excluded). All four bundles,
+profiles, unchanged entitlements and source/payload seals passed audit.
+Rollback 233 is retained. No backend/Pi restart, credentials or database changes.
+Protected snapshots differed only because the 60-second periodic pi-scheduler
+completed its run; read-only review confirmed exit0 and unchanged configuration.
+All other protected state matched; cached health and hourly history returned
+200/no-store. Physical UI/gesture acceptance remains owner review.
+
+## Unified phone card (build 233)
+
+The iPhone now uses one Liquid Glass card for current health and recent history.
+No phone card or history band opens a detail sheet. Current service/integration
+state, explanation, observation age and required/optional/scheduled semantics are
+inline, including sensor-read and connection failures. Redundant fresh service-data
+rows are omitted when individual services already carry the same freshness evidence.
+
+The existing phone history request now selects **1h** (60 one-minute buckets), not
+24h. The single overall band includes all cached-health components. Inline text
+shows observed coverage, real gaps, unverified observations, error-bucket count and
+the two most recent error buckets' time bounds and sanitized reasons. These are
+bucket bounds, not exact incident times; earlier errors remain on the band and in
+the total count. Missing/unknown data is never treated as healthy or as an error.
+Current status and historical observations remain distinct even inside one card.
+
+Phone portrait/landscape layouts remain non-scrolling, with denser inline text on
+small canvases. Watch layout, detail sheets, hourly query and input ownership are
+unchanged. Polling cadence, authorization, lifecycle/cancellation, backend and
+hardware access are unchanged. Existing glass accessibility fallbacks are retained.
+
+Validation: 250 package passes, 3 expected skips; 60 targeted iOS AppState/dashboard
+passes; Watch simulator build passed. Light/dark synthetic history previews were
+exported and reviewed. **Build 233 installed on both devices** on 2026-09-30 at
+21:19 EDT, with independent final-version and launch/process verification. Frozen
+release validation: 249 package passes plus 60 iOS passes, 3 expected skips; the
+unrelated additional working-tree oMLX test was excluded. Four signed bundles,
+profiles, unchanged entitlements and source/payload seals were audited.
+The Watch developer tunnel disconnected before its install; a guarded Watch-only
+continuation completed it without reinstalling the iPhone. Sixteen protected service
+identities, credentials, tmux panes and database identities remained unchanged;
+no backend/Pi restart. Both hourly cached history routes returned 200/no-store.
+Signed rollback 232 is retained (231 also retained). Physical UI/gesture acceptance
+remains owner review. Source is included in the subsequent visual-only System-card change set.
+
 ## Phone Liquid Glass simplification (build 232)
 
 The iPhone System overview now uses the same `jarvisGlassSurface` helper as Home:

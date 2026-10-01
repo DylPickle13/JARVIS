@@ -12,7 +12,7 @@ public struct SystemHistoryConfiguration: Equatable, Sendable {
         self.endpoint = endpoint; self.surface = surface; self.visible = visible
         self.interactive = interactive; self.connected = connected
     }
-    public var window: SystemHistoryWindow { surface == .watch ? .hour : .day }
+    public var window: SystemHistoryWindow { .hour }
     public var component: String? { surface == .watch ? "overall" : nil }
     public var shouldPoll: Bool { visible && interactive && connected && endpoint != nil }
 }

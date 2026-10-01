@@ -36,6 +36,38 @@ final class SensorSystemHealthTests: XCTestCase {
         .init(snapshot: state, requestStartedAt: request ?? now, now: date ?? now)
     }
 
+    func testVisualGroupsKeepEveryCheckAndConservativeSensorStates() throws {
+        for (state, expected) in [("healthy", SystemHealthState.healthy), ("unavailable", .issue), ("unknown", .unknown), ("inactive", .inactive)] {
+            let reason = state == "unavailable" ? "sensor_read_failed" : state == "inactive" ? "monitoring_disabled" : state == "unknown" ? "not_checked" : "current"
+            let dashboard = presentation(try snapshot(health: summary(sensor: evidence(state: state, reason: reason))))
+            XCTAssertEqual(dashboard.visualGroups.count, 5)
+            XCTAssertEqual(dashboard.visualGroups.last?.state, expected)
+            let ids = Set(dashboard.visualGroups.flatMap(\.rows).map(\.id))
+            XCTAssertTrue(Set(dashboard.subsystemRows.map(\.id)).isSubset(of: ids))
+            XCTAssertTrue(Set(dashboard.services.map { $0.row.id }).isSubset(of: ids))
+            let sensor = try XCTUnwrap(dashboard.subsystemRows.first { $0.id == "security" })
+            XCTAssertTrue(dashboard.visualGroups.last!.accessibilityText.contains(sensor.ageText))
+            XCTAssertTrue(dashboard.visualGroups.last!.accessibilityText.contains(sensor.detail))
+            if state == "healthy" { XCTAssertNil(dashboard.visualException) }
+            if state == "unavailable" { XCTAssertNotNil(dashboard.visualException) }
+        }
+        let absent = presentation(try snapshot())
+        XCTAssertEqual(absent.visualGroups.last?.state, .unknown)
+        XCTAssertTrue(absent.visualGroups.last!.accessibilityText.contains("No cached evidence"))
+        let offline = SystemDashboardPresentation(snapshot: try snapshot(), requestStartedAt: now, isConnected: false, now: now)
+        XCTAssertTrue(offline.visualGroups.allSatisfy { $0.state == .unknown })
+        XCTAssertEqual(offline.visualException, "Offline · cached evidence")
+    }
+
+    func testVisualGroupDoesNotHideUnknownBehindHealthyOrFailureBehindUnknown() {
+        func row(_ state: SystemHealthState) -> SystemHealthRow {
+            .init(id: state.rawValue, title: state.rawValue, state: state, detail: "Fixture", ageSeconds: 1)
+        }
+        XCTAssertEqual(SystemVisualGroup(id: "test", title: "Test", rows: [row(.healthy), row(.unknown)]).state, .unknown)
+        XCTAssertEqual(SystemVisualGroup(id: "test", title: "Test", rows: [row(.unknown), row(.issue)]).state, .issue)
+        XCTAssertEqual(SystemVisualGroup(id: "test", title: "Test", rows: [row(.inactive)]).state, .inactive)
+    }
+
     func testNewSummaryIncludesSeventhCheckAndRetainsSixWatchChips() throws {
         let dashboard = presentation(try snapshot(health: summary(sensor: evidence())))
         XCTAssertEqual(dashboard.state, .healthy)

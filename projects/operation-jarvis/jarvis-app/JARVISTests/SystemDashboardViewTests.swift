@@ -48,7 +48,7 @@ final class SystemDashboardViewTests: XCTestCase {
     }
 
     private func historyFixture(compact: Bool) async throws -> SystemHistoryModel {
-        let window: SystemHistoryWindow = compact ? .hour : .day
+        let window: SystemHistoryWindow = .hour
         let end = Date()
         let start = end.addingTimeInterval(-window.seconds)
         func stamp(_ value: Date) -> String { value.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)) }
@@ -76,6 +76,19 @@ final class SystemDashboardViewTests: XCTestCase {
         for _ in 0..<100 where model.snapshot == nil { try await Task.sleep(for: .milliseconds(5)) }
         XCTAssertNotNil(model.snapshot)
         return model
+    }
+
+    func testVisualCardHasNoDetailRoutesOrInputHandlers() throws {
+        let appRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: appRoot.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift"), encoding: .utf8)
+        for forbidden in [".sheet(", "selectedDetail", "ScrollView", ".onTapGesture", ".gesture(", "digitalCrownRotation"] {
+            XCTAssertFalse(source.contains(forbidden), forbidden)
+        }
+        XCTAssertEqual(source.components(separatedBy: "Button(").count - 1, 1,
+                       "Only the separate iPhone refresh control may remain actionable")
+        XCTAssertTrue(source.contains("if !compact"))
+        XCTAssertTrue(source.contains("group.accessibilityText + serviceEvidence(group)"))
+        XCTAssertTrue(source.contains("bucket.coverageSeconds"))
     }
 
     func testRecordedHistoryRendersAndFitsPhoneAndWatchWithRealCoverageStates() async throws {

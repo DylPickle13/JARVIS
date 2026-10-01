@@ -58,6 +58,31 @@ public struct SystemHistoryBucket: Codable, Equatable, Sendable {
 public struct SystemHistorySeries: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let buckets: [SystemHistoryBucket]
+    /// Bucket bounds are not exact incident start/end times. Unknown evidence
+    /// and uncovered seconds never count as observed failures or healthy time.
+    public var inlineSummary: String {
+        let issues = buckets.filter {
+            ($0.stateSeconds["degraded"] ?? 0) + ($0.stateSeconds["unavailable"] ?? 0) > 0
+        }
+        let covered = buckets.reduce(0) { $0 + $1.coverageSeconds }
+        let missing = buckets.reduce(0) { $0 + $1.missingSeconds }
+        let unknown = buckets.reduce(0) { $0 + ($1.stateSeconds["unknown"] ?? 0) }
+        let coverage = "\(Int(covered / 60))m observed · \(Int(ceil(missing / 60)))m gaps"
+            + (unknown > 0 ? " · \(Int(ceil(unknown / 60)))m unverified" : "")
+        guard covered > 0 else { return "No recorded observations · \(coverage)" }
+        guard !issues.isEmpty else {
+            return "No observed errors · \(coverage)"
+        }
+        let recent = issues.suffix(2).map { bucket in
+            let lo = bucket.start?.formatted(date: .omitted, time: .shortened) ?? "?"
+            let hi = bucket.end?.formatted(date: .omitted, time: .shortened) ?? "?"
+            let reasons = bucket.reasonCodes.filter { $0 != "current" }
+                .map { $0.replacingOccurrences(of: "_", with: " ") }.joined(separator: ", ")
+            return "\(lo)–\(hi)\(reasons.isEmpty ? "" : ": " + reasons)"
+        }.joined(separator: "\n")
+        return "\(issues.count) error buckets · \(coverage)\nLatest error buckets: \(recent)"
+    }
+
     public var title: String { switch id {
         case "services": return "Services"
         case "pi": return "Pi"

@@ -1431,7 +1431,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
 
     func systemHistory(_ endpoint: JarvisEndpoint, window: SystemHistoryWindow, component: String?) async throws -> SystemHistoryResponse {
         historyCalls += 1; historyEndpointTokens.append(endpoint.token)
-        XCTAssertEqual(window, .day);XCTAssertNil(component)
+        XCTAssertEqual(window, .hour);XCTAssertNil(component)
         throw JarvisError.http(status: 404, body: "fixture history not supported")
     }
 
