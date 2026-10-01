@@ -187,7 +187,9 @@ public struct SystemDashboardContent: View {
                     Button(action: onRefresh) {
                         Image(systemName: "arrow.clockwise").frame(width: 44, height: 36)
                     }
-                    .buttonStyle(.plain).foregroundStyle(accent).disabled(refreshing)
+                    .buttonStyle(.plain).foregroundStyle(accent)
+                    .jarvisGlassSurface(surface, in: Capsule(), glass: true)
+                    .disabled(refreshing)
                     .accessibilityLabel(refreshing ? "Refreshing cached state" : "Refresh cached state")
                 }
             }
@@ -225,15 +227,9 @@ public struct SystemDashboardContent: View {
                 .accessibilityLabel("System health, \(presentation.summary), \(connectionLabel)")
                 .accessibilityHint("Opens connection and cached observation details")
             }
-            if !horizontal { phoneHistory(dense: dense) }
-            let layout = horizontal || condensed
-                ? AnyLayout(HStackLayout(alignment: .top, spacing: 10))
-                : AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
-            layout {
-                if horizontal { phoneHistory(dense: true) }
-                phoneServices(dense: dense)
-                phoneIntegrations(dense: dense)
-            }
+            // History owns the phone overview; current inventories live only in
+            // the health inspector rather than repeating the same categories.
+            phoneHistory(dense: dense)
             Text("Read-only observations · tap history to inspect coverage")
                 .font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
         }
@@ -295,99 +291,25 @@ public struct SystemDashboardContent: View {
         }.font(.system(size: 7)).foregroundStyle(.secondary)
     }
 
-    private func phoneServices(dense: Bool) -> some View {
-        panel {
-            VStack(alignment: .leading, spacing: 7) {
-                sectionHeading("Services", symbol: "gearshape.2")
-                let limit = 2
-                if presentation.services.isEmpty {
-                    Text("Service inventory unavailable").font(.caption).foregroundStyle(.secondary)
-                }
-                ForEach(Array(presentation.services.prefix(limit))) { service in
-                    Button { selectedDetail = .service(service.id) } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: symbol(service.row.state))
-                                .foregroundStyle(color(service.row.state)).accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(service.row.title).font(dense ? .system(size: 11, weight: .medium) : .subheadline.weight(.medium))
-                                    .lineLimit(1).minimumScaleFactor(0.75)
-                                if !dense {
-                                    Text("\(service.requirement) · \(service.executionMode)")
-                                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                            statusBadge(service.row, service: true)
-                            Image(systemName: "chevron.right").font(.system(size: 10))
-                                .foregroundStyle(.secondary).accessibilityHidden(true)
-                        }
-                        .frame(minHeight: dense ? 24 : 32).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(service.row.title), \(service.row.state.rawValue), \(service.row.detail), \(service.row.ageText)")
-                    .accessibilityHint("Opens last observed service details")
-                    .accessibilityIdentifier("system-service-\(service.id)-details")
-                }
-                if presentation.services.count > limit {
-                    Button("All \(presentation.services.count) services…") { selectedDetail = .services }
-                        .font(.caption).foregroundStyle(accent)
-                        .accessibilityHint("Includes services not shown in this overview")
-                }
-            }
-        }
-    }
-
-    private func phoneIntegrations(dense: Bool) -> some View {
-        panel {
-            VStack(alignment: .leading, spacing: 7) {
-                sectionHeading("Integrations", symbol: "waveform.path.ecg")
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                    ForEach(presentation.subsystemRows) { row in
-                        Button { selectedDetail = .subsystem(row.id) } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: symbol(row.state)).foregroundStyle(color(row.state)).accessibilityHidden(true)
-                                Text(shortTitle(row)).lineLimit(1).minimumScaleFactor(0.75)
-                                Spacer(minLength: 0)
-                            }
-                            .font(.system(size: dense ? 10 : 12, weight: .medium))
-                            .frame(minHeight: dense ? 20 : 26).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
-                        .accessibilityLabel("\(row.title), \(row.state.rawValue), \(row.detail), \(row.ageText)")
-                        .accessibilityIdentifier("system-integration-\(row.id)")
-                    }
-                }
-            }
-        }
-    }
-
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content().frame(maxWidth: .infinity, alignment: .leading)
-            .padding(compact ? 4 : 12)
-            .background(surface, in: RoundedRectangle(cornerRadius: compact ? 10 : 14, style: .continuous))
+        Group {
+            if compact {
+                content().frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(4)
+                    .background(surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                content().frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .jarvisGlassSurface(surface,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous), glass: true)
+            }
+        }
     }
 
     private func sectionHeading(_ title: String, symbol: String) -> some View {
         Label(title, systemImage: symbol)
             .font(.system(size: compact ? 9 : 12, weight: .semibold))
             .foregroundStyle(.secondary)
-    }
-
-    private func statusBadge(_ row: SystemHealthRow, service: Bool) -> some View {
-        Text(status(row, service: service))
-            .font(.system(size: 10, weight: .medium)).lineLimit(1)
-            .foregroundStyle(color(row.state))
-            .padding(.horizontal, 6).padding(.vertical, 3)
-            .background(color(row.state).opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
-    }
-
-    private func status(_ row: SystemHealthRow, service: Bool) -> String {
-        switch row.state {
-        case .healthy: return service ? "Healthy" : "Current"
-        case .issue: return row.detail.hasPrefix("Stale") ? "Stale" : "Issue"
-        case .checking: return "Checking"
-        case .unknown: return "Unknown"
-        case .inactive: return "Inactive"
-        }
     }
 
     private func shortTitle(_ row: SystemHealthRow) -> String {
@@ -402,14 +324,6 @@ public struct SystemDashboardContent: View {
         case "codexQuota": return compact ? "Codex" : "Codex usage"
         default: return row.title
         }
-    }
-
-    private func age(_ row: SystemHealthRow) -> String {
-        guard let age = row.ageSeconds, age.isFinite, age >= 0 else { return "—" }
-        if age < 60 { return "\(Int(age))s" }
-        if age < 3600 { return "\(Int(age / 60))m" }
-        if age < 86400 { return "\(Int(age / 3600))h" }
-        return "\(Int(min(age / 86400, 999999)))d"
     }
 
     @ViewBuilder
@@ -430,10 +344,17 @@ public struct SystemDashboardContent: View {
                 if let version = presentation.backendVersion { Text("Backend version: \(version)").font(.caption.monospaced()) }
                 Text("Cached software and integration checks—not a live connectivity or security guarantee. No automatic recovery. Scheduled job results remain in Jobs.")
                     .font(.caption).foregroundStyle(.secondary)
+                if !compact {
+                    // Keep exact current failure/freshness metadata reachable
+                    // without duplicating the historical categories on the page.
+                    Divider()
+                    Text("Current service checks").font(.headline)
+                    ForEach(presentation.services) { service in serviceDetails(service) }
+                    Divider()
+                    Text("Current integration checks").font(.headline)
+                    ForEach(presentation.subsystemRows) { row in integrationDetails(row) }
+                }
             }
-        case .service(let id):
-            if let service = presentation.services.first(where: { $0.id == id }) { serviceDetails(service) }
-            else { Text("Service no longer present in the cached inventory.") }
         case .services:
             VStack(alignment: .leading, spacing: 20) {
                 ForEach(presentation.services) { service in serviceDetails(service) }
@@ -442,10 +363,6 @@ public struct SystemDashboardContent: View {
             VStack(alignment: .leading, spacing: 20) {
                 ForEach(presentation.subsystemRows) { row in integrationDetails(row) }
             }
-        case .subsystem(let id):
-            if let row = presentation.subsystemRows.first(where: { $0.id == id }) {
-                integrationDetails(row)
-            } else { Text("Integration no longer present in the snapshot.") }
         }
     }
 
@@ -488,15 +405,13 @@ public struct SystemDashboardContent: View {
     }
 
     private enum Detail: Identifiable {
-        case overview, services, integrations, service(String), subsystem(String), history(String)
+        case overview, services, integrations, history(String)
         var id: String {
             switch self {
             case .history(let id): return "history:\(id)"
             case .overview: return "overview"
             case .services: return "services"
             case .integrations: return "integrations"
-            case .service(let id): return "service:\(id)"
-            case .subsystem(let id): return "subsystem:\(id)"
             }
         }
     }

@@ -1,6 +1,30 @@
 # System dashboard — iPhone and Watch
 
-**Current installed build: 231.** Installed once on each approved iPhone/Watch,
+## Phone Liquid Glass simplification (build 232)
+
+The iPhone System overview now uses the same `jarvisGlassSurface` helper as Home:
+current checks, history and refresh use native Liquid Glass where supported, with
+material/opaque accessibility fallbacks. The separate Services and Integrations
+panels are removed from the phone overview. Tap current health for complete current
+service and integration evidence; tap a history band for historical coverage.
+History is not a substitute for current freshness or failure metadata.
+
+The overview remains non-scrolling. Watch layout, history queries, polling,
+authorization, cached-health aggregation and sheet visibility gates are unchanged.
+Validation: 249 package tests passed (3 expected skips), 60 iOS AppState/dashboard
+tests passed, Watch simulator build passed. Synthetic phone/Watch layout tests
+cover portrait, landscape, accessibility text and high-contrast phone sizing.
+**Installed build 232** on both devices on 2026-09-30 at **20:37 EDT**, with
+independent final-version, launch and running-process checks. Frozen release tests:
+248 package passes plus 60 iOS passes, 3 expected skips; the unrelated extra working-tree
+oMLX test was excluded. Four signed bundles/profiles and unchanged entitlements were
+audited. Sixteen protected services, credentials, tmux panes and database identities
+were unchanged; no backend/Pi restart. Build 231 is the verified rollback.
+Owner-approved cleanup retires superseded build 230 and this update's build caches,
+while retaining signed 232/231, frozen sources and deployment evidence.
+Physical UI/gesture acceptance remains owner review.
+
+**Previous installed build: 231.** Installed once on each approved iPhone/Watch,
 with independent version, launch/process and final-version readbacks on 2026-09-30
 at **12:59 EDT**. The signed release uses the exact build-230 source baseline plus
 only reviewed sensor-health/history compatibility changes. All four bundles/profiles

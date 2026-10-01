@@ -180,6 +180,29 @@ final class SystemDashboardViewTests: XCTestCase {
         }
     }
 
+    func testPhoneGlassHighContrastFitsWithoutScrolling() throws {
+        let dashboard = try presentation(sensorState: "unavailable")
+        for scheme in [ColorScheme.light, .dark] {
+            for contrast in [UIAccessibilityContrast.normal, .high] {
+                let view = content(dashboard, compact: false)
+                    .environment(\.colorScheme, scheme)
+                    .dynamicTypeSize(.accessibility3)
+                let viewport = CGSize(width: 375, height: 650)
+                let host = UIHostingController(rootView: view)
+                host.traitOverrides.accessibilityContrast = contrast
+                let extent = host.sizeThatFits(in: viewport)
+                XCTAssertLessThanOrEqual(extent.width, viewport.width + 0.5)
+                XCTAssertLessThanOrEqual(extent.height, viewport.height + 0.5)
+                host.view.frame = CGRect(origin: .zero, size: viewport)
+                host.view.layoutIfNeeded()
+                func scrollCount(_ view: UIView) -> Int {
+                    (view is UIScrollView ? 1 : 0) + view.subviews.reduce(0) { $0 + scrollCount($1) }
+                }
+                XCTAssertEqual(scrollCount(host.view), 0)
+            }
+        }
+    }
+
     func testWatchOverviewRendersOneScreenSummary() throws {
         let dashboard = try presentation(includeExtraService: false)
         let renderer = ImageRenderer(content: SystemDashboardContent(presentation: dashboard,
