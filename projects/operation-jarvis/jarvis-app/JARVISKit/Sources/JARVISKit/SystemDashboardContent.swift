@@ -9,6 +9,7 @@ public struct SystemDashboardContent: View {
     public let presentation: SystemDashboardPresentation
     public let connectionLabel: String
     public let compact: Bool
+    public let showsHeader: Bool
     public let accent: Color
     public let warning: Color
     public let surface: Color
@@ -18,7 +19,7 @@ public struct SystemDashboardContent: View {
     public let onDetailVisibilityChanged: (Bool) -> Void
 
     public init(presentation: SystemDashboardPresentation, connectionLabel: String,
-                compact: Bool = false, accent: Color, warning: Color, surface: Color,
+                compact: Bool = false, showsHeader: Bool = true, accent: Color, warning: Color, surface: Color,
                 connectionError: String? = nil, refreshing: Bool = false,
                 onRefresh: (() -> Void)? = nil, historyModel: SystemHistoryModel? = nil,
                 onDetailVisibilityChanged: @escaping (Bool) -> Void = { _ in }) {
@@ -26,6 +27,7 @@ public struct SystemDashboardContent: View {
         self.presentation = presentation
         self.connectionLabel = connectionLabel
         self.compact = compact
+        self.showsHeader = showsHeader
         self.accent = accent
         self.warning = warning
         self.surface = surface
@@ -52,7 +54,7 @@ public struct SystemDashboardContent: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: compact ? 0 : 10) {
-            if !compact {
+            if !compact && showsHeader {
                 HStack {
                     Label("System", systemImage: "server.rack")
                         .font(.title2.weight(.semibold)).foregroundStyle(accent)

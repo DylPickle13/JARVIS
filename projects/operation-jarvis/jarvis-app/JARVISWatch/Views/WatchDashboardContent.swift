@@ -349,71 +349,65 @@ struct WatchDashboardContent: View {
            quota.available == true,
            let remaining = quota.weekly?.remainingPercent {
             let color = codexQuotaColor(remaining)
-            let isCritical = CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)
-            let panelColors = isCritical
-                ? [color.opacity(0.16), WatchJarvisStyle.surface]
-                : [WatchJarvisStyle.surface, WatchJarvisStyle.surface]
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
                         .stroke(color.opacity(0.18), lineWidth: 5)
                     Circle()
-                        .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0.015), 1)))
+                        .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0), 1)))
                         .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                    VStack(spacing: -1) {
-                        Text("\(Int(remaining.rounded()))%")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(color)
-                        Text("LEFT")
-                            .font(.system(size: 6, weight: .bold))
-                            .tracking(0.5)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("\(Int(remaining.rounded()))%")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(color)
                 }
                 .frame(width: 48, height: 48)
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 4) {
-                        Text("WEEKLY")
-                            .font(.system(size: 8, weight: .bold))
-                            .tracking(0.7)
-                            .foregroundStyle(.secondary)
+                        Text("Codex")
+                            .font(.system(size: 12, weight: .semibold))
                         Spacer(minLength: 2)
-                        Text(codexPlanLabel(quota.planType))
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(color)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(color.opacity(0.12), in: Capsule())
+                        if let plan = quota.planType, !plan.isEmpty {
+                            Text(codexPlanLabel(plan))
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundStyle(color)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(color.opacity(0.12), in: Capsule())
+                        }
                     }
+                    Text("Weekly remaining")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.secondary)
                     Text(codexResetLabel(quota.weekly))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(isCritical ? color : Color.primary)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                     HStack(spacing: 4) {
                         Text(codexFiveHourCompactLabel(quota))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.12), in: Capsule())
                         if let credits = codexCreditsLabel(quota.creditBalance) {
+                            Text("·")
                             Text(credits)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(Color.secondary.opacity(0.12), in: Capsule())
                         }
                     }
-                    .font(.system(size: 7.5, weight: .bold))
+                    .font(.system(size: 7.5, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    if quota.stale == true {
+                        Text("Stale reading")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(WatchJarvisStyle.warning)
+                    }
                 }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: 72)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 68)
             .jarvisGlassSurface(
-                LinearGradient(colors: panelColors, startPoint: .topLeading, endPoint: .bottomTrailing),
+                WatchJarvisStyle.surface,
                 in: RoundedRectangle(cornerRadius: 16, style: .continuous)
             )
             .overlay {
@@ -421,7 +415,7 @@ struct WatchDashboardContent: View {
                     .stroke(color.opacity(0.10), lineWidth: 0.75)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Codex weekly quota, \(Int(remaining.rounded())) percent remaining, \(codexResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))")
+            .accessibilityLabel("Codex weekly quota, \(Int(remaining.rounded())) percent remaining, \(codexResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))\(quota.stale == true ? ", stale reading" : "")")
         } else {
             HStack(spacing: 9) {
                 Image(systemName: "chart.bar.xaxis")

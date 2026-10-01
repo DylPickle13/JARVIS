@@ -131,24 +131,11 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
-                    ReactorHeaderLayout {
-                        VStack(alignment: .leading, spacing: 2) {
-                            ReactorTitle(connected: app.connectionState == .connected, active: homeMotionActive)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                                .accessibilityValue("\(connectionHeadline.isEmpty ? "Connected" : connectionHeadline), \(freshnessLabel)")
-                            if !connectionHeadline.isEmpty {
-                                Text(connectionHeadline)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(app.connectionState == .failed ? Color.red : Color.orange)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                            }
-                        }
-                        ReactorHeaderCore(active: homeMotionActive)
-                            .opacity(app.connectionState == .connected ? 1 : 0)
-                    }
-                    .frame(height: 84)
+                    TabPageHeader(title: "JARVIS", animated: true,
+                                  connected: app.connectionState == .connected, active: homeMotionActive,
+                                  subtitle: connectionHeadline,
+                                  subtitleColor: app.connectionState == .failed ? .red : .orange)
+                        .accessibilityValue("\(connectionHeadline.isEmpty ? "Connected" : connectionHeadline), \(freshnessLabel)")
 
                     if let operationError = app.operationErrorMessage {
                         OperationErrorCard(message: operationError)
@@ -731,7 +718,7 @@ struct HomeView: View {
             )
         }
         let color = codexQuotaColor(remaining)
-        let content = MinimalCard {
+        let content = MinimalCard(padding: 8) {
             if usesAccessibilityLayout {
                 VStack(alignment: .leading, spacing: 8) {
                     codexQuotaRing(remaining: remaining, color: color)
@@ -759,19 +746,13 @@ struct HomeView: View {
         ZStack {
             Circle().stroke(color.opacity(0.16), lineWidth: 8)
             Circle()
-                .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0.01), 1)))
+                .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0), 1)))
                 .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            VStack(spacing: 0) {
-                Text("\(Int(remaining.rounded()))%")
-                    .font(.headline.weight(.bold))
-                    .monospacedDigit()
-                    .foregroundStyle(color)
-                Text("REMAINING")
-                    .font(.system(size: 6, weight: .bold))
-                    .tracking(0.45)
-                    .foregroundStyle(.secondary)
-            }
+            Text("\(Int(remaining.rounded()))%")
+                .font(.headline.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(color)
         }
         .frame(width: 58, height: 58)
     }
@@ -781,12 +762,22 @@ struct HomeView: View {
         remaining: Double,
         color: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Weekly Codex usage")
-                .font(.subheadline.weight(.semibold))
-            ProgressView(value: remaining, total: 100)
-                .tint(color)
-                .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text("Codex")
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 2)
+                if let plan = quota.planType, !plan.isEmpty {
+                    Text(plan.replacingOccurrences(of: "_", with: " ").uppercased())
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(color.opacity(0.12), in: Capsule())
+                }
+            }
+            Text("Weekly remaining")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
             Label(codexQuotaResetLabel(quota.weekly), systemImage: "calendar.badge.clock")
                 .font(.caption)
                 .foregroundStyle(.secondary)

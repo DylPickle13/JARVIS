@@ -10,9 +10,11 @@ struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 15) {
+                    TabPageHeader(title: "Settings")
                     SettingsGroup(title: "Configuration") {
                         NavigationLink {
                             ConnectionSettingsView()
+                                .toolbar(.visible, for: .navigationBar)
                         } label: {
                             SettingsNavigationRow(
                                 title: "Connection",
@@ -27,6 +29,7 @@ struct SettingsView: View {
 
                         NavigationLink {
                             PiTerminalSettingsView()
+                                .toolbar(.visible, for: .navigationBar)
                         } label: {
                             SettingsNavigationRow(
                                 title: "Pi Terminal",
@@ -41,6 +44,7 @@ struct SettingsView: View {
 
                         NavigationLink {
                             WatchTerminalSettingsView()
+                                .toolbar(.visible, for: .navigationBar)
                         } label: {
                             SettingsNavigationRow(
                                 title: "Watch Terminal",
@@ -55,6 +59,8 @@ struct SettingsView: View {
 
                         NavigationLink {
                             NotificationSettingsView()
+                                .toolbar(.visible, for: .navigationBar)
+                                .navigationBarTitleDisplayMode(.inline)
                         } label: {
                             SettingsNavigationRow(
                                 title: "Notifications",
@@ -78,7 +84,7 @@ struct SettingsView: View {
             }
             .scrollIndicators(.hidden)
             .background(JarvisBackdrop())
-            .navigationTitle("Settings")
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 

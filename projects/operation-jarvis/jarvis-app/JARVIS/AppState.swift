@@ -813,11 +813,12 @@ public final class AppState: ObservableObject {
     // MARK: - Scheduled jobs
 
     public func fetchScheduledJobs() async {
-        guard let endpoint = activeEndpoint else { return }
+        guard let endpoint = activeEndpoint, !scheduledJobsLoading, !Task.isCancelled else { return }
         scheduledJobsLoading = true
         defer { scheduledJobsLoading = false }
         do {
             let response = try await client.scheduledJobs(endpoint)
+            guard !Task.isCancelled, activeEndpoint == endpoint else { return }
             scheduledJobsLoaded = true
             guard response.ok else {
                 scheduledJobsErrorMessage = response.error ?? "Scheduled-job status is unavailable."
@@ -827,11 +828,13 @@ public final class AppState: ObservableObject {
             scheduledJobsSummary = response.summary
             scheduledJobsErrorMessage = nil
         } catch let error as JarvisError {
+            guard !Task.isCancelled, activeEndpoint == endpoint else { return }
             scheduledJobsLoaded = true
             scheduledJobsErrorMessage = error.errorDescription
         } catch is CancellationError {
             return
         } catch {
+            guard !Task.isCancelled, activeEndpoint == endpoint else { return }
             scheduledJobsLoaded = true
             scheduledJobsErrorMessage = error.localizedDescription
         }
@@ -878,7 +881,7 @@ public final class AppState: ObservableObject {
     }
 
     public func fetchScheduledJobResults(after explicitCursor: Int? = nil) async {
-        guard let endpoint = activeEndpoint, !scheduledJobResultsLoading else { return }
+        guard let endpoint = activeEndpoint, !scheduledJobResultsLoading, !Task.isCancelled else { return }
         scheduledJobResultsLoading = true
         defer { scheduledJobResultsLoading = false }
         let cursor = explicitCursor ?? scheduledJobHistoryCursor
@@ -892,6 +895,7 @@ public final class AppState: ObservableObject {
                     limit: ScheduledJobResultCache.limit,
                     jobId: nil
                 )
+                guard !Task.isCancelled, activeEndpoint == endpoint else { return }
                 scheduledJobResultsLoaded = true
                 guard response.ok else {
                     scheduledJobResultsErrorMessage = response.error ?? "Scheduled-job results are unavailable."
@@ -923,11 +927,13 @@ public final class AppState: ObservableObject {
             }
             scheduledJobResultsErrorMessage = nil
         } catch let error as JarvisError {
+            guard !Task.isCancelled, activeEndpoint == endpoint else { return }
             scheduledJobResultsLoaded = true
             scheduledJobResultsErrorMessage = error.errorDescription
         } catch is CancellationError {
             return
         } catch {
+            guard !Task.isCancelled, activeEndpoint == endpoint else { return }
             scheduledJobResultsLoaded = true
             scheduledJobResultsErrorMessage = error.localizedDescription
         }

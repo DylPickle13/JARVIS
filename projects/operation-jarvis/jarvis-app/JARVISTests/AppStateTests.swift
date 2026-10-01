@@ -1048,6 +1048,44 @@ final class AppStateTests: XCTestCase {
         XCTAssertNotNil(app.scheduledJobsErrorMessage)
     }
 
+    func testJobsSuccessfulRefreshClearsErrorsWithNoNewResults() async {
+        let api = FakeAPI(scheduledJobsSucceeds: false)
+        let defaults = UserDefaults(suiteName: "jarvis.jobs-recovery.\(UUID().uuidString)")!
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent("jobs-recovery-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: cache) }
+        let app = AppState(store: EndpointStore(defaults: defaults), client: api,
+                           preferences: defaults, resultCacheURL: cache)
+        app.endpointDraft = "http://fake.jarvis:8790"
+        await app.refresh()
+        XCTAssertNotNil(app.scheduledJobsErrorMessage)
+        app.scheduledJobResultsErrorMessage = "Previous connection failure"
+        api.scheduledJobsSucceeds = true
+        await app.refreshJobs()
+        XCTAssertNil(app.scheduledJobsErrorMessage)
+        XCTAssertNil(app.scheduledJobResultsErrorMessage)
+        XCTAssertEqual(app.lastScheduledJobs.count, 1)
+        XCTAssertTrue(app.lastScheduledJobResults.isEmpty)
+    }
+
+    func testOverlappingScheduleRefreshesUseOneRequest() async {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.jobs-single-flight.\(UUID().uuidString)")!
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent("jobs-single-flight-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: cache) }
+        let app = AppState(store: EndpointStore(defaults: defaults), client: api,
+                           preferences: defaults, resultCacheURL: cache)
+        app.endpointDraft = "http://fake.jarvis:8790"
+        await app.refresh()
+        let initial = api.scheduledJobsCalls
+        api.scheduledJobsDelay = .milliseconds(100)
+        async let first: Void = app.fetchScheduledJobs()
+        async let second: Void = app.fetchScheduledJobs()
+        _ = await (first, second)
+        XCTAssertEqual(api.scheduledJobsCalls, initial + 1)
+        XCTAssertNil(app.scheduledJobsErrorMessage)
+        XCTAssertFalse(app.scheduledJobsLoading)
+    }
+
     func testPiTerminalContractUsesPersistentTmuxBootstrap() {
         XCTAssertEqual(AppSection(rawValue: "pi"), .pi)
         XCTAssertEqual(
@@ -1298,7 +1336,8 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     let commandSucceeds: Bool
     let commandDelay: Duration?
     let stateDelay: Duration?
-    let scheduledJobsSucceeds: Bool
+    var scheduledJobsSucceeds: Bool
+    var scheduledJobsDelay: Duration?
     var scheduledJobResultSequence: Int?
     var stateResponses: [StateSnapshot]
     var commands: [String] = []
@@ -1445,6 +1484,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
 
     func scheduledJobs(_ endpoint: JarvisEndpoint) async throws -> ScheduledJobsResponse {
         scheduledJobsCalls += 1
+        if let scheduledJobsDelay { try await Task.sleep(for: scheduledJobsDelay) }
         guard scheduledJobsSucceeds else { throw JarvisError.transport("simulated scheduled-job failure") }
         return try! JSONDecoder().decode(
             ScheduledJobsResponse.self,

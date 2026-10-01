@@ -61,6 +61,17 @@ final class ReactorTitleTests: XCTestCase {
         }
     }
 
+    @MainActor func testRootTabHeadersUseSameHeight() throws {
+        for title in ["JARVIS", "Jobs", "System", "Settings"] {
+            let header = TabPageHeader(title: title, animated: title == "JARVIS")
+                .frame(width: 358)
+            let renderer = ImageRenderer(content: header)
+            let image = try XCTUnwrap(renderer.uiImage)
+            XCTAssertEqual(image.size.width, 358)
+            XCTAssertEqual(image.size.height, 64)
+        }
+    }
+
     @MainActor func testFullWidthCorePreview() throws {
         let header = ReactorHeaderLayout {
             ReactorTitle(connected: true, active: false)

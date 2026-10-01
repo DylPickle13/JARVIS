@@ -2,11 +2,11 @@
 import SwiftUI
 
 /// Appearance only: never changes layout, hit targets, gestures, or animations.
-/// Controls use native Liquid Glass on supported systems; dense content keeps a
-/// quieter material surface. The caller supplies its original fill for fallback.
+/// Cards and controls use native Liquid Glass on supported systems by default.
+/// The caller supplies its original fill for accessibility and older-OS fallback.
 public extension View {
     func jarvisGlassSurface<S: InsettableShape, F: ShapeStyle>(
-        _ fallback: F, in shape: S, glass: Bool = false, tint: Color? = nil
+        _ fallback: F, in shape: S, glass: Bool = true, tint: Color? = nil
     ) -> some View {
         background {
             JarvisGlassSurface(fallback: fallback, shape: shape, glass: glass, tint: tint)

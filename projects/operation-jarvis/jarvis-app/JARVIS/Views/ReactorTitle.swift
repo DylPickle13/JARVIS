@@ -4,6 +4,7 @@ import SwiftUI
 struct ReactorTitle: View {
     let connected: Bool
     let active: Bool
+    var font: Font = Self.titleFont
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var ignition = Date()
 
@@ -14,7 +15,7 @@ struct ReactorTitle: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animates)) { context in
             let phase = ReactorTitlePhase(elapsed: context.date.timeIntervalSince(ignition), animated: animates)
             Text("JARVIS")
-                .font(Self.titleFont)
+                .font(font)
                 .foregroundStyle(connected ? JarvisPalette.accent.opacity(0.15 + 0.7 * phase.reveal) : Color.secondary)
                 .overlay {
                     if connected {
@@ -32,7 +33,7 @@ struct ReactorTitle: View {
                             }
                             .frame(width: geometry.size.width, height: geometry.size.height)
                         }
-                        .mask(Text("JARVIS").font(Self.titleFont))
+                        .mask(Text("JARVIS").font(font))
                         .allowsHitTesting(false)
                     }
                 }

@@ -91,7 +91,7 @@ struct MinimalCard<Content: View>: View {
     let contentPadding: CGFloat
     let glass: Bool
 
-    init(padding: CGFloat = 12, glass: Bool = false, @ViewBuilder content: () -> Content) {
+    init(padding: CGFloat = 12, glass: Bool = true, @ViewBuilder content: () -> Content) {
         self.content = content()
         self.contentPadding = padding
         self.glass = glass
@@ -106,6 +106,39 @@ struct MinimalCard<Content: View>: View {
                 in: RoundedRectangle(cornerRadius: 14, style: .continuous),
                 glass: glass
             )
+    }
+}
+
+/// Consistent root-tab heading; terminal deliberately keeps its compact controls.
+struct TabPageHeader: View {
+    let title: String
+    var animated = false
+    var connected = true
+    var active = false
+    var subtitle: String? = nil
+    var subtitleColor: Color = .secondary
+    static let titleFont = Font.system(size: 34, weight: .bold)
+
+    var body: some View {
+        VStack(spacing: 2) {
+            if animated {
+                ReactorTitle(connected: connected, active: active, font: Self.titleFont)
+            } else {
+                Text(title)
+                    .font(Self.titleFont)
+                    .foregroundStyle(JarvisPalette.accent)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(subtitleColor)
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, minHeight: 64)
     }
 }
 

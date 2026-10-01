@@ -21,24 +21,33 @@ struct JobsView: View {
         )
     }
 
+    private var refreshVerificationWarning: String? {
+        // Keep previous content visible while a new verification is underway.
+        // Do not flash errors left over from the previous attempt.
+        guard !app.scheduledJobsLoading, !app.scheduledJobResultsLoading else { return nil }
+        let schedules = app.scheduledJobsErrorMessage
+        let history = app.scheduledJobResultsErrorMessage
+        if let schedules, let history {
+            return schedules == history
+                ? "Schedules and message history could not be refreshed. \(schedules)"
+                : "Schedules: \(schedules)\nMessage history: \(history)"
+        }
+        if let schedules { return "Schedules: \(schedules)" }
+        if let history { return "Message history: \(history)" }
+        return nil
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
+                    TabPageHeader(title: "Jobs")
                     if let route = requestedRoute {
                         requestedRouteCard(route)
                     }
-                    if let error = app.scheduledJobsErrorMessage {
+                    if let error = refreshVerificationWarning {
                         messageCard(
-                            title: "Schedules unavailable",
-                            detail: error,
-                            systemImage: "exclamationmark.triangle.fill",
-                            color: JarvisPalette.warning
-                        )
-                    }
-                    if let error = app.scheduledJobResultsErrorMessage {
-                        messageCard(
-                            title: "Message history unavailable",
+                            title: "Couldn’t verify latest updates",
                             detail: error,
                             systemImage: "exclamationmark.triangle.fill",
                             color: JarvisPalette.warning
@@ -47,7 +56,10 @@ struct JobsView: View {
 
                     if isInitiallyLoading {
                         loadingCard
-                    } else if sections.scheduled.isEmpty && sections.archived.isEmpty {
+                    } else if sections.scheduled.isEmpty && sections.archived.isEmpty
+                                && app.scheduledJobsErrorMessage == nil
+                                && app.scheduledJobResultsErrorMessage == nil
+                                && !app.scheduledJobsLoading && !app.scheduledJobResultsLoading {
                         messageCard(
                             title: "No scheduled jobs",
                             detail: "Configured cron jobs and their retained messages will appear here.",
@@ -68,11 +80,12 @@ struct JobsView: View {
             }
             .scrollIndicators(.hidden)
             .background(JarvisBackdrop())
-            .navigationTitle("Jobs")
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case let .thread(jobID, focusedSequence):
                     JobThreadView(jobID: jobID, focusedSequence: focusedSequence)
+                        .toolbar(.visible, for: .navigationBar)
                         .id(route)
                 }
             }
