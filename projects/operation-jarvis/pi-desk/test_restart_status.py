@@ -11,15 +11,27 @@ import restart_status as progress
 class RestartStatusTests(unittest.TestCase):
     def test_summary_keeps_busy_slots_visible(self):
         progress = self.busy_progress()
-        self.assertEqual(progress.summary(), '8/10 ready · Waiting for idle: 1, 3')
+        self.assertEqual(progress.summary(), '8/10 ready · Waiting for idle: sessions #1, #3')
         progress.update('slot 1: restarting conversation.jsonl')
         self.assertEqual(progress.summary(),
-                         '8/10 ready · Waiting for idle: 3 · Restarting: 1')
+                         '8/10 ready · Waiting for idle: session #3 · Restarting: session #1')
         progress.update('slot 1: did not become ready: timeout')
         self.assertEqual(progress.summary(),
-                         '8/10 ready · Waiting for idle: 3 · Failed: 1')
+                         '8/10 ready · Waiting for idle: session #3 · Restart failed: session #1')
         progress.update('slot 3: ready (PID 1->2, conversation.jsonl)')
-        self.assertEqual(progress.summary(), '9/10 ready · Failed: 1')
+        self.assertEqual(progress.summary(), '9/10 ready · Restart failed: session #1')
+
+    def test_multiple_restarting_and_failed_session_ids(self):
+        tracker = progress.Progress()
+        for slot in (1, 3, 10):
+            tracker.update(f'slot {slot}: restarting conversation.jsonl')
+        self.assertIn('Restarting: sessions #1, #3, #10', tracker.summary())
+        for slot in (1, 3, 10):
+            tracker.update(f'slot {slot}: no valid Pi status descriptor')
+        self.assertIn('Restart failed: sessions #1, #3, #10', tracker.summary())
+        with tempfile.TemporaryDirectory() as directory, patch.object(progress, 'STATE', Path(directory)):
+            progress.publish(tracker.summary())
+            self.assertIn('Restart failed: sessions ##1, ##3, ##10', progress.status_line())
 
     @staticmethod
     def busy_progress():
@@ -36,7 +48,7 @@ class RestartStatusTests(unittest.TestCase):
             lines += [f'slot {slot}: ready (PID 1->2)' for slot in (2, 4, 5, 6, 7, 8, 9, 10)]
             (Path(directory) / 'restart.log').write_text('\n'.join(lines))
             progress.publish(lines[-1])
-            self.assertIn('8/10 ready · Waiting for idle: 1, 3', progress.status_line())
+            self.assertIn('8/10 ready · Waiting for idle: sessions ##1, ##3', progress.status_line())
             progress.publish('Failed: connection lost')
             self.assertIn('Failed: connection lost', progress.status_line())
 
@@ -72,7 +84,7 @@ class RestartStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.object(progress, 'STATE', Path(directory)), \
                 patch.object(progress.subprocess, 'Popen') as spawn, \
                 patch.object(progress, 'notify') as notify:
-            progress.publish('9/10 ready · Waiting for idle: 2')
+            progress.publish('9/10 ready · Waiting for idle: session #2')
             status = (progress.STATE / 'restart-status').read_bytes()
             log = progress.STATE / 'restart.log'
             log.write_text('original worker output\n')

@@ -43,10 +43,11 @@ class Progress:
             return ''
         parts = [f'{sum(state == "ready" for state in self.slots.values())}/10 ready']
         for state, label in (('waiting', 'Waiting for idle'),
-                             ('starting', 'Restarting'), ('failed', 'Failed')):
-            numbers = [str(slot) for slot in sorted(self.slots) if self.slots[slot] == state]
+                             ('starting', 'Restarting'), ('failed', 'Restart failed')):
+            numbers = [f'#{slot}' for slot in sorted(self.slots) if self.slots[slot] == state]
             if numbers:
-                parts.append(f'{label}: {", ".join(numbers)}')
+                noun = 'session' if len(numbers) == 1 else 'sessions'
+                parts.append(f'{label}: {noun} {", ".join(numbers)}')
         if len(self.slots) < 10:
             parts.append('Checking remaining sessions')
         return ' · '.join(parts)

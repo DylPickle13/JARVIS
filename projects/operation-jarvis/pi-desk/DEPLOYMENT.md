@@ -1,3 +1,18 @@
+# Explicit restart session labels — 2026-10-02, 12:49 EDT
+
+Restart progress now says `Waiting for idle: session #1`,
+`Restarting: sessions #2, #10`, and `Restart failed: session #3`.
+The ready fraction remains a count; all other numbers explicitly identify sessions.
+Hash marks are escaped for tmux rendering, and plural labels retain numeric order.
+
+**132 source tests passed**, plus **10 installed-runtime restart-status tests**.
+Installed only `restart_status.py` locally and updated its manifest hash; all
+**22 manifest hashes** verified. New restart requests use the labels without
+restarting any viewers or agents. Already-running workers retain their old labels.
+No remote installations, services, restart state, or logs were changed.
+
+Rollback backup: `~/.local/state/pi-desk/backups/restart-labels-20261002T164945963651Z/`.
+
 # Viewer orphan cleanup — 2026-10-01, 23:00 EDT
 
 Found six abandoned local viewer workspaces with 45 reconnecting display clients,

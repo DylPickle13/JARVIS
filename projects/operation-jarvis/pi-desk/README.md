@@ -155,6 +155,8 @@ pi-desk restart --dry-run  # preflight only, no changes
 
 F10 asks for confirmation in the top bar, then runs in the background with
 progress in the top status area; session navigation and input remain available.
+Labels identify sessions explicitly, e.g. **Waiting for idle: session #1** and
+**Restart failed: session #3** (session IDs, not counts); **8/10 ready** is a count.
 Completion/failure stays visible for 60 seconds. Full helper output is saved locally
 to `~/.local/state/pi-desk/restart.log`; shortcut/launcher diagnostics are appended
 to `~/.local/state/pi-desk/restart-dispatch.log`. Shortcuts never print command output
