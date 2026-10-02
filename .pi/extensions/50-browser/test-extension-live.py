@@ -9,6 +9,9 @@ import tempfile
 from threading import Thread
 import urllib.error
 import urllib.request
+from uuid import uuid4
+
+SESSION = str(uuid4())
 
 URL = os.environ.get('JARVIS_TEST_BROWSER_URL', 'http://127.0.0.1:17324')
 TOKEN = (Path.home()/'.jarvis/chrome-bridge.token').read_text().strip()
@@ -19,7 +22,7 @@ class Fixture(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
 
 def call(path, body=None):
-    req=urllib.request.Request(URL+path, data=None if body is None else json.dumps(body).encode(), headers={'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'})
+    req=urllib.request.Request(URL+path, data=None if body is None else json.dumps(body).encode(), headers={'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json','X-Jarvis-Browser-Session':SESSION})
     try:
         with urllib.request.urlopen(req,timeout=160) as response: result=json.load(response)
     except urllib.error.HTTPError as e:
@@ -29,9 +32,11 @@ def call(path, body=None):
 
 server=HTTPServer(('127.0.0.1',0),Fixture)
 Thread(target=server.serve_forever,daemon=True).start()
+created=set()
 try:
     baseline=len(call('/status')['pages'])
     first=call('/open',{'url':f'http://127.0.0.1:{server.server_port}','newTab':True})
+    created.add(first['tabId'])
     assert first['title']=='JARVIS browser fixture'
     call('/type',{'selector':'#name','text':'Verified','clear':True,'delayMs':0})
     call('/click',{'selector':'#go'})
@@ -51,12 +56,21 @@ try:
         uploaded=call('/upload',{'selector':'#file','path':f.name})
         assert uploaded['method']=='input'
     second=call('/open',{'url':'about:blank','newTab':True})
+    created.add(second['tabId'])
     assert len(call('/tabs',{'action':'list'})['pages'])==baseline+2
     call('/tabs',{'action':'switch','index':first['index']})
     call('/key',{'key':'Tab'})
     call('/tabs',{'action':'close','index':second['index']})
+    created.remove(second['tabId'])
     call('/close',{'all':False})
+    created.remove(first['tabId'])
     assert len(call('/status')['pages'])==baseline
     print('PASS: navigation, typing, empty clear, click, wait, extraction, links, PNG, scroll, local upload, tab isolation and cleanup')
 finally:
-    server.shutdown()
+    try:
+        call('/close', {'all': True})
+        for tab_id in created:
+            call('/tabs', {'action':'close','tabId':tab_id})
+        call('/close', {'all': True})
+    finally:
+        server.shutdown()

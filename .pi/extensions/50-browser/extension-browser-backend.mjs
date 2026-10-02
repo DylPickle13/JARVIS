@@ -9,6 +9,7 @@ import { join, basename, extname } from 'node:path';
 import { homedir } from 'node:os';
 import { createConnection } from '@playwright/mcp';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { BrowserSessions, validateTabInventory } from './browser-sessions.mjs';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 // Fixed implementation only: callers cannot submit code to the MCP server.
@@ -21,9 +22,13 @@ export async function extensionAction(seed, action, b) {
     context.__jarvisOwnedTabs = state;
   }
   state.pages = state.pages.filter(p => !p.isClosed());
-  // Reconcile Chrome's verified window; /connect remains inert until anchor verification.
-  if (state.anchor && action !== '/prepare-anchor') {
-    state.anchor = context.pages().find(p => p.url().startsWith('chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html') && p.url().endsWith('#jarvis-automation-anchor-v2')) || state.anchor;
+  // MCP may silently replace its backend/context after a disconnect without
+  // closing the daemon's client. Rediscover the anchor on EVERY action, rather
+  // than trusting either connected=true or a property on the previous context.
+  // The relay's inventory operation verifies the exact window/connection IDs.
+  if (action !== '/connect' && action !== '/prepare-anchor') {
+    state.anchor = context.pages().find(p => !p.isClosed() && p.url().startsWith('chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html') && p.url().endsWith('#jarvis-automation-anchor-v2'));
+    if (!state.anchor) throw new Error('Automation connection anchor unavailable; refusing unverified tab discovery or creation');
     const inventory = JSON.parse(await state.anchor.evaluate('"JARVIS_INTERNAL_SYNC_WINDOW_TABS_V1"').catch(e => { throw new Error('Anchor inventory: ' + e.message); }));
     const allowed = new Map(inventory.tabs.map(t => [t.tabId, t]));
     const pages = [];
@@ -51,12 +56,23 @@ export async function extensionAction(seed, action, b) {
     if (!pages.includes(state.active)) state.active = selected || pages[0] || null;
   }
   const create = async () => {
+    if (!state.anchor || !state.tabIds) throw new Error('Automation connection anchor unavailable; refusing tab creation');
     const p = await context.newPage();
     state.pages.push(p);
     state.active = p;
+    if (state.anchor) {
+      const identity = JSON.parse(await p.evaluate('"JARVIS_INTERNAL_TAB_IDENTITY_V1"'));
+      if (!Number.isSafeInteger(identity.tabId)) throw new Error('New tab identity missing');
+      state.tabIds.set(p, identity.tabId);
+    }
     return p;
   };
   const current = async () => {
+    if (b.targetTabId !== undefined) {
+      const target = state.pages.find(p => state.tabIds?.get(p) === b.targetTabId);
+      if (!target) throw new Error(`Tab ${b.targetTabId} was closed or moved; refusing to target a different tab`);
+      return target;
+    }
     if (!state.pages.includes(state.active)) state.active = state.pages[0] || null;
     return state.active || await create();
   };
@@ -68,24 +84,62 @@ export async function extensionAction(seed, action, b) {
   const locator = (p, fallback) => b.selector ? p.locator(b.selector) : b.text !== undefined ? p.getByText(b.text, {exact:!!b.exact}) : p.locator(fallback);
   const timeout = Math.max(250, Math.min(Number(b.timeoutMs ?? 10000), 60000));
   if (action === '/prepare-anchor') {
-    await seed.evaluate(async ({windowId,connectionTabId}) => {
+    const anchor=context.pages().find(p=>!p.isClosed() && p.url().startsWith('chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html') && p.url().endsWith('#jarvis-automation-anchor-v2'));
+    if (!anchor) throw new Error('Automation connection anchor unavailable');
+    await anchor.evaluate(async ({windowId,connectionTabId}) => {
       const t=await chrome.tabs.getCurrent();
       if (t?.id!==connectionTabId || t.windowId!==windowId || location.hash!=='#jarvis-automation-anchor-v2') throw new Error('Connection anchor identity mismatch');
       document.title='JARVIS Browser — Automation Only';
-      // Playwright uses a tab group; Chrome ungrouping on pin disconnects it.
-      await chrome.tabs.update(t.id,{pinned:false});
-      // Migrate only our exact legacy data-page marker in this same window.
-      const tabs=await chrome.tabs.query({windowId});
-      for (const old of tabs) if (old.id!==t.id && old.title==='JARVIS Browser — Automation Only' && old.url?.startsWith('data:text/html')) await chrome.tabs.remove(old.id);
+      // A fresh anchor avoids late detach/ungroup callbacks from the previous
+      // connection targeting the new one. Do not update `pinned`: it can ungroup.
+      // Wait for old debugger/group cleanup before adopting any work tabs.
+      const deadline=Date.now()+15000;
+      let tabs;
+      for (;;) {
+        tabs=await chrome.tabs.query({windowId});
+        const windowTabIds=new Set(tabs.map(tab=>tab.id));
+        const status=await chrome.runtime.sendMessage({type:'getConnectionStatus'});
+        // Closing/reloading an anchor can leave its old connection controlling
+        // work tabs. Retire only this bridge's stale groups, wholly contained
+        // in our verified window; never another client or a personal tab.
+        for (const connection of status?.connections || []) {
+          const ids=connection.connectedTabIds || [];
+          if (connection.clientName==='JARVIS Browser' && Number.isSafeInteger(connection.id) && ids.length && !ids.includes(connectionTabId) && ids.every(id=>windowTabIds.has(id))) {
+            await chrome.runtime.sendMessage({type:'disconnect',connectionId:connection.id});
+          }
+        }
+        const current=tabs.find(tab=>tab.id===connectionTabId);
+        const targets=await chrome.debugger.getTargets();
+        const attached=new Set(targets.filter(target=>target.attached).map(target=>target.tabId));
+        const stale=tabs.some(tab=>{
+          if (tab.id===connectionTabId) return false;
+          const inCurrentGroup=current?.groupId>=0 && tab.groupId===current.groupId;
+          const oldAnchor=tab.url?.startsWith('chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html') && tab.url.endsWith('#jarvis-automation-anchor-v2');
+          return !inCurrentGroup && (attached.has(tab.id) || (oldAnchor && tab.groupId>=0));
+        });
+        if (!stale) break;
+        if (Date.now()>=deadline) throw new Error('Previous automation connection cleanup incomplete; refusing competing debugger ownership');
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+      for (const old of tabs) {
+        if (old.id===t.id) continue;
+        const obsoleteAnchor=old.url?.startsWith('chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html') && old.url.endsWith('#jarvis-automation-anchor-v2');
+        const legacy=old.title==='JARVIS Browser — Automation Only' && old.url?.startsWith('data:text/html');
+        if (obsoleteAnchor || legacy) await chrome.tabs.remove(old.id);
+      }
     },b);
-    state.anchor = seed;
+    state.anchor = anchor;
     return status();
   }
-  if (action === '/connect' || action === '/status') return status();
+  // Bootstrap MCP's current context without reading stale work-page objects.
+  if (action === '/connect') return {activeIndex:-1,pages:[]};
+  if (action === '/status') return status();
   if (action === '/tabs') {
     if (b.action !== 'list') {
-      if (!Number.isInteger(b.index) || !state.pages[b.index]) throw new Error('Invalid automation tab index');
-      const target = state.pages[b.index];
+      const target = b.targetTabId !== undefined
+        ? state.pages.find(p => state.tabIds?.get(p) === b.targetTabId)
+        : state.pages[b.index];
+      if (!target) throw new Error('Invalid or missing automation tab; refusing to target another tab');
       if (b.action === 'switch') { await target.bringToFront(); state.active = target; }
       else if (b.action === 'close') {
         await target.close();
@@ -103,12 +157,17 @@ export async function extensionAction(seed, action, b) {
     }
     return {closedAll:b.all !== false, daemonKeptAlive:true};
   }
+  if (action === '/new-tab') {
+    const p = await create();
+    return { ...await info(p), index: state.pages.indexOf(p) };
+  }
   if (action === '/open') {
     let url = String(b.url || '').trim();
     if (!url) throw new Error('URL required');
     if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = `https://${url}`;
     if (!/^https?:\/\//i.test(url) && url !== 'about:blank') throw new Error('Only HTTP(S) and about:blank navigation supported');
     const p = b.newTab ? await create() : await current();
+    await p.bringToFront();
     await p.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
     return {...await info(p), index:state.pages.indexOf(p)};
   }
@@ -220,19 +279,20 @@ export function parseToolResult(result) {
 }
 
 export class ExtensionBrowserBackend {
-  constructor({profileDir,profileDirectory,chromePath,tokenPath=join(homedir(),'.jarvis','playwright-extension.token')}) {
-    Object.assign(this,{profileDir,profileDirectory,chromePath,tokenPath});
-    this.queue=Promise.resolve(); this.connected=false; this.lastError=''; this.cached={activeIndex:-1,pages:[]};
+  constructor({profileDir,profileDirectory,chromePath,tokenPath=join(homedir(),'.jarvis','playwright-extension.token'),windowPath=join(homedir(),'.jarvis','extension-window.json')}) {
+    Object.assign(this,{profileDir,profileDirectory,chromePath,tokenPath,windowPath});
+    this.queue=Promise.resolve(); this.connected=false; this.lastError='';
+    this.sessions = new BrowserSessions();
   }
   async init() {
     if (this.client) return;
     const relaySource=readFileSync(require.resolve('playwright-core/lib/coreBundle'),'utf8');
-    if (!['JARVIS_BACKGROUND_TABS_V2','JARVIS_BACKGROUND_SELECTION_V2','JARVIS_WINDOW_TAB_SYNC_V1'].every(marker=>relaySource.includes(marker))) throw new Error('Background-tab patch missing; run npm install in .pi/extensions/50-browser before using extension mode');
+    if (!['JARVIS_BACKGROUND_TABS_V2','JARVIS_BACKGROUND_SELECTION_V2','JARVIS_WINDOW_TAB_SYNC_V1','JARVIS_LAUNCHER_ACK_V1'].every(marker=>relaySource.includes(marker))) throw new Error('Background-tab patch missing; run npm install in .pi/extensions/50-browser before using extension mode');
     const token=(await readFile(this.tokenPath,'utf8')).trim();
     if (!token) throw new Error('Playwright extension token is empty');
     this.secret=token;
     process.env.PLAYWRIGHT_MCP_EXTENSION_TOKEN=token;
-    process.env.JARVIS_EXTENSION_WINDOW_FILE=join(homedir(),'.jarvis','extension-window.json');
+    process.env.JARVIS_EXTENSION_WINDOW_FILE=this.windowPath;
     process.env.PLAYWRIGHT_MCP_EXECUTABLE_PATH=this.chromePath;
     if (this.profileDirectory) process.env.PLAYWRIGHT_MCP_PROFILE_DIR_NAME=this.profileDirectory;
     else delete process.env.PLAYWRIGHT_MCP_PROFILE_DIR_NAME;
@@ -244,8 +304,8 @@ export class ExtensionBrowserBackend {
     this.runTool=tools.find(t => t.name==='browser_run_code_unsafe' || t.name==='browser_run_code')?.name;
     if (!this.runTool) throw new Error('Pinned Playwright version lacks code tool');
   }
-  status() {
-    return {launchMode:'extension',running:this.connected,connected:this.connected,profileDir:this.profileDir,profileDirectory:this.profileDirectory || '(automation-window profile; token authenticated)',automationWindow:{dedicated:true,windowId:this.window?.windowId,title:'JARVIS Browser — Automation Only',anchorOpen:!!this.window,avoidsForegroundActivation:true,sessionOwnedTabsOnly:false,automationWindowTabsOnly:true},daemon:{connectedAt:this.connectedAt || null,lastError:this.lastError,connecting:!!this.connecting},...this.cached};
+  status(inventory = {activeIndex:-1,pages:[]}) {
+    return {protocolVersion:2,launchMode:'extension',running:this.connected,connected:this.connected,profileDir:this.profileDir,profileDirectory:this.profileDirectory || '(automation-window profile; token authenticated)',automationWindow:{dedicated:true,windowId:this.window?.windowId,title:'JARVIS Browser — Automation Only',anchorOpen:!!this.window,avoidsForegroundActivation:true,sessionOwnedTabsOnly:false,automationWindowTabsOnly:true},daemon:{connectedAt:this.connectedAt || null,lastError:this.lastError,connecting:!!this.connecting,recoveryCount:this.recoveryCount || 0},...inventory};
   }
   sanitize(message) {
     let text=String(message);
@@ -271,7 +331,13 @@ export class ExtensionBrowserBackend {
       return "verified"
     end tell`;
     try { await execFileAsync('/usr/bin/osascript',['-e',script],{timeout:10000}); }
-    catch { throw new Error('Automation window or connection moved/closed; refusing to control another window'); }
+    catch (error) {
+      // This script contains only window/tab IDs and fixed markers, never page
+      // content or connection tokens. Distinguish AppleEvent failure from a
+      // genuinely missing anchor without exposing the connection URL.
+      console.error('JARVIS_WINDOW_VERIFY', JSON.stringify({time:new Date().toISOString(),code:error.code,signal:error.signal,killed:error.killed,stderr:this.sanitize(error.stderr || '').slice(0,1500)}));
+      throw new Error('Automation window or connection moved/closed; refusing to control another window');
+    }
   }
   async restoreConnectionFocus() {
     const w=this.window;
@@ -295,23 +361,56 @@ export class ExtensionBrowserBackend {
   }
   async reset() {
     const client=this.client,server=this.server;
-    this.client=null;this.server=null;this.connected=false;this.window=null;this.cached={activeIndex:-1,pages:[]};
+    this.client=null;this.server=null;this.connected=false;this.window=null;this.preparedConnectionTabId=null;
     await client?.close().catch(()=>{});await server?.close().catch(()=>{});
   }
-  handle(path,body={}) {
+  async callAction(path, body = {}) {
+    return parseToolResult(await this.client.callTool({name:this.runTool,arguments:{code:`async (page) => await (${extensionAction.toString()})(page, ${JSON.stringify(path)}, ${JSON.stringify(body)})`}},undefined,{timeout:150000}));
+  }
+  isTransportFailure(message) {
+    return /target (?:page|closed)|context or browser has been closed|disconnected|extension did not connect|connection.*(?:lost|closed)|connection anchor unavailable|Anchor inventory:|Work-tab identity:|execution context was destroyed|tab identity missing|inventory identity missing|request timed out|transport/i.test(message);
+  }
+  async prepare() {
+    await this.init();
+    // MCP can reconnect without notifying its client. Bootstrap it, then read
+    // the launcher's fresh connection ID before trusting cached daemon state.
+    await this.callAction('/connect');
+    this.window=JSON.parse(await readFile(this.windowPath,'utf8'));
+    if (this.preparedConnectionTabId!==this.window.connectionTabId) {
+      await this.callAction('/prepare-anchor', {windowId:this.window.windowId,connectionTabId:this.window.connectionTabId});
+      this.preparedConnectionTabId=this.window.connectionTabId;
+      await this.restoreConnectionFocus();
+    }
+    await this.assertWindow();
+    const inventory=validateTabInventory(await this.callAction('/status'));
+    this.connected=true;
+    this.connectedAt ||= new Date().toISOString();
+    return inventory;
+  }
+  async prepareWithRecovery() {
+    // Only connection establishment and read-only discovery may retry. Once
+    // session routing dispatches ANY action (including new-tab), never replay.
+    for (let attempt=0; ; attempt++) {
+      try { return await this.prepare(); }
+      catch (error) {
+        const message=this.sanitize(error.message || error);
+        if (attempt >= 2 || !this.isTransportFailure(message) || message.startsWith('Automation window or connection moved/closed')) throw error;
+        await this.reset();
+        this.recoveryCount=(this.recoveryCount || 0)+1;
+        this.connecting=true;
+        await new Promise(resolve=>setTimeout(resolve,100*(attempt+1)));
+      }
+    }
+  }
+  handle(path,body={},sessionId='__bridge__') {
     // Serialize tab selection + actions; never replay a failed mutating action.
     const run=async () => {
-      if (path==='/status' && !this.client) return this.status();
+      if (path === '/close' && body.all !== false) {
+        return this.sessions.handle(path, body, sessionId, () => { throw new Error('Release must not access Chrome'); });
+      }
       this.connecting=!this.connected;
       try {
-        await this.init();
-        if (!this.connected) {
-          parseToolResult(await this.client.callTool({name:this.runTool,arguments:{code:`async (page) => await (${extensionAction.toString()})(page, '/connect', {})`}},undefined,{timeout:60000}));
-          this.window=JSON.parse(await readFile(join(homedir(),'.jarvis','extension-window.json'),'utf8'));
-          parseToolResult(await this.client.callTool({name:this.runTool,arguments:{code:`async (page) => await (${extensionAction.toString()})(page, '/prepare-anchor', ${JSON.stringify({windowId:this.window.windowId,connectionTabId:this.window.connectionTabId})})`}},undefined,{timeout:60000}));
-          await this.restoreConnectionFocus();
-        }
-        await this.assertWindow();
+        const inventory=await this.prepareWithRecovery();
         if (path==='/upload') {
           const paths=body.paths || (body.path ? [body.path] : []);
           const mime={'.pdf':'application/pdf','.txt':'text/plain','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'};
@@ -324,14 +423,19 @@ export class ExtensionBrowserBackend {
           }
           body={...body,uploadFiles};
         }
-        const result=parseToolResult(await this.client.callTool({name:this.runTool,arguments:{code:`async (page) => await (${extensionAction.toString()})(page, ${JSON.stringify(path)}, ${JSON.stringify(body)})`}},undefined,{timeout:150000}));
+        // Session routing, lease validation, activation and action all share the
+        // same queue. Never expose internal targetTabId or /new-tab to callers.
+        const result = await this.sessions.handle(path === '/connect' ? '/status' : path, body, sessionId, (action, args) => this.callAction(action, args), inventory);
         this.connected=true;this.connectedAt ||= new Date().toISOString();this.lastError='';
-        if (['/status','/tabs','/connect'].includes(path)) {this.cached=result;return this.status();}
+        if (['/status','/tabs','/connect'].includes(path)) return this.status(result);
         return result;
       } catch(error) {
         this.lastError=this.sanitize(error.message || error);
         // Only rebuild a lost transport; selector/validation errors must not orphan tabs.
-        if (!this.connected || /closed|disconnected|extension did not connect|connection.*lost/i.test(this.lastError)) await this.reset();
+        if (!this.connected || this.isTransportFailure(this.lastError)) {
+          this.sessions.invalidate();
+          await this.reset();
+        }
         throw new Error(this.lastError);
       } finally {this.connecting=false;}
     };

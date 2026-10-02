@@ -8,11 +8,14 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 import urllib.request
+from uuid import uuid4
+
+SESSION = str(uuid4())
 
 URL = os.environ.get('JARVIS_TEST_BROWSER_URL', 'http://127.0.0.1:17324')
 TOKEN = (Path.home()/'.jarvis/chrome-bridge.token').read_text().strip()
 def call(path, body=None):
-    request = urllib.request.Request(URL+path, data=None if body is None else json.dumps(body).encode(), headers={'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'})
+    request = urllib.request.Request(URL+path, data=None if body is None else json.dumps(body).encode(), headers={'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json','X-Jarvis-Browser-Session':SESSION})
     with urllib.request.urlopen(request, timeout=160) as response:
         result = json.load(response)
     assert result['ok'], result
@@ -53,4 +56,5 @@ finally:
         page = next((p for p in status['pages'] if p.get('tabId')==created_id),None)
         if page:
             call('/tabs',{'action':'close','index':page['index']})
+    call('/close', {'all': True})
     server.shutdown()

@@ -80,5 +80,44 @@ if (!source.includes('JARVIS_SERIAL_TAB_ATTACH_V1')) {
   if (source.split(attachAnchor).length !== 2) throw new Error('Tab attachment patch anchor changed');
   source=source.replace(attachAnchor,attachPatch);
 }
+// The stock relay fire-and-forgets Chrome's launcher. Our shim publishes the
+// verified window/connection generation after AppleScript returns; await that
+// acknowledgement so a fast extension handshake cannot race the identity file.
+const launchAnchor=`(0, import_child_process5.spawn)(executablePath, args, {
+          windowsHide: true,
+          detached: true,
+          shell: false,
+          stdio: "ignore"
+        });`;
+const launchPatch=`// JARVIS_LAUNCHER_ACK_V1
+        const launcher = ${launchAnchor}
+        if (executablePath.endsWith("launch-extension-in-automation-window.py")) {
+          await new Promise((resolve, reject) => {
+            const timer=setTimeout(() => { launcher.kill(); reject(new Error("Automation launcher acknowledgement timed out")); },35000);
+            launcher.once("error", () => { clearTimeout(timer); reject(new Error("Automation launcher failed to start")); });
+            launcher.once("exit", code => { clearTimeout(timer); code===0 ? resolve() : reject(new Error("Automation launcher failed before publishing window identity")); });
+          });
+        }`;
+if (!source.includes('JARVIS_LAUNCHER_ACK_V1')) {
+  if (source.split(launchAnchor).length!==2) throw new Error('Launcher acknowledgement patch anchor changed');
+  source=source.replace(launchAnchor,launchPatch);
+}
+
+// Minimal transport diagnostics: fixed event names, numeric IDs and allowlisted
+// reasons only. Never log CDP payloads, page URLs, connection URLs or tokens.
+const diagnosticPatches = [
+  ['onExtensionDisconnect(reason) {', `onExtensionDisconnect(reason) {
+        // JARVIS_RELAY_DIAGNOSTICS_V1
+        console.error('JARVIS_RELAY', JSON.stringify({event:'extension-disconnect',time:new Date().toISOString(),reason:['All controlled tabs detached','User disconnected','Playwright client disconnected'].includes(reason)?reason:'other'}));`],
+  ['const [source12] = params2;\n            this._model.onDebuggerDetach(source12);', `const [source12] = params2;
+            // JARVIS_RELAY_DETACH_DIAGNOSTICS_V1
+            console.error('JARVIS_RELAY', JSON.stringify({event:'debugger-detach',time:new Date().toISOString(),tabId:source12?.tabId,reason:['target_closed','canceled_by_user'].includes(params2[1])?params2[1]:'other'}));
+            this._model.onDebuggerDetach(source12);`],
+];
+for (const [oldText,newText] of diagnosticPatches) {
+  if (source.includes(newText)) continue;
+  if (source.split(oldText).length !== 2) throw new Error('Relay diagnostic patch anchor changed');
+  source=source.replace(oldText,newText);
+}
 writeFileSync(file,source);
 console.log('Pinned background creation/selection patches verified.');

@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import { truncate } from "../lib/text";
@@ -7,7 +7,7 @@ import type { DaemonBrowserManager as BrowserManager } from "./daemon-browser-ma
 const MouseButton = ["left", "right", "middle"] as const;
 const ScrollDirection = ["up", "down", "left", "right"] as const;
 const LoadState = ["load", "domcontentloaded", "networkidle"] as const;
-const TabsAction = ["list", "switch", "close"] as const;
+const TabsAction = ["list", "switch", "close", "release"] as const;
 
 function stringEnum(values: readonly string[], options?: Record<string, unknown>) {
   return Type.Union(values.map((value) => Type.Literal(value)) as any, options as any);
@@ -26,14 +26,14 @@ function compactJson(value: unknown): string {
   return truncate(JSON.stringify(value, null, 2));
 }
 
-export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => BrowserManager) {
+export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: ExtensionContext) => BrowserManager) {
   pi.registerTool({
     name: "browser_status",
     label: "Browser Status",
-    description: "Return status for the dedicated JARVIS Chrome window: launch/attach mode, shared signed-in profile/CDP path, logical active tab, and automation tabs only.",
+    description: "Return shared automation tabs, control leases, and this Pi session's selected tab. Other Pi sessions have independent selections.",
     parameters: Type.Object({}),
-    async execute() {
-      const status = await getBrowser().status();
+    async execute(_id, _params, _signal, _onUpdate, ctx) {
+      const status = await getBrowser(ctx).status();
       return { content: [{ type: "text", text: compactJson(status) }], details: status };
     },
   });
@@ -41,18 +41,18 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
   pi.registerTool({
     name: "browser_open",
     label: "Browser Open",
-    description: "Open a URL in the dedicated visible JARVIS Chrome window through the persistent local bridge. The window shares the user's signed-in Chrome profile but never reuses personal-window tabs.",
+    description: "Open a URL in this Pi session's selected automation tab, or create a new tab if none is selected. Other sessions can see tabs but cannot control your leased tabs. newTab creates another tab.",
     parameters: Type.Object({
       url: Type.String({ description: "URL or domain to open. Domains without a scheme are treated as https://." }),
       newTab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of reusing the active tab." })),
     }),
-    async execute(_id, params, signal, onUpdate) {
+    async execute(_id, params, signal, onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_open cancelled");
       onUpdate?.({ content: [{ type: "text", text: `Opening ${params.url} in visible Chrome...` }] });
       await pace();
-      const result = await getBrowser().open(String(params.url), Boolean(params.newTab));
+      const result = await getBrowser(ctx).open(String(params.url), Boolean(params.newTab));
       return {
-        content: [{ type: "text", text: `Opened tab ${result.index}: ${result.title || "(untitled)"}\n${result.url}` }],
+        content: [{ type: "text", text: `Opened tab ${result.index} (tabId ${result.tabId}): ${result.title || "(untitled)"}\n${result.url}` }],
         details: result,
       };
     },
@@ -67,10 +67,10 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
       selector: Type.Optional(Type.String({ description: "Optional CSS selector for an element-only screenshot." })),
       attachImage: Type.Optional(Type.Boolean({ description: "Attach image data. Defaults to true; false returns only metadata." })),
     }),
-    async execute(_id, params, signal, onUpdate) {
+    async execute(_id, params, signal, onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_screenshot cancelled");
       onUpdate?.({ content: [{ type: "text", text: "Capturing browser screenshot..." }] });
-      const result = await getBrowser().screenshot({ fullPage: params.fullPage, selector: params.selector, attachImage: params.attachImage });
+      const result = await getBrowser(ctx).screenshot({ fullPage: params.fullPage, selector: params.selector, attachImage: params.attachImage });
       const text = [`Screenshot: ${result.title || "(untitled)"}`, result.url, result.width && result.height ? `Viewport: ${result.width}x${result.height}` : undefined].filter(Boolean).join("\n");
       const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [{ type: "text", text }];
       if (params.attachImage !== false) content.push({ type: "image", data: result.data, mimeType: result.mimeType });
@@ -91,12 +91,12 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
       button: Type.Optional(stringEnum(MouseButton, { description: "Mouse button. Defaults to left." })),
       clicks: Type.Optional(Type.Number({ description: "Click count, 1-3. Defaults to 1." })),
     }),
-    async execute(_id, params, signal, onUpdate) {
+    async execute(_id, params, signal, onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_click cancelled");
       if ((params.x === undefined || params.y === undefined) && !params.selector && !params.text) throw new Error("Provide x/y, selector, or text.");
       onUpdate?.({ content: [{ type: "text", text: "Clicking browser target..." }] });
       await pace();
-      const result = await getBrowser().click(params as any);
+      const result = await getBrowser(ctx).click(params as any);
       return { content: [{ type: "text", text: `Clicked at ${Math.round(result.x)},${Math.round(result.y)}\n${result.title || "(untitled)"}\n${result.url}` }], details: result };
     },
   });
@@ -111,11 +111,11 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
       clear: Type.Optional(Type.Boolean({ description: "Select all and clear current field contents before typing." })),
       delayMs: Type.Optional(Type.Number({ description: "Per-character typing delay in ms. Defaults to a human-like random delay." })),
     }),
-    async execute(_id, params, signal, onUpdate) {
+    async execute(_id, params, signal, onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_type cancelled");
       onUpdate?.({ content: [{ type: "text", text: `Typing ${String(params.text).length} characters...` }] });
       await pace();
-      const result = await getBrowser().type(params as any);
+      const result = await getBrowser(ctx).type(params as any);
       return { content: [{ type: "text", text: `Typed ${result.typedCharacters} characters.\n${result.title || "(untitled)"}\n${result.url}` }], details: result };
     },
   });
@@ -132,12 +132,12 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
       exact: Type.Optional(Type.Boolean({ description: "When using text, require exact text match." })),
       timeoutMs: Type.Optional(Type.Number({ description: "Timeout for locating/uploading, default 10000, max 60000." })),
     }),
-    async execute(_id, params, signal, onUpdate) {
+    async execute(_id, params, signal, onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_upload cancelled");
       const count = [params.path, ...(params.paths ?? [])].filter(Boolean).length;
       onUpdate?.({ content: [{ type: "text", text: `Uploading ${count} file${count === 1 ? "" : "s"} through browser...` }] });
       await pace();
-      const result = await getBrowser().upload(params as any);
+      const result = await getBrowser(ctx).upload(params as any);
       return {
         content: [{ type: "text", text: `Uploaded ${result.files.length} file${result.files.length === 1 ? "" : "s"} via ${result.method}.\n${result.title || "(untitled)"}\n${result.url}` }],
         details: result,
@@ -150,10 +150,10 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
     label: "Browser Key",
     description: "Press a keyboard key or shortcut in the active web page, e.g. Enter, Escape, Tab, ArrowDown, Control+A. Meta+T/Control+T and Meta+W/Control+W are emulated as tab open/close actions. For URL navigation, use browser_open instead of address-bar shortcuts.",
     parameters: Type.Object({ key: Type.String({ description: "Playwright key name or shortcut, e.g. Enter, Escape, Tab, ArrowDown, Control+A." }) }),
-    async execute(_id, params, signal) {
+    async execute(_id, params, signal, _onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_key cancelled");
       await pace();
-      const result = await getBrowser().key(String(params.key));
+      const result = await getBrowser(ctx).key(String(params.key));
       return { content: [{ type: "text", text: `Pressed ${params.key}.\n${result.title || "(untitled)"}\n${result.url}` }], details: result };
     },
   });
@@ -168,10 +168,10 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
       x: Type.Optional(Type.Number({ description: "Optional x coordinate to move mouse to before scrolling." })),
       y: Type.Optional(Type.Number({ description: "Optional y coordinate to move mouse to before scrolling." })),
     }),
-    async execute(_id, params, signal) {
+    async execute(_id, params, signal, _onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_scroll cancelled");
       await pace();
-      const result = await getBrowser().scroll(params as any);
+      const result = await getBrowser(ctx).scroll(params as any);
       return { content: [{ type: "text", text: `Scrolled ${result.direction} ${result.amount}px.\n${result.title || "(untitled)"}\n${result.url}` }], details: result };
     },
   });
@@ -187,9 +187,9 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
       loadState: Type.Optional(stringEnum(LoadState, { description: "Page load state to wait for." })),
       timeoutMs: Type.Optional(Type.Number({ description: "Timeout for selector/text/load waits. Defaults to 10000; max 60000." })),
     }),
-    async execute(_id, params, signal) {
+    async execute(_id, params, signal, _onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_wait cancelled");
-      const result = await getBrowser().wait(params as any);
+      const result = await getBrowser(ctx).wait(params as any);
       return { content: [{ type: "text", text: `Browser wait complete.\n${result.title || "(untitled)"}\n${result.url}` }], details: result };
     },
   });
@@ -203,9 +203,9 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
       maxText: Type.Optional(Type.Number({ description: "Maximum text characters, 500-50000. Defaults to 12000." })),
       includeLinks: Type.Optional(Type.Boolean({ description: "Include up to 120 page links." })),
     }),
-    async execute(_id, params, signal) {
+    async execute(_id, params, signal, _onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_extract cancelled");
-      const result = await getBrowser().extract(params as any);
+      const result = await getBrowser(ctx).extract(params as any);
       return { content: [{ type: "text", text: compactJson(result) }], details: result };
     },
   });
@@ -213,14 +213,15 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
   pi.registerTool({
     name: "browser_tabs",
     label: "Browser Tabs",
-    description: "List, logically switch, or close tabs only in the dedicated JARVIS browser window. Switching does not foreground Chrome or steal focus from the user's personal window.",
+    description: "List all shared automation tabs; switch selects and leases a tab for this Pi session only. Other sessions' leased tabs cannot be controlled or closed. Release hands off control without closing the tab. Prefer stable tabId; index refers to your last returned tab list. Switching retains your other leases; release them when done.",
     parameters: Type.Object({
-      action: stringEnum(TabsAction, { description: "Tab action: list, switch, or close." }),
-      index: Type.Optional(Type.Number({ description: "Tab index for switch/close." })),
+      action: stringEnum(TabsAction, { description: "Tab action: list, switch, close, or release control without closing." }),
+      index: Type.Optional(Type.Number({ description: "Index from this session's last tab list for switch/close/release." })),
+      tabId: Type.Optional(Type.Number({ description: "Stable Chrome tab ID for switch/close/release; preferred over index. Release with neither targets this session's selected tab." })),
     }),
-    async execute(_id, params, signal) {
+    async execute(_id, params, signal, _onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_tabs cancelled");
-      const result = await getBrowser().tabs(params.action as any, params.index);
+      const result = await getBrowser(ctx).tabs(params.action as any, params.index, params.tabId);
       return { content: [{ type: "text", text: compactJson(result) }], details: result };
     },
   });
@@ -228,15 +229,15 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: () => Browser
   pi.registerTool({
     name: "browser_close",
     label: "Browser Close",
-    description: "Close the active tab, or release this tool handle while keeping the persistent Chrome bridge alive.",
-    parameters: Type.Object({ all: Type.Optional(Type.Boolean({ description: "Close entire browser. Defaults to true. false closes active tab only." })) }),
-    async execute(_id, params, signal) {
+    description: "Close this Pi session's selected tab (all:false), or release all this session's tab leases without closing tabs (all:true, default). The shared browser bridge stays alive.",
+    parameters: Type.Object({ all: Type.Optional(Type.Boolean({ description: "Release this session's tab leases without closing tabs. Defaults to true. false closes only this session's selected tab." })) }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
       if (signal?.aborted) throw new Error("browser_close cancelled");
-      const browser = getBrowser();
+      const browser = getBrowser(ctx);
       await browser.close(params.all !== false);
       const closedAll = params.all !== false;
       return {
-        content: [{ type: "text", text: params.all === false ? "Closed active browser tab." : "Browser bridge remains connected." }],
+        content: [{ type: "text", text: params.all === false ? "Closed this session\'s selected tab." : "Released this session\'s tab leases; shared tabs and bridge remain open." }],
         details: { closedAll, bridgeKeptAlive: closedAll },
       };
     },

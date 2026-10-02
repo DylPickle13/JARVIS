@@ -1,10 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 type BrowserLaunchMode = "managed" | "cdp" | "extension";
 
 export type BrowserStatus = {
+  protocolVersion: number;
   launchMode: BrowserLaunchMode;
   running: boolean;
   connected: boolean;
@@ -29,7 +31,11 @@ export type BrowserStatus = {
     connecting: boolean;
   };
   activeIndex: number;
-  pages: Array<{ index: number; url: string; title: string }>;
+  selectedTabId?: number | null;
+  selectionMissing?: boolean;
+  needsReselect?: boolean;
+  sessionId?: string;
+  pages: Array<{ index: number; tabId: number; url: string; title: string; controlledBy?: string | null; controlledByThisSession?: boolean; leaseExpiresAt?: number | null }>;
 };
 
 export type ScreenshotResult = {
@@ -84,6 +90,10 @@ export class DaemonBrowserManager {
   readonly cdpUrl: string;
   readonly daemonUrl: string;
   private readonly tokenFile: string;
+  // Unique per live Pi client, even if two processes resume the same session file.
+  readonly sessionId = randomUUID();
+  private ready = false;
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(daemonUrl = defaultDaemonUrl(), tokenFile = defaultTokenFile(), profileDir = defaultProfileDir(), profileDirectory = defaultProfileDirectory()) {
     this.daemonUrl = daemonUrl.replace(/\/+$/, "");
@@ -111,11 +121,28 @@ export class DaemonBrowserManager {
     }
   }
 
-  private async request<T>(path: string, options: { method?: "GET" | "POST"; body?: unknown } = {}): Promise<T> {
+  private request<T>(path: string, options: { method?: "GET" | "POST"; body?: unknown } = {}): Promise<T> {
+    const run = async () => {
+      if (!this.ready && path === "/close" && (options.body as {all?: boolean})?.all !== false) return undefined as T;
+      if (!this.ready) {
+        const status = await this.requestRaw<BrowserStatus>("/status");
+        if (status.protocolVersion !== 2) throw new Error("Browser bridge needs the session-aware update/restart before controlling tabs.");
+        this.ready = true;
+        if (path === "/status") return status as T;
+      }
+      return this.requestRaw<T>(path, options);
+    };
+    const result = this.queue.then(run, run);
+    this.queue = result.catch(() => undefined);
+    return result;
+  }
+
+  private async requestRaw<T>(path: string, options: { method?: "GET" | "POST"; body?: unknown } = {}): Promise<T> {
     const response = await fetch(`${this.daemonUrl}${path}`, {
       method: options.method ?? "GET",
       headers: {
         authorization: `Bearer ${this.token()}`,
+        "x-jarvis-browser-session": this.sessionId,
         ...(options.body === undefined ? {} : { "content-type": "application/json" }),
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -128,7 +155,7 @@ export class DaemonBrowserManager {
     return payload.result as T;
   }
 
-  async open(url: string, newTab = false): Promise<{ url: string; title: string; index: number }> {
+  async open(url: string, newTab = false): Promise<{ url: string; title: string; index: number; tabId: number }> {
     return this.request("/open", { method: "POST", body: { url, newTab } });
   }
 
@@ -140,8 +167,8 @@ export class DaemonBrowserManager {
     return this.request("/extract", { method: "POST", body: params });
   }
 
-  async tabs(action: "list" | "switch" | "close", index?: number): Promise<BrowserStatus> {
-    return this.request("/tabs", { method: "POST", body: { action, index } });
+  async tabs(action: "list" | "switch" | "close" | "release", index?: number, tabId?: number): Promise<BrowserStatus> {
+    return this.request("/tabs", { method: "POST", body: { action, index, tabId } });
   }
 
   async status(): Promise<BrowserStatus> {

@@ -1012,10 +1012,17 @@ async function route(req, res) {
       const allowed = ['/status','/connect','/open','/tabs','/extract','/screenshot','/click','/type','/upload','/key','/scroll','/wait','/close'];
       if (!allowed.includes(url.pathname) || !['GET','POST'].includes(req.method) || (req.method === 'GET' && !['/status','/tabs'].includes(url.pathname))) return send(res, 404, {ok:false,error:'Not found'});
       const body = req.method === 'POST' ? await readJson(req) : (url.pathname === '/tabs' ? {action:'list'} : {});
-      const result = await extensionBackend.handle(url.pathname, body);
+      const sessionHeader = req.headers['x-jarvis-browser-session'];
+      const readOnly = url.pathname === '/status' || (url.pathname === '/tabs' && body.action === 'list');
+      if ((!sessionHeader && !readOnly) || (sessionHeader && (typeof sessionHeader !== 'string' || !/^[a-zA-Z0-9-]{8,128}$/.test(sessionHeader)))) {
+        return send(res, 409, {ok:false,error:'Browser session identity required. Reload the Pi browser extension before controlling tabs.'});
+      }
+      if (body.targetTabId !== undefined) return send(res, 400, {ok:false,error:'targetTabId is internal; use browser_tabs with tabId to select a tab.'});
+      const result = await extensionBackend.handle(url.pathname, body, sessionHeader || '__observer__');
       if (result.daemon) Object.assign(result.daemon, {host,port,tokenFile});
       return send(res,200,{ok:true,result});
     }
+    if (req.headers['x-jarvis-browser-session']) return send(res, 409, {ok:false,error:'Session-aware browser control requires the extension backend; CDP fallback is not concurrency-safe.'});
     if (req.method === 'GET' && url.pathname === '/status') return send(res, 200, { ok: true, result: await statusObject() });
     if (req.method === 'POST' && url.pathname === '/connect') return send(res, 200, { ok: true, result: await statusObject(await connectBrowser()) });
 
