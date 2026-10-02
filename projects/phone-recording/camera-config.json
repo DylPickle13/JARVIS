@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "cameras": [
+    {"role":"lg","name":"Wide Angle","platform":"android","model":"LG G6","enabled":true,"onboarded":true,"serial":"LGH873bb5b4b79","video_label":"2880 × 2160","preview":true,"wireless_tls":false},
+    {"role":"samsung","name":"Dyl Cam","platform":"android","model":"Samsung S21 FE","enabled":true,"onboarded":true,"serial":"R5CRC27FBMP","video_label":"4K / 30","preview":true,"wireless_tls":true},
+    {"role":"iphone","name":"Bass Pedals","platform":"iphone","model":"iPhone 11","enabled":true,"onboarded":true,"video_label":"4K / 30","preview":true},
+    {"role":"overhead","name":"Overhead","platform":"android","model":"Samsung S21 FE","enabled":false,"onboarded":false,"serial":"R5CT10S8GEY","video_label":"4K / 30 target","preview":true,"wireless_tls":true}
+  ]
+}

@@ -1,0 +1,5 @@
+# Python 3.13 (tested with 3.13.14); FFmpeg/ADB are external prerequisites.
+opentimelineio==0.18.1
+numpy==2.5.3
+scipy==1.18.1
+pymobiledevice3==11.9.2

@@ -1,0 +1,787 @@
+openapi: 3.0.1
+info:
+  title: Monitoring Control API
+  description: API for monitoring and controlling display settings in Blackmagic Design products.
+  version: 1.2.0
+servers:
+  - url: /control/api/v1
+tags:
+- name: Monitoring
+  description: Controls for monitoring features on displays.
+paths:
+  /monitoring/display:
+    get:
+      operationId: getMonitoringDisplays
+      summary: Retrieve a list of all display names.
+      description: Returns an array of display name strings that can be used with other endpoints.
+      tags:
+      - Monitoring
+      responses:
+        200:
+          description: Returns a list of display names.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  displays:
+                    type: array
+                    items:
+                      type: string
+                    description: List of display names available.
+                    example: ['LCD1', 'SDIA', 'HDMI']
+
+  /monitoring/{displayName}/cleanFeed:
+    get:
+      operationId: getMonitoringCleanFeed
+      summary: Get the clean feed enable state for a specific display.
+      description: Returns whether clean feed is enabled for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnableState'
+        400:
+          description: Invalid display name format.
+        404:
+          description: Display name not found.
+        422:
+          description: Unable to retrieve the clean feed state.
+    put:
+      operationId: setMonitoringCleanFeed
+      summary: Set the clean feed enable state for a specific display.
+      description: Enables or disables clean feed for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableState'
+      responses:
+        204:
+          description: Clean feed enabled/disabled successfully.
+        400:
+          description: Invalid input or display name format.
+        404:
+          description: Display name not found.
+        422:
+          description: Failed to set clean feed enable.
+
+  /monitoring/{displayName}/displayLUT:
+    get:
+      operationId: getMonitoringDisplayLUT
+      summary: Get the display LUT enable state for a specific display.
+      description: Returns whether display LUT is enabled for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnableState'
+        400:
+          description: Invalid display name format.
+        404:
+          description: Display name not found.
+        422:
+          description: Failed to get display LUT enable state.
+    put:
+      operationId: setMonitoringDisplayLUT
+      summary: Set the display LUT enable state for a specific display.
+      description: Enables or disables display LUT for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableState'
+      responses:
+        204:
+          description: Display LUT enabled/disabled successfully.
+        400:
+          description: Invalid input or display name format.
+        404:
+          description: Display name not found.
+        422:
+          description: Failed to set display LUT enable.
+
+  /monitoring/{displayName}/zebra:
+    get:
+      operationId: getMonitoringZebra
+      summary: Get the zebra enable state for a specific display.
+      description: Returns whether zebra is enabled for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnableState'
+        400:
+          description: Invalid display name format.
+        404:
+          description: Display name not found.
+        422:
+          description: Failed to get zebra enable state.
+    put:
+      operationId: setMonitoringZebra
+      summary: Set the zebra enable state for a specific display.
+      description: Enables or disables zebra for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableState'
+      responses:
+        204:
+          description: Zebra enabled/disabled successfully.
+        400:
+          description: Invalid input or display name format.
+        404:
+          description: Display name not found.
+        422:
+          description: Failed to set zebra enable.
+
+  /monitoring/zebra:
+    get:
+      operationId: getMonitoringZebraSettings
+      summary: Get the zebra settings.
+      description: Returns the current highlight and skin tone zebra settings.
+      tags:
+      - Monitoring
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZebraSettings'
+    put:
+      operationId: setMonitoringZebraSettings
+      summary: Set the zebra settings.
+      description: Updates the highlight and/or skin tone zebra settings.
+      tags:
+      - Monitoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZebraSettings'
+      responses:
+        204:
+          description: Zebra settings updated successfully.
+        400:
+          description: Invalid zebra settings.
+        422:
+          description: Failed to set zebra settings.
+
+  /monitoring/{displayName}/focusAssist:
+    get:
+      operationId: getMonitoringFocusAssist
+      summary: Get the focus assist enable state for a specific display.
+      description: Returns whether focus assist is enabled for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnableState'
+        400:
+          description: Invalid display name format.
+        404:
+          description: Display name not found.
+        422:
+          description: Failed to get focus assist enable state.
+    put:
+      operationId: setMonitoringFocusAssist
+      summary: Set the focus assist enable state for a specific display.
+      description: Enables or disables focus assist for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableState'
+      responses:
+        204:
+          description: Focus assist settings updated successfully.
+        400:
+          description: Invalid input or display name format.
+        404:
+          description: Display name not found.
+        422:
+          description: Failed to set focus assist enable.
+
+  /monitoring/focusAssist:
+    get:
+      operationId: getMonitoringFocusAssistSettings
+      summary: Get the focus assist settings.
+      description: Returns the current focus assist mode, color, and intensity settings.
+      tags:
+      - Monitoring
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FocusAssistState'
+    put:
+      operationId: setMonitoringFocusAssistSettings
+      summary: Set the focus assist settings.
+      description: Updates the focus assist mode, color, and intensity settings.
+      tags:
+      - Monitoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FocusAssistState'
+      responses:
+        204:
+          description: Focus assist settings updated successfully.
+        400:
+          description: Invalid focus assist settings. Intensity must be between 0 and 100.
+        422:
+          description: Failed to set focus assist settings.
+
+  /monitoring/{displayName}/frameGuide:
+    get:
+      operationId: getMonitoringFrameGuide
+      summary: Get the frame guide enable state for a specific display.
+      description: Returns whether frame guides are enabled for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      responses:
+        200:
+          description: Returns the frame guide enable state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnableState'
+        400:
+          description: Invalid display name format.
+        404:
+          description: Display not found.
+        422:
+          description: Failed to get frame guide enable state.
+    put:
+      operationId: setMonitoringFrameGuide
+      summary: Set the frame guide enable state for a specific display.
+      description: Enables or disables frame guides for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableState'
+      responses:
+        204:
+          description: Frame guide state updated successfully.
+        400:
+          description: Invalid input or display name format.
+        404:
+          description: Display not found.
+        422:
+          description: Failed to set frame guide enable.
+
+  /monitoring/frameGuideRatio:
+    get:
+      operationId: getMonitoringFrameGuideRatio
+      summary: Get the current frame guide ratio.
+      description: Returns the current frame guide aspect ratio.
+      tags:
+      - Monitoring
+      responses:
+        200:
+          description: Returns the current frame guide ratio.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatioState'
+        422:
+          description: Failed to get frame guide ratio.
+    put:
+      operationId: setMonitoringFrameGuideRatio
+      summary: Set the frame guide ratio.
+      description: Updates the frame guide aspect ratio.
+      tags:
+      - Monitoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RatioState'
+      responses:
+        204:
+          description: Frame guide ratio updated successfully.
+        400:
+          description: Invalid frame guide ratio.
+        422:
+          description: Failed to set frame guide ratio.
+
+  /monitoring/frameGuideRatio/presets:
+    get:
+      operationId: getMonitoringFrameGuideRatioPresets
+      summary: Get the presets for frame guide ratios.
+      description: Returns a list of available preset frame guide ratios.
+      tags:
+      - Monitoring
+      responses:
+        200:
+          description: Returns a list of preset frame guide ratios.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  presets:
+                    type: array
+                    items:
+                      type: string
+                      description: A frame guide ratio.
+                    example: ['4:3', '16:9', '2.35:1']
+
+  /monitoring/{displayName}/frameGrids:
+    get:
+      operationId: getMonitoringFrameGrids
+      summary: Get the frame grids enable state for a specific display.
+      description: Returns whether frame grids are enabled for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      responses:
+        200:
+          description: Returns the frame grids enable state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnableState'
+        400:
+          description: Invalid display name format.
+        404:
+          description: Display not found.
+        422:
+          description: Failed to get frame grids enable state.
+    put:
+      operationId: setMonitoringFrameGrids
+      summary: Set the frame grids enable state for a specific display.
+      description: Enables or disables frame grids for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableState'
+      responses:
+        204:
+          description: Frame grids state updated successfully.
+        400:
+          description: Invalid input or display name format.
+        404:
+          description: Display not found.
+        422:
+          description: Failed to set frame grids enable.
+
+  /monitoring/frameGrids:
+    get:
+      operationId: getMonitoringFrameGridsSettings
+      summary: Get the global frame grids settings.
+      description: Returns the currently enabled frame grid types.
+      tags:
+      - Monitoring
+      responses:
+        200:
+          description: Returns the current frame grids settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameGrids'
+    put:
+      operationId: setMonitoringFrameGridsSettings
+      summary: Set the global frame grids settings.
+      description: Updates which frame grid types are enabled. At most 2 can be enabled, and if 2 are enabled, one must be "Thirds".
+      tags:
+      - Monitoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FrameGrids'
+      responses:
+        204:
+          description: Frame grids settings updated successfully.
+        400:
+          description: Invalid input. Must select at most 2 frame grids, one of which must be Thirds if two are selected.
+        422:
+          description: Failed to set frame grids.
+
+  /monitoring/{displayName}/safeArea:
+    get:
+      operationId: getMonitoringSafeArea
+      summary: Get the safe area enable state for a specific display.
+      description: Returns whether safe area is enabled for the specified display. May not be available on all products.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      responses:
+        200:
+          description: Returns the safe area enable state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnableState'
+        400:
+          description: Invalid display name format.
+        404:
+          description: Display not found.
+        422:
+          description: Failed to get safe area enable state.
+        501:
+          description: Safe area feature not supported on this product.
+    put:
+      operationId: setMonitoringSafeArea
+      summary: Set the safe area enable state for a specific display.
+      description: Enables or disables safe area for the specified display. May not be available on all products.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableState'
+      responses:
+        204:
+          description: Safe area state updated successfully.
+        400:
+          description: Invalid input or display name format.
+        404:
+          description: Display not found.
+        422:
+          description: Failed to set safe area enable.
+        501:
+          description: Safe area feature not supported on this product.
+
+  /monitoring/safeAreaPercent:
+    get:
+      operationId: getMonitoringSafeAreaPercent
+      summary: Get the current safe area percentage.
+      description: Returns the current safe area percentage. May not be available on all products.
+      tags:
+      - Monitoring
+      responses:
+        200:
+          description: Returns the current safe area percentage.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  percent:
+                    type: integer
+                    description: Safe area coverage percentage.
+                    example: 90
+        422:
+          description: Failed to get safe area percentage.
+        501:
+          description: Safe area feature not supported on this product.
+    put:
+      operationId: setMonitoringSafeAreaPercent
+      summary: Set the safe area percentage.
+      description: Updates the safe area percentage. May not be available on all products.
+      tags:
+      - Monitoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - percent
+              properties:
+                percent:
+                  type: integer
+                  description: Safe area coverage percentage to set (0-100).
+                  minimum: 0
+                  maximum: 100
+                  example: 80
+      responses:
+        204:
+          description: Safe area percentage updated successfully.
+        400:
+          description: Invalid percentage value. Must be between 0 and 100.
+        422:
+          description: Failed to set safe area percentage.
+        501:
+          description: Safe area feature not supported on this product.
+
+  /monitoring/{displayName}/falseColor:
+    get:
+      operationId: getMonitoringFalseColor
+      summary: Get the false color enable state for a specific display.
+      description: Returns whether false color is enabled for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      responses:
+        200:
+          description: Returns the false color enable state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnableState'
+        400:
+          description: Invalid display name format.
+        404:
+          description: Display not found.
+        422:
+          description: Failed to get false color enable state.
+    put:
+      operationId: setMonitoringFalseColor
+      summary: Set the false color enable state for a specific display.
+      description: Enables or disables false color for the specified display.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableState'
+      responses:
+        204:
+          description: False color state updated successfully.
+        400:
+          description: Invalid input or display name format.
+        404:
+          description: Display not found.
+        422:
+          description: Failed to set false color enable.
+
+  /monitoring/{displayName}/brightness:
+    get:
+      operationId: getMonitoringBrightness
+      summary: Get the brightness level for a specific display.
+      description: Returns the brightness level for the specified display. Only available on camera products with adjustable displays.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      responses:
+        200:
+          description: Returns the brightness level.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrightnessState'
+        400:
+          description: Invalid display name format.
+        404:
+          description: Display not found or not available on this product.
+    put:
+      operationId: setMonitoringBrightness
+      summary: Set the brightness level for a specific display.
+      description: Sets the brightness level for the specified display. Only available on camera products with adjustable displays.
+      tags:
+      - Monitoring
+      parameters:
+        - $ref: '#/components/parameters/displayName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - brightness
+              properties:
+                brightness:
+                  type: integer
+                  description: Brightness level (0-100)
+                  minimum: 0
+                  maximum: 100
+                  example: 75
+      responses:
+        204:
+          description: Brightness updated successfully.
+        400:
+          description: Invalid input, display name format, or brightness not adjustable for this display.
+        404:
+          description: Display not found or not available on this product.
+
+components:
+  parameters:
+    displayName:
+      in: path
+      name: displayName
+      required: true
+      description: Name of the display. Obtainable from /monitoring/display which returns a list of displayNames.
+      schema:
+        type: string
+        pattern: ^[a-zA-Z0-9]+$
+      x-bmd-list-source:
+        from: /monitoring/display
+        pointer: /displays
+        extract: items
+
+  schemas:
+    EnableState:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates if the feature is enabled.
+          example: true
+    BrightnessState:
+      type: object
+      properties:
+        brightness:
+          type: integer
+          description: Brightness level (0-100).
+          minimum: 0
+          maximum: 100
+          example: 75
+        adjustable:
+          type: boolean
+          description: Indicates if brightness is adjustable for this display.
+          example: true
+    FocusAssistState:
+      type: object
+      required:
+        - mode
+        - color
+        - intensity
+      properties:
+        mode:
+          type: string
+          description: Mode of focus assist.
+          enum: ['Peak', 'ColoredLines']
+          example: 'Peak'
+        color:
+          type: string
+          description: Color of the focus assist highlight.
+          enum: ['Red', 'Green', 'Blue', 'White', 'Black']
+          example: 'Red'
+        intensity:
+          type: integer
+          description: Intensity of the focus assist highlight (0-100).
+          minimum: 0
+          maximum: 100
+          example: 75
+    RatioState:
+      type: object
+      required:
+        - ratio
+      properties:
+        ratio:
+          type: string
+          description: The frame guide ratio in format "width:height".
+          example: '4:3'
+          x-bmd-list-source:
+            from: /monitoring/frameGuideRatio/presets
+            pointer: /presets
+            extract: items
+    FrameGrids:
+      type: object
+      required:
+        - frameGrids
+      properties:
+        frameGrids:
+          type: array
+          items:
+            type: string
+            enum: ['Thirds', 'Crosshair', 'Dot', 'Horizon']
+          description: List of frame grids enabled. At most 2 can be active, and if 2 are active, one must be "Thirds".
+          example: ['Thirds', 'Crosshair']
+    ZebraSettings:
+      type: object
+      properties:
+        highlight:
+          type: object
+          properties:
+            level:
+              oneOf:
+                - type: integer
+                  enum: [75, 80, 85, 90, 95, 100]
+                  description: The zebra level percentage.
+                - type: string
+                  enum: ['None']
+                  description: No zebra level selected.
+              example: 95
+            enabled:
+              type: boolean
+              description: True if highlight zebra is enabled.
+              example: true
+        skinTone:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: ['None', 'Blowout Threshold', 'Middle Grey +1', 'Middle Grey']
+              description: The type of skin tone zebra.
+              example: 'Middle Grey +1'
+            enabled:
+              type: boolean
+              description: True if skin tone zebra is enabled.
+              example: true

@@ -1,0 +1,24 @@
+__pycache__/
+.sync-venv/
+.iphone-venv/
+.iphone-network.json
+.dashboard/
+.dashboard-jobs/
+.dashboard-deletions/
+pending-take.json
+.wifi-validation/
+android-transports.json
+android-transports-before-wifi.json
+*.lock
+# Private snapshots from mac-mini-16; may contain device state/configuration.
+.remote-migration/
+# Machine-local evidence, generated pointers and diagnostic output.
+validation/
+latest-resolve-ready.json
+latest-resolve-import.lua
+*-result.json
+iphone-before-*.json
+*.log
+*.partial*
+*.sqlite*
+.venv*/

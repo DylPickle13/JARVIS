@@ -1,0 +1,8 @@
+#!/bin/zsh
+ROOT="${0:A:h}"
+export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+if [[ "$1" == dashboard ]]; then
+  shift
+  exec "$ROOT/.sync-venv/bin/python" "$ROOT/dashboard.py" "$@"
+fi
+exec "$ROOT/.sync-venv/bin/python" "$ROOT/dashboard_jobs.py" "$@"

@@ -6,6 +6,7 @@
 /generated_audio/
 /logs/
 /projects/*
+!/projects/phone-recording/
 !/projects/projects-drive-backup/
 !/projects/projects-drive-backup/*.py
 !/projects/projects-drive-backup/*.json

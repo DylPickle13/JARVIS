@@ -1,0 +1,4 @@
+{
+  "lg": {"mode": "wifi", "host": "192.168.21.113", "port": 5555},
+  "samsung": {"mode": "wifi", "host": "192.168.21.12", "port": 34115, "service": "adb-R5CRC27FBMP-Sw7P7P"}
+}
