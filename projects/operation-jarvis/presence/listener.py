@@ -2,6 +2,8 @@
 """Mac BLE collector. Only explicitly enrolled CoreBluetooth UUIDs affect presence."""
 import argparse
 import asyncio
+from functools import wraps
+import inspect
 import json
 import math
 import os
@@ -30,8 +32,38 @@ def load_devices(path):
     return devices
 
 
+def pooled_corebluetooth_backend(base, pool):
+    """Drain Cocoa temporaries on the asyncio thread, once per BLE event.
+
+    Bleak 2.1.1 dispatches did_discover_peripheral onto asyncio, outside the
+    native dispatch queue's autorelease pool. Pool the entire synchronous
+    dispatch, not just observed(): advertisement conversion precedes it.
+    No pool spans an await. This private backend seam is covered by an
+    installed-dependency regression test; review it when upgrading Bleak.
+    """
+    class PooledCoreBluetoothScanner(base):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            dispatch = self._manager.did_discover_peripheral
+            if not callable(dispatch) or inspect.iscoroutinefunction(dispatch):
+                raise RuntimeError('Unsupported CoreBluetooth dispatch API')
+
+            @wraps(dispatch)
+            def pooled_dispatch(*args, **kwargs):
+                with pool():
+                    return dispatch(*args, **kwargs)
+
+            # Installed before start() can begin scanning. The native delegate
+            # resolves this method when scheduling each event on asyncio.
+            self._manager.did_discover_peripheral = pooled_dispatch
+
+    return PooledCoreBluetoothScanner
+
+
 async def run(discover=False):
     from bleak import BleakScanner
+    from bleak.backends.corebluetooth.scanner import BleakScannerCoreBluetooth
+    from objc import autorelease_pool
     devices = load_devices(ROOT / "config.json")
     policy = Presence(devices)
     candidates = {}
@@ -43,7 +75,8 @@ async def run(discover=False):
             candidates[device.address] = {"name": device.name, "rssi": advertisement.rssi}
 
     try:
-        async with BleakScanner(detection_callback=observed):
+        backend = pooled_corebluetooth_backend(BleakScannerCoreBluetooth, autorelease_pool)
+        async with BleakScanner(detection_callback=observed, backend=backend):
             if discover:
                 await asyncio.sleep(30)
                 atomic_json(ROOT / "candidates.json", candidates)

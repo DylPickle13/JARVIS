@@ -30,6 +30,22 @@ Backend deployment: `20260921T051732Z-living-room-presence`. Its retained deploy
 record includes rollback plist, source hashes and verification results. Only
 jarvisd restarted; protected audio/terminal services were unchanged.
 
+## Mac callback memory lifecycle
+
+`listener.py` wraps Bleak's synchronous CoreBluetooth advertisement dispatch in
+an `objc.autorelease_pool()`, on the asyncio thread. The pool covers native
+advertisement conversion and callback dispatch, not just the presence observer,
+and never spans an `await`. This prevents Cocoa temporaries from accumulating in
+the long-lived import-time pool. Presence thresholds, three-second heartbeats,
+and the ten-second nearby hold are unchanged. No additional scanning is added.
+
+The adapter uses the pinned Bleak 2.1.1 private
+`_manager.did_discover_peripheral` seam. Review this when upgrading Bleak. Run
+`presence/.venv/bin/python -m unittest discover -s presence` from the
+`operation-jarvis` directory: the installed-dependency test exercises real Bleak
+conversion with a fake manager and synthetic data, without accessing Bluetooth.
+It also checks that retained advertisement objects survive pool drainage.
+
 ## Enrollment — maintenance reference (both devices already enrolled)
 
 macOS gives Bleak **CoreBluetooth UUIDs**, not Bluetooth MAC addresses. This is
