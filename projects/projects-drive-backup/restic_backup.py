@@ -26,6 +26,14 @@ TAG = 'jarvis-recovery-v1'
 SQLITE_HEADER = b'SQLite format 3\x00'
 
 
+def human_size(size):
+    value = float(size)
+    for unit in ('B', 'KiB', 'MiB', 'GiB', 'TiB'):
+        if abs(value) < 1024 or unit == 'TiB':
+            return f'{value:,.0f} B' if unit == 'B' else f'{value:,.2f} {unit}'
+        value /= 1024
+
+
 def utcnow():
     return datetime.now(timezone.utc).isoformat()
 
@@ -232,7 +240,8 @@ class Backup:
         excludes = self.state / 'excludes.txt'
         excludes.write_text('\n'.join(literal_pattern(p) for p in omitted) + '\n')
         # These top-level paths remain stable, enabling parent snapshot reuse.
-        print(f'Backing up {count} files (~{total / 1024**3:.2f} GiB), {len(databases)} SQLite snapshots', flush=True)
+        print(f'Drive backup started: {count:,} source files ({human_size(total)}), '
+              f'{len(databases):,} databases.', flush=True)
         output = self.run(['backup', '--json', '--host', self.config['host'], '--tag', TAG,
                            '--group-by', 'host,tags', '--exclude-file', str(excludes),
                            str(self.root), str(self.stage)], retries=3)
@@ -244,10 +253,15 @@ class Backup:
         self.run(['check'], retries=2)
         self.verify(snapshot)
         self.record(last_success_at=utcnow(), snapshot_id=snapshot, summary=summary, last_error=None)
-        print(f'JARVIS Restic Backup: completed\nSnapshot: {snapshot}\n'
-              f'Processed: {summary.get("total_bytes_processed", 0):,} bytes\n'
-              f'Added (stored): {summary.get("data_added_packed", 0):,} bytes\n'
-              'SQLite copies, repository structure and sample restore verified.', flush=True)
+        print('Drive backup: saved and verified\n'
+              f'  Data processed: {human_size(summary.get("total_bytes_processed", 0))}\n'
+              f'  New data stored (compressed): {human_size(summary.get("data_added_packed", 0))}\n'
+              f'  Files: {summary.get("files_new", 0):,} new, '
+              f'{summary.get("files_changed", 0):,} changed, '
+              f'{summary.get("files_unmodified", 0):,} unchanged\n'
+              f'  Checks passed: repository structure, {len(databases):,} database copies, '
+              f'{len(manifest["samples"]):,} sample-file restores\n'
+              f'  Recovery point: {snapshot}', flush=True)
 
     def snapshots(self):
         return json.loads(self.run(['snapshots', '--json', '--host', self.config['host'], '--tag', TAG], retries=2))
@@ -283,6 +297,7 @@ class Backup:
 
     def nightly(self):
         """One scheduled entry point; maintenance catches up after seven days."""
+        started = time.monotonic()
         self.backup()
         last = self.load_state().get('last_maintenance_at')
         age = ((datetime.now(timezone.utc) - datetime.fromisoformat(last)).total_seconds()
@@ -292,7 +307,10 @@ class Backup:
         elif age < -360:
             raise RuntimeError('Maintenance timestamp is in the future; check the clock')
         else:
-            print('Weekly maintenance: not yet due', flush=True)
+            print('Weekly maintenance: not needed yet (runs every 7 days).', flush=True)
+        elapsed = int(time.monotonic() - started)
+        minutes, seconds = divmod(elapsed, 60)
+        print(f'Drive backup job: completed in {minutes}m {seconds:02d}s.', flush=True)
 
     def maintain(self, dry_run=False):
         snapshot = self.verified_snapshot()
@@ -307,11 +325,15 @@ class Backup:
         if dry_run:
             print(self.run(args + ['--dry-run']))
             return
-        print(self.run(args))
+        # Keep the verbose retention table for explicit dry runs only.
+        self.run(args)
         self.run(['prune', '--max-unused', '10%', '--max-repack-size', '256M'])
         self.run(['check'], retries=2)
         self.record(last_maintenance_at=utcnow(), check_part=part)
-        print(f'JARVIS Restic Maintenance: completed; data partition {part}/4 checked')
+        print(f'Weekly maintenance: completed\n'
+              f'  Data integrity: rotating quarter {part} of 4 checked\n'
+              '  Restore test: passed\n'
+              '  Retention and cleanup: completed; final repository check passed', flush=True)
 
     def health(self, silent=False):
         state = self.load_state()

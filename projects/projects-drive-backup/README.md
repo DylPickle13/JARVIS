@@ -81,6 +81,13 @@ There is no independent missed-run watchdog now: if the job or scheduler never
 runs, this job cannot alert on its own absence. The manual `health` command still
 checks whether the last verified backup is under 36 hours old.
 
+Scheduled output is a plain-language summary: readable data sizes, new/changed/
+unchanged file counts, verification results, recovery-point ID, weekly maintenance
+status, and total job duration. The final job-completed line appears only after
+both backup and any due maintenance succeed. Raw Restic summary fields remain in
+private `status.json`; verbose retention tables are shown only with
+`maintenance --dry-run`. Failures still include diagnostic details and exit nonzero.
+
 The legacy `projects-drive-backup` job (`job_07a151c1f636`) is disabled, not deleted;
 its history and last tarball remain available for rollback.
 

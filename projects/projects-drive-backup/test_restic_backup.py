@@ -1,4 +1,6 @@
 import importlib.util
+from contextlib import redirect_stdout
+import io
 from datetime import timedelta
 import json
 import os
@@ -47,6 +49,43 @@ class BackupTests(unittest.TestCase):
             'password_file': str(self.password), 'rclone_config': str(self.base / 'rclone.conf'),
             'host': 'test-host', 'restic': shutil.which('restic') or '/opt/homebrew/bin/restic'
         }))
+
+    def test_human_sizes(self):
+        for size, expected in [(0, '0 B'), (1023, '1,023 B'), (1024, '1.00 KiB'),
+                               (1024**2, '1.00 MiB'), (1024**3, '1.00 GiB'),
+                               (1024**4, '1.00 TiB')]:
+            self.assertEqual(b.human_size(size), expected)
+
+    def test_backup_summary_is_readable_and_preserves_raw_state(self):
+        backup = b.Backup(self.config, 60)
+        summary = {'message_type': 'summary', 'snapshot_id': 'abc12345',
+                   'total_bytes_processed': 5 * 1024**3, 'data_added_packed': 2 * 1024**2,
+                   'files_new': 2, 'files_changed': 3, 'files_unmodified': 1234}
+        output = io.StringIO()
+        with patch.object(backup, 'run', return_value=json.dumps(summary)), \
+             patch.object(backup, 'verify'), redirect_stdout(output):
+            backup.backup()
+        result = output.getvalue()
+        self.assertIn('Drive backup: saved and verified', result)
+        self.assertIn('Data processed: 5.00 GiB', result)
+        self.assertIn('New data stored (compressed): 2.00 MiB', result)
+        self.assertIn('Files: 2 new, 3 changed, 1,234 unchanged', result)
+        self.assertIn('1 database copies, 2 sample-file restores', result)
+        self.assertIn('Recovery point: abc12345', result)
+        self.assertEqual(backup.load_state()['summary'], summary)
+
+    def test_maintenance_hides_retention_table_except_for_dry_run(self):
+        backup = b.Backup(self.config, 60)
+        for dry_run in (False, True):
+            output = io.StringIO()
+            with patch.object(backup, 'verified_snapshot', return_value='fixture'), \
+                 patch.object(backup, 'health'), patch.object(backup, 'verify'), \
+                 patch.object(backup, 'run', return_value='RAW RETENTION TABLE') as run, \
+                 redirect_stdout(output):
+                backup.maintain(dry_run=dry_run)
+            self.assertEqual('RAW RETENTION TABLE' in output.getvalue(), dry_run)
+            self.assertEqual('Weekly maintenance: completed' in output.getvalue(), not dry_run)
+            self.assertEqual(any(c.args[0][0] == 'prune' for c in run.call_args_list), not dry_run)
 
     def test_policy_keeps_unique_data_and_secrets(self):
         for path in ['.env', 'projects/temp/analysis.py', 'projects/laya-model/models/custom.safetensors',
@@ -102,10 +141,14 @@ class BackupTests(unittest.TestCase):
     def test_nightly_skips_recent_maintenance(self):
         backup = b.Backup(self.config, 60)
         backup.record(last_maintenance_at=b.utcnow())
-        with patch.object(backup, 'backup') as upload, patch.object(backup, 'maintain') as maintain:
+        output = io.StringIO()
+        with patch.object(backup, 'backup') as upload, patch.object(backup, 'maintain') as maintain, \
+             redirect_stdout(output):
             backup.nightly()
             upload.assert_called_once()
             maintain.assert_not_called()
+        self.assertIn('Weekly maintenance: not needed yet', output.getvalue())
+        self.assertIn('Drive backup job: completed in', output.getvalue())
 
     def test_nightly_runs_missing_or_overdue_maintenance_after_backup(self):
         backup = b.Backup(self.config, 60)
@@ -128,11 +171,13 @@ class BackupTests(unittest.TestCase):
 
     def test_nightly_propagates_maintenance_failure_for_retry(self):
         backup = b.Backup(self.config, 60)
-        with patch.object(backup, 'backup'), \
+        output = io.StringIO()
+        with patch.object(backup, 'backup'), redirect_stdout(output), \
              patch.object(backup, 'maintain', side_effect=RuntimeError('maintenance failed')):
             with self.assertRaisesRegex(RuntimeError, 'maintenance failed'):
                 backup.nightly()
         self.assertNotIn('last_maintenance_at', backup.load_state())
+        self.assertNotIn('Drive backup job: completed', output.getvalue())
 
     def test_failed_maintenance_check_cannot_prune(self):
         backup = b.Backup(self.config, 60)
