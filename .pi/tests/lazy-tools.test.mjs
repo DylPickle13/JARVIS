@@ -44,6 +44,21 @@ function fixture() {
 
 const resultText = result => result.content.map(part => part.text || '').join('\n');
 
+test('owner-requested standalone CLI is allowed while safety guidance remains intact', async () => {
+  const { loader } = fixture();
+  const result = await loader.execute('inert', { groups: ['operation_jarvis'] });
+  const prompt = loader.promptGuidelines.join('\n');
+  const playbook = resultText(result);
+  for (const guidance of [prompt, playbook]) {
+    assert.match(guidance, /Owner-requested standalone CLI diagnosis\/commissioning is allowed/);
+    assert.match(guidance, /confirmation, identity, locking, privacy and unknown-write safeguards intact/);
+    assert(!/operate devices only through its tools|household control, not shell\/SSH/.test(guidance));
+  }
+  assert.match(prompt, /Never bypass safety gates or claim actions without tool results/);
+  assert.match(playbook, /Unknown write outcome means stop, inspect, never replay/);
+  assert.match(playbook, /never expose raw rules, credentials or media/);
+});
+
 test('loader advertises only the eight supported groups', () => {
   const { loader } = fixture();
   for (const group of groups) assert(loader.description.includes(`${group}=`));

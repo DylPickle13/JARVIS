@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import shutil
 import struct
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import AsyncMock, Mock, patch, call
@@ -32,6 +33,11 @@ def capability(**updates):
              'usr_def_audio_max_duration': '15', 'audio_type': 'fixture'}
     value.update(updates)
     return {'quick_response': {'capability': value}}
+
+
+def audio_capability(**updates):
+    return {'audio_capability': {'device_sourcefile': {
+        'encode_type': ['G722'], 'sampling_rate': ['16'], **updates}}}
 
 
 def row(id='1', name='Preset', custom=False, index='0', duration='1000', **extra):
@@ -52,7 +58,7 @@ class MetadataTests(unittest.TestCase):
         cap = q.limits(capability())
         self.assertTrue(cap.supported)
         self.assertEqual((cap.max_custom, cap.max_seconds), (3, 15))
-        self.assertEqual(cap.public()['uploader_codec'], 'G711alaw')
+        self.assertEqual(cap.public()['uploader_codec'], 'G722')
         self.assertFalse(q.limits(capability(usr_def_audio_support='0')).supported)
         for key, value in [('usr_def_audio_support', True), ('usr_def_audio_support', 'on'),
                            ('usr_def_audio_max_num', True), ('usr_def_audio_max_num', '999'),
@@ -78,6 +84,84 @@ class MetadataTests(unittest.TestCase):
         bad['read_only'] = 'unknown'
         with self.assertRaises(cli.ControlError):
             q.entries(listing(bad))
+
+    def test_capability_errors_identify_only_fixed_field_names(self):
+        cases = [({}, 'shape'),
+                 ({'capability': []}, 'shape'),
+                 (capability(usr_def_audio_support='DO_NOT_PRINT'), 'usr_def_audio_support'),
+                 (capability(usr_def_audio_max_num=True), 'usr_def_audio_max_num'),
+                 (capability(usr_def_audio_max_duration=None), 'usr_def_audio_max_duration')]
+        for value, field in cases:
+            with self.subTest(field=field), self.assertRaises(q.MetadataError) as caught:
+                q.limits(value)
+            self.assertEqual(str(caught.exception), 'invalid_quick_response_metadata')
+            details = q.metadata_details(caught.exception)
+            self.assertEqual(details, {'metadata_section': 'capability', 'metadata_field': field})
+            self.assertNotIn('DO_NOT_PRINT', json.dumps(details))
+
+    def test_list_errors_identify_only_fixed_field_names(self):
+        cases = [({}, 'shape'),
+                 ({'quick_resp_audio': [{1: row()}]}, 'entry_shape'),
+                 (listing(row(name='DO_NOT_PRINT\x00')), 'name'),
+                 (listing({**row(), 'read_only': 'DO_NOT_PRINT'}), 'read_only'),
+                 (listing(row(id='DO_NOT_PRINT\r\n')), 'id'),
+                 (listing(row(index=True)), 'index'),
+                 (listing(row(duration=None)), 'duration'),
+                 (listing(row(), row()), 'duplicate_id')]
+        for value, field in cases:
+            with self.subTest(field=field), self.assertRaises(q.MetadataError) as caught:
+                q.entries(value)
+            details = q.metadata_details(caught.exception)
+            self.assertEqual(details, {'metadata_section': 'quick_resp_audio', 'metadata_field': field})
+            self.assertNotIn('DO_NOT_PRINT', json.dumps(details))
+
+    def test_file_audio_capabilities_require_exact_g722_16khz_profile(self):
+        q.check_audio_capability(audio_capability())
+        for value in ({}, None, {'audio_capability': {'device_sourcefile': []}},
+                      audio_capability(encode_type=['G711alaw']),
+                      audio_capability(encode_type=['OPUS']),
+                      audio_capability(encode_type='G722'),
+                      audio_capability(encode_type=['G722', True]),
+                      audio_capability(sampling_rate=['8']),
+                      audio_capability(sampling_rate=[16]),
+                      audio_capability(sampling_rate=['16'] * 17)):
+            with self.subTest(value=value), self.assertRaisesRegex(cli.ControlError, 'audio_profile_unavailable'):
+                q.check_audio_capability(value)
+
+    def test_integer_file_ids_are_accepted_without_mutating_inventory(self):
+        rows = [row(id=0), row(id=1, name='Second', extra='UNCHANGED')]
+        self.assertEqual(q.entries(listing(*rows)), rows)
+        self.assertIs(type(q.entries(listing(*rows))[0]['id']), int)
+        self.assertEqual(q.file_identifier(0), '0')
+        self.assertEqual(q.file_identifier('opaque_ID'), 'opaque_ID')
+        with self.assertRaises(cli.ControlError):
+            q.identifier(0)  # Session/header IDs remain string-only.
+
+    def test_invalid_numeric_ids_and_canonical_duplicates_fail_closed(self):
+        for value in (True, False, -1, 1.5, q.MAX_FILE_ID + 1, None):
+            with self.subTest(value=value), self.assertRaises(q.MetadataError) as caught:
+                q.entries(listing(row(id=value)))
+            self.assertEqual(caught.exception.metadata_field, 'id')
+        with self.assertRaises(q.MetadataError) as caught:
+            q.entries(listing(row(id=1), row(id='1', name='Duplicate')))
+        self.assertEqual(caught.exception.metadata_field, 'duplicate_id')
+
+    def test_numeric_readback_uses_canonical_keys_but_preserves_raw_field_types(self):
+        before = [row(id=1, extra=1)]
+        added = row(id=2, name='JARVIS Parcel', custom=True)
+        q.verify_added(before, [*before, added], 'JARVIS Parcel', '2')
+        q.verify_added(before, [*before, added], 'JARVIS Parcel', 2)
+        for mutation in ({**before[0], 'id': '1'}, {**before[0], 'extra': True}):
+            with self.subTest(mutation=mutation), self.assertRaises(cli.ControlError):
+                q.verify_added(before, [mutation, added], 'JARVIS Parcel', '2')
+
+    def test_metadata_projection_rejects_unapproved_diagnostic_coordinates(self):
+        self.assertEqual(q.metadata_details(RuntimeError('DO_NOT_PRINT')), {})
+        self.assertEqual(q.metadata_details(cli.ControlError('invalid_quick_response_metadata')), {})
+        for section, field in [('capability', 'DO_NOT_PRINT'), ('DO_NOT_PRINT', 'shape'),
+                               ('capability', 'id'), ([], 'shape'), ('capability', {})]:
+            with self.subTest(section=section, field=field):
+                self.assertEqual(q.metadata_details(q.MetadataError(section, field)), {})
 
     def test_new_only_checks_name_capacity_and_duration(self):
         cap = q.limits(capability())
@@ -173,7 +257,8 @@ class MPEGTests(unittest.TestCase):
                 section = psi[1:4 + section_length]
                 self.assertEqual(transport.crc32_mpeg(section), b'\x00' * 4)
             pmt = self.packets(data, mux.PMT_PID)
-            self.assertEqual(pmt[13], 0x90)
+            self.assertEqual(pmt[13], 0x93)
+            self.assertEqual(pmt[16:18], b'\x80\x00')  # Tapo sample-rate index 8, no ES descriptors.
         all_data = first + second
         counts = [all_data[p + 3] & 15 for p in range(0, len(all_data), 188)
                   if ((all_data[p + 1] & 31) << 8) | all_data[p + 2] == mux.AUDIO_PID]
@@ -191,18 +276,12 @@ class MPEGTests(unittest.TestCase):
             with self.assertRaises(cli.ControlError):
                 transport.PCMATS().encode(value)
 
-    @unittest.skipUnless(importlib.util.find_spec('pytapo'), 'isolated archive SDK only')
-    def test_independent_pinned_sdk_demuxer(self):
-        from pytapo.media_stream.tsReader import TSReader
-        from rtp import PayloadType
-        raw = b'\xd5' * 1024
-        reader = TSReader()
-        reader.pes = {}  # The pinned reader declares this mutable member at class scope.
-        reader.setBuffer(transport.PCMATS().encode(raw))
-        packet = reader.getPacket()
-        self.assertIsNotNone(packet)
-        self.assertEqual(packet.payloadType, PayloadType.PCMA)
-        self.assertEqual(bytes(packet.payload), raw)
+    def test_g722_timestamp_clock_is_not_pcm_sample_rate(self):
+        mux = transport.PCMATS()
+        for _ in range(8):
+            mux.encode(b'\x00' * 1000)
+        pes = self.packets(mux.encode(b'\x00' * 100), mux.AUDIO_PID)
+        self.assertEqual(pes[9:14], transport.pts(90000))  # Exactly one second.
 
 
 class PreparationTests(unittest.TestCase):
@@ -223,7 +302,7 @@ class PreparationTests(unittest.TestCase):
                     q.read_source(value, 100)
 
     @unittest.skipUnless(shutil.which('ffmpeg'), 'FFmpeg optional offline conversion test')
-    def test_actual_local_conversion_is_mono_alaw_without_talkback_padding(self):
+    def test_actual_g722_conversion_decodes_to_16khz_mono_without_padding(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             source = root / 'synthetic.wav'
@@ -232,7 +311,18 @@ class PreparationTests(unittest.TestCase):
                 output.writeframes(b'\x00\x00' * 2 * 16000)
             path, count, digest = q.prepare(self.args(file=str(source)), root)
             self.assertEqual(count, 8000)
-            self.assertEqual(path.read_bytes(), b'\xd5' * 8000)
+            decoded = root / 'decoded.wav'
+            subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error',
+                            '-f', 'g722', '-i', str(path), '-c:a', 'pcm_s16le', str(decoded)],
+                           check=True, timeout=10, capture_output=True)
+            with wave.open(str(decoded), 'rb') as wav:
+                self.assertEqual((wav.getnchannels(), wav.getframerate(), wav.getnframes()),
+                                 (1, 16000, 16000))
+            mux = transport.PCMATS()
+            recovered = b''.join(MPEGTests.packets(mux.encode(path.read_bytes()[i:i+1024]),
+                                                  mux.AUDIO_PID)[14:]
+                                 for i in range(0, count, 1024))
+            self.assertEqual(recovered, path.read_bytes())
             self.assertEqual(digest, hashlib.sha256(path.read_bytes()).hexdigest())
 
     def test_restricted_conversion_and_overlong_clips_fail_not_truncate(self):
@@ -248,8 +338,10 @@ class PreparationTests(unittest.TestCase):
                 q.prepare(self.args(file=str(source)), root)
             self.assertIn('file,pipe', seen[0])
             self.assertIn('-format_whitelist', seen[0])
-            self.assertEqual(seen[0][seen[0].index('-c:a') + 1], 'pcm_alaw')
-            self.assertEqual(seen[0][seen[0].index('-f') + 1], 'alaw')
+            self.assertEqual(seen[0][seen[0].index('-c:a') + 1], 'g722')
+            self.assertEqual(seen[0][seen[0].index('-f') + 1], 'g722')
+            self.assertEqual(seen[0][seen[0].index('-ar') + 1], '16000')
+            self.assertEqual(seen[0][seen[0].index('-b:a') + 1], '64k')
             self.assertNotIn('adelay', ' '.join(seen[0]))
 
     def test_speech_bounds_before_synthesis(self):
@@ -290,7 +382,7 @@ class ParentTests(unittest.TestCase):
         return cli.parser().parse_args(['quick-response', *words])
 
     def mock_prepare(self, args, root):
-        path = root / 'response.alaw'
+        path = root / 'response.g722'
         path.write_bytes(b'\xd5' * 8000)
         return path, 8000, hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -317,16 +409,16 @@ class ParentTests(unittest.TestCase):
         self.assertNotIn('DO_NOT_PRINT', json.dumps(launch.call_args.args[0]))
         self.assertEqual(list((self.root / '.quick-response-runtime/bell').glob('prepare-*')), [])
 
-    def test_pending_blocks_before_preparation_or_network(self):
+    def test_pending_journal_no_longer_blocks_new_add(self):
         path = self.root / '.quick-response-runtime/bell'
         path.mkdir(parents=True, mode=0o700)
         path.parent.chmod(0o700)
         q.Journal(path / 'upload.json').write({'phase': 'pending'})
-        with patch.object(q, 'prepare') as prepare, patch.object(q, 'launch_worker', new_callable=AsyncMock) as launch:
-            with self.assertRaisesRegex(cli.ControlError, 'unresolved_native_upload'):
-                q.execute_quick_response(self.args('add', 'bell', '--name', 'Test', '--file', 'missing', '--confirm', '--experimental'), self.adapter)
-        prepare.assert_not_called()
-        launch.assert_not_called()
+        with patch.object(q, 'prepare', side_effect=self.mock_prepare), patch.object(q, 'launch_worker', new_callable=AsyncMock) as launch:
+            launch.return_value = {'result': 'quick_response_added'}
+            result = q.execute_quick_response(self.args('add', 'bell', '--name', 'Test', '--file', 'missing', '--confirm', '--experimental'), self.adapter)
+        self.assertEqual(result['result'], 'quick_response_added')
+        launch.assert_called_once()
 
     def test_launcher_error_type_translation(self):
         class OtherControlError(Exception):
@@ -391,6 +483,22 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         self.client.executeFunction.assert_called_once_with('getQuickRespList', q.LIST_REQUEST)
         self.assertNotIn('new_file_id', result)
 
+    async def test_integer_inventory_and_reservation_ids_verify_without_replacement(self):
+        self.before = [row(id=1, extra='UNCHANGED')]
+        self.client.executeFunction.return_value = listing(*self.before, row(id=2, name='JARVIS Fixture', custom=True))
+        result = await self.perform(FakeSession(id=2, journal=self.journal))
+        self.assertEqual(result['result'], 'quick_response_added')
+        self.assertEqual(self.journal.read()['new_file_id'], '2')
+        self.assertEqual(self.before[0]['id'], 1)
+
+    async def test_string_reservation_collision_with_integer_inventory_stops_before_audio(self):
+        self.before = [row(id=1)]
+        session = FakeSession(id='1', journal=self.journal)
+        result = await self.perform(session)
+        self.assertEqual(result['outcome'], 'unknown')
+        self.assertTrue(self.journal.blocked())
+        self.assertEqual(session.events, ['start', ('open', 'JARVIS Fixture'), 'close'])
+
     async def test_all_post_reservation_failures_are_unknown_and_never_retried(self):
         for phase in ('open', 'audio', 'finish', 'cancel'):
             with self.subTest(phase=phase):
@@ -402,6 +510,92 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('DO_NOT_PRINT', json.dumps(result))
                 self.assertTrue(self.journal.blocked())
                 self.assertEqual(sum(isinstance(e, tuple) and e[0] == 'open' for e in session.events), 1)
+                self.assertEqual(session.events[-1], 'close')
+
+    def test_upload_diagnostics_only_emit_fixed_coordinates(self):
+        cases = [(cli.ControlError('native_upload_rejected'), 'native_upload_rejected'),
+                 (cli.ControlError('DO_NOT_PRINT'), 'unexpected_failure'),
+                 (RuntimeError('DO_NOT_PRINT'), 'unexpected_failure'),
+                 (TimeoutError('DO_NOT_PRINT'), 'timeout'),
+                 (asyncio.CancelledError('DO_NOT_PRINT'), 'cancelled'),
+                 (ConnectionResetError('DO_NOT_PRINT'), 'connection_closed'),
+                 (asyncio.IncompleteReadError(b'DO_NOT_PRINT', 100), 'connection_closed'),
+                 (OSError('DO_NOT_PRINT'), 'io_failure'),
+                 (ValueError('DO_NOT_PRINT'), 'invalid_data')]
+        for error, reason in cases:
+            with self.subTest(reason=reason):
+                result = worker.upload_failure_details('reservation', error)
+                self.assertEqual(result, {'failure_stage': 'reservation', 'failure_reason': reason})
+                self.assertNotIn('DO_NOT_PRINT', json.dumps(result))
+        for stage in ('DO_NOT_PRINT', None, []):
+            self.assertEqual(worker.upload_failure_details(stage, RuntimeError()), {})
+
+    async def test_failure_stages_are_journaled_without_exception_text(self):
+        for phase, stage, reason in (
+                ('open', 'reservation', 'unexpected_failure'),
+                ('audio', 'audio_transfer', 'unexpected_failure'),
+                ('finish', 'finish_acknowledgement', 'timeout'),
+                ('cancel', 'audio_transfer', 'cancelled')):
+            with self.subTest(phase=phase):
+                # Synthetic journal only; never clear a real unresolved guard.
+                self.journal.path.unlink(missing_ok=True)
+                result = await self.perform(FakeSession(fail=phase, journal=self.journal))
+                record = self.journal.read()
+                self.assertEqual(result['failure_stage'], stage)
+                self.assertEqual(result['failure_reason'], reason)
+                self.assertEqual(record['failure_stage'], stage)
+                self.assertEqual(record['failure_reason'], reason)
+                self.assertEqual(record['phase'], 'unknown')
+                self.assertNotIn('DO_NOT_PRINT', json.dumps(record))
+                self.assertTrue(self.journal.blocked())
+                self.client.executeFunction.assert_not_called()
+
+    async def test_reservation_rejection_keeps_unknown_outcome(self):
+        session = FakeSession(journal=self.journal)
+        session.open_new = AsyncMock(side_effect=cli.ControlError('native_upload_rejected'))
+        result = await self.perform(session)
+        self.assertEqual(result['result'], 'write_outcome_unknown')
+        self.assertEqual(result['failure_stage'], 'reservation')
+        self.assertEqual(result['failure_reason'], 'native_upload_rejected')
+        self.assertFalse(result['automatic_retry'])
+        self.assertTrue(self.journal.blocked())
+        session.open_new.assert_awaited_once()
+        self.assertEqual(session.events, ['start', 'close'])
+
+    async def test_diagnostic_journal_failure_leaves_prior_pending_guard(self):
+        write = self.journal.write
+        def write_pending_only(record):
+            if record['phase'] == 'unknown':
+                raise OSError('DO_NOT_PRINT')
+            write(record)
+        with patch.object(self.journal, 'write', side_effect=write_pending_only):
+            result = await self.perform(FakeSession(fail='open', journal=self.journal))
+        self.assertEqual(result['failure_stage'], 'reservation')
+        self.assertEqual(self.journal.read()['phase'], 'pending')
+        self.assertTrue(self.journal.blocked())
+
+    async def test_journal_write_failure_stages_never_allow_more_audio(self):
+        for target, expected_stage, audio_sent in (
+                (2, 'reservation_journal', False), (3, 'verification_journal', True)):
+            with self.subTest(target=target):
+                self.journal.path.unlink(missing_ok=True)
+                write = self.journal.write
+                count = 0
+                def fail_once(record):
+                    nonlocal count
+                    count += 1
+                    if count == target:
+                        raise OSError('DO_NOT_PRINT')
+                    write(record)
+                session = FakeSession(journal=self.journal)
+                with patch.object(self.journal, 'write', side_effect=fail_once):
+                    result = await self.perform(session)
+                self.assertEqual(result['failure_stage'], expected_stage)
+                self.assertEqual(result['failure_reason'], 'io_failure')
+                self.assertEqual(self.journal.read()['phase'], 'unknown')
+                self.assertTrue(self.journal.blocked())
+                self.assertEqual(any(isinstance(e, tuple) and e[0] == 'audio'
+                                     for e in session.events), audio_sent)
                 self.assertEqual(session.events[-1], 'close')
 
     async def test_auth_failure_before_reservation_does_not_mark_write(self):
@@ -416,6 +610,8 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         result = await self.perform(session)
         self.assertEqual(result['outcome'], 'unknown')
         self.assertEqual(session.events, ['start', ('open', 'JARVIS Fixture'), 'close'])
+        self.assertEqual(result['failure_stage'], 'reservation_identity')
+        self.assertEqual(result['failure_reason'], 'native_upload_returned_existing_id')
 
     async def test_missing_or_changed_readback_remains_unknown(self):
         for value in (listing(*self.before), listing(row(extra='CHANGED'), row('2', 'JARVIS Fixture', True, '1'))):
@@ -424,6 +620,8 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             result = await self.perform(FakeSession(journal=self.journal))
             self.assertEqual(result['outcome'], 'unknown')
             self.assertTrue(self.journal.blocked())
+            self.assertEqual(result['failure_stage'], 'preservation_readback')
+            self.assertEqual(result['failure_reason'], 'response_readback_mismatch')
 
 
 class WorkerTests(unittest.TestCase):
@@ -438,7 +636,7 @@ class WorkerTests(unittest.TestCase):
         patch.object(worker, 'load_settings', return_value=cli.Settings(username='synthetic', password='synthetic')).start()
         self.client = Mock()
         self.client.basicInfo = {'device_info': {'basic_info': {'device_model': 'D235', 'device_type': 'SMART.TAPODOORBELL'}}}
-        self.client.executeFunction.side_effect = [capability(), listing(row(id='DO_NOT_PRINT'))]
+        self.client.executeFunction.side_effect = [capability(), listing(row(id='DO_NOT_PRINT')), audio_capability()]
         import security_doorbell_direct as d
         self.make = patch.object(d, 'make_client', return_value=self.client).start()
         self.request = {'alias': 'bell', 'registry': 'synthetic', 'entry_hash': q.fingerprint(self.entry),
@@ -448,7 +646,7 @@ class WorkerTests(unittest.TestCase):
         directory = self.root / '.quick-response-runtime/bell/prepare-fixture'
         directory.mkdir(parents=True, mode=0o700)
         for path in (directory, directory.parent, directory.parent.parent): path.chmod(0o700)
-        path = directory / 'response.alaw'
+        path = directory / 'response.g722'
         raw = b'\xd5' * 8000
         path.write_bytes(raw)
         path.chmod(0o600)
@@ -459,7 +657,8 @@ class WorkerTests(unittest.TestCase):
     def test_status_fixed_reads_and_private_projection(self):
         result = worker.run(self.request, 'synthetic')
         self.assertEqual(self.client.executeFunction.call_args_list, [
-            call('getQuickRespCapability', q.CAPABILITY_REQUEST), call('getQuickRespList', q.LIST_REQUEST)])
+            call('getQuickRespCapability', q.CAPABILITY_REQUEST), call('getQuickRespList', q.LIST_REQUEST),
+            call('getAudioConfig', q.AUDIO_CAPABILITY_REQUEST)])
         self.assertNotIn('DO_NOT_PRINT', json.dumps(result))
         self.assertEqual(result['responses'][0]['name'], 'Preset')
         self.client.close.assert_called_once()
@@ -490,19 +689,68 @@ class WorkerTests(unittest.TestCase):
 
     def test_native_preflight_rejects_before_media_session(self):
         request = self.add_request()
-        self.client.executeFunction.side_effect = [capability(), listing(row(name='JARVIS Fixture'))]
+        self.client.executeFunction.side_effect = [capability(), listing(row(name='JARVIS Fixture')), audio_capability()]
         with patch.object(worker, 'upload', new_callable=AsyncMock) as upload:
             with self.assertRaisesRegex(cli.ControlError, 'name_already_exists'):
                 worker.run(request, 'synthetic')
         upload.assert_not_called()
 
-    def test_pending_guard_blocks_before_credentials_or_network(self):
+    def test_wrong_file_audio_profile_blocks_before_reservation(self):
         request = self.add_request()
-        q.Journal(self.root / '.quick-response-runtime/bell/upload.json').write({'phase': 'pending'})
-        with self.assertRaisesRegex(cli.ControlError, 'unresolved_native_upload'):
+        self.client.executeFunction.side_effect = [capability(), listing(row()),
+                                                   audio_capability(encode_type=['OPUS'])]
+        with patch.object(worker, 'upload', new_callable=AsyncMock) as upload:
+            with self.assertRaisesRegex(cli.ControlError, 'audio_profile_unavailable'):
+                worker.run(request, 'synthetic')
+        upload.assert_not_called()
+        self.assertFalse((self.root / '.quick-response-runtime/bell/upload.json').exists())
+
+    def test_legacy_alaw_file_is_rejected_before_network(self):
+        request = self.add_request()
+        original = Path(request['media_path'])
+        legacy = original.with_suffix('.alaw')
+        original.rename(legacy)
+        request['media_path'] = str(legacy)
+        with self.assertRaisesRegex(cli.ControlError, 'invalid_native_audio_input'):
             worker.run(request, 'synthetic')
         self.make.assert_not_called()
-        worker.load_settings.assert_not_called()
+
+    def test_metadata_failure_precedes_upload_and_pending_journal(self):
+        request = self.add_request()
+        cases = [([capability(usr_def_audio_support='DO_NOT_PRINT')], 'capability'),
+                 ([capability(), listing(row(id='DO_NOT_PRINT\r\n'))], 'quick_resp_audio')]
+        for replies, section in cases:
+            self.client.executeFunction.side_effect = replies
+            with self.subTest(section=section), \
+                 patch.object(worker, 'upload', new_callable=AsyncMock) as upload:
+                with self.assertRaises(q.MetadataError) as caught:
+                    worker.run(request, 'synthetic')
+                self.assertEqual(caught.exception.metadata_section, section)
+                upload.assert_not_called()
+                self.assertFalse((self.root / '.quick-response-runtime/bell/upload.json').exists())
+
+    def test_pending_journal_no_longer_blocks_new_add(self):
+        request = self.add_request()
+        q.Journal(self.root / '.quick-response-runtime/bell/upload.json').write({'phase': 'pending'})
+        with patch.object(worker, 'upload', new_callable=AsyncMock) as upload:
+            upload.return_value = {'result': 'quick_response_added', 'name': 'JARVIS Fixture'}
+            result = worker.run(request, 'synthetic')
+        self.assertEqual(result['result'], 'quick_response_added')
+        worker.load_settings.assert_called()
+        upload.assert_called_once()
+
+    def test_worker_main_reports_sanitized_metadata_coordinates(self):
+        error = q.MetadataError('quick_resp_audio', 'duration')
+        with patch.object(worker.sys, 'argv', ['worker', 'synthetic']), \
+             patch.object(worker.sys, 'stdin', io.StringIO(json.dumps(self.request))), \
+             patch.object(worker, 'run', side_effect=error), \
+             patch('sys.stdout', new_callable=io.StringIO) as out:
+            code = worker.main()
+        result = json.loads(out.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(result, {'result': 'error', 'reason': 'invalid_quick_response_metadata',
+                                 'automatic_retry': False, 'metadata_section': 'quick_resp_audio',
+                                 'metadata_field': 'duration'})
 
     def test_worker_main_sanitizes_unexpected_errors(self):
         with patch.object(sys_module := worker.sys, 'argv', ['worker', 'synthetic']), \
@@ -550,13 +798,14 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_exact_new_and_finish_payloads_and_session_headers(self):
         self.session.next_message = AsyncMock(side_effect=[
-            reply(1, session_id='fixture-session', audio_file_id='2', audio_file_index='0'), reply(2)])
+            reply(1, session_id='fixture-session', audio_file_id='2', index='0'), reply(2)])
         await self.session.open_new('JARVIS Fixture')
         await self.session.send_audio(transport.PCMATS().encode(b'\xd5' * 100))
         await self.session.finish()
         writes = [c.args[0] for c in self.base._writer.write.call_args_list]
         self.assertEqual(json.loads(writes[0]), {'type': 'request', 'seq': 1, 'params': {
-            'method': 'get', 'usr_def_audio': {'name': 'JARVIS Fixture', 'type': 'quick_response'}}})
+            'method': 'get', 'usr_def_audio': {'name': 'JARVIS Fixture', 'type': 'quick_response',
+                                            'audio_config': {'sample_rate': '16', 'encode_type': 'G722'}}}})
         self.assertEqual(json.loads(writes[-1]), {'type': 'request', 'seq': 2, 'params': {'method': 'do', 'finish': 'null'}})
         header = self.base._send_http_request.call_args_list[1].args[1]
         self.assertEqual(header[b'Content-Type'], b'audio/mp2t')
@@ -565,6 +814,27 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(writes[1].startswith(b'ENC'))
         self.assertNotIn('audio_file_id', json.dumps(json.loads(writes[0])))
         self.assertTrue(self.session.finished)
+
+    async def test_integer_file_ids_in_create_progress_and_finish_acknowledgements(self):
+        self.session.next_message = AsyncMock(side_effect=[
+            reply(1, session_id='fixture-session', audio_file_id=2, index=0),
+            reply(2, audio_file_id=2)])
+        self.assertEqual(await self.session.open_new('JARVIS Fixture'), '2')
+        self.session.notification({'type': 'notification', 'params': {
+            'event_type': 'stream_sequence', 'audio_file_id': 2, 'processed_len': 100}})
+        await self.session.finish()
+        self.assertTrue(self.session.finished)
+        self.assertEqual(self.session.processed, 100)
+
+    async def test_integer_file_ids_do_not_weaken_session_id_or_numeric_validation(self):
+        values = [reply(1, session_id=2, audio_file_id=2, index=0)]
+        values += [reply(1, session_id='fixture-session', audio_file_id=value, index=0)
+                   for value in (True, -1, 1.5, q.MAX_FILE_ID + 1)]
+        for value in values:
+            session = transport.NativeUploadSession(self.base)
+            session.next_message = AsyncMock(return_value=value)
+            with self.subTest(value=value), self.assertRaises(cli.ControlError):
+                await session.open_new('Fixture')
 
     async def test_rejected_mismatched_or_malformed_create_response(self):
         for value in (reply(999), {'type': 'response', 'seq': 1, 'params': {'error_code': False}},
@@ -582,17 +852,28 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
                 await self.session.request(params)
         self.base._writer.write.assert_not_called()
 
+    async def test_audio_profile_cannot_be_overridden_or_omitted(self):
+        for config in (None, {'sample_rate': '8', 'encode_type': 'G711alaw'},
+                       {'sample_rate': 16, 'encode_type': 'G722'},
+                       {'sample_rate': '16', 'encode_type': 'G722', 'extra': True}):
+            audio = {'name': 'Fixture', 'type': 'quick_response'}
+            if config is not None:
+                audio['audio_config'] = config
+            with self.assertRaisesRegex(cli.ControlError, 'unapproved_native_upload_method'):
+                await self.session.request({'method': 'get', 'usr_def_audio': audio})
+        self.base._writer.write.assert_not_called()
+
     async def test_finished_notification_not_accepted_as_commit(self):
         with self.assertRaisesRegex(cli.ControlError, 'unexpected_completion'):
             self.session.notification({'type': 'notification', 'params': {'event_type': 'stream_finish'}})
 
     async def test_valid_progress_and_rejected_unrelated_or_regressing_progress(self):
         self.session.file_id = '2'
-        self.session.notification({'type': 'notification', 'params': {'event_type': 'stream_seq', 'audio_file_id': '2', 'processed_len': 100}})
+        self.session.notification({'type': 'notification', 'params': {'event_type': 'stream_sequence', 'audio_file_id': '2', 'processed_len': 100}})
         self.assertEqual(self.session.processed, 100)
         for id, count in [('1', 101), ('2', 99), ('2', True)]:
             with self.assertRaises(cli.ControlError):
-                self.session.notification({'type': 'notification', 'params': {'event_type': 'stream_seq', 'audio_file_id': id, 'processed_len': count}})
+                self.session.notification({'type': 'notification', 'params': {'event_type': 'stream_sequence', 'audio_file_id': id, 'processed_len': count}})
 
     async def test_missing_or_unknown_encryption_rejected_before_native_request(self):
         for exchange in ('username="none" nonce="synthetic"', 'username="admin" encrypt_type="4"'):
@@ -659,8 +940,10 @@ class LoopbackHandshakeTests(unittest.IsolatedAsyncioTestCase):
                 fields, body = await read_part(reader)
                 create = json.loads(body)
                 observed.append(create)
-                self.assertEqual(create['params'], {'method': 'get', 'usr_def_audio': {'name': 'JARVIS Fixture', 'type': 'quick_response'}})
-                await send(writer, reply(create['seq'], session_id='fixture-session', audio_file_id='2', audio_file_index='1'))
+                self.assertEqual(create['params'], {'method': 'get', 'usr_def_audio': {
+                    'name': 'JARVIS Fixture', 'type': 'quick_response',
+                    'audio_config': {'sample_rate': '16', 'encode_type': 'G722'}}})
+                await send(writer, reply(create['seq'], session_id='fixture-session', audio_file_id='2', index='1'))
                 fields, body = await read_part(reader)
                 self.assertEqual(fields['content-type'], 'audio/mp2t')
                 self.assertEqual(fields['x-if-encrypt'], '1')

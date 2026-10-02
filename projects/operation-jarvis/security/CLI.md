@@ -522,13 +522,14 @@ coverage. The commands do not download tools or change power/storage settings.
 `quick-response` targets the normal Tapo saved-response list, not live speaker
 playback. Implementation is standalone Python/CLI, **not a Pi extension**.
 No Pi tools, backend routes, polling, daemons or services are added.
-The native protocol is offline-tested, not physically commissioned.
+Native upload has passed live D235 commissioning through finish acknowledgement
+and fresh device-list readback. App visibility and audible playback remain unverified.
 
 - `prepare`: converts a local file or JARVIS speech offline, reports format and
   duration, then removes temporary audio. No device requests; native limits are
   not checked. Requires an existing configured direct-host D235 alias.
 - `status`: explicitly contacts the doorbell to read native capabilities/list
-  and the unresolved-upload guard. It does not upload or play sound.
+  and the upload journal. It does not upload or play sound.
 - `add`: requires both `--confirm` and `--experimental`, plus separate owner
   approval for this one persistent response. Fresh identity, capacity, duration
   and duplicate-name checks precede creation. Only a new response is supported.
@@ -553,26 +554,52 @@ Use exactly one of `--file`, `--text`, or `--text-file` (`-` reads stdin).
 Inputs are bounded to 32 MiB for files and 2,048 UTF-8 bytes for speech.
 Labels use 1–32 ASCII characters: letters/digits, spaces, underscore, hyphen,
 parentheses or period, starting with a letter/digit and without trailing spaces.
-The experimental format is mono 8 kHz G.711 A-law in authenticated MPEG-TS,
-using existing pinned `pytapo==3.4.19` in `.venv-archive`, FFmpeg and the existing
-JARVIS voice environment. No codec/settings change or plaintext fallback occurs.
+The experimental file profile is mono 16 kHz G.722 at 64 kbit/s in authenticated
+MPEG-TS, using pinned `pytapo==3.4.19` in `.venv-archive`, FFmpeg and the existing
+JARVIS voice environment. `status`/`add` also read `audio_capability.device_sourcefile`
+and require this profile; missing or incompatible metadata fails closed with
+`native_upload_audio_profile_unavailable`. The native create request explicitly
+negotiates `audio_config: {sample_rate: "16", encode_type: "G722"}`. No persistent
+codec/settings change or plaintext fallback occurs. This profile matches the
+observed device capabilities and Android app selection logic; it does not establish
+successful upload or playback. The earlier 8 kHz A-law prototype did not match
+those file capabilities. Old `.alaw` prepared files are rejected.
 Local audio is capped at 60 seconds; `add` also enforces fresh native limits.
 `--gain` is stored digital attenuation (0–100, default 100), not hardware volume.
 
+A rejected capability/list payload returns `invalid_quick_response_metadata` with
+allowlisted `metadata_section` and `metadata_field` diagnostics. These identify
+only the validation location, never raw replies, field values or response names.
+Preflight metadata failures stop before response reservation; use an explicitly
+requested `status` read to diagnose, not another `add`. `device_busy` means a
+shared lock is held; do not delete lock files or interrupt another service.
+
 Hub then doorbell locks protect the transaction. An owner-only fsynced journal
 at `.quick-response-runtime/<alias>/upload.json` is written **before** reserving
-a slot. Anything uncertain after creation starts blocks further additions;
-there is no automatic retry, rollback, reset, deletion, replacement or reordering.
-Inspect status and the private journal before recovery; do not remove a guard
-merely to repeat an upload. Avoid concurrent response edits in the Tapo app.
+a slot. Uncertain outcomes are recorded, but the owner removed the persistent
+upload block: a newly authorized add may proceed after an unknown outcome.
+There is still no automatic retry, rollback, reset, deletion, replacement or
+reordering in this CLI. Inspect fresh status and the journal before deciding on
+a new add; never blindly replay an uncertain upload. A new attempt overwrites the
+journal. The legacy status field `blocked_by_unresolved_upload` reports an
+unresolved journal, not an enforced write block. Avoid concurrent response edits
+in the Tapo app.
+Caught upload failures include allowlisted `failure_stage` and `failure_reason`
+coordinates in the result and, when writable, the private journal. No exception
+text, raw replies or device IDs are exposed. These diagnostics do not turn an
+uncertain write into a safe retry; even an explicit rejection is recorded as an
+unknown outcome. Older attempts cannot be diagnosed retroactively from these fields.
 
 Success requires an explicit finish acknowledgement and a fresh list containing
 exactly one new item, with every existing entry unchanged. This verifies only
 immediate device-list readback—not appearance in the owner's app, long-term
 persistence or audible acceptance. App checking and tapping the response are
 separate owner actions. The uploader never requests playback.
-Household actions by the assistant remain subject to the approved-tool boundary;
-this standalone CLI is not an authorization to use shell/SSH for live control.
+Repository routing guidance permits explicitly owner-requested standalone CLI
+diagnosis/commissioning with all CLI safeguards intact. Assistant execution still
+follows the instructions currently loaded in its session; editing guidance files
+does not override an active session. No saved-response Pi tool or backend route
+is added.
 
 ## Camera controls
 

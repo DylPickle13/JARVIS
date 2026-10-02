@@ -14,6 +14,20 @@ const schema = {
   required: ['path'],
 };
 
+test('compacted request and startup prompts retain the owner-requested CLI route and safety gates', () => {
+  const original = 'Guidelines:\n- Original guideline.\n\n';
+  const request = compact({ instructions: original }).instructions;
+  const startup = handlers.get('before_agent_start')({
+    systemPrompt: original, systemPromptOptions: { selectedTools: [] },
+  }).systemPrompt;
+  for (const guidance of [request, startup]) {
+    assert.match(guidance, /Owner-requested standalone CLI diagnosis\/commissioning is allowed/);
+    assert.match(guidance, /confirmation, identity, locking, privacy and unknown-write safeguards intact/);
+    assert.match(guidance, /Never claim actions without tool results or bypass gates/);
+    assert(!/then its tools for actual device operations/.test(guidance));
+  }
+});
+
 test('preserves strict validation constraints in Responses, Messages, and Chat tools', () => {
   const tools = [
     { type: 'function', name: 'read', strict: true, parameters: schema },

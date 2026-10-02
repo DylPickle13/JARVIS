@@ -2,7 +2,7 @@
 
 Only pytapo's pinned authenticated handshake/AES helper is reused. Its generic
 transceive/router is NOT used: native upload needs distinct finish/session rules.
-The MPEG-TS encoder is independent and emits PCMA (Tapo stream type 0x90), with
+The MPEG-TS encoder is independent and emits G.722 (Tapo stream type 0x93), with
 90 kHz PTS/PCR, as observed in the Android custom-response sender.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import re
 import struct
 
 from security_cli import ControlError
-from security_quick_response import RATE, identifier, label, number
+from security_quick_response import RATE, CODEC, BYTE_RATE, file_identifier, identifier, label, number
 
 MAX_BODY = 65536
 MAX_HEADERS = 16384
@@ -36,12 +36,13 @@ def pts(value):
 
 
 class PCMATS:
+    """Packetize 64 kbit/s G.722; timestamps track encoded bytes, not PCM samples."""
     PMT_PID = 0x42
     AUDIO_PID = 0x44
 
     def __init__(self):
         self.counters = {}
-        self.samples = 0
+        self.encoded_bytes = 0
 
     def packetize(self, pid, data, *, pcr=None):
         output = bytearray()
@@ -80,8 +81,8 @@ class PCMATS:
     def tables(self):
         pat = bytes.fromhex('00b00d0001c100000001') + struct.pack('>H', 0xE000 | self.PMT_PID)
         pmt = (bytes.fromhex('02b0120001c10000') + struct.pack('>H', 0xE000 | self.AUDIO_PID)
-               + bytes.fromhex('f00090') + struct.pack('>H', 0xE000 | self.AUDIO_PID)
-               + bytes.fromhex('f000'))
+               + bytes.fromhex('f00093') + struct.pack('>H', 0xE000 | self.AUDIO_PID)
+               + bytes.fromhex('8000'))  # Tapo repurposes reserved ES bits: rate index 8 = 16 kHz.
         # PSI payload includes a pointer field; pad with legal PSI stuffing,
         # rather than PES adaptation fields.
         result = bytearray()
@@ -96,9 +97,9 @@ class PCMATS:
     def encode(self, raw):
         if not isinstance(raw, bytes) or not 0 < len(raw) <= 1024:
             raise ControlError('invalid_native_audio_chunk')
-        timestamp = self.samples * 90000 // RATE
+        timestamp = self.encoded_bytes * 90000 // BYTE_RATE
         header = b'\x00\x00\x01\xc0' + struct.pack('>H', len(raw) + 8) + b'\x80\x80\x05' + pts(timestamp)
-        self.samples += len(raw)  # G.711: exactly one byte per sample.
+        self.encoded_bytes += len(raw)  # G.722: one byte per two 16 kHz samples.
         return self.tables() + self.packetize(self.AUDIO_PID, header + raw, pcr=timestamp)
 
 
@@ -194,8 +195,8 @@ class NativeUploadSession:
             raise ControlError('native_upload_invalid_response')
         info = value['params']
         event = info.get('event_type')
-        if event == 'stream_seq':
-            if self.file_id is None or info.get('audio_file_id') != self.file_id:
+        if event == 'stream_sequence':
+            if self.file_id is None or file_identifier(info.get('audio_file_id')) != self.file_id:
                 raise ControlError('native_upload_invalid_response')
             processed = number(info.get('processed_len'), 16 * 1024 * 1024)
             if processed < self.processed:
@@ -228,8 +229,10 @@ class NativeUploadSession:
         if (self.seq == 0 and session is None and type(params) is dict
                 and set(params) == {'method', 'usr_def_audio'} and params['method'] == 'get'
                 and type(params['usr_def_audio']) is dict
-                and set(params['usr_def_audio']) == {'name', 'type'}
-                and params['usr_def_audio']['type'] == 'quick_response'):
+                and set(params['usr_def_audio']) == {'name', 'type', 'audio_config'}
+                and params['usr_def_audio']['type'] == 'quick_response'
+                and params['usr_def_audio']['audio_config'] == {
+                    'sample_rate': str(RATE // 1000), 'encode_type': CODEC}):
             label(params['usr_def_audio']['name'])
         elif not (self.session_id is not None and session == self.session_id
                   and params == {'method': 'do', 'finish': 'null'}):
@@ -256,10 +259,12 @@ class NativeUploadSession:
         label(name)
         if self.seq or self.session_id is not None:
             raise ControlError('native_upload_invalid_state')
-        value = await self.request({'method': 'get', 'usr_def_audio': {'name': name, 'type': 'quick_response'}})
+        value = await self.request({'method': 'get', 'usr_def_audio': {
+            'name': name, 'type': 'quick_response',
+            'audio_config': {'sample_rate': str(RATE // 1000), 'encode_type': CODEC}}})
         self.session_id = identifier(value.get('session_id'))
-        self.file_id = identifier(value.get('audio_file_id'))
-        number(value.get('audio_file_index'), 64)
+        self.file_id = file_identifier(value.get('audio_file_id'))
+        number(value.get('index'), 64)
         return self.file_id
 
     async def send_audio(self, body):
@@ -278,7 +283,7 @@ class NativeUploadSession:
         if self.session_id is None or self.finished:
             raise ControlError('native_upload_invalid_state')
         value = await self.request({'method': 'do', 'finish': 'null'}, session=self.session_id)
-        if value.get('audio_file_id', self.file_id) != self.file_id:
+        if file_identifier(value.get('audio_file_id', self.file_id)) != self.file_id:
             raise ControlError('native_upload_invalid_response')
         self.finished = True
 

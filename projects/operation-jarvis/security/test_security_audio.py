@@ -237,9 +237,11 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(audio.read_json(directory/'stop.json'), {'session': 'example'})
 
     def test_private_directory_required(self):
-        (self.root/'bad').mkdir(mode=0o755)
+        bad = self.root/'bad'
+        bad.mkdir(mode=0o755)
+        bad.chmod(0o755)  # force the mode; umask 0077 would otherwise mask it to 0700.
         with self.assertRaises(audio.AudioError):
-            audio.private_dir(self.root/'bad')
+            audio.private_dir(bad)
 
     def test_reject_symlink_runtime(self):
         (self.root/'target').mkdir(mode=0o700)
