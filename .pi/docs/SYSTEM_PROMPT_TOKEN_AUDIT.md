@@ -1,6 +1,11 @@
 # System Prompt Token Audit Workflow
 
-Updated: 2026-06-24 EDT
+Updated: 2026-10-02 EDT
+
+For the Pi 1.0 forced-prompt cache invalidator, its fix and offline prefix tests,
+see [Prompt-cache compatibility](PROMPT_CACHE.md). Persisted transcripts alone do
+not show request-time forced-prompt projection; audit the full `session.prompt()`
+lifecycle before attributing a miss to provider routing.
 
 Use this guide to see how much of a Pi request comes from instructions, tool schemas, and conversation text. Run payload captures only in an isolated development checkout: the temporary extension deliberately stops Pi before sending the request.
 

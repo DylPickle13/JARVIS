@@ -395,13 +395,15 @@ expected_extension_files=(
 for path in "${expected_extension_files[@]}"; do
   require_file "extension source" "$path"
 done
-expected_app_docs="projects/operation-jarvis/jarvis-app/docs/README.md"
-actual_app_docs="$(find projects/operation-jarvis/jarvis-app/docs -maxdepth 1 -type f -name '*.md' | sort)"
-if [[ "$actual_app_docs" == "$expected_app_docs" ]]; then
-  pass "app Markdown documentation is consolidated"
+app_docs="projects/operation-jarvis/jarvis-app/docs"
+# The README is now an index, not the only permitted Markdown file. Keep the
+# entry-point contract; the link audit below checks the rest of the guide tree.
+if [[ -s "$app_docs/architecture.md" && -s "$app_docs/operations.md" ]] &&
+   grep -Fq '(architecture.md)' "$app_docs/README.md" &&
+   grep -Fq '(operations.md)' "$app_docs/README.md"; then
+  pass "app documentation index links the architecture and operations guides"
 else
-  fail "app Markdown documentation is not consolidated"
-  diff -u <(printf '%s\n' "$expected_app_docs") <(printf '%s\n' "$actual_app_docs") 2>&1 | indent
+  fail "app documentation index or core guides missing"
 fi
 require_executable "native attachment picker launcher" ".pi/scripts/pi-attach-picker"
 require_executable "temporary SSH attachment bridge" ".pi/scripts/pi-attach-bridge.mjs"
@@ -501,8 +503,9 @@ if (!overridesMatch) throw new Error('Could not find TOOL_DESCRIPTION_OVERRIDES'
 if (/^\s*load_tools\s*:/m.test(overridesMatch[1])) {
   throw new Error('98-slim-provider-payload.ts must not override the registry-generated load_tools description');
 }
-if (!slim.includes('item.type !== "tool_search_output"') || !slim.includes('input: compactDeferredToolOutputs(payload.input)')) {
-  throw new Error('98-slim-provider-payload.ts must compact deferred OpenAI tool_search_output schemas');
+if (!slim.includes('item.type !== "tool_search_output"') || !slim.includes('item.type !== "additional_tools"') ||
+    !slim.includes('input: compactDeferredToolOutputs(payload.input)')) {
+  throw new Error('98-slim-provider-payload.ts must compact both OpenAI tool-addition formats');
 }
 
 for (const forbidden of [
@@ -627,6 +630,7 @@ if [[ -n "$PYTHON_BIN" ]]; then
   run_check "native APNs capability and privacy assertions" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" - <<'PY'
 from pathlib import Path
 import plistlib
+import re
 import subprocess
 
 root = Path('projects/operation-jarvis/jarvis-app')
@@ -672,12 +676,18 @@ for retired in ('pendingResultSequence', 'consumePendingResultSequence', 'jarvis
     assert retired not in coordinator
     assert retired not in watch_coordinator
 watch_dashboard = (root / 'JARVISWatch/Views/WatchDashboardContent.swift').read_text(encoding='utf-8')
-page_block = watch_dashboard.split('private enum WatchDashboardPage', 1)[1].split('\n}', 1)[0]
-assert [line.strip() for line in page_block.splitlines() if line.strip().startswith('case ')] == [
-    'case terminal', 'case plugs', 'case system', 'case jobs'
-]
+watch_pages = (root / 'JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift').read_text(encoding='utf-8')
+assert 'public enum WatchDashboardPage:' in watch_pages
+# APNs requires these destinations, not a particular unrelated page order.
+# Pager membership/order/gestures are covered by WatchDashboardPageTests.swift.
+page_cases = re.findall(r'^\s*case (\w+)\s*$', watch_pages, re.MULTILINE)
+assert page_cases.count('terminal') == 1 and page_cases.count('jobs') == 1, \
+    'Canonical Watch pages must retain terminal and scheduled-job destinations'
+assert '@State private var selectedPage: WatchDashboardPage' in watch_dashboard
+assert 'selectedPage = .jobs' in watch_dashboard
 watch_jobs = (root / 'JARVISWatch/Views/WatchJobsView.swift').read_text(encoding='utf-8')
-assert 'Scheduled Jobs' in watch_jobs and 'Archived Jobs' in watch_jobs
+assert 'ForEach(model.sections.categories)' in watch_jobs and 'threads: category.threads' in watch_jobs
+assert 'Archived Jobs' in watch_jobs and 'threads: model.sections.archived' in watch_jobs
 assert 'result.output' in watch_jobs and 'result.error' in watch_jobs
 assert 'WatchJobResultSheet' not in watch_jobs and 'bounded(' not in watch_jobs
 watch_model = (root / 'JARVISWatch/WatchJobsModel.swift').read_text(encoding='utf-8')

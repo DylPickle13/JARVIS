@@ -26,7 +26,7 @@ const resultText = r => r.content.filter(c => c.type === 'text').map(c => c.text
 async function fixture(t, options = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'pi-codemode-test-'));
   let api;
-  const commands = new Map(), calls = [], executed = [], requests = [];
+  const commands = new Map(), calls = [], executed = [], requests = [], contexts = [];
   const settingsManager = sdk.SettingsManager.inMemory({ defaultTools: options.disabled ? ['read'] : ['read', '+codemode'],
     defaultProvider: 'openai-codex', defaultModel: 'gpt-6-astra', compaction: { enabled: false }, retry: { enabled: false } });
   const mocks = pi => {
@@ -38,6 +38,9 @@ async function fixture(t, options = {}) {
         if (options.execute) return options.execute(signal);
         return { content: [{ type: 'text', text: 'inert-status' }] };
       },
+    });
+    if (options.promptState) pi.on('before_agent_start', event => {
+      event.systemPromptOptions.appendSystemPrompt = options.promptState.addendum;
     });
     pi.on('tool_call', e => {
       calls.push(e);
@@ -51,14 +54,20 @@ async function fixture(t, options = {}) {
   };
   const loader = new sdk.DefaultResourceLoader({ cwd: dir, agentDir: dir, settingsManager,
     noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true,
-    extensionFactories: [sdk.createCodemodeExtension({ mode: 'on' }), mocks, lazy] });
+    extensionFactories: [sdk.createCodemodeExtension({ mode: 'on' }), mocks, lazy, ...(options.slim ? [registerSlim] : [])] });
   await loader.reload();
-  const { session } = await sdk.createAgentSession({ cwd: dir, agentDir: dir, settingsManager, resourceLoader: loader,
+  const modelRuntime = await sdk.ModelRuntime.create({ authPath: join(dir, 'auth.json'), modelsPath: null,
+    modelsStorePath: join(dir, 'models-store.json'), allowModelNetwork: false, refreshOnCreate: false });
+  // Auth is inert too: Codex is OAuth-only and ignores API-key availability.
+  // The stream below is replaced; no credential store or network is consulted.
+  modelRuntime.hasConfiguredAuth = provider => provider === 'openai-codex';
+  const { session } = await sdk.createAgentSession({ cwd: dir, agentDir: dir, settingsManager, resourceLoader: loader, modelRuntime,
     sessionManager: sdk.SessionManager.inMemory(dir), excludeTools: options.excludeTools });
   await session.bindExtensions({ onError: e => { throw new Error(e.error); } });
   let queued = [];
   session.agent.streamFunction = (model, context) => {
     requests.push(session.getActiveToolNames());
+    contexts.push(structuredClone(context));
     const content = queued.length ? queued.shift() : [{ type: 'text', text: 'done' }];
     const stopReason = content.some(c => c.type === 'toolCall') ? 'toolUse' : 'stop';
     const message = { role: 'assistant', content, api: model.api, provider: model.provider, model: model.id,
@@ -68,12 +77,13 @@ async function fixture(t, options = {}) {
     return stream;
   };
   t.after(async () => { session.dispose(); await rm(dir, { recursive: true, force: true }); });
-  return { session, api, calls, executed, requests,
+  return { session, api, calls, executed, requests, contexts,
     async reset() { await commands.get('reset-tools').handler('', { ui: { notify() {} } }); },
     async run(code) {
       const before = session.messages.length;
       queued = [[{ type: 'toolCall', id: `test_${++nextId}`, name: 'codemode', arguments: { code } }]];
-      await session.agent.prompt('inert test');
+      if (options.promptLifecycle) await session.prompt('inert test');
+      else await session.agent.prompt('inert test');
       const result = session.messages.slice(before).filter(m => m.role === 'toolResult').at(-1);
       assert(result, JSON.stringify(session.messages.slice(before)));
       return result;
@@ -153,6 +163,39 @@ test('script deadline aborts a pending nested call', async t => {
   assert.equal(result.isError, true);
   assert.equal(f.executed.length, 1);
   assert.equal(aborted, true);
+});
+
+test('slimming preserves the initial prefix when a real prompt loads tools and starts another turn', async t => {
+  const promptState = { addendum: 'Original owner policy.' };
+  const f = await fixture(t, { slim: true, promptLifecycle: true, promptState });
+  await f.run('return await tools.load_tools({ groups: ["browser"] });');
+  const [before, after] = f.contexts;
+  assert(before.messages[0].sections, 'startup must not force/flatten the system prompt');
+  assert.deepEqual(after.messages.slice(0, before.messages.length), before.messages);
+  const additions = after.messages.slice(before.messages.length).filter(m => m.role === 'system');
+  assert(additions.some(m => m.toolsAdded?.some(tool => tool.name === 'browser_status')));
+  assert(!after.messages[0].toolsAdded.some(tool => tool.name === 'browser_status'));
+  promptState.addendum = 'Updated owner policy; preserve it as a later instruction.';
+  await f.run('return await tools.browser_status({});');
+  assert.deepEqual(f.contexts[2].messages.slice(0, after.messages.length), after.messages);
+  assert(f.contexts[2].messages.some(m => m.sections?.addendum?.includes(promptState.addendum)));
+  assert.equal(f.executed.length, 1);
+
+  // Offline A/B: exercise both native addition formats, without a provider call.
+  const { convertResponsesMessages } = await import(pathToFileURL(join(runtime,
+    'node_modules/@earendil-works/pi-ai/dist/api/openai-responses-shared.js')));
+  const { resolveTranscriptTools } = await import(pathToFileURL(join(runtime,
+    'node_modules/@earendil-works/pi-ai/dist/utils/transcript.js')));
+  for (const supportsAdditionalTools of [true, false]) {
+    const opts = { includeSystemPrompt: false, supportsMidConvoSystemMessages: true,
+      supportsAdditionalTools, supportsToolSearch: true };
+    const convert = context => convertResponsesMessages(f.session.model, context, new Set(['openai-codex']), opts);
+    const a = convert(before), b = convert(after);
+    assert.deepEqual(b.slice(0, a.length), a);
+    assert(b.some(item => item.type === (supportsAdditionalTools ? 'additional_tools' : 'tool_search_output')));
+    assert.deepEqual(resolveTranscriptTools(before.messages, true).requestTools,
+      resolveTranscriptTools(after.messages, true).requestTools);
+  }
 });
 
 test('payload slimming preserves codemode call and return-type guidance', async () => {

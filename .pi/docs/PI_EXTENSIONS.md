@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-10-01 EDT
+Updated: 2026-10-02 EDT
 
 JARVIS adds its tools and session helpers through `.pi/extensions/`. The read-only `.pi/smoke-test.sh` checks the extension list for additions or removals. Shared helpers in `.pi/extensions/lib/` are excluded because they are not standalone extensions.
 
@@ -59,7 +59,7 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `56-github-cli.ts`: guarded GitHub CLI adapter.
 - `58-reaper-bridge.ts`: live REAPER inline-Lua bridge.
 - `60-pdf-read-result.ts`: PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
-- `98-slim-provider-payload.ts`: deterministic provider payload/schema slimming, including OpenAI deferred `tool_search_output` schemas.
+- `98-slim-provider-payload.ts`: deterministic structured prompt/schema slimming, including OpenAI `additional_tools` and `tool_search_output` schemas. Never forces/flattens the initial prompt; see [prompt-cache compatibility](PROMPT_CACHE.md).
 - `99-lazy-tools.ts`: additive lazy optional tool activation, plus opt-in direct-call auto-loading on the patched JARVIS Pi runtime.
 
 ## Automatic session names
@@ -106,7 +106,7 @@ The [JARVIS lazy-execution runtime](PI_LAZY_EXECUTION.md) also accepts valid dir
 
 A direct call may refresh the provider prefix once because Pi keeps an already-used tool's schema immediate rather than deferring it. Use `load_tools` to discover unfamiliar schemas or take advantage of native deferred loading. Stock Pi requires explicit loading.
 
-Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full group playbooks are returned by model-called `load_tools` (or appended to the original direct call's result after auto-loading) and remain in conversation context. Manual `/load-tools` queues the same hidden playbook for the next user turn. `98-slim-provider-payload.ts` preserves the registry-generated top-level `load_tools` description and also slims deferred schemas nested in OpenAI `tool_search_output` items. The smoke test checks these invariants for drift.
+Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full group playbooks are returned by model-called `load_tools` (or appended to the original direct call's result after auto-loading) and remain in conversation context. Manual `/load-tools` queues the same hidden playbook for the next user turn. `98-slim-provider-payload.ts` preserves the registry-generated top-level `load_tools` description and also slims schemas nested in OpenAI `additional_tools` and `tool_search_output` items. Startup changes use structured prompt sections, not a forced whole-prompt replacement that would flatten later tool additions into the cached prefix. The smoke test checks these invariants for drift.
 
 Memory is explicit: loading `memory` makes search, remember, update, forget, list, and status available. It does not recall memories automatically or change the system prompt between turns.
 

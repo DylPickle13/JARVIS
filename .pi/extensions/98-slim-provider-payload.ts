@@ -4,30 +4,24 @@ function toolName(tool: any): string | undefined {
   return typeof tool?.name === "string" ? tool.name : typeof tool?.function?.name === "string" ? tool.function.name : undefined;
 }
 
-function compactAvailableTools(_payload: any): string {
-  return "";
+// Exact, semantics-preserving substitutions only. Never replace a whole rules
+// block: it may contain new upstream guidance or project-specific safety gates.
+const PROMPT_LINE_COMPACTIONS: Record<string, string> = {
+  "- bash: Execute bash commands (ls, grep, find, etc.)": "- bash: Execute shell commands.",
+  "- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call": "- edit: Exact text replacements; batch disjoint edits.",
+  "- write: Create or overwrite files": "- write: Create/overwrite files.",
+  "- Be concise in your responses": "- Be concise.",
+  "- Show file paths clearly when working with files": "- Show file paths clearly.",
+};
+
+function compactPromptLines(text: string): string {
+  return text.split("\n").map((line) => PROMPT_LINE_COMPACTIONS[line] ?? line).join("\n");
 }
 
-function compactInstructions(instructions: string, payload: any): string {
-  let text = instructions;
-
-  text = text.replace(
-    /Available tools:\n(?:- [^\n]*\n)+\nIn addition to the tools above, you may have access to other custom tools depending on the project\.\n\n?/,
-    compactAvailableTools(payload),
-  );
-
-  text = text.replace(
-    /Guidelines:\n(?:- [^\n]*\n)+(?:\n)/,
-    [
-      "Guidelines:",
-      "- Coding: use bash/read/grep/find/ls/edit/write; exact unique edits, batch disjoint edits.",
-      "- Ask one clarification only if required.",
-      "- Memory: load `memory` first; stable facts only; no secrets/sensitive data.",
-      "- Web: `web_search` discover, `fetch_content` text/pages, `get_search_content` stored; load `browser` for rendered/interactive/logged-in/forms/screenshots/open-use-check sites.",
-      "- Discover optional schemas with `load_tools`; its description is the canonical group inventory. Known valid direct calls auto-load registered lazy tools on the JARVIS runtime. Home controls, security/status, sensors, or door protocols (including explanations) => immediately `load_tools({groups:[\"operation_jarvis\"]})`, prefer its tools for routine device operations. Owner-requested standalone CLI diagnosis/commissioning is allowed with existing confirmation, identity, locking, privacy and unknown-write safeguards intact; the D235 quick-response upload guard is owner-removed, so a new add may proceed after an unknown outcome. Files/shell/SSH/web remain permitted for diagnosing or maintaining JARVIS integration code. Never claim actions without tool results or bypass gates; cron checks use `jarvis_cron` unless OS cron/launchd is explicit.",
-      "- Be concise; show paths.",
-      "",
-    ].join("\n"),
+function compactInstructions(instructions: string): string {
+  let text = instructions.replace(
+    /(<(?:tools|rules)>\n)([\s\S]*?)(\n<\/(?:tools|rules)>)/g,
+    (_match, start, body, end) => start + compactPromptLines(body) + end,
   );
 
   text = text.replace(
@@ -70,16 +64,26 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   browser_close: "Close active Chrome tab or entire browser.",
 };
 
+const SCHEMA_MAP_KEYS = new Set(["properties", "patternProperties", "$defs", "definitions", "dependentSchemas", "dependencies"]);
+const SCHEMA_CHILD_KEYS = new Set([
+  "items", "prefixItems", "additionalItems", "additionalProperties", "unevaluatedItems", "unevaluatedProperties",
+  "contains", "propertyNames", "not", "if", "then", "else", "allOf", "anyOf", "oneOf",
+]);
+
 function stripNestedSchemaMetadata(value: any): any {
   if (Array.isArray(value)) return value.map(stripNestedSchemaMetadata);
   if (!value || typeof value !== "object") return value;
 
   const copy: any = {};
   for (const [key, child] of Object.entries(value)) {
-    // Strip prose only. additionalProperties is a validation constraint required
-    // by strict tool schemas, not optional metadata.
+    // Strip schema annotations, never property names or literal values in
+    // defaults/const/enum. A parameter named "description" is still a parameter.
     if (key === "description" || key === "title" || key === "$comment" || key === "examples") continue;
-    copy[key] = stripNestedSchemaMetadata(child);
+    if (SCHEMA_MAP_KEYS.has(key) && child && typeof child === "object" && !Array.isArray(child)) {
+      copy[key] = Object.fromEntries(Object.entries(child).map(([name, schema]) => [name, stripNestedSchemaMetadata(schema)]));
+    } else {
+      copy[key] = SCHEMA_CHILD_KEYS.has(key) ? stripNestedSchemaMetadata(child) : child;
+    }
   }
   return copy;
 }
@@ -156,24 +160,35 @@ function compactTool(tool: any): any {
 function compactDeferredToolOutputs(input: any): any {
   if (!Array.isArray(input)) return input;
   return input.map((item) => {
-    if (!item || item.type !== "tool_search_output" || !Array.isArray(item.tools)) return item;
+    if (!item || (item.type !== "tool_search_output" && item.type !== "additional_tools") || !Array.isArray(item.tools)) return item;
     return { ...item, tools: item.tools.map(compactTool) };
   });
 }
 
 export default function slimProviderPayload(pi: ExtensionAPI) {
   pi.on("before_agent_start", (event) => {
-    const selectedTools = (event as any).systemPromptOptions?.selectedTools ?? pi.getActiveTools();
-    const payloadLike = { tools: selectedTools.map((name: string) => ({ name })) };
-    const systemPrompt = compactInstructions(event.systemPrompt, payloadLike);
-    return systemPrompt === event.systemPrompt ? undefined : { systemPrompt };
+    const options = event.systemPromptOptions;
+    // Pi 1.0 projects a returned systemPrompt onto a flattened transcript head,
+    // moving all later tool additions into the initial cache prefix. Mutate only
+    // generated sections instead; Pi then persists append-only prompt deltas.
+    // Custom/forced prompts and other extensions' explicit sections remain owned
+    // by their authors. Older runtimes still get request-level schema slimming.
+    if (!options?.sections || options.customPrompt || options.forceSystemPrompt !== undefined) return;
+    for (const name of ["tools", "rules", "docs"]) {
+      if (Object.prototype.hasOwnProperty.call(options.sections, name)) continue;
+      const match = event.systemPrompt.match(new RegExp(`(?:^|\\n)<${name}>\\n([\\s\\S]*?)\\n</${name}>(?=\\n|$)`));
+      if (!match) continue;
+      const original = match[1];
+      const compacted = name === "docs" ? compactInstructions(original) : compactPromptLines(original);
+      if (compacted !== original) options.sections[name] = compacted;
+    }
   });
 
   pi.on("before_provider_request", (event) => {
     const payload: any = event.payload;
     return {
       ...payload,
-      instructions: typeof payload.instructions === "string" ? compactInstructions(payload.instructions, payload) : payload.instructions,
+      instructions: typeof payload.instructions === "string" ? compactInstructions(payload.instructions) : payload.instructions,
       input: compactDeferredToolOutputs(payload.input),
       tools: Array.isArray(payload.tools) ? payload.tools.map(compactTool) : payload.tools,
     };

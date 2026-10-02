@@ -7,13 +7,20 @@ const tools = {}; const calls = [];
 register({ registerTool(t) { tools[t.name] = t; }, async exec(command, args) { calls.push(args); return { code: 0, stdout: '{"ok":true}', stderr: '' }; } });
 const invoke = (params, tool = 'purifier') => tools[`operation_jarvis_${tool}`].execute('offline-test', params, undefined, undefined, { cwd: resolve(import.meta.dirname, '../../..') });
 test('only focused canonical tools registered, no mixed legacy names', () => {
-  assert.deepEqual(Object.keys(tools).sort(), ['operation_jarvis_media', 'operation_jarvis_plugs', 'operation_jarvis_purifier']);
+  assert.deepEqual(Object.keys(tools).sort(), ['operation_jarvis_media', 'operation_jarvis_plugs', 'operation_jarvis_presence', 'operation_jarvis_purifier']);
   for (const t of Object.values(tools)) {
     assert.equal(t.parameters.additionalProperties, false);
-    assert.equal(t.executionMode, 'sequential');
+    // Presence is a read-only status adapter; only the control tools serialize.
+    assert.equal(t.executionMode, t.name === 'operation_jarvis_presence' ? undefined : 'sequential');
     assert.equal(t.promptSnippet, undefined);
     assert.equal(t.promptGuidelines, undefined);
   }
+});
+test('presence exposes no mutation parameters and uses the fixed read-only adapter', async () => {
+  assert.deepEqual(tools.operation_jarvis_presence.parameters.properties, {});
+  await invoke({}, 'presence');
+  assert.equal(calls.at(-1).length, 1);
+  assert(calls.at(-1)[0].endsWith('/presence/status.py'));
 });
 test('discovery and batch actions route without spawning a real process', async () => {
   for (const action of ['list', 'status-all']) {
