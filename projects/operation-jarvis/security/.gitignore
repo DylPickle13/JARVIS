@@ -37,6 +37,10 @@
 !/go2rtc-doorbell-hevc.patch
 !/AUDIO-QUALITY.md
 !/test_security_audio.py
+!/security_quick_response.py
+!/security_quick_response_transport.py
+!/security_quick_response_upload.py
+!/test_security_quick_response.py
 !/archive_probe.py
 !/archive_download_probe.py
 !/test_archive_download_probe.py
@@ -59,6 +63,7 @@
 /private-snapshots/
 /.audio-runtime/
 /.audio-settings/
+/.quick-response-runtime/
 /.venv*/
 /private-archive/
 /private-smart-actions/

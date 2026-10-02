@@ -1492,6 +1492,8 @@ def parser():
     add_chime_parser(sub)
     from security_smart_actions import add_parser as add_smart_parser
     add_smart_parser(sub)
+    from security_quick_response import add_parser as add_response_parser
+    add_response_parser(sub)
     return p
 
 
@@ -1519,6 +1521,9 @@ def control_main(argv=None):
         elif args.command == 'audio':
             from security_audio import execute_audio
             result = execute_audio(args, adapter=sys.modules[__name__])
+        elif args.command == 'quick-response':
+            from security_quick_response import execute_quick_response
+            result = execute_quick_response(args, adapter=sys.modules[__name__])
         else:
             value = args.degrees if args.command == 'move' else getattr(args, 'value', None)
             if args.command == 'recording':

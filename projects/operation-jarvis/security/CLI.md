@@ -517,6 +517,63 @@ outcome; **audio decoding remains unassessed**. A successful transfer alone is
 not successful playback, and one decoded sample does not prove uninterrupted
 coverage. The commands do not download tools or change power/storage settings.
 
+## Experimental native D235 saved responses
+
+`quick-response` targets the normal Tapo saved-response list, not live speaker
+playback. Implementation is standalone Python/CLI, **not a Pi extension**.
+No Pi tools, backend routes, polling, daemons or services are added.
+The native protocol is offline-tested, not physically commissioned.
+
+- `prepare`: converts a local file or JARVIS speech offline, reports format and
+  duration, then removes temporary audio. No device requests; native limits are
+  not checked. Requires an existing configured direct-host D235 alias.
+- `status`: explicitly contacts the doorbell to read native capabilities/list
+  and the unresolved-upload guard. It does not upload or play sound.
+- `add`: requires both `--confirm` and `--experimental`, plus separate owner
+  approval for this one persistent response. Fresh identity, capacity, duration
+  and duplicate-name checks precede creation. Only a new response is supported.
+
+Synthetic alias examples, for owner-run CLI use; **none were executed on hardware**:
+
+```sh
+# Offline preparation only; stdin avoids putting speech in command arguments.
+./security --json quick-response prepare example-doorbell \
+  --name 'JARVIS Test' --text-file - < /private/path/message.txt
+
+# LIVE read: use only when explicitly desired.
+./security --json quick-response status example-doorbell
+
+# LIVE persistent addition: separate explicit approval is required first.
+./security --json quick-response add example-doorbell \
+  --name 'JARVIS Test' --text-file /private/path/message.txt \
+  --confirm --experimental
+```
+
+Use exactly one of `--file`, `--text`, or `--text-file` (`-` reads stdin).
+Inputs are bounded to 32 MiB for files and 2,048 UTF-8 bytes for speech.
+Labels use 1–32 ASCII characters: letters/digits, spaces, underscore, hyphen,
+parentheses or period, starting with a letter/digit and without trailing spaces.
+The experimental format is mono 8 kHz G.711 A-law in authenticated MPEG-TS,
+using existing pinned `pytapo==3.4.19` in `.venv-archive`, FFmpeg and the existing
+JARVIS voice environment. No codec/settings change or plaintext fallback occurs.
+Local audio is capped at 60 seconds; `add` also enforces fresh native limits.
+`--gain` is stored digital attenuation (0–100, default 100), not hardware volume.
+
+Hub then doorbell locks protect the transaction. An owner-only fsynced journal
+at `.quick-response-runtime/<alias>/upload.json` is written **before** reserving
+a slot. Anything uncertain after creation starts blocks further additions;
+there is no automatic retry, rollback, reset, deletion, replacement or reordering.
+Inspect status and the private journal before recovery; do not remove a guard
+merely to repeat an upload. Avoid concurrent response edits in the Tapo app.
+
+Success requires an explicit finish acknowledgement and a fresh list containing
+exactly one new item, with every existing entry unchanged. This verifies only
+immediate device-list readback—not appearance in the owner's app, long-term
+persistence or audible acceptance. App checking and tapping the response are
+separate owner actions. The uploader never requests playback.
+Household actions by the assistant remain subject to the approved-tool boundary;
+this standalone CLI is not an authorization to use shell/SSH for live control.
+
 ## Camera controls
 
 Examples below are actual writes when explicitly executed with `--confirm`:

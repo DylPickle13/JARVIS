@@ -11,6 +11,12 @@ C230 and D235 speaker audio is implemented in `security_audio.py`, with a local 
 JARVIS voice worker in `security_tts.py` and offline tests in
 `test_security_audio.py`. See [speaker audio commands](CLI.md#camera-speaker-audio)
 for full-length speech/files, gain, looping, status and stop.
+The standalone `security_quick_response*.py` uploader adds experimental native
+D235 saved quick responses, separate from talkback; see
+[saved-response commands](CLI.md#experimental-native-d235-saved-responses).
+It has no Pi extension/tool integration, backend route or background service.
+Offline-tested only: device acceptance, app visibility and listening remain
+unverified; any live upload needs separate owner approval.
 See [CLI.md](CLI.md) for commands and safety limits. The backend's
 [on-demand status endpoint](../docs/security-integration-plan.md) wraps the existing
 CLI; it does not expose controls or media and does not poll. The separate,
@@ -99,7 +105,8 @@ and D235 JARVIS speech have owner-confirmed playback. HD snapshot output is sepa
 notification previews (`events status/history/preview`). Physical event delivery
 and type mapping are unverified; there is no background listener, notification
 destination or delivery. Real notifications, archive playback UI, two-way audio,
-persistent chime settings and quick responses remain follow-up work. A separate diagnostic
+persistent chime settings and physical commissioning of native saved quick
+responses remain follow-up work. A separate diagnostic
 verified Tapo-private PCMU archive audio decoding from one short clip, and the
 owner confirmed normal-sounding playback. AV sync and longer-term recording
 continuity remain unassessed.

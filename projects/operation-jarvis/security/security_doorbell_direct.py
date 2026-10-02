@@ -65,7 +65,9 @@ EXTRA_READS = {
     'getChimeCtrlList': {'chime_ctrl': {'get_paired_device_list': {}}},
     'getQuickRespList': {'quick_response': {}},
 }
-READ_METHODS = frozenset(s.getter for s in SPECS.values()) | set(EXTRA_READS) | {'getDeviceInfo', 'getRecordPlan', 'getHubStorage'}
+# The native saved-response worker uses one additional fixed, read-only getter.
+# Existing status/snapshot reads are unchanged; no native upload goes through RPC.
+READ_METHODS = frozenset(s.getter for s in SPECS.values()) | set(EXTRA_READS) | {'getDeviceInfo', 'getRecordPlan', 'getHubStorage', 'getQuickRespCapability'}
 
 
 def request_for(spec):
