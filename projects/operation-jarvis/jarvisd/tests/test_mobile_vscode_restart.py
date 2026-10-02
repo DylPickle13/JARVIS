@@ -376,6 +376,41 @@ class MobileVscodeRestartTests(unittest.TestCase):
         self.assertEqual([call.args[0].slot for call in spawn.call_args_list], [2, 3])
         self.assertEqual(progress, [1])
 
+    def test_repeat_requeues_only_ready_slots_with_new_pid(self):
+        root, status, sessions, now, output, _ = self.fixture()
+        snapshots = restart.snapshots_from_panes(output, project_root=root, status_dir=status,
+                                                expected_session_dir=sessions, now=now)[:3]
+        requests = restart.queue.Queue()
+        ticks = 0
+        def tick(_):
+            nonlocal ticks
+            ticks += 1
+            if ticks == 1:
+                requests.put([1, 2, 3])
+                requests.put([2])  # rapid duplicates coalesce
+        def inspect(snapshot, *, starting=False):
+            if snapshot.slot == 1 and ticks < 3:
+                return None, restart.replace(snapshot, lifecycle='running')
+            if snapshot.slot == 3 and starting and ticks < 2:
+                raise restart.RestartError('still starting')
+            pane = restart.PaneEvidence(snapshot.name, '0', '0', snapshot.pane_id,
+                                        '0', snapshot.pane_pid + 100, 80, 24)
+            return pane, snapshot
+        with patch.object(restart, '_slot_status', side_effect=inspect), \
+             patch.object(restart, '_respawn') as spawn, \
+             patch.object(restart, '_set_latest_window_size'), \
+             patch.object(restart.time, 'sleep', side_effect=tick):
+            restart._restart_when_idle(snapshots, requests=requests)
+        self.assertEqual([c.args[0].slot for c in spawn.call_args_list], [2, 3, 2, 1])
+        self.assertEqual(spawn.call_args_list[2].args[0].pane_pid, snapshots[1].pane_pid + 100)
+
+    def test_request_reader_rejects_invalid_slots(self):
+        import io
+        requests = restart.queue.Queue()
+        restart._read_restart_requests(io.StringIO('oops\n[true]\n[11]\n{}\n[2, 10]\n'), requests)
+        self.assertEqual(requests.get_nowait(), [2, 10])
+        self.assertTrue(requests.empty())
+
     def test_idle_timeout_never_respawns(self):
         root, status, sessions, now, output, _ = self.fixture()
         snapshots = restart.snapshots_from_panes(output, project_root=root, status_dir=status,

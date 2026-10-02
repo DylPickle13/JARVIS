@@ -162,10 +162,14 @@ to `~/.local/state/pi-desk/restart.log`; shortcut/launcher diagnostics are appen
 to `~/.local/state/pi-desk/restart-dispatch.log`. Shortcuts never print command output
 into a coding pane or open tmux's error-output viewer. Real failures still appear in
 the progress status/logs and retain nonzero exit codes for direct CLI callers.
-Repeated requests succeed as a no-op and show **Restart already in progress** in
-only the invoking client's status message, without overwriting the original worker's
-progress/log or launching another helper. The terminal command above remains
-interactive. Both delegate to the host's existing
+Repeated confirmed F10 requests requeue sessions already marked ready, without
+launching another helper or resetting waiting/restarting sessions. Requeued sessions
+get their own 30-minute idle wait and the same identity/status safety checks; failed
+slots are not retried. Rapid duplicate requests coalesce while a slot is queued or
+starting. The original worker keeps its progress/log. A worker started before this
+feature was installed cannot accept requests; let it finish first. The terminal
+command above remains interactive (and does not provide this F10 control channel).
+Both delegate to the host's existing
 `jarvis-mobile-vscode-restart.py --all` helper rather than duplicating its safety
 logic. All ten identities and status records must pass preflight. Stale, unknown,
 or ambiguous status blocks the operation. Each busy session waits until idle

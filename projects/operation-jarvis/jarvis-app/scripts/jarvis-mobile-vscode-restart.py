@@ -14,6 +14,8 @@ import datetime as dt
 import fcntl
 import json
 import os
+import queue
+import threading
 import re
 import shlex
 import subprocess
@@ -455,27 +457,46 @@ def _slot_status(snapshot: SessionEvidence, *, starting: bool = False) -> tuple[
             raise RestartError("Pi exited while restart was pending; refusing to guess history")
     elif pane is None or pane.pane_dead != "0" or pane.pane_pid == snapshot.pane_pid:
         raise RestartError("new Pi is not running yet")
-    _, payload = _read_status_for_pid(STATUS_DIR, pane.pane_pid, PROJECT_ROOT, SESSION_DIR, _utc_now())
+    status_path, payload = _read_status_for_pid(STATUS_DIR, pane.pane_pid, PROJECT_ROOT, SESSION_DIR, _utc_now())
     session_file = _validate_session_file(payload.get("sessionFile"), SESSION_DIR)
     if session_file != snapshot.session_file:
         raise RestartError("Pi session file changed; refusing to restart a different conversation")
     if payload["lifecycle"] == "unknown":
         raise RestartError("Pi lifecycle is unknown")
-    return pane, replace(snapshot, lifecycle=str(payload["lifecycle"]))
+    return pane, replace(snapshot, lifecycle=str(payload["lifecycle"]), status_path=status_path,
+                         updated_at=_parse_timestamp(payload['updatedAt']))
 
 
-def _restart_when_idle(snapshots: list[SessionEvidence], *, progress: Callable[[int], None] | None = None) -> None:
+def _restart_when_idle(snapshots: list[SessionEvidence], *, progress: Callable[[int], None] | None = None,
+                       requests: queue.Queue | None = None) -> None:
     pending = {item.slot: item for item in snapshots}
     starting: dict[int, tuple[SessionEvidence, float]] = {}
     errors: list[str] = []
     completed = 0
-    idle_deadline = time.monotonic() + IDLE_TIMEOUT_SECONDS
+    ready: dict[int, SessionEvidence] = {}
+    idle_deadlines = {item.slot: time.monotonic() + IDLE_TIMEOUT_SECONDS for item in snapshots}
     for item in snapshots:
         print(f"slot {item.slot}: queued; waiting for idle (up to 30 minutes)", flush=True)
-    while pending or starting:
+    while pending or starting or (requests is not None and not requests.empty()):
+        if requests is not None:
+            # Coalesce rapid presses. Only completed slots can be requeued;
+            # busy/startup slots retain their identities and original deadlines.
+            requested = set()
+            while True:
+                try:
+                    requested.update(requests.get_nowait())
+                except queue.Empty:
+                    break
+            for slot in sorted(requested):
+                if slot not in ready:
+                    continue
+                pending[slot] = ready.pop(slot)
+                idle_deadlines[slot] = time.monotonic() + IDLE_TIMEOUT_SECONDS
+                completed -= 1
+                print(f"slot {slot}: queued; requested again, waiting for idle (up to 30 minutes)", flush=True)
         for slot, snapshot in list(pending.items()):
             try:
-                if time.monotonic() >= idle_deadline:
+                if time.monotonic() >= idle_deadlines[slot]:
                     raise RestartError("timed out waiting for idle; session was not restarted")
                 _, current = _slot_status(snapshot)
                 if current.lifecycle not in QUIESCENT_LIFECYCLES:
@@ -506,6 +527,7 @@ def _restart_when_idle(snapshots: list[SessionEvidence], *, progress: Callable[[
                 print(message, flush=True)
             else:
                 completed += 1
+                ready[slot] = replace(current, pane_id=pane.pane_id, pane_pid=pane.pane_pid)
                 print(f"slot {slot}: ready (PID {snapshot.pane_pid}->{pane.pane_pid}, {current.session_file.name})", flush=True)
                 if progress:
                     progress(completed)
@@ -550,7 +572,8 @@ def _restart_lock(path: Path = LOCK_PATH) -> Iterator[None]:
             file_handle.close()
 
 
-def restart_all(*, dry_run: bool = False, progress: Callable[[int], None] | None = None) -> None:
+def restart_all(*, dry_run: bool = False, progress: Callable[[int], None] | None = None,
+                requests: queue.Queue | None = None) -> None:
     """Preflight, restart, and verify all ten fixed Pi panes."""
     if not PROJECT_ROOT.is_dir():
         raise RestartError(f"JARVIS project root is missing: {PROJECT_ROOT}")
@@ -591,7 +614,19 @@ def restart_all(*, dry_run: bool = False, progress: Callable[[int], None] | None
         # immediately before each respawn, recheck that slot's identity and idle state.
         if any(snapshot.pane_id for snapshot in snapshots):
             _source_profile()
-        _restart_when_idle(snapshots, progress=progress)
+        _restart_when_idle(snapshots, progress=progress, requests=requests)
+
+
+def _read_restart_requests(stream, requests: queue.Queue) -> None:
+    for line in stream:
+        try:
+            slots = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(slots, list) and len(slots) <= 10 and all(
+            type(slot) is int and slot in SLOT_NAMES for slot in slots
+        ):
+            requests.put(slots)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -600,11 +635,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--all", action="store_true", help="restart all ten fixed Pi panes")
     parser.add_argument("--dry-run", action="store_true", help="perform preflight without restarting")
+    parser.add_argument('--interactive-restarts', action='store_true',
+                        help='accept ready-slot restart requests as JSON arrays on stdin')
     args = parser.parse_args(argv)
     if not args.all:
         parser.error("--all is required")
+    requests = None
+    if args.interactive_restarts and not args.dry_run:
+        requests = queue.Queue()
+        threading.Thread(target=_read_restart_requests, args=(sys.stdin, requests), daemon=True).start()
     try:
-        restart_all(dry_run=args.dry_run)
+        restart_all(dry_run=args.dry_run, requests=requests)
     except KeyboardInterrupt:
         print("Pi restart cancelled before completion.", file=sys.stderr)
         return 130

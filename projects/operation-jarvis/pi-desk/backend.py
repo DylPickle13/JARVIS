@@ -48,10 +48,11 @@ class Backend:
         return ['ssh', '-T', *SSH_OPTIONS, self.host,
                 'exec /usr/bin/python3 "$HOME/.local/share/pi-desk/status_stream.py"']
 
-    def restart(self, dry_run=False):
+    def restart(self, dry_run=False, *, interactive=False):
         helper = Path(self.project_root) / 'projects/operation-jarvis/jarvis-app/scripts/jarvis-mobile-vscode-restart.py'
         return self.run_on_host(['/usr/bin/python3', '-u', str(helper), '--all',
-                                 *(['--dry-run'] if dry_run else [])])
+                                 *(['--dry-run'] if dry_run else []),
+                                 *(['--interactive-restarts'] if interactive else [])])
 
 
 def load(path=CONFIG):

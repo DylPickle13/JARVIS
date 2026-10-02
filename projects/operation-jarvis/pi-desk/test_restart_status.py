@@ -78,9 +78,24 @@ class RestartStatusTests(unittest.TestCase):
                 self.assertIn('Complete' if code == 0 else 'Failed', progress.status_line())
                 self.assertIn('waiting for idle', (Path(directory) / 'restart.log').read_text())
                 spawn.assert_called_once()
-                self.assertEqual(spawn.call_args.kwargs['stdin'], progress.subprocess.DEVNULL)
+                self.assertEqual(spawn.call_args.kwargs['stdin'], progress.subprocess.PIPE)
 
-    def test_duplicate_request_is_not_an_error_and_preserves_progress(self):
+    def test_worker_forwards_request_to_helper_stdin(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(progress, 'STATE', Path(directory)), \
+                patch.object(progress, 'load') as backend, \
+                patch.object(progress.socket, 'socket') as socket_factory, \
+                patch.object(progress.subprocess, 'Popen') as spawn:
+            backend.return_value.restart.return_value = ['helper']
+            socket_factory.return_value.bind.side_effect = lambda path: Path(path).touch()
+            socket_factory.return_value.recv.side_effect = [b'[2, 4]', BlockingIOError()]
+            spawn.return_value = Mock(stdout=io.StringIO(''), wait=Mock(return_value=0))
+            self.assertEqual(progress.run(), 0)
+            backend.return_value.restart.assert_called_once_with(interactive=True)
+            spawn.return_value.stdin.write.assert_called_once_with('[2, 4]\n')
+            spawn.return_value.stdin.flush.assert_called_once()
+            self.assertFalse((progress.STATE / 'restart-control.sock').exists())
+
+    def test_duplicate_request_to_old_worker_preserves_progress(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(progress, 'STATE', Path(directory)), \
                 patch.object(progress.subprocess, 'Popen') as spawn, \
                 patch.object(progress, 'notify') as notify:
@@ -93,9 +108,25 @@ class RestartStatusTests(unittest.TestCase):
                 self.assertEqual(progress.run(client='/dev/test-client'), 0)
             spawn.assert_not_called()
             notify.assert_called_once_with(
-                'Restart already in progress; see the top status area.', '/dev/test-client')
+                'Existing restart cannot accept requests; retry after it finishes.', '/dev/test-client')
             self.assertEqual((progress.STATE / 'restart-status').read_bytes(), status)
             self.assertEqual(log.read_text(), 'original worker output\n')
+
+    def test_duplicate_sends_only_ready_slots_without_overwriting_log(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(progress, 'STATE', Path(directory)), \
+                patch.object(progress, 'notify'), patch.object(progress.subprocess, 'Popen') as spawn:
+            log = progress.STATE / 'restart.log'
+            original = 'slot 1: queued; waiting for idle\nslot 2: ready (PID 1->2)\nslot 3: restarting x\n'
+            log.write_text(original)
+            with progress.socket.socket(progress.socket.AF_UNIX, progress.socket.SOCK_DGRAM) as control:
+                control.bind(str(progress.STATE / 'restart-control.sock'))
+                control.settimeout(1)
+                with (progress.STATE / 'restart.lock').open('a') as lock:
+                    progress.fcntl.flock(lock, progress.fcntl.LOCK_EX | progress.fcntl.LOCK_NB)
+                    self.assertEqual(progress.run(), 0)
+                self.assertEqual(progress.json.loads(control.recv(4096)), [2])
+            self.assertEqual(log.read_text(), original)
+            spawn.assert_not_called()
 
     def test_notification_is_client_scoped_status_only(self):
         with patch.object(progress, 'tmux') as tmux:

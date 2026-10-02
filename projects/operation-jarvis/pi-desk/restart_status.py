@@ -2,6 +2,8 @@
 import fcntl
 import os
 import re
+import json
+import socket
 from pathlib import Path
 import subprocess
 import time
@@ -91,9 +93,17 @@ def run(client=None):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            # A duplicate is a successful no-op, not a failed restart. Keep the
-            # original worker's progress/log intact and do not take over a pane.
-            notify('Restart already in progress; see the top status area.', client)
+            tracker = Progress()
+            try:
+                for line in (STATE / 'restart.log').read_text().splitlines():
+                    tracker.update(line)
+                slots = [slot for slot, state in tracker.slots.items() if state == 'ready']
+                with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as request:
+                    request.settimeout(1)
+                    request.sendto(json.dumps(slots).encode(), str(STATE / 'restart-control.sock'))
+                notify('Ready sessions requested again; waiting/restarting sessions unchanged.', client)
+            except OSError:
+                notify('Existing restart cannot accept requests; retry after it finishes.', client)
             return 0
         # A reader thread lets the main thread refresh progress while a busy
         # agent is silent, without blocking terminal input or the status monitor.
@@ -103,10 +113,16 @@ def run(client=None):
         progress = Progress()
         latest = 'Checking all ten sessions; busy sessions will wait for idle…'
         publish(latest)
+        control = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        control_path = STATE / 'restart-control.sock'
         try:
+            control_path.unlink(missing_ok=True)
+            control.bind(str(control_path))
+            control_path.chmod(0o600)
+            control.setblocking(False)
             with (STATE / 'restart.log').open('w') as log:
-                process = subprocess.Popen(load().restart(), env=clean_environment(),
-                                           stdin=subprocess.DEVNULL,
+                process = subprocess.Popen(load().restart(interactive=True), env=clean_environment(),
+                                           stdin=subprocess.PIPE,
                                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                            text=True, errors='replace')
                 def read_output():
@@ -118,16 +134,31 @@ def run(client=None):
                     messages.put(None)
                 reader = threading.Thread(target=read_output, daemon=True)
                 reader.start()
+                refreshed = 0.0
                 while True:
                     try:
-                        message = messages.get(timeout=5)
+                        request = control.recv(4096)
+                    except BlockingIOError:
+                        pass
+                    else:
+                        try:
+                            process.stdin.write(request.decode() + '\n')
+                            process.stdin.flush()
+                        except (BrokenPipeError, OSError):
+                            notify('Restart just finished; press F10 again for another cycle.', client)
+                    try:
+                        message = messages.get(timeout=0.1)
                     except queue.Empty:
+                        if time.monotonic() - refreshed < 5:
+                            continue
                         message = latest
                     if message is None:
                         break
                     progress.update(message)
                     latest = progress.summary() or message
                     publish(latest)
+                    refreshed = time.monotonic()
+                process.stdin.close()
                 result = process.wait()
                 reader.join()
                 process.stdout.close()
@@ -137,3 +168,6 @@ def run(client=None):
         except (OSError, ValueError) as exc:
             publish(f'Failed: {exc}')
             return 1
+        finally:
+            control.close()
+            control_path.unlink(missing_ok=True)
