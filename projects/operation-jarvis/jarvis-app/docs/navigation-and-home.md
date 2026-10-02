@@ -5,6 +5,9 @@ version/process verification on **2026-10-02 at 13:23 EDT**. Build 240's page gr
 is unchanged. See [deployment checks](operations.md#matching-swipe-animation--build-241)
 and [preserved recovery fixes](terminal-recovery-and-notification-taps.md).
 Physical gesture, Crown and notification acceptance remains pending owner review.
+Inline iPhone Settings shipped as build 242, then the balanced summary-card grid
+superseded it in **build 243**, independently version/launch/process verified at
+**2026-10-02 16:06 EDT**. Neither release issued a direct Watch install.
 
 ## iPhone
 
@@ -14,7 +17,8 @@ Tabs remain in their existing positions: **JARVIS → Home → Terminal → Jobs
 - **Home** contains the unchanged health/history card, followed by smart plugs and
   purifier cards. Purifier details, command confirmation, explicit recovery,
   stale-state handling and errors move with the controls.
-- **Terminal**, Jobs and Settings retain their existing functionality.
+- **Terminal** and Jobs retain their existing functionality. Settings uses the
+  balanced summary-card grid and separate editors shipped in build 243.
 - The initial iPhone destination remains the first tab, now labelled JARVIS.
 
 Swipe left for the next tab and right for the previous tab, without wrapping.
@@ -32,6 +36,107 @@ Internal route IDs remain `.home` (JARVIS), `.system` (Home), and `.pi` (Termina
 Existing URLs, launch arguments, session notifications and widget destinations
 keep their meaning. In particular, legacy `jarvis://home` still opens the first
 JARVIS dashboard, while `jarvis://system` opens the new Home page.
+
+## Balanced Settings grid — build 243
+
+Owner review rejected build 242's uneven card sizes. The replacement keeps Liquid
+Glass but returns text/password entry to pushed detail pages:
+
+- **Four equally sized summary cards** in a 2 × 2 grid: Connection, iPhone
+  Terminal, Watch Terminal and Notifications. A custom measured layout gives every
+  card the same width and height, including when one summary is longer. Large
+  accessibility text uses one column; text is not shrunk to force a fit.
+- Connection shows state and active endpoint; iPhone Terminal shows configuration,
+  resolved SSH host/port and username; Watch shows provisioning state and bridge
+  host/port (not URL credentials, path or query). Full values remain on detail pages.
+- Notifications keeps a directly usable Alerts toggle and independent iPhone/Watch
+  registration summaries. The toggle is outside the card's navigation link so
+  toggling cannot also push a page. Provider, queue and retry controls live in details.
+- **One full-width Diagnostics & Maintenance card** below shows daemon version,
+  uptime and LAN/Tailscale addresses, plus confirmation-protected Restart all 10
+  Pi sessions and operation/retry status. The version footer follows it.
+- Connection editing/reset, SSH credentials/save/forget-trust and private Watch
+  setup-code entry use full-width glass sections on separate pages. Those pages
+  have their own page-level scrolling and visible back navigation; no card scrolls.
+
+The overview contains no text fields and does not load the SSH password. Existing
+credential/provisioning models remain directly observed, and save, reconnect,
+Watch publication, secure registration and maintenance recovery APIs are unchanged.
+Safety confirmations remain. Main-page overflow is retained for accessibility,
+long summaries and exceptional operation messages, not normal portrait use.
+
+Implementation: `JARVIS/Views/SettingsView.swift` and
+`JARVIS/Views/SettingsDetailView.swift`. **163 iPhone tests passed** from an isolated
+source snapshot, with only the previously documented plain-Paste pixel test excluded.
+The populated 414 × 896 iPhone 11 fixture measured **685.5 pt** within the **765 pt**
+viewport above the tab bar. Tests verify identical bounds for all four cards even
+with long content, zero overview text fields, navigation/back for all four editors,
+visible invalid-save errors, accessibility expansion and toggle-without-navigation.
+The frozen build-243 release source passed the same 163-test regression. Private
+release evidence: `20261002T200255Z-build243-balanced-settings`, including
+`ios-tests.xcresult`, `ios-verified.log`, signed archive audit and deployment readbacks.
+
+The audited archive was installed once on the approved iPhone and independently
+version/launch/process verified at **2026-10-02 16:06 EDT**. Launch requested Settings.
+All 18 protected service PIDs and existing Pi panes were preserved. Exact signed
+build 242 is retained for rollback. No backend/Pi restart or direct Watch install;
+iOS may automatically transfer the embedded unchanged-source companion. Watch's
+last independent device version verification remains build 241. Physical layout,
+keyboard and VoiceOver acceptance awaits owner review.
+
+## Inline iPhone Settings — build 242
+
+Historical build 242 used six always-expanded Liquid Glass cards, not navigation
+cards. Owner review rejected the uneven sizes; build 243 supersedes this layout:
+
+1. **Connection + Diagnostics** share a row: endpoint/status/override/Connect/Reset
+   alongside daemon version, uptime and LAN/Tailscale addresses.
+2. **iPhone Terminal** spans the width: host/port, username/password and Save login.
+3. **Watch Terminal + Maintenance** share a row: provisioning state, full bridge
+   address, private setup code/Send and provisioning-script guidance alongside
+   Forget trusted host, Restart all 10 Pi sessions and operation/retry status.
+4. **Notifications** spans the width: toggle, independent registrations, APNs and
+   dispatch status, queue counts, secure retry, refresh and preview-privacy guidance.
+
+The initial mostly full-width proposal measured too tall. Pairing related cards
+keeps normal portrait settings on one screen without reducing the 44-point action
+areas. There are no internal scroll views, disclosures, inspector sheets or hidden
+technical details. Long values wrap; passwords/setup codes remain secure fields.
+Only the outer page can scroll for smaller screens, large text, long errors or the
+keyboard. Accessibility sizes stack paired cards and field/action rows vertically.
+
+Reset, forgetting SSH trust and session restarts still require confirmation.
+Existing SSH/Keychain save, Watch provisioning, notification registration, secure
+retry and maintenance operation-ID/recovery APIs are unchanged. Merely opening
+Settings does not save credentials, provision Watch, reconnect Terminal or restart
+sessions. It refreshes read-only notification status, as the previous notification
+screen did. Credential/provisioning models are directly observed so failures remain
+visible even when a save does not change the successful/configured state.
+
+Implementation: `JARVIS/Views/SettingsView.swift`. The four obsolete destination
+views have been removed. `SettingsLayoutTests` covers the six-card/no-hidden-detail
+contract, natural portrait fit, native text fields, full-tab-bar fit, long details
+and accessibility expansion, plus visible invalid-save errors without credential
+changes. Simulator regression: **160 iPhone tests passed**, excluding only the
+previously documented plain-Paste pixel test. On the 414 × 896 iPhone 11 fixture,
+unconfigured content measured **661.5 pt** and populated content (including a long
+Watch bridge URL and APNs queue details) **726.5 pt**, within the measured **765 pt**
+viewport above the five-tab bar. All six native text fields were mounted without
+navigation. The frozen build-242 source passed the same 160-test regression.
+Private release evidence: `20261002T193649Z-build242-inline-settings`, including
+`ios-tests.xcresult`, `ios-verified.log`, signed archive audit and deployment readbacks.
+
+The exact audited archive was installed once on the approved iPhone; final version
+and running process were independently verified at **2026-10-02 15:40 EDT**. The
+launch requested the Settings tab. All 18 protected service PIDs and existing Pi
+panes were preserved. Exact signed build 241 is retained for rollback. No direct
+Watch installation was issued; iOS may transfer the embedded companion automatically,
+so Watch's last independent version verification remains build 241.
+
+Physical layout/keyboard/VoiceOver acceptance remains pending owner review. Watch,
+backend and credential-store implementations, entitlements and the pinned dependency
+lock are unchanged. Shared/backend test evidence is retained from previous releases,
+not presented as a new run; the broad all-subsystem verifier is not claimed here.
 
 ## Watch
 

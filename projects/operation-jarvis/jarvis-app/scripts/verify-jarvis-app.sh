@@ -342,17 +342,21 @@ grep -q '#{session_name}\\t#{pane_dead}\\t#{pane_pid}' ../jarvisd/jarvisd.py
 grep -q 'pi-extension-local-session-status' ../jarvisd/jarvisd.py
 grep -q 'if project_root_is_explicit:' ../jarvisd/jarvisd_core/config.py
 grep -q '"mobileSessions": _mobile_pi_session_states()' ../jarvisd/jarvisd.py
-grep -q 'SettingsGroup(title: "Configuration")' JARVIS/Views/SettingsView.swift
-reject_match 'paid-team Settings must not restore the obsolete Maintenance group' -Fq 'SettingsGroup(title: "Maintenance")' JARVIS/Views/SettingsView.swift
-[[ "$(grep -c 'NavigationLink {' JARVIS/Views/SettingsView.swift)" == "4" ]]
-grep -q 'ConnectionSettingsView()' JARVIS/Views/SettingsView.swift
-grep -q 'PiTerminalSettingsView()' JARVIS/Views/SettingsView.swift
-grep -q 'WatchTerminalSettingsView()' JARVIS/Views/SettingsView.swift
-grep -q 'NotificationSettingsView()' JARVIS/Views/SettingsView.swift
+# Settings use four equal summary cards plus one full-width diagnostics/maintenance card.
+[[ "$(grep -c 'ScrollView {' JARVIS/Views/SettingsView.swift)" == "1" ]]
+[[ "$(grep -c 'ScrollView {' JARVIS/Views/SettingsDetailView.swift)" == "1" ]]
+reject_match 'Settings overview must not contain login fields or load passwords' -E 'TextField\(|SecureField\(|passwordForEditing\(' JARVIS/Views/SettingsView.swift
+grep -Fq 'SettingsSummaryGrid(columns:' JARVIS/Views/SettingsView.swift
+for route in connection iphoneTerminal watchTerminal notifications; do
+  grep -Fq "SettingsSummaryCard(destination: .$route" JARVIS/Views/SettingsView.swift
+done
+grep -Fq 'SettingsInlineCard("Diagnostics & Maintenance"' JARVIS/Views/SettingsView.swift
+grep -q 'MinimalCard(padding: 12)' JARVIS/Views/SettingsView.swift
+grep -q 'MinimalCard(padding: 14)' JARVIS/Views/SettingsDetailView.swift
 reject_match 'paid-team Settings must not restore the Developer Signing destination' -E 'DeveloperSigningSettingsView|Developer Signing' JARVIS/Views/SettingsView.swift
 grep -Fq 'JARVIS \(SettingsPresentation.appVersion)' JARVIS/Views/SettingsView.swift
-grep -q 'DisclosureGroup("Technical Details"' JARVIS/Views/ConnectionSettingsView.swift
-grep -q 'Forget Trusted SSH Host' JARVIS/Views/PiTerminalSettingsView.swift
+grep -q 'Forget trusted SSH host' JARVIS/Views/SettingsDetailView.swift
+grep -q 'testNormalSettingsFitIPhone11PortraitContentArea' JARVISTests/SettingsLayoutTests.swift
 grep -q 'navigationTitle(title)' JARVIS/Views/SettingsComponents.swift
 reject_match 'streamlined Settings must not restore separate Diagnostics or About destinations' -RqsE 'diagnosticsDetail|aboutDetail|About JARVIS' JARVIS/Views
 reject_match 'streamlined Settings must not retain monolithic detail properties' -RqsE 'piTerminalDetail|watchTerminalDetail|developerSigningDetail' JARVIS/Views
@@ -393,7 +397,7 @@ grep -q 'CODE_SIGN_ENTITLEMENTS: JARVIS/JARVIS.entitlements' project.yml
 grep -q 'CODE_SIGN_ENTITLEMENTS: JARVISWatch/JARVISWatch.entitlements' project.yml
 grep -q 'PushNotificationCoordinator.shared' JARVIS/JARVISApp.swift
 grep -q 'WatchPushNotificationCoordinator.shared' JARVISWatch/JARVISWatchApp.swift
-grep -q 'NotificationSettingsView()' JARVIS/Views/SettingsView.swift
+grep -q 'notifications.setEnabled(enabled)' JARVIS/Views/SettingsView.swift
 grep -q 'canRetrySecureUpdate' JARVIS/PushNotificationCoordinator.swift
 grep -q 'receivedForegroundResult' JARVIS/PushNotificationCoordinator.swift
 grep -q '@Published private(set) var pendingRoute: ScheduledJobNavigationRequest?' JARVIS/PushNotificationCoordinator.swift JARVISWatch/WatchPushNotificationCoordinator.swift
@@ -416,7 +420,7 @@ grep -q 'testFocusedResultFetchUsesExactCursorAndRejectsAnotherSequence' JARVIST
 reject_match 'obsolete duplicate notification route bus must stay removed' -RqsE 'jarvisPushRoute|jarvisWatchPushRoute|pendingResultSequence|consumePendingResultSequence' JARVIS JARVISWatch
 reject_match 'foreground banners must not auto-navigate' -qE 'present\(resultSequence:' < <(sed -n '/willPresent notification:/,/return \[.banner, .sound\]/p' JARVIS/PushNotificationCoordinator.swift)
 reject_match 'foreground Watch banners must not auto-navigate' -qE 'present\(resultSequence:' < <(sed -n '/willPresent notification:/,/return \[.banner, .sound\]/p' JARVISWatch/WatchPushNotificationCoordinator.swift)
-grep -q 'Show Previews' JARVIS/Views/NotificationSettingsView.swift JARVISWatch/Views/WatchConnectView.swift
+grep -q 'Show Previews' JARVIS/Views/SettingsDetailView.swift JARVISWatch/Views/WatchConnectView.swift
 # Match the already-committed notification-summary cap (a810484); no backend change here.
 grep -q 'MAX_ALERT_PREVIEW_CHARACTERS = 140' ../jarvisd/jarvisd_core/scheduler/apns_provider.py
 grep -q 'SENSITIVE_CONTEXT_RE' ../jarvisd/jarvisd_core/scheduler/apns_provider.py

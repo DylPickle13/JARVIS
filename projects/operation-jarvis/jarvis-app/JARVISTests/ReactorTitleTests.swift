@@ -70,8 +70,11 @@ final class ReactorTitleTests: XCTestCase {
 
     @MainActor func testSettingsCardRendersWithAccessibilityText() throws {
         for size in [DynamicTypeSize.large, .accessibility3] {
-            let card = SettingsNavigationCard(title: "iPhone Terminal", systemImage: "terminal.fill",
-                                              value: "Setup required", color: .orange)
+            let card = SettingsInlineCard("iPhone Terminal", symbol: "terminal.fill") {
+                Text("Setup required")
+                TextField("SSH host", text: .constant(""))
+                    .frame(minHeight: 44)
+            }
                 .environment(\.dynamicTypeSize, size)
                 .frame(width: size.isAccessibilitySize ? 358 : 174)
             let renderer = ImageRenderer(content: card)

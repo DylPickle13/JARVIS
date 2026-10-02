@@ -4,6 +4,70 @@
 
 Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.
 
+## Balanced Settings grid — build 243
+
+Owner-approved build **243** was installed once on the allowlisted iPhone and
+independently version/launch/process verified on **2026-10-02 at 16:06 EDT**.
+It replaces build 242's uneven inline Settings cards with four equal Liquid Glass
+summary cards, one full-width Diagnostics & Maintenance card, and separate glass
+editors. The overview retains the Alerts toggle; passwords load into editing state
+only on the iPhone Terminal detail page. Existing safety confirmations remain.
+
+**163 iPhone tests passed from frozen release source**, excluding only the previously
+documented plain-Paste pixel test. The populated native fixture measured 685.5 pt
+within its 765 pt tab viewport. Equal card bounds, accessibility expansion,
+editor navigation/back, invalid-save publication and toggle-without-navigation passed.
+Candidate and exact build-242 rollback archives passed four-bundle signature,
+profile, entitlement and pinned-dependency audits. Shared/backend evidence remains
+retained from previous releases and is not claimed as a new run.
+
+Fresh identity, pairing, developer-services, lock-state and baseline-242 checks
+passed before the single install. Final readbacks verified build 243 and its running
+process; launch requested Settings. All 18 protected service PIDs and existing Pi
+pane identities were preserved. No backend/Pi restart or direct Watch install was
+issued. iOS may sync the embedded unchanged-source Watch companion; Watch's last
+independent version verification remains build 241. Physical layout, keyboard and
+VoiceOver acceptance awaits owner review.
+
+Private evidence: `20261002T200255Z-build243-balanced-settings`, including
+`deployment/result.json`. The exact signed build-242 rollback, frozen source,
+manifests, test results and deployment evidence are retained.
+
+## Inline iPhone Settings — build 242
+
+Owner-approved build **242** was installed once on the allowlisted iPhone and
+independently version/launch/process verified on **2026-10-02 at 15:40 EDT**.
+Six inline Liquid Glass cards replace the four Settings destinations: Connection,
+Diagnostics, iPhone Terminal, Watch Terminal, Maintenance and Notifications.
+Options and technical information remain visible without opening cards; no card
+scrolls internally. Compact portrait fixtures fit above the tab bar; larger text,
+long errors and the keyboard may use page overflow. Safety confirmations remain.
+
+**160 iPhone tests passed from frozen release source**, with the previously
+recorded plain-Paste pixel test excluded. The native-control fixture measured
+726.5 pt of populated content in the actual 765 pt tab viewport and mounted all
+six text fields. Accessibility expansion, long values and failed-save error
+publication also passed. The signed archive and exact build-241 rollback passed
+four-bundle signature/profile/entitlement/dependency audits; sealed artifacts were
+rechecked before and after installation. Shared (289, 3 expected skips) and backend
+(37) evidence is retained from previous releases, not represented as new test runs.
+
+Fresh identity, pairing, developer-services, lock-state and installed-baseline
+checks passed before the sole iPhone install. Launch requested Settings. All
+18 protected service PIDs and existing Pi panes were preserved; no backend service
+or Pi session restarted. Credentials, app data, entitlements and dependency locks
+were not changed. No direct Watch installation was issued; the iPhone package
+contains the unchanged-source companion, which iOS may transfer automatically.
+Watch's last independent device version verification remains build 241.
+Owner review subsequently rejected the uneven card sizes. Build 243 now supplies
+a balanced four-card summary grid with separate editors;
+see [the replacement layout](navigation-and-home.md#balanced-settings-grid--build-243).
+Keyboard and VoiceOver acceptance remain unconfirmed.
+
+Private evidence: `20261002T193649Z-build242-inline-settings`, including
+`deployment/result.json`. Exact signed build 241 and older recovery evidence remain
+retained. Frozen source manifests record the release inputs independently of git HEAD.
+
 ## Matching swipe animation — build 241
 
 Build 241, installed and independently version/launch/process verified on both

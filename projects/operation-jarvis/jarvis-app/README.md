@@ -2,7 +2,35 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current iPhone and Watch build: 241**, installed once on both devices and
+**Current verified iPhone build: 243**, installed once and independently
+version/launch/process verified on **2026-10-02 at 16:06 EDT**. Settings now uses
+four equal Liquid Glass summary cards, a full-width Diagnostics & Maintenance card,
+and separate glass detail pages for editing credentials/endpoints and notification
+provider controls. The Alerts toggle remains directly accessible. All **163 iPhone
+tests passed** from frozen source (the documented plain-Paste pixel test remains
+excluded); the signed four-bundle audit passed. Exact build 242 is retained for
+rollback. All 18 protected service PIDs and existing Pi panes were preserved.
+No backend restart or direct Watch install; iOS may sync the embedded companion.
+Physical layout/keyboard/VoiceOver acceptance awaits owner review. See
+[balanced Settings](docs/navigation-and-home.md#balanced-settings-grid--build-243)
+and [deployment checks](docs/operations.md#balanced-settings-grid--build-243).
+
+**Previous verified iPhone build: 242**, installed once and independently
+version/launch/process verified on **2026-10-02 at 15:40 EDT**. Settings now exposes
+six inline Liquid Glass cards without card navigation, disclosures or internal
+scrolling. Populated portrait settings fit above the tab bar in the iPhone 11
+simulator; page overflow remains available for large text, errors and the keyboard.
+All **160 iPhone tests passed** (the previously documented plain-Paste pixel test
+remains excluded), and the signed archive passed its four-bundle audit. Exact
+build 241 is retained for rollback. All 18 protected service PIDs and existing
+Pi panes were preserved. No backend restart or direct Watch install was performed;
+iOS may automatically transfer the embedded, unchanged-source companion. Watch's
+last independent device verification remains build 241. Owner review rejected
+build 242's uneven card sizes; build 243 supersedes that layout.
+See [inline Settings](docs/navigation-and-home.md#inline-iphone-settings--build-242)
+and [deployment checks](docs/operations.md#inline-iphone-settings--build-242).
+
+**Previous iPhone and Watch build: 241**, installed once on both devices and
 independently version/launch/process verified on **2026-10-02 at 13:23 EDT**.
 Matching directional swipe animations use a 300 ms slide/fade, with Reduce Motion
 support and unchanged Terminal session gestures. 155 iPhone tests and 289 shared
