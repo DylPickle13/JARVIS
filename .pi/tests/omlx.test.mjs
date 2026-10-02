@@ -247,28 +247,32 @@ const assistant = (content = [], stopReason = 'stop') => ({ role: 'assistant', c
     return s;
   };
   const options = { onPayload: () => {}, onResponse: () => {}, onProviderStreamEvent: () => {} };
-  const stream = createOmlxStream(50, e => { throw new Error(e); }, inner)( { ...seed.models[0], provider: seed.provider, api: 'openai-completions' }, { messages: [] }, options);
+  const stream = createOmlxStream(inner)( { ...seed.models[0], provider: seed.provider, api: 'openai-completions' }, { messages: [] }, options);
   for await (const e of stream) events.push(e);
   assert.deepEqual(events.map(e => e.type), ['start', 'text_delta', 'done']);
   for (const name of ['onPayload', 'onResponse', 'onProviderStreamEvent']) assert.equal(received[name], options[name]);
  });
- test('first-delta timeout ignores keepalives, aborts once without replay; cancellation remains aborted', async () => {
-  for (const cancel of [false, true]) {
-    let calls = 0; const reported = [], events = [], parent = new AbortController();
-    const inner = (_m, _c, options) => {
-      calls++;
-      const s = createAssistantMessageEventStream();
-      queueMicrotask(() => s.push({ type: 'start', partial: assistant() }));
-      options.signal.addEventListener('abort', () => { s.push({ type: 'error', reason: 'aborted', error: { ...assistant([], 'aborted'), errorMessage: 'aborted' } }); s.end(); }, { once: true });
-      return s;
-    };
-    const stream = createOmlxStream(25, e => reported.push(e), inner)({ ...seed.models[0], provider: seed.provider, api: 'openai-completions' }, { messages: [] }, { signal: parent.signal });
-    if (cancel) setTimeout(() => parent.abort(), 5);
-    for await (const e of stream) events.push(e);
-    assert.equal(calls, 1); assert.equal(events.filter(e => e.type === 'error' || e.type === 'done').length, 1);
-    assert.equal(events.at(-1).reason, cancel ? 'aborted' : 'error');
-    if (!cancel) assert.ok(events.at(-1).error.errorMessage.includes('timeout'));
-  }
+ test('stream has no deadline wrapper and preserves caller cancellation', async () => {
+  const parent = new AbortController(), events = [];
+  let received;
+  const inner = (_m, _c, options) => {
+    received = options;
+    const s = createAssistantMessageEventStream();
+    queueMicrotask(() => s.push({ type: 'start', partial: assistant() }));
+    options.signal.addEventListener('abort', () => {
+      s.push({ type: 'error', reason: 'aborted', error: { ...assistant([], 'aborted'), errorMessage: 'aborted' } });
+      s.end();
+    }, { once: true });
+    return s;
+  };
+  const delegate = createOmlxStream(inner);
+  assert.equal(delegate, inner, 'no timer or abort-controller wrapper is installed');
+  const stream = delegate({ ...seed.models[0], provider: seed.provider, api: 'openai-completions' }, { messages: [] }, { signal: parent.signal });
+  assert.equal(received.signal, parent.signal);
+  setTimeout(() => parent.abort(), 30);
+  for await (const event of stream) events.push(event);
+  assert.deepEqual(events.map(e => e.type), ['start', 'error']);
+  assert.equal(events.at(-1).reason, 'aborted');
  });
  test('actual Pi request uses max_tokens, valid Qwen effort, preserved thinking and instrumentation', async () => {
   const requests = [];
@@ -286,7 +290,7 @@ const assistant = (content = [], stopReason = 'stop') => ({ role: 'assistant', c
     let responses = 0, payloadHooks = 0, providerEvents = 0;
     for (const level of ['high', undefined]) {
       const transcript = normalizeContext({ systemPrompt: 'Be concise', messages: [{ role: 'user', content: 'Hello', timestamp: 0 }], tools: [] });
-      const stream = createOmlxStream(5000, () => {})(model, transcript, { apiKey: 'test-wire-key', reasoning: level,
+      const stream = createOmlxStream()(model, transcript, { apiKey: 'test-wire-key', reasoning: level,
         onPayload: payload => { payloadHooks++; return { ...payload, metadata: { test: true } }; },
         onResponse: () => { responses++; }, onProviderStreamEvent: () => { providerEvents++; }, });
       const events = []; for await (const event of stream) events.push(event);
@@ -306,7 +310,7 @@ const assistant = (content = [], stopReason = 'stop') => ({ role: 'assistant', c
     assert.equal(requests[1].payload.chat_template_kwargs.enable_thinking, false);
     assert.equal(requests[1].payload.chat_template_kwargs.reasoning_effort, undefined);
     const effort = catalog.modelFromRecord({ ...catalog.seedRecords(seed)[0], id: 'EffortOnly', reasoning: true, effortOptions: ['low', 'high'] }, seed);
-    const effortStream = createOmlxStream(5000, () => {})({ ...effort, provider: seed.provider, api: 'openai-completions', baseUrl: model.baseUrl }, normalizeContext({ messages: [{ role: 'user', content: 'Hello', timestamp: 0 }] }), { apiKey: 'test-wire-key' });
+    const effortStream = createOmlxStream()({ ...effort, provider: seed.provider, api: 'openai-completions', baseUrl: model.baseUrl }, normalizeContext({ messages: [{ role: 'user', content: 'Hello', timestamp: 0 }] }), { apiKey: 'test-wire-key' });
     for await (const event of effortStream) if (event.type === 'error') assert.fail('Effort-only serialization failed');
     assert.equal(requests.at(-1).payload.reasoning_effort, 'none');
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

@@ -15,8 +15,6 @@ Values come from the process environment, then the nearest ancestor `.env`. Exis
 | `OMLX_64_API_KEY` | Optional separate key for `omlx-64`; otherwise uses the shared key |
 | `OMLX_ADMIN_SESSION` | Optional `omlx_admin_session` cookie **value** for `omlx` |
 | `OMLX_64_ADMIN_SESSION` | Optional separate admin session cookie value for `omlx-64` |
-| `OMLX_STREAM_FIRST_DELTA_TIMEOUT_MS` | Request-to-first-meaningful-delta timeout, including connection/model load/prefill; default 120000; 0 disables |
-| `OMLX_64_STREAM_FIRST_DELTA_TIMEOUT_MS` | Optional host-specific timeout; blank inherits the shared setting |
 | `PI_OFFLINE` | `1`, `true`, or `yes` disables extension discovery, including explicit status refresh |
 
 Admin cookies are optional. oMLX admin endpoints can require cookie authentication even when the API bearer key is valid. Without admin access, public model metadata remains usable, and `/omlx-status` explains the limitation. No automatic admin login, cookie harvesting, server configuration writes or load/unload API calls occur. Keep cookie values and keys only in private configuration, never in git. Restart/reload the extension to reread credentials.
@@ -36,7 +34,7 @@ Admin cookies are optional. oMLX admin endpoints can require cookie authenticati
 
 Every model receives Pi's compatibility flags for non-developer roles and the explicit `max_tokens` output-limit field. Verified Qwen overrides preserve our existing reasoning history and Qwen3.8 effort mappings. Other models use advertised on/off controls or effort vocabularies; unknown templates are not guessed from names. Architectural thinking capability is distinct from whether thinking defaults on. Discovery never changes the user's selected thinking level.
 
-Streaming delegates directly to Pi's concrete OpenAI implementation, retaining request/response/stream instrumentation, tool conversion, image conversion, usage accounting and cancellation. The first-delta watchdog ignores start/keepalive events, clears on meaningful text/thinking/tool progress, and never transparently replays a request. It is not an inactivity watchdog after the first meaningful delta. Pi's normal error retry policy remains Pi-owned.
+Streaming delegates directly to Pi's concrete OpenAI implementation, retaining request/response/stream instrumentation, tool conversion, image conversion, usage accounting and cancellation. There is no extension-imposed first-output deadline: model loading and prefill can finish without a watchdog abort. The former `OMLX_STREAM_FIRST_DELTA_TIMEOUT_MS` and `OMLX_64_STREAM_FIRST_DELTA_TIMEOUT_MS` settings are no longer used. Pi's normal error retry policy remains Pi-owned.
 
 ## Diagnostics
 

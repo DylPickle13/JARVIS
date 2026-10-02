@@ -35,7 +35,7 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `00-private-permissions.ts`: enforces owner-only permissions on ignored local configuration and private runtime directories.
 - `pi-web-access`: stock pinned npm extension, loaded directly through `.pi/settings.json`.
 - `02-web-search-policy.ts`: forces `web_search` tool-call input `includeContent` to `false`, including when explicitly requested as `true`, preventing background source fetches and later-turn completion notifications. Explicit `fetch_content` calls remain unchanged. Requires `/reload` or a new session after installation; does not cancel already-running fetches.
-- `01-omlx.ts`: non-blocking two-host oMLX bridge with authenticated full-catalog discovery, metadata-driven thinking controls, verified per-model Qwen overrides, private offline caching, UI-only `/omlx-status`, first-delta timeout, and bounded recovery. See [OMLX.md](OMLX.md) for configuration, safety limits and tests. The old context cache is read for migration; new snapshots use `.pi/runtime/omlx-catalog.json`.
+- `01-omlx.ts`: non-blocking two-host oMLX bridge with authenticated full-catalog discovery, metadata-driven thinking controls, verified per-model Qwen overrides, private offline caching, UI-only `/omlx-status`, deadline-free streaming, and bounded recovery. See [OMLX.md](OMLX.md) for configuration, safety limits and tests. The old context cache is read for migration; new snapshots use `.pi/runtime/omlx-catalog.json`.
 - `03-codex-fast.ts`: optional `/fast` toggle for Codex priority service tier.
 - `04-delete-current-session.ts`: current-session cleanup command.
 - `04-room-audio-session.ts`: exact Session 10 voice ingress and presentation-only guidance; inactive outside its provisioned pane.

@@ -16,9 +16,6 @@ function envValue(keys: string[], dotenv: Record<string, string>): string | unde
 		if (value) return value;
 	}
 }
-function timeoutValue(value: string | undefined): number {
-	const n = Number(value); return value !== undefined && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 120000;
-}
 type Options = { dotenv?: Record<string, string>; cachePath?: string; legacyPath?: string; seeds?: ProviderSeed[]; fetcher?: typeof fetch };
 
 export function registerOmlx(pi: ExtensionAPI, options: Options = {}) {
@@ -47,10 +44,7 @@ export function registerOmlx(pi: ExtensionAPI, options: Options = {}) {
 			lastStreamErrors.set(message.provider, isRecoverableOverflow(message.errorMessage ?? "") ? "Context/memory overflow" : "Provider error (see session response; raw payload omitted)");
 		}
 	});
-	const streams = new Map(states.map(state => {
-		const key = state.seed.provider === "omlx-64" ? ["OMLX_64_STREAM_FIRST_DELTA_TIMEOUT_MS", "OMLX_STREAM_FIRST_DELTA_TIMEOUT_MS"] : ["OMLX_STREAM_FIRST_DELTA_TIMEOUT_MS"];
-		return [state, createOmlxStream(timeoutValue(envValue(key, dotenv)), error => lastStreamErrors.set(state.seed.provider, error))] as const;
-	}));
+	const stream = createOmlxStream();
 	async function refresh(state: ProviderState, signal?: AbortSignal) {
 		if (stopped || isPiOffline() || signal?.aborted) return providerModels(state);
 		// Serialize per-host discovery; different hosts still refresh in parallel.
@@ -74,7 +68,7 @@ export function registerOmlx(pi: ExtensionAPI, options: Options = {}) {
 			name: state.seed.provider === "omlx-64" ? "oMLX 64" : "oMLX",
 			baseUrl: state.baseUrl, api: "openai-completions", apiKey: state.apiKey,
 			authHeader: true,
-			models: providerModels(state), streamSimple: streams.get(state),
+			models: providerModels(state), streamSimple: stream,
 			refreshModels: async ({ allowNetwork, signal }) => allowNetwork ? refresh(state, signal) : providerModels(state),
 		};
 	}
