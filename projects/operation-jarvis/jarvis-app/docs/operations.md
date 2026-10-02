@@ -4,6 +4,33 @@
 
 Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.
 
+## Matching swipe animation — build 241
+
+Build 241, installed and independently version/launch/process verified on both
+physical devices at **2026-10-02 13:23 EDT**, adds a shared 300 ms directional slide/fade:
+horizontal phone tab swipes and vertical Watch page swipes. Page order, device-card
+locations, Terminal session gestures and notification/TLS fixes are preserved.
+Reduce Motion disables the transition; backgrounding and interrupted routes do
+not strand a phone overlay. The native tab bar, tab controllers and delegates
+are retained, with memory-only snapshots shielding moving content taps. Watch
+also shields controls until its page animation completes.
+
+155 iPhone tests passed, including six real-window animation/lifecycle tests;
+289 shared tests completed with 3 expected skips. Both simulator builds and the
+four-bundle signing/profile/entitlement/dependency audit passed. The existing plain
+Paste pixel test exclusion remains. Terminal code is unchanged; its build-240
+test evidence is retained, not represented as a new backend test run.
+
+**Installation completed:** the first Watch preflight disconnected before any
+device write. After the owner woke/unlocked the devices, fresh identity, developer
+service, lock-state and baseline checks passed. Each device received exactly one
+installation, with independent final version and running-process verification.
+All 18 protected service PIDs and existing Pi pane identities were preserved.
+Build 240 is the exact retained rollback. No backend service or Pi session restarted.
+Physical swipe feel and accessibility acceptance remain pending owner review.
+
+Private evidence: `20261002T171632Z-build241-page-motion`.
+
 ## Watch layout restoration — build 240
 
 Owner-approved build **240** was installed once on both devices and independently

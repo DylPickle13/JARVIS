@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
+import JARVISKit
 
 /// One directional recognizer on the phone's tab host. It is physically detached
 /// while Terminal is selected, so it cannot compete with Pi session gestures.
 struct TabSwipeNavigation: UIViewRepresentable {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let section: AppSection
     let active: Bool
     let select: (AppSection) -> Void
@@ -21,13 +23,14 @@ struct TabSwipeNavigation: UIViewRepresentable {
     }
 
     func updateUIView(_ view: Probe, context: Context) {
-        context.coordinator.configure(section: section, active: active, select: select)
+        context.coordinator.configure(section: section, active: active, reduceMotion: reduceMotion, select: select)
         context.coordinator.mount(view)
     }
 
     static func dismantleUIView(_ view: Probe, coordinator: Coordinator) {
         view.mounted = nil
         coordinator.detach()
+        coordinator.pageAnimator.cancel()
     }
 
     final class Probe: UIView {
@@ -45,6 +48,8 @@ struct TabSwipeNavigation: UIViewRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         private(set) var section: AppSection = .home
         private var active = false
+        private var reduceMotion = false
+        let pageAnimator = TabPageAnimator()
         private var select: ((AppSection) -> Void)?
         private var startedOn: AppSection?
         private weak var probe: Probe?
@@ -57,15 +62,21 @@ struct TabSwipeNavigation: UIViewRepresentable {
             return recognizer
         }()
 
-        func configure(section: AppSection, active: Bool, select: @escaping (AppSection) -> Void) {
-            if self.section != section || self.active != active { detach() }
+        func configure(section: AppSection, active: Bool, reduceMotion: Bool = false,
+                       select: @escaping (AppSection) -> Void) {
+            let changed = self.section != section
+            if changed || self.active != active { detach() }
             self.section = section
             self.active = active
+            self.reduceMotion = reduceMotion
             self.select = select
+            if !active || reduceMotion { pageAnimator.cancel() }
+            else if changed { pageAnimator.selectionDidChange(to: section) }
         }
 
         func mount(_ probe: Probe) {
             self.probe = probe
+            pageAnimator.validateLayout()
             guard active, section != .pi, probe.window != nil else { detach(); return }
             var responder: UIResponder? = probe
             while let current = responder, !(current is UIViewController) { responder = current.next }
@@ -134,7 +145,7 @@ struct TabSwipeNavigation: UIViewRepresentable {
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             let velocity = pan.velocity(in: pan.view)
-            guard active, section != .pi, abs(velocity.x) > abs(velocity.y) * 1.5 else { return false }
+            guard active, section != .pi, !pageAnimator.isInFlight, abs(velocity.x) > abs(velocity.y) * 1.5 else { return false }
             // Fail immediately on vertical intent and at non-wrapping boundaries.
             return section.swipeDestination(horizontal: velocity.x < 0 ? -64 : 64, vertical: 0) != nil
         }
@@ -155,7 +166,21 @@ struct TabSwipeNavigation: UIViewRepresentable {
             guard active, startedOn == section, let host, !Self.hasOverlay(host) else { return }
             let distance = gesture.translation(in: gesture.view)
             guard let destination = section.swipeDestination(horizontal: distance.x, vertical: distance.y) else { return }
-            // Same binding as tab taps; no extra animation (also respects Reduce Motion).
+            selectFromSwipe(destination)
+        }
+        func selectFromSwipe(_ destination: AppSection) {
+            guard active, section != .pi, !pageAnimator.isInFlight,
+                  let host, !Self.hasOverlay(host),
+                  let from = AppSection.allCases.firstIndex(of: section),
+                  let to = AppSection.allCases.firstIndex(of: destination),
+                  abs(to - from) == 1,
+                  let direction = PageNavigationMotion.direction(from: from, to: to) else { return }
+            if PageNavigationMotion.allows(active: active,
+                reduceMotion: reduceMotion || UIAccessibility.isReduceMotionEnabled),
+               let tabs = TabPageAnimator.tabController(in: host) {
+                pageAnimator.prepare(tabs: tabs, destination: destination, direction: direction)
+            }
+            // Route immediately through the existing binding; only presentation waits.
             select?(destination)
         }
     }

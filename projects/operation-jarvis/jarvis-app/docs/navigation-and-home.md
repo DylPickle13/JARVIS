@@ -1,8 +1,8 @@
 # JARVIS, Home and Terminal navigation
 
-Watch restoration installed as **build 240** on both iPhone and Watch, with
-version/process verification on **2026-10-02 at 12:39 EDT**. The matched iPhone
-package has unchanged UI. See [deployment checks](operations.md#watch-layout-restoration--build-240)
+Matching swipe animations installed as **build 241** on both iPhone and Watch, with
+version/process verification on **2026-10-02 at 13:23 EDT**. Build 240's page grouping
+is unchanged. See [deployment checks](operations.md#matching-swipe-animation--build-241)
 and [preserved recovery fixes](terminal-recovery-and-notification-taps.md).
 Physical gesture, Crown and notification acceptance remains pending owner review.
 
@@ -25,7 +25,8 @@ select Pi sessions. Home and Jobs may swipe into Terminal; use the tab bar to le
 Vertical scrolling, native controls, horizontal scroll views, explicit SwiftUI
 horizontal-control exclusions, presented sheets/dialogs, pushed navigation details,
 and VoiceOver are protected from tab gestures. Tab selection uses the same binding
-as tab taps, without adding animation, including under Reduce Motion.
+as tab taps. Accepted swipes use the matching page motion below; Reduce Motion
+keeps selection immediate and unanimated.
 
 Internal route IDs remain `.home` (JARVIS), `.system` (Home), and `.pi` (Terminal).
 Existing URLs, launch arguments, session notifications and widget destinations
@@ -50,6 +51,27 @@ restores the former card grouping without reverting the iPhone layout or fixes.
 
 The iPhone grouping stays unchanged; selection is not forcibly mirrored.
 
+## Matching swipe motion — build 241
+
+Accepted swipes use a **300 ms ease-out slide and fade**, travelling 14% of the
+viewport: horizontally on iPhone, vertically on Watch. Forward/backward movement
+follows each device's existing page order. Swipes commit on release, rather than
+tracking the finger interactively. The iPhone tab bar and Watch indicators stay put.
+
+The phone keeps its native `TabView`, delegate, navigation stacks and live controllers.
+Temporary page snapshots provide the motion without multiplying UIKit's own tab
+crossfade or changing live page opacity/transforms. They stay in memory only and
+are removed at completion or cancellation. Content taps are briefly shielded while
+the snapshots move; the native tab bar stays usable. New routes, backgrounding,
+rotation and Reduce Motion changes cancel the phone animation immediately.
+Repeated swipes cannot stack overlays.
+
+Watch uses the same timing and proportional travel through a SwiftUI visual transition.
+Reduce Motion, inactive scenes, Always On and modal coverage disable that motion.
+Deep links and notification routes remain immediate; no backend work or selection
+waits for an animation. Terminal's horizontal session gestures are unchanged.
+Tab taps retain their native behavior; this effect belongs to page swipes.
+
 ## Refresh ownership and compatibility
 
 - JARVIS owns the existing Pi/Room Audio and visible Codex/oMLX refresh policies.
@@ -68,6 +90,8 @@ The iPhone grouping stays unchanged; selection is not forcibly mirrored.
 
 - `JARVIS/JARVISApp.swift`: tab labels and shared selection binding.
 - `JARVIS/Views/TabSwipeNavigation.swift`: gesture installation and input exclusions.
+- `JARVIS/Views/TabPageAnimator.swift`: cancellable native phone-page presentation.
+- `JARVISKit/Sources/JARVISKit/PageNavigationMotion.swift`: shared timing, travel and Watch transition.
 - `JARVIS/Views/HomeView.swift`: JARVIS dashboard (legacy source name).
 - `JARVIS/Views/SystemView.swift`: Home shell (legacy source name).
 - `JARVIS/Views/HomeDeviceControls.swift`: extracted plug/purifier UI.
@@ -76,8 +100,9 @@ The iPhone grouping stays unchanged; selection is not forcibly mirrored.
 - `JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift`: pager order/bounds.
 - `JARVISWatch/Views/WatchTerminalView.swift`: updated vertical destinations only.
 
-Regression coverage includes `TabNavigationTests`, `AppStateTests`,
-`WatchDashboardPageTests` and `OMLXSummaryTests`. Hosted unit tests suppress the
+Regression coverage includes `TabNavigationTests`, `TabPageAnimationTests`,
+`PageNavigationMotionTests`, `AppStateTests`, `WatchDashboardPageTests` and
+`OMLXSummaryTests`. Hosted unit tests suppress the
 app shell's live networking/notification activation; models use injected fixtures.
 Build in an isolated checkout with the pinned package lock. Signing, installation
 and physical gesture/Crown/VoiceOver acceptance remain separate steps.

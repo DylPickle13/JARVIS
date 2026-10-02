@@ -835,8 +835,8 @@ assert pager.index('.highPriorityGesture(') > pager.index('pageIndicator\n      
 PYCROWN
 
 grep -Fq 'Self.allCases.indices.contains(next)' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
-grep -Fq 'onAdvancePage: { selectedPage = .plugs }' JARVISWatch/Views/WatchDashboardContent.swift
-grep -Fq 'onPreviousPage: { selectedPage = .home }' JARVISWatch/Views/WatchDashboardContent.swift
+grep -Fq 'onAdvancePage: { selectPage(.plugs) }' JARVISWatch/Views/WatchDashboardContent.swift
+grep -Fq 'onPreviousPage: { selectPage(.home) }' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'alwaysOnInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'The dedicated Plugs grid must not collapse the pager viewport.' JARVISWatch/Views/WatchDashboardContent.swift
 grep -Fq 'WatchSystemCrownViewport(active: scenePhase == .active && selectedPage == .home' JARVISWatch/Views/WatchDashboardContent.swift

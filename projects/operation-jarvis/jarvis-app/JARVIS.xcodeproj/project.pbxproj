@@ -19,6 +19,7 @@
 		1065CFD7727BD036AF7DEF7D /* ReactorNeuralCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15605B7B3B154556E958183E /* ReactorNeuralCore.swift */; };
 		14AB80A51BA077FC8A28DF2E /* NeuralCoreC2Decoration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D47342CED96CA7B12B466D /* NeuralCoreC2Decoration.swift */; };
 		151491541519300CE9013524 /* JARVISPromptRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BC7233D8BF144DFD8CA711 /* JARVISPromptRuntime.swift */; };
+		153D087DD0FBDDECA5C6F1D9 /* TabPageAnimationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3949BAFC4E2A0DFADA3ED9D9 /* TabPageAnimationTests.swift */; };
 		164A7C5B2C9AA9272A226560 /* PiAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8DEE39E010FD51DF01CE39 /* PiAttachmentTests.swift */; };
 		1759E7B88DF32720F791D755 /* OMLXStatusCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0614F828A3200E9212F5A8B0 /* OMLXStatusCard.swift */; };
 		1D5E7CC1DB8E703A3D114F61 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8068A9EC5CBE6A47B603710 /* JARVISKit */; };
@@ -90,6 +91,7 @@
 		CE5D4B62A65FF62754C9299D /* SystemDashboardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 019B4EC3DCA629C42662CED3 /* SystemDashboardViewTests.swift */; };
 		D250A7189D6C70AD54591AFE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888D11D79E21EC5437B45339 /* SettingsView.swift */; };
 		D8ABD891AB536358B3617BD4 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD52E36404CFBA273498ACD2 /* Components.swift */; };
+		D94BD92DD63667D2452675A2 /* TabPageAnimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EB248B127049A4476D078B9 /* TabPageAnimator.swift */; };
 		DB09BAE64C26CA3AC16EE413 /* FillRect-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = 8AC50929D8C075ED60E109B1 /* FillRect-Regular.otf */; };
 		DBCECDA10C8DE309C8833B44 /* JARVISWidgetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E32755A9AB7BFF1E2C07B9 /* JARVISWidgetTheme.swift */; };
 		DD7391FF9563157D2965AEEE /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD318AB3793295E0031F850 /* HomeView.swift */; };
@@ -182,6 +184,7 @@
 		059A9491E7F412C62EE24748 /* PiSessionMaintenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiSessionMaintenanceTests.swift; sourceTree = "<group>"; };
 		0614F828A3200E9212F5A8B0 /* OMLXStatusCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OMLXStatusCard.swift; sourceTree = "<group>"; };
 		07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
+		0EB248B127049A4476D078B9 /* TabPageAnimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabPageAnimator.swift; sourceTree = "<group>"; };
 		137E1FF7B884864E7A46CE7B /* PiTerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalSettingsView.swift; sourceTree = "<group>"; };
 		1548C41F74BB5F0E3EF25885 /* JARVISWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWidgetBundle.swift; sourceTree = "<group>"; };
 		15605B7B3B154556E958183E /* ReactorNeuralCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReactorNeuralCore.swift; sourceTree = "<group>"; };
@@ -198,6 +201,7 @@
 		325AC9EE99D5B5BA85A84D73 /* JARVISTerminalConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISTerminalConfigurationStore.swift; sourceTree = "<group>"; };
 		34E9D71966FAB1162DD5FD44 /* PiAttachmentCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentCameraView.swift; sourceTree = "<group>"; };
 		366131BF98CEBD234A1B3EAC /* JARVISWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWatchApp.swift; sourceTree = "<group>"; };
+		3949BAFC4E2A0DFADA3ED9D9 /* TabPageAnimationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabPageAnimationTests.swift; sourceTree = "<group>"; };
 		3B3A49AB08F03AB80167B37B /* AppStateWatchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateWatchBridge.swift; sourceTree = "<group>"; };
 		40C659E6D5CAA095003D8887 /* WidgetSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSupport.swift; sourceTree = "<group>"; };
 		48B3DF6C367DAF49D5333EF0 /* PiAttachmentSSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentSSHTransport.swift; sourceTree = "<group>"; };
@@ -316,6 +320,7 @@
 				F14810D55E1EA67ABAF4F26C /* ReactorTitleTests.swift */,
 				019B4EC3DCA629C42662CED3 /* SystemDashboardViewTests.swift */,
 				58DD21E3A9D7CFA7236E121F /* TabNavigationTests.swift */,
+				3949BAFC4E2A0DFADA3ED9D9 /* TabPageAnimationTests.swift */,
 				2AE7C82A6919910DCCB2FFA5 /* WatchJobsModelTests.swift */,
 			);
 			path = JARVISTests;
@@ -359,6 +364,7 @@
 				9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */,
 				888D11D79E21EC5437B45339 /* SettingsView.swift */,
 				DEE1384ED20F351D925F3A53 /* SystemView.swift */,
+				0EB248B127049A4476D078B9 /* TabPageAnimator.swift */,
 				F5DFCE6C8A4BD4E9019FF961 /* TabSwipeNavigation.swift */,
 				9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */,
 			);
@@ -777,6 +783,7 @@
 				1DC8B19B903AE4B1F55DDA99 /* SettingsComponents.swift in Sources */,
 				D250A7189D6C70AD54591AFE /* SettingsView.swift in Sources */,
 				B39D4418FC67AC398779D44F /* SystemView.swift in Sources */,
+				D94BD92DD63667D2452675A2 /* TabPageAnimator.swift in Sources */,
 				EE817092DD95BCE05DF3B1ED /* TabSwipeNavigation.swift in Sources */,
 				00A8A57CB85F3DEEC79B83AF /* WatchTerminalProvisioningSettings.swift in Sources */,
 				576BB6C417A8A28E379D2A45 /* WatchTerminalSettingsView.swift in Sources */,
@@ -796,6 +803,7 @@
 				8D4618C0F437C03EA5E5A532 /* ReactorTitleTests.swift in Sources */,
 				CE5D4B62A65FF62754C9299D /* SystemDashboardViewTests.swift in Sources */,
 				79B40C9320AD7CF0E236D858 /* TabNavigationTests.swift in Sources */,
+				153D087DD0FBDDECA5C6F1D9 /* TabPageAnimationTests.swift in Sources */,
 				95D980CFEA72CAC956921F47 /* WatchJobsModel.swift in Sources */,
 				285BBD47EB95C2364F624D92 /* WatchJobsModelTests.swift in Sources */,
 			);
@@ -988,7 +996,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 240;
+				CURRENT_PROJECT_VERSION = 241;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1093,7 +1101,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 240;
+				CURRENT_PROJECT_VERSION = 241;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

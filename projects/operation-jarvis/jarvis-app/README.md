@@ -2,15 +2,20 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current iPhone and Watch build: 240**, installed once on both devices and
-independently version/launch/process verified on **2026-10-02 at 12:39 EDT**.
+**Current iPhone and Watch build: 241**, installed once on both devices and
+independently version/launch/process verified on **2026-10-02 at 13:23 EDT**.
+Matching directional swipe animations use a 300 ms slide/fade, with Reduce Motion
+support and unchanged Terminal session gestures. 155 iPhone tests and 289 shared
+tests (3 expected skips), both simulator builds and the signed archive audit passed.
+The initial Watch preflight disconnected before any device write; installation
+succeeded after the owner woke/unlocked the paired devices.
 iPhone remains **JARVIS → Home → Terminal → Jobs → Settings**, with health, plugs
 and purifier grouped under Home and horizontal tab swipes excluded on Terminal.
 Watch restores **Home → Terminal → Plugs → JARVIS → Jobs**: health-only Home,
 dedicated plug grid, and purifier above Codex/oMLX on JARVIS.
-Build 239's exact signed archive is retained for rollback. No backend service
-PIDs changed. The owner acknowledged a possible concurrent Pi 4 restart and
-closed that follow-up; see [deployment checks](docs/operations.md#watch-layout-restoration--build-240).
+Build 240's exact signed archive is retained for rollback. All 18 protected service
+PIDs and existing Pi panes were preserved; see
+[deployment checks](docs/operations.md#matching-swipe-animation--build-241).
 Completion alerts can be reopened after handling; the separately approved terminal
 bridge update prevents an unfinished TLS handshake from blocking other clients.
 Credentials, dependency lock and entitlements were preserved.

@@ -11,6 +11,11 @@ struct WatchDashboardContent: View {
     let onJobRouteConsumed: (ScheduledJobNavigationRequest) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isLuminanceReduced) private var dimmed
+    @State private var pageDirection: PageNavigationMotion.Direction = .forward
+    @State private var pageIsMoving = false
+    @State private var pageMotionGeneration = UUID()
     @State private var selectedPage: WatchDashboardPage = .terminal
     @State private var showsSystemDetails = false
     @State private var showsPurifierModeChoices = false
@@ -39,9 +44,13 @@ struct WatchDashboardContent: View {
             WatchJarvisStyle.background
                 .ignoresSafeArea()
 
-            selectedPageContent
-                .id(selectedPage)
-                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            ZStack {
+                selectedPageContent
+                    .id(selectedPage)
+                    .transition(.jarvisPageSlide(direction: pageDirection, axis: .vertical))
+            }
+            // A moving visual effect must not expose stationary device-control targets.
+            .allowsHitTesting(!pageIsMoving)
 
             pageIndicator
         }
@@ -56,7 +65,14 @@ struct WatchDashboardContent: View {
             including: overlayOwnsInput ? .none : (selectedPage == .terminal ? .subviews : .all)
         )
         .tint(WatchJarvisStyle.accent)
-        .interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.32)
+        .clipped()
+        .transaction {
+            if !PageNavigationMotion.allows(active: scenePhase == .active, reduceMotion: reduceMotion,
+                                            covered: overlayOwnsInput, dimmed: dimmed) {
+                $0.animation = nil
+                $0.disablesAnimations = true
+            }
+        }
         .onAppear {
             #if DEBUG && targetEnvironment(simulator)
             if CommandLine.arguments.contains("-jarvisOpenWatchSystem") || CommandLine.arguments.contains("-jarvisOpenWatchHome") {
@@ -96,16 +112,22 @@ struct WatchDashboardContent: View {
         .onChange(of: isDashboardCovered) { _, _ in updateOMLXPresentation() }
         .onChange(of: terminalRequestSequence) { oldValue, newValue in
             guard newValue != oldValue else { return }
+            cancelPageMotion()
             selectedPage = .terminal
         }
         .task(id: requestedJobRoute?.id) {
             guard let route = requestedJobRoute else { return }
+            cancelPageMotion()
             selectedPage = .jobs
             if await model.resolveScheduledJobRoute(route), !Task.isCancelled {
                 onJobRouteConsumed(route)
             }
         }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { cancelPageMotion() } }
+        .onChange(of: reduceMotion) { _, reduced in if reduced { cancelPageMotion() } }
+        .onChange(of: dimmed) { _, value in if value { cancelPageMotion() } }
         .onDisappear {
+            cancelPageMotion()
             model.setJobsPageVisible(false)
             model.setOMLXPresentation(systemVisible: false, covered: true)
             model.setSystemHistoryPresentation(visible: false, covered: true)
@@ -138,13 +160,13 @@ struct WatchDashboardContent: View {
                 controller: model.terminal,
                 pi: model.lastState?.subsystems?.pi,
                 isActive: true,
-                onAdvancePage: { selectedPage = .plugs },
-                onPreviousPage: { selectedPage = .home }
+                onAdvancePage: { selectPage(.plugs) },
+                onPreviousPage: { selectPage(.home) }
             )
         case .jobs:
             WatchJobsView(
                 model: jobs,
-                onPreviousPage: { selectedPage = .jarvis },
+                onPreviousPage: { selectPage(.jarvis) },
                 resolveRoute: model.resolveScheduledJobRoute,
                 onRouteConsumed: onJobRouteConsumed
             )
@@ -180,8 +202,32 @@ struct WatchDashboardContent: View {
                         verticalTranslation: Double(value.translation.height),
                         horizontalTranslation: Double(value.translation.width)
                       ) else { return }
-                selectedPage = destination
+                selectPage(destination)
             }
+    }
+
+    private func selectPage(_ destination: WatchDashboardPage) {
+        guard let from = WatchDashboardPage.allCases.firstIndex(of: selectedPage),
+              let to = WatchDashboardPage.allCases.firstIndex(of: destination),
+              let direction = PageNavigationMotion.direction(from: from, to: to) else { return }
+        pageDirection = direction
+        let allowed = PageNavigationMotion.allows(active: scenePhase == .active,
+            reduceMotion: reduceMotion, covered: overlayOwnsInput, dimmed: dimmed)
+        let generation = UUID()
+        pageMotionGeneration = generation
+        pageIsMoving = allowed
+        withAnimation(allowed ? .easeOut(duration: PageNavigationMotion.duration) : nil,
+                      completionCriteria: .removed) {
+            selectedPage = destination
+        } completion: {
+            guard pageMotionGeneration == generation else { return }
+            pageIsMoving = false
+        }
+    }
+
+    private func cancelPageMotion() {
+        pageMotionGeneration = UUID()
+        pageIsMoving = false
     }
 
     @ViewBuilder
