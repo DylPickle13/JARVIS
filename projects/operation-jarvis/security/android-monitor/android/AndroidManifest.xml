@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.jarvis.monitor" android:versionCode="6" android:versionName="1.5">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.jarvis.monitor" android:versionCode="8" android:versionName="1.6.1">
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="23" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -23,6 +23,7 @@
         <receiver android:name=".Boot" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
             </intent-filter>
         </receiver>

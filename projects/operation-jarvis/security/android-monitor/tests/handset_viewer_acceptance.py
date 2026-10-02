@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Opt-in native viewer lifecycle/sleep-wake test; no presence or camera changes.
 
-Leaves the viewer playing for observation. With --confirm-temporary-wake the owner
+Leaves the viewer playing with audio on for observation; explicit audible-test
+confirmation is required for the v1.6.1 default. With --confirm-temporary-wake the owner
 explicitly permits the built-in phone-only screen test even when presence is away.
 Otherwise fresh nearby status is required. Never acknowledges pending errors.
 """
@@ -18,11 +19,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--serial', required=True)
     p.add_argument('--confirm-phone-viewer-test', action='store_true')
+    p.add_argument('--confirm-audible-test', action='store_true')
     p.add_argument('--confirm-temporary-wake', action='store_true')
     p.add_argument('--cycles', type=int, choices=range(1, 6), default=3)
     args = p.parse_args()
-    if not args.confirm_phone_viewer_test:
-        p.error('Explicit phone-test confirmation required.')
+    if not args.confirm_phone_viewer_test or not args.confirm_audible_test:
+        p.error('Explicit phone-test and audible-test confirmation required.')
 
     def adb(*parts):
         r = subprocess.run(['adb', '-s', args.serial, *parts], capture_output=True, text=True, timeout=15)
@@ -58,6 +60,13 @@ def main():
         try:
             for cycle in range(1, args.cycles + 1):
                 service = adb('shell', 'dumpsys', 'activity', 'service', 'local.jarvis.monitor/.MonitorService')
+                # The 15-second self-test hold can outlast frame/UI checks. Only
+                # wait for that explicit status to clear; never bypass an away/error gate.
+                for _ in range(10):
+                    if 'status=Screen test: sleep, then wake after 8 seconds' not in service:
+                        break
+                    time.sleep(1)
+                    service = adb('shell', 'dumpsys', 'activity', 'service', 'local.jarvis.monitor/.MonitorService')
                 require('enabled=true' in service and 'pending=false' in service and 'nativePlayer=true' in service,
                         'Enabled native helper with no pending action is required.')
                 require(args.confirm_temporary_wake or 'Connected over Wi-Fi / TLS — nearby' in service,
@@ -67,6 +76,8 @@ def main():
                 time.sleep(1)
                 state = viewer()
                 require('activePlayer=false' in state, 'Player did not release when backgrounded.')
+                require('audioMuted=true audioFocus=false' in state and 'audioVolume=0.0' in state,
+                        'Backgrounded viewer retained audio consent/focus/volume.')
                 counts = re.search(r'viewer opens=(\d+) releases=(\d+)', state)
                 require(counts and counts[1] == counts[2], 'Playback resources not fully released.')
                 nodes = hierarchy()
@@ -91,6 +102,8 @@ def main():
                 require(count == 1, 'Expected exactly one native viewer activity.')
                 first = frames(); time.sleep(3); second = frames()
                 require(second > first > 0, 'Rendered frames did not advance after wake.')
+                require('audioAvailable=true audioMuted=false audioFocus=true' in viewer(),
+                        'Wake did not restore the audio-on default.')
                 print(f'Cycle {cycle}: released player, slept, auto-woke, one viewer, frames {first}->{second}.')
         finally:
             adb('shell', 'rm', '-f', remote)

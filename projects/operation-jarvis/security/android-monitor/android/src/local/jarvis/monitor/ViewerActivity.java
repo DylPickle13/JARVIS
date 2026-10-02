@@ -3,6 +3,9 @@ package local.jarvis.monitor;
 import android.app.Activity;
 import android.app.KeyguardManager;
 import android.net.Uri;
+import android.content.*;
+import android.media.AudioManager;
+import com.google.android.exoplayer2.audio.AudioAttributes;
 import android.os.*;
 import android.view.*;
 import android.widget.*;
@@ -16,13 +19,31 @@ import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.video.VideoSize;
 
 /** Isolated :video process. One bounded RTSP/TCP player, native hardware surface.
- * No ad SDK, WebView, frame bitmaps, recording, audio, or credential-bearing Intent.
+ * Owner-selected listen-only audio defaults on while foreground/unlocked. No microphone,
+ * ad SDK, WebView, frame bitmaps, recording, or credential-bearing Intent.
  */
 public final class ViewerActivity extends Activity {
     private final Handler handler = new Handler();
     private final StreamHealth health = new StreamHealth();
     private SurfaceView surface;
     private TextView status;
+    private Button audioButton;
+    private AudioManager audioManager;
+    private final ListenAudioPolicy audio = new ListenAudioPolicy();
+    private boolean audioFocusHeld, audioReceiverRegistered, audioDisabled, tracksKnown;
+    private int audioRendered;
+    private String audioDecoder = "pending";
+    private final AudioManager.OnAudioFocusChangeListener focusListener =
+        new AudioManager.OnAudioFocusChangeListener() { public void onAudioFocusChange(int change) {
+            // Loss, transient loss and duck all require another explicit tap. Gain never unmutes.
+            if (change != AudioManager.AUDIOFOCUS_GAIN) muteAudio();
+        }};
+    private final BroadcastReceiver audioReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) { close(); show("Paused"); }
+            else if (AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) muteAudio();
+        }
+    };
     private ExoPlayer player;
     private CameraSocketFactory transport;
     private boolean resumed, retryPending;
@@ -42,6 +63,10 @@ public final class ViewerActivity extends Activity {
             counters.ensureUpdated();
             displayed = counters.renderedOutputBufferCount;
             decoded = displayed + counters.skippedOutputBufferCount + counters.droppedBufferCount;
+        }
+        DecoderCounters audioCounters = player.getAudioDecoderCounters();
+        if (audioCounters != null) {
+            audioCounters.ensureUpdated(); audioRendered = audioCounters.renderedOutputBufferCount;
         }
         long now = SystemClock.elapsedRealtime();
         if (health.stalled(displayed, now)) { failed(); return; }
@@ -76,6 +101,13 @@ public final class ViewerActivity extends Activity {
             try { transport.interrupt(); } catch (IOException e) { failed(); }
             return true;
         }});
+        audioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
+        setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        audioButton = new Button(this);
+        audioButton.setAllCaps(false);
+        audioButton.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { toggleAudio(); }});
+        layout.addView(audioButton, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.RIGHT));
+        updateAudioButton();
         setContentView(layout);
         show("Starting private camera viewer");
     }
@@ -84,11 +116,56 @@ public final class ViewerActivity extends Activity {
         return ((PowerManager)getSystemService(POWER_SERVICE)).isInteractive() && !k.isKeyguardLocked();
     }
     @Override public void onResume() {
-        super.onResume(); resumed = true; health.reset();
+        super.onResume(); resumed = true; health.reset(); audioDisabled = false; audio.reset();
+        IntentFilter filter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        registerReceiver(audioReceiver, filter); audioReceiverRegistered = true;
         if (unlocked()) open(); else show("Unlock to view camera");
     }
-    @Override public void onPause() { resumed = false; close(); show("Paused"); super.onPause(); }
+    @Override public void onPause() {
+        resumed = false; close(); show("Paused");
+        if (audioReceiverRegistered) { unregisterReceiver(audioReceiver); audioReceiverRegistered = false; }
+        super.onPause();
+    }
     @Override public void onDestroy() { close(); super.onDestroy(); }
+    private void updateAudioButton() {
+        if (audioButton == null) return;
+        audioButton.setText(audioDisabled || (tracksKnown && !audio.available()) ? "Audio unavailable" :
+            !audio.available() ? "Audio: checking…" : audio.listening() ? "Audio: on" : "Audio: muted");
+        audioButton.setContentDescription(audio.available() ?
+            (audio.listening() ? "Mute camera audio" : "Unmute camera audio") : "Camera audio unavailable");
+        audioButton.setEnabled(resumed && player != null && audio.available());
+    }
+    private void muteAudio() { audio.mute(); silenceAudio(); }
+    private void silenceAudio() {
+        if (player != null) player.setVolume(0f);
+        if (audioFocusHeld) { audioFocusHeld = false; audioManager.abandonAudioFocus(focusListener); }
+        updateAudioButton();
+    }
+    private void toggleAudio() {
+        if (audio.listening()) { muteAudio(); return; }
+        startAudio(true);
+    }
+    private void startAudio(boolean explicit) {
+        if (!resumed || !unlocked() || player == null || !audio.available()) { muteAudio(); return; }
+        boolean granted = audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC,
+            AudioManager.AUDIOFOCUS_GAIN) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        audioFocusHeld = granted;
+        if (audio.unmute(resumed && unlocked() && player != null, granted)) player.setVolume(1f);
+        else {
+            muteAudio();
+            if (explicit) Toast.makeText(this, "Audio unavailable right now", Toast.LENGTH_SHORT).show();
+        }
+        updateAudioButton();
+    }
+    private static boolean audioFailure(PlaybackException error) {
+        if (!(error instanceof ExoPlaybackException)) return false;
+        ExoPlaybackException ex = (ExoPlaybackException)error;
+        return ex.type == ExoPlaybackException.TYPE_RENDERER &&
+            ((ex.rendererFormat != null && ex.rendererFormat.sampleMimeType != null &&
+              ex.rendererFormat.sampleMimeType.startsWith("audio/")) ||
+             "MediaCodecAudioRenderer".equals(ex.rendererName));
+    }
     private Uri source() throws Exception {
         File file = new File(getFilesDir(), "player.json");
         if (file.length() < 1 || file.length() > 4096) throw new Exception();
@@ -110,16 +187,33 @@ public final class ViewerActivity extends Activity {
             Uri uri = source();
             PlayerDiagnostics.reset();
             DefaultTrackSelector selector = new DefaultTrackSelector(this);
-            selector.setParameters(selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true));
+            // Select audio from the outset: changing RTSP tracks mid-session can restart video.
+            // Wait for a supported track and granted focus before enabling volume.
+            selector.setParameters(selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, audioDisabled));
             player = new ExoPlayer.Builder(this).setTrackSelector(selector)
                 .setLoadControl(new DefaultLoadControl.Builder()
                     .setBufferDurationsMs(500, 1500, 250, 500)
                     .setTargetBufferBytes(2 * 1024 * 1024)
                     .setPrioritizeTimeOverSizeThresholds(false).build()).build();
+            player.setVolume(0f); // Before prepare/play: never an initial audible burst.
+            player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), false); // Focus is managed below.
             player.setVideoSurfaceView(surface);
             player.addListener(new Player.Listener() {
                 @Override public void onPlayerError(PlaybackException error) {
-                    if (epoch == generation && resumed) failed();
+                    if (epoch != generation || !resumed) return;
+                    // One-way fallback for this foreground session; use the existing bounded retry budget.
+                    if (audioFailure(error)) audioDisabled = true;
+                    failed();
+                }
+                @Override public void onTracksChanged(Tracks tracks) {
+                    if (epoch != generation) return;
+                    tracksKnown = !tracks.isEmpty();
+                    audio.tracks(!audioDisabled && tracks.isTypeSupported(C.TRACK_TYPE_AUDIO) &&
+                        tracks.isTypeSelected(C.TRACK_TYPE_AUDIO));
+                    if (!audio.available()) silenceAudio();
+                    else if (audio.autoRequested()) startAudio(false);
+                    updateAudioButton();
                 }
                 @Override public void onPlaybackStateChanged(int state) {
                     if (epoch == generation && resumed && state == Player.STATE_ENDED) failed();
@@ -138,13 +232,18 @@ public final class ViewerActivity extends Activity {
                         long initializedTimestampMs, long initializationDurationMs) {
                     if (epoch == generation) decoder = name;
                 }
+                @Override public void onAudioDecoderInitialized(EventTime eventTime, String name,
+                        long initializedTimestampMs, long initializationDurationMs) {
+                    if (epoch == generation && name.matches("[A-Za-z0-9_.-]{1,128}")) audioDecoder = name;
+                }
             });
             transport = new CameraSocketFactory(uri.getHost());
             RtspMediaSource media = new RtspMediaSource.Factory().setForceUseRtpTcp(true)
                 .setSocketFactory(transport).setTimeoutMs(5000).setDebugLoggingEnabled(true)
                 .createMediaSource(new MediaItem.Builder().setUri(uri).setMediaId("private-doorbell").build());
             player.setMediaSource(media);
-            decoded = displayed = lastDisplayed = 0; decoder = "pending";
+            decoded = displayed = lastDisplayed = audioRendered = 0;
+            decoder = audioDecoder = "pending";
             lastSample = SystemClock.elapsedRealtime(); health.opened(lastSample);
             player.prepare(); player.play(); opens++;
             handler.postDelayed(sample, 2000);
@@ -163,10 +262,11 @@ public final class ViewerActivity extends Activity {
     private void close() {
         generation++;
         handler.removeCallbacksAndMessages(null); retryPending = false;
+        silenceAudio(); audio.closed(); tracksKnown = false;
         if (player != null) {
             player.release(); player = null; releases++;
         }
-        transport = null;
+        transport = null; updateAudioButton();
     }
     private void show(String text) { phase = text; status.setText(text); }
     @Override public void dump(String prefix, FileDescriptor fd, PrintWriter out, String[] args) {
@@ -175,6 +275,10 @@ public final class ViewerActivity extends Activity {
         out.println(prefix + "viewer decoded=" + decoded + " displayed=" + displayed + " decoder=" + decoder);
         out.println(prefix + "viewer opens=" + opens + " releases=" + releases + " retryPending=" + retryPending);
         out.println(prefix + "viewer phase=" + phase);
+        out.println(prefix + "viewer audioAvailable=" + audio.available() + " audioMuted=" + !audio.listening() +
+            " audioFocus=" + audioFocusHeld + " audioDisabled=" + audioDisabled);
+        out.println(prefix + "viewer audioRendered=" + audioRendered + " audioDecoder=" + audioDecoder +
+            " audioVolume=" + (player == null ? 0f : player.getVolume()));
         out.println(prefix + "viewer protocol=" + PlayerDiagnostics.protocol + " videoSDP=" + PlayerDiagnostics.sdpVideoTracks);
     }
 }

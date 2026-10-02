@@ -2,8 +2,9 @@
 
 Security subproject for an Android 6 / API 23 handset. It controls the handset
 display and a private, hardware-decoded RTSP/TCP viewer, **not** the doorbell's
-settings, recordings, alarms, or computer. v1.5 replaces the leaking tinyCam
-playback path; tinyCam remains installed with its unchanged configuration for rollback.
+settings, recordings, alarms, or computer. v1.5 replaced the leaking tinyCam
+playback path; v1.6 adds listen-only audio, defaulting on in v1.6.1 at the owner's request. tinyCam was subsequently
+uninstalled at the owner's request; private rollback backups remain on the Mac.
 
 ## Architecture
 
@@ -103,7 +104,10 @@ Open **JARVIS Monitor** on the phone (or tap its persistent notification):
 3. **Disable automation** stops the helper and releases locks without waking/sleeping.
 4. **Test: sleep then wake in 8 seconds** tests only this phone, while externally powered.
 5. **Open camera viewer** returns to playback. **Use private camera viewer** selects
-   the new player; uncheck it only for the retained tinyCam fallback.
+   the new player; uncheck it only after separately reinstalling/configuring tinyCam.
+6. In the viewer, **Audio: muted** enables listen-only sound; **Audio: on** mutes it.
+   Android's media-volume buttons adjust the existing output volume. New foreground
+   sessions/wakes default to audio on; there is no microphone, recording or talk-back.
 
 Before uninstalling, disable the helper, then remove JARVIS Monitor under Android
 Settings → Security → Device administrators. Do not change the camera app credentials.
@@ -148,8 +152,12 @@ python3 install_host.py --private-dir "$PRIVATE"
 ```
 
 For ordinary app code updates, rebuild and `adb install -r` with the retained signing
-key. Pairing data and permission survive. Open the helper and re-enable after updates;
-no package-replaced auto-start assumption. Never clear its data casually.
+key. Pairing data and permission survive. From v1.6, Android's protected
+`MY_PACKAGE_REPLACED` broadcast restarts only an already-enabled helper with no
+pending action; it preserves the last applied presence state. Disabled/pending
+helpers stay disabled/pending. Verify the service after installation rather than
+assuming startup. Older builds require opening/re-enabling the helper. Never
+clear its data casually.
 
 ## Video recovery and launcher task reuse (v1.3)
 
@@ -218,14 +226,16 @@ component inside tinyCam remains unknown. The update and decoder setting were
 **not** a fix.
 
 The deployed solution **removes tinyCam from automatic playback**, rather than
-restarting it on a timer. Its configuration and installed APK remain available for
-manual rollback. The temporary v1.4 process-relaunch workaround was superseded
+restarting it on a timer. tinyCam was initially retained, then uninstalled during
+owner-authorized cleanup. APK/data backups remain privately on the Mac, not the
+phone. The temporary v1.4 process-relaunch workaround was superseded
 and is not part of this source.
 
 ### Playback and lifecycle
 
 - ExoPlayer 2.19.1 Java RTSP client, forced interleaved TCP, Android MediaCodec
-  hardware video surface; no ads, WebView, per-frame bitmaps, recording or audio.
+  hardware video surface; no ads, WebView, per-frame bitmaps or recording. v1.5 was
+  video-only; v1.6 adds listen-only audio, defaulting on in v1.6.1 as described below.
 - Same camera endpoint/account/stream; no camera/hub/router setting changes, video
   relay, transcoder, host service, BLE policy change or USB runtime dependency.
 - Non-exported, single-task `ViewerActivity` runs in a separate `:video` process.
@@ -242,6 +252,71 @@ and is not part of this source.
   useful for a scoped reconnection test; it does not change Wi-Fi or the camera.
 - Existing fresh-nearby/two-fresh-away/unknown/keyguard/power/pending-action gates
   remain unchanged. Viewer startup never unlocks a secure keyguard.
+
+### Listen-only audio (v1.6; audio-on default in v1.6.1)
+
+An authenticated, metadata-only check of this doorbell's `/stream2` advertised
+one **PCMA / G.711 A-law, 8000 Hz, mono** track. ExoPlayer 2.19.1 supports its RTP
+payload and the Nexus reports `OMX.google.g711.alaw.decoder` support. There is no
+transcoder, relay, camera-setting change, microphone permission or audio recording.
+
+- Audio is selected/decoded from session startup, with **player volume zero before
+  prepare/play**. Muting is not disabling capture at the camera: the stream still
+  contains audio, and the phone still receives/decodes it while the viewer is active.
+  This avoids changing RTSP tracks/restarting video when toggling mute.
+- At the owner's request, **v1.6.1 defaults to audio on** for a new foreground
+  session/wake. A supported selected track, resumed/unlocked viewer and granted
+  Android audio focus are still required. The top-right button toggles mute.
+  No system-volume change or forced speaker routing: sound uses the current
+  Android media output/volume.
+- Mute, loss of focus (including transient/duck), or a becoming-noisy/headphone
+  disconnect event silences the player and abandons focus. Focus returning never
+  automatically unmutes. Muted playback does not request audio focus.
+- Backgrounding/screen-off/sleep stops audio and releases both decoders, sockets,
+  focus and player. Returning/waking/recreating the activity defaults to audio on.
+  Within one foreground session, reconnect preserves the on/muted choice. Manual
+  mute, focus loss/denial and headphone disconnect remain muted across reconnects;
+  track callbacks never repeatedly request focus. No mute preference is persisted.
+- No supported audio track disables the button without blocking video. An identified
+  audio-renderer failure falls back to video-only for the rest of that foreground
+  session, through the same bounded reconnect budget. Other failures retain the
+  ordinary bounded recovery policy; audio cannot create an unbounded retry loop.
+- Diagnostics expose only mute/focus/availability/fallback flags, numeric rendered
+  audio-buffer counts, volume and a restricted decoder name—not samples or speech.
+  Advancing buffers **do not prove audible speaker output**. A human ear test remains
+  separate. The earlier v1.5 memory soak does not establish v1.6 audio reliability.
+
+Opt-in device test (requires already-awake viewer and nearby status; never forces wake):
+
+```sh
+python3 tests/handset_audio_acceptance.py --serial <USB_SERIAL> \
+  --confirm-audible-test --confirm-lifecycle-test
+```
+
+It briefly enables sound at the existing media volume, verifies advancing audio
+buffers and video frames without a session restart, mutes/releases focus, and
+optionally checks that leaving stops sound and returning restores the audio-on
+default. Tests end muted unless `--leave-audio-on` is supplied. Temporary UI XML
+is removed. Historical v1.6 acceptance on 2026-10-02 (before the default changed) passed
+listen/mute without RTSP restart, advancing audio/video counters, reset-to-muted
+after leaving an unmuted viewer, and a two-cycle sleep/automatic-wake run with
+one viewer and muted audio. Playback was observed at 19–20 fps. In-place update
+resumed the enabled helper without clearing pairing or its pending-action gate.
+The 28 Python tests, 20 presence-policy / 70 player / 11 socket-guard / 60 audio
+policy assertions, and 17 on-device URI assertions passed. The installed APK's
+hash matched the build; scoped source/APK/sampled-log credential scans were clean.
+
+At the owner's request, v1.6.1 changes the default to audio on. Its 28 Python
+checks, 84 audio-policy assertions and 17 on-device URI assertions passed. Device
+acceptance verified audio on without tapping, working mute/unmute, release when
+backgrounded, audio on after reopening, and audio on after one automatic sleep/wake
+cycle. Manual mute/focus denial/loss surviving reconnect is covered by policy tests,
+not a new reconnect fault-injection test.
+
+Acoustic output, focus-loss, actual headset unplug, unsupported-track and
+audio-failure fallback still need device acceptance; host policy/source tests
+are not a substitute for those physical/failure-injection checks. No long-duration
+audio memory/availability claim is made.
 
 ### Credential and destination safety
 
@@ -291,8 +366,11 @@ The private JSON has `version: 1`, `host`, `port: 554`, `path`, `username` and
 `password`. Never put its contents on a command line or in an issue/commit.
 Open the helper, review any pending error, enable automation and use **Open camera
 viewer**. **Use private camera viewer** defaults on only after provisioning.
-To roll back, uncheck it and open tinyCam using the same button; do not clear data
-or re-pair. tinyCam's original memory exhaustion would then be a known risk again.
+To use the tinyCam fallback after cleanup, deliberately reinstall/configure it
+from the private rollback materials first, then uncheck the private-viewer option.
+Backup restoration has not been validated; it is no longer a one-tap rollback.
+Do not clear JARVIS data or re-pair. tinyCam's original memory exhaustion would
+then be a known risk again.
 
 ### Tests and acceptance
 
@@ -302,7 +380,7 @@ python3 -m unittest discover -s tests -q
 python3 tests/handset_uri_acceptance.py --serial <USB_SERIAL> --sdk "$SDK" \
   --java-home "$JAVA" --private-dir "$PRIVATE"
 python3 tests/handset_viewer_acceptance.py --serial <USB_SERIAL> \
-  --confirm-phone-viewer-test --cycles 3
+  --confirm-phone-viewer-test --confirm-audible-test --cycles 3
 ```
 
 The lifecycle test normally requires fresh nearby. `--confirm-temporary-wake` is
