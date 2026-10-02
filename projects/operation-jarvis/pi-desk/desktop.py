@@ -469,6 +469,7 @@ def main():
     size = terminal_size()
     with (STATE / 'selection.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        workspace.cleanup_orphans()
         group = workspace.create(last_session(), size.columns, size.lines)
     stop = threading.Event()
     worker = None

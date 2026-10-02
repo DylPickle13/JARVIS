@@ -1,3 +1,40 @@
+# Viewer orphan cleanup — 2026-10-01, 23:00 EDT
+
+Found six abandoned local viewer workspaces with 45 reconnecting display clients,
+plus one active viewer with nine cached attachments. All 54 connections mapped to
+Pi Desk display panes, not extra hosted agents. The abandoned viewers had no
+attached display or surviving controller; some had persisted over three days.
+
+Each new private viewer now records its controller PID and installs a
+session-scoped `client-attached` hook that enables `destroy-unattached` only after
+the first attachment. The last display's exit destroys its cached display panes
+even when the Python wrapper cannot clean up. The hook preserves attachment-time
+layout equalization; no global destruction option or hosted socket is changed.
+
+A startup sweep under the selection lock removes only tagged, unattached viewers
+older than two minutes with a confirmed-dead owner PID. It atomically rechecks the
+session name, creation timestamp, ownership, and attachment state inside tmux.
+Live owners, PID reuse, permission/probe errors, young workspaces, and untagged
+legacy viewers are retained. Mutation timeouts are not retried.
+
+**131 source tests passed**, plus **11 installed-runtime lifecycle tests** using
+isolated tmux sockets and dummy panes. Coverage includes first-attachment safety,
+multiple clients/last-detach cleanup, SIGKILL without Python cleanup, live legacy
+viewer arming, owner ambiguity, grace periods, and a concurrent-attachment race.
+All **22 installed manifest hashes** verified.
+
+Installed only `workspace.py` and `desktop.py` locally by atomic replacement and
+updated their manifest entries; unrelated concurrent changes were not deployed.
+Armed the existing active viewer without replacing any of its pane/client IDs or
+PIDs. Explicitly removed only the six revalidated legacy orphan workspaces,
+reducing host attachments **54 → 9**. All ten hosted-agent IDs/PIDs were unchanged;
+no active viewer, agent, server, service, or remote installation was restarted.
+Post-cleanup tmux samples were roughly 5% (host) and 6–9% (display) of one CPU core,
+down from roughly 20–25% each; macOS thermal pressure remained normal.
+
+Rollback backup: `~/.local/state/pi-desk/backups/viewer-cleanup-20261002T025104Z/`
+(previous runtime, source snapshots, and before/after identity metadata).
+
 # Non-modal restart requests — 2026-10-01, 22:49 EDT
 
 A second restart request now returns success as a no-op and shows **Restart already

@@ -4,7 +4,9 @@ Window 0 is visible. Other windows park existing attachment processes so layout
 changes do not reconnect agents. Only the selected group is created eagerly.
 Callers serialize reconciliation using desktop's selection lock.
 """
+import os
 import re
+import time
 import uuid
 
 import core
@@ -12,6 +14,8 @@ from layout import capacity, group, shape, minimum_columns
 
 
 VIEWER_NAME = re.compile(r'viewer-[0-9a-f]{32}\Z')
+ORPHAN_GRACE_SECONDS = 120
+OWNER_OPTION = '@pi-desk-owner-pid'
 
 
 def is_viewer(name):
@@ -29,7 +33,9 @@ def create(number, width, height):
     try:
         pane = core.tmux('new-session', '-d', '-s', name, '-x', str(max(1, width)),
                          '-y', str(max(4, height)), '-P', '-F', '#{pane_id}',
-                         core.connection_command(number)).stdout.strip()
+                         core.connection_command(number), ';',
+                         'set-option', '-t', name, OWNER_OPTION, str(os.getpid())).stdout.strip()
+        arm_cleanup(name)
         core.tmux('set-option', '-p', '-t', pane, '@pi-desk-session', str(number), ';',
                   'set-option', '-t', name, '@pi-desk-min-columns', str(minimum_columns()))
         reconcile(name, number, width, initial=True)
@@ -42,6 +48,68 @@ def create(number, width, height):
 def destroy(name):
     if is_viewer(name):
         core.tmux('kill-session', '-t', '=' + name, check=False)
+
+
+def arm_cleanup(name):
+    """Destroy only this display after its last client leaves, not before attach.
+
+    Session-scoped hooks preserve the existing equalization on attachment. The
+    conditional also arms an already-open viewer without disconnecting it.
+    """
+    if not is_viewer(name):
+        raise ValueError('Not a private Pi Desk viewer')
+    target = name
+    hook = (f'select-layout -t {name}:0 even-horizontal ; '
+            f'set-option -t {target} destroy-unattached on')
+    core.tmux('set-hook', '-t', target, 'client-attached', hook, ';',
+              'if-shell', '-F', '-t', target, '#{session_attached}',
+              f'set-option -t {target} destroy-unattached on')
+
+
+def owner_running(pid):
+    """Only ESRCH proves an owner dead; permissions and PID reuse fail closed."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (OSError, OverflowError):
+        pass
+    return True
+
+
+def cleanup_orphans(now=None):
+    """Sweep old, unattached, positively owned viewers whose wrapper has exited.
+
+    Untagged legacy viewers are deliberately retained for explicit inspection.
+    Call under the selection lock, before creating the next viewer. Recheck
+    attachment and identity inside tmux's command queue, never replay mutations.
+    """
+    now = time.time() if now is None else now
+    rows = core.tmux('list-sessions', '-F',
+                     '#{session_name}\t#{session_created}\t#{session_attached}\t'
+                     '#{' + OWNER_OPTION + '}', check=False)
+    removed = []
+    if rows.returncode:
+        return removed
+    for row in rows.stdout.splitlines():
+        fields = row.split('\t')
+        if len(fields) != 4:
+            continue
+        name, created, attached, owner = fields
+        if (not is_viewer(name) or attached != '0' or not created.isdecimal()
+                or not owner.isdecimal() or int(owner) <= 0
+                or now - int(created) < ORPHAN_GRACE_SECONDS
+                or owner_running(int(owner))):
+            continue
+        condition = ('#{&&:#{==:#{session_name},' + name + '},'
+                     '#{&&:#{==:#{session_attached},0},'
+                     '#{&&:#{==:#{session_created},' + created + '},'
+                     '#{==:#{' + OWNER_OPTION + '},' + owner + '}}}}')
+        core.tmux('if-shell', '-F', '-t', name, condition,
+                  f'kill-session -t ={name}', check=False)
+        if core.tmux('has-session', '-t', '=' + name, check=False).returncode:
+            removed.append(name)
+    return removed
 
 
 def reconcile(name, number, width, initial=False):
