@@ -492,18 +492,34 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(self.identities(name)['2'], identity)
         self.assertEqual(self.focus(name), 2)
 
-    def test_two_pane_divider_uses_full_active_border_colour(self):
-        name = workspace.create(2, 110, 45)
-        client, _ = self.attach(name, 110)
-        before = self.identities(name)
-        for number in (1, 2):
-            desktop.choose(number, client.pid)
-            self.assertEqual(core.tmux('show-options', '-wAv', '-t', name + ':0',
-                                       'pane-border-indicators').stdout.strip(), 'off')
-            self.assertIn('fg=#D183E8', core.tmux('show-options', '-wAv', '-t', name + ':0',
-                                              'pane-active-border-style').stdout)
-            self.assertEqual(self.focus(name), number)
-        self.assertEqual(self.identities(name), before)
+    def test_active_title_badge_and_neutral_dividers_in_all_layouts(self):
+        for width in (80, 110, 184):
+            with self.subTest(width=width):
+                name = workspace.create(1, width, 45)
+                client, _ = self.attach(name, width)
+                before = self.identities(name)
+                target = name + ':0'
+                border_format = core.tmux('show-options', '-wAv', '-t', target,
+                                          'pane-border-format').stdout.strip()
+                for number in self.visible(name):
+                    desktop.choose(number, client.pid)
+                    for option, expected in (('pane-border-lines', 'single'),
+                                             ('pane-border-indicators', 'off'),
+                                             ('pane-border-style', 'fg=colour240,bg=#1e1e1e'),
+                                             ('pane-active-border-style', 'fg=colour240,bg=#1e1e1e')):
+                        self.assertEqual(core.tmux('show-options', '-wAv', '-t', target,
+                                                  option).stdout.strip(), expected)
+                    panes = core.tmux('list-panes', '-t', target,
+                                      '-F', '#{pane_id}:#{@pi-desk-session}').stdout.splitlines()
+                    for pane in panes:
+                        pane_id, session = pane.split(':')
+                        label = core.tmux('display-message', '-p', '-t', pane_id,
+                                          border_format).stdout.strip()
+                        style = ('#[fg=#1e1e1e,bg=#D183E8,bold]' if int(session) == number
+                                 else '#[fg=colour245,bg=#1e1e1e,nobold]')
+                        self.assertEqual(label, f'#[default] {style} Session {session} #[default]')
+                    self.assertEqual(self.focus(name), number)
+                self.assertEqual(self.identities(name), before)
 
     def test_two_viewers_have_independent_sizes_focus_and_headers(self):
         wide = workspace.create(2, 184, 45)

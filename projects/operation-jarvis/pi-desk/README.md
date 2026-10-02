@@ -24,12 +24,13 @@ are supported, with one elected status monitor per machine and failover on exit.
 ## Interface
 
 The persistent `PI-DESK` top row uses the JARVIS app's dark accent purple
-(`#D183E8`); the selected session number and its pane borders use it too. Pane
-dividers use heavy lines, with unselected borders kept grey. Shared active dividers
-are purple along their full length, including in two-pane mode (tmux's default
-half-border focus indicator is disabled). The current tiled
-layout does not draw a complete outer frame at the left, right, and bottom edges.
-It contains
+(`#D183E8`); the selected session number uses it too. The active pane's `Session N`
+title is a bold purple badge with dark text; inactive titles stay muted. Pane
+dividers use thin grey lines in every focus state, keeping tmux's shared top
+junctions understated instead of emphasizing protruding corners or an incomplete
+outer frame. tmux's half-border focus indicator is disabled; the title badge and
+selected number identify focus even in one- and two-pane layouts. No extra rows or
+columns are used. The top row contains
 ten clickable session numbers and lifecycle dots, with shortcut hints aligned at
 the right. Hints shorten or disappear as space runs out; below 100 columns the
 tabs tighten. Extremely narrow terminals show a sliding subset with hidden-tab

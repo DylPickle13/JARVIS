@@ -1,3 +1,28 @@
+# Active-session title badge — 2026-10-01, 22:12 EDT
+
+Replaced the heavy purple active border with thin grey dividers and a bold purple
+`Session N` title badge with dark text. Inactive titles remain muted and the
+selected top-bar number retains its purple accent. Shared tmux top junctions are
+neutral rather than emphasized as protruding corners of an incomplete outline.
+No additional rows/columns, layout changes or navigation changes.
+
+**112 source tests passed**, including real isolated tmux focus changes in one-,
+two- and three-pane layouts, badge format expansion for every visible pane, and
+attachment PID preservation. Installed only `config/tmux.conf` locally by atomic
+replacement, updating and verifying all **22 manifest hashes**. Applied only the
+three changed live styling options, not the full config/navigation/hooks. Removed
+10 legacy per-window overrides only after verifying each exactly matched the old
+global style, so those windows now inherit the new style.
+
+All **54 display pane IDs/PIDs**, **10 hosted-agent pane IDs/PIDs**, viewer client,
+focus and display geometry were unchanged. No viewer, server, service or agent
+restarted; no remote installation changed. Local viewers show the new style
+immediately, with no reopen required.
+
+Rollback backup: `~/.local/state/pi-desk/backups/20261002T021238568848Z/`
+(previous config and manifest, old global/window options and before/after identity
+metadata).
+
 # Automatic blocked-terminal recovery — 2026-09-29, 20:13 EDT
 
 User requested close/kill/reopen without requiring graceful detachment. The live

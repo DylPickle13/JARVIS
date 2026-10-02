@@ -425,15 +425,18 @@ class DesktopTests(unittest.TestCase):
             self.assertIn('#[norange,bg=#1e1e1e,nobold]#[fg=colour238] │ ', tab)
         self.assertNotIn('blink', bar)
 
-    def test_session_borders_use_heavy_lines(self):
+    def test_session_dividers_are_thin_and_neutral(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
-        self.assertIn('set -g pane-border-lines heavy', config)
-        self.assertIn("set -g pane-border-style 'fg=colour240,bg=#1e1e1e'", config)
+        self.assertIn('set -g pane-border-lines single', config)
+        self.assertIn('set -g pane-border-indicators off', config)
+        for option in ('pane-border-style', 'pane-active-border-style'):
+            self.assertIn(f"set -g {option} 'fg=colour240,bg=#1e1e1e'", config)
 
-    def test_active_session_border_uses_brand_purple(self):
+    def test_active_session_title_uses_brand_purple_badge(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
-        self.assertIn("set -g pane-border-format '#[fg=#{?pane_active,##D183E8,colour245}]", config)
-        self.assertIn("set -g pane-active-border-style 'fg=#D183E8,bg=#1e1e1e'", config)
+        self.assertIn("set -g pane-border-format '#[default] #[fg=#{?pane_active,##1e1e1e,colour245},"
+                      "bg=#{?pane_active,##D183E8,##1e1e1e},#{?pane_active,bold,nobold}]"
+                      " Session #{@pi-desk-session} #[default] '", config)
 
     def test_only_working_dots_pulse(self):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}
