@@ -66,14 +66,44 @@ class RestartStatusTests(unittest.TestCase):
                 self.assertIn('Complete' if code == 0 else 'Failed', progress.status_line())
                 self.assertIn('waiting for idle', (Path(directory) / 'restart.log').read_text())
                 spawn.assert_called_once()
+                self.assertEqual(spawn.call_args.kwargs['stdin'], progress.subprocess.DEVNULL)
 
-    def test_duplicate_request_does_not_start(self):
+    def test_duplicate_request_is_not_an_error_and_preserves_progress(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(progress, 'STATE', Path(directory)), \
-                patch.object(progress.subprocess, 'Popen') as spawn:
-            with (Path(directory) / 'restart.lock').open('a') as lock:
+                patch.object(progress.subprocess, 'Popen') as spawn, \
+                patch.object(progress, 'notify') as notify:
+            progress.publish('9/10 ready · Waiting for idle: 2')
+            status = (progress.STATE / 'restart-status').read_bytes()
+            log = progress.STATE / 'restart.log'
+            log.write_text('original worker output\n')
+            with (progress.STATE / 'restart.lock').open('a') as lock:
                 progress.fcntl.flock(lock, progress.fcntl.LOCK_EX | progress.fcntl.LOCK_NB)
-                self.assertEqual(progress.run(), 1)
+                self.assertEqual(progress.run(client='/dev/test-client'), 0)
             spawn.assert_not_called()
+            notify.assert_called_once_with(
+                'Restart already in progress; see the top status area.', '/dev/test-client')
+            self.assertEqual((progress.STATE / 'restart-status').read_bytes(), status)
+            self.assertEqual(log.read_text(), 'original worker output\n')
+
+    def test_notification_is_client_scoped_status_only(self):
+        with patch.object(progress, 'tmux') as tmux:
+            progress.notify('Restart already in progress.', '/dev/test-client')
+        tmux.assert_called_once_with('display-message', '-d', '5000', '-c',
+                                    '/dev/test-client', 'Restart already in progress.', check=False)
+
+    def test_detached_notification_does_not_fail_the_request(self):
+        with patch.object(progress, 'tmux', side_effect=RuntimeError('client detached')) as tmux:
+            progress.notify('Restart already in progress.', '/dev/test-client')
+        tmux.assert_called_once()
+
+    def test_launch_failure_still_reports_failure(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(progress, 'STATE', Path(directory)), \
+                patch.object(progress, 'load') as backend, \
+                patch.object(progress.subprocess, 'Popen', side_effect=OSError('helper unavailable')) as spawn:
+            backend.return_value.restart.return_value = ['helper']
+            self.assertEqual(progress.run(), 1)
+            self.assertIn('Failed: helper unavailable', progress.status_line())
+            spawn.assert_called_once()
 
 
 if __name__ == '__main__':

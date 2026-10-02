@@ -33,12 +33,15 @@ def main():
     parser.add_argument('action', choices=('open', 'restart'), nargs='?', default='open')
     parser.add_argument('--dry-run', action='store_true', help='restart preflight only; no changes')
     parser.add_argument('--confirmed', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--client', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.confirmed:
         if args.action != 'restart' or args.dry_run:
             parser.error('--confirmed requires restart without --dry-run')
         from restart_status import run
-        return run()
+        return run(client=args.client)
+    if args.client is not None:
+        parser.error('--client requires --confirmed')
     if args.dry_run and args.action != 'restart':
         parser.error('--dry-run requires restart')
     if args.action == 'restart':

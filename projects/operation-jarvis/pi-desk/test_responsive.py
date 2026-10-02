@@ -496,6 +496,60 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(self.identities(name)['2'], identity)
         self.assertEqual(self.focus(name), 2)
 
+    def test_restart_shortcuts_never_take_over_a_coding_pane(self):
+        name = workspace.create(1, 184, 45)
+        launcher = self.state / 'restart-stub'
+        receipt = self.state / 'restart-arguments'
+        log = self.state / 'restart-dispatch.log'
+        config = (desktop.ROOT / 'config/tmux.conf').read_text()
+        config = config.replace('$HOME/.local/bin/pi-desk', str(launcher))
+        config = config.replace('$HOME/.local/state/pi-desk/restart-dispatch.log', str(log))
+        path = self.state / 'restart-test.tmux'
+        path.write_text(config)
+        core.tmux('source-file', str(path))
+        output = []
+        client, _ = self.attach(name, output=output)
+        client_name = core.tmux('list-clients', '-F', '#{client_name}').stdout.strip()
+        before = self.identities(name)
+        for key in ('F10', 'R'):
+            for code in (0, 1, 127):
+                with self.subTest(key=key, code=code):
+                    receipt.unlink(missing_ok=True)
+                    log.unlink(missing_ok=True)
+                    launcher.write_text('#!/bin/sh\n'
+                        + "printf '%s\\n' \"$@\" > " + shlex.quote(str(receipt)) + '\n'
+                        + "printf 'dispatch stdout\\n'\n"
+                        + "printf 'dispatch stderr\\n' >&2\n"
+                        + f'exit {code}\n')
+                    launcher.chmod(0o700)
+                    output.clear()
+                    keys = ['F10'] if key == 'F10' else ['C-a', 'R']
+                    core.tmux('send-keys', '-K', '-c', client_name, *keys)
+                    for _ in range(100):
+                        if b'Restart all ten agents when idle?' in b''.join(output):
+                            break
+                        time.sleep(.01)
+                    else:
+                        self.fail('Isolated restart confirmation was not displayed')
+                    core.tmux('send-keys', '-K', '-c', client_name, 'y')
+                    for _ in range(100):
+                        jobs = core.tmux('show-messages', '-J').stdout
+                        if receipt.exists() and str(launcher) not in jobs:
+                            break
+                        time.sleep(.01)
+                    else:
+                        self.fail('Isolated restart shortcut did not finish')
+                    self.assertEqual(receipt.read_text().splitlines(),
+                                     ['restart', '--confirmed', '--client', client_name])
+                    self.assertEqual(log.read_text(), 'dispatch stdout\ndispatch stderr\n')
+                    modes = core.tmux('list-panes', '-t', name + ':0',
+                                      '-F', '#{pane_in_mode}').stdout.splitlines()
+                    self.assertEqual(modes, ['0'] * len(self.visible(name)))
+                    self.assertEqual(self.identities(name), before)
+                    self.assertEqual(self.focus(name), 1)
+                    self.assertEqual(core.tmux('list-clients', '-F', '#{client_pid}').stdout.strip(),
+                                     str(client.pid))
+
     def test_terminal_tab_title_is_stable_and_restored_on_detach(self):
         name = workspace.create(1, 184, 45)
         desktop.configure()

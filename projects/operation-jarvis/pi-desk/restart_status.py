@@ -7,6 +7,7 @@ import subprocess
 import time
 
 from backend import clean_environment, load
+from core import tmux
 
 STATE = Path.home() / '.local/state/pi-desk'
 
@@ -72,13 +73,27 @@ def status_line():
     return '#[align=left,norange,bg=#1e1e1e,fg=colour179,nobold] Restart: ' + text
 
 
-def run():
+def notify(text, client=None):
+    """Use only the invoking client's status message, never pane output/modes."""
+    command = ['display-message', '-d', '5000']
+    if client is not None:
+        command += ['-c', client]
+    try:
+        tmux(*command, text, check=False)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        pass  # A detached viewer must not disturb an existing restart.
+
+
+def run(client=None):
     STATE.mkdir(parents=True, exist_ok=True)
     with (STATE / 'restart.lock').open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return 1  # Never launch a second restart or overwrite its progress.
+            # A duplicate is a successful no-op, not a failed restart. Keep the
+            # original worker's progress/log intact and do not take over a pane.
+            notify('Restart already in progress; see the top status area.', client)
+            return 0
         # A reader thread lets the main thread refresh progress while a busy
         # agent is silent, without blocking terminal input or the status monitor.
         import queue
@@ -90,6 +105,7 @@ def run():
         try:
             with (STATE / 'restart.log').open('w') as log:
                 process = subprocess.Popen(load().restart(), env=clean_environment(),
+                                           stdin=subprocess.DEVNULL,
                                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                            text=True, errors='replace')
                 def read_output():

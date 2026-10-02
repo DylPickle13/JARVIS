@@ -147,9 +147,15 @@ pi-desk restart --dry-run  # preflight only, no changes
 
 F10 asks for confirmation in the top bar, then runs in the background with
 progress in the top status area; session navigation and input remain available.
-Completion/failure stays visible for 60 seconds. Full output is saved locally to
-`~/.local/state/pi-desk/restart.log`. Repeated requests while running are ignored.
-The terminal command above remains interactive. Both delegate to the host's existing
+Completion/failure stays visible for 60 seconds. Full helper output is saved locally
+to `~/.local/state/pi-desk/restart.log`; shortcut/launcher diagnostics are appended
+to `~/.local/state/pi-desk/restart-dispatch.log`. Shortcuts never print command output
+into a coding pane or open tmux's error-output viewer. Real failures still appear in
+the progress status/logs and retain nonzero exit codes for direct CLI callers.
+Repeated requests succeed as a no-op and show **Restart already in progress** in
+only the invoking client's status message, without overwriting the original worker's
+progress/log or launching another helper. The terminal command above remains
+interactive. Both delegate to the host's existing
 `jarvis-mobile-vscode-restart.py --all` helper rather than duplicating its safety
 logic. All ten identities and status records must pass preflight. Stale, unknown,
 or ambiguous status blocks the operation. Each busy session waits until idle

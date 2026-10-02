@@ -679,6 +679,24 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(local.restart(True)[-2:], ['--all', '--dry-run'])
         self.assertEqual(shlex.split(remote.restart()[-1]), local.restart())
 
+    def test_confirmed_restart_scopes_notification_and_preserves_exit_code(self):
+        for code in (0, 1):
+            with self.subTest(code=code), \
+                 mock.patch.object(cli.sys, 'argv', ['pi-desk', 'restart', '--confirmed',
+                                                    '--client', '/dev/test-client']), \
+                 mock.patch('restart_status.run', return_value=code) as run:
+                self.assertEqual(cli.main(), code)
+                run.assert_called_once_with(client='/dev/test-client')
+
+    def test_restart_client_requires_confirmed_request(self):
+        with mock.patch.object(cli.sys, 'argv', ['pi-desk', 'restart', '--client', '/dev/test-client']), \
+             mock.patch.object(cli.sys, 'stderr'), \
+             mock.patch('restart_status.run') as run:
+            with self.assertRaises(SystemExit) as error:
+                cli.main()
+            self.assertEqual(error.exception.code, 2)
+            run.assert_not_called()
+
     def test_restart_requires_interactive_confirmation(self):
         with mock.patch.object(cli.sys.stdin, 'isatty', return_value=False), \
              mock.patch.object(cli.subprocess, 'run') as run:

@@ -1,3 +1,35 @@
+# Non-modal restart requests — 2026-10-01, 22:49 EDT
+
+A second restart request now returns success as a no-op and shows **Restart already
+in progress** in only the invoking client's status message. It does not spawn a
+helper, overwrite the active worker's status/log, or report an artificial failure.
+The confirmed CLI passes its invoking client through to the restart dispatcher.
+
+Reproduced the apparent pane takeover with an isolated tmux shortcut: a nonzero
+`run-shell -b` exit opens `view-mode` while the pane process continues underneath.
+Both F10 and prefix-R now capture launcher stdout/stderr in
+`~/.local/state/pi-desk/restart-dispatch.log` and guard the UI job's exit so neither
+command output nor failures can open that pane viewer. Actual helper failures still
+appear in restart progress/logs and retain their nonzero direct-CLI exit codes.
+The background helper also receives `/dev/null` as stdin, never pane input.
+
+**120 source tests passed**, plus **12 installed-runtime regression tests**. Real
+isolated PTY/key tests exercise both confirmation shortcuts with stub exits 0, 1
+and 127, checking diagnostics, client targeting, unchanged pane IDs/PIDs and focus,
+and no pane modes. Duplicate-request tests preserve the original progress/log;
+real launch failures remain errors.
+
+Installed only `restart_status.py`, `cli.py` and `config/tmux.conf`, updating and
+verifying all **22 manifest hashes**. Reloaded only the two restart bindings, not
+navigation/hooks/layouts. All **54 display IDs/PIDs**, **10 hosted-agent IDs/PIDs**
+and the viewer client/selection were preserved. Concurrent presentation changes
+are recorded in before/after metadata. No restart request or agent/service restart
+was launched by this deployment; no remote install changed. The user's earlier
+restart completed successfully on its own.
+
+Rollback backup: `~/.local/state/pi-desk/backups/20261002T024924555406Z/`
+(previous runtime files/manifest, `bindings.before.tmux` and identity metadata).
+
 # Terminal tab title — 2026-10-01, 22:31 EDT
 
 Pi Desk's dedicated tmux viewer now sends the constant outer terminal title
