@@ -117,6 +117,7 @@ public final class MonitorService extends Service {
         if (!prefs.getBoolean("enabled", false)) { stopSelf(); return; }
         boolean power = powered();
         locks(power);
+        if (prefs.getBoolean("pending", false)) { fail(); return; }
         if (SystemClock.elapsedRealtime() < testingUntil) return;
         String action = policy.consider(state, age, SystemClock.elapsedRealtime(), power);
         update(power ? text : "Paused: connect a wall charger");
@@ -131,6 +132,12 @@ public final class MonitorService extends Service {
             }
             policy.applied(state);
         } catch (Exception e) { fail(); }
+    }
+    @Override protected void dump(java.io.FileDescriptor fd, java.io.PrintWriter out, String[] args) {
+        out.println("enabled=" + prefs.getBoolean("enabled", false));
+        out.println("pending=" + prefs.getBoolean("pending", false));
+        out.println("status=" + status);
+        out.println("nativePlayer=" + (PlayerLauncher.configured(this) && prefs.getBoolean("native_player", true)));
     }
     private void wake() {
         PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);

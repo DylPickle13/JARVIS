@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.jarvis.monitor" android:versionCode="4" android:versionName="1.3">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.jarvis.monitor" android:versionCode="6" android:versionName="1.5">
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="23" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -10,6 +10,9 @@
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
+        <activity android:name=".ViewerActivity" android:exported="false" android:process=":video"
+            android:launchMode="singleTask" android:taskAffinity="local.jarvis.monitor.video"
+            android:screenOrientation="landscape" android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity android:name=".WakeActivity" android:exported="false" android:excludeFromRecents="true" />
         <service android:name=".MonitorService" android:exported="false" />
         <provider android:name=".ProvisionProvider" android:authorities="local.jarvis.monitor.provision" android:exported="true" android:permission="android.permission.DUMP" />

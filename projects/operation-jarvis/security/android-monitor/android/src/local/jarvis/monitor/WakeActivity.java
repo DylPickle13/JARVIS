@@ -25,15 +25,8 @@ public final class WakeActivity extends Activity {
                     handler.postDelayed(this, 300); return;
                 }
                 if (!kg.isKeyguardLocked()) {
-                    Intent tiny = getPackageManager().getLaunchIntentForPackage("com.alexvas.dvr");
-                    if (tiny != null) {
-                        // PackageManager includes a package restriction that changes
-                        // task-intent identity on Android 6. The component is already
-                        // explicit; match the launcher so repeated wakes reuse the task.
-                        tiny.setPackage(null);
-                        tiny.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-                        startActivity(tiny);
-                    }
+                    Intent viewer = PlayerLauncher.intent(WakeActivity.this);
+                    if (viewer != null) startActivity(viewer);
                 }
                 finish();
             }

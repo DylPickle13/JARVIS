@@ -1,9 +1,9 @@
 # Android doorbell monitor — presence helper
 
-Security subproject for an Android 6 / API 23 handset running tinyCam. It controls
-**only the handset display**, not the doorbell, recordings, alarms, or computer.
-No custom video viewer/transcoder is installed. tinyCam keeps its existing camera
-settings and hardware-decoded stream.
+Security subproject for an Android 6 / API 23 handset. It controls the handset
+display and a private, hardware-decoded RTSP/TCP viewer, **not** the doorbell's
+settings, recordings, alarms, or computer. v1.5 replaces the leaking tinyCam
+playback path; tinyCam remains installed with its unchanged configuration for rollback.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ settings and hardware-decoded stream.
 Existing authenticated basement presence → dedicated Mac read-only TLS relay
                                          ← phone polls over home Wi-Fi every 5s
 Phone: fresh away twice → DevicePolicyManager.lockNow()
-       fresh nearby → wake screen → tinyCam (only if no secure keyguard)
+       fresh nearby → wake screen → private viewer (only if no secure keyguard)
 ```
 
 Uses the **same basement signal as Computer presence**, not a new BLE scanner or
@@ -26,14 +26,14 @@ cron alert relay. BLE presence is an estimate, not proof that a person is presen
   outages leave the screen unchanged. Fetch/dispatch latency counts toward age.
 - Unknown, unplugging, clock reversal, or a polling gap over 15 seconds breaks
   consecutive-away confirmation. Repeated known states do not repeat actions.
-- A fresh initial nearby state may wake/open tinyCam; initial away needs two checks.
+- A fresh initial nearby state may wake/open the selected viewer; initial away needs two checks.
 - **Wall power required for automatic screen actions.** On battery the helper
   releases its CPU/Wi-Fi locks and pauses actions. There is no USB runtime dependency.
   No wireless ADB is enabled. Screen sleep is not full phone shutdown: while plugged
   in, a foreground service keeps a partial CPU and Wi-Fi lock to receive arrival.
 - A persisted pending action blocks restart/replay after an uncertain crash. The
   owner reviews and explicitly re-enables in the helper. It is not silently retried.
-- A nonsecure swipe keyguard may be dismissed to restore tinyCam. A PIN/password
+- A nonsecure swipe keyguard may be dismissed to restore playback. A PIN/password
   keyguard is **never bypassed**. Administrator permission requests only force-lock,
   not wipe, password changes, camera control, accessibility, or device-owner status.
 - Boot receiver restarts an enabled helper after reboot and when power is connected,
@@ -48,8 +48,9 @@ outside loopback and RFC1918 private-LAN ranges. The legacy fixed-address mode r
 available by setting `discovery` false in private `server.json`.
 There is no port forwarding, public relay, cloud service, CORS API or write route.
 `GET /v1/presence` requires a random monitor-only bearer credential and returns only
-protocol version, `nearby`/`away`/`unknown`, and age. Main JARVIS/camera credentials,
-BLE identifiers, room inventory and RSSI never reach the phone. Request logging is
+protocol version, `nearby`/`away`/`unknown`, and age. The presence relay never carries main JARVIS/camera credentials,
+BLE identifiers, room inventory or RSSI. The viewer's separate camera account is
+provisioned privately over USB, not sent by the relay. Request logging is
 disabled. Backend failure yields unknown, not cached away.
 
 The app requires HTTPS, pins the exact SHA-256 server certificate, checks certificate
@@ -85,9 +86,10 @@ keys/configs 0600). Includes separate TLS/signing keys, token, provision file, s
 APK, and quiet relay logs. Android configuration is internal app storage with backup
 and debugging disabled. **No credential is compiled into the APK.** One-time USB
 provisioning requires Android's signature-level DUMP permission **and shell UID
-2000**; normal apps cannot use it. No readback route or replacement of an existing
-config is allowed. Re-pairing requires a deliberate app-data reset (disable/remove
-Administrator permission first if Android requires it).
+2000**; normal apps cannot use it. No credential readback route exists. Presence
+pairing cannot be replaced; re-pairing requires a deliberate app-data reset
+(disable/remove Administrator permission first if Android requires it). The separate
+v1.5 camera configuration supports only explicit hash-matched replacement, below.
 
 Source, tests, and docs are trackable. Only generated artifacts/secrets/caches are
 ignored; private runtime is outside the repository. Do not publish configs or keys.
@@ -100,7 +102,8 @@ Open **JARVIS Monitor** on the phone (or tap its persistent notification):
 2. Enable automation after reviewing any pending-action error.
 3. **Disable automation** stops the helper and releases locks without waking/sleeping.
 4. **Test: sleep then wake in 8 seconds** tests only this phone, while externally powered.
-5. Open tinyCam to return to the existing viewer.
+5. **Open camera viewer** returns to playback. **Use private camera viewer** selects
+   the new player; uncheck it only for the retained tinyCam fallback.
 
 Before uninstalling, disable the helper, then remove JARVIS Monitor under Android
 Settings → Security → Device administrators. Do not change the camera app credentials.
@@ -121,12 +124,12 @@ its displays can sleep normally.
 
 ## Build and install
 
-Requires JDK 17, Python 3, OpenSSL, authorized USB ADB, official Android platform 23
-and build-tools 35. No Gradle, Maven dependencies, analytics, or third-party Android
-libraries. The initial SDK archives were verified against Google's repository
-checksums. `build.py` expects extracted `android-6.0/android.jar` and `android-15/`
-build tools beneath the supplied SDK directory. JDK 17 was installed through Homebrew;
-no global Java/PATH change was made.
+Requires JDK 17, Python 3, OpenSSL, authorized USB ADB and build-tools 35 under
+`android-15/`. `fetch_player_dependencies.py` downloads the checksum-locked API-33
+compile platform and ExoPlayer dependencies under the supplied SDK cache, outside
+the repository. Runtime minimum/target remain API 23. No Gradle or analytics is used.
+The initial SDK archives were checked against Google's repository checksums.
+JDK 17 was installed through Homebrew; no global Java/PATH change was made.
 
 ```sh
 cd projects/operation-jarvis/security/android-monitor
@@ -136,6 +139,7 @@ SDK="$HOME/Library/Caches/jarvis-android-sdk"
 
 # FIRST setup only: refuses to overwrite an existing private directory.
 python3 provision.py --host <MAC_LAN_IPV4> --private-dir "$PRIVATE" --java-home "$JAVA"
+python3 fetch_player_dependencies.py --sdk "$SDK"
 python3 build.py --sdk "$SDK" --java-home "$JAVA" --private-dir "$PRIVATE"
 adb -s <USB_SERIAL> install -r "$PRIVATE/jarvis-monitor.apk"
 python3 provision_phone.py --serial <USB_SERIAL> --private-dir "$PRIVATE"
@@ -203,6 +207,143 @@ after inspection and keep any temporary captures private.
 Duplicate TTL-255/TTL-64 ping replies alone are not proof of an IP conflict:
 [TP-Link documents this D235 ping behavior](https://community.tp-link.com/en/smart-home/forum/topic/726482).
 
+## Native RTSP viewer (v1.5) — tinyCam OOM replacement
+
+On 2026-10-01, updated tinyCam 15.3 (6640), using Hardware+, exhausted its
+512 MiB Java heap after roughly 5.5 hours. Runtime logs retained 511 MiB/512 MiB
+after GC and failed even 16-byte allocations, ending with `JavaBinder: Forcefully
+exiting` at 23:41:09 EDT and process exit at 23:41:10. The separate crash buffer
+did not record this exit. Several threads failed allocations; the retaining
+component inside tinyCam remains unknown. The update and decoder setting were
+**not** a fix.
+
+The deployed solution **removes tinyCam from automatic playback**, rather than
+restarting it on a timer. Its configuration and installed APK remain available for
+manual rollback. The temporary v1.4 process-relaunch workaround was superseded
+and is not part of this source.
+
+### Playback and lifecycle
+
+- ExoPlayer 2.19.1 Java RTSP client, forced interleaved TCP, Android MediaCodec
+  hardware video surface; no ads, WebView, per-frame bitmaps, recording or audio.
+- Same camera endpoint/account/stream; no camera/hub/router setting changes, video
+  relay, transcoder, host service, BLE policy change or USB runtime dependency.
+- Non-exported, single-task `ViewerActivity` runs in a separate `:video` process.
+  Presence polling stays in the original helper process.
+- One player at a time. Pause/screen sleep releases player, sockets and decoder;
+  resume creates a fresh session. Wake/Open reuse one viewer activity.
+- Media buffer target 2 MiB, 0.5–1.5-second loading window. These bound the playback
+  queue, **not total process memory**. No large-heap request.
+- Missing rendered frames for 30 seconds or a playback error releases the player.
+  At most five reconnects (5/10/20/30/60 seconds); then an explicit status-label tap
+  or a new foreground session is required. Sixty seconds of healthy frames renews
+  that budget. Retries never wake a screen or change presence.
+- Holding the status label deliberately closes only this viewer's RTSP socket,
+  useful for a scoped reconnection test; it does not change Wi-Fi or the camera.
+- Existing fresh-nearby/two-fresh-away/unknown/keyguard/power/pending-action gates
+  remain unchanged. Viewer startup never unlocks a secure keyguard.
+
+### Credential and destination safety
+
+`player.json` lives in app-private, non-backed-up storage, separate from presence
+pairing. It is provisioned only through the existing signature-level DUMP **and**
+exact shell-UID gate over already-authorized USB. Nothing secret is placed in
+Intents, exported activities, APK assets, Git, screenshots or diagnostic output.
+Only literal RFC1918 IPv4, port 554 and `/stream1` or `/stream2` are accepted.
+
+The original ExoPlayer RTSP parser incorrectly splits **decoded** authority at the
+first `@`, misrouting email-style camera usernames. The locked source is patched
+at build time to strip user-info from **encoded** authority at the final delimiter.
+Build fails if either patch no longer matches uniquely. Seventeen on-device tests
+cover ordinary/email/multiple-`@` usernames, password colons/percent/slashes/spaces,
+and unauthenticated URIs. Independently, `CameraSocketFactory` refuses every peer
+except the configured numeric camera address and port, before DNS or connect, and
+bounds connect time to five seconds. Library diagnostics are intercepted: only
+whitelisted RTSP method/status tokens and counts are retained, never raw messages.
+
+Prototype URI-parser warnings had included a password in the phone's ephemeral
+main debug buffer. Those entries were cleared after retaining nonsecret failure
+evidence; final raw/encoded-credential checks cover the running build. No such logs
+were committed or sent to a third party. Earlier unpatched attempts produced
+unanswered TCP connects to the misparsed domain; final socket guards prevent this.
+
+The presence pairing remains immutable. An explicitly requested camera-config
+replacement requires `--replace-existing-sha256` matching the current file bytes;
+it atomically replaces **only** `player.json`, not pairing or app data. Never retry an
+uncertain replacement. tinyCam backup preference strings were Base64-encoded and
+had to be decoded privately during this owner's migration.
+
+### Build/provision and rollback
+
+See `THIRD_PARTY.md` and `player-dependencies.json` for exact sources/licenses/hashes.
+Dependencies remain outside Git. API 33 is used **only for compilation**; the
+manifest minimum and target stay API 23. No extra Android permission is added.
+
+```sh
+python3 fetch_player_dependencies.py --sdk "$SDK"
+python3 build.py --sdk "$SDK" --java-home "$JAVA" --private-dir "$PRIVATE"
+adb -s <USB_SERIAL> install -r "$PRIVATE/jarvis-monitor.apk"
+# First viewer provisioning only: mode-0600 private JSON, not a file in this repo.
+python3 provision_player.py --serial <USB_SERIAL> --config "$PRIVATE/player.json"
+```
+
+The private JSON has `version: 1`, `host`, `port: 554`, `path`, `username` and
+`password`. Never put its contents on a command line or in an issue/commit.
+Open the helper, review any pending error, enable automation and use **Open camera
+viewer**. **Use private camera viewer** defaults on only after provisioning.
+To roll back, uncheck it and open tinyCam using the same button; do not clear data
+or re-pair. tinyCam's original memory exhaustion would then be a known risk again.
+
+### Tests and acceptance
+
+```sh
+python3 -m unittest discover -s tests -q
+# Compile/run PolicyTest, PlayerTest and CameraSocketFactoryTest with JDK 17.
+python3 tests/handset_uri_acceptance.py --serial <USB_SERIAL> --sdk "$SDK" \
+  --java-home "$JAVA" --private-dir "$PRIVATE"
+python3 tests/handset_viewer_acceptance.py --serial <USB_SERIAL> \
+  --confirm-phone-viewer-test --cycles 3
+```
+
+The lifecycle test normally requires fresh nearby. `--confirm-temporary-wake` is
+an **explicit owner-operated screen test**, not fabricated presence: it permits
+the existing eight-second phone-only self-test while away. It leaves video open
+for observation; restore the prior screen state afterwards. It never acknowledges
+pending errors or changes backend data.
+
+Nonsecret diagnostics and bounded memory/frame observation:
+
+```sh
+adb -s <USB_SERIAL> shell dumpsys activity local.jarvis.monitor/.ViewerActivity
+adb -s <USB_SERIAL> shell dumpsys activity service local.jarvis.monitor/.MonitorService
+python3 tests/observe_player.py --serial <USB_SERIAL> --samples 11 --interval 60 \
+  --output "$PRIVATE/viewer-observation.jsonl"
+```
+
+Verified on 2026-10-02: 19–20 fps with `OMX.qcom.video.decoder.avc`, advancing
+camera timestamps, successful authenticated RTSP/TCP setup, and no tinyCam process.
+One deliberate RTSP-socket interruption produced 0 fps followed by automatic fresh
+playback, with opens/releases changing from 1/0 to 2/1. Three eight-second automatic
+sleep/wake cycles each released the old player, reused one viewer and resumed
+advancing rendered frames. Pairing, administrator permission and presence rules
+survived. Shell Wi-Fi-disable requests left Wi-Fi enabled, so they are **not**
+counted as an outage test; socket closure is the tested failure injection.
+
+Final validation passed 24 Python tests, 20 presence-policy assertions, 70 player
+assertions, 11 no-network socket-guard assertions and 17 installed-parser assertions.
+The 605-second final soak contained 11 samples with the same PID, one active player,
+no retries/restarts and rendered frames advancing from 1,141 to 13,224. PSS was
+50,918–52,767 KiB; allocated Java heap was 17,622–20,191 KiB. The installed APK
+matched the verified local build. Fresh-away screen sleep was restored afterwards;
+the helper remained enabled, pending=false, and all five player instances had been
+released. Numeric acceptance metadata is private; temporary images/XML were deleted.
+
+Android 6 `dumpsys meminfo` can request GC; these sample ranges do not prove absence
+of all leaks. Overnight and
+physical BLE departure/return acceptance remain untested. This replaces the known
+failing app path, not a claim that tinyCam's internal leak was repaired or that the
+monitor can never fail. Prefer supported Android hardware/current Media3 long term.
+
 ## Optional Pi directed ARP repair
 
 A later 2026-09-30 recurrence isolated an address-resolution failure, not another
@@ -244,9 +385,9 @@ read-only security status then authenticated the D235 successfully.
    listener or receives/decodes video. Successful dispatch is not proof of receipt.
 
 The ten-second interval maintains/retries discovery; all video still flows directly
-between tinyCam and the doorbell using the original URL, credentials, RTSP-over-TCP
-and hardware decoder. Android's `arp_accept=0` can ignore an unsolicited reply when
-no neighbour entry exists yet; recovery may wait for tinyCam's next connection
+between the selected viewer and the doorbell using the original URL, credentials,
+RTSP-over-TCP and hardware decoder. Android's `arp_accept=0` can ignore an unsolicited reply when
+no neighbour entry exists yet; recovery may wait for the viewer's next connection
 attempt to create an unresolved entry. This does not change that kernel setting.
 No router configuration, camera RPC, pairing, Hub Storage, power mode, Android
 preferences or presence policy is changed. No credential is

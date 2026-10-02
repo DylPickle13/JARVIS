@@ -26,7 +26,7 @@ public final class MainActivity extends Activity {
         scroll.addView(body); setContentView(scroll);
         TextView title = new TextView(this); title.setText("JARVIS Monitor"); title.setTextSize(24); body.addView(title);
         TextView info = new TextView(this);
-        info.setText("Uses basement presence, like Computer presence. Nearby: wake + tinyCam. Two fresh away checks: lock/sleep. Unknown: unchanged.\nKeep on a wall charger and home Wi-Fi. Device Administrator grants ONLY screen locking, not wipe or password changes. Secure locks still require your PIN.\nThe app starts after reboot if enabled. Disable here before removing Administrator permission or uninstalling.");
+        info.setText("Uses basement presence, like Computer presence. Nearby: wake + camera viewer. Two fresh away checks: lock/sleep. Unknown: unchanged.\nKeep on a wall charger and home Wi-Fi. Device Administrator grants ONLY screen locking, not wipe or password changes. Secure locks still require your PIN.\nThe app starts after reboot if enabled. Disable here before removing Administrator permission or uninstalling.");
         info.setTextSize(16); body.addView(info);
         status = new TextView(this); status.setTextSize(17); body.addView(status);
         button(body, "1. Grant screen-lock permission", new View.OnClickListener() { public void onClick(View v) {
@@ -49,16 +49,22 @@ public final class MainActivity extends Activity {
             stopService(new Intent(MainActivity.this, MonitorService.class));
             MonitorService.status = "Stopped by owner; screen unchanged";
         }});
+        CheckBox nativePlayer = new CheckBox(this);
+        nativePlayer.setText("Use private camera viewer (uncheck for tinyCam fallback)");
+        nativePlayer.setEnabled(PlayerLauncher.configured(this));
+        nativePlayer.setChecked(PlayerLauncher.configured(this) && prefs.getBoolean("native_player", true));
+        nativePlayer.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            public void onCheckedChanged(CompoundButton button, boolean checked) {
+                prefs.edit().putBoolean("native_player", checked).commit();
+            }
+        });
+        body.addView(nativePlayer);
         button(body, "Test: sleep then wake in 8 seconds", new View.OnClickListener() { public void onClick(View v) {
             if (prefs.getBoolean("enabled", false)) startService(new Intent(MainActivity.this, MonitorService.class).setAction("local.jarvis.monitor.SELF_TEST"));
         }});
-        button(body, "Open tinyCam", new View.OnClickListener() { public void onClick(View v) {
-            Intent i = getPackageManager().getLaunchIntentForPackage("com.alexvas.dvr");
-            if (i != null) {
-                i.setPackage(null); // Explicit component; match launcher task identity.
-                i.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-                startActivity(i);
-            }
+        button(body, "Open camera viewer", new View.OnClickListener() { public void onClick(View v) {
+            Intent i = PlayerLauncher.intent(MainActivity.this);
+            if (i != null) startActivity(i);
         }});
     }
     private void button(LinearLayout parent, String text, View.OnClickListener listener) {
