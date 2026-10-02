@@ -63,6 +63,7 @@ MAX_SPEECH_TEXT_BYTES = 32 * 1024
 MAX_SPEECH_AUDIO_BYTES = 20 * 1024 * 1024
 ROOM_SPEECH_URL = "http://127.0.0.1:8791/synthesize"
 SPEECH_RESPONSE_ID_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+TLS_HANDSHAKE_TIMEOUT_SECONDS = 5.0
 LONG_POLL_SECONDS = 1.5
 POLL_INTERVAL_SECONDS = 0.10
 MAX_SCROLLBACK_ROWS = 160
@@ -800,7 +801,9 @@ class TerminalHTTPServer(ThreadingHTTPServer):
         token: str,
         trusted_cidrs: Sequence[ipaddress._BaseNetwork],
         services: Optional[Dict[int, TerminalService]] = None,
+        ssl_context: Optional[ssl.SSLContext] = None,
     ) -> None:
+        self.ssl_context = ssl_context
         service_map = dict(services or {1: service})
         if service_map.get(1) is not service:
             raise TerminalError("Slot 1 must remain the legacy terminal service.")
@@ -821,6 +824,27 @@ class TerminalHTTPServer(ThreadingHTTPServer):
             RUNTIME_DIR / "siri-requests",
             self.siri_pane_identities,
         )
+
+    def process_request_thread(self, request, client_address) -> None:
+        # Keep accept() as plain TCP. A partial TLS hello must never monopolize
+        # the listener and prevent healthy Watch connections from being accepted.
+        # The optional plain-HTTP mode is used only by isolated unit-test servers.
+        if self.ssl_context is not None:
+            connection = request
+            try:
+                connection = self.ssl_context.wrap_socket(
+                    request, server_side=True, do_handshake_on_connect=False,
+                )
+                connection.settimeout(TLS_HANDSHAKE_TIMEOUT_SECONDS)
+                connection.do_handshake()
+                # Only setup is time-bounded here; preserve the existing HTTP
+                # long-poll/input semantics and authentication checks unchanged.
+                connection.settimeout(None)
+            except (OSError, ssl.SSLError):
+                self.shutdown_request(connection)
+                return
+            request = connection
+        super().process_request_thread(request, client_address)
 
     def siri_pane_identities(self) -> Dict[int, int]:
         output = self.service.runner.run([
@@ -1070,17 +1094,17 @@ def run_server(host: str, port: int) -> None:
     for service in services.values():
         service.ensure_session()
     services[1].remove_legacy_speech_cache()
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
     server = TerminalHTTPServer(
         (host, port),
         services[1],
         token,
         trusted_cidrs,
         services=services,
+        ssl_context=context,
     )
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
-    server.socket = context.wrap_socket(server.socket, server_side=True)
     print("jarvis-terminald listening on https://{}:{}".format(host, port), flush=True)
     try:
         server.serve_forever(poll_interval=0.5)

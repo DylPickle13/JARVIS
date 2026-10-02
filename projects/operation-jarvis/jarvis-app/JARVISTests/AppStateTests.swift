@@ -292,7 +292,7 @@ final class AppStateTests: XCTestCase {
     }
 
     func testPassiveTabsReadCacheOnceWithoutActivatingOrConverging() async {
-        for section: AppSection in [.system, .pi, .jobs, .settings] {
+        for section: AppSection in [.pi, .jobs, .settings] {
             let stale = StateSnapshot(ok: true, refreshing: true, stale: true)
             let fresh = StateSnapshot(ok: true, refreshing: false, stale: false)
             let api = FakeAPI(stateResponses: [stale, fresh])
@@ -339,8 +339,9 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(api.historyCalls, 1)
         XCTAssertEqual(app.systemHistory.notice, "History not supported by this backend")
         XCTAssertEqual(app.connectionState, .connected, "History failures cannot invalidate device/state connectivity")
-        XCTAssertEqual(api.purifierRefreshCalls, 0);XCTAssertEqual(api.codexRefreshCalls, 0)
-        XCTAssertEqual(api.servicesCalls, 0);XCTAssertEqual(api.scheduledJobsCalls, 0)
+        XCTAssertEqual(api.purifierRefreshCalls, 1, "Foreground Home entry requests readings once")
+        XCTAssertEqual(api.codexRefreshCalls, 0, "Home does not refresh AI quota")
+        XCTAssertEqual(api.servicesCalls, 0)
         app.setSystemDetailsCovered(true);XCTAssertFalse(app.systemHistory.isPolling)
         app.setSystemDetailsCovered(false)
         for _ in 0..<100 where api.historyCalls < 2 { try await Task.sleep(for: .milliseconds(5)) }
@@ -363,10 +364,10 @@ final class AppStateTests: XCTestCase {
         for _ in 0..<100 where api.historyCalls == 0 { try await Task.sleep(for: .milliseconds(5)) }
         XCTAssertEqual(api.historyEndpointTokens, [expectedToken])
         XCTAssertEqual(app.connectionState, .connected)
-        XCTAssertEqual(api.purifierRefreshCalls, 0); XCTAssertEqual(api.codexRefreshCalls, 0)
+        XCTAssertEqual(api.purifierRefreshCalls, 1); XCTAssertEqual(api.codexRefreshCalls, 0)
     }
 
-    func testSystemConnectionReadsOnlyCachedStateWithoutDeviceOrServiceFanOut() async {
+    func testHomeConnectionActivatesDeviceStateWithoutCodexOrServiceFanOut() async {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.system-connect.\(UUID().uuidString)")!
         let store = EndpointStore(defaults: defaults)
@@ -378,12 +379,12 @@ final class AppStateTests: XCTestCase {
         await app.connect()
 
         XCTAssertEqual(app.connectionState, .connected)
-        XCTAssertEqual(api.cachedStateCalls, 1)
+        XCTAssertEqual(api.cachedStateCalls, 0)
         XCTAssertEqual(api.stateCalls, 1)
         XCTAssertEqual(api.purifierRefreshCalls, 0)
         XCTAssertEqual(api.codexRefreshCalls, 0)
         XCTAssertEqual(api.servicesCalls, 0)
-        XCTAssertEqual(api.scheduledJobsCalls, 0)
+        XCTAssertEqual(api.scheduledJobsCalls, 1)
     }
 
     func testStateFetchDoesNotRetryCompletedStaleSnapshot() async {
@@ -437,6 +438,7 @@ final class AppStateTests: XCTestCase {
                            activeRefreshInterval: .milliseconds(50),
                            controlRefreshInterval: .milliseconds(50))
         app.endpointDraft = "http://fake.jarvis:8790"
+        app.setActiveSection(.system)
         app.sceneDidBecomeActive()
         defer { app.sceneWillResignActive() }
         for _ in 0..<40 where api.purifierRefreshCalls == 0 {
@@ -446,10 +448,10 @@ final class AppStateTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(400))
         XCTAssertGreaterThan(api.stateCalls, 3)
         XCTAssertEqual(api.purifierRefreshCalls, 1, "Recurring visible-state polls are cache-only")
-        await app.refreshHome()
+        await app.refreshHomeDevices()
         XCTAssertEqual(api.purifierRefreshCalls, 2)
         app.sceneWillResignActive()
-        await app.refreshHome()
+        await app.refreshHomeDevices()
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertEqual(api.purifierRefreshCalls, 2, "No cloud request while backgrounded")
         app.sceneDidBecomeActive()
@@ -457,6 +459,31 @@ final class AppStateTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(25))
         }
         XCTAssertEqual(api.purifierRefreshCalls, 3)
+    }
+
+    func testJARVISAndHomeOwnSeparateForegroundRefreshes() async throws {
+        let api = FakeAPI()
+        let defaults = UserDefaults(suiteName: "jarvis.tab-refresh.\(UUID().uuidString)")!
+        let app = AppState(store: EndpointStore(defaults: defaults), client: api,
+            activeRefreshInterval: .milliseconds(50), controlRefreshInterval: .milliseconds(50))
+        app.endpointDraft = "http://fake.jarvis:8790"
+        app.sceneDidBecomeActive()
+        defer { app.sceneWillResignActive() }
+        for _ in 0..<80 where api.codexRefreshCalls == 0 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertGreaterThan(api.codexRefreshCalls, 0)
+        XCTAssertEqual(api.purifierRefreshCalls, 0, "JARVIS launch must not read purifier cloud state")
+        app.setActiveSection(.system)
+        for _ in 0..<80 where api.purifierRefreshCalls == 0 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(api.purifierRefreshCalls, 1)
+        let quotaCalls = api.codexRefreshCalls
+        let stateCalls = api.stateCalls
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertGreaterThan(api.stateCalls, stateCalls, "Home keeps device state fresh")
+        XCTAssertEqual(api.purifierRefreshCalls, 1, "Home recurring polls never read purifier cloud state")
+        XCTAssertEqual(api.codexRefreshCalls, quotaCalls, "Home recurring polls do not refresh quota")
+        app.setActiveSection(.home)
+        await app.refreshJARVIS()
+        XCTAssertEqual(api.purifierRefreshCalls, 1, "Returning to JARVIS does not refresh purifier")
     }
 
     func testCachedStateAndJobsPollingContinueAcrossActiveTabsWithoutServicesPolling() async throws {

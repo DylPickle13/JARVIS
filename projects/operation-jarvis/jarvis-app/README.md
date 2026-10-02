@@ -2,7 +2,24 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current iPhone and Watch build: 231**, installed once on each device and independently
+**Current iPhone and Watch build: 240**, installed once on both devices and
+independently version/launch/process verified on **2026-10-02 at 12:39 EDT**.
+iPhone remains **JARVIS → Home → Terminal → Jobs → Settings**, with health, plugs
+and purifier grouped under Home and horizontal tab swipes excluded on Terminal.
+Watch restores **Home → Terminal → Plugs → JARVIS → Jobs**: health-only Home,
+dedicated plug grid, and purifier above Codex/oMLX on JARVIS.
+Build 239's exact signed archive is retained for rollback. No backend service
+PIDs changed. The owner acknowledged a possible concurrent Pi 4 restart and
+closed that follow-up; see [deployment checks](docs/operations.md#watch-layout-restoration--build-240).
+Completion alerts can be reopened after handling; the separately approved terminal
+bridge update prevents an unfinished TLS handshake from blocking other clients.
+Credentials, dependency lock and entitlements were preserved.
+See [navigation](docs/navigation-and-home.md) and
+[recovery, tests and rollout](docs/terminal-recovery-and-notification-taps.md).
+Physical gesture/notification acceptance remains pending owner review.
+Installed-build records below describe earlier releases.
+
+**Earlier iPhone and Watch build: 231**, installed once on each device and independently
 version/launch/process verified on 2026-09-30 at **12:59 EDT**. The isolated signed
 release includes cached sensor-read health, backend overall guards and history
 compatibility, with no extra polling or credential setup. Four bundles/profiles,
@@ -141,9 +158,10 @@ Captured in Apple simulators with sample data. The video shows the UI animations
 
 | Surface | Purpose |
 |---|---|
-| iPhone Home | Pi session status, plug and purifier controls, room-audio state, and read-only model-server telemetry. |
+| iPhone JARVIS | Pi session status, room-audio state, Codex quota and read-only model-server telemetry. |
+| iPhone Home | Health/history, smart plugs and purifier controls. |
 | iPhone terminal | SSH-backed access to persistent Pi sessions, with native keyboard controls. Photos/Files staging is gated by the signed build's attachment configuration. |
-| Apple Watch | Terminal, Plugs, System, and Jobs pages, with bounded foreground refresh and explicit stale/unavailable states. |
+| Apple Watch | JARVIS, Home, Terminal and Jobs pages, with bounded foreground refresh and explicit stale/unavailable states. |
 | Jobs | Read-only schedules and saved per-job results. |
 | Talk to JARVIS | A native Watch icon complication automatically opens native text input and submits once on native completion into the protected terminal service. Replaces Siri command registration on both platforms; signed deployment and physical acceptance are pending. See [setup and verification](docs/watch-talk-complication.md). |
 | Widgets | Neural Core and Open JARVIS surfaces, separate from native hardware command controls. |

@@ -69,7 +69,7 @@ final class PiTerminalClipboardTests: XCTestCase {
                 PiTerminalContainer(controller: controller)
                     .background(Color.black)
             }
-            .tabItem { Label("JARVIS", systemImage: "terminal.fill") }
+            .tabItem { Label("Terminal", systemImage: "terminal.fill") }
         })
         let window = UIWindow(windowScene: scene)
         window.rootViewController = host; window.makeKeyAndVisible()

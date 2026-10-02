@@ -137,7 +137,9 @@ final class WatchPushNotificationCoordinator: NSObject, ObservableObject {
     }
 
     func consumeTerminalRoute(_ request: PiTerminalNotificationRequest) {
-        if pendingTerminalRoute == request { pendingTerminalRoute = nil }
+        guard pendingTerminalRoute == request else { return }
+        terminalInbox.consume(request)
+        pendingTerminalRoute = nil
     }
 
     func present(resultSequence: Int) {
@@ -145,6 +147,7 @@ final class WatchPushNotificationCoordinator: NSObject, ObservableObject {
         // Coalesce duplicate callbacks for one explicit action. A different
         // result sequence remains a newer action and supersedes this route.
         if pendingRoute?.resultSequence == resultSequence { return }
+        terminalInbox.cancelPending()
         pendingTerminalRoute = nil
         pendingRoute = ScheduledJobNavigationRequest(resultSequence: resultSequence)
     }

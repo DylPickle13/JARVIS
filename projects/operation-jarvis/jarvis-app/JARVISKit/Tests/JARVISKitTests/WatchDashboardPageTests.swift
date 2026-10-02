@@ -2,10 +2,10 @@ import XCTest
 @testable import JARVISKit
 
 final class WatchDashboardPageTests: XCTestCase {
-    func testSystemIsAboveTerminalAndExistingPagesRetainTheirOrder() {
-        XCTAssertEqual(WatchDashboardPage.allCases, [.system, .terminal, .plugs, .overview, .jobs])
-        XCTAssertEqual(WatchDashboardPage.terminal.destination(verticalTranslation: 80, horizontalTranslation: 0), .system)
-        XCTAssertEqual(WatchDashboardPage.system.destination(verticalTranslation: -80, horizontalTranslation: 0), .terminal)
+    func testWatchRestoresDedicatedPagesWithHomeAboveTerminal() {
+        XCTAssertEqual(WatchDashboardPage.allCases, [.home, .terminal, .plugs, .jarvis, .jobs])
+        XCTAssertEqual(WatchDashboardPage.terminal.destination(verticalTranslation: 80, horizontalTranslation: 0), .home)
+        XCTAssertEqual(WatchDashboardPage.home.destination(verticalTranslation: -80, horizontalTranslation: 0), .terminal)
         XCTAssertEqual(WatchDashboardPage.terminal.destination(verticalTranslation: -80, horizontalTranslation: 0), .plugs)
     }
 
@@ -19,7 +19,7 @@ final class WatchDashboardPageTests: XCTestCase {
 
     func testNeitherEndWraps() {
         for distance in [52.0, 200] {
-            XCTAssertNil(WatchDashboardPage.system.destination(verticalTranslation: distance, horizontalTranslation: 0))
+            XCTAssertNil(WatchDashboardPage.home.destination(verticalTranslation: distance, horizontalTranslation: 0))
             XCTAssertNil(WatchDashboardPage.jobs.destination(verticalTranslation: -distance, horizontalTranslation: 0))
         }
     }

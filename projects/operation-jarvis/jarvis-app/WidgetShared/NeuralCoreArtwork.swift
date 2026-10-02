@@ -229,7 +229,7 @@ enum JARVISNeuralCoreAccessibility {
     }
 
     static func hint(for layout: JARVISNeuralCoreLayout) -> String {
-        layout == .phone ? "Opens JARVIS Home" : "Opens the JARVIS Pi terminal"
+        layout == .phone ? "Opens the JARVIS dashboard" : "Opens the JARVIS Pi terminal"
     }
 }
 

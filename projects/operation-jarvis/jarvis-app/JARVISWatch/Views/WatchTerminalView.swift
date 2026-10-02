@@ -1081,7 +1081,7 @@ struct WatchTerminalView: View {
                     ) else { return }
                     // Vertical touch remains dashboard navigation. History is
                     // controlled exclusively by the focused Digital Crown.
-                    if destination == .system { onPreviousPage?() }
+                    if destination == .home { onPreviousPage?() }
                     if destination == .plugs { onAdvancePage?() }
                 }
             )

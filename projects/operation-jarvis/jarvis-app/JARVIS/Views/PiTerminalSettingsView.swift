@@ -50,7 +50,7 @@ struct PiTerminalSettingsView: View {
             } header: {
                 Text("SSH Login")
             } footer: {
-                Text("A blank host follows JARVIS between LAN and Tailscale. The JARVIS tab remembers one of nine persistent Pi conversations; swipe horizontally in the terminal to change it.")
+                Text("A blank host follows JARVIS between LAN and Tailscale. The Terminal tab remembers one of nine persistent Pi conversations; swipe horizontally in the terminal to change it.")
             }
 
             Section {

@@ -72,23 +72,38 @@ public struct PiSessionCompletionNotificationRoute: Equatable, Sendable {
     }
 }
 
-/// A bounded, process-local tap inbox: no foreground navigation or persisted payload.
-public struct PiTerminalNotificationRequest: Hashable, Sendable {
+/// One explicit tap action, not a lifetime ban on reopening a delivered alert.
+public struct PiTerminalNotificationRequest: Hashable, Identifiable, Sendable {
+    public let id: UUID
     public let notificationID: String
     public let sessionID: Int
-    public init(notificationID: String, sessionID: Int) {
+    public init(id: UUID = UUID(), notificationID: String, sessionID: Int) {
+        self.id = id
         self.notificationID = notificationID
         self.sessionID = sessionID
     }
 }
+
+/// Bounded to one pending action. Coalesce callbacks while routing; once consumed
+/// or superseded, an explicit repeat tap may navigate again. Never sends input.
 public struct PiTerminalNotificationInbox: Sendable {
-    private var seen: [String] = []
+    private var pending: PiTerminalNotificationRequest?
     public init() {}
+
     public mutating func receive(notificationID: String, sessionID: Int) -> PiTerminalNotificationRequest? {
-        guard (1...9).contains(sessionID), !notificationID.isEmpty,
-              !seen.contains(notificationID) else { return nil }
-        seen.append(notificationID)
-        if seen.count > 64 { seen.removeFirst(seen.count - 64) }
-        return PiTerminalNotificationRequest(notificationID: notificationID, sessionID: sessionID)
+        guard (1...9).contains(sessionID), !notificationID.isEmpty else { return nil }
+        guard pending?.notificationID != notificationID || pending?.sessionID != sessionID else { return nil }
+        let request = PiTerminalNotificationRequest(notificationID: notificationID, sessionID: sessionID)
+        pending = request
+        return request
+    }
+
+    public mutating func consume(_ request: PiTerminalNotificationRequest) {
+        guard pending == request else { return }
+        pending = nil
+    }
+
+    public mutating func cancelPending() {
+        pending = nil
     }
 }

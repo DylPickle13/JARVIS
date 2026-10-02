@@ -2,18 +2,62 @@ import XCTest
 @testable import JARVISKit
 
 final class ScheduledJobNotificationRouteTests: XCTestCase {
-    func testTerminalTapInboxIsBoundedExactAndDuplicateIdempotent() {
+    func testTerminalTapCoalescesOnlyWhilePendingAndCanReopenEverySlot() throws {
         var inbox = PiTerminalNotificationInbox()
         for slot in 1...9 {
-            XCTAssertEqual(inbox.receive(notificationID: "tap-\(slot)", sessionID: slot)?.sessionID, slot)
+            let first = try XCTUnwrap(inbox.receive(notificationID: "tap-\(slot)", sessionID: slot))
+            XCTAssertEqual(first.sessionID, slot)
+            XCTAssertNil(inbox.receive(notificationID: first.notificationID, sessionID: slot))
+            inbox.consume(first)
+            let reopened = try XCTUnwrap(inbox.receive(notificationID: first.notificationID, sessionID: slot))
+            XCTAssertEqual(reopened.sessionID, slot)
+            XCTAssertNotEqual(first.id, reopened.id, "SwiftUI must observe a fresh route even for the same alert")
+            inbox.consume(reopened)
         }
-        XCTAssertNil(inbox.receive(notificationID: "tap-1", sessionID: 1))
-        XCTAssertNil(inbox.receive(notificationID: "bad", sessionID: 10))
-        XCTAssertNil(inbox.receive(notificationID: "bad", sessionID: 0))
+    }
+
+    func testInvalidTapDoesNotSupersedeValidPendingRoute() throws {
+        var inbox = PiTerminalNotificationInbox()
+        let valid = try XCTUnwrap(inbox.receive(notificationID: "valid", sessionID: 1))
+        for slot in [0, 10, -1] { XCTAssertNil(inbox.receive(notificationID: "bad", sessionID: slot)) }
         XCTAssertNil(inbox.receive(notificationID: "", sessionID: 1))
+        XCTAssertNil(inbox.receive(notificationID: "valid", sessionID: 1))
+        inbox.consume(valid)
+        XCTAssertNotNil(inbox.receive(notificationID: "valid", sessionID: 1))
+    }
+
+    func testOlderConsumptionCannotClearNewerOrRepeatedTap() throws {
+        var inbox = PiTerminalNotificationInbox()
+        let first = try XCTUnwrap(inbox.receive(notificationID: "first", sessionID: 2))
+        let second = try XCTUnwrap(inbox.receive(notificationID: "second", sessionID: 3))
+        inbox.consume(first)
+        XCTAssertNil(inbox.receive(notificationID: "second", sessionID: 3))
+        inbox.consume(second)
+        let repeated = try XCTUnwrap(inbox.receive(notificationID: "second", sessionID: 3))
+        inbox.consume(second)
+        XCTAssertNil(inbox.receive(notificationID: "second", sessionID: 3))
+        inbox.consume(repeated)
+        XCTAssertNotNil(inbox.receive(notificationID: "second", sessionID: 3))
+    }
+
+    func testJobsSupersessionDoesNotPermanentlySuppressTerminalAlert() {
+        var inbox = PiTerminalNotificationInbox()
+        XCTAssertNotNil(inbox.receive(notificationID: "terminal", sessionID: 4))
+        inbox.cancelPending()
+        XCTAssertNotNil(inbox.receive(notificationID: "terminal", sessionID: 4))
         for index in 0..<100 { _ = inbox.receive(notificationID: "new-\(index)", sessionID: 6) }
         XCTAssertNil(inbox.receive(notificationID: "new-99", sessionID: 6))
-        XCTAssertNotNil(inbox.receive(notificationID: "tap-1", sessionID: 1))
+        XCTAssertNotNil(inbox.receive(notificationID: "terminal", sessionID: 4))
+    }
+
+    func testRealJSONCompletionPayloadDecodesForEverySlot() throws {
+        for slot in 1...9 {
+            let data = Data("{\"route\":\"pi-session-completed\",\"routeVersion\":1,\"sessionID\":\(slot)}".utf8)
+            let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let route = PiSessionCompletionNotificationRoute(route: payload["route"] as? String,
+                version: payload["routeVersion"], sessionID: payload["sessionID"])
+            XCTAssertEqual(route?.sessionID, slot)
+        }
     }
 
     private let base: [String: JSONValue] = [

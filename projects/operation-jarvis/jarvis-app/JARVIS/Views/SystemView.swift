@@ -10,7 +10,7 @@ struct SystemView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
-                    TabPageHeader(title: "System")
+                    TabPageHeader(title: "Home")
                     TimelineView(.animation(minimumInterval: 5,
                         paused: scenePhase != .active || app.activeSection != .system || showsDetails)) { _ in
                         // Timeline ticks schedule redraws, not the evaluation clock.
@@ -21,11 +21,11 @@ struct SystemView: View {
                             warning: JarvisPalette.warning, surface: JarvisPalette.surface,
                             connectionError: app.stateErrorMessage ?? app.errorMessage,
                             refreshing: app.isStateLoading || app.isRefreshing,
-                            historyModel: app.systemHistory,
-                            onDetailVisibilityChanged: { covered in
-                                showsDetails = covered
-                                app.setSystemDetailsCovered(covered)
-                            })
+                            historyModel: app.systemHistory)
+                    }
+                    HomeDeviceControls { covered in
+                        showsDetails = covered
+                        app.setSystemDetailsCovered(covered)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -44,7 +44,7 @@ struct SystemView: View {
     private func refreshSystem() async {
         guard scenePhase == .active, app.activeSection == .system else { return }
         app.systemHistory.refresh()
-        if app.connectionState == .connected { await app.fetchState() }
+        if app.connectionState == .connected { await app.refreshHomeDevices() }
         else { await app.connect() }
     }
 

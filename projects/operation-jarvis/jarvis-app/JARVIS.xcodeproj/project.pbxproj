@@ -58,6 +58,7 @@
 		6FCDC3A9DF9D130AC887781E /* NeuralCoreContinuousAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5136B3B670CA19BFD429B9D /* NeuralCoreContinuousAnimation.swift */; };
 		753E3AEBE1235D4E32BE5F2A /* JARVISWidgetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E32755A9AB7BFF1E2C07B9 /* JARVISWidgetTheme.swift */; };
 		7886C0D4B9C05F203B4644AF /* NeuralCoreC2Decoration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D47342CED96CA7B12B466D /* NeuralCoreC2Decoration.swift */; };
+		79B40C9320AD7CF0E236D858 /* TabNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58DD21E3A9D7CFA7236E121F /* TabNavigationTests.swift */; };
 		7FF1402EAA20A6F5449F1343 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 3F999A05470F31BD318BB18E /* SwiftTerm */; };
 		80FDB3F2C165FA2C6C94A46E /* WatchSystemCrownViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49B83CEFCF1B3C4A27DE471 /* WatchSystemCrownViewport.swift */; };
 		838B2889933E6283DED2D163 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 266A9071FEC39AB8EC4067A2 /* Assets.xcassets */; };
@@ -68,6 +69,7 @@
 		9133343133C13A0DA96CDEF2 /* JARVISApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A275952024515DF0771793A /* JARVISApp.swift */; };
 		95D980CFEA72CAC956921F47 /* WatchJobsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3237249D6B7F3438CE97C67 /* WatchJobsModel.swift */; };
 		98E8AFEA1342697E3906487A /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF549C08E0899CD48EC8294 /* LauncherWidget.swift */; };
+		9D6CDC03F1DEFF2E8C74C0FB /* HomeDeviceControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3AC136DE1B8BC7C0D3A7C1 /* HomeDeviceControls.swift */; };
 		9E9F58260B97E592FE005E0A /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */; };
 		9F7750E53DFD346691617377 /* PiTerminalSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0CD22FC05E2E9D489FE3A76 /* PiTerminalSettings.swift */; };
 		A65E646E19987B41F50BE458 /* JARVISTerminalConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325AC9EE99D5B5BA85A84D73 /* JARVISTerminalConfigurationStore.swift */; };
@@ -93,6 +95,7 @@
 		DD7391FF9563157D2965AEEE /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD318AB3793295E0031F850 /* HomeView.swift */; };
 		E51BAC21CD90FE23E49E721D /* PiSSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28C023257637E052A6CBCF4A /* PiSSHTransport.swift */; };
 		EE6EDA808F77C51AC4D53B6A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FE2FCABFFCEEADC0022C58 /* AppState.swift */; };
+		EE817092DD95BCE05DF3B1ED /* TabSwipeNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5DFCE6C8A4BD4E9019FF961 /* TabSwipeNavigation.swift */; };
 		EEE4CC5EB02DFF6C33B54B6D /* AppStateWatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B3A49AB08F03AB80167B37B /* AppStateWatchBridge.swift */; };
 		EEF5AF3EBBE8F552CDBE8AD7 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = BA99DC927D3AD3324FD8A12D /* NIOPosix */; };
 		F0854C3C067D4B857BC0DE6D /* WatchJobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61AEF102626B342076EACC36 /* WatchJobsView.swift */; };
@@ -203,6 +206,7 @@
 		509E3B0D14498373656B563B /* PiAttachmentPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentPickerView.swift; sourceTree = "<group>"; };
 		535E6788F7CEA7378CB167A8 /* NeuralCoreWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreWidget.swift; sourceTree = "<group>"; };
 		539EA6AF53BDC5A406B64C5D /* PiAttachmentProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentProtocol.swift; sourceTree = "<group>"; };
+		58DD21E3A9D7CFA7236E121F /* TabNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabNavigationTests.swift; sourceTree = "<group>"; };
 		61AEF102626B342076EACC36 /* WatchJobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchJobsView.swift; sourceTree = "<group>"; };
 		65330ED0EAB103D03CD69952 /* PiAttachmentTemporaryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAttachmentTemporaryStore.swift; sourceTree = "<group>"; };
 		65BFEC04E2CD0C7D691F114D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -223,6 +227,7 @@
 		9124232A0F34048DC8088B36 /* ReactorTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReactorTitle.swift; sourceTree = "<group>"; };
 		96FAF133194F2E675B54A1CD /* JARVISWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JARVISWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9A275952024515DF0771793A /* JARVISApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISApp.swift; sourceTree = "<group>"; };
+		9B3AC136DE1B8BC7C0D3A7C1 /* HomeDeviceControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeDeviceControls.swift; sourceTree = "<group>"; };
 		9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsComponents.swift; sourceTree = "<group>"; };
 		9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTerminalSettingsView.swift; sourceTree = "<group>"; };
 		9CDED70C520590C29476EBEF /* PiTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTerminalView.swift; sourceTree = "<group>"; };
@@ -251,6 +256,7 @@
 		F14810D55E1EA67ABAF4F26C /* ReactorTitleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReactorTitleTests.swift; sourceTree = "<group>"; };
 		F2D47342CED96CA7B12B466D /* NeuralCoreC2Decoration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreC2Decoration.swift; sourceTree = "<group>"; };
 		F511B3C48F0433661629C5AB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F5DFCE6C8A4BD4E9019FF961 /* TabSwipeNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSwipeNavigation.swift; sourceTree = "<group>"; };
 		F62BBA7F765D9BA752EFC52A /* PushNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationCoordinator.swift; sourceTree = "<group>"; };
 		F89A5FD5332EC5B9ED8DD165 /* JARVISTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = JARVISTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FD52E36404CFBA273498ACD2 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
@@ -309,6 +315,7 @@
 				FD71A8A31F806B007B4B34AF /* PiTerminalClipboardTests.swift */,
 				F14810D55E1EA67ABAF4F26C /* ReactorTitleTests.swift */,
 				019B4EC3DCA629C42662CED3 /* SystemDashboardViewTests.swift */,
+				58DD21E3A9D7CFA7236E121F /* TabNavigationTests.swift */,
 				2AE7C82A6919910DCCB2FFA5 /* WatchJobsModelTests.swift */,
 			);
 			path = JARVISTests;
@@ -340,6 +347,7 @@
 				FD52E36404CFBA273498ACD2 /* Components.swift */,
 				C05CEF9EA2E1CBE04169AAE3 /* ConnectionSettingsView.swift */,
 				C53C1087DDDA6246634A9DA3 /* DeveloperSigningSettingsView.swift */,
+				9B3AC136DE1B8BC7C0D3A7C1 /* HomeDeviceControls.swift */,
 				6BD318AB3793295E0031F850 /* HomeView.swift */,
 				7A0A5FAA0FDA2D9A0B9685E8 /* JobsView.swift */,
 				4DB14639976C804207585F8F /* LinkedJobResultText.swift */,
@@ -351,6 +359,7 @@
 				9C46E3BC685749515DD7CB04 /* SettingsComponents.swift */,
 				888D11D79E21EC5437B45339 /* SettingsView.swift */,
 				DEE1384ED20F351D925F3A53 /* SystemView.swift */,
+				F5DFCE6C8A4BD4E9019FF961 /* TabSwipeNavigation.swift */,
 				9CCF76B704DABA34258B7094 /* WatchTerminalSettingsView.swift */,
 			);
 			path = Views;
@@ -735,6 +744,7 @@
 				D8ABD891AB536358B3617BD4 /* Components.swift in Sources */,
 				401A7D4BAE710D8F8E5F0013 /* ConnectionSettingsView.swift in Sources */,
 				8C6D2EF20D60D5C1F69E964C /* DeveloperSigningSettingsView.swift in Sources */,
+				9D6CDC03F1DEFF2E8C74C0FB /* HomeDeviceControls.swift in Sources */,
 				DD7391FF9563157D2965AEEE /* HomeView.swift in Sources */,
 				9133343133C13A0DA96CDEF2 /* JARVISApp.swift in Sources */,
 				151491541519300CE9013524 /* JARVISPromptRuntime.swift in Sources */,
@@ -767,6 +777,7 @@
 				1DC8B19B903AE4B1F55DDA99 /* SettingsComponents.swift in Sources */,
 				D250A7189D6C70AD54591AFE /* SettingsView.swift in Sources */,
 				B39D4418FC67AC398779D44F /* SystemView.swift in Sources */,
+				EE817092DD95BCE05DF3B1ED /* TabSwipeNavigation.swift in Sources */,
 				00A8A57CB85F3DEEC79B83AF /* WatchTerminalProvisioningSettings.swift in Sources */,
 				576BB6C417A8A28E379D2A45 /* WatchTerminalSettingsView.swift in Sources */,
 			);
@@ -784,6 +795,7 @@
 				3E9DFCDE1569E8FE73FBE598 /* PiTerminalClipboardTests.swift in Sources */,
 				8D4618C0F437C03EA5E5A532 /* ReactorTitleTests.swift in Sources */,
 				CE5D4B62A65FF62754C9299D /* SystemDashboardViewTests.swift in Sources */,
+				79B40C9320AD7CF0E236D858 /* TabNavigationTests.swift in Sources */,
 				95D980CFEA72CAC956921F47 /* WatchJobsModel.swift in Sources */,
 				285BBD47EB95C2364F624D92 /* WatchJobsModelTests.swift in Sources */,
 			);
@@ -976,7 +988,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 127;
+				CURRENT_PROJECT_VERSION = 240;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1081,7 +1093,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 127;
+				CURRENT_PROJECT_VERSION = 240;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

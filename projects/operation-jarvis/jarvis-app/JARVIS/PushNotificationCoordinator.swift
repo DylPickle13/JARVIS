@@ -190,7 +190,9 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
     }
 
     func consumeTerminalRoute(_ request: PiTerminalNotificationRequest) {
-        if pendingTerminalRoute == request { pendingTerminalRoute = nil }
+        guard pendingTerminalRoute == request else { return }
+        terminalInbox.consume(request)
+        pendingTerminalRoute = nil
     }
 
     func present(resultSequence: Int) {
@@ -199,6 +201,7 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
         // one process-local lifecycle callback. Keep that signal idempotent,
         // while a tap for a different result always supersedes older work.
         if pendingRoute?.resultSequence == resultSequence { return }
+        terminalInbox.cancelPending()
         pendingTerminalRoute = nil
         pendingRoute = ScheduledJobNavigationRequest(resultSequence: resultSequence)
     }

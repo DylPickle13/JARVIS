@@ -110,10 +110,10 @@ grep -q 'attempts < staleConvergenceAttempts' JARVIS/AppState.swift
 grep -q 'snapshot.stale == true' JARVIS/AppState.swift
 grep -q 'snapshot.refreshing == true' JARVIS/AppState.swift
 grep -q 'isStateLoading && lastState == nil' JARVIS/AppState.swift
-grep -q 'let stale = subsystemStale || items.contains' JARVIS/Views/HomeView.swift
-grep -q 'let stale = purifier.stale == true' JARVIS/Views/HomeView.swift
-reject_match 'overall snapshot staleness must not gate the plug section' -Fq 'let stale = state.stale == true || subsystem?.stale == true' JARVIS/Views/HomeView.swift
-reject_match 'overall snapshot staleness must not gate the purifier section' -Fq 'let stale = state.stale == true || purifier.stale == true' JARVIS/Views/HomeView.swift
+grep -q 'let stale = subsystemStale || items.contains' JARVIS/Views/HomeDeviceControls.swift
+grep -q 'let stale = purifier.stale == true' JARVIS/Views/HomeDeviceControls.swift
+reject_match 'overall snapshot staleness must not gate the plug section' -Fq 'let stale = state.stale == true || subsystem?.stale == true' JARVIS/Views/HomeDeviceControls.swift
+reject_match 'overall snapshot staleness must not gate the purifier section' -Fq 'let stale = state.stale == true || purifier.stale == true' JARVIS/Views/HomeDeviceControls.swift
 grep -q 'testRoutineStateReadKeepsFreshControlsAvailable' JARVISTests/AppStateTests.swift
 grep -q 'testUnrelatedOverallStalenessDoesNotDisableFreshPlugSubsystem' JARVISKit/Tests/JARVISKitTests/PlugCommandTests.swift
 
@@ -135,7 +135,11 @@ printf '%s\n' '== minimal phone and Watch read-only oMLX contract =='
 python3 - <<'PYCONTRACT'
 from pathlib import Path
 home = Path('JARVIS/Views/HomeView.swift').read_text()
-assert home.index('purifierSection(state)') < home.index('OMLXStatusCard(client: app.client')
+assert 'purifierSection(state)' not in home and 'plugsSection(state)' not in home
+controls = Path('JARVIS/Views/HomeDeviceControls.swift').read_text()
+assert controls.index('plugsSection(state)') < controls.index('purifierSection(state)')
+home_page = Path('JARVIS/Views/SystemView.swift').read_text()
+assert home_page.index('SystemDashboardContent(') < home_page.index('HomeDeviceControls')
 assert 'active: scenePhase == .active && app.activeSection == .home' in home
 host = Path('../jarvisd/jarvisd.py').read_text().split('# Read-only oMLX activity', 1)[1].split('STATE_COORDINATOR = StateCoordinator()', 1)[0]
 assert 'OMLX_COORDINATOR = StateCoordinator(' in host
@@ -251,9 +255,9 @@ printf '%s\n' '== xhigh purple theme contract =='
 grep -q 'darkAccent = JARVISBrandRGB(red: 209, green: 131, blue: 232)' JARVISKit/Sources/JARVISKit/BrandTheme.swift
 grep -q 'lightAccent = JARVISBrandRGB(red: 139, green: 0, blue: 139)' JARVISKit/Sources/JARVISKit/BrandTheme.swift
 grep -q 'static let accent = Color(uiColor: UIColor' JARVIS/Views/Components.swift
-grep -q 'case ...12: return JarvisPalette.accent' JARVIS/Views/HomeView.swift
+grep -q 'case ...12: return JarvisPalette.accent' JARVIS/Views/HomeDeviceControls.swift
 grep -q 'case ...12: return WatchJarvisStyle.accent' JARVISWatch/Views/WatchDashboardContent.swift
-[[ "$(grep -c '\.tint(JarvisPalette\.accent)' JARVIS/Views/HomeView.swift)" -ge 3 ]]
+[[ "$(grep -c '\.tint(JarvisPalette\.accent)' JARVIS/Views/HomeDeviceControls.swift)" -ge 3 ]]
 reject_match 'retired clean-air blue remains in native purifier chrome' -RqsE 'airQualityGood|clean-air cyan' JARVIS JARVISWatch
 grep -q 'background(WatchJarvisStyle.accent, in: RoundedRectangle' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'retired blue brand tokens remain in native app chrome' -RqsE 'JarvisPalette\.(cyan|electricBlue)|WatchJarvisStyle\.(cyan|electricBlue)|Color\.cyan' JARVIS JARVISWatch
@@ -317,7 +321,7 @@ grep -q 'onOpenPiTerminal: { slot in' JARVIS/JARVISApp.swift
 grep -q '_ = piTerminal.selectSlot(slot)' JARVIS/JARVISApp.swift
 grep -q 'func selectSlot(_ target: JARVISTerminalSlot) -> Bool' JARVIS/Terminal/PiTerminalController.swift
 grep -q 'onOpenPiTerminal(slot)' JARVIS/Views/HomeView.swift
-grep -Fq 'terminal on the JARVIS tab' JARVIS/Views/HomeView.swift
+grep -Fq 'terminal on the Terminal tab' JARVIS/Views/HomeView.swift
 grep -q 'testHomePiCardCanSelectAnExactDeviceLocalTerminalSlotBeforePresentation' JARVISTests/AppStateTests.swift
 reject_match 'Pi status indicator must not render inactive state in red' -Fq 'active.map { $0 ? JarvisPalette.accent : .red }' JARVIS/Views/HomeView.swift
 grep -q 'public let mobileSessions: \[PiMobileSession\]?' JARVISKit/Sources/JARVISKit/Models.swift
@@ -752,7 +756,7 @@ grep -q 'CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)' J
 grep -q 'CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q '? JarvisPalette.critical' JARVIS/Views/HomeView.swift
 grep -q '? WatchJarvisStyle.critical' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVIS/Views/HomeView.swift
+grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVIS/Views/HomeDeviceControls.swift
 grep -q 'AirQualityGauge.cleanlinessProgress(pm25: value)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'let pollutedFraction = (Double(value) - 1) / 74' JARVISKit/Sources/JARVISKit/AirQualityGauge.swift
 grep -q 'public struct CodexQuotaSubsystem' JARVISKit/Sources/JARVISKit/Models.swift
@@ -764,7 +768,7 @@ grep -Fq 'for subsystem in query.get("refresh", []):' ../jarvisd/jarvisd.py
 grep -Fq 'if subsystem in {"codexQuota", "purifier"}:' ../jarvisd/jarvisd.py
 grep -q 'stateRefreshingCodexQuota' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 grep -q 'model.refreshCodexQuotaWhenVisible()' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'page == .overview' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'page == .jarvis' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})' ../jarvisd/jarvisd_core/state.py
 reject_match 'Watch System page must not restore the removed Direct to Mac panel' -Fq 'Direct to Mac' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'configuration.candidateBaseURLs' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
@@ -781,7 +785,7 @@ from pathlib import Path
 source = Path('JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift').read_text(encoding='utf-8')
 block = source.split('public enum WatchDashboardPage', 1)[1].split('public func destination', 1)[0]
 assert [line.strip() for line in block.splitlines() if line.strip().startswith('case ')] == [
-    'case system', 'case terminal', 'case plugs', 'case overview', 'case jobs'
+    'case home', 'case terminal', 'case plugs', 'case jarvis', 'case jobs'
 ]
 root = Path('JARVIS/JARVISApp.swift').read_text()
 assert root.index('HomeView(') < root.index('SystemView()') < root.index('PiTerminalView()')
@@ -793,8 +797,8 @@ overview = health.split('.sheet(item: $selectedDetail)', 1)[0]
 assert 'ScrollView' not in overview and 'ViewThatFits(in: .vertical)' in overview
 assert 'statTile(' not in health and 'expandedServices' not in health
 assert 'phoneServices(dense:' in health and 'phoneIntegrations(dense:' in health
-assert 'ScrollView' not in Path('JARVIS/Views/SystemView.swift').read_text()
-assert '.refreshable' not in Path('JARVIS/Views/SystemView.swift').read_text()
+assert 'ScrollView' in Path('JARVIS/Views/SystemView.swift').read_text()
+assert '.refreshable' in Path('JARVIS/Views/SystemView.swift').read_text()
 assert 'Last observed details' in health
 watch_health = Path('JARVISWatch/Views/WatchSystemHealthView.swift').read_text()
 assert 'WatchSystemCrownViewport' not in watch_health
@@ -830,13 +834,12 @@ pager = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 assert pager.index('.highPriorityGesture(') > pager.index('pageIndicator\n        }')
 PYCROWN
 
-grep -q 'case .jobs: return upward ? nil : .overview' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
-grep -Fq 'case .terminal: return upward ? .plugs : .system' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
-grep -Fq 'case .system: return upward ? .terminal : nil' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
+grep -Fq 'Self.allCases.indices.contains(next)' JARVISKit/Sources/JARVISKit/WatchDashboardPage.swift
+grep -Fq 'onAdvancePage: { selectedPage = .plugs }' JARVISWatch/Views/WatchDashboardContent.swift
+grep -Fq 'onPreviousPage: { selectedPage = .home }' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'alwaysOnInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
-grep -q 'The shorter Plugs grid must not collapse the page before the bottom edge.' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'GeometryReader { geometry in' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'let tileHeight = max(72, (geometry.size.height - rowSpacing) / CGFloat(rowCount))' JARVISWatch/Views/WatchDashboardContent.swift
+grep -q 'The dedicated Plugs grid must not collapse the pager viewport.' JARVISWatch/Views/WatchDashboardContent.swift
+grep -Fq 'WatchSystemCrownViewport(active: scenePhase == .active && selectedPage == .home' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'plugButton(name, minimumHeight: tileHeight)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'minHeight: minimumHeight' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func pageHeader(_ title: String, symbol: String)' JARVISWatch/Views/WatchDashboardContent.swift
@@ -849,10 +852,10 @@ grep -q 'watchBridgeDidReceivePurifierCommand' JARVIS/AppStateWatchBridge.swift
 grep -q 'public struct WatchPurifierCommand' JARVISKit/Sources/JARVISKit/WatchBridge.swift
 grep -q 'public let verificationPending: Bool?' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'public let pendingCommand: PurifierPendingCommand?' JARVISKit/Sources/JARVISKit/Models.swift
-grep -q 'purifierConfirmationCaption' JARVIS/Views/HomeView.swift
+grep -q 'purifierConfirmationCaption' JARVIS/Views/HomeDeviceControls.swift
 grep -q 'purifierPendingSummary' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'data\["pendingCommand"\] = pending_command' ../jarvisd/jarvisd_core/state.py
-reject_match 'Air-purifier controls must stay in the existing System card, not add a Watch page' -Fq 'case purifier' JARVISWatch/Views/WatchDashboardContent.swift
+reject_match 'Air-purifier controls must stay in Home, not add a Watch page' -Fq 'case purifier' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'System Watch pager must not reserve the removed clock strip' -Fq 'tabViewStyle(.verticalPage)' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch terminal must not require an Open button' -qs 'Open JARVIS' JARVISWatch/Views/WatchDashboardContent.swift
 reject_match 'Watch terminal must not use a navigation launcher' -qs 'NavigationLink' JARVISWatch/Views/WatchDashboardContent.swift

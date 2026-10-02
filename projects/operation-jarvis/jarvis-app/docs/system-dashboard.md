@@ -1,5 +1,12 @@
 # System dashboard — iPhone and Watch
 
+**Navigation update:** the health card lives at the top of iPhone **Home**, above
+plugs and purifier. The restored Watch **Home** contains health only; Plugs has
+a dedicated page, while purifier returns above Codex/oMLX on JARVIS.
+The card remains noninteractive. Watch Home supports Crown overflow for large text.
+See [navigation and Home](navigation-and-home.md) for the verified rollout and pending physical acceptance.
+The build-specific records below retain their original navigation context.
+
 ## Visual-only card on both devices (build 234)
 
 Both platforms now show one noninteractive glass card: current ring and short

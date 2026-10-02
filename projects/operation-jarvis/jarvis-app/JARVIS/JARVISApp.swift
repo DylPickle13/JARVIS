@@ -48,6 +48,11 @@ private enum PhoneNeuralCoreWidgetReloadCoordinator {
 
 @main
 struct JARVISApp: App {
+    // Hosted unit tests exercise injected models, not the owner's live endpoints.
+    private static var isUnitTestHost: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     @UIApplicationDelegateAdaptor(JARVISAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var app = AppState()
@@ -59,7 +64,7 @@ struct JARVISApp: App {
         _piTerminal = StateObject(wrappedValue: PiTerminalController(settings: settings))
         // Request a targeted selector rebuild on launch. The same rate-limited
         // coordinator also runs on every foreground activation.
-        PhoneNeuralCoreWidgetReloadCoordinator.reloadIfDue()
+        if !Self.isUnitTestHost { PhoneNeuralCoreWidgetReloadCoordinator.reloadIfDue() }
     }
 
     var body: some Scene {
@@ -70,6 +75,7 @@ struct JARVISApp: App {
                 .environmentObject(piTerminal)
                 .tint(JarvisPalette.accent)
                 .task {
+                    guard !Self.isUnitTestHost else { return }
                     app.startWatchBridge()
                     notifications.configure(app: app)
                     if scenePhase == .active { notifications.sceneDidBecomeActive() }
@@ -77,6 +83,7 @@ struct JARVISApp: App {
                     piTerminal.sceneDidBecomeActive()
                 }
                 .onChange(of: scenePhase) { _, phase in
+                    guard !Self.isUnitTestHost else { return }
                     switch phase {
                     case .active:
                         notifications.sceneDidBecomeActive()
@@ -125,15 +132,15 @@ private struct RootTabView: View {
                     selection = .pi
                 }
             )
-                .tabItem { Label("Home", systemImage: "house.fill") }
+                .tabItem { Label(AppSection.home.title, systemImage: "waveform") }
                 .tag(AppSection.home)
 
             SystemView()
-                .tabItem { Label("System", systemImage: "server.rack") }
+                .tabItem { Label(AppSection.system.title, systemImage: "house.fill") }
                 .tag(AppSection.system)
 
             PiTerminalView()
-                .tabItem { Label("JARVIS", systemImage: "terminal.fill") }
+                .tabItem { Label(AppSection.pi.title, systemImage: "terminal.fill") }
                 .tag(AppSection.pi)
 
             JobsView(
@@ -147,6 +154,12 @@ private struct RootTabView: View {
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
                 .tag(AppSection.settings)
+        }
+        .background {
+            TabSwipeNavigation(section: selection, active: scenePhase == .active) { destination in
+                selection = destination
+            }
+            .accessibilityHidden(true)
         }
         .onAppear {
             openTerminalIfRequested()

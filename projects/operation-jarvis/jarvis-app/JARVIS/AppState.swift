@@ -4,12 +4,34 @@ import SwiftUI
 import WidgetKit
 import JARVISKit
 
-public enum AppSection: String, Sendable {
+/// Stable internal route IDs: .home is JARVIS, .system is Home, .pi is Terminal.
+/// Keep raw values compatible with existing deep links and simulator launch arguments.
+public enum AppSection: String, Sendable, CaseIterable {
     case home
     case system
     case pi
     case jobs
     case settings
+
+    var title: String {
+        switch self {
+        case .home: return "JARVIS"
+        case .system: return "Home"
+        case .pi: return "Terminal"
+        case .jobs: return "Jobs"
+        case .settings: return "Settings"
+        }
+    }
+
+    var showsForegroundDashboard: Bool { self == .home || self == .system }
+
+    func swipeDestination(horizontal: Double, vertical: Double) -> Self? {
+        guard self != .pi, horizontal.isFinite, vertical.isFinite,
+              abs(horizontal) >= 64, abs(horizontal) > abs(vertical) * 1.5,
+              let index = Self.allCases.firstIndex(of: self) else { return nil }
+        let next = index + (horizontal < 0 ? 1 : -1)
+        return Self.allCases.indices.contains(next) ? Self.allCases[next] : nil
+    }
 }
 
 struct WatchCommandCacheEntry: Sendable {
@@ -430,9 +452,9 @@ public final class AppState: ObservableObject {
             connectionState = .connected
             errorMessage = nil
             if activeSection == .home {
-                await refreshHome()
+                await refreshJARVIS()
             } else if activeSection == .system {
-                await fetchState()
+                await refreshHomeDevices()
             } else {
                 await refreshJobs()
             }
@@ -484,7 +506,7 @@ public final class AppState: ObservableObject {
         defer { isStateLoading = false }
         do {
             let snapshot = try await convergedState(endpoint, refreshingCodexQuota: refreshingCodexQuota,
-                cachedOnly: activeSection != .home && !refreshingCodexQuota)
+                cachedOnly: !activeSection.showsForegroundDashboard && !refreshingCodexQuota)
             let previousState = lastState
             let widgetsChanged = widgetReloadValue(previousState) != widgetReloadValue(snapshot)
             lastState = snapshot
@@ -780,7 +802,7 @@ public final class AppState: ObservableObject {
         guard appIsActive, !Task.isCancelled, let endpoint = activeEndpoint else { return }
         do {
             _ = try await client.stateRetryingPurifier(endpoint)
-            await refreshHomeResources(refreshHealth: true)
+            await refreshVisibleResources(refreshHealth: true)
         } catch {
             operationErrorMessage = error.localizedDescription
         }
@@ -1088,11 +1110,18 @@ public final class AppState: ObservableObject {
 
     // MARK: - Polling
 
-    public func refreshHome() async {
+    public func refreshJARVIS() async {
+        await refreshVisibleResources(refreshHealth: true)
+    }
+
+    /// Only Home entry / explicit refresh requests cloud readings, never the AI
+    /// dashboard or recurring polls. The backend retains its cooldown policy.
+    public func refreshHomeDevices() async {
         if appIsActive, !Task.isCancelled, let endpoint = activeEndpoint {
             _ = try? await client.stateRefreshingPurifier(endpoint)
         }
-        await refreshHomeResources(refreshHealth: true)
+        guard !Task.isCancelled else { return }
+        await refreshVisibleResources(refreshHealth: true)
     }
 
     public func refreshJobs() async {
@@ -1101,9 +1130,9 @@ public final class AppState: ObservableObject {
         _ = await (jobs, results)
     }
 
-    private func refreshHomeResources(refreshHealth: Bool) async {
+    private func refreshVisibleResources(refreshHealth: Bool) async {
         homeControlPollsSinceResources = 0
-        let refreshCodexQuota = reserveVisibleCodexRefreshIfDue()
+        let refreshCodexQuota = activeSection == .home && reserveVisibleCodexRefreshIfDue()
         async let state: Void = fetchState(refreshingCodexQuota: refreshCodexQuota)
         async let jobs: Void = fetchScheduledJobs()
         async let results: Void = fetchScheduledJobResults()
@@ -1116,7 +1145,7 @@ public final class AppState: ObservableObject {
     }
 
     private func refreshVisibleControlState() async {
-        let refreshCodexQuota = reserveVisibleCodexRefreshIfDue()
+        let refreshCodexQuota = activeSection == .home && reserveVisibleCodexRefreshIfDue()
         await fetchState(refreshingCodexQuota: refreshCodexQuota)
     }
 
@@ -1137,15 +1166,15 @@ public final class AppState: ObservableObject {
             guard let self else { return }
             if refreshImmediately {
                 if self.activeSection == .home {
-                    await self.refreshHome()
+                    await self.refreshJARVIS()
                 } else if self.activeSection == .system {
-                    await self.fetchState()
+                    await self.refreshHomeDevices()
                 } else {
                     await self.refreshJobs()
                 }
             }
             while !Task.isCancelled, self.appIsActive, self.connectionState == .connected {
-                let interval = self.activeSection == .home
+                let interval = self.activeSection.showsForegroundDashboard
                     ? self.controlRefreshInterval
                     : self.activeRefreshInterval
                 do {
@@ -1154,17 +1183,17 @@ public final class AppState: ObservableObject {
                     return
                 }
                 guard !Task.isCancelled, self.appIsActive, self.connectionState == .connected else { return }
-                if self.activeSection == .home {
+                if self.activeSection.showsForegroundDashboard {
                     self.homeControlPollsSinceResources += 1
                     if self.homeControlPollsSinceResources >= 3 {
-                        await self.refreshHomeResources(refreshHealth: true)
+                        await self.refreshVisibleResources(refreshHealth: true)
                     } else {
                         await self.refreshVisibleControlState()
                     }
                 } else {
                     // Passive tabs read the cache without renewing collector
-                    // leases or scheduling purifier cloud reads. Home and explicit
-                    // refreshes retain the bounded foreground policy.
+                    // leases or scheduling purifier cloud reads. The two dashboards
+                    // retain the bounded foreground policy; only Home reads purifier cloud state.
                     async let state: Void = self.fetchState()
                     async let jobs: Void = self.refreshJobs()
                     _ = await (state, jobs)

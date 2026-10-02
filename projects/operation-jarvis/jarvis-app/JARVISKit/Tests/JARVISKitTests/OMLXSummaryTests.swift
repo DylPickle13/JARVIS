@@ -235,10 +235,10 @@ final class OMLXSummaryTests: XCTestCase {
         XCTAssertEqual(CrownViewportBounds.maximum(content: .infinity, viewport: 240), 0)
     }
 
-    func testCrownScrollDoesNotChangeTheFivePageDirectionPolicy() {
-        XCTAssertEqual(WatchDashboardPage.allCases, [.system, .terminal, .plugs, .overview, .jobs])
-        XCTAssertEqual(WatchDashboardPage.overview.destination(verticalTranslation: -60, horizontalTranslation: 0), .jobs)
-        XCTAssertEqual(WatchDashboardPage.overview.destination(verticalTranslation: 60, horizontalTranslation: 0), .plugs)
+    func testCrownScrollDoesNotChangeTheRestoredFivePageDirectionPolicy() {
+        XCTAssertEqual(WatchDashboardPage.allCases, [.home, .terminal, .plugs, .jarvis, .jobs])
+        XCTAssertEqual(WatchDashboardPage.home.destination(verticalTranslation: -60, horizontalTranslation: 0), .terminal)
+        XCTAssertNil(WatchDashboardPage.home.destination(verticalTranslation: 60, horizontalTranslation: 0))
         XCTAssertNil(WatchDashboardPage.jobs.destination(verticalTranslation: -60, horizontalTranslation: 0))
     }
 }

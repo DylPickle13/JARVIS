@@ -140,7 +140,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         lastState?.subsystems?.purifier?.selected(selectedPurifierID)
     }
 
-    /// Called only on explicit System-page entry, selection or Refresh.
+    /// Called only on explicit JARVIS-page entry, selection or Refresh.
     /// Neither the cached polling loop nor wrist/AOD lifecycle calls this.
     func refreshPurifierReadings(retry: Bool = false) async {
         guard appIsForeground, appIsInteractive, !Task.isCancelled, !purifierRefreshing else { return }

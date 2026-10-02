@@ -7,7 +7,7 @@ struct WatchSystemHealthView: View {
     let onDetailVisibilityChanged: (Bool) -> Void
 
     var body: some View {
-        // Fixed overview: no pan/Crown scrolling competes with page navigation.
+        // Health-only Home overview; the parent provides Crown overflow for large text.
         TimelineView(.animation(minimumInterval: 5, paused: !active)) { _ in
             SystemDashboardContent(presentation: .init(snapshot: model.lastState,
                 requestStartedAt: SystemDashboardPresentation.snapshotGeneratedAt(model.lastState),
@@ -17,9 +17,8 @@ struct WatchSystemHealthView: View {
                 surface: WatchJarvisStyle.surface, connectionError: model.errorMessage,
                 historyModel: model.systemHistory,
                 onDetailVisibilityChanged: onDetailVisibilityChanged)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 7)
+
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .top)
     }
 }

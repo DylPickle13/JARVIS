@@ -24,7 +24,7 @@ struct WatchDashboardContent: View {
     private var overlayOwnsInput: Bool {
         showsSystemDetails || showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered
     }
-    private var overviewInteractive: Bool { scenePhase == .active && selectedPage == .overview }
+    private var overviewInteractive: Bool { scenePhase == .active && selectedPage == .jarvis }
 
     private static let iso8601 = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
 
@@ -46,7 +46,7 @@ struct WatchDashboardContent: View {
             pageIndicator
         }
         // Keep the gradient sized to the full status-bar-free Watch canvas.
-        // The shorter Plugs grid must not collapse the page before the bottom edge.
+        // The dedicated Plugs grid must not collapse the pager viewport.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         // The recognizer belongs to this stable viewport, outside the changing
@@ -59,10 +59,12 @@ struct WatchDashboardContent: View {
         .interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.32)
         .onAppear {
             #if DEBUG && targetEnvironment(simulator)
-            if CommandLine.arguments.contains("-jarvisOpenWatchSystem") {
-                selectedPage = .system
-            } else if CommandLine.arguments.contains("-jarvisOpenWatchOverview") {
-                selectedPage = .overview
+            if CommandLine.arguments.contains("-jarvisOpenWatchSystem") || CommandLine.arguments.contains("-jarvisOpenWatchHome") {
+                selectedPage = .home
+            } else if CommandLine.arguments.contains("-jarvisOpenWatchOverview") || CommandLine.arguments.contains("-jarvisOpenWatchJARVIS") {
+                selectedPage = .jarvis
+            } else if CommandLine.arguments.contains("-jarvisOpenWatchPlugs") {
+                selectedPage = .plugs
             } else if CommandLine.arguments.contains("-jarvisOpenWatchJobs") {
                 selectedPage = .jobs
             }
@@ -73,9 +75,15 @@ struct WatchDashboardContent: View {
         .onChange(of: selectedPage) { _, page in
             model.setJobsPageVisible(page == .jobs)
             updateOMLXPresentation()
-            if page == .overview {
-                Task { await model.refreshCodexQuotaWhenVisible() }
-                Task { await model.refreshPurifierReadings() }
+            if page == .jarvis {
+                Task {
+                    guard selectedPage == .jarvis, !overlayOwnsInput else { return }
+                    await model.refreshCodexQuotaWhenVisible()
+                }
+                Task {
+                    guard selectedPage == .jarvis, !overlayOwnsInput else { return }
+                    await model.refreshPurifierReadings()
+                }
             } else {
                 model.cancelCodexQuotaViewRefresh()
             }
@@ -105,40 +113,38 @@ struct WatchDashboardContent: View {
     }
 
     private func updateOMLXPresentation() {
-        model.setSystemHistoryPresentation(visible: selectedPage == .system, covered: overlayOwnsInput)
-        model.setOMLXPresentation(systemVisible: selectedPage == .overview,
+        model.setSystemHistoryPresentation(visible: selectedPage == .home, covered: overlayOwnsInput)
+        model.setOMLXPresentation(systemVisible: selectedPage == .jarvis,
             covered: showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered)
     }
 
     @ViewBuilder
     private var selectedPageContent: some View {
         switch selectedPage {
+        case .jarvis:
+            resolvedOverviewPage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        case .home:
+            resolvedHomePage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        case .plugs:
+            resolvedPlugsPage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
         case .terminal:
             WatchTerminalView(
                 controller: model.terminal,
                 pi: model.lastState?.subsystems?.pi,
                 isActive: true,
                 onAdvancePage: { selectedPage = .plugs },
-                onPreviousPage: { selectedPage = .system }
+                onPreviousPage: { selectedPage = .home }
             )
-        case .plugs:
-            resolvedPlugsPage
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-        case .system:
-            WatchSystemHealthView(model: model,
-                active: scenePhase == .active && !overlayOwnsInput,
-                onDetailVisibilityChanged: { showsSystemDetails = $0 })
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-        case .overview:
-            resolvedOverviewPage
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
         case .jobs:
             WatchJobsView(
                 model: jobs,
-                onPreviousPage: { selectedPage = .overview },
+                onPreviousPage: { selectedPage = .jarvis },
                 resolveRoute: model.resolveScheduledJobRoute,
                 onRouteConsumed: onJobRouteConsumed
             )
@@ -179,15 +185,28 @@ struct WatchDashboardContent: View {
     }
 
     @ViewBuilder
-    private var resolvedPlugsPage: some View {
+    private var resolvedHomePage: some View {
         if dynamicTypeSize.isAccessibilitySize {
-            accessibilityPlugsPage
+            WatchSystemCrownViewport(active: scenePhase == .active && selectedPage == .home && !overlayOwnsInput) {
+                homePage
+            }
         } else {
-            plugsPage
+            homePage
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
 
-    @ViewBuilder
+    private var homePage: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            pageHeader("Home", symbol: "house.fill")
+            WatchSystemHealthView(model: model,
+                active: scenePhase == .active && !overlayOwnsInput,
+                onDetailVisibilityChanged: { showsSystemDetails = $0 })
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+    }
+
     private var resolvedOverviewPage: some View {
         WatchSystemCrownViewport(active: overviewInteractive && !overlayOwnsInput) {
             if dynamicTypeSize.isAccessibilitySize {
@@ -198,12 +217,33 @@ struct WatchDashboardContent: View {
         }
     }
 
-    // MARK: - Plug controls
+    // MARK: - Dedicated plug controls
+
+    @ViewBuilder
+    private var resolvedPlugsPage: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            WatchSystemCrownViewport(active: scenePhase == .active && selectedPage == .plugs && !overlayOwnsInput) {
+                VStack(alignment: .leading, spacing: 10) {
+                    pageHeader("Plugs", symbol: "powerplug.fill")
+                    if availablePlugNames.isEmpty {
+                        unavailablePanel("Plug status unavailable", symbol: "powerplug")
+                    } else {
+                        ForEach(availablePlugNames, id: \.self) { name in
+                            accessiblePlugButton(name)
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 7)
+            }
+        } else {
+            plugsPage
+        }
+    }
 
     private var plugsPage: some View {
         VStack(alignment: .leading, spacing: 7) {
             pageHeader("Plugs", symbol: "powerplug.fill")
-
             if availablePlugNames.isEmpty {
                 unavailablePanel("Plug status unavailable", symbol: "powerplug")
             } else {
@@ -211,7 +251,6 @@ struct WatchDashboardContent: View {
                     let rowCount = max(1, (availablePlugNames.count + gridColumns.count - 1) / gridColumns.count)
                     let rowSpacing = CGFloat(rowCount - 1) * 7
                     let tileHeight = max(72, (geometry.size.height - rowSpacing) / CGFloat(rowCount))
-
                     LazyVGrid(columns: gridColumns, spacing: 7) {
                         ForEach(availablePlugNames, id: \.self) { name in
                             plugButton(name, minimumHeight: tileHeight)
@@ -251,7 +290,7 @@ struct WatchDashboardContent: View {
 
     private var overviewPage: some View {
         VStack(spacing: 7) {
-            pageHeader("Overview", symbol: "waveform.path.ecg")
+            pageHeader("JARVIS", symbol: "waveform")
             purifierPanel
             codexQuotaPanel
             omlxCard
@@ -459,30 +498,13 @@ struct WatchDashboardContent: View {
 
     // MARK: - Accessibility pages
 
-    private var accessibilityPlugsPage: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                pageHeader("Plugs", symbol: "powerplug.fill")
-                if availablePlugNames.isEmpty {
-                    unavailablePanel("Plug status unavailable", symbol: "powerplug")
-                } else {
-                    ForEach(availablePlugNames, id: \.self) { name in
-                        accessiblePlugButton(name)
-                    }
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-        }
-    }
-
     private var omlxCard: some View {
         WatchOMLXCard(model: model.omlx, active: overviewInteractive && !overlayOwnsInput)
     }
 
     private var accessibilityOverviewPage: some View {
         VStack(alignment: .leading, spacing: 10) {
-            pageHeader("Overview", symbol: "waveform.path.ecg")
+            pageHeader("JARVIS", symbol: "waveform")
             purifierPanel
             codexQuotaPanel
             omlxCard
