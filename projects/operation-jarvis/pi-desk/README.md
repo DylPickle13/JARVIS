@@ -113,6 +113,20 @@ Alt+F11 in the Pi desktop. The Pi retains 1080p, 14 pt DejaVu/Noto Emoji and a b
 background. The Mac app requests a 173×47 terminal; ordinary CLI usage preserves
 the user's terminal size/profile.
 
+### Terminal tab title
+
+Pi Desk sets the outer terminal title to `pi-desk` while its tmux viewer is attached,
+independent of coding-pane titles or the selected session. tmux saves/restores the
+previous title on attach/detach in supported terminals, including VS Code.
+
+VS Code normally labels tabs by process name, which shows `Python` for the launcher.
+Set `"terminal.integrated.tabs.title": "${sequence}"` in the workspace's
+`.vscode/settings.json` so terminals display app-supplied titles instead (with a
+process-name fallback if no title is supplied). This is workspace-only, not a
+global VS Code setting; other terminals also use their normal shell/app titles.
+Manually renamed tabs retain their explicit names. `.vscode/` is local/ignored in
+this repository, so apply the setting separately in other workspaces or clones.
+
 ### Links in VS Code's terminal
 
 Pi Desk advertises OSC 8 hyperlink support to VS Code (`TERM_PROGRAM=vscode`)

@@ -1,3 +1,27 @@
+# Terminal tab title — 2026-10-01, 22:31 EDT
+
+Pi Desk's dedicated tmux viewer now sends the constant outer terminal title
+`pi-desk`, independent of Python's process name, coding-pane titles and focus.
+Enabled app-supplied terminal tab titles with `${sequence}` in this local
+workspace's `.vscode/settings.json`; global VS Code settings remain untouched.
+This ignored/local workspace preference also applies to other terminals in this
+workspace and is documented in README for other workspaces/clones.
+
+**114 source tests passed**. New isolated PTY coverage verifies the emitted OSC
+title, stable naming through focus/pane-title changes, unchanged pane IDs/PIDs,
+and tmux's title-stack save/restore sequences on attach/detach. Installed only
+`config/tmux.conf`, updated and verified all **22 manifest hashes**, and applied
+only `set-titles-string` and `set-titles` live without a full config reload.
+
+All **54 display panes**, **10 hosted-agent panes**, viewer client, focus and
+geometry were unchanged. No viewer, agent or service restarted; no remote install
+changed. Previous title returns on detach in supported terminals; explicitly
+renamed VS Code tabs still retain their user-assigned name.
+
+Rollback backup: `~/.local/state/pi-desk/backups/20261002T023129447392Z/`
+(previous config/manifest, workspace settings with only the new line reversed,
+old live options and identity metadata).
+
 # Active-session title badge — 2026-10-01, 22:12 EDT
 
 Replaced the heavy purple active border with thin grey dividers and a bold purple

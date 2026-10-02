@@ -393,6 +393,11 @@ class PaneRecoveryTests(unittest.TestCase):
 
 
 class DesktopTests(unittest.TestCase):
+    def test_viewer_sets_terminal_tab_title(self):
+        config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
+        self.assertIn('set -g set-titles on', config)
+        self.assertIn("set -g set-titles-string 'pi-desk'", config)
+
     def test_vscode_viewer_advertises_hyperlinks(self):
         self.assertEqual(desktop.viewer_attach_command('viewer-test', {'TERM_PROGRAM': 'vscode'}),
                          ['tmux', '-L', desktop.SOCKET, '-T', 'hyperlinks',

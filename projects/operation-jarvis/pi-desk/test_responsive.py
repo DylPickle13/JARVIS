@@ -166,7 +166,7 @@ class WorkspaceTests(unittest.TestCase):
             os.close(slave)
             os.close(master)
 
-    def attach(self, name, width=184, height=45):
+    def attach(self, name, width=184, height=45, output=None):
         master, slave = os.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', height, width, 0, 0))
         child = subprocess.Popen(['tmux', '-L', self.socket, 'attach-session', '-t', '=' + name],
@@ -175,8 +175,12 @@ class WorkspaceTests(unittest.TestCase):
         self.viewers.append((child, master, slave))
         def drain():
             try:
-                while os.read(master, 65536):
-                    pass
+                while True:
+                    data = os.read(master, 65536)
+                    if not data:
+                        break
+                    if output is not None:
+                        output.append(data)
             except OSError:
                 pass
         threading.Thread(target=drain, daemon=True).start()
@@ -491,6 +495,39 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(self.visible(name), (1, 2))
         self.assertEqual(self.identities(name)['2'], identity)
         self.assertEqual(self.focus(name), 2)
+
+    def test_terminal_tab_title_is_stable_and_restored_on_detach(self):
+        name = workspace.create(1, 184, 45)
+        desktop.configure()
+        output = []
+        client, _ = self.attach(name, output=output)
+
+        def await_output(sequence):
+            for _ in range(100):
+                if sequence in b''.join(output):
+                    return
+                time.sleep(.01)
+            self.fail(f'Terminal sequence not received: {sequence!r}')
+
+        await_output(b'\x1b]0;pi-desk\x07')
+        before = self.identities(name)
+        for number in (2, 3):
+            desktop.choose(number, client.pid)
+            # A coding pane changing its own title must not rename the outer tab.
+            core.tmux('select-pane', '-t', name + ':0', '-T', 'Python')
+            self.assertEqual(core.tmux('show-options', '-Av', '-t', name,
+                                      'set-titles').stdout.strip(), 'on')
+            self.assertEqual(core.tmux('show-options', '-Av', '-t', name,
+                                      'set-titles-string').stdout.strip(), 'pi-desk')
+        self.assertEqual(self.identities(name), before)
+        core.tmux('detach-client', '-s', name)
+        client.wait(timeout=2)
+        await_output(b'\x1b[23;0;0t')
+        received = b''.join(output)
+        self.assertIn(b'\x1b[22;0;0t', received)  # Save the original terminal title.
+        titles = re.findall(rb'\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)', received)
+        self.assertTrue(titles)
+        self.assertEqual(set(titles), {b'pi-desk'})
 
     def test_active_title_badge_and_neutral_dividers_in_all_layouts(self):
         for width in (80, 110, 184):
