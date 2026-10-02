@@ -10,11 +10,12 @@ import android.graphics.drawable.Drawable;
 
 /** Small vector UI glyphs; never handles camera frames. Lens dots show strength. */
 public final class ViewerIcon extends Drawable {
-    private final boolean lens;
+    private final int kind;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private int state, alpha = 255;
-    public ViewerIcon(boolean lens) { this.lens = lens; }
+    public ViewerIcon(boolean lens) { this(lens ? 0 : 1); }
+    public ViewerIcon(int kind) { this.kind = kind; }
     public void state(int value) { if (state != value) { state = value; invalidateSelf(); } }
     @Override public void draw(Canvas canvas) {
         Rect b = getBounds(); int save = canvas.save();
@@ -22,7 +23,15 @@ public final class ViewerIcon extends Drawable {
         paint.setColor(0xffffffff); paint.setAlpha(alpha);
         paint.setStrokeWidth(1.7f); paint.setStrokeCap(Paint.Cap.ROUND); paint.setStrokeJoin(Paint.Join.ROUND);
         paint.setStyle(Paint.Style.STROKE);
-        if (lens) {
+        if (kind == 2) { // Equalizer sliders; lit dot indicates Voice focus.
+            for (int i=0; i<3; i++) {
+                float x=6+i*6, y=i==1 ? 7 : 13;
+                canvas.drawLine(x, 3, x, y-2, paint); canvas.drawLine(x, y+2, x, 17, paint);
+                canvas.drawCircle(x, y, 2, paint);
+            }
+            paint.setStyle(Paint.Style.FILL); paint.setAlpha(state == 1 ? alpha : alpha/4);
+            canvas.drawCircle(12, 21, 1.5f, paint);
+        } else if (kind == 0) {
             canvas.drawRoundRect(3, 2, 21, 17, 3, 3, paint);
             path.reset();
             if (state == 0) { // Curved grid for original; straight grid when corrected.

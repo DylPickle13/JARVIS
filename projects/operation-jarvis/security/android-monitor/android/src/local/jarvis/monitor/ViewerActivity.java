@@ -10,6 +10,9 @@ import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.media.AudioManager;
 import com.google.android.exoplayer2.audio.AudioAttributes;
+import com.google.android.exoplayer2.audio.AudioSink;
+import com.google.android.exoplayer2.audio.AudioProcessor;
+import com.google.android.exoplayer2.audio.DefaultAudioSink;
 import android.os.*;
 import android.view.*;
 import android.widget.*;
@@ -38,7 +41,10 @@ public final class ViewerActivity extends Activity {
     private int lensMode, outputGeneration, glFrameBase, presented, lastPresented;
     private boolean lensFallback;
     private TextView status;
-    private ImageButton audioButton;
+    private ImageButton audioButton, voiceButton;
+    private final ViewerIcon voiceIcon = new ViewerIcon(2);
+    private boolean voiceFocus;
+    private VoiceFocusProcessor voiceProcessor;
     private AudioManager audioManager;
     private final ListenAudioPolicy audio = new ListenAudioPolicy();
     private boolean audioFocusHeld, audioReceiverRegistered, audioDisabled, tracksKnown;
@@ -79,6 +85,7 @@ public final class ViewerActivity extends Activity {
         if (audioCounters != null) {
             audioCounters.ensureUpdated(); audioRendered = audioCounters.renderedOutputBufferCount;
         }
+        updateVoiceButton();
         long now = SystemClock.elapsedRealtime();
         presented = dewarp == null ? displayed : Math.max(0, dewarp.frames() - glFrameBase);
         if (health.stalled(presented, now)) { failed(); return; }
@@ -126,6 +133,17 @@ public final class ViewerActivity extends Activity {
         audioButton.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { toggleAudio(); }});
         layout.addView(audioButton, iconLayout(Gravity.TOP | Gravity.RIGHT));
         updateAudioButton();
+        voiceFocus = getSharedPreferences("viewer-renderer", 0).getBoolean("voice-focus", true);
+        voiceButton = iconButton(voiceIcon);
+        voiceButton.setOnClickListener(new View.OnClickListener() { public void onClick(View v) {
+            if (!resumed || !unlocked() || voiceProcessor == null || !voiceProcessor.supported()) return;
+            voiceFocus = !voiceFocus; voiceProcessor.focus(voiceFocus);
+            getSharedPreferences("viewer-renderer", 0).edit().putBoolean("voice-focus", voiceFocus).apply();
+            updateVoiceButton();
+        }});
+        FrameLayout.LayoutParams voiceParams = iconLayout(Gravity.TOP | Gravity.RIGHT);
+        voiceParams.topMargin = dp(64);
+        layout.addView(voiceButton, voiceParams); updateVoiceButton();
         setContentView(layout);
         show("Starting private camera viewer");
     }
@@ -215,6 +233,15 @@ public final class ViewerActivity extends Activity {
         audioButton.setEnabled(resumed && player != null && audio.available());
         audioButton.setAlpha(audioButton.isEnabled() ? 1f : 0.35f);
     }
+    private void updateVoiceButton() {
+        if (voiceButton == null) return;
+        boolean available = resumed && player != null && audio.available() &&
+            voiceProcessor != null && voiceProcessor.supported();
+        voiceIcon.state(voiceFocus ? 1 : 0);
+        voiceButton.setContentDescription(available ?
+            "Audio filter: " + (voiceFocus ? "Voice focus" : "Original") + "; tap to change" : "Audio filter unavailable");
+        voiceButton.setEnabled(available); voiceButton.setAlpha(available ? 1f : 0.35f);
+    }
     private void muteAudio() { audio.mute(); silenceAudio(); }
     private void silenceAudio() {
         if (player != null) player.setVolume(0f);
@@ -270,7 +297,18 @@ public final class ViewerActivity extends Activity {
             // Select audio from the outset: changing RTSP tracks mid-session can restart video.
             // Wait for a supported track and granted focus before enabling volume.
             selector.setParameters(selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, audioDisabled));
-            player = new ExoPlayer.Builder(this).setTrackSelector(selector)
+            final VoiceFocusProcessor processor = new VoiceFocusProcessor(voiceFocus);
+            voiceProcessor = processor;
+            DefaultRenderersFactory renderers = new DefaultRenderersFactory(this) {
+                @Override protected AudioSink buildAudioSink(Context context, boolean floatOutput,
+                        boolean playbackParams, boolean offload) {
+                    return new DefaultAudioSink.Builder(context)
+                        .setAudioProcessors(new AudioProcessor[] { processor })
+                        .setEnableFloatOutput(false).setEnableAudioTrackPlaybackParams(false)
+                        .setOffloadMode(DefaultAudioSink.OFFLOAD_MODE_DISABLED).build();
+                }
+            };
+            player = new ExoPlayer.Builder(this, renderers).setTrackSelector(selector)
                 .setLoadControl(new DefaultLoadControl.Builder()
                     .setBufferDurationsMs(500, 1500, 250, 500)
                     .setTargetBufferBytes(2 * 1024 * 1024)
@@ -349,7 +387,8 @@ public final class ViewerActivity extends Activity {
         if (player != null) {
             player.release(); player = null; releases++;
         }
-        transport = null; updateAudioButton();
+        voiceProcessor = null;
+        transport = null; updateAudioButton(); updateVoiceButton();
     }
     private void show(String text) { phase = text; status.setText(text); }
     @Override public void dump(String prefix, FileDescriptor fd, PrintWriter out, String[] args) {
@@ -362,6 +401,10 @@ public final class ViewerActivity extends Activity {
             " audioFocus=" + audioFocusHeld + " audioDisabled=" + audioDisabled);
         out.println(prefix + "viewer audioRendered=" + audioRendered + " audioDecoder=" + audioDecoder +
             " audioVolume=" + (player == null ? 0f : player.getVolume()));
+        VoiceFocusProcessor vp = voiceProcessor;
+        out.println(prefix + "viewer voiceFocus=" + voiceFocus + " voiceSupported=" + (vp != null && vp.supported()) +
+            " voiceSamples=" + (vp == null ? 0 : vp.samples()) + " voiceOutput=" + (vp == null ? 0 : vp.outputSamples()) +
+            " voiceCpuUs=" + (vp == null ? 0 : vp.cpuMicros()));
         out.println(prefix + "viewer lens=" + DewarpModel.label(lensMode) + " lensFallback=" + lensFallback +
             " glActive=" + (dewarp != null && dewarp.live()) + " glFrames=" + (dewarp == null ? 0 : dewarp.frames()) +
             " presented=" + presented);

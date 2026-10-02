@@ -47,6 +47,8 @@ def main():
     lens = re.search(r'viewer lens=(\w+) lensFallback=false glActive=true', viewer())
     require(lens, 'Active GPU viewer required for lens lifecycle acceptance.')
     expected_lens = lens[1]
+    voice = re.search(r'viewer voiceFocus=(true|false) voiceSupported=true', viewer())
+    expected_voice = voice[1] if voice else None
 
     require(re.search(r'(?:AC|USB|Wireless) powered: true', adb('shell', 'dumpsys', 'battery')),
             'External power required.')
@@ -75,12 +77,19 @@ def main():
                         'Enabled native helper with no pending action is required.')
                 require(args.confirm_temporary_wake or 'Connected over Wi-Fi / TLS — nearby' in service,
                         'Fresh nearby status required unless temporary test wake is explicitly confirmed.')
-                adb('shell', 'input', 'keyevent', '224')
+                if args.confirm_temporary_wake:
+                    adb('shell', 'input', 'keyevent', '224')
+                else:
+                    require('mWakefulness=Awake' in adb('shell', 'dumpsys', 'power'),
+                            'Already-awake handset required; no forced wake.')
                 adb('shell', 'am', 'start', '-n', 'local.jarvis.monitor/.MainActivity')
                 time.sleep(1)
                 state = viewer()
                 require('activePlayer=false' in state, 'Player did not release when backgrounded.')
                 require('glActive=false glFrames=0' in state, 'GPU resources retained when backgrounded.')
+                if expected_voice is not None:
+                    require('voiceSupported=false voiceSamples=0 voiceOutput=0 voiceCpuUs=0' in state,
+                            'Backgrounding retained the voice processor.')
                 require('audioMuted=true audioFocus=false' in state and 'audioVolume=0.0' in state,
                         'Backgrounded viewer retained audio consent/focus/volume.')
                 counts = re.search(r'viewer opens=(\d+) releases=(\d+)', state)
@@ -111,6 +120,11 @@ def main():
                 current = viewer()
                 require('viewer lens='+expected_lens+' lensFallback=false glActive=true' in current,
                         'Lens choice/GPU rendering did not survive sleep/wake.')
+                if expected_voice is not None:
+                    require('viewer voiceFocus='+expected_voice+' voiceSupported=true' in current,
+                            'Saved audio filter choice did not survive sleep/wake.')
+                    require(int(re.search(r'voiceSamples=(\d+)', current)[1]) > 0,
+                            'Voice processor did not resume consuming PCM.')
                 gpu_second = re.search(r'glFrames=(\d+)', current)
                 require(gpu_second and int(gpu_second[1]) > int(gpu_first[1]) > 0,
                         'GPU frames did not advance after wake.')

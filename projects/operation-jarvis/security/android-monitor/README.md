@@ -4,7 +4,8 @@ Security subproject for an Android 6 / API 23 handset. It controls the handset
 display and a private, hardware-decoded RTSP/TCP viewer, **not** the doorbell's
 settings, recordings, alarms, or computer. v1.5 replaced the leaking tinyCam
 playback path; v1.6 adds listen-only audio, defaulting on in v1.6.1 at the owner's
-request. v1.7 adds optional, phone-local GPU lens correction. tinyCam was subsequently
+request. v1.7 adds optional, phone-local GPU lens correction; v1.8 adds a lightweight
+local Voice focus audio filter. tinyCam was subsequently
 uninstalled at the owner's request; private rollback backups remain on the Mac.
 DroidCam (`com.dev47apps.obsdroidcam`) was also uninstalled at the owner's request;
 it is not part of this viewer's playback path.
@@ -262,9 +263,9 @@ The top-left **lens/grid icon** cycles **original → mild → medium → strong
 **v1.7.2 defaults to Strong**, as selected by the owner after visual comparison.
 Existing saved choices take precedence; later manual choices remain saved rather
 than being reset on wake. Earlier v1.7/v1.7.1 installs defaulted to original.
-Only the lens choice is saved in private
-`viewer-renderer` preferences; it survives sleep/wake and app recreation. It never
-persists audio consent or modifies presence pairing/camera configuration.
+The lens choice is saved in private `viewer-renderer` preferences; it survives
+sleep/wake and app recreation. v1.8 also saves the audio-filter choice there, never
+listening/mute/focus permission or presence pairing/camera configuration.
 
 - Hardware H.264 decoding feeds one external OES texture. An OpenGL ES 2 shader
   applies an approximate, centred equidistant-to-rectilinear mapping:
@@ -323,7 +324,8 @@ feedback and an accessible description; unavailable controls dim.
 - **Top left: grid/lens.** Curved grid and no lit dots means original. A straight
   grid with one/two/three lit dots means mild/medium/strong correction.
 - **Top right: speaker.** Waves mean audio on; a cross means muted.
-- Hold either enabled icon for a short text hint. Normal taps work as before; no
+- v1.8 adds a sliders icon below the speaker for **Original / Voice focus**.
+- Hold any enabled icon for a short text hint. Normal taps work as before; no
   stream restart, preference reset or audio-default change. The bottom status label
   and its recovery controls are unchanged.
 
@@ -337,6 +339,77 @@ The 33 Python tests passed; Strong survived the in-place update and one automati
 sleep/wake cycle with audio on and advancing GPU frames. Default selection is covered
 by model/source tests, not by clearing the paired handset's app data. No new extended
 Strong thermal/overnight soak is claimed.
+
+### Lightweight Voice focus (v1.8)
+
+The small **sliders icon below the speaker** switches **Original / Voice focus**.
+A lit dot indicates Voice focus; hold for a text hint. Like the other icons it has
+an accessible state description and 48dp touch target. Voice focus defaults on for
+this owner-authorized feature; saved choices take precedence across sleep/wake and
+app recreation (`viewer-renderer` / `voice-focus`). This preference does **not**
+unmute audio or grant focus. Mute/focus/presence safeguards remain unchanged.
+
+- Phone-local processing of decoded **8 kHz, mono, PCM16** before the audio sink.
+  No neural model, resampling, new dependency, worker thread, service, network path,
+  camera setting, microphone access, recording, volume boost, AGC or speech gate.
+- A 120 Hz second-order Butterworth high-pass reduces low-frequency rumble. A small
+  256-point, 50%-overlapped FFT applies conservative stationary-noise suppression:
+  smoothed per-bin power, approximately two seconds of rolling minima, smoothed
+  gains, and a 0.5 amplitude floor (at most 6 dB attenuation per spectral bin).
+  Suppression starts after roughly half a second of learning. The high-pass can
+  attenuate low frequencies more strongly than 6 dB.
+- This is **not WebRTC/RNNoise or a human-voice classifier**. It should reduce rumble
+  and steady background noise, not isolate a person perfectly. Sudden passing cars,
+  wind overlapping speech, quiet/distant voices and microphone clipping remain
+  difficult. Stronger suppression risks distorting speech, so this version is mild.
+- Mode changes use a 64 ms crossfade without reconfiguring the player or RTSP tracks.
+  Original returns bit-exact PCM after the transition and skips FFT/noise work;
+  both modes keep the same small analysis buffer to switch without a timing jump.
+  The processor holds 128–255 samples (16–32 ms); end-of-stream draining preserves
+  the exact sample count and never overwrites an outstanding downstream buffer.
+- About **22 KiB of primitive DSP arrays**, no per-frame DSP allocation, at most
+  4096 input bytes consumed per call and a 4352-byte reusable output buffer. An EOS
+  tail uses at most another 512 bytes. These are **not whole-app memory limits**.
+  Flush/reset and player release discard buffered PCM/DSP; unsupported rates or
+  channel formats bypass filtering and disable its control rather than resampling.
+- Diagnostics contain only mode/support/sample-count and processing-thread CPU-time
+  totals. CPU percentages divide processor CPU time by consumed audio duration;
+  they do not measure the complete player, output audibility or physical A/V sync.
+
+Tests (synthetic test does not play or record audio; live test requires nearby,
+already-awake foreground playback with Voice focus and audio initially on):
+
+```sh
+python3 tests/handset_voice_processor_test.py --serial <USB_SERIAL> \
+  --sdk "$SDK" --java-home "$JAVA_HOME" --private-dir "$PRIVATE" \
+  --confirm-synthetic-cpu-test
+python3 tests/handset_voice_acceptance.py --serial <USB_SERIAL> \
+  --confirm-audible-filter-test
+```
+
+The synthetic harness precompiles only its temporary candidate APK/test copy on the
+ARM handset: Android 6's uninstalled `app_process` interpreter otherwise grossly
+overstates CPU cost. It tests the real ExoPlayer processor/pipeline, arbitrary chunk
+sizes, Original bit identity, EOS/backpressure, reset, unsupported-format bypass,
+synthetic rumble/noise attenuation and preservation of a modulated speech-band burst.
+There is no real-speech recording or perceptual acceptance hidden in these tests.
+
+Acceptance: 36 Python tests, 38,511 synthetic DSP assertions and 366,310 on-device
+processor assertions passed. Compiled synthetic Voice focus cost about 2% of one
+core; final live A/B measured 1.63% in Original and 3.93% in Voice focus (including
+the PCM adapter). Clock scaling/workload differ; these are not whole-app CPU
+percentages. Live toggles, mute-preserving filter changes and both modes' sleep/wake
+persistence passed, with Strong lens retained and no RTSP restart during toggles.
+
+A 303-second observation held one process/player, advancing GPU/audio/PCM and battery
+temperature at 41.6 °C, with about 3.93% of one core used by the processor. That
+observation preceded a final EOS-only buffer-ownership fix. The final APK repeated
+A/B/mute and one sleep/wake test, followed by a 61-second, three-sample observation:
+continuing counters, no retries, 41.6 °C and whole-process PSS 93,510–94,391 KiB.
+These are short observations, not isolated thermal/memory-overhead measurements;
+Android meminfo can trigger GC. Artifacts/metadata remain private. Actual speech
+quality, distant-voice preservation, acoustic synchronisation and overnight thermal
+stability still need owner listening/longer observation.
 
 ### Listen-only audio (v1.6; audio-on default in v1.6.1)
 

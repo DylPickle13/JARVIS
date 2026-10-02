@@ -1,6 +1,7 @@
 """Host audio-consent regressions; device tests verify wiring and actual rendering."""
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -29,7 +30,11 @@ class ListenAudioTests(unittest.TestCase):
         source = (ROOT / 'android/src/local/jarvis/monitor/ViewerActivity.java').read_text()
         opening = source.split('private void open() {', 1)[1].split('private void failed()', 1)[0]
         self.assertLess(opening.index('player.setVolume(0f)'), opening.index('player.prepare()'))
-        self.assertNotIn('SharedPreferences', source)
+        # Filter preference may persist; listening/mute/focus permission must not.
+        self.assertEqual(re.findall(r'\.(?:get|put)(?:Boolean|Int|String|Long|Float)\("([^"]+)"', source),
+                         ['voice-focus', 'voice-focus', 'host', 'path', 'username', 'password', 'port', 'version'])
+        policy = (ROOT / 'android/src/local/jarvis/monitor/ListenAudioPolicy.java').read_text()
+        self.assertNotIn('SharedPreferences', policy)
         self.assertNotIn('setStreamVolume', source)
         self.assertNotIn('setSpeakerphoneOn', source)
         self.assertIn('AudioManager.ACTION_AUDIO_BECOMING_NOISY', source)

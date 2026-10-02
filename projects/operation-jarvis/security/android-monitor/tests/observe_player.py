@@ -39,9 +39,12 @@ def main():
             row = {'time': datetime.datetime.now().astimezone().isoformat(), 'sample': index}
             try:
                 state = adb('shell','dumpsys','activity','local.jarvis.monitor/.ViewerActivity')
-                for key in ('decoded','displayed','opens','releases','glFrames','presented','audioRendered'):
+                for key in ('decoded','displayed','opens','releases','glFrames','presented','audioRendered',
+                            'voiceSamples','voiceOutput','voiceCpuUs'):
                     match = re.search(r'\b'+key+r'=(\d+)',state)
                     row[key] = int(match[1]) if match else None
+                row['voiceFocus'] = 'voiceFocus=true' in state
+                row['voiceSupported'] = 'voiceSupported=true' in state
                 row['active'] = 'activePlayer=true' in state
                 row['resumed'] = 'viewer resumed=true' in state
                 row['retryPending'] = 'retryPending=true' in state

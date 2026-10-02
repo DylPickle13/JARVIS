@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.jarvis.monitor" android:versionCode="11" android:versionName="1.7.2">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.jarvis.monitor" android:versionCode="12" android:versionName="1.8">
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="23" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
