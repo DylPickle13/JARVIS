@@ -162,16 +162,20 @@ The private package configuration is `.pi/settings.json`; start from [`.pi/setti
 
 ```bash
 cd /path/to/JARVIS
-pi install -l npm:pi-web-access@0.28.0
+pi install -l npm:pi-web-access@0.33.0
 pi list
 ```
 
 Expected project package source and installed version:
 
 ```text
-npm:pi-web-access@0.28.0
-pi-web-access@0.28.0
+npm:pi-web-access@0.33.0
+pi-web-access@0.33.0
 ```
+
+The settings template disables the unused `builtin:llama.cpp` and `builtin:mcp`
+extensions; preserve those exclusions for this oMLX/Codex, non-MCP setup.
+Codemode and tool-search remain available. See [Pi extensions](PI_EXTENSIONS.md).
 
 Keep the exact version, not a range or unversioned package. Do not add `"extensions": []` to this package: that disables its stock extension. Pi packages have full system access, so review upgrades before changing the pin in both settings files.
 
@@ -319,7 +323,7 @@ The owner-only database keeps up to 500 sanitized results from successes with ou
 - [ ] `.env`, `.pi/settings.json`, `.pi/APPEND_SYSTEM.md`, and `.pi/ssh-hosts.json` were privately restored or created from their tracked templates.
 - [ ] All four local files remain ignored by git and have mode `0600`.
 - [ ] `.pi/runtime`, `.pi/memory`, and `projects/operation-jarvis/data/scheduler` have mode `0700`; private databases and sidecars have mode `0600`.
-- [ ] `.pi/settings.json` retains `npm:pi-web-access@0.28.0`; `pi list` and the installed package metadata agree.
+- [ ] `.pi/settings.json` retains `npm:pi-web-access@0.33.0`; `pi list` and the installed package metadata agree.
 - [ ] `/lazy-tools` works in Pi.
 - [ ] `memory.py --json status` works.
 - [ ] The Pi session JSONL directory recorded in `.pi/APPEND_SYSTEM.md` exists and can be searched with baseline coding tools.

@@ -6,9 +6,13 @@
     "reserveTokens": 8192,
     "keepRecentTokens": 8000
   },
+  "extensions": [
+    "-builtin:llama.cpp",
+    "-builtin:mcp"
+  ],
   "packages": [
     {
-      "source": "npm:pi-web-access@0.28.0",
+      "source": "npm:pi-web-access@0.33.0",
       "skills": []
     }
   ],

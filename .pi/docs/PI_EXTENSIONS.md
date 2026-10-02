@@ -1,8 +1,24 @@
 # Pi Extensions
 
-Updated: 2026-08-31 EDT
+Updated: 2026-10-01 EDT
 
 JARVIS adds its tools and session helpers through `.pi/extensions/`. The read-only `.pi/smoke-test.sh` checks the extension list for additions or removals. Shared helpers in `.pi/extensions/lib/` are excluded because they are not standalone extensions.
+
+## Built-in extension selection
+
+Project settings and the tracked template disable `builtin:llama.cpp` and
+`builtin:mcp`: this setup uses oMLX/Codex and has no MCP servers. Pi’s built-in
+codemode and tool-search remain available. Remove the corresponding exclusion if
+llama.cpp or MCP is introduced later.
+
+The retired code/docs group is no longer advertised: its tool was not registered.
+Use baseline repository search or stock web tools for external documentation.
+The existing group loader and `/delete` are retained; migration to native deferred
+tools/namespaces is a separate change so JARVIS playbooks are not lost.
+
+Start a new Pi process or use an owner-controlled `/reload` to pick up these
+extension/settings changes. This cleanup does not restart existing sessions or
+remove legacy runtime artifacts that a running process may still use.
 
 ## Shared extension utilities
 
@@ -20,7 +36,9 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `pi-web-access`: stock pinned npm extension, loaded directly through `.pi/settings.json`.
 - `02-web-search-policy.ts`: forces `web_search` tool-call input `includeContent` to `false`, including when explicitly requested as `true`, preventing background source fetches and later-turn completion notifications. Explicit `fetch_content` calls remain unchanged. Requires `/reload` or a new session after installation; does not cancel already-running fetches.
 - `01-omlx.ts`: non-blocking two-host oMLX bridge with authenticated full-catalog discovery, metadata-driven thinking controls, verified per-model Qwen overrides, private offline caching, UI-only `/omlx-status`, first-delta timeout, and bounded recovery. See [OMLX.md](OMLX.md) for configuration, safety limits and tests. The old context cache is read for migration; new snapshots use `.pi/runtime/omlx-catalog.json`.
+- `03-codex-fast.ts`: optional `/fast` toggle for Codex priority service tier.
 - `04-delete-current-session.ts`: current-session cleanup command.
+- `04-room-audio-session.ts`: exact Session 10 voice ingress and presentation-only guidance; inactive outside its provisioned pane.
 - `04-siri-new-session.ts`: private, exact-mobile-Pi ingress for Siri. Uses in-memory conversation evidence, busy/compaction/prompt/queue and empty-editor guards. Claims a New slot synchronously, guards overlapping input before attachment consumption, submits a literal user message and acknowledges only its message-start event. No history reset, PTY paste, runtime reload, exposed tool, or queued fallback. Existing Pi processes need an owner-controlled `/reload` after rollout to advertise this capability.
 - `05-attach.ts`: the single parameterless `/attach` command plus the private exact-mobile-process endpoint: native selection, revisioned in-memory staging, and next-message image/path injection. It exposes no LLM tool or additional command.
 - `10-jarvis-cron.ts`: private scheduled Pi jobs and bounded local result history.
@@ -74,12 +92,12 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 | Group | Tools |
 |---|---|
 | `memory` | `memory` |
-| `code_docs` | `code_search` |
-| `operation_jarvis` | `operation_jarvis_plugs`, `operation_jarvis_purifier`, `operation_jarvis_media`, `operation_jarvis_security`, `operation_jarvis_automations` |
+| `operation_jarvis` | `operation_jarvis_presence`, `operation_jarvis_plugs`, `operation_jarvis_purifier`, `operation_jarvis_media`, `operation_jarvis_security`, `operation_jarvis_automations` |
 | `github` | `github_cli` |
 | `google` | `google_workspace` |
 | `cron` | `jarvis_cron` |
 | `reaper` | `reaper_ping`, `reaper_lua` |
+| `apple_notes` | `apple_notes_search`, `apple_notes_read`, `apple_notes_write`, `apple_notes_update`, `apple_notes_delete` |
 | `browser` | `browser_status`, `browser_open`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_upload`, `browser_key`, `browser_scroll`, `browser_wait`, `browser_extract`, `browser_tabs`, `browser_close` |
 
 `99-lazy-tools.ts` is the registry for group descriptions, prompt snippets, parameter help, and `/load-tools` usage. When the model calls `load_tools`, Pi adds tools without removing existing ones and records the new names in the result. Providers with native deferred loading, such as GPT-5.6, receive the definitions there rather than in a changed initial tool prefix. Other providers receive the normal full active-tool list. Manual `/load-tools` has no tool-result anchor, so it may refresh the provider cache once.

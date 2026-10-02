@@ -276,15 +276,25 @@ warn_file "Google Chrome app" "/Applications/Google Chrome.app/Contents/MacOS/Go
 if command -v node >/dev/null 2>&1; then
   run_check "Read local Pi package versions and verify web-access pin" node - <<'NODE'
 const fs = require('fs');
-const expectedWebAccess = '0.28.0';
+const expectedWebAccess = '0.33.0';
 const installedWebAccess = JSON.parse(fs.readFileSync('.pi/npm/node_modules/pi-web-access/package.json', 'utf8'));
 const localSettings = JSON.parse(fs.readFileSync('.pi/settings.json', 'utf8'));
 const settingsTemplate = JSON.parse(fs.readFileSync('.pi/settings.example.json', 'utf8'));
 for (const [label, settings] of [['local settings', localSettings], ['settings template', settingsTemplate]]) {
   const webAccess = settings.packages?.find?.((entry) => entry?.source === `npm:pi-web-access@${expectedWebAccess}`);
   if (!webAccess) throw new Error(`${label} does not pin pi-web-access@${expectedWebAccess}`);
-  if (!Array.isArray(webAccess.extensions) || webAccess.extensions.length !== 0) {
-    throw new Error(`${label} must disable direct pi-web-access extension autoload`);
+  if (webAccess.extensions !== undefined) {
+    throw new Error(`${label} must load stock pi-web-access extensions without resource filters`);
+  }
+  for (const name of ['llama.cpp', 'mcp']) {
+    if (!settings.extensions?.includes(`-builtin:${name}`)) {
+      throw new Error(`${label} must disable unused builtin:${name}`);
+    }
+  }
+  for (const name of ['codemode', 'tool-search']) {
+    if (settings.extensions?.includes(`-builtin:${name}`)) {
+      throw new Error(`${label} must retain builtin:${name}`);
+    }
   }
 }
 if (installedWebAccess.version !== expectedWebAccess) {
@@ -324,6 +334,7 @@ expected_extension_roots=(
   .pi/extensions/02-web-search-policy.ts
   .pi/extensions/03-codex-fast.ts
   .pi/extensions/04-delete-current-session.ts
+  .pi/extensions/04-room-audio-session.ts
   .pi/extensions/04-siri-new-session.ts
   .pi/extensions/05-attach.ts
   .pi/extensions/10-jarvis-cron.ts
@@ -416,6 +427,7 @@ const memory = fs.readFileSync('.pi/extensions/35-memory.ts', 'utf8');
 function extensionSources(root) {
   const rows = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (entry.name === 'node_modules') continue;
     const path = `${root}/${entry.name}`;
     if (entry.isDirectory()) rows.push(...extensionSources(path));
     else if (entry.isFile() && entry.name.endsWith('.ts')) rows.push([path, fs.readFileSync(path, 'utf8')]);
@@ -453,6 +465,9 @@ const toolGroups = recordKeys('TOOL_GROUPS');
 assertSameGroups('CanonicalToolGroup', toolGroups, canonicalGroups);
 assertSameGroups('GROUP_SUMMARIES', toolGroups, recordKeys('GROUP_SUMMARIES'));
 assertSameGroups('GROUP_GUIDANCE', toolGroups, recordKeys('GROUP_GUIDANCE'));
+if (/code_docs|code_search/.test(lazy + slim)) {
+  throw new Error('Retired code/docs group or schema-slimming entry remains');
+}
 
 const alwaysOnMatch = lazy.match(/const ALWAYS_ON_TOOLS = \[([\s\S]*?)\n\] as const;/);
 if (!alwaysOnMatch) throw new Error('Could not find ALWAYS_ON_TOOLS');
@@ -467,8 +482,7 @@ for (const required of [
   'GROUP_NAMES.map((name) => `${name}=${GROUP_SUMMARIES[name]}`)',
   'description: LOAD_TOOLS_DESCRIPTION',
   'promptSnippet: LOAD_TOOLS_PROMPT_SNIPPET',
-  'const LOAD_TOOLS_DESCRIPTION = `Load optional tool schemas by exact group name.',
-  'Available groups: ${LOADABLE_GROUPS_TEXT}',
+  'const LOAD_TOOLS_DESCRIPTION = `Activate optional tools for this session by exact group name: ${LOADABLE_GROUPS_TEXT}.`;',
   'const addedToolNames = unlockedToolNames.filter((name) => !activeBefore.includes(name));',
   'pi.setActiveTools(activeTools);',
   'buildGuidanceSection(expandedGroups, "JARVIS loaded-tool guidance")',
@@ -509,11 +523,14 @@ if (memory.includes('pi.on("before_agent_start"')) {
 // making every existing prompt token uncached.
 const allExtensionSources = extensionSources('.pi/extensions');
 assertExactHookOwners(allExtensionSources, 'before_agent_start', [
+  '.pi/extensions/04-room-audio-session.ts',
   '.pi/extensions/98-slim-provider-payload.ts',
+  '.pi/extensions/lib/omlx-recovery.ts',
 ]);
 assertExactHookOwners(allExtensionSources, 'before_provider_request', [
   '.pi/extensions/03-codex-fast.ts',
   '.pi/extensions/98-slim-provider-payload.ts',
+  '.pi/extensions/lib/omlx-recovery.ts',
 ]);
 assertExactHookOwners(allExtensionSources, 'before_provider_headers', []);
 assertExactHookOwners(allExtensionSources, 'context', []);
@@ -548,12 +565,22 @@ console.log(`canonical lazy groups (${toolGroups.length}): ${toolGroups.join(', 
 NODE
 fi
 
-section "Lazy tool execution runtime checks"
+section "Pi tool activation runtime checks"
 if command -v node >/dev/null 2>&1; then
+  run_check "group cleanup and built-in selection regression tests (offline mocks only)" node --test .pi/tests/lazy-tools.test.mjs
+  run_check "current Pi codemode and tool activation regression tests (offline mocks only)" node --test .pi/scripts/tests/pi-codemode.test.mjs
+  # Retained rollback artifacts do not imply the legacy runtime is installed.
   if [ -f .pi/runtime/pi-lazy-tools/build.json ]; then
-    run_check "built SDK/bundle/RPC hidden-tool execution regression tests (offline mocks only)" node .pi/scripts/pi-lazy-runtime.mjs test
-  else
-    warn "custom lazy-execution runtime not built; stock Pi requires explicit load_tools (see .pi/docs/PI_LAZY_EXECUTION.md)"
+    if node - "$(command -v pi)" <<'NODE'
+const fs = require('fs');
+const build = JSON.parse(fs.readFileSync('.pi/runtime/pi-lazy-tools/build.json', 'utf8'));
+process.exit(process.argv[2] && fs.realpathSync(process.argv[2]) === fs.realpathSync(build.cli) ? 0 : 1);
+NODE
+    then
+      run_check "installed legacy SDK/bundle/RPC hidden-tool execution regression tests (offline mocks only)" node .pi/scripts/pi-lazy-runtime.mjs test
+    else
+      info "Legacy lazy-execution build is inactive; retained for rollback, not tested as the current runtime."
+    fi
   fi
 fi
 

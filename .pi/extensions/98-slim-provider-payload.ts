@@ -48,7 +48,6 @@ const TOOL_DESCRIPTION_OVERRIDES: Record<string, string> = {
   ls: "List a directory; optional path/limit.",
   ssh: "Run SSH command on trusted host.",
   memory: "Durable project memory: search/remember/update/forget/list/status. No secrets.",
-  code_search: "Search external code/docs/API examples.",
   maps: "Ask Google Maps about places, addresses, coordinates, routes, travel time, or local searches.",
   // Keep load_tools out of this override map: 99-lazy-tools.ts generates its
   // provider-visible description from the canonical group registry.
@@ -97,7 +96,6 @@ const SCHEMA_STRIP_TOOLS = new Set([
   "ask_user",
   "memory",
   "web_search",
-  "code_search",
   "fetch_content",
   "get_search_content",
   "load_tools",

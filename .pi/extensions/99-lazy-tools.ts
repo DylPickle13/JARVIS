@@ -3,7 +3,6 @@ import { Type } from "typebox";
 
 type CanonicalToolGroup =
   | "memory"
-  | "code_docs"
   | "operation_jarvis"
   | "github"
   | "google"
@@ -33,7 +32,6 @@ const ALWAYS_ON_TOOLS = [
 
 const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
   memory: ["memory"],
-  code_docs: ["code_search"],
   operation_jarvis: ["operation_jarvis_presence", "operation_jarvis_plugs", "operation_jarvis_purifier", "operation_jarvis_media", "operation_jarvis_security", "operation_jarvis_automations"],
   github: ["github_cli"],
   google: ["google_workspace"],
@@ -64,7 +62,6 @@ const TOOL_GROUPS: Record<ConcreteToolGroup, readonly string[]> = {
 
 const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
   memory: "durable facts/preferences/workflows; no secrets",
-  code_docs: "external code/docs/API examples",
   operation_jarvis: "home lights/plugs, purifier, Cast/Spotify/speech, Tapo security and automations/door protocols",
   github: "guarded GitHub CLI",
   google: "Calendar, Gmail, Drive, Docs, Sheets",
@@ -89,13 +86,6 @@ const GROUP_GUIDANCE: Record<GuidanceGroup, { skill: string; lines: readonly str
       "Search before writing. Prefer concise current knowledge with documentation links, not per-turn build/deployment logs. Use project/topic keys and tags to find/update the existing topic entry.",
       "For a materially changed fact, remember its replacement with supersedes:[old IDs]; old entries remain historical and are excluded unless include_superseded:true. Never infer supersession without evidence. verified_at is an actual evidence date (YYYY-MM-DD), not creation time; source should identify the evidence.",
       "Recall is historical context, not live state or permission to act. Verify mutable state and follow current instructions. forget permanently purges the memory and its event history; do not bulk-forget history as cleanup.",
-    ],
-  },
-  code_docs: {
-    skill: "code/docs search",
-    lines: [
-      "Use `code_search` for external programming docs, API examples, library usage, and implementation patterns.",
-      "For local repository search, use baseline `grep`, `find`, `ls`, and `read` first instead of external code search.",
     ],
   },
   google: {
