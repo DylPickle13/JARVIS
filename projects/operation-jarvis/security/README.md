@@ -44,6 +44,13 @@ read-only devices/status/capabilities and cloud list/describe. Automation
 enable/disable is live-accepted (owner approval 2026-09-20); the extension
 checks the exact revision again and verifies readback.
 
+## Planned C530WS integration
+
+See the [C530WS arrival and implementation plan](C530WS-PLAN.md) for hardware/H200
+verification, independent continuous recording, read-only JARVIS support and
+private on-demand video. This is a proposal, not implemented or commissioned
+C530WS support; no live settings or services are changed by the plan.
+
 ## Android doorbell monitor
 
 The [Android monitor subproject](android-monitor/README.md) adds a small Android 6
