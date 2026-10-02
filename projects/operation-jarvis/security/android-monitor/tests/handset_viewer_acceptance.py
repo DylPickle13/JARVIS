@@ -44,6 +44,10 @@ def main():
         require(match, 'No player frame telemetry.')
         return int(match[1])
 
+    lens = re.search(r'viewer lens=(\w+) lensFallback=false glActive=true', viewer())
+    require(lens, 'Active GPU viewer required for lens lifecycle acceptance.')
+    expected_lens = lens[1]
+
     require(re.search(r'(?:AC|USB|Wireless) powered: true', adb('shell', 'dumpsys', 'battery')),
             'External power required.')
     with tempfile.TemporaryDirectory(prefix='jarvis-viewer-acceptance-') as directory:
@@ -76,6 +80,7 @@ def main():
                 time.sleep(1)
                 state = viewer()
                 require('activePlayer=false' in state, 'Player did not release when backgrounded.')
+                require('glActive=false glFrames=0' in state, 'GPU resources retained when backgrounded.')
                 require('audioMuted=true audioFocus=false' in state and 'audioVolume=0.0' in state,
                         'Backgrounded viewer retained audio consent/focus/volume.')
                 counts = re.search(r'viewer opens=(\d+) releases=(\d+)', state)
@@ -100,11 +105,19 @@ def main():
                 lines = adb('shell','dumpsys','activity','activities').splitlines()
                 count = sum(l.count('local.jarvis.monitor/.ViewerActivity') for l in lines if 'Activities=[' in l)
                 require(count == 1, 'Expected exactly one native viewer activity.')
+                gpu_first = re.search(r'glFrames=(\d+)', viewer())
+                require(gpu_first, 'No GPU frame telemetry after wake.')
                 first = frames(); time.sleep(3); second = frames()
+                current = viewer()
+                require('viewer lens='+expected_lens+' lensFallback=false glActive=true' in current,
+                        'Lens choice/GPU rendering did not survive sleep/wake.')
+                gpu_second = re.search(r'glFrames=(\d+)', current)
+                require(gpu_second and int(gpu_second[1]) > int(gpu_first[1]) > 0,
+                        'GPU frames did not advance after wake.')
                 require(second > first > 0, 'Rendered frames did not advance after wake.')
                 require('audioAvailable=true audioMuted=false audioFocus=true' in viewer(),
                         'Wake did not restore the audio-on default.')
-                print(f'Cycle {cycle}: released player, slept, auto-woke, one viewer, frames {first}->{second}.')
+                print(f'Cycle {cycle}: released player/GPU, slept, auto-woke, lens={expected_lens}, frames {first}->{second}.')
         finally:
             adb('shell', 'rm', '-f', remote)
 

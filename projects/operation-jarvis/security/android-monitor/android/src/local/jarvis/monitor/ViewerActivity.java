@@ -4,6 +4,10 @@ import android.app.Activity;
 import android.app.KeyguardManager;
 import android.net.Uri;
 import android.content.*;
+import android.content.res.ColorStateList;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.media.AudioManager;
 import com.google.android.exoplayer2.audio.AudioAttributes;
 import android.os.*;
@@ -18,7 +22,7 @@ import com.google.android.exoplayer2.source.rtsp.RtspMediaSource;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.video.VideoSize;
 
-/** Isolated :video process. One bounded RTSP/TCP player, native hardware surface.
+/** Isolated :video process. One bounded RTSP/TCP player, hardware decoding and optional GPU dewarping.
  * Owner-selected listen-only audio defaults on while foreground/unlocked. No microphone,
  * ad SDK, WebView, frame bitmaps, recording, or credential-bearing Intent.
  */
@@ -26,8 +30,15 @@ public final class ViewerActivity extends Activity {
     private final Handler handler = new Handler();
     private final StreamHealth health = new StreamHealth();
     private SurfaceView surface;
+    private FrameLayout layout;
+    private DewarpView dewarp;
+    private Surface decoderSurface;
+    private ImageButton lensButton;
+    private final ViewerIcon lensIcon = new ViewerIcon(true), audioIcon = new ViewerIcon(false);
+    private int lensMode, outputGeneration, glFrameBase, presented, lastPresented;
+    private boolean lensFallback;
     private TextView status;
-    private Button audioButton;
+    private ImageButton audioButton;
     private AudioManager audioManager;
     private final ListenAudioPolicy audio = new ListenAudioPolicy();
     private boolean audioFocusHeld, audioReceiverRegistered, audioDisabled, tracksKnown;
@@ -40,7 +51,7 @@ public final class ViewerActivity extends Activity {
         }};
     private final BroadcastReceiver audioReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) { close(); show("Paused"); }
+            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) { close(); stopOutput(); show("Paused"); }
             else if (AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) muteAudio();
         }
     };
@@ -69,13 +80,14 @@ public final class ViewerActivity extends Activity {
             audioCounters.ensureUpdated(); audioRendered = audioCounters.renderedOutputBufferCount;
         }
         long now = SystemClock.elapsedRealtime();
-        if (health.stalled(displayed, now)) { failed(); return; }
-        if (displayed > 0) {
+        presented = dewarp == null ? displayed : Math.max(0, dewarp.frames() - glFrameBase);
+        if (health.stalled(presented, now)) { failed(); return; }
+        if (presented > 0) {
             long interval = now - lastSample;
-            int fps = interval > 0 ? (int)Math.max(0, (displayed - lastDisplayed) * 1000L / interval) : 0;
+            int fps = interval > 0 ? (int)Math.max(0, (presented - lastPresented) * 1000L / interval) : 0;
             show("Front door · H264 / TCP · " + fps + " fps");
         }
-        lastSample = now; lastDisplayed = displayed;
+        lastSample = now; lastDisplayed = displayed; lastPresented = presented;
         handler.postDelayed(this, 2000);
     }};
     @Override public void onCreate(Bundle saved) {
@@ -86,10 +98,17 @@ public final class ViewerActivity extends Activity {
         com.google.android.exoplayer2.util.Log.setLogLevel(com.google.android.exoplayer2.util.Log.LOG_LEVEL_ALL);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
             WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        FrameLayout layout = new FrameLayout(this);
+        layout = new FrameLayout(this);
         layout.setBackgroundColor(0xff000000);
-        surface = new SurfaceView(this);
-        layout.addView(surface, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        lensMode = DewarpView.readMode(this);
+        lensButton = iconButton(lensIcon);
+        lensButton.setOnClickListener(new View.OnClickListener() { public void onClick(View v) {
+            if (!resumed || !unlocked() || dewarp == null || decoderSurface == null) return;
+            lensMode = DewarpModel.next(lensMode);
+            dewarp.mode(lensMode); DewarpView.saveMode(ViewerActivity.this, lensMode); updateLensButton();
+        }});
+        layout.addView(lensButton, iconLayout(Gravity.TOP | Gravity.LEFT));
+        updateLensButton();
         status = new TextView(this); status.setTextColor(0xffffffff); status.setTextSize(16);
         status.setBackgroundColor(0x88000000); status.setPadding(16, 8, 16, 8);
         layout.addView(status, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.LEFT));
@@ -103,13 +122,35 @@ public final class ViewerActivity extends Activity {
         }});
         audioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
-        audioButton = new Button(this);
-        audioButton.setAllCaps(false);
+        audioButton = iconButton(audioIcon);
         audioButton.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { toggleAudio(); }});
-        layout.addView(audioButton, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.RIGHT));
+        layout.addView(audioButton, iconLayout(Gravity.TOP | Gravity.RIGHT));
         updateAudioButton();
         setContentView(layout);
         show("Starting private camera viewer");
+    }
+    private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+    private ImageButton iconButton(ViewerIcon icon) {
+        final ImageButton button = new ImageButton(this);
+        button.setImageDrawable(icon); button.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        button.setMinimumWidth(0); button.setMinimumHeight(0);
+        GradientDrawable circle = new GradientDrawable(); circle.setShape(GradientDrawable.OVAL);
+        circle.setColor(0x66000000); circle.setStroke(dp(1), 0x44ffffff);
+        GradientDrawable mask = new GradientDrawable(); mask.setShape(GradientDrawable.OVAL); mask.setColor(0xffffffff);
+        button.setBackground(new InsetDrawable(new RippleDrawable(ColorStateList.valueOf(0x55ffffff),
+            circle, mask), dp(8)));
+        // Background assignment can replace View padding; set the 24dp glyph inset last.
+        button.setPadding(dp(12), dp(12), dp(12), dp(12));
+        button.setOnLongClickListener(new View.OnLongClickListener() { public boolean onLongClick(View v) {
+            Toast.makeText(ViewerActivity.this, button.getContentDescription(), Toast.LENGTH_SHORT).show();
+            return true;
+        }});
+        return button;
+    }
+    private FrameLayout.LayoutParams iconLayout(int gravity) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(48), dp(48), gravity);
+        params.setMargins(dp(8), dp(8), dp(8), dp(8));
+        return params;
     }
     private boolean unlocked() {
         KeyguardManager k = (KeyguardManager)getSystemService(KEYGUARD_SERVICE);
@@ -120,21 +161,59 @@ public final class ViewerActivity extends Activity {
         IntentFilter filter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         registerReceiver(audioReceiver, filter); audioReceiverRegistered = true;
-        if (unlocked()) open(); else show("Unlock to view camera");
+        lensFallback = false;
+        if (unlocked()) startOutput(); else show("Unlock to view camera");
     }
     @Override public void onPause() {
-        resumed = false; close(); show("Paused");
+        resumed = false; close(); stopOutput(); show("Paused");
         if (audioReceiverRegistered) { unregisterReceiver(audioReceiver); audioReceiverRegistered = false; }
         super.onPause();
     }
-    @Override public void onDestroy() { close(); super.onDestroy(); }
+    @Override public void onDestroy() { close(); stopOutput(); super.onDestroy(); }
+    private void updateLensButton() {
+        lensIcon.state(lensFallback ? 0 : lensMode);
+        lensButton.setContentDescription(lensFallback ? "Lens correction unavailable" :
+            "Lens correction: " + DewarpModel.label(lensMode) + "; tap to change");
+        lensButton.setEnabled(resumed && !lensFallback && decoderSurface != null);
+        lensButton.setAlpha(lensButton.isEnabled() ? 1f : 0.35f);
+    }
+    private void startOutput() {
+        stopOutput();
+        final int token = outputGeneration;
+        dewarp = new DewarpView(this, lensMode, new DewarpView.Listener() {
+            public void ready(Surface output) {
+                if (token != outputGeneration || !resumed || !unlocked()) return;
+                decoderSurface = output; updateLensButton(); open();
+            }
+            public void failed() {
+                if (token == outputGeneration && resumed) fallbackOutput();
+            }
+        });
+        surface = dewarp;
+        layout.addView(surface, 0, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        handler.postDelayed(new Runnable() { public void run() {
+            if (token == outputGeneration && resumed && decoderSurface == null) fallbackOutput();
+        }}, 8000);
+    }
+    private void stopOutput() {
+        outputGeneration++; decoderSurface = null;
+        if (dewarp != null) { dewarp.shutdown(); dewarp = null; }
+        if (surface != null) { layout.removeView(surface); surface = null; }
+        updateLensButton();
+    }
+    private void fallbackOutput() {
+        close(); stopOutput(); lensFallback = true;
+        surface = new SurfaceView(this);
+        layout.addView(surface, 0, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        updateLensButton(); failed(); // Original rendering, same bounded reconnect budget.
+    }
     private void updateAudioButton() {
         if (audioButton == null) return;
-        audioButton.setText(audioDisabled || (tracksKnown && !audio.available()) ? "Audio unavailable" :
-            !audio.available() ? "Audio: checking…" : audio.listening() ? "Audio: on" : "Audio: muted");
+        audioIcon.state(audio.listening() ? 1 : 0);
         audioButton.setContentDescription(audio.available() ?
             (audio.listening() ? "Mute camera audio" : "Unmute camera audio") : "Camera audio unavailable");
         audioButton.setEnabled(resumed && player != null && audio.available());
+        audioButton.setAlpha(audioButton.isEnabled() ? 1f : 0.35f);
     }
     private void muteAudio() { audio.mute(); silenceAudio(); }
     private void silenceAudio() {
@@ -179,6 +258,7 @@ public final class ViewerActivity extends Activity {
         return Uri.parse("rtsp://" + Uri.encode(user) + ":" + Uri.encode(password) + "@" + host + ":" + port + path);
     }
     private void open() {
+        if (surface == null || (!lensFallback && decoderSurface == null)) return;
         close();
         if (!resumed || !unlocked()) return;
         final int epoch = generation;
@@ -198,7 +278,8 @@ public final class ViewerActivity extends Activity {
             player.setVolume(0f); // Before prepare/play: never an initial audible burst.
             player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), false); // Focus is managed below.
-            player.setVideoSurfaceView(surface);
+            if (dewarp != null) player.setVideoSurface(decoderSurface);
+            else player.setVideoSurfaceView(surface);
             player.addListener(new Player.Listener() {
                 @Override public void onPlayerError(PlaybackException error) {
                     if (epoch != generation || !resumed) return;
@@ -224,6 +305,7 @@ public final class ViewerActivity extends Activity {
                     int h = getResources().getDisplayMetrics().heightPixels;
                     double aspect = (double)size.width * size.pixelWidthHeightRatio / size.height;
                     if ((double)w / h > aspect) w = (int)(h * aspect); else h = (int)(w / aspect);
+                    if (dewarp != null) dewarp.aspect((float)aspect);
                     surface.setLayoutParams(new FrameLayout.LayoutParams(w, h, Gravity.CENTER));
                 }
             });
@@ -242,7 +324,8 @@ public final class ViewerActivity extends Activity {
                 .setSocketFactory(transport).setTimeoutMs(5000).setDebugLoggingEnabled(true)
                 .createMediaSource(new MediaItem.Builder().setUri(uri).setMediaId("private-doorbell").build());
             player.setMediaSource(media);
-            decoded = displayed = lastDisplayed = audioRendered = 0;
+            decoded = displayed = lastDisplayed = audioRendered = presented = lastPresented = 0;
+            glFrameBase = dewarp == null ? 0 : dewarp.frames();
             decoder = audioDecoder = "pending";
             lastSample = SystemClock.elapsedRealtime(); health.opened(lastSample);
             player.prepare(); player.play(); opens++;
@@ -279,6 +362,9 @@ public final class ViewerActivity extends Activity {
             " audioFocus=" + audioFocusHeld + " audioDisabled=" + audioDisabled);
         out.println(prefix + "viewer audioRendered=" + audioRendered + " audioDecoder=" + audioDecoder +
             " audioVolume=" + (player == null ? 0f : player.getVolume()));
+        out.println(prefix + "viewer lens=" + DewarpModel.label(lensMode) + " lensFallback=" + lensFallback +
+            " glActive=" + (dewarp != null && dewarp.live()) + " glFrames=" + (dewarp == null ? 0 : dewarp.frames()) +
+            " presented=" + presented);
         out.println(prefix + "viewer protocol=" + PlayerDiagnostics.protocol + " videoSDP=" + PlayerDiagnostics.sdpVideoTracks);
     }
 }

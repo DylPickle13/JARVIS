@@ -3,8 +3,11 @@
 Security subproject for an Android 6 / API 23 handset. It controls the handset
 display and a private, hardware-decoded RTSP/TCP viewer, **not** the doorbell's
 settings, recordings, alarms, or computer. v1.5 replaced the leaking tinyCam
-playback path; v1.6 adds listen-only audio, defaulting on in v1.6.1 at the owner's request. tinyCam was subsequently
+playback path; v1.6 adds listen-only audio, defaulting on in v1.6.1 at the owner's
+request. v1.7 adds optional, phone-local GPU lens correction. tinyCam was subsequently
 uninstalled at the owner's request; private rollback backups remain on the Mac.
+DroidCam (`com.dev47apps.obsdroidcam`) was also uninstalled at the owner's request;
+it is not part of this viewer's playback path.
 
 ## Architecture
 
@@ -252,6 +255,88 @@ and is not part of this source.
   useful for a scoped reconnection test; it does not change Wi-Fi or the camera.
 - Existing fresh-nearby/two-fresh-away/unknown/keyguard/power/pending-action gates
   remain unchanged. Viewer startup never unlocks a secure keyguard.
+
+### Optional lens correction (v1.7)
+
+The top-left **lens/grid icon** cycles **original → mild → medium → strong → original**.
+**v1.7.2 defaults to Strong**, as selected by the owner after visual comparison.
+Existing saved choices take precedence; later manual choices remain saved rather
+than being reset on wake. Earlier v1.7/v1.7.1 installs defaulted to original.
+Only the lens choice is saved in private
+`viewer-renderer` preferences; it survives sleep/wake and app recreation. It never
+persists audio consent or modifies presence pairing/camera configuration.
+
+- Hardware H.264 decoding feeds one external OES texture. An OpenGL ES 2 shader
+  applies an approximate, centred equidistant-to-rectilinear mapping:
+  `source = centre + (output - centre) * atan(r*k)/(r*k)`, with the zero-radius
+  limit of 1. Radius accounts for video aspect ratio; strengths are 0 / 0.8 / 1.2 /
+  1.55. SurfaceTexture's producer matrix handles texture orientation/crop.
+- This is **not Tapo's calibrated correction**. Moderate correction visibly reduces
+  bowing in this porch scene; too much can bend lines the other way. **Medium** was
+  left selected after initial device acceptance; the owner subsequently preferred
+  **Strong**, now the default. Stronger correction crops more peripheral
+  view, stretches/softens edge detail and may remove the camera timestamp. Original
+  restores the full uncorrected view; it still uses the GPU path for seamless toggles.
+- The button changes only a shader uniform, not the RTSP session, decoder or audio.
+  Rendering is frame-driven, not a busy loop; there are no CPU frame copies,
+  readbacks, bitmap queues or added network services. Test screenshots are opt-in,
+  outside Git, and are not a feature of the installed viewer.
+- Playback's stall watchdog uses newly consumed GPU frames, not redraws of a frozen
+  texture. Background/screen-off releases the player before the decoder Surface,
+  SurfaceTexture and GL context. Resume builds a fresh output; generation checks
+  reject stale callbacks. Known shader/draw/context-recreation failures fall back
+  to the original native surface using the existing bounded retry budget, disabling
+  the lens control until a new foreground session. GL initialization is timed out.
+  Device GL failure injection remains untested; this does not guarantee recovery
+  from every driver failure or prove that a drawn frame reached the physical panel.
+
+Opt-in tests (already-awake, foreground viewer with nearby status; no forced wake):
+
+```sh
+python3 tests/handset_dewarp_acceptance.py --serial <USB_SERIAL> \
+  --confirm-viewer-and-audible-test --leave-mode medium
+# Optional --capture-dir "$PRIVATE/dewarp-comparison" saves private camera images.
+```
+
+Device acceptance verified all four modes with advancing video/GPU/audio counters
+and no RTSP restart, inspected original/corrected screenshots, working audio controls,
+and three sleep/automatic-wake cycles releasing the GPU and retaining the lens choice.
+One deliberate viewer-socket interruption reconnected with correction and audio on.
+A 303-second, six-sample observation held one process/player, advancing GPU/video/audio
+counters and no retries: whole-video-process PSS 86,822–88,496 KiB, allocated Java heap
+22,561–24,696 KiB and reported battery temperature steady at 41.6 °C. This is not a
+GPU-only overhead measurement; Android 6 meminfo may itself request GC.
+
+All 32 Python tests, 14,214 geometry assertions and 17 on-device URI assertions passed.
+The unit suite includes bounded/monotonic geometry, aspect ratios, a synthetic-line
+round trip and source-level lifecycle guards. Installed APK matched the build;
+scoped source/APK/sampled-log credential scans were clean. Short tests are not overnight
+stability or thermal certification; actual lens calibration remains approximate.
+
+### Compact controls (v1.7.1)
+
+The two large text buttons are now small white vector icons on translucent circular
+backgrounds. They occupy the side margins on the Nexus's current 4:3 feed rather
+than covering the picture. Each retains a **48dp touch target**, a 24dp glyph, ripple
+feedback and an accessible description; unavailable controls dim.
+
+- **Top left: grid/lens.** Curved grid and no lit dots means original. A straight
+  grid with one/two/three lit dots means mild/medium/strong correction.
+- **Top right: speaker.** Waves mean audio on; a cross means muted.
+- Hold either enabled icon for a short text hint. Normal taps work as before; no
+  stream restart, preference reset or audio-default change. The bottom status label
+  and its recovery controls are unchanged.
+
+v1.7.1 acceptance: 33 Python tests passed; all four lens modes and audio mute/unmute
+worked through the icons without restarting RTSP. Device UI checks verified 48dp lens
+touch targets and accessible state labels. One sleep/automatic-wake cycle retained
+medium correction and restored audio on; final screenshot inspected privately.
+
+v1.7.2 makes Strong the missing-preference default without overwriting saved choices.
+The 33 Python tests passed; Strong survived the in-place update and one automatic
+sleep/wake cycle with audio on and advancing GPU frames. Default selection is covered
+by model/source tests, not by clearing the paired handset's app data. No new extended
+Strong thermal/overnight soak is claimed.
 
 ### Listen-only audio (v1.6; audio-on default in v1.6.1)
 

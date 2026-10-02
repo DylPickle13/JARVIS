@@ -39,12 +39,19 @@ def main():
             row = {'time': datetime.datetime.now().astimezone().isoformat(), 'sample': index}
             try:
                 state = adb('shell','dumpsys','activity','local.jarvis.monitor/.ViewerActivity')
-                for key in ('decoded','displayed','opens','releases'):
+                for key in ('decoded','displayed','opens','releases','glFrames','presented','audioRendered'):
                     match = re.search(r'\b'+key+r'=(\d+)',state)
                     row[key] = int(match[1]) if match else None
                 row['active'] = 'activePlayer=true' in state
                 row['resumed'] = 'viewer resumed=true' in state
                 row['retryPending'] = 'retryPending=true' in state
+                row['glActive'] = 'glActive=true' in state
+                row['lensFallback'] = 'lensFallback=true' in state
+                lens = re.search(r'viewer lens=(original|mild|medium|strong)\b', state)
+                row['lens'] = lens[1] if lens else None
+                battery = adb('shell','dumpsys','battery')
+                temperature = re.search(r'^\s*temperature:\s*(\d+)', battery, re.M)
+                row['battery_celsius'] = int(temperature[1]) / 10 if temperature else None
                 mem = adb('shell','dumpsys','meminfo','local.jarvis.monitor:video')
                 match = re.search(r'MEMINFO in pid (\d+)',mem)
                 row['pid'] = int(match[1]) if match else None
