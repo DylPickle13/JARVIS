@@ -6,7 +6,7 @@
 /generated_audio/
 /logs/
 /projects/*
-!/projects/apple-model/
+!/projects/apple-foundation-models/
 !/projects/phone-recording/
 !/projects/projects-drive-backup/
 !/projects/projects-drive-backup/*.py

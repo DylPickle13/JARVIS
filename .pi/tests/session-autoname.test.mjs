@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { jiti } from './helpers/pi-import.mjs';
@@ -187,6 +187,20 @@ test('cancellation during retry wait prevents retries and fallback', async () =>
   await tick(); controller.abort();
   await assert.rejects(pending, { name: 'AbortError' });
   assert.equal(calls, 1);
+});
+
+test('default CLI path resolves the renamed standalone project relative to the extension', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-autoname-layout-'));
+  const extension = join(root, '.pi/extensions/49-session-autoname.ts');
+  const binary = join(root, 'projects/apple-foundation-models/bin/apple-model');
+  try {
+    await mkdir(join(root, '.pi/extensions'), { recursive: true });
+    await mkdir(join(root, 'projects/apple-foundation-models/bin'), { recursive: true });
+    await copyFile(resolve('.pi/extensions/49-session-autoname.ts'), extension);
+    await writeFile(binary, `#!${process.execPath}\nprocess.stdin.resume(); console.log(JSON.stringify({text:'Renamed Project Title',localOnly:true}));\n`, { mode: 0o755 });
+    const { generateTitle: generate } = await jiti.import(extension);
+    assert.equal(await generate('Test conversation', new AbortController().signal), 'Renamed Project Title');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('CLI adapter uses stdin and validates envelope; handles timeout, overflow, missing binary and abort', async () => {

@@ -181,9 +181,9 @@ Keep the exact version, not a range or unversioned package. Do not add `"extensi
 
 Web access now uses upstream defaults and its ordinary configuration lookup (normally `~/.pi/web-search.json`, with upstream environment/XDG overrides). The former scoped config is archived as `.pi/runtime/pi-web-access/web-search.json.disabled` and is not used. The wrapper's `.env` credential loading, forced routing/workflows, and notification filtering no longer apply. Restart Pi after migration to clear cached modules and wrapper mutations.
 
-## 6a. Build the optional apple-model CLI
+## 6a. Build the optional Apple Foundation Models CLI
 
-[`projects/apple-model/`](../../projects/apple-model/README.md) is a standalone,
+[`projects/apple-foundation-models/`](../../projects/apple-foundation-models/README.md) is a standalone,
 on-device Apple Foundation Models CLI. Its source, scripts, documentation, and
 tests are tracked; generated `.build/` and `bin/` directories are ignored.
 It requires macOS 27+, an Xcode/Swift 6.4 SDK with FoundationModels image
@@ -194,7 +194,7 @@ the CLI itself has no cloud fallback.
 On a supported Mac:
 
 ```bash
-cd /path/to/JARVIS/projects/apple-model
+cd /path/to/JARVIS/projects/apple-foundation-models
 bash scripts/build.sh
 ./bin/apple-model status --json
 
@@ -211,7 +211,7 @@ directly, without relying on PATH or the optional symlink. This is independent
 of Pi's main model provider and is not required for normal Pi operation. If the
 binary or model is unavailable, session naming retains a useful existing title
 or uses a bounded fallback for an unnamed session. Pi adapters stay in `.pi/`;
-the CLI stays in `projects/apple-model/`.
+the CLI stays in `projects/apple-foundation-models/`; its command remains `apple-model`.
 
 ## 7. Restore optional runtime databases
 
@@ -357,7 +357,7 @@ The owner-only database keeps up to 500 sanitized results from successes with ou
 - [ ] `.pi/runtime`, `.pi/memory`, and `projects/operation-jarvis/data/scheduler` have mode `0700`; private databases and sidecars have mode `0600`.
 - [ ] `.pi/settings.json` retains `npm:pi-web-access@0.33.0`; `pi list` and the installed package metadata agree.
 - [ ] `/lazy-tools` works in Pi.
-- [ ] If on-device session titles are wanted, `projects/apple-model/bin/apple-model status --json` reports `available: true`; `/autoname-status` is available in Pi for content-free diagnostics.
+- [ ] If on-device session titles are wanted, `projects/apple-foundation-models/bin/apple-model status --json` reports `available: true`; `/autoname-status` is available in Pi for content-free diagnostics.
 - [ ] `memory.py --json status` works.
 - [ ] The Pi session JSONL directory recorded in `.pi/APPEND_SYSTEM.md` exists and can be searched with baseline coding tools.
 - [ ] `projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --json status` reports the expected private jobs.
@@ -377,7 +377,7 @@ The owner-only database keeps up to 500 sanitized results from successes with ou
 | Web search unavailable | Check stock pi-web-access package loading, provider availability, and upstream configuration (normally `~/.pi/web-search.json`). The custom `/web-access-config` command is retired. |
 | Maps unavailable | Check `GOOGLE_MAPS_API_KEY`; confirm Places API (New), Geocoding API, and Routes API are enabled for the key. |
 | Browser tools unavailable | Run `npm install` in `.pi/extensions/50-browser`; check Google Chrome path or set `PI_BROWSER_CHROME_PATH`. |
-| On-device session titles use fallback | Build `projects/apple-model/` as above; check `bin/apple-model status --json` and Pi's `/autoname-status`. Normal Pi operation does not require this helper. |
+| On-device session titles use fallback | Build `projects/apple-foundation-models/` as above; check `bin/apple-model status --json` and Pi's `/autoname-status`. Normal Pi operation does not require this helper. |
 | PDF reads fail | Check local oMLX `OMLX_PDF_*` settings first; ensure `pdftotext` from `poppler` is installed for fallback. |
 | Scheduled jobs unavailable | Check `projects/operation-jarvis/data/scheduler/scheduler.sqlite`, owner-only permissions, `com.jarvis.pi-scheduler`, and `runner.py --json status`. |
 | Prior-session lookup fails | Verify the project-specific session JSONL directory in `.pi/APPEND_SYSTEM.md`; use `rg -l` to shortlist files before parsing matching records. |

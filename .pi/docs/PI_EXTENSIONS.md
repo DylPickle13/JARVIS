@@ -113,7 +113,7 @@ projects/operation-jarvis/jarvisd/tests/scheduler -v`.
 
 ## Automatic session names
 
-`49-session-autoname.ts` calls `projects/apple-model/bin/apple-model` after `agent_settled` (once per completed response, not during tool cycles). No Pi core or apple-model changes or model-facing tools are needed. `/autoname-status` shows content-free diagnostic counters since the extension was loaded. Activate with `/reload` or a new Pi process; existing sessions are considered on their next completed response, not retroactively on startup.
+`49-session-autoname.ts` calls `projects/apple-foundation-models/bin/apple-model` after `agent_settled` (once per completed response, not during tool cycles). No Pi core or apple-model changes or model-facing tools are needed. `/autoname-status` shows content-free diagnostic counters since the extension was loaded. Activate with `/reload` or a new Pi process; existing sessions are considered on their next completed response, not retroactively on startup.
 
 - Input comes from the active in-memory branch: user text plus the last successful, tool-free assistant answer per user turn. Tools, thinking, images, custom messages, and abandoned branches are excluded. Compacted ancestors still present in that branch remain eligible; compaction summaries are not sent.
 - Each message is capped at 1,600 characters. The original completed task and newest completed turns share a 6,000-character budget. This is a character bound, not a token guarantee; context errors are skipped safely.

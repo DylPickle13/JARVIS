@@ -1,6 +1,7 @@
-# apple-model
+# apple-foundation-models
 
 Standalone, on-device Apple Foundation Models CLI for **text + image input**.
+The command remains `apple-model`.
 No Pi dependency, API keys, HTTP server, external package dependencies, tools,
 persistent transcript, or cloud fallback. Every `ask` creates a fresh session.
 
@@ -18,7 +19,7 @@ Shell history and callers may still record command-line arguments; pipe sensitiv
 ## Build and install
 
 ```bash
-cd /Users/dylanrapanan/JARVIS/projects/apple-model
+cd /Users/dylanrapanan/JARVIS/projects/apple-foundation-models
 bash scripts/install.sh
 ```
 
@@ -34,7 +35,7 @@ export PATH="$HOME/.local/bin:$PATH"
 For launchd, cron, or applications without a shell PATH, use the absolute executable:
 
 ```text
-/Users/dylanrapanan/JARVIS/projects/apple-model/bin/apple-model
+/Users/dylanrapanan/JARVIS/projects/apple-foundation-models/bin/apple-model
 ```
 
 An alternate installation directory can be set with `APPLE_MODEL_BIN_DIR`.
@@ -45,7 +46,7 @@ executable after cloning.
 
 ## Repository integration
 
-This package stays standalone under `projects/apple-model/`. Pi-specific adapters
+This package stays standalone under `projects/apple-foundation-models/`. Pi-specific adapters
 belong under `.pi/`; Operation JARVIS services can invoke the CLI without owning
 its implementation.
 
@@ -53,7 +54,7 @@ The [Pi session-naming extension](../../.pi/extensions/49-session-autoname.ts)
 invokes this package's `bin/apple-model` directly, resolving the path relative to
 the extension. It does not require the `~/.local/bin` symlink or a shell PATH.
 Building the CLI is optional for normal Pi operation; without it, session naming
-uses its bounded fallback. See the [rebuild guide](../../.pi/docs/REBUILD_FROM_SCRATCH.md#6a-build-the-optional-apple-model-cli).
+uses its bounded fallback. See the [rebuild guide](../../.pi/docs/REBUILD_FROM_SCRATCH.md#6a-build-the-optional-apple-foundation-models-cli).
 
 ## Examples (from any directory)
 
@@ -91,7 +92,7 @@ import json
 import subprocess
 
 result = subprocess.run(
-    ['/Users/dylanrapanan/JARVIS/projects/apple-model/bin/apple-model',
+    ['/Users/dylanrapanan/JARVIS/projects/apple-foundation-models/bin/apple-model',
      'ask', '--json', '--image', '/absolute/path/snapshot.jpg',
      'Describe this scene briefly.'],
     input='', text=True, capture_output=True, check=True, timeout=60,
