@@ -27,7 +27,7 @@ On a configured host, the documented read-only smoke test is:
 .pi/smoke-test.sh
 ```
 
-Check the script's scope before running it against a live environment. The documentation review did not run it or restart any services.
+Check the script's scope before running it against a live environment. For isolated regression checks instead, use `python3 projects/operation-jarvis/scripts/verify-offline.py`; it never installs or deploys components. See the [review record](code-review.md) for verification scope and remaining acceptance gates.
 
 ## Component map
 
@@ -75,7 +75,7 @@ The verifier regenerates the Xcode project and writes build artifacts. See [oper
 
 ## Room audio
 
-The Mac service uses [Pi RPC](../../../pi_rpc.py), the [voice pipeline](../voice/voice_pipeline.py), [ASR backends](../voice/asr_backends.py), and the [room bridge](../room-audio/room_audio_server.py). Active endpoints use Mac USB PowerConf and camera audio; retired Raspberry Pi scripts and installation guides have been removed.
+The Mac service uses [Pi RPC](../../../pi_rpc.py), the [voice pipeline](../voice/voice_pipeline.py), [ASR backends](../voice/asr_backends.py), and the [room bridge](../room-audio/room_audio_server.py). Active endpoints use Mac USB PowerConf and camera audio. Pi-only installation/supervision scripts are retired; the historical `pi_room_audio_client.py` name and legacy ALSA transport remain for shared-client compatibility.
 
 Read-only health on a configured Mac host:
 
@@ -87,7 +87,7 @@ See the [room-audio README](../room-audio/README.md) for backend-specific setup.
 
 ## Pi tool loading
 
-Always-on tools cover coding, SSH, web research/fetch, Maps, and `load_tools`. Optional groups include `memory`, `code_docs`, `jarvis`, `github`, `google`, `cron`, `browser`, and `reaper`.
+Always-on tools cover coding, SSH, web research/fetch, Maps, and `load_tools`. Optional groups include `memory`, `operation_jarvis`, `github`, `google`, `cron`, `browser`, `apple_notes`, and `reaper`. The former `jarvis`/`smart_plug` household tools are retired; load `operation_jarvis` instead.
 
 Load only the group you need. Reading Jobs or scheduler status does not authorize device actions. See the [Pi extension guide](../../../.pi/docs/PI_EXTENSIONS.md).
 

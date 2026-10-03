@@ -12,7 +12,7 @@ These are documented deployment roles, not a fresh live health check.
 |---|---|---|---|
 | Mac USB PowerConf | Explicit Core Audio microphone/speaker | Loopback 8793 | [Mac endpoint](MACOS.md) |
 | C230 camera | Camera microphone/speaker through local go2rtc | Loopback 8791 | [Camera endpoint](CAMERA.md) |
-| Raspberry Pi | Retired; installation, repository scripts, and setup guides removed | None active | — |
+| Raspberry Pi | Hardware endpoint retired; Pi-only installers/guides removed | None active | — |
 
 The Raspberry Pi is currently offline per the owner. Its absence is not a room
 conversation failure. Family-room Cast speaker commands are a separate transport;
@@ -99,7 +99,9 @@ Offline regression suite from the repository root:
 
 For endpoint health, deployment, and rollback, use the endpoint guides above.
 Do not reinstall the retired Pi listener as a remedy for a Mac endpoint failure.
-Retired Pi scripts and documentation have been deleted; tracked history remains in Git.
+Pi-only provisioning/supervision scripts and setup guides have been deleted;
+the shared client retains its historical filename and legacy ALSA backend.
+Tracked history remains in Git.
 
 ## Completed source-path cutover
 

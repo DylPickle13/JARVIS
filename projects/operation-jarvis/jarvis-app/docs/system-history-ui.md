@@ -1,6 +1,12 @@
 # System history UI — iPhone and Watch
 
-**Current installed: build 231**, installed once and independently version/launch/
+Current source uses the noninteractive **past-hour** health/history card on iPhone
+Home and Watch Home, without detail sheets or four-band inspectors. See
+[the current visual card](system-dashboard.md#visual-only-card-on-both-devices-build-234)
+and [navigation/rollout](navigation-and-home.md). The build-229–231 records below
+are historical; their original layout descriptions are not current UI guidance.
+
+**Historical sensor checkpoint: build 231**, installed once and independently version/launch/
 process/final-version verified on both devices on **2026-09-30 at 12:59 EDT**.
 Sensor read-health and history compatibility are included; fixed layouts, existing
 access and polling are preserved. Four signed bundles/profiles, unchanged entitlements

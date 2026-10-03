@@ -117,7 +117,9 @@ class TerminalServiceTests(unittest.TestCase):
     def frame_service(self, runner, **kwargs):
         service = terminald.TerminalService(runner, **kwargs)
         service.frame_poll_interval = 0.01
-        service.long_poll_seconds = 0.05
+        # macOS can coalesce short condition waits beyond 50 ms. Give the real
+        # sampler thread a scheduling budget, rather than requiring a lucky tick.
+        service.long_poll_seconds = 0.5
         self.addCleanup(service.close)
         return service
 
@@ -200,10 +202,12 @@ class TerminalServiceTests(unittest.TestCase):
     def test_concurrent_long_polls_share_one_sampler_and_stop_when_idle(self):
         runner = FakeRunner()
         service = self.frame_service(runner)
-        service.frame_poll_interval = 0.02
-        service.long_poll_seconds = 0.07
+        service.frame_poll_interval = 0.05
+        service.long_poll_seconds = 0.3
         first = service.frame_after(0)
-        time.sleep(0.11)
+        with service.frame_condition:
+            self.assertTrue(service.frame_condition.wait_for(
+                lambda: service.sampler_thread is None, timeout=2))
         captures_before = len([call for call in runner.calls if "capture-pane" in call[0]])
         results = []
 
@@ -221,9 +225,11 @@ class TerminalServiceTests(unittest.TestCase):
         self.assertTrue(all(frame["sequence"] == first["sequence"] for frame in results))
         captures_after = len([call for call in runner.calls if "capture-pane" in call[0]])
         self.assertGreaterEqual(captures_after - captures_before, 2)
-        self.assertLessEqual(captures_after - captures_before, 5)
+        self.assertLessEqual(captures_after - captures_before, 9)
 
-        time.sleep(0.12)
+        with service.frame_condition:
+            self.assertTrue(service.frame_condition.wait_for(
+                lambda: service.sampler_thread is None, timeout=2))
         idle_count = len([call for call in runner.calls if "capture-pane" in call[0]])
         time.sleep(0.06)
         self.assertEqual(

@@ -98,7 +98,7 @@ grep -q 'recent_last_good = (' ../jarvisd/jarvisd_core/state.py
 grep -q 'test_partial_plug_failure_retains_and_expires_only_that_devices_last_good' ../jarvisd/tests/test_jarvisd.py
 grep -q 'self._condition = threading.Condition(self._lock)' ../jarvisd/jarvisd_core/state.py
 grep -q 'def activate_client(self, wait_timeout:' ../jarvisd/jarvisd_core/state.py
-grep -q 'return STATE_COORDINATOR.snapshot(client_active=True)' ../jarvisd/jarvisd.py
+grep -Fq 'return _with_system_health(STATE_COORDINATOR.snapshot(client_active=True))' ../jarvisd/jarvisd.py
 reject_match 'fixed 250-millisecond jarvisd scheduler polling was restored' -Fq 'self._stop.wait(0.25)' ../jarvisd/jarvisd_core/state.py
 
 printf '%s\n' '== responsive scoped foreground state =='
@@ -143,7 +143,9 @@ assert home_page.index('SystemDashboardContent(') < home_page.index('HomeDeviceC
 assert 'active: scenePhase == .active && app.activeSection == .home' in home
 host = Path('../jarvisd/jarvisd.py').read_text().split('# Read-only oMLX activity', 1)[1].split('STATE_COORDINATOR = StateCoordinator()', 1)[0]
 assert 'OMLX_COORDINATOR = StateCoordinator(' in host
-assert 'connection.request("GET", "/admin/api/activity"' in host
+assert 'return _omlx_read(server_id, path="/admin/api/activity"' in host
+assert 'if path not in ("/admin/api/activity", "/admin/api/update-check"):' in host
+assert 'connection.request("GET", path, headers=headers)' in host
 assert '/api/stats' not in host and '"POST"' not in host
 for folder in ['JARVISWidget', 'JARVISWatchWidget']:
     assert not any('OMLXStatusCard' in p.read_text() or '.omlxStatus(' in p.read_text() for p in Path(folder).rglob('*.swift'))
@@ -167,10 +169,10 @@ for forbidden in ['Timer(', 'Task.sleep', '.rotationEffect', 'repeatForever', 'o
     assert forbidden not in edge
 
 for marker in ['accessibilityReduceMotion', 'isLuminanceReduced', 'scenePhase == .active',
-               '.activityIconPulse(active: motion.pulsesCPU)', '.contentTransition(.opacity)',
-               'transaction.disablesAnimations = true']:
+               '.activityIconPulse(active: motion.pulsesCPU)',
+               'reduceMotion: reduceMotion', 'luminanceReduced: luminanceReduced']:
     assert marker in summary
-for forbidden in ['Timer', 'TimelineView', 'repeatForever', 'Task.sleep', 'numericText']:
+for forbidden in ['Timer', 'TimelineView', 'repeatForever', 'Task.sleep', 'numericText', '.animation(']:
     assert forbidden not in summary
 
 for forbidden in ['modelRow', 'ProgressView', 'memoryUsedBytes', 'ScrollView']:
@@ -267,11 +269,15 @@ grep -q '.widgetAccentable()' JARVISWatchWidget/LauncherWidget.swift
 
 printf '%s\n' '== native navigation contract =='
 [[ ! -e JARVIS/Views/EventsView.swift ]]
-[[ "$(grep -c '\.tabItem' JARVIS/JARVISApp.swift)" == "4" ]]
-grep -q 'Label("Home"' JARVIS/JARVISApp.swift
-grep -q 'Label("JARVIS"' JARVIS/JARVISApp.swift
+[[ "$(grep -c '\.tabItem' JARVIS/JARVISApp.swift)" == "5" ]]
+grep -Fq 'Label(AppSection.home.title' JARVIS/JARVISApp.swift
+grep -Fq 'Label(AppSection.system.title' JARVIS/JARVISApp.swift
+grep -Fq 'Label(AppSection.pi.title' JARVIS/JARVISApp.swift
+grep -Fq 'case .home: return "JARVIS"' JARVIS/AppState.swift
+grep -Fq 'case .system: return "Home"' JARVIS/AppState.swift
+grep -Fq 'case .pi: return "Terminal"' JARVIS/AppState.swift
 grep -q 'Label("Jobs", systemImage: "calendar.badge.clock")' JARVIS/JARVISApp.swift
-reject_match 'Pi tab must be labeled JARVIS' -Fq 'Label("Pi"' JARVIS/JARVISApp.swift
+reject_match 'Terminal tab must not restore the retired Pi label' -Fq 'Label("Pi"' JARVIS/JARVISApp.swift
 grep -q 'Label("Settings"' JARVIS/JARVISApp.swift
 grep -q 'requestedRoute: \$requestedJobRoute' JARVIS/JARVISApp.swift
 grep -q '/api/v1/scheduled-job-results' ../jarvisd/jarvisd.py
@@ -299,7 +305,7 @@ grep -q 'case "pi": selection = .pi' JARVIS/JARVISApp.swift
 reject_match 'retired Events UI is still referenced' -RqsE 'EventsView|case events|fetchEvents|lastEvents|eventsLoading' JARVIS
 
 printf '%s\n' '== compact iPhone dashboard contract =='
-grep -q 'private var compactConnectionStrip' JARVIS/Views/HomeView.swift
+grep -Fq 'subtitle: connectionHeadline' JARVIS/Views/HomeView.swift
 reject_match 'removed Home System and Services UI must stay absent' -E 'systemSection|servicesDetail|RuntimeServicePresentation|MinimalSectionHeader\(title: "System"' JARVIS/Views/HomeView.swift
 reject_match 'removed iPhone Services polling and mutation must stay absent' -E 'fetchServices|runServiceAction|lastServices|servicesLoaded' JARVIS/AppState.swift
 grep -q 'testHomeRefreshDoesNotPollRemovedServicesSurface' JARVISTests/AppStateTests.swift
@@ -313,10 +319,14 @@ grep -q 'label = "New"' JARVIS/Views/HomeView.swift
 reject_match 'retired Waiting mode must not be presented' -E 'case waiting|label = "Waiting"' JARVIS/Views/HomeView.swift JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'label = "Compacting"' JARVIS/Views/HomeView.swift
 grep -q 'label = "Unknown"' JARVIS/Views/HomeView.swift
-grep -q 'case \.running: return \.green' JARVIS/Views/HomeView.swift
-grep -q 'case \.idle: return \.purple' JARVIS/Views/HomeView.swift
-grep -q 'case \.new: return \.cyan' JARVIS/Views/HomeView.swift
-grep -q 'case \.compacting: return \.blue' JARVIS/Views/HomeView.swift
+grep -Fq 'case .running: return PiSessionLifecycle.running.statusColor' JARVIS/Views/HomeView.swift
+grep -Fq 'case .idle: return PiSessionLifecycle.idle.statusColor' JARVIS/Views/HomeView.swift
+grep -Fq 'case .new: return PiSessionLifecycle.new.statusColor' JARVIS/Views/HomeView.swift
+grep -Fq 'case .compacting: return PiSessionLifecycle.compacting.statusColor' JARVIS/Views/HomeView.swift
+grep -Fq 'case .running: return .green' JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift
+grep -Fq 'case .idle: return .purple' JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift
+grep -Fq 'case .new: return .cyan' JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift
+grep -Fq 'case .compacting: return .blue' JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift
 grep -q 'onOpenPiTerminal: { slot in' JARVIS/JARVISApp.swift
 grep -q '_ = piTerminal.selectSlot(slot)' JARVIS/JARVISApp.swift
 grep -q 'func selectSlot(_ target: JARVISTerminalSlot) -> Bool' JARVIS/Terminal/PiTerminalController.swift
@@ -500,7 +510,7 @@ grep -q 'TMUX_SESSION="jarvis-ios-5"' scripts/jarvis-mobile-terminal.sh
 grep -q 'TMUX_SESSION="jarvis-ios-9"' scripts/jarvis-mobile-terminal.sh
 grep -q 'case "$slot" in' scripts/jarvis-mobile-terminal.sh
 grep -q -- '--slot' scripts/jarvis-mobile-terminal.sh
-grep -q 'new-session -d' scripts/jarvis-mobile-terminal.sh
+grep -Fq '"new-session", "-d", "-s", session' scripts/jarvis-mobile-terminal.sh
 grep -q 'attach-session' scripts/jarvis-mobile-terminal.sh
 grep -q 'export PATH="/opt/homebrew/bin:' scripts/jarvis-mobile-terminal.sh
 grep -q "PI_COMMAND='/opt/homebrew/bin/pi --tui-mode regular'" scripts/jarvis-mobile-terminal.sh
@@ -686,7 +696,8 @@ grep -q 'through: 0' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'isContinuous: false' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalCrownHistory.scrollOffset' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch Crown live edge must not use rebound-prone incremental history' -Fq 'adjustScroll(towardHistory:' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'WatchTerminalANSIParser.parse(lines: lines)' JARVISWatch/Views/WatchTerminalView.swift
+grep -Fq 'incrementalANSIParser.parse(lines: lines)' JARVISWatch/Views/WatchTerminalView.swift
+grep -Fq 'private var incrementalANSIParser = WatchTerminalANSIParseCache()' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'controller.parsedANSILines(frame.ansiLines)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'controller.parsedANSILines(sourceANSI)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'private static let ansiParseCacheLimit = 3' JARVISWatch/Views/WatchTerminalView.swift
@@ -796,14 +807,17 @@ assert root.index('HomeView(') < root.index('SystemView()') < root.index('PiTerm
 assert 'case "system": selection = .system' in root
 assert 'SystemHealthCard' not in Path('JARVIS/Views/HomeView.swift').read_text()
 health = Path('JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift').read_text()
-assert 'DisclosureGroup' not in health  # unavailable on watchOS
-overview = health.split('.sheet(item: $selectedDetail)', 1)[0]
-assert 'ScrollView' not in overview and 'ViewThatFits(in: .vertical)' in overview
-assert 'statTile(' not in health and 'expandedServices' not in health
-assert 'phoneServices(dense:' in health and 'phoneIntegrations(dense:' in health
+# Build 234+ uses a static visual card, not the retired detail-sheet overview.
+for forbidden in ['DisclosureGroup', 'ScrollView', '.sheet(', 'onTapGesture',
+                  'statTile(', 'expandedServices', 'Task {', 'client.']:
+    assert forbidden not in health
+for marker in ['LazyVGrid', 'presentation.visualGroups', 'SystemCurrentHealthRing',
+               'SystemHistoryBand', 'historyModel.snapshot', 'serviceEvidence(group)',
+               'Current cached checks, not live connectivity or home security']:
+    assert marker in health
 assert 'ScrollView' in Path('JARVIS/Views/SystemView.swift').read_text()
 assert '.refreshable' in Path('JARVIS/Views/SystemView.swift').read_text()
-assert 'Last observed details' in health
+assert 'onDetailVisibilityChanged(false)' in health
 watch_health = Path('JARVISWatch/Views/WatchSystemHealthView.swift').read_text()
 assert 'WatchSystemCrownViewport' not in watch_health
 assert 'showsSystemDetails || showsPurifierModeChoices' in Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
@@ -817,7 +831,7 @@ assert 'snapshot = nil; notice = nil' in history_model
 for forbidden in ['cachedState(', 'state(', 'command(', 'discover(', 'WatchBridge', 'UserDefaults', 'SnapshotStore']:
     assert forbidden not in history_model
 assert 'SystemCurrentHealthRing' in health and 'SystemHistoryBand' in health
-assert 'case .history(let id)' in health
+assert '.sheet(' not in health and 'selectedDetail' not in health
 watch_model = Path('JARVISWatch/Views/WatchConnectView.swift').read_text()
 assert 'connected: connectionState == .connected && !isViaPhone' in watch_model
 assert 'appIsForeground && appIsInteractive && !historyCovered' in watch_model
@@ -950,7 +964,7 @@ reject_match 'endpoint bridges must not restore permissive scheme-and-host-only 
 
 printf '%s\n' '== native refresh and Tailscale contract =='
 grep -q 'activeInterval: Duration = .seconds(5)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
-grep -q "A lightweight cached state read keeps jarvisd's active" JARVIS/AppState.swift
+grep -Fq 'if cachedOnly { return try await client.cachedState(endpoint) }' JARVIS/AppState.swift
 grep -q 'async let state: Void = self.fetchState()' JARVIS/AppState.swift
 grep -q 'testCachedStateAndJobsPollingContinueAcrossActiveTabsWithoutServicesPolling' JARVISTests/AppStateTests.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift
@@ -1002,8 +1016,8 @@ reject_match 'host Siri command registration remains' -RqsE 'AppShortcutsProvide
 python3 scripts/tests/verify-watch-talk.py
 python3 scripts/tests/test-prompt-runtime.py
 grep -q 'JARVISSpokenPrompt.normalize(rawPrompt)' HostAppIntents/JARVISPromptRuntime.swift
-grep -q 'client.preflightNewSessionPrompt()' HostAppIntents/JARVISPromptRuntime.swift
-grep -q 'client.sendToNewSession(prompt)' HostAppIntents/JARVISPromptRuntime.swift
+grep -Fq 'client.sendToTalkSession(prompt)' HostAppIntents/JARVISPromptRuntime.swift
+reject_match 'Watch Talk must stay on fixed Session 10, not allocate a new session' -qsE 'preflightNewSessionPrompt|sendToNewSession' HostAppIntents/JARVISPromptRuntime.swift
 reject_match 'prompt regained selected-slot or raw-PTY fallback' -qsE 'SlotLoader|slotLoader|JARVISTerminalSlot.load|WatchTerminalInput|client.send\(' HostAppIntents/JARVISPromptRuntime.swift
 grep -q 'v2/terminal/new-session-prompt' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 [[ -f ../../../.pi/extensions/04-siri-new-session.ts ]]
@@ -1297,9 +1311,11 @@ from pathlib import Path
 for name in ['JARVIS/Terminal/PiTerminalView.swift', 'JARVISWatch/Views/WatchTerminalView.swift']:
     text = Path(name).read_text()
     indicators = text.split('ForEach(JARVISTerminalSlot.allCases', 1)[1].split('Capsule()', 1)[0]
-    assert indicators.count('if slot == .four || slot == .seven {') == 1, name
+    assert indicators.count('if slot.hasLeadingIndicatorGap {') == 1, name
     assert indicators.count('Spacer().frame(width:') == 1, name
     assert 'of 6' not in text, name
+slots = Path('JARVISKit/Sources/JARVISKit/TerminalSessionSlot.swift').read_text()
+assert 'self == .four || self == .seven || self == .roomAudio' in slots
 PYSPACING
 
 printf '%s\n' '== nine-session iPhone 3x3 Home grid =='
@@ -1317,23 +1333,28 @@ assert 'PiSessionLifecycle.unknown' in rows and 'isStale' in rows
 assert 'MinimalCard(padding: 8)' in text
 pi_content = text.split('struct PiSessionCardContent: View', 1)[1].split('struct HomeView: View', 1)[0]
 assert 'Image(systemName: presentation.symbol)' in pi_content
-assert 'presentation.allowsActivityEdge, muted: true' in pi_content
-assert pi_content.count('muted: true') == 1
+assert '.piSessionMotion(lifecycle: lifecycle, active: motionActive)' in pi_content
+assert '.activityCardEdge(' not in pi_content  # Motion stays inside the original icon.
 assert 'Text("\\(sessionID)")' in pi_content
 assert 'Circle()' not in pi_content and 'Text("Pi ' not in pi_content
-assert 'minHeight: 42' in pi_content and 'MinimalCard(padding: 8)' in pi_content
+assert 'minHeight: 42' in pi_content and 'MinimalCard(padding: 8, glass: true)' in pi_content
 assert '.accessibilityLabel("Pi session ' in pi_content
 
 assert 'onOpenPiTerminal(.roomAudio)' in text
 assert 'let activeSpeakers = RoomAudioSpeaker.allCases.filter' in text
 assert 'app.roomAudio[speaker]?.allowsStop == true' in text
 assert 'context.date.timeIntervalSince($0) <= 6' in text
-assert '.activityIconPulse(active: homeMotionActive && presentation.animatesIcon)' in text
+assert '.piSessionMotion(lifecycle: lifecycle, active: homeMotionActive)' in text
 assert 'minimumInterval: 1, paused: !homeMotionActive' in text
 assert '.disabled(activeSpeakers.isEmpty || !app.roomAudioStopping.isEmpty)' in text
 assert 'await app.stopAllRoomAudio()' in text
 
-assert '.activityIconPulse(active: motionActive && presentation.animatesIcon)' in text
+pi_motion = Path('JARVISKit/Sources/JARVISKit/PiSessionMotion.swift').read_text()
+for marker in ['ActivityMotionGate.allows(active: active && lifecycle != .unknown',
+               'scenePhase == .active', 'reduceMotion: reduceMotion',
+               'luminanceReduced: luminanceReduced', '.mask(content)',
+               '.allowsHitTesting(false)', '.accessibilityHidden(true)']:
+    assert marker in pi_motion
 motion = Path('JARVISKit/Sources/JARVISKit/ActivityIconMotion.swift').read_text()
 assert '.symbolEffect(.pulse, options: .repeating.speed(0.9)' in motion
 assert '.symbolEffectsRemoved(!enabled)' in motion
@@ -1522,9 +1543,12 @@ for forbidden in ['Task {', 'Timer', 'URLSession', 'onTapGesture', 'repeatForeve
 home = Path('JARVIS/Views/HomeView.swift').read_text()
 watch = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 assert '.buttonStyle(JarvisPressStyle())' in home and '.buttonStyle(JarvisPressStyle())' in watch
-assert 'isStale: item.stale' in home
+assert 'isStale: item.stale' in Path('JARVIS/Views/HomeDeviceControls.swift').read_text()
 assert '.disabled(stale || model.purifierBusy || purifier?.isOn == nil)' in watch
-assert '.interactionTransition(value: selectedPage, allowed: !overlayOwnsInput, duration: 0.32)' in watch
+assert '.transition(.jarvisPageSlide(direction: pageDirection, axis: .vertical))' in watch
+assert '.allowsHitTesting(!pageIsMoving)' in watch
+assert 'PageNavigationMotion.allows(active: scenePhase == .active, reduceMotion: reduceMotion,' in watch
+assert 'covered: overlayOwnsInput, dimmed: dimmed)' in watch
 assert '.contentTransition(.opacity)' in Path('JARVIS/Views/Components.swift').read_text()
 print('PASS: bounded input/confirmed presentation motion and lifecycle gates')
 MOTION

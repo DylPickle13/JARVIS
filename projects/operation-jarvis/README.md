@@ -1,18 +1,18 @@
 # Operation JARVIS
 
-This directory connects JARVIS to the things around the house: plugs, the air purifier, speakers, and a Raspberry Pi microphone. It also contains the iPhone and Watch apps and their backend services.
+This directory connects JARVIS to household plugs, air purifiers, speakers, security devices, keyboards, and Mac-hosted room audio. It also contains presence collectors, the Pi Desk workspace, and the iPhone and Watch apps with their backend services.
 
 ## Components
 
 - **[jarvisd](jarvisd/):** shared control backend on port `8790` for health, state, services, job results, and allowlisted device commands. Network allowlisting and token authentication are separate modes.
 - **terminald:** mobile terminal relay on port `8792`, restricted to the protected `jarvis-mobile` tmux sessions.
 - **[Pi Desk](pi-desk/):** lightweight living-room Raspberry Pi workspace: fullscreen session grid, live Pi status, three-pane SSH groups, recovery, and boot startup.
-- **Room audio:** Raspberry Pi capture/playback with Mac-side Apple SpeechTranscriber for ordinary turns, DictationTranscriber for busy-only `stop`, Pi RPC, and Piper speech on port `8791`.
-- **Apple apps:** iPhone, Watch, and two widgets per platform.
+- **[Room audio](room-audio/):** Mac USB PowerConf and camera capture/playback with Apple SpeechTranscriber for ordinary turns, DictationTranscriber for busy-only `stop`, Pi RPC, and Piper speech. Servers use ports `8791` and `8793`; Raspberry Pi audio hardware is retired.
+- **Apple apps:** iPhone and Watch; iPhone has Neural Core/Open JARVIS widgets, while Watch also has Talk to JARVIS.
 - **Smart plugs:** local TP-Link Kasa control through a fixed plug catalogue.
 - **Security:** reviewed CLI source in `security/`, with private credentials/inventory/media kept ignored. jarvisd exposes token-protected on-demand status only. Pi tools add local reads and explicit Tapo cloud automation management; writes are gated by revision checks and readback verification.
 - **Air purifier:** VeSync/Levoit Vital 200S-P status and validated controls.
-- **[AJAZZ keyboard](ajazz-keyboard/):** tested wired-AK820 lighting CLI and liked-effect preferences, moved here without duplication. An owner-authorized local watcher checks authenticated basement proximity approximately every three seconds: either device nearby resumes minute-spaced liked effects; both away applies purple ripples once. The collector's 10-second nearby hold stays unchanged; unknown/stale leaves lighting unchanged. The private `Keyboard lights` scheduler job only relays alerts and checks watcher health. See [automation details](ajazz-keyboard/docs/AUTOMATION.md). No keyboard backend route or new HID protocol is added.
+- **[Keyboard and mouse](keyboard/):** wired-AK820 lighting, Razer controls, and Karabiner mappings/owned-handle transport. An owner-authorized watcher checks authenticated basement proximity approximately every three seconds: either device nearby resumes minute-spaced white liked effects; both away applies white ripples once and turns mouse lighting off. Unknown/stale leaves lighting unchanged. The private `Keyboard lights` job relays alerts, not device writes. See [automation details](keyboard/docs/AUTOMATION.md) and [Razer status](keyboard/docs/RAZER.md).
 - **Media:** Google Cast, YouTube, Spotify Connect, and short room speech.
 - **Provider quotas:** read-only Codex/Copilot status for `jarvisd` and the apps.
 - **Private jobs:** the local scheduler and its limited, owner-only result history, shown read-only in Jobs.
@@ -22,12 +22,13 @@ This directory connects JARVIS to the things around the house: plugs, the air pu
 ```text
 projects/operation-jarvis/
 ├── air-purifier/               # VeSync adapter
-├── ajazz-keyboard/             # manual AK820 lighting CLI, presets and offline tests
+├── keyboard/                   # AK820/Razer controls, Karabiner bridge, mappings
 ├── jarvisd/                    # shared control backend, API, tests, LaunchAgents
 ├── jarvis-app/                 # iPhone, Watch, widgets, JARVISKit, terminald
 ├── pi-desk/                    # living-room Pi terminal, boot service, backups, tests
+├── presence/                   # independent Mac/Pi BLE proximity collectors
 ├── quotas/                     # read-only provider quota collection
-├── room-audio/                # Mac-hosted room conversations and audio endpoints
+├── room-audio/                 # Mac-hosted room conversations and audio endpoints
 ├── smart-plug/                 # local Kasa adapter and private catalogue
 ├── security/                   # reviewed CLI source; private runtime/config ignored
 ├── voice/                      # neutral ASR/Pi RPC/Piper voice pipeline
@@ -62,9 +63,9 @@ and [backend operations](jarvisd/README.md).
 
 ## Pi household-control tools
 
-Load `operation_jarvis` for five focused tools: `operation_jarvis_plugs`,
-`operation_jarvis_purifier`, `operation_jarvis_media`, `operation_jarvis_security`,
-and `operation_jarvis_automations`. The former `jarvis` group/tool and `smart_plug`
+Load `operation_jarvis` for six focused tools: `operation_jarvis_presence`,
+`operation_jarvis_plugs`, `operation_jarvis_purifier`, `operation_jarvis_media`,
+`operation_jarvis_security`, and `operation_jarvis_automations`. The former `jarvis` group/tool and `smart_plug`
 tool are retired; CLI commands and backend routes are unchanged. See the
 [tool guide](../../.pi/docs/OPERATION_JARVIS_TOOLS.md) for schemas, safety gates,
 offline tests and rollout. No new daemon or polling is installed.
@@ -73,12 +74,16 @@ offline tests and rollout. No new daemon or polling is installed.
 
 See [`jarvis-app/README.md`](jarvis-app/README.md). The app provides:
 
-- **Home:** system, plug, purifier, service, and quota status, including freshness;
-- **JARVIS:** the protected Pi terminal;
+- **JARVIS:** Pi-session, room-audio, and quota/oMLX overview;
+- **Home:** system health, plug and purifier controls, including freshness;
+- **Terminal:** the protected Pi terminal;
 - **Jobs:** read-only saved results, schedules, details, unread markers, and safe HTTP(S) links;
-- **Settings:** connection and terminal preferences. Signing-renewal controls depend on the build; see the [signing notes](jarvis-app/scripts/README.md).
+- **Settings:** connection, terminal, and notification preferences. Signing-renewal controls depend on the build; see the [signing notes](jarvis-app/scripts/README.md).
 
-The Watch preserves native plug/purifier controls and terminal behavior. Each widget platform exposes only Neural Core and Open JARVIS.
+Watch navigation is Home → Terminal → Plugs → JARVIS → Jobs, with native
+plug/purifier controls retained. Widgets never switch household devices. See the
+[Watch Talk complication](jarvis-app/docs/watch-talk-complication.md) for its
+fixed Session 10 input behavior and deployment/acceptance limits.
 
 ## Private scheduler
 
@@ -107,19 +112,27 @@ Keep room-service work separate from the protected mobile tmux sessions. Announc
 ## Development
 
 ```bash
-# Python tests that do not touch hardware
-PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_asr_backends.py
-PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_pi_rpc.py
-PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python voice/test_voice_pipeline.py
-PYTHONPATH="$PWD/../..:$PWD/voice" ../../.venv/bin/python room-audio/test_room_audio_interrupt.py
+# Broad offline verification, using existing component environments only.
+# Includes backend/scheduler, SDK fences, device adapters, security/archive, room audio,
+# presence, keyboard/C++, Pi Desk, terminald, Android policies, and docs.
+python3 scripts/verify-offline.py
 
-# Backend-only verification (isolated runtime; no hardware)
-./jarvisd/verify.sh
+# Optional shared Swift package checks; live tests remain disabled.
+python3 scripts/verify-offline.py --suite swift
 
-# Native/daemon verification
+# A focused run, or local Markdown target validation:
+python3 scripts/verify-offline.py --suite backend --suite sdk
+python3 scripts/verify_docs.py
+
+# Native source contracts/builds: run in an isolated development checkout.
+# This regenerates the Xcode project; it does NOT install apps.
 cd jarvis-app
 ./scripts/verify-jarvis-app.sh
 ```
+
+Missing interpreters/dependencies fail explicitly; the verifier never installs
+or deploys anything. Offline success is not live-device or physical acceptance.
+See the [latest review and verification limits](docs/code-review.md).
 
 ## Safety contracts
 

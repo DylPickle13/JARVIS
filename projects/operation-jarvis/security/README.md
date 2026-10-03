@@ -9,14 +9,16 @@ an installed-device inventory or a claim that a home is secure**.
 The core CLI and its tests are `security_cli.py` and `test_security_cli.py`.
 C230 and D235 speaker audio is implemented in `security_audio.py`, with a local Piper
 JARVIS voice worker in `security_tts.py` and offline tests in
-`test_security_audio.py`. See [speaker audio commands](CLI.md#camera-speaker-audio)
+`test_security_audio.py`. See [speaker audio commands](CLI.md#camera-and-doorbell-speaker-audio)
 for full-length speech/files, gain, looping, status and stop.
 The standalone `security_quick_response*.py` uploader adds experimental native
 D235 saved quick responses, separate from talkback; see
 [saved-response commands](CLI.md#experimental-native-d235-saved-responses).
 It has no Pi extension/tool integration, backend route or background service.
-Offline-tested only: device acceptance, app visibility and listening remain
-unverified; any live upload needs separate owner approval.
+Native D235 upload has passed commissioning through finish acknowledgement and
+fresh device-list readback. App visibility and audible playback remain unverified;
+any new live upload needs separate owner approval. The owner removed the persistent
+upload block, not identity/locking/readback checks or the ban on automatic retries.
 See [CLI.md](CLI.md) for commands and safety limits. The backend's
 [on-demand status endpoint](../docs/security-integration-plan.md) wraps the existing
 CLI; it does not expose controls or media and does not poll. The separate,

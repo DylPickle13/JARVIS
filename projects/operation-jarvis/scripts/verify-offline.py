@@ -11,7 +11,9 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SUITES = ('backend', 'plugs', 'security', 'voice', 'presence', 'audio', 'sdk', 'swift')
+SUITES = ('backend', 'plugs', 'purifier', 'security', 'archive', 'voice', 'presence', 'audio',
+          'keyboard', 'pi-desk', 'terminal', 'android-monitor', 'departure', 'docs',
+          'sdk', 'swift')
 
 
 def main():
@@ -20,7 +22,10 @@ def main():
     parser.add_argument('--python', type=Path, default=ROOT / '.venv/bin/python')
     parser.add_argument('--kasa-python', type=Path, default=ROOT / 'smart-plug/.venv/bin/python')
     parser.add_argument('--security-python', type=Path, default=ROOT / 'security/.venv-313/bin/python')
+    parser.add_argument('--archive-python', type=Path, default=ROOT / 'security/.venv-archive/bin/python')
     parser.add_argument('--vesync-python', type=Path, default=ROOT / 'air-purifier/.venv/bin/python')
+    parser.add_argument('--keyboard-python', type=Path, default=ROOT / 'keyboard/.venv/bin/python')
+    parser.add_argument('--presence-python', type=Path, default=ROOT / 'presence/.venv/bin/python')
     args = parser.parse_args()
     python = str(args.python.absolute())
     kasa = str(args.kasa_python.absolute())
@@ -33,10 +38,20 @@ def main():
         jobs = {
             'backend': (['bash', 'verify.sh'], ROOT / 'jarvisd'),
             'plugs': ([kasa, '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-v'], ROOT / 'smart-plug'),
-            'security': ([security, '-B', '-m', 'unittest', 'test_read_recovery', 'test_security_cli', '-v'], ROOT / 'security'),
+            'purifier': ([str(args.vesync_python.absolute()), '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-v'], ROOT / 'air-purifier'),
+            'security': ([security, '-B', '-m', 'unittest', 'discover', '-p', 'test_*.py', '-v'], ROOT / 'security'),
+            'archive': ([str(args.archive_python.absolute()), '-B', '-m', 'unittest',
+                         'test_archive_download_probe', 'test_security_doorbell',
+                         'test_security_quick_response', '-v'], ROOT / 'security'),
             'voice': ([python, '-B', '-m', 'unittest', 'discover', '-p', 'test_*.py', '-v'], ROOT / 'voice'),
-            'presence': ([python, '-B', '-m', 'unittest', 'test_presence', 'test_pi_presence', '-v'], ROOT / 'presence'),
-            'audio': ([python, '-B', '-m', 'unittest', 'test_source_layout', 'test_shared_room_session', 'test_shared_room_wake', '-v'], ROOT / 'room-audio'),
+            'presence': ([str(args.presence_python.absolute()), '-B', '-m', 'unittest', 'discover', '-p', 'test_*.py', '-v'], ROOT / 'presence'),
+            'audio': ([python, '-B', '-m', 'unittest', 'discover', '-p', 'test_*.py', '-v'], ROOT / 'room-audio'),
+            'keyboard': ([str(args.keyboard_python.absolute()), '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-v'], ROOT / 'keyboard'),
+            'pi-desk': ([python, '-B', '-m', 'unittest', 'discover', '-p', 'test_*.py', '-v'], ROOT / 'pi-desk'),
+            'terminal': ([python, '-B', '-m', 'unittest', 'discover', '-s', 'terminald/tests', '-v'], ROOT / 'jarvis-app'),
+            'android-monitor': ([python, '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py', '-v'], ROOT / 'security/android-monitor'),
+            'departure': ([security, '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-v'], ROOT / 'security/departure-greeting'),
+            'docs': ([python, '-B', '-m', 'unittest', 'discover', '-p', 'test_*.py', '-v'], ROOT / 'scripts'),
             'sdk': (['bash', '-c', 'bash verify-kasa-sdk.sh && bash verify-vesync-sdk.sh && bash verify-delegation-sdk.sh'], ROOT / 'jarvisd'),
             'swift': (['swift', 'test', '--scratch-path', scratch + '/swift'], ROOT / 'jarvis-app/JARVISKit'),
         }

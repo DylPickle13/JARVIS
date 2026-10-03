@@ -181,6 +181,17 @@ class RuntimeTests(unittest.TestCase):
         self.assertIs(self.f.store.snapshot(fixtures.C).mode, p.Mode.DRAINING)
         self.effect.assert_not_called()
 
+    def test_readback_drain_failure_is_visible_and_still_revokes_admission(self):
+        with mock.patch.object(self.runtime.readbacks, 'tick', side_effect=RuntimeError('synthetic tick failure')), \
+                mock.patch.object(self.f.store, 'transition', side_effect=OSError('synthetic ledger failure')):
+            with self.assertRaisesRegex(RuntimeErrorClosed, 'drain-incomplete'):
+                self.runtime._run()
+        self.assertTrue(self.runtime._stop.is_set())
+        self.assertTrue(self.runtime._draining)
+        self.assertIn(self.bundle.enrollment.credential.client_id, self.runtime.registry._revoked)
+        self.assertIsNotNone(self.f.store._lfd)  # Failed drain cannot release ownership.
+        self.effect.assert_not_called()
+
     def test_failed_readback_thread_start_revokes_and_can_close_cleanly(self):
         with mock.patch.object(threading.Thread, 'start', side_effect=RuntimeError('synthetic start failure')):
             with self.assertRaises(RuntimeError):

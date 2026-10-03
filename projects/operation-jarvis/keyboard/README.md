@@ -4,7 +4,7 @@ Unified home for AK820 lighting, presence automation, and [key mappings](mapping
 Custom Karabiner transport work is tracked in [the implementation plan](docs/KARABINER-BRIDGE.md).
 Razer app shortcuts (button 4 → Spotify, button 5 → Chrome), wheel-click suppression, and the owned-handle Karabiner extension (lighting, DPI, polling/readback) are documented in [Razer status](docs/RAZER.md). The Razer extension is installed: lighting commands and brightness/DPI/polling readback are verified through Karabiner. The owner confirmed breathing lights and normal clicking/scrolling; reconnect/sleep acceptance remains pending.
 
-Migration stage: Python modules remain together at the project root to preserve existing imports. The proposed `lighting/` and `automation/` package split is deferred until transport integration. Legacy project paths are compatibility symlinks; live LaunchAgent and scheduler definitions have not been replaced. Runtime state retains its existing private directory.
+Migration stage: Python modules remain together at the project root to preserve existing imports. The proposed `lighting/` and `automation/` package split is deferred until transport integration. Use the canonical `keyboard/` source path; no `operation-jarvis/ajazz-keyboard/` compatibility path exists in this checkout. Existing LaunchAgent labels and private runtime names retain `ajazz-keyboard`; source layout alone does not authorize changing live definitions. Runtime state retains its existing private directory.
 
 ## AJAZZ AK820 — Mac lighting CLI
 

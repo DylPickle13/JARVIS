@@ -18,7 +18,7 @@ Mac CoreBluetooth / Bleak → private atomic snapshot → jarvisd /api/v1/presen
 
 The local collector deliberately needs no MQTT broker. The initial Pi adapter
 uses authenticated SSH snapshot requests; a later Theengs/MQTT adapter can produce
-the same normalized state. Do not send every advertisement to apps or the model. The collector remains read-only. The separately authorized [keyboard watcher](../ajazz-keyboard/docs/AUTOMATION.md) consumes authenticated basement status approximately every three seconds, with minute-spaced effect rotation nearby and purple ripples away. It does not change the collector, the 10-second nearby hold, or add BLE scanning.
+the same normalized state. Do not send every advertisement to apps or the model. The collector remains read-only. The separately authorized [keyboard watcher](../keyboard/docs/AUTOMATION.md) consumes authenticated basement status approximately every three seconds, with minute-spaced white effect rotation nearby and white ripples away. It does not change the collector, the 10-second nearby hold, or add BLE scanning.
 
 Installed LaunchAgent: `com.operation-jarvis.presence`. Runtime directory:
 `~/Library/Application Support/JARVIS/presence/` (0700; files 0600).

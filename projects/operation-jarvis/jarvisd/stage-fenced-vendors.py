@@ -12,14 +12,17 @@ import shutil
 import sys
 
 BASELINES = {
-    # Audit: read-only status_all added; mutation paths unchanged, SDK no-replay
-    # suite revalidated. Still fail closed on any subsequent source drift.
-    'smart-plug/smart_plug/kasa_client.py': '1e2261422c228a2387a960135152b80aabb02fbdb9acfae01c8cbdc2c743c818',
+    # Re-reviewed DHCP recovery addition: power mutation methods are unchanged.
+    # Fenced stages suppress automatic catalogue recovery below; reads cannot
+    # rewrite an ownership-bound target. Subsequent source drift still fails closed.
+    'smart-plug/smart_plug/kasa_client.py': '4e4d29e1a84ef36f8a9aa5ffb0a12e8439dd32556eaa3749388b09bb2c8ef292',
     'air-purifier/air_purifier/write_safety.py': '50c2254b557aa0116d2489e5e01b8447e0b2e4abb4491a2edc49ce72e36d1e4f',
 }
 PATCHES = {
     'smart-plug/smart_plug/kasa_client.py': [
         ('from kasa import Discover\n', 'from kasa import Discover\nfrom . import vendor_fence as _ownership\n'),
+        ('        return await recover_failed_hosts(self, results)\n',
+         '        return results  # Fenced catalogue is immutable; no automatic DHCP recovery.\n'),
         ('    async def save_discovery(self) -> dict[str, PlugStatus]:\n        statuses = await self.discover()\n',
          '    async def save_discovery(self) -> dict[str, PlugStatus]:\n        _ownership.reject_catalogue_change()\n        statuses = await self.discover()\n'),
         ('                               expected_host: str | None) -> PlugStatus:\n',

@@ -1,6 +1,6 @@
 # Operation JARVIS Air Purifier
 
-Read the air purifier's status or change its settings from a CLI, Python, or JARVIS. The adapter connects to `jarvis.py`, `jarvisd`, and Pi's optional `jarvis` tool group through `purifier-status` and `purifier-set`.
+Read the air purifier's status or change its settings from a CLI, Python, or JARVIS. The adapter connects to `jarvis.py`, `jarvisd`, and Pi's optional `operation_jarvis` tool group through `purifier-status` and `purifier-set`.
 
 Target device: **Levoit Vital 200S-P / Vital 200S**, VeSync model family `LAP-V201S`.
 

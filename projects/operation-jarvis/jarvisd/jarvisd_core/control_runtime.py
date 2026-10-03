@@ -93,10 +93,10 @@ class ControlRuntime:
                 self.readbacks.tick()
             except Exception:
                 # A broken owner loop cannot silently leave write admission open.
-                try:
-                    self.begin_drain()
-                finally:
-                    return
+                # Revocation happens before persistent transitions. If draining
+                # fails, surface that failure; a finally-return would erase it.
+                self.begin_drain()
+                return
 
     def begin_drain(self):
         """Close new windows/grants, never cancel/replay already-dispatched work."""

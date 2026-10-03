@@ -109,12 +109,15 @@ python3 projects/operation-jarvis/scripts/verify-offline.py
 python3 projects/operation-jarvis/scripts/verify-offline.py --suite swift
 ```
 
-The default includes backend, plug batch, sensor CLI/recovery, voice, presence,
-selected room-session/layout/wake suites, and Kasa, VeSync, and ownership-fence
-synthetic-peer tests.
-It is not every optional camera/recording/SwiftUI/platform test. Missing
-dependencies fail explicitly. Live Swift tests are disabled. No Xcode project
-regeneration or device installation is performed.
+The entry point has since been expanded by the [2026-10-03 review](code-review.md).
+Its current default includes backend/scheduler, plug and purifier adapters, full
+security/voice/presence/room-audio offline suites, isolated archive/doorbell SDK,
+keyboard/C++ bridge, Pi Desk,
+terminald, Android-monitor policies, departure-greeting, documentation, and Kasa,
+VeSync and ownership-fence synthetic-peer tests. Swift remains explicit opt-in.
+It is not every optional live/SwiftUI/platform test. Missing dependencies fail
+explicitly. Live tests are disabled, including inherited `JARVIS_LIVE_TESTS=1`.
+No Xcode project regeneration or device installation is performed.
 
 Prepare an **uninstalled** artifact only after the desired changes are committed:
 

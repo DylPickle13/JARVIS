@@ -182,6 +182,18 @@ if KIND == 'kasa':
             self.assertEqual(len(self.received), 1)
             self.assert_restored(dev)
 
+        async def test_batch_reads_cannot_recover_or_rewrite_fenced_catalogue(self):
+            controller = original.wrapper.SmartPlugController(types.SimpleNamespace(
+                plugs={'lamp': types.SimpleNamespace(host='127.0.0.1')}))
+            with mock.patch.object(controller, 'status', new_callable=mock.AsyncMock,
+                                   side_effect=OSError('synthetic read failure')), \
+                    mock.patch.object(original.wrapper, 'recover_failed_hosts',
+                                      new_callable=mock.AsyncMock) as recovery:
+                for _ in range(4):
+                    results = await controller.status_all()
+                    self.assertFalse(results['lamp']['ok'])
+                recovery.assert_not_awaited()
+
         async def test_save_discovery_is_closed_without_discovery_or_config_io(self):
             controller = object.__new__(original.wrapper.SmartPlugController)
             with mock.patch.object(controller, 'discover', new_callable=mock.AsyncMock) as discover:

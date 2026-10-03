@@ -692,13 +692,14 @@ removed after inspection, not stored in this repository.
 
 ```sh
 python3 -m unittest discover -s tests -v
+JAVA="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17}"
 mkdir -p /tmp/jarvis-monitor-policy-test
 "$JAVA/bin/javac" -d /tmp/jarvis-monitor-policy-test \
   android/src/local/jarvis/monitor/Policy.java tests/PolicyTest.java
 "$JAVA/bin/java" -cp /tmp/jarvis-monitor-policy-test PolicyTest
 ```
 
-Eighteen Python tests cover sanitization, auth, minimal/no-store responses, no proxy/write
+The offline Python suite covers sanitization, auth, minimal/no-store responses, no proxy/write
 routes, LAN-only peer admission, credential-free discovery advertisements and the ARP
 repair's frame construction, identity/subnet checks, fresh-reply requirement, bounded
 receive draining and fail-closed dispatch. Twenty standalone Java policy assertions cover transitions, debounce, stale,

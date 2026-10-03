@@ -69,7 +69,11 @@ This limitation is a functional deployment blocker, not an approval checkbox.
 `closed-vendor-pins.json` (`{"schema":1,"files":{...}}`). It never creates or
 recomputes accepted pins from current live files. `control_closed.run_closed()`:
 
-- Verifies all 12 staged vendor package files and mandatory reviewed mutator hashes.
+- Verifies all 13 staged vendor package files and mandatory reviewed mutator hashes.
+  The re-reviewed DHCP-recovery candidate retains its helper module but suppresses
+  recovery in fenced `status_all` reads: ownership-bound catalogue targets cannot
+  be rewritten automatically. Standalone batch recovery is unchanged; the
+  ownership stack remains uninstalled.
 - Opens healthy existing ledger history **CLOSED**, advances incarnation/epochs,
   preserves reservations/uncertainty, and holds the owner lease while serving.
 - Refuses busy or corrupt history; does not repair, delete or recreate it.

@@ -830,12 +830,15 @@ old `python -m jarvis_security...` paths have been removed by consolidation.
 
 ## Not exposed by this CLI
 
-Pairing/unpairing, formatting, factory reset, firmware changes, recording schedules,
-clip listing/download, RTSP viewing, live microphone streaming, tracking, presets, zones, notification
-rules, and general raw vendor RPCs. Separate experimental archive and recording-plan
-scripts are described in [README.md](README.md); they are not CLI/backend commands.
-These capabilities are not all exposed by the pinned SDK;
-unsafe guesses at undocumented write endpoints are not used. Offline sensor/frame
-contracts are retained in the same file. Sensor snapshots are now available as
-above, but no continuous sensor tracker or video pipeline is connected. Add functionality only after its protocol and safeguards are
-understood and its commissioning is approved.
+Pairing/unpairing, formatting, factory reset, firmware changes, tracking/presets/zones,
+quick-response playback, real-time event delivery, and arbitrary raw vendor RPCs
+remain unavailable. Native camera RTSP configuration is not exposed or verified.
+
+The allowlisted live/snapshot, recording-plan, archive-index/clip, speaker-audio,
+saved-response upload and cloud Smart Actions commands documented above **are**
+CLI features. They are not backend media/write routes; jarvisd exposes on-demand
+security status only. The CLI itself installs no continuous sensor tracker or
+video daemon. Separately authorized pollers, departure trials and Android viewers
+have their own deployment and acceptance boundaries in [README.md](README.md).
+Add functionality only after its protocol and safeguards are understood and its
+commissioning is approved; never guess undocumented write endpoints.
