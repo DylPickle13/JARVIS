@@ -5,11 +5,16 @@ No Razer app, OpenRazer driver, pip dependency, or extra resident service is use
 The existing custom Karabiner package is extended, not replaced with a different
 mouse-control app.
 
-## Status (2026-09-25)
+## Status (deployed 2026-09-25; button mapping updated 2026-10-03)
 
-- **Live:** wheel click (`button3`) and side buttons 4/5 suppressed by Karabiner.
-  The active rule matches `mappings/razer-side-buttons-disabled.json`; keyboard
-  mappings remain unchanged.
+- **Live:** side button `button4` launches/focuses Spotify; `button5`
+  launches/focuses Google Chrome. Wheel click (`button3`) remains suppressed.
+  The active rule matches `mappings/razer-app-launchers.json`; keyboard mappings,
+  device settings and lighting automation remain unchanged. Karabiner reloaded
+  the configuration and both launcher commands passed foreground checks.
+  The owner confirmed both physical side-button shortcuts work. The former
+  `mappings/razer-side-buttons-disabled.json` remains an alternative, not an
+  additional active rule. See [mapping deployment and rollback](../mappings/README.md).
 - **Implemented:** authenticated `--jarvis-razer` IPC, exact interface matching,
   async feature set/get using Karabiner's already-owned mouse handle, validated
   device replies, independent persistent uncertainty journal, Python CLI.
@@ -65,7 +70,7 @@ retained for offline tests, not exposed as a write backend.
 | Logo lighting brightness | 0–100% | Yes, raw 0–255 and rounded percentage |
 | Sensitivity | X/Y 100–6400 DPI | Yes |
 | Polling rate | 125, 500, 1000 Hz | Yes |
-| Buttons | Karabiner mappings; wheel click and side buttons currently disabled | EventViewer when authorized |
+| Buttons | Karabiner: button4 Spotify, button5 Chrome; wheel click disabled | EventViewer when authorized |
 
 Lighting writes and brightness/DPI/polling queries have been acknowledged on this
 unit. The owner visually confirmed breathing and normal clicking/scrolling.
@@ -191,6 +196,9 @@ Interface 0, feature report ID 0, 90 bytes (no synthetic ID prefix in native IOK
 Lighting transaction `3f`; DPI/poll transaction `ff`. Logo LED `04`;
 XOR bytes 2–87 at byte 88. Read-only query opcodes are allowlisted individually.
 
-To undo wheel-click/side-button suppression, remove or disable the named rule in
-Karabiner Complex Modifications. Disabling Modify events also prevents the owned-handle bridge
-from selecting that interface. Never restore an old full config over newer edits.
+To undo app shortcuts and wheel-click suppression, remove or disable the named
+Razer rule in Karabiner Complex Modifications. To restore the former all-three-button
+suppression instead, replace only this rule with the alternative documented in
+[mappings](../mappings/README.md); do not enable both overlapping rules.
+Disabling Modify events also prevents the owned-handle bridge from selecting
+that interface. Never restore an old full config over newer edits.

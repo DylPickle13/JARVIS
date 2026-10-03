@@ -1,0 +1,28 @@
+{
+  "title": "Razer DeathAdder Essential 2021 — application shortcuts",
+  "rules": [
+    {
+      "description": "Razer DeathAdder Essential: button4 Spotify, button5 Chrome; wheel click disabled",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": {"pointing_button": "button4", "modifiers": {"optional": ["any"]}},
+          "to": [{"shell_command": "/usr/bin/open -b com.spotify.client"}],
+          "conditions": [{"type": "device_if", "identifiers": [{"vendor_id": 5426, "product_id": 152, "is_pointing_device": true}]}]
+        },
+        {
+          "type": "basic",
+          "from": {"pointing_button": "button5", "modifiers": {"optional": ["any"]}},
+          "to": [{"shell_command": "/usr/bin/open -b com.google.Chrome"}],
+          "conditions": [{"type": "device_if", "identifiers": [{"vendor_id": 5426, "product_id": 152, "is_pointing_device": true}]}]
+        },
+        {
+          "type": "basic",
+          "from": {"pointing_button": "button3", "modifiers": {"optional": ["any"]}},
+          "to": [{"key_code": "vk_none"}],
+          "conditions": [{"type": "device_if", "identifiers": [{"vendor_id": 5426, "product_id": 152, "is_pointing_device": true}]}]
+        }
+      ]
+    }
+  ]
+}

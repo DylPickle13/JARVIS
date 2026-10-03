@@ -10,22 +10,33 @@ Mac-side keyboard and mouse remapping using [Karabiner-Elements](https://karabin
 - Required permissions are granted; the virtual HID driver is activated and enabled.
 - Core service recognizes the AK820 and loaded the active profile update.
 - Active mapping: AJAZZ AK820 mute media key → Play/Pause, scoped to vendor ID `12815` / product ID `20571`.
+- Active mouse mapping: Razer DeathAdder Essential 2021 button 4 → Spotify, button 5 → Google Chrome; wheel click remains disabled. Both commands launch the app if needed or bring it to the foreground.
 - Rule passes Karabiner's complex-modification linter. An authorized knob-press inspection confirmed `consumer_key_code: mute`; EventViewer was then closed.
 - Initial mapping still muted. Enabled Modify events (`ignore: false`) for the AK820 combined keyboard/pointing interface only; core-service logs confirm both AK820 interfaces are now grabbed. Sir confirmed the knob press now triggers Play/Pause.
 
 To disable the mapping, remove or disable its rule in Karabiner-Elements **Complex Modifications**. [Official installation and permissions guide](https://karabiner-elements.pqrs.org/docs/getting-started/installation/).
 
-## Devices planned
+## Device mappings
 
-| Device | Input | Planned action |
+| Device | Input | Action |
 | --- | --- | --- |
 | AJAZZ AK820 | Knob press (`mute` media key) | Play/Pause (active; user confirmed working) |
 | AJAZZ AK820 | Knob rotation | Keep volume control |
-| Razer DeathAdder Essential 2021 (`1532:0098`) | Wheel click (`button3`) and two side buttons (`button4`/`button5`) | Disabled via Karabiner |
+| Razer DeathAdder Essential 2021 (`1532:0098`) | Side button `button4` | Launch/focus Spotify |
+| Razer DeathAdder Essential 2021 (`1532:0098`) | Side button `button5` | Launch/focus Google Chrome |
+| Razer DeathAdder Essential 2021 (`1532:0098`) | Wheel click (`button3`) | Disabled via Karabiner |
 
 AJAZZ vendor/product identifiers were obtained from Karabiner's connected-device inventory. An authorized knob-press inspection confirmed `mute`. The rule matches only this vendor/product pair. The combined keyboard/pointing interface requires Modify events enabled as well as the keyboard-only interface. Any other mute key emitting the same event on this device would also be remapped.
 
-External mice require **Devices → Modify events** before Karabiner can remap them. This is now enabled for the Razer pointing interface. `razer-side-buttons-disabled.json` suppresses buttons 3/4/5, including with modifiers; normal left/right clicks, scrolling and movement are unchanged by the rule. The live configuration was backed up before the rule was added. See [Razer lighting status and limitations](../docs/RAZER.md).
+External mice require **Devices → Modify events** before Karabiner can remap them. This is enabled for the Razer pointing interface. The active portable rule is [`razer-app-launchers.json`](razer-app-launchers.json): button 4 runs `/usr/bin/open -b com.spotify.client`, button 5 runs `/usr/bin/open -b com.google.Chrome`, and button 3 remains suppressed. All three match with optional modifiers. Normal left/right clicks, scrolling and movement are unchanged. No firmware/HID write, new service, or lighting change is involved. See [Razer lighting status and limitations](../docs/RAZER.md).
+
+The former [`razer-side-buttons-disabled.json`](razer-side-buttons-disabled.json) is retained as a **mutually exclusive alternative**, not an additional active rule. To restore suppression, replace only the current Razer rule with that file's rule; do not enable both or restore an old full configuration over newer edits.
+
+### Side-button deployment (2026-10-03)
+
+The owner authorized the app shortcuts, then requested the reversed assignment: **button 4 → Spotify and button 5 → Chrome**. The original pre-change live configuration was backed up under `~/Library/Application Support/JARVIS/keyboard-deploy/mouse-app-shortcuts-20261003T165103Z/karabiner.json`; the interim assignment was backed up before reversal under `~/Library/Application Support/JARVIS/keyboard-deploy/mouse-app-shortcuts-reverse-20261003T165441Z/karabiner.json`. Only the existing Razer rule's description and button 4/5 actions changed. The wheel-click action, AK820 mapping, device settings and other configuration were compared with the backup and remain identical.
+
+Karabiner's linter accepted the portable rule and the running service reloaded the live configuration without a restart. Both exact launcher commands were tested; `NSWorkspace` confirmed Chrome and Spotify respectively became the foreground app. The owner subsequently confirmed both physical side-button shortcuts work. No input capture or synthetic button presses were performed.
 
 [Mouse-button documentation](https://karabiner-elements.pqrs.org/docs/help/how-to/mouse-button/)
 
