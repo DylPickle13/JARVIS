@@ -75,12 +75,20 @@ An empty acknowledgement text suppresses it.
 `JARVIS_ROOM_AUDIO_GREETING_ENABLED=0` disables startup, reconnect, **and arrival**
 greetings. It does not disable the separate `Yes sir?` wake acknowledgement.
 `JARVIS_ROOM_AUDIO_GREETING_TEXT` overrides startup/reconnect wording, not the fixed
-arrival phrase. Contextual greetings retain their Toronto-time selection, cooldown,
-and optional status suffixes (`JARVIS_VOICE_GREETING_INCLUDE_STATUS`).
+arrival phrase. Scripted morning, afternoon, evening, and late-night greetings
+have been removed. Ordinary startup/reconnect uses the neutral online announcement;
+the saved Mac speaker startup override remains unchanged. Quick-return greetings
+retain their cooldown (`JARVIS_VOICE_GREETING_COOLDOWN_MINUTES`) and optional
+status suffixes (`JARVIS_VOICE_GREETING_INCLUDE_STATUS`). The clock is used only
+for that cooldown, not to select time-of-day wording.
 
 Failure notices distinguish an incomplete request from a completed response that
 could not be rendered. Completion is recorded explicitly; speculative text is not
-proof that a response is ready.
+proof that a response is ready. Error messages intentionally keep their exact
+wording and must not participate in announcement variation banks:
+
+- Request failure: “I couldn't complete that request, sir.”
+- Speech failure after a completed reply: “Your response is ready, sir, but I couldn't speak it.”
 
 The protected doorbell farewell intentionally remains in
 `security/departure-greeting/runtime.py`. Its status output shares that constant;

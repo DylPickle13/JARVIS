@@ -8,7 +8,7 @@ Mac-side room_audio_server.py, plays the immediate processing acknowledgement,
 then polls and plays the final JARVIS WAV response. In USB full-duplex mode it
 keeps capture active and sends short busy-only interruption clips so an exact
 spoken "stop" can cancel generation and playback. The VAD listener can also play
-a contextual JARVIS greeting after startup or Bluetooth/capture recovery.
+a JARVIS connection greeting after startup or Bluetooth/capture recovery.
 """
 
 from __future__ import annotations

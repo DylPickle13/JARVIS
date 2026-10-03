@@ -1,4 +1,5 @@
 """Offline regressions; inference, household audio, and sessions are mocked."""
+from datetime import datetime
 from pathlib import Path
 import tempfile
 import threading
@@ -6,6 +7,7 @@ import time
 import unittest
 from unittest import mock
 import wave
+from zoneinfo import ZoneInfo
 
 import room_audio_server as server
 from voice_pipeline import VoicePipeline, VoicePipelineConfig
@@ -50,6 +52,18 @@ class RoomGreetingTests(unittest.TestCase):
                 self.assertTrue(bridge._synthesize_wake_ack())
             bridge._pipeline.synthesize_notice.assert_called_once_with("Yes sir?")
             self.assertFalse(path.exists())
+
+    def test_default_startup_is_neutral_and_preserves_connection_bookkeeping(self):
+        now = datetime(2026, 10, 3, 10, tzinfo=ZoneInfo("America/Toronto"))
+        with mock.patch.object(server, "ROOM_GREETING_ENABLED", True), \
+             mock.patch.object(server, "ROOM_GREETING_TEXT", ""), \
+             mock.patch.object(server.voice_pipeline, "voice_local_now", return_value=now), \
+             mock.patch.object(server, "_load_room_greeting_state_unlocked", return_value={}), \
+             mock.patch.object(server, "_save_room_greeting_state_unlocked") as save, \
+             mock.patch.object(server.voice_pipeline.random, "choice") as choose:
+            self.assertEqual(server.select_room_greeting(), "JARVIS online. At your service, sir.")
+        save.assert_called_once_with({"last_connected_at": now.isoformat()})
+        choose.assert_not_called()
 
     def test_room_ack_configuration_is_forwarded_to_pipeline(self):
         with mock.patch.dict(server.os.environ, {"JARVIS_ROOM_AUDIO_SHARED_SESSION": ""}), \

@@ -65,6 +65,12 @@ def parse_voice_greeting_timestamp(value: object) -> datetime | None:
 
 
 def format_contextual_greeting(now: datetime, last_connected_at: datetime | None) -> str:
+    """Connection-aware greeting; the clock is used only for quick-return cooldown.
+
+    The existing formatter name is retained for room callers. Time-of-day
+    greetings are deliberately absent; ordinary connections use the neutral
+    online announcement, while quick-return wording remains unchanged.
+    """
     if last_connected_at is not None:
         elapsed = now - last_connected_at
         if timedelta(0) <= elapsed <= timedelta(minutes=JARVIS_VOICE_GREETING_COOLDOWN_MINUTES):
@@ -73,17 +79,7 @@ def format_contextual_greeting(now: datetime, last_connected_at: datetime | None
                 return base
             suffixes = (*JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES, voice_lines.QUICK_RETURN_EXTRA_SUFFIX)
             return f"{base} {random.choice(suffixes)}"
-    if 5 <= now.hour < 12:
-        base = random.choice(voice_lines.MORNING_GREETINGS)
-    elif 12 <= now.hour < 18:
-        base = random.choice(voice_lines.AFTERNOON_GREETINGS)
-    elif 18 <= now.hour < 24:
-        base = random.choice(voice_lines.EVENING_GREETINGS)
-    else:
-        base = random.choice(voice_lines.LATE_NIGHT_GREETINGS)
-    if not JARVIS_VOICE_GREETING_INCLUDE_STATUS:
-        return base
-    return f"{base} {random.choice(JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES)}"
+    return voice_lines.FALLBACK_GREETING
 
 
 def normalize_voice_transcript_wake_words(transcript: str) -> str:

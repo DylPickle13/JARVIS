@@ -10,6 +10,7 @@ PROCESSING_ACK = "Generating your response, sir."
 FALLBACK_GREETING = "JARVIS online. At your service, sir."
 ARRIVAL_GREETING = "Welcome back, sir"
 MAC_STARTUP_GREETING = "The Mac room speaker is online, sir."
+# Failure notices intentionally stay fixed; do not include them in variation banks.
 REQUEST_FAILURE = "I couldn't complete that request, sir."
 RENDER_FAILURE = "Your response is ready, sir, but I couldn't speak it."
 
@@ -18,10 +19,6 @@ QUICK_RETURN_GREETINGS = (
     "Returned so soon, sir?",
     "Welcome back, sir. That was quick.",
 )
-MORNING_GREETINGS = ("Good morning, sir.", "Morning, sir.")
-AFTERNOON_GREETINGS = ("Good afternoon, sir.", "Afternoon, sir.")
-EVENING_GREETINGS = ("Good evening, sir.", "Evening, sir.")
-LATE_NIGHT_GREETINGS = ("You're up late, sir.", "Late night, sir.")
 GREETING_STATUS_SUFFIXES = (
     "JARVIS online.",
     "Systems are online.",
