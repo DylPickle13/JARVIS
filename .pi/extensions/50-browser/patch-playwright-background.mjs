@@ -89,18 +89,26 @@ const launchAnchor=`(0, import_child_process5.spawn)(executablePath, args, {
           shell: false,
           stdio: "ignore"
         });`;
+const oldLauncherExit = 'launcher.once("exit", code => { clearTimeout(timer); code===0 ? resolve() : reject(new Error("Automation launcher failed before publishing window identity")); });';
+const launcherExit = 'launcher.once("exit", code => { clearTimeout(timer); code===0 ? resolve() : reject(new Error(code===3 ? "Background-only policy: fresh Chrome handshake blocked; ask sir before supervised reconnection" : "Automation launcher failed before publishing window identity")); });';
 const launchPatch=`// JARVIS_LAUNCHER_ACK_V1
         const launcher = ${launchAnchor}
         if (executablePath.endsWith("launch-extension-in-automation-window.py")) {
           await new Promise((resolve, reject) => {
             const timer=setTimeout(() => { launcher.kill(); reject(new Error("Automation launcher acknowledgement timed out")); },35000);
             launcher.once("error", () => { clearTimeout(timer); reject(new Error("Automation launcher failed to start")); });
-            launcher.once("exit", code => { clearTimeout(timer); code===0 ? resolve() : reject(new Error("Automation launcher failed before publishing window identity")); });
+            ${launcherExit}
           });
         }`;
 if (!source.includes('JARVIS_LAUNCHER_ACK_V1')) {
   if (source.split(launchAnchor).length!==2) throw new Error('Launcher acknowledgement patch anchor changed');
   source=source.replace(launchAnchor,launchPatch);
+}
+
+// Upgrade the acknowledgment in an already-patched pinned bundle as well.
+if (!source.includes(launcherExit)) {
+  if (source.split(oldLauncherExit).length !== 2) throw new Error('Launcher denial patch anchor changed');
+  source=source.replace(oldLauncherExit,launcherExit);
 }
 
 // Minimal transport diagnostics: fixed event names, numeric IDs and allowlisted

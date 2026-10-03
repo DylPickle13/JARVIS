@@ -81,6 +81,9 @@ try:
     assert call(B, '/extract', {'selector': '#out'})['text'] == 'BRAVO'
     # Opt-in disruption: reload ONLY the verified connection anchor. No user
     # pages are reloaded. The daemon must recover before any fixture action.
+    # Use Chrome's reload command, NOT `set URL of t to URL of t`: the setter
+    # uses a browser-initiated OpenURL/user gesture and explicitly shows its
+    # window, contaminating any focus/Space test before reconnect even starts.
     for attempt in range(int(os.environ.get('JARVIS_TEST_RECONNECTS', '0'))):
         metadata=json.loads((Path.home()/'.jarvis/extension-window.json').read_text())
         window_id, anchor_id=metadata['windowId'],metadata['connectionTabId']
@@ -89,7 +92,7 @@ try:
           set w to first window whose id is {window_id}
           set t to first tab of w whose id is {anchor_id}
           if not ((URL of t starts with "chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html") and (URL of t ends with "#jarvis-automation-anchor-v2")) then error "Not the automation anchor"
-          set URL of t to URL of t
+          reload t
         end tell'''
         subprocess.run(['/usr/bin/osascript','-e',script],check=True,capture_output=True,timeout=20)
         time.sleep(1)

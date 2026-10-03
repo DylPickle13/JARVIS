@@ -78,6 +78,29 @@ test('wrong anchor identity fails before any cleanup',async()=>{
   await assert.rejects(f.run(),/identity mismatch/);
   assert.deepEqual(f.events,[]);
 });
+test('native connection never invokes AppleScript verification or focus restoration', async()=>{
+  const window={windowId:7,connectionTabId:20,connectionMode:'jarvis-background-native-v1',previousFrontWindowId:99,previousFrontApp:'com.example.editor'};
+  for (const name of ['assertWindow','restoreConnectionFocus']) {
+    const source=ExtensionBrowserBackend.prototype[name].toString().replace(`async ${name}(`,'async function(');
+    const run=vm.runInNewContext(`(${source})`,{execFileAsync:()=>assert.fail('Native mode must not send AppleEvents')});
+    await run.call({window});
+  }
+  // Skipping AppleEvents is not skipping identity checks: the relay inventory
+  // still verifies the anchor/window on every action (covered by backend tests).
+});
+
+test('background-only handshake denial is not retried as a transport failure', async()=>{
+  const backend = new ExtensionBrowserBackend({});
+  let attempts = 0;
+  backend.prepare = async()=>{
+    attempts++;
+    throw new Error('Background-only policy: fresh Chrome handshake blocked; ask sir before supervised reconnection');
+  };
+  backend.reset = async()=>assert.fail('Policy refusal must not trigger reconnection');
+  await assert.rejects(backend.prepareWithRecovery(), /Background-only policy/);
+  assert.equal(attempts, 1);
+});
+
 test('prepare detects a silently replaced MCP connection despite connected=true',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'jarvis-browser-epoch-'));
   t.after(()=>rm(dir,{recursive:true,force:true}));

@@ -31,13 +31,20 @@ created_id = None
 try:
     baseline = call('/tabs',{'action':'list'})
     window = baseline['automationWindow']['windowId']
-    # Simulate a user opening a tab, outside the bridge's creation history/group.
-    script = f'''tell application "Google Chrome"
-      set w to first window whose id is {window}
-      set t to make new tab at end of tabs of w with properties {{URL:"http://127.0.0.1:{server.server_port}/"}}
-      return id of t
-    end tell'''
-    created_id = int(subprocess.check_output(['/usr/bin/osascript','-e',script],text=True).strip())
+    background_only = os.environ.get('JARVIS_TEST_BACKGROUND_RECOVERY') == '1'
+    if background_only:
+        # For focus acceptance, avoid AppleScript's foregrounding OpenURL path.
+        # This mode tests bridge restart recovery, not external-tab creation.
+        created_id = call('/open', {'url':f'http://127.0.0.1:{server.server_port}/','newTab':True})['tabId']
+    else:
+        # Simulate a user opening a tab outside the bridge's creation history.
+        # This setup action may itself show Chrome; do not use for focus tests.
+        script = f'''tell application "Google Chrome"
+          set w to first window whose id is {window}
+          set t to make new tab at end of tabs of w with properties {{URL:"http://127.0.0.1:{server.server_port}/"}}
+          return id of t
+        end tell'''
+        created_id = int(subprocess.check_output(['/usr/bin/osascript','-e',script],text=True).strip())
     status = call('/tabs',{'action':'list'})
     page = next(p for p in status['pages'] if p['tabId']==created_id)
     call('/tabs',{'action':'switch','index':page['index']})
@@ -49,7 +56,7 @@ try:
     call('/tabs',{'action':'switch','index':page['index']})
     call('/click',{'selector':'#read'})
     assert call('/extract',{'selector':'#out'})['text']=='Unsaved draft survives reconnect'
-    print('PASS: externally opened automation tab discovered; Chrome ID and unsaved input survive bridge restart')
+    print('PASS: '+('background-created fixture recovered' if background_only else 'externally opened automation tab discovered')+'; Chrome ID and unsaved input survive bridge restart')
 finally:
     if created_id is not None:
         status = call('/tabs',{'action':'list'})

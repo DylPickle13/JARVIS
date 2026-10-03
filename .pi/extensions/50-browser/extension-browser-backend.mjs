@@ -315,6 +315,10 @@ export class ExtensionBrowserBackend {
   async assertWindow() {
     const {windowId,connectionTabId}=this.window || {};
     if (![windowId,connectionTabId].every(Number.isSafeInteger)) throw new Error('Automation window identity missing');
+    // Native-mode preparation and the immediately following relay inventory
+    // both verify these IDs through the authenticated extension. Do not send
+    // AppleEvents: macOS may launch Chrome if it exits during a read-only check.
+    if (this.window.connectionMode === 'jarvis-background-native-v1') return;
     const script=`tell application "Google Chrome"
       set w to first window whose id is ${windowId}
       set foundAnchor to false
@@ -341,7 +345,7 @@ export class ExtensionBrowserBackend {
   }
   async restoreConnectionFocus() {
     const w=this.window;
-    if (!w?.previousFrontWindowId) return;
+    if (w?.connectionMode === 'jarvis-background-native-v1' || !w?.previousFrontWindowId) return;
     const script=`on run argv
       tell application "System Events" to set currentApp to bundle identifier of first application process whose frontmost is true
       if currentApp is not "com.google.Chrome" then return

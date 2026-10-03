@@ -3,8 +3,9 @@
 ## Active local setup
 
 The authenticated localhost daemon retains the original `browser_*` HTTP interface.
-The extension backend uses Microsoft's Playwright extension in the user's normal
-Chrome profile, inside the **JARVIS Browser — Automation Only** window. One connection
+The extension backend uses the reviewed local JARVIS adaptation of Microsoft's
+Playwright extension in the user's normal Chrome profile, inside the
+**JARVIS Browser — Automation Only** window. One connection
 tab doubles as its anchor for each transport generation; reconnects replace only
 that internal anchor, never the work tabs. It does not
 use Chrome's remote-debugging toggle or a second user-data directory.
@@ -109,8 +110,9 @@ it does not necessarily mean the user clicked anything.
 ## Window and focus isolation
 
 `launch-extension-in-automation-window.py` reuses only the **recorded native
-window ID**, or creates a new dedicated window if that ID no longer exists.
-It never follows a moved marker or a matching page title into a personal window.
+window ID**. It now refuses to create a replacement window if that ID is missing:
+a replacement could open on the user's working Space. It never follows a moved
+marker or a matching page title into a personal window.
 Every handshake creates a fresh connection tab, with obsolete internal anchors
 removed after safe cleanup. It never logs token-bearing URLs. The daemon verifies
 the connection tab's native ID, window ID, official extension URL, and anchor
@@ -133,13 +135,79 @@ The patch is applied by `postinstall`, is idempotent, checks the exact Playwrigh
 version/anchors, and is required by the backend at startup. Review it before
 upgrading Playwright. Do not use `npm install --ignore-scripts` for deployment.
 
-**Connection caveat:** the official installed extension itself explicitly focuses
-Chrome on a fresh handshake. JARVIS restores the previously foreground window/app
-when possible, but a brief focus change during initial connection/reconnection is
-still possible. Normal navigation and interaction do not require foregrounding.
-No Chrome restart or macOS reboot was forced during testing; bridge restarts and
-token-authenticated reconnection were tested. Reboot/login behavior still needs a
-real-world check after the user's next restart.
+**Background-only connection policy:** the official extension explicitly calls
+`chrome.windows.update(..., {focused:true})` on a fresh handshake. Restoring focus
+afterward is not isolation. The installed local build instead uses the reviewed
+native path below for automatic fresh handshakes, with no focus API or AppleEvent.
+If that endpoint is absent, the launcher blocks **stock handshakes by default,
+before any AppleEvent**, including implicit MCP reconnects and Chrome cold starts.
+Existing connections are not terminated by this guard. A denied stock launch
+exits with code 3; older running relay code may show
+the generic `Automation launcher failed before publishing window identity` error.
+Do not retry by using stock Chrome, CDP, or a new profile to bypass this guard.
+
+This guard is read from disk on each launch and needs no daemon/Chrome restart.
+It prevents the known stock handshake focus operation; it is **not proof that
+every normal action is focus-free**. The local build passed the supervised live
+checks below, but polling cannot prove an absolute no-switch guarantee.
+No disruptive live testing should run while sir is working.
+
+**Spaces are manual, not enforced:** keep the existing automation window on
+Desktop 2 and personal windows on Desktop 1, using the same signed-in profile.
+The bridge tracks a Chrome window ID, not a macOS Space. It cannot verify or repair
+Space placement, and closing/restarting Chrome invalidates that identity. Do not
+assign the whole Chrome application to a Space. Never claim permanent Space
+isolation or automatic silent reconnection with the stock extension.
+
+### Stock fallback: explicit supervised reconnection only
+
+This allowance is not needed for the installed reviewed native path. If stock
+fallback is deliberately required, ask sir for a maintenance window; it **may
+switch Spaces**. Verify the recorded automation window still exists and sir has
+placed it on Desktop 2. Only then, using that verified numeric window ID:
+
+```sh
+python3 .pi/extensions/50-browser/launch-extension-in-automation-window.py \
+  --allow-once --window-id VERIFIED_ID --acknowledge-focus-change
+# Within 60 seconds, make one browser request to establish the connection.
+```
+
+The owner-only 0600 allowance in `~/.jarvis/browser-reconnect-once.json` is consumed
+atomically before attempting the handshake, even if the attempt fails. It expires
+after 60 seconds, is tied to the recorded window ID, and is never automatically
+renewed. Remove the allowance file to cancel it before use. Missing/invalid window
+identity or a closed window still fails; the launcher never creates a new one.
+This is a shared bridge allowance, not a client-specific permission: pause other
+browser clients during supervised setup. Rebuilding a missing window/identity is
+manual maintenance, not automatic recovery.
+
+### Silent automatic reconnect: installed local build
+
+Installed with sir's approval on **2026-10-03**:
+[`background-extension/README.md`](background-extension/README.md) documents the
+reviewed `0.4.0-jarvis-background-2` build at
+`~/.jarvis/browser-background-extension-v2`, and its registered native helper.
+It removes the stock focus call and pins new tab groups to the automation window
+(the stock grouping API otherwise defaults to the foreground window). A native
+pipe creates **inactive connection tabs in the existing recorded window**, with
+no AppleScript, window creation, focus restoration, or foreground fallback after
+uncertain outcomes. Same profile, extension ID and existing token; the only added
+permission is `nativeMessaging`. Chrome itself was not restarted.
+
+**Supervised verification:** 62 offline checks passed (43 Node, 19 Python).
+Seven automatic forced reconnects (five with personal Chrome foreground, two with
+VS Code foreground), two bridge-restart recovery tests and full interaction runs
+passed. Foreground app, personal window/tab and both displays' active Spaces were
+unchanged in sampled telemetry. Unsaved input and Chrome tab IDs survived recovery.
+Sir confirmed the final tests stayed invisible on 2026-10-03. Acceptance is
+complete; no universal no-switch guarantee or automatic Space placement is claimed.
+
+The first live build exposed and failed closed on tab-group window drift; v2 fixes
+it and adds attachment-callback regression tests. An initial stress test also
+switched Spaces because its AppleScript **URL setter explicitly shows Chrome**.
+The corrected test uses the actual `reload` command; production reconnects do not
+use either AppleScript operation. Installation's `chrome://extensions` tab was
+removed before inventory tests because privileged Chrome pages are not debuggable.
 
 ## Automation-window tab recovery
 
@@ -178,6 +246,12 @@ restore unsaved forms if Chrome itself discards/reloads/closes the underlying ta
 
 ## Setup / restart / checks
 
+The unit suite is non-disruptive. The live examples below are **maintenance-only**:
+reconnect/restart stress tests require a supervised maintenance window and must
+not be used while sir is working. Normal native reconnects are automatic; do not
+grant stock allowances in test scripts. Historical results below are distinct
+from the current local-build acceptance results above.
+
 ```sh
 cd /Users/dylanrapanan/JARVIS
 npm --prefix .pi/extensions/50-browser ci
@@ -192,16 +266,28 @@ JARVIS_TEST_BROWSER_URL=http://127.0.0.1:17323 \
 # Opt-in chaos test: reloads the internal anchor five times; never reloads work tabs.
 JARVIS_TEST_RECONNECTS=5 JARVIS_TEST_BROWSER_URL=http://127.0.0.1:17323 \
   python3 .pi/extensions/50-browser/test-multi-session-live.py
-# Opt-in: restarts the live bridge; only opens/closes its own local fixture tab.
-JARVIS_TEST_BROWSER_URL=http://127.0.0.1:17323 \
-  python3 .pi/extensions/50-browser/test-window-tab-recovery.py
+# Focus + per-display Space telemetry, with a personal Chrome window first:
+JARVIS_TEST_RECONNECTS=5 python3 .pi/extensions/50-browser/test-extension-focus.py \
+  --spaces --script test-multi-session-live.py
+# Opt-in bridge restart; background-created fixture avoids foregrounding setup:
+JARVIS_TEST_BACKGROUND_RECOVERY=1 python3 .pi/extensions/50-browser/test-extension-focus.py \
+  --spaces --script test-window-tab-recovery.py
 ```
 
 The live test uses a temporary localhost fixture and temporary upload file, not an
 external account or personal tab. The focus test checks the foreground application,
 Chrome window, and selected tab throughout the fixture test. `--fixture-window`
 uses and removes a disposable blank non-automation window, avoiding personal tabs.
-Without that option, the personal window must already be in front.
+Without that option, the personal window must already be in front. A changing
+sample is not by itself proof of automation theft: user-initiated app/tab changes
+also fail this test. `--spaces` compiles `test-space-snapshot.swift` temporarily
+and reads every display's active Space via a private macOS API (read-only,
+maintenance test only, not production enforcement). Failure to read it fails the
+test. `--script` selects a fixed fixture; the most recent sample report is saved
+under `.pi/runtime/browser-extension-review/focus-last-report.json` with only
+bundle/window/tab/Space IDs, not page content or connection tokens.
+Conversely, polling can miss brief switches; neither a pass
+nor restoring the final foreground state establishes an absolute no-switch guarantee.
 
 The protocol-v2 unit suite covers independent client identities/selections,
 shared inventory, interleaved actions, queue serialization, lease conflicts and
@@ -209,7 +295,7 @@ handoff, expiry, stale indexes, closed tabs, keyboard shortcuts, navigation fail
 transport fencing, lifecycle cleanup, and older-bridge rejection. The opt-in
 multi-session live test creates only two localhost fixture tabs and removes them.
 
-Final verification on the local bridge: 32 Node browser/client/lifecycle tests,
+Historical verification before the local background extension: 32 Node browser/client/lifecycle tests,
 4 Python launcher tests, and 7 lazy-loader regression tests passed. The live soak
 completed two consecutive five-reconnect cycles (10 deliberate anchor reloads),
 including a bridge restart between cycles, plus both full localhost fixture runs.
