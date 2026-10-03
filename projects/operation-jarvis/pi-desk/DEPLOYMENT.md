@@ -1,3 +1,44 @@
+# Heavy session borders — 2026-10-03, 12:29 EDT
+
+Switched `pane-border-lines` from `single` to `heavy`: horizontal lines,
+vertical dividers and junctions now use thicker single-stroke UTF-8 glyphs
+(`━`, `┃`, `┳`) rather than double lines. The shared `#8a8a8a` grey, white session
+labels, purple active badge, layout and shortcuts are unchanged. Each border
+still occupies one terminal cell; non-UTF-8 terminals retain tmux's ACS fallback.
+
+**137 source tests passed**, including an isolated PTY check for the actual heavy
+horizontal/vertical/junction glyphs and focus/layout checks in all three widths.
+Applied only the line-type option live, with a local config/manifest/cache update.
+Verified heavy lines, unchanged grey and white labels in every display pane;
+**9 display/10 hosted-agent identities** and attached clients were preserved.
+No viewers, agents, services or remote installs restarted. Existing unrelated
+manifest mismatches and unrelated working-tree files were left untouched.
+
+Rollback backup: `~/.local/state/pi-desk/backups/heavy-session-borders-20261003T162947796627Z/`.
+
+# Uniform session border grey — 2026-10-03, 12:23 EDT
+
+Horizontal title-row lines, vertical dividers and shared junctions now all use
+explicit true-colour grey **`#8a8a8a`** on `#1e1e1e`, in both focus states. The
+previous configuration emitted the same `colour240` for all three orientations;
+an isolated PTY capture confirmed this, so the reported visible mismatch was not
+separate tmux colour settings. Terminal contrast/glyph rendering is the likely
+explanation, not a confirmed visual diagnosis. The new grey provides **4.83:1**
+contrast (previously 2.34:1), clearing VS Code's default 4.5:1 adjustment threshold.
+Terminal-wide settings and the white-title/purple-badge styling are unchanged.
+
+**136 source tests passed**, including shared-grey and contrast regression checks.
+An isolated PTY using the installed config verified that horizontal, vertical and
+junction glyphs emitted identical RGB foreground/background and no bold/dim
+attributes across three focus states. Live verification confirmed the shared
+style in every display window and pane, preserving **9 display/10 hosted-agent
+identities** and attached clients. Only the local config, its manifest entry and
+matching config-cache marker were updated. The two unrelated existing manifest
+mismatches were preserved. No viewers, agents, services or remote installs were
+restarted.
+
+Rollback backup: `~/.local/state/pi-desk/backups/uniform-border-grey-20261003T162334502978Z/`.
+
 # Selected white title contrast — 2026-10-03, 10:14 EDT
 
 The selected title already requested white, but the original bright purple badge

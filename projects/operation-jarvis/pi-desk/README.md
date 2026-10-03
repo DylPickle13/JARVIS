@@ -28,11 +28,12 @@ The persistent `PI-DESK` top row uses the JARVIS app's dark accent purple
 title is a bold deeper-purple (`#8D4CA3`) badge with white text. This keeps white
 above VS Code's default 4.5:1 contrast threshold, preventing automatic darkening
 of selected labels without changing terminal-wide settings. Inactive titles also
-use white text on the dark background. Pane dividers use thin grey lines in every
-focus state, keeping tmux's shared top junctions understated instead of emphasizing
-protruding corners or an incomplete outer frame. tmux's half-border focus indicator is disabled; the title badge and
-selected number identify focus even in one- and two-pane layouts. No extra rows or
-columns are used. The top row contains
+use white text on the dark background. Horizontal title-row lines, shared junctions
+and vertical dividers use thicker, single-stroke heavy-line glyphs in the same
+true-colour grey (`#8a8a8a`) in every focus state. Its 4.83:1 contrast on the dark
+background also clears VS Code's default adjustment threshold. tmux's half-border focus indicator is disabled;
+the title badge and selected number identify focus even in one- and two-pane
+layouts. No extra rows or columns are used. The top row contains
 ten clickable session numbers and lifecycle dots, with shortcut hints aligned at
 the right. Hints shorten or disappear as space runs out; below 100 columns the
 tabs tighten. Extremely narrow terminals show a sliding subset with hidden-tab

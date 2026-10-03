@@ -431,12 +431,26 @@ class DesktopTests(unittest.TestCase):
             self.assertIn('#[norange,bg=#1e1e1e,nobold]#[fg=colour238] │ ', tab)
         self.assertNotIn('blink', bar)
 
-    def test_session_dividers_are_thin_and_neutral(self):
+    def test_session_dividers_are_heavy_and_neutral(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
-        self.assertIn('set -g pane-border-lines single', config)
+        self.assertIn('set -g pane-border-lines heavy', config)
         self.assertIn('set -g pane-border-indicators off', config)
         for option in ('pane-border-style', 'pane-active-border-style'):
-            self.assertIn(f"set -g {option} 'fg=colour240,bg=#1e1e1e'", config)
+            self.assertIn(f"set -g {option} 'fg=#8a8a8a,bg=#1e1e1e'", config)
+
+    def test_border_grey_meets_vscode_default_contrast_threshold(self):
+        config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
+        match = re.search(r"set -g pane-border-style 'fg=#([0-9a-f]{6}),bg=#([0-9a-f]{6})'", config)
+        self.assertIsNotNone(match)
+
+        def luminance(color):
+            channels = [int(color[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+            linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+                      for c in channels]
+            return sum(c * weight for c, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+
+        foreground, background = (luminance(color) for color in match.groups())
+        self.assertGreaterEqual((foreground + 0.05) / (background + 0.05), 4.5)
 
     def test_all_session_titles_are_white_with_active_purple_badge(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()

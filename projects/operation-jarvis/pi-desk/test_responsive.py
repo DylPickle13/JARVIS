@@ -594,10 +594,10 @@ class WorkspaceTests(unittest.TestCase):
                                           'pane-border-format').stdout.strip()
                 for number in self.visible(name):
                     desktop.choose(number, client.pid)
-                    for option, expected in (('pane-border-lines', 'single'),
+                    for option, expected in (('pane-border-lines', 'heavy'),
                                              ('pane-border-indicators', 'off'),
-                                             ('pane-border-style', 'fg=colour240,bg=#1e1e1e'),
-                                             ('pane-active-border-style', 'fg=colour240,bg=#1e1e1e')):
+                                             ('pane-border-style', 'fg=#8a8a8a,bg=#1e1e1e'),
+                                             ('pane-active-border-style', 'fg=#8a8a8a,bg=#1e1e1e')):
                         self.assertEqual(core.tmux('show-options', '-wAv', '-t', target,
                                                   option).stdout.strip(), expected)
                     panes = core.tmux('list-panes', '-t', target,
@@ -611,6 +611,19 @@ class WorkspaceTests(unittest.TestCase):
                         self.assertEqual(label, f'#[default] {style} Session {session} #[default]')
                     self.assertEqual(self.focus(name), number)
                 self.assertEqual(self.identities(name), before)
+
+    def test_heavy_horizontal_vertical_and_junction_glyphs_are_emitted(self):
+        name = workspace.create(1, 184, 45)
+        output = []
+        self.attach(name, 184, output=output)
+        glyphs = tuple(glyph.encode('utf-8') for glyph in '━┃┳')
+        for _ in range(100):
+            received = b''.join(output)
+            if all(glyph in received for glyph in glyphs):
+                break
+            time.sleep(.02)
+        for glyph in glyphs:
+            self.assertIn(glyph, received)
 
     def test_two_viewers_have_independent_sizes_focus_and_headers(self):
         wide = workspace.create(2, 184, 45)
