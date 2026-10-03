@@ -1,4 +1,4 @@
-# Browser reliability update — DEPLOYED; LIVE ACCEPTANCE PENDING
+# Browser reliability update — DEPLOYED; LIVE CHECKS PASSED
 
 Prepared 2026-10-03 on branch `browser/reliability-offline` in
 `.pi/runtime/browser-reliability-offline/`, commit `e98889c`. Sir subsequently
@@ -12,9 +12,38 @@ no current error/quarantine and all seven pre-existing work-tab IDs in window
 `1477433592`. Chrome, the installed v2 extension/native host, profile and credentials
 were not changed. No application page was filled, navigated or submitted by this
 deployment. Form-field contents were not inspected, so preserved tab IDs are not
-presented as a new unsaved-field verification. No live interaction/stress fixture
-was run. **Live acceptance remains pending an explicitly idle maintenance window.**
-No automatic deployment, watcher or session-completion job is installed.
+presented as a new unsaved-field verification. Sir subsequently authorized the live
+checks and, after reporting accidental sleep during one monitor run, explicitly
+authorized an awake reconnect rerun. **All functional checks and the final awake
+focus/Space checks passed; final owner visual feedback is pending.** No automatic
+deployment, watcher or session-completion job is installed.
+
+## Supervised live results (2026-10-03)
+
+- Reliability fixture: simultaneous 5,400/6,000-character verified fields, actual
+  nested/page wheel movement, local selector-timeout isolation and retained fixture
+  drafts passed; 297 foreground/personal-tab/per-display Space samples unchanged.
+- Full interactions: navigation, typing, empty clear, click, wait, extraction, links,
+  PNG, scrolling, approved local fixture upload, tab isolation and cleanup passed;
+  172 foreground/personal-tab/Space samples unchanged.
+- First two-reconnect run: all functional/lease/draft checks passed, but one display's
+  Space changed (492 to 514) during the 264-sample monitor. Sir reported accidental
+  computer sleep. Preserve this report as sleep-confounded, not a focus pass or
+  independently proven browser regression.
+- Approved rerun: two forced reconnects, fresh anchors, stable selected IDs, retained
+  fixture drafts, lease conflicts/handoff and closed-tab safety all passed; 270
+  foreground/personal-tab/Space samples unchanged. The console was checked first;
+  `/usr/bin/caffeinate -di` applied only for the child test's lifetime. No persistent
+  power-setting changes, Chrome restart or new window were used.
+- Final status: connected, not quarantined, same seven original work-tab IDs in
+  window `1477433592`; no fixture tabs remain. Four deliberate reconnects explain
+  reset/recovery counts of 4 and generation 5. The historical final failure record
+  is the expected closed-tab negative test, not a current connection failure.
+
+Reports are retained in `.pi/runtime/browser-extension-review/` as
+`reliability-actions-focus.json`, `reliability-interactions-focus.json`,
+`reliability-reconnects-focus-failed.json`, `reliability-reconnects-awake-focus.json`
+and `reliability-deployment.json`. No further stress tests are scheduled.
 
 ## Evidence and scope
 
@@ -41,7 +70,7 @@ live diagnostic fixture, not a claim that wheel delivery is fixed.
   typing remains 20 ms/character; explicit slow typing remains available. Long
   input (>1,000 characters) must use explicit zero-delay plain-field replacement.
   Requests with >30 s of deliberate typing delay fail before focus/clear/input.
-  These are conservative candidate limits requiring live acceptance. Non-clear
+  These conservative limits passed the supervised plain-field fixture. Non-clear
   insertion is verified against the original selection; fields that cannot expose
   an unambiguous selection require `clear:true`. Rich editor/key-specific workflows
   retain the short keyboard path; large rich-editor input is deliberately refused.
@@ -69,8 +98,8 @@ live diagnostic fixture, not a claim that wheel delivery is fixed.
 
 **78 offline tests passed (59 Node + 19 Python)** against the isolated dependency
 copy. Python syntax checks passed and the live fixture's missing-permission guard
-was verified to exit before loading credentials or contacting Chrome. No live
-browser/focus/Space test was run for this candidate.
+was verified to exit before loading credentials or contacting Chrome. These were
+offline-only results; subsequent live verification is recorded above.
 
 Run only this command during active application work:
 
@@ -91,14 +120,15 @@ with another queued, local failure isolation, late underlying completion after
 request rejection, quarantine bypass refusal, safe release, preflight deadline
 handling, persistent reset/failure reporting, and actual MCP deadline selection.
 
-## Deployment procedure / remaining live acceptance gate
+## Deployment and supervised verification procedure
 
 Sir's explicit session-completion confirmation and deployment approval fulfilled
 the deployment gate; the source deployment and bridge restart in steps 1–2 are
 complete. Step 3 applies when any prior client resumes browser work. Steps 4–5
-remain pending an explicitly idle maintenance window. Do not infer keyboard/mouse idleness from a
-successful application submission or a finished session, and do not poll/watch
-sessions to trigger deployment.
+were subsequently run with approval, with results above; final visual feedback
+remains pending. Any future stress/restart run needs a fresh idle maintenance
+window. Do not infer keyboard/mouse idleness from a successful application
+submission or finished session, and do not poll/watch sessions to trigger deployment.
 
 1. Obtain fresh approval, have all browser clients pause, record the deployed commit
    and prepare rollback. Preserve personal/application tabs and unsaved values.
@@ -121,7 +151,8 @@ sessions to trigger deployment.
    retained drafts. It never restarts the bridge, creates another window, navigates
    existing tabs or submits anything. If quarantine occurs, it stops, retains the
    fixture tabs for evidence and does not bypass the fence. Full interaction and
-   existing two-session reconnect tests remain required before final acceptance.
+   existing two-session reconnect tests are also required and were included in
+   the approved verification recorded above.
 5. If wheel delivery fails, retain diagnostics and stop. Do not raise the timeout,
    foreground Chrome, disable guards, retry wheel blindly, or silently replace wheel
    semantics with DOM scrolling. Further investigation needs explicit supervision.

@@ -1,6 +1,6 @@
 # JARVIS browser bridge
 
-## Reliability update (deployed; live acceptance pending)
+## Reliability update (deployed; supervised live checks passed)
 
 The backend reliability update was deployed with sir's approval on 2026-10-03
 at approximately 18:20 EDT, after sir confirmed sessions 7/8 were finished.
@@ -11,9 +11,14 @@ or restarted. No application form was filled, navigated or submitted by deployme
 
 See [RELIABILITY-CANDIDATE.md](RELIABILITY-CANDIDATE.md) for verified long-text
 replacement, session-local failure handling, unresolved-deadline quarantine,
-recovery diagnostics and rollback. **Live long-text/scrolling/multi-session fixture
-acceptance remains pending an explicitly idle maintenance window.** Historical
-focus/reconnect acceptance below is not live acceptance of this new backend code.
+recovery diagnostics and rollback. Supervised live long-text, nested/page scrolling,
+local-failure isolation, full interactions and two-session reconnect checks passed.
+Foreground/personal-tab/Space telemetry stayed unchanged across 297 reliability,
+172 interaction and 270 final reconnect samples. An earlier reconnect monitor was
+invalidated by sir's reported accidental sleep; the approved awake rerun used
+command-scoped sleep prevention and passed. All seven original tabs remained;
+fixture tabs were cleaned up. Final owner visual feedback is pending. These passes
+are not an absolute focus guarantee or proof of the original wheel-stall cause.
 
 ## Active local setup
 
