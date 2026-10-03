@@ -5,7 +5,7 @@
   "scripts": {
     "daemon": "node chrome-bridge-daemon.mjs",
     "postinstall": "node patch-playwright-background.mjs",
-    "test": "node --test test-extension-backend.mjs test-browser-sessions.mjs test-browser-client.mjs test-connection-lifecycle.mjs test-background-extension.mjs && python3 test-launcher.py && python3 test-background-native.py"
+    "test": "node --test test-extension-backend.mjs test-browser-sessions.mjs test-browser-client.mjs test-connection-lifecycle.mjs test-background-extension.mjs test-action-reliability.mjs && python3 test-launcher.py && python3 test-background-native.py"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

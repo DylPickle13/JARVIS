@@ -11,10 +11,12 @@ import { createConnection } from '@playwright/mcp';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { BrowserSessions, validateTabInventory } from './browser-sessions.mjs';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { verifiedType } from './verified-input.mjs';
+import { actionDeadlineMs, isRequestDeadline, isLocalActionFailure, failureKind } from './action-policy.mjs';
 
 // Fixed implementation only: callers cannot submit code to the MCP server.
 // Never adopt the seed page (which may be the extension's connection tab).
-export async function extensionAction(seed, action, b) {
+export async function extensionAction(seed, action, b, typeAction = verifiedType) {
   const context = seed.context();
   let state = context.__jarvisOwnedTabs;
   if (!state) {
@@ -198,26 +200,8 @@ export async function extensionAction(seed, action, b) {
     return {...await info(p),x:x ?? 0,y:y ?? 0};
   }
   if (action === '/type') {
-    if (b.selector) await p.locator(b.selector).focus({timeout});
-    const editable = await p.evaluate(() => {
-      const e=document.activeElement;
-      return !!e && (e.isContentEditable || (e.tagName==='TEXTAREA' && !e.disabled && !e.readOnly) || (e.tagName==='INPUT' && !e.disabled && !e.readOnly && !['button','submit','checkbox','radio','file','hidden'].includes(e.type)));
-    });
-    if (!editable) throw new Error('No editable element focused');
-    if (b.clear) {
-      if (b.selector) await p.locator(b.selector).fill('', {timeout});
-      else await p.evaluate(() => {
-        const e=document.activeElement;
-        if (e.isContentEditable) e.textContent='';
-        else {
-          const proto=e.tagName==='TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-          Object.getOwnPropertyDescriptor(proto,'value').set.call(e,'');
-        }
-        e.dispatchEvent(new Event('input',{bubbles:true}));
-      });
-    }
-    await p.keyboard.type(String(b.text), {delay:Math.max(0,Math.min(Number(b.delayMs ?? 20),1000))});
-    return {...await info(p),typedCharacters:String(b.text).length};
+    const result = await typeAction(p, b, timeout);
+    return {...await info(p), ...result};
   }
   if (action === '/upload') {
     const files=b.paths || (b.path ? [b.path] : []);
@@ -283,6 +267,9 @@ export class ExtensionBrowserBackend {
     Object.assign(this,{profileDir,profileDirectory,chromePath,tokenPath,windowPath});
     this.queue=Promise.resolve(); this.connected=false; this.lastError='';
     this.sessions = new BrowserSessions();
+    this.resetCount=0; this.connectionGeneration=0; this.operationSequence=0;
+    this.lastFailure=null; this.lastReset=null; this.quarantine=null;
+    this.lastInventory={activeIndex:-1,pages:[]};
   }
   async init() {
     if (this.client) return;
@@ -305,7 +292,12 @@ export class ExtensionBrowserBackend {
     if (!this.runTool) throw new Error('Pinned Playwright version lacks code tool');
   }
   status(inventory = {activeIndex:-1,pages:[]}) {
-    return {protocolVersion:2,launchMode:'extension',running:this.connected,connected:this.connected,profileDir:this.profileDir,profileDirectory:this.profileDirectory || '(automation-window profile; token authenticated)',automationWindow:{dedicated:true,windowId:this.window?.windowId,title:'JARVIS Browser — Automation Only',anchorOpen:!!this.window,avoidsForegroundActivation:true,sessionOwnedTabsOnly:false,automationWindowTabsOnly:true},daemon:{connectedAt:this.connectedAt || null,lastError:this.lastError,connecting:!!this.connecting,recoveryCount:this.recoveryCount || 0},...inventory};
+    return {protocolVersion:2,launchMode:'extension',running:this.connected,connected:this.connected,profileDir:this.profileDir,profileDirectory:this.profileDirectory || '(automation-window profile; token authenticated)',automationWindow:{dedicated:true,windowId:this.window?.windowId,title:'JARVIS Browser — Automation Only',anchorOpen:!!this.window,avoidsForegroundActivation:true,sessionOwnedTabsOnly:false,automationWindowTabsOnly:true},daemon:{connectedAt:this.connectedAt || null,lastError:this.lastError,connecting:!!this.connecting,recoveryCount:this.recoveryCount || 0,resetCount:this.resetCount,connectionGeneration:this.connectionGeneration,lastFailure:this.lastFailure,lastReset:this.lastReset,quarantined:!!this.quarantine,quarantine:this.quarantine,inventoryStale:!!this.quarantine},...inventory};
+  }
+  diagnostic(event, fields = {}) {
+    // Call sites pass fixed event/reason names and numeric IDs/timings only.
+    // Never include bodies, field values, selectors, URLs or exception messages.
+    console.error('JARVIS_BRIDGE ' + JSON.stringify({event,at:new Date().toISOString(),...fields}));
   }
   sanitize(message) {
     let text=String(message);
@@ -363,13 +355,29 @@ export class ExtensionBrowserBackend {
     end run`;
     await execFileAsync('/usr/bin/osascript',['-e',script,'--',String(w.windowId),String(w.previousFrontWindowId),w.previousFrontApp || ''],{timeout:10000}).catch(()=>{});
   }
-  async reset() {
+  async reset(reason = 'explicit-reset') {
+    if (this.quarantine) throw new Error('Browser bridge quarantined: unacknowledged action may still be running. Supervised recovery required.');
+    this.resetCount++;
+    this.lastReset={at:new Date().toISOString(),reason};
+    this.diagnostic('reset',{reason,resetCount:this.resetCount});
+    this.connectedAt=null;
     const client=this.client,server=this.server;
     this.client=null;this.server=null;this.connected=false;this.window=null;this.preparedConnectionTabId=null;
     await client?.close().catch(()=>{});await server?.close().catch(()=>{});
   }
   async callAction(path, body = {}) {
-    return parseToolResult(await this.client.callTool({name:this.runTool,arguments:{code:`async (page) => await (${extensionAction.toString()})(page, ${JSON.stringify(path)}, ${JSON.stringify(body)})`}},undefined,{timeout:150000}));
+    const timed=['/type','/click','/key','/scroll','/upload','/open','/new-tab','/tabs'].includes(path);
+    const started=Date.now(), operationId=++this.operationSequence;
+    const fields={operationId,action:timed ? path : 'preflight',tabId:Number.isSafeInteger(body.targetTabId) ? body.targetTabId : null};
+    if (timed) this.diagnostic('action-start',{...fields,deadlineMs:actionDeadlineMs(path,body)});
+    try {
+      const result=parseToolResult(await this.client.callTool({name:this.runTool,arguments:{code:`async (page) => await (${extensionAction.toString()})(page, ${JSON.stringify(path)}, ${JSON.stringify(body)}, (${verifiedType.toString()}))`}},undefined,{timeout:actionDeadlineMs(path, body)}));
+      if (timed) this.diagnostic('action-end',{...fields,durationMs:Date.now()-started,outcome:'completed'});
+      return result;
+    } catch (error) {
+      this.diagnostic('action-end',{...fields,durationMs:Date.now()-started,outcome:failureKind(error)});
+      throw error;
+    }
   }
   isTransportFailure(message) {
     return /target (?:page|closed)|context or browser has been closed|disconnected|extension did not connect|connection.*(?:lost|closed)|connection anchor unavailable|Anchor inventory:|Work-tab identity:|execution context was destroyed|tab identity missing|inventory identity missing|request timed out|transport/i.test(message);
@@ -383,10 +391,14 @@ export class ExtensionBrowserBackend {
     if (this.preparedConnectionTabId!==this.window.connectionTabId) {
       await this.callAction('/prepare-anchor', {windowId:this.window.windowId,connectionTabId:this.window.connectionTabId});
       this.preparedConnectionTabId=this.window.connectionTabId;
+      this.connectionGeneration++;
+      this.connectedAt=new Date().toISOString();
+      this.diagnostic('connection-generation',{generation:this.connectionGeneration,connectionTabId:this.preparedConnectionTabId});
       await this.restoreConnectionFocus();
     }
     await this.assertWindow();
     const inventory=validateTabInventory(await this.callAction('/status'));
+    this.lastInventory=inventory;
     this.connected=true;
     this.connectedAt ||= new Date().toISOString();
     return inventory;
@@ -394,12 +406,16 @@ export class ExtensionBrowserBackend {
   async prepareWithRecovery() {
     // Only connection establishment and read-only discovery may retry. Once
     // session routing dispatches ANY action (including new-tab), never replay.
+    if (this.quarantine) throw new Error('Browser bridge quarantined; supervised recovery required.');
     for (let attempt=0; ; attempt++) {
       try { return await this.prepare(); }
       catch (error) {
         const message=this.sanitize(error.message || error);
-        if (attempt >= 2 || !this.isTransportFailure(message) || message.startsWith('Automation window or connection moved/closed')) throw error;
-        await this.reset();
+        // A request timeout is NOT a cancellation acknowledgement. Even an
+        // inventory call can have pending relay work; do not start a new context.
+        if (isRequestDeadline(error) || attempt >= 2 || !this.isTransportFailure(message) || message.startsWith('Automation window or connection moved/closed')) throw error;
+        this.lastFailure={at:new Date().toISOString(),kind:'preflight-transport-error',action:'preflight',sessionId:null,tabId:null};
+        await this.reset('preflight-transport-error');
         this.recoveryCount=(this.recoveryCount || 0)+1;
         this.connecting=true;
         await new Promise(resolve=>setTimeout(resolve,100*(attempt+1)));
@@ -412,7 +428,17 @@ export class ExtensionBrowserBackend {
       if (path === '/close' && body.all !== false) {
         return this.sessions.handle(path, body, sessionId, () => { throw new Error('Release must not access Chrome'); });
       }
+      if (this.quarantine) {
+        // Cached status/release only. NEVER activate, inspect through Playwright,
+        // reconnect, or allow explicit reselection to override this fence.
+        if (path === '/status' || (path === '/tabs' && ['list','release'].includes(body.action))) {
+          const result=await this.sessions.handle(path,body,sessionId,()=>{throw new Error('Quarantine must not access Chrome');},this.lastInventory,{reconcile:false});
+          return this.status(result);
+        }
+        throw new Error('Browser bridge quarantined: an earlier action has no cancellation acknowledgement. Supervised recovery required; no action performed.');
+      }
       this.connecting=!this.connected;
+      let dispatched=false;
       try {
         const inventory=await this.prepareWithRecovery();
         if (path==='/upload') {
@@ -429,18 +455,34 @@ export class ExtensionBrowserBackend {
         }
         // Session routing, lease validation, activation and action all share the
         // same queue. Never expose internal targetTabId or /new-tab to callers.
-        const result = await this.sessions.handle(path === '/connect' ? '/status' : path, body, sessionId, (action, args) => this.callAction(action, args), inventory);
+        this.lastInventory=inventory;
+        const result = await this.sessions.handle(path === '/connect' ? '/status' : path, body, sessionId, (action, args) => {
+          dispatched=true;
+          return this.callAction(action, args);
+        }, inventory);
         this.connected=true;this.connectedAt ||= new Date().toISOString();this.lastError='';
         if (['/status','/tabs','/connect'].includes(path)) return this.status(result);
         return result;
       } catch(error) {
         this.lastError=this.sanitize(error.message || error);
-        // Only rebuild a lost transport; selector/validation errors must not orphan tabs.
-        if (!this.connected || this.isTransportFailure(this.lastError)) {
+        this.lastFailure={at:new Date().toISOString(),kind:failureKind(error),action:path,sessionId,tabId:this.sessions.session(sessionId).tabId};
+        if (isRequestDeadline(error)) {
+          // Promise rejection does not stop CDP input. Retain the old transport
+          // and prohibit ALL further browser dispatch until supervised recovery.
+          this.quarantine={...this.lastFailure,reason:'execution-not-acknowledged'};
+          this.diagnostic('quarantine',{reason:'execution-not-acknowledged',tabId:this.lastFailure.tabId});
           this.sessions.invalidate();
-          await this.reset();
+          this.connected=false;
+        } else if (!this.connected || this.isTransportFailure(this.lastError)) {
+          this.sessions.invalidate();
+          await this.reset(dispatched ? 'action-transport-error' : 'preflight-transport-error');
+        } else if (dispatched && isLocalActionFailure(path,this.lastError)) {
+          // The action returned an error (unlike MCP's outer timeout). Its
+          // outcome may be partial, but other sessions keep their selections.
+          this.sessions.invalidate(sessionId);
+          this.diagnostic('session-fenced',{reason:this.lastFailure.kind,tabId:this.lastFailure.tabId});
         }
-        throw new Error(this.lastError);
+        throw new Error(this.lastError + (this.quarantine ? ' Browser bridge quarantined; supervised recovery required.' : ''));
       } finally {this.connecting=false;}
     };
     const result=this.queue.then(run,run);this.queue=result.catch(()=>{});return result;

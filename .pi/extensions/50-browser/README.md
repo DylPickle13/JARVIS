@@ -1,5 +1,13 @@
 # JARVIS browser bridge
 
+## Offline reliability candidate (not deployed)
+
+See [RELIABILITY-CANDIDATE.md](RELIABILITY-CANDIDATE.md) for the staged long-text,
+local-failure isolation, unacknowledged-deadline quarantine, telemetry changes,
+offline tests and supervised deployment/rollback gate. The installed setup and
+historical live acceptance below describe the **previously deployed** build, not
+live acceptance of these changes. Do not deploy while sessions 7/8 are active.
+
 ## Active local setup
 
 The authenticated localhost daemon retains the original `browser_*` HTTP interface.

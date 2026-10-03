@@ -43,14 +43,15 @@ export class BrowserSessions {
   }
 
   // An indeterminate transport outcome must not silently resume a stale workflow.
-  invalidate() {
-    for (const session of this.sessions.values()) {
+  invalidate(id) {
+    const affected = id === undefined ? this.sessions.values() : [this.session(id)];
+    for (const session of affected) {
       session.uncertain = true;
       session.listed = [];
     }
   }
 
-  async handle(path, body, id, run, inventory) {
+  async handle(path, body, id, run, inventory, { reconcile = true } = {}) {
     const session = this.session(id);
     // Releasing a session never needs a functioning browser connection.
     if (path === '/close' && body.all !== false) {
@@ -59,16 +60,21 @@ export class BrowserSessions {
       return { closedAll: true, daemonKeptAlive: true, released: true };
     }
 
+    if (!reconcile && path !== '/status' && !(path === '/tabs' && ['list','release'].includes(body.action))) {
+      throw new Error('Stale inventory cannot authorize browser actions');
+    }
     inventory = validateTabInventory(inventory ?? await run('/status', {}));
     const pages = inventory.pages;
     const exists = tabId => pages.some(p => p.tabId === tabId);
-    for (const tabId of this.leases.keys()) if (!exists(tabId)) this.leases.delete(tabId);
+    // Cached quarantine inventory may predate an uncertain creation. It must
+    // never erase leases or assert that a now-unlisted selected tab is gone.
+    if (reconcile) for (const tabId of this.leases.keys()) if (!exists(tabId)) this.leases.delete(tabId);
     const status = () => {
       session.listed = pages.map(p => p.tabId);
       return {
         activeIndex: pages.findIndex(p => p.tabId === session.tabId),
         selectedTabId: session.tabId,
-        selectionMissing: session.tabId !== null && !exists(session.tabId),
+        selectionMissing: reconcile && session.tabId !== null && !exists(session.tabId),
         needsReselect: session.uncertain || (session.tabId !== null && this.lease(session.tabId)?.owner !== id),
         sessionId: id,
         leaseIdleTimeoutMs: this.leaseMs,
@@ -83,7 +89,7 @@ export class BrowserSessions {
       // newly reordered global array. Explicit stable IDs need no prior listing.
       const tabId = body.tabId ?? (Number.isInteger(body.index) ? session.listed[body.index] : undefined);
       if (!Number.isSafeInteger(tabId)) throw new Error('Specify tabId, or list tabs before using an index.');
-      if (!exists(tabId)) throw new Error(`Tab ${tabId} was closed or moved out of the automation window. List tabs and explicitly select another tab.`);
+      if (reconcile && !exists(tabId)) throw new Error(`Tab ${tabId} was closed or moved out of the automation window. List tabs and explicitly select another tab.`);
       return tabId;
     };
     const current = () => {

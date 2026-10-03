@@ -118,8 +118,12 @@ test('prepare detects a silently replaced MCP connection despite connected=true'
   backend.assertWindow=async()=>assert.equal(backend.window.connectionTabId,epoch);
   await backend.prepare();
   assert.equal(backend.connected,true);
+  assert.equal(backend.connectionGeneration,1);
+  backend.connectedAt='stale-generation-time';
   epoch=11;
   await backend.prepare();
   assert.deepEqual(prepared,[10,11]);
   assert.equal(backend.preparedConnectionTabId,11);
+  assert.equal(backend.connectionGeneration,2);
+  assert.notEqual(backend.connectedAt,'stale-generation-time');
 });

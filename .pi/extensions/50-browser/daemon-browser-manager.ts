@@ -29,6 +29,14 @@ export type BrowserStatus = {
     connectedAt: string | null;
     lastError: string;
     connecting: boolean;
+    recoveryCount?: number;
+    resetCount?: number;
+    connectionGeneration?: number;
+    lastFailure?: { at: string; kind: string; action: string; sessionId: string | null; tabId: number | null } | null;
+    lastReset?: { at: string; reason: string } | null;
+    quarantined?: boolean;
+    quarantine?: { at: string; reason: string } | null;
+    inventoryStale?: boolean;
   };
   activeIndex: number;
   selectedTabId?: number | null;
