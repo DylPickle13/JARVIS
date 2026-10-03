@@ -1,3 +1,22 @@
+# White session titles — 2026-10-02, 23:35 EDT
+
+Every `Session N` pane title now uses true white (`#ffffff`). The active title
+retains its bold purple badge; inactive titles keep the dark background. Borders,
+status tabs, layout, shortcuts and lifecycle dots are unchanged.
+
+**134 source tests passed**, including isolated one-, two- and three-pane layout
+checks. Installed only `config/tmux.conf` locally and updated its manifest entry;
+applied only the title format live, with a configuration-cache update only when
+the previous cache matched. All **9 display pane and 10 hosted-agent identities**
+and the attached viewer client were preserved. Verified white formatting on every
+display pane. No viewer, agent, service or remote installation restarted.
+
+Two pre-existing manifest mismatches (`backend.py`, `restart_status.py`) were
+recorded and left untouched; their runtime bytes were preserved. The title config's
+manifest hash verifies successfully.
+
+Rollback backup: `~/.local/state/pi-desk/backups/white-session-titles-20261003T033526992636Z/`.
+
 # Explicit restart session labels — 2026-10-02, 12:49 EDT
 
 Restart progress now says `Waiting for idle: session #1`,

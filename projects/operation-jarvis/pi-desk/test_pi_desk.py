@@ -437,9 +437,9 @@ class DesktopTests(unittest.TestCase):
         for option in ('pane-border-style', 'pane-active-border-style'):
             self.assertIn(f"set -g {option} 'fg=colour240,bg=#1e1e1e'", config)
 
-    def test_active_session_title_uses_brand_purple_badge(self):
+    def test_all_session_titles_are_white_with_active_brand_purple_badge(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
-        self.assertIn("set -g pane-border-format '#[default] #[fg=#{?pane_active,##1e1e1e,colour245},"
+        self.assertIn("set -g pane-border-format '#[default] #[fg=##ffffff,"
                       "bg=#{?pane_active,##D183E8,##1e1e1e},#{?pane_active,bold,nobold}]"
                       " Session #{@pi-desk-session} #[default] '", config)
 

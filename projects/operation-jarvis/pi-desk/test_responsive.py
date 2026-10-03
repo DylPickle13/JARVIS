@@ -583,7 +583,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(titles)
         self.assertEqual(set(titles), {b'pi-desk'})
 
-    def test_active_title_badge_and_neutral_dividers_in_all_layouts(self):
+    def test_white_titles_active_badge_and_neutral_dividers_in_all_layouts(self):
         for width in (80, 110, 184):
             with self.subTest(width=width):
                 name = workspace.create(1, width, 45)
@@ -606,8 +606,8 @@ class WorkspaceTests(unittest.TestCase):
                         pane_id, session = pane.split(':')
                         label = core.tmux('display-message', '-p', '-t', pane_id,
                                           border_format).stdout.strip()
-                        style = ('#[fg=#1e1e1e,bg=#D183E8,bold]' if int(session) == number
-                                 else '#[fg=colour245,bg=#1e1e1e,nobold]')
+                        style = ('#[fg=#ffffff,bg=#D183E8,bold]' if int(session) == number
+                                 else '#[fg=#ffffff,bg=#1e1e1e,nobold]')
                         self.assertEqual(label, f'#[default] {style} Session {session} #[default]')
                     self.assertEqual(self.focus(name), number)
                 self.assertEqual(self.identities(name), before)
