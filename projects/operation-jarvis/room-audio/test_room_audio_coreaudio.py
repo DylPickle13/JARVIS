@@ -122,6 +122,9 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('http://127.0.0.1:8793', args)
         self.assertIn('--interrupt-while-busy', args)
         self.assertIn('--no-openwakeword-auto-download', args)
+        self.assertIn('--no-startup-greeting', args)
+        self.assertIn('--no-greeting-on-reconnect', args)
+        self.assertNotIn('--startup-greeting', args)
 
     def test_environment_requires_private_permissions_and_token(self):
         with tempfile.TemporaryDirectory() as tmp:

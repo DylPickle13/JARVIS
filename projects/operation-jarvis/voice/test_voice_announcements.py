@@ -1,11 +1,9 @@
 """Offline regressions for announcement configuration and response readiness."""
-from datetime import datetime, timedelta
 import os
 from pathlib import Path
 import sys
 import unittest
 from unittest import mock
-from zoneinfo import ZoneInfo
 
 VOICE_DIR = Path(__file__).resolve().parent
 if str(VOICE_DIR) not in sys.path:
@@ -97,58 +95,19 @@ class ReplyReadinessTests(unittest.TestCase):
                 render.assert_not_called()
 
 
-class ConnectionGreetingTests(unittest.TestCase):
-    def test_neutral_greeting_at_every_hour_with_either_status_setting(self):
-        for include_status in (False, True):
-            with mock.patch.object(voice_pipeline, "JARVIS_VOICE_GREETING_INCLUDE_STATUS", include_status), \
-                 mock.patch.object(voice_pipeline.random, "choice") as choose:
-                for hour in range(24):
-                    with self.subTest(hour=hour, include_status=include_status):
-                        now = datetime(2026, 10, 3, hour, tzinfo=ZoneInfo("America/Toronto"))
-                        self.assertEqual(
-                            voice_pipeline.format_contextual_greeting(now, None),
-                            "JARVIS online. At your service, sir.")
-                choose.assert_not_called()
+class RemovedConnectionGreetingTests(unittest.TestCase):
+    def test_connection_greeting_entries_are_absent_from_catalogue(self):
+        for name in ("FALLBACK_GREETING", "MAC_STARTUP_GREETING", "QUICK_RETURN_GREETINGS",
+                     "GREETING_STATUS_SUFFIXES", "QUICK_RETURN_EXTRA_SUFFIX"):
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(voice_lines, name))
 
-    def test_quick_return_without_status_keeps_existing_wording(self):
-        now = datetime(2026, 10, 3, 10, tzinfo=ZoneInfo("America/Toronto"))
-        with mock.patch.object(voice_pipeline, "JARVIS_VOICE_GREETING_COOLDOWN_MINUTES", 10), \
-             mock.patch.object(voice_pipeline, "JARVIS_VOICE_GREETING_INCLUDE_STATUS", False), \
-             mock.patch.object(voice_pipeline.random, "choice", return_value="Back already, sir?") as choose:
-            self.assertEqual(
-                voice_pipeline.format_contextual_greeting(now, now - timedelta(minutes=5)),
-                "Back already, sir?")
-        choose.assert_called_once_with(voice_lines.QUICK_RETURN_GREETINGS)
-
-    def test_quick_return_optional_status_and_extra_quip_are_preserved(self):
-        now = datetime(2026, 10, 3, 10, tzinfo=ZoneInfo("America/Toronto"))
-        with mock.patch.object(voice_pipeline, "JARVIS_VOICE_GREETING_COOLDOWN_MINUTES", 10), \
-             mock.patch.object(voice_pipeline, "JARVIS_VOICE_GREETING_INCLUDE_STATUS", True), \
-             mock.patch.object(voice_pipeline.random, "choice",
-                 side_effect=["Back already, sir?", "I'll pretend not to judge."]) as choose:
-            self.assertEqual(
-                voice_pipeline.format_contextual_greeting(now, now - timedelta(minutes=5)),
-                "Back already, sir? I'll pretend not to judge.")
-        self.assertEqual(choose.call_args_list, [
-            mock.call(voice_lines.QUICK_RETURN_GREETINGS),
-            mock.call((*voice_lines.GREETING_STATUS_SUFFIXES, voice_lines.QUICK_RETURN_EXTRA_SUFFIX)),
-        ])
-
-    def test_quick_return_cooldown_boundaries_and_future_timestamp(self):
-        now = datetime(2026, 10, 3, 10, tzinfo=ZoneInfo("America/Toronto"))
-        for elapsed, quick_return in (
-                (timedelta(seconds=-1), False),
-                (timedelta(0), True),
-                (timedelta(minutes=10), True),
-                (timedelta(minutes=10, seconds=1), False)):
-            with self.subTest(elapsed=elapsed), \
-                 mock.patch.object(voice_pipeline, "JARVIS_VOICE_GREETING_COOLDOWN_MINUTES", 10), \
-                 mock.patch.object(voice_pipeline, "JARVIS_VOICE_GREETING_INCLUDE_STATUS", False), \
-                 mock.patch.object(voice_pipeline.random, "choice", return_value="Back already, sir?") as choose:
-                self.assertEqual(
-                    voice_pipeline.format_contextual_greeting(now, now - elapsed),
-                    "Back already, sir?" if quick_return else "JARVIS online. At your service, sir.")
-                self.assertEqual(choose.call_count, int(quick_return))
+    def test_connection_greeting_formatter_and_configuration_are_removed(self):
+        for name in ("voice_local_now", "parse_voice_greeting_timestamp", "format_contextual_greeting",
+                     "JARVIS_VOICE_GREETING_COOLDOWN_MINUTES", "JARVIS_VOICE_GREETING_INCLUDE_STATUS",
+                     "JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES"):
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(voice_pipeline, name))
 
 
 class FixedFailureWordingTests(unittest.TestCase):

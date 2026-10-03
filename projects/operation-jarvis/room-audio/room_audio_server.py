@@ -92,11 +92,8 @@ PROCESSING_ACK_TEXT = config.get_str_env(
     config.get_str_env("JARVIS_VOICE_PROCESSING_ACK_TEXT", voice_lines.PROCESSING_ACK),
 ).strip()
 ROOM_GREETING_ENABLED = config.get_str_env("JARVIS_ROOM_AUDIO_GREETING_ENABLED", "1").lower() not in {"0", "false", "no", "off", ""}
-ROOM_GREETING_TEXT = config.get_str_env("JARVIS_ROOM_AUDIO_GREETING_TEXT", "").strip()
-ROOM_GREETING_STATE_PATH = Path(
-    config.get_str_env("JARVIS_ROOM_AUDIO_GREETING_STATE_PATH", str(OPERATION_ROOT / "data" / "room_audio_greeting_state.json"))
-).expanduser()
-ROOM_GREETING_LOCK = threading.Lock()
+# This legacy switch now controls arrival notices only. Connection greetings
+# are permanently silent, including saved text overrides in existing endpoints.
 
 WAKE_WORDS = tuple(
     dict.fromkeys(
@@ -130,48 +127,11 @@ def _load_text(path: Path) -> str:
         return ""
 
 
-def _load_room_greeting_state_unlocked() -> dict[str, Any]:
-    try:
-        if not ROOM_GREETING_STATE_PATH.is_file():
-            return {}
-        payload = json.loads(ROOM_GREETING_STATE_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        LOGGER.debug("Failed to read room-audio greeting state", exc_info=True)
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def _save_room_greeting_state_unlocked(state: dict[str, Any]) -> None:
-    try:
-        ROOM_GREETING_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        ROOM_GREETING_STATE_PATH.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    except Exception:
-        LOGGER.debug("Failed to write room-audio greeting state", exc_info=True)
-
-
 def select_room_greeting(*, arrival: bool = False) -> str:
-    # One master switch covers startup, reconnect, and optional arrival speech.
-    # Wake acknowledgements are independent: they authorize the next request.
-    if not ROOM_GREETING_ENABLED:
-        return ""
-    if arrival:
+    """Only an explicitly admitted arrival can speak; connection requests stay silent."""
+    if arrival and ROOM_GREETING_ENABLED:
         return voice_lines.ARRIVAL_GREETING
-    if ROOM_GREETING_TEXT:
-        return ROOM_GREETING_TEXT
-
-    now_func = getattr(voice_pipeline, "voice_local_now", None)
-    parse_func = getattr(voice_pipeline, "parse_voice_greeting_timestamp", None)
-    format_func = getattr(voice_pipeline, "format_contextual_greeting", None)
-    if not (callable(now_func) and callable(parse_func) and callable(format_func)):
-        return voice_lines.FALLBACK_GREETING
-
-    now = now_func()
-    with ROOM_GREETING_LOCK:
-        state = _load_room_greeting_state_unlocked()
-        last_connected_at = parse_func(state.get("last_connected_at"))
-        state["last_connected_at"] = now.isoformat()
-        _save_room_greeting_state_unlocked(state)
-    return str(format_func(now, last_connected_at)).strip()
+    return ""
 
 
 def load_room_append_system_prompt() -> str:
@@ -1085,9 +1045,11 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 "ttsPrerenderEnabled": getattr(self.server.bridge, '_tts_prerender_enabled', False),
                 "processingAckEnabled": PROCESSING_ACK_ENABLED,
                 "processingAckText": PROCESSING_ACK_TEXT if PROCESSING_ACK_ENABLED else "",
-                "greetingSupported": True,
-                "greetingEnabled": ROOM_GREETING_ENABLED,
-                "greetingTextOverride": bool(ROOM_GREETING_TEXT),
+                "greetingSupported": False,
+                "greetingEnabled": False,
+                "greetingTextOverride": False,
+                "arrivalGreetingSupported": True,
+                "arrivalGreetingEnabled": ROOM_GREETING_ENABLED,
                 "asyncAckSupported": True,
                 "asyncPollAfterSeconds": ASYNC_POLL_AFTER_SECONDS,
                 "interruptSupported": True,

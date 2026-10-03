@@ -7,8 +7,8 @@ trusted Bluetooth speakerphone when needed, sends accepted utterances to the
 Mac-side room_audio_server.py, plays the immediate processing acknowledgement,
 then polls and plays the final JARVIS WAV response. In USB full-duplex mode it
 keeps capture active and sends short busy-only interruption clips so an exact
-spoken "stop" can cancel generation and playback. The VAD listener can also play
-a JARVIS connection greeting after startup or Bluetooth/capture recovery.
+spoken "stop" can cancel generation and playback. Startup and capture recovery
+are silent; the separate opt-in computer-presence arrival notice remains.
 """
 
 from __future__ import annotations
@@ -78,9 +78,6 @@ DEFAULT_TRUST_LOCAL_WAKE_WORD = os.environ.get("JARVIS_ROOM_AUDIO_TRUST_LOCAL_WA
 DEFAULT_BT_PROFILE_SETTLE_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_BT_PROFILE_SETTLE_SECONDS", "0.2"))
 DEFAULT_BT_PLAYBACK_DRAIN_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_BT_PLAYBACK_DRAIN_SECONDS", "1.2"))
 DEFAULT_BLUETOOTH_MAC = os.environ.get("JARVIS_ROOM_AUDIO_BLUETOOTH_MAC", "").strip()
-DEFAULT_STARTUP_GREETING = os.environ.get("JARVIS_ROOM_AUDIO_STARTUP_GREETING", "0").lower() not in {"0", "false", "no", "off", ""}
-DEFAULT_GREETING_ON_RECONNECT = os.environ.get("JARVIS_ROOM_AUDIO_GREETING_ON_RECONNECT", "0").lower() not in {"0", "false", "no", "off", ""}
-DEFAULT_GREETING_TIMEOUT_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_GREETING_TIMEOUT_SECONDS", "30"))
 DEFAULT_SCO_MIXER_VOLUME = int(os.environ.get("JARVIS_ROOM_AUDIO_SCO_MIXER_VOLUME", "100"))
 DEFAULT_INTERRUPT_WHILE_BUSY = os.environ.get("JARVIS_ROOM_AUDIO_INTERRUPT_WHILE_BUSY", "0").lower() not in {"0", "false", "no", "off", ""}
 DEFAULT_INTERRUPT_VAD_SILENCE_SECONDS = float(os.environ.get("JARVIS_ROOM_AUDIO_INTERRUPT_VAD_SILENCE_SECONDS", "0.45"))
@@ -719,25 +716,6 @@ def ensure_bluetooth_connected(args: argparse.Namespace) -> bool:
     return connected
 
 
-def get_greeting(server_url: str, *, token: str = "", timeout: float = 30.0) -> dict:
-    headers = {"accept": "application/json"}
-    if token:
-        headers["x-jarvis-room-token"] = token
-    request = urllib.request.Request(f"{server_url.rstrip('/')}/greeting", headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(request, timeout=max(1.0, timeout)) as response:
-            return json.loads(response.read().decode("utf-8") or "{}")
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Room audio server returned HTTP {exc.code}: {detail}") from exc
-
-
-def play_room_greeting(args: argparse.Namespace) -> None:
-    response = get_greeting(args.server_url, token=args.token, timeout=args.greeting_timeout)
-    print(json.dumps(response_without_audio(response), indent=2, sort_keys=True), flush=True)
-    play_response_audio(response, device=args.playback_device, drain_seconds=args.bt_playback_drain_seconds)
-
-
 def wait_for_final_response(args: argparse.Namespace, turn_id: str) -> dict:
     deadline = time.monotonic() + max(1.0, args.result_timeout)
     poll_interval = max(0.05, args.poll_interval)
@@ -1013,22 +991,6 @@ class RoomAudioTurnController:
                         self._turn_id, self._state, self._cancel_event = '', 'IDLE', None
         self._turn_thread = threading.Thread(target=speak, name='room-arrival', daemon=True)
         self._turn_thread.start()
-
-    def play_greeting(self) -> None:
-        turn, cancel = uuid.uuid4().hex, threading.Event()
-        with self._lock:
-            if self._turn_id: return
-            self._turn_id, self._state, self._cancel_event = turn, "GENERATING", cancel
-        try:
-            response = get_greeting(self.args.server_url, token=self.args.token, timeout=self.args.greeting_timeout)
-            self.set_state(turn, "PLAYING")
-            play_response_audio(response, device=self.args.playback_device,
-                drain_seconds=self.args.bt_playback_drain_seconds,
-                playback_controller=self.playback, cancel_event=cancel)
-        finally:
-            with self._lock:
-                if self._turn_id == turn:
-                    self._turn_id, self._state, self._cancel_event = "", "IDLE", None
 
     def snapshot(self) -> tuple[bool, str, str]:
         with self._lock:
@@ -1354,13 +1316,9 @@ def run_vad_loop(args: argparse.Namespace) -> None:
         flush=True,
     )
 
-    greeting_pending = bool(args.startup_greeting)
-
     while True:
         if turn_controller: turn_controller.capture_online = False
         if args.bluetooth_mac and not ensure_bluetooth_connected(args):
-            if args.greeting_on_reconnect:
-                greeting_pending = True
             time.sleep(max(0.1, args.interval))
             continue
 
@@ -1398,19 +1356,6 @@ def run_vad_loop(args: argparse.Namespace) -> None:
                     raise RuntimeError(f"arecord stopped while reading VAD audio: {stderr.strip()}")
 
                 if turn_controller: turn_controller.capture_online = True
-
-                if greeting_pending:
-                    greeting_pending = False
-                    print("vad capture online; playing room-audio greeting", flush=True)
-                    stop_process(proc)
-                    if args.bt_profile_settle_seconds > 0:
-                        time.sleep(args.bt_profile_settle_seconds)
-                    try:
-                        if turn_controller: turn_controller.play_greeting()
-                        else: play_room_greeting(args)
-                    except Exception as exc:
-                        print(f"room-audio greeting error: {exc}", flush=True)
-                    break
 
                 busy = bool(turn_controller is not None and turn_controller.is_busy())
                 if local_wake is not None and hasattr(local_wake, "update_activity"):
@@ -1623,8 +1568,6 @@ def run_vad_loop(args: argparse.Namespace) -> None:
         except Exception as exc:
             if turn_controller: turn_controller.capture_online = False
             print(f"vad error: {exc}; restarting capture in {args.interval:.1f}s", flush=True)
-            if args.greeting_on_reconnect:
-                greeting_pending = True
             stop_process(proc)
             time.sleep(max(0.1, args.interval))
 
@@ -1720,11 +1663,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bt-playback-drain-seconds", type=float, default=DEFAULT_BT_PLAYBACK_DRAIN_SECONDS, help="Delay after A2DP playback before reopening SCO capture, to avoid clipping buffered Bluetooth audio")
     parser.add_argument("--bluetooth-mac", default=DEFAULT_BLUETOOTH_MAC, help="Paired/trusted Bluetooth device MAC to reconnect before opening BlueALSA capture")
     parser.add_argument("--sco-mixer-volume", type=int, default=DEFAULT_SCO_MIXER_VOLUME, help="BlueALSA SCO mixer percent to restore after Bluetooth reconnect; use -1 to skip")
-    parser.add_argument("--startup-greeting", dest="startup_greeting", action="store_true", default=DEFAULT_STARTUP_GREETING, help="Play a JARVIS greeting once the room mic/speaker path is online")
-    parser.add_argument("--no-startup-greeting", dest="startup_greeting", action="store_false")
-    parser.add_argument("--greeting-on-reconnect", dest="greeting_on_reconnect", action="store_true", default=DEFAULT_GREETING_ON_RECONNECT, help="Play the greeting again after capture/Bluetooth recovers from a disconnect")
-    parser.add_argument("--no-greeting-on-reconnect", dest="greeting_on_reconnect", action="store_false")
-    parser.add_argument("--greeting-timeout", type=float, default=DEFAULT_GREETING_TIMEOUT_SECONDS, help="Seconds to wait for optional startup/reconnect greeting audio before listening anyway")
+    # Accept old LaunchAgent arguments without reviving removed announcements.
+    parser.add_argument("--startup-greeting", "--no-startup-greeting", dest="startup_greeting",
+        action="store_const", const=False, default=False, help="Deprecated, ignored; startup is silent")
+    parser.add_argument("--greeting-on-reconnect", "--no-greeting-on-reconnect", dest="greeting_on_reconnect",
+        action="store_const", const=False, default=False, help="Deprecated, ignored; reconnect is silent")
+    parser.add_argument("--greeting-timeout", type=float, default=30.0,
+        help="Deprecated, ignored; connection greetings have been removed")
     parser.add_argument("--token", default=os.environ.get("JARVIS_ROOM_AUDIO_TOKEN", ""))
     parser.add_argument("--no-wake-word", action="store_true", help="Do not require the transcript to contain Jarvis")
     parser.add_argument("--beep", action="store_true", help="Play a short tone before recording")
