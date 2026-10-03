@@ -17,7 +17,8 @@ Foreground/personal-tab/Space telemetry stayed unchanged across 297 reliability,
 172 interaction and 270 final reconnect samples. An earlier reconnect monitor was
 invalidated by sir's reported accidental sleep; the approved awake rerun used
 command-scoped sleep prevention and passed. All seven original tabs remained;
-fixture tabs were cleaned up. Final owner visual feedback is pending. These passes
+fixture tabs were cleaned up. Sir confirmed the final run stayed invisible;
+acceptance is complete. These passes
 are not an absolute focus guarantee or proof of the original wheel-stall cause.
 
 ## Active local setup

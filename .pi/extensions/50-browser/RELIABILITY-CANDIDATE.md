@@ -15,7 +15,8 @@ deployment. Form-field contents were not inspected, so preserved tab IDs are not
 presented as a new unsaved-field verification. Sir subsequently authorized the live
 checks and, after reporting accidental sleep during one monitor run, explicitly
 authorized an awake reconnect rerun. **All functional checks and the final awake
-focus/Space checks passed; final owner visual feedback is pending.** No automatic
+focus/Space checks passed; sir confirmed the final run stayed invisible. Acceptance
+is complete.** No automatic
 deployment, watcher or session-completion job is installed.
 
 ## Supervised live results (2026-10-03)
@@ -125,8 +126,8 @@ handling, persistent reset/failure reporting, and actual MCP deadline selection.
 Sir's explicit session-completion confirmation and deployment approval fulfilled
 the deployment gate; the source deployment and bridge restart in steps 1–2 are
 complete. Step 3 applies when any prior client resumes browser work. Steps 4–5
-were subsequently run with approval, with results above; final visual feedback
-remains pending. Any future stress/restart run needs a fresh idle maintenance
+were subsequently run with approval, with results above; sir's final visual
+confirmation completed acceptance. Any future stress/restart run needs a fresh idle maintenance
 window. Do not infer keyboard/mouse idleness from a successful application
 submission or finished session, and do not poll/watch sessions to trigger deployment.
 
