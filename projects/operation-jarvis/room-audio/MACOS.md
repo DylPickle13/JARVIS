@@ -83,19 +83,20 @@ microphone access and Apple ASR permissions/assets must work under the agent.
   The normal VAD/turn state machine remains shared with the Pi implementation.
 - Local “Hey Jarvis” gating, strict Apple Dictation wake verification, “Yes sir?”,
   then five seconds to **start** one separate request. Busy-only exact “stop”
-  cancels playback/generation. Capture stays open during normal replies; the
-  existing startup-greeting path briefly releases capture before reopening it.
-- A fixed startup greeting says “The Mac room speaker is online, sir.” Its setup
-  default comes from `../voice/voice_lines.py`; saved endpoint overrides are preserved.
-  `JARVIS_ROOM_AUDIO_GREETING_ENABLED=0` disables startup/reconnect and arrival
-  greetings, but not the separate wake acknowledgement.
+  cancels playback/generation. Capture stays open during normal replies.
+  Startup and capture recovery are silent, with no greeting-related release/reopen.
+- Startup, reconnect, and quick-return announcements have been removed, including
+  the Mac speaker online announcement. Old enable flags and saved startup text
+  are ignored; provisioning no longer writes startup text or greeting-state settings.
+  `JARVIS_ROOM_AUDIO_GREETING_ENABLED=0` disables only arrival notices, not the
+  separate wake or processing acknowledgements.
 - The opt-in computer-presence watcher can request “Welcome back, sir” through
   authenticated loopback `POST /control/arrival` (`{}`). The next idle client
   report consumes a four-second, client-bound notice; `/arrival-audio` synthesizes
   only that fixed phrase with the existing JARVIS voice. The client skips busy,
   offline, or follow-up listening states and drops synthesis taking over six
   seconds. It never switches outputs or retries uncertain playback. This is
-  separate from startup/reconnect greetings; see `keyboard/docs/AUTOMATION.md`.
+  independent of the silent startup/recovery path; see `keyboard/docs/AUTOMATION.md`.
 - Continuous capture is private to the local client until a wake candidate (or
   busy-only control clip) is submitted to the local server. No new audio archive
   is created. Temporary WAVs are deleted by the existing handlers. Logs can

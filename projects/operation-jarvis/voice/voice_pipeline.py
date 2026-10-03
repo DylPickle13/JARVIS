@@ -4,7 +4,6 @@ import concurrent.futures
 import json
 import logging
 import os
-import random
 import re
 import queue
 import tempfile
@@ -12,12 +11,10 @@ import threading
 import time
 import unicodedata
 import wave
-from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
 from huggingface_hub import hf_hub_download
 from piper import PiperVoice, SynthesisConfig
@@ -39,47 +36,6 @@ JARVIS_VOICE_WAKE_WORDS = tuple(
         if word.strip()
     )
 )
-JARVIS_VOICE_GREETING_COOLDOWN_MINUTES = config.get_float_env(
-    "JARVIS_VOICE_GREETING_COOLDOWN_MINUTES", 10.0, minimum=0.0
-)
-JARVIS_VOICE_GREETING_INCLUDE_STATUS = config.get_str_env(
-    "JARVIS_VOICE_GREETING_INCLUDE_STATUS", "1"
-).lower() not in {"0", "false", "no", "off", ""}
-JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES = voice_lines.GREETING_STATUS_SUFFIXES
-
-
-def voice_local_now() -> datetime:
-    return datetime.now(ZoneInfo("America/Toronto"))
-
-
-def parse_voice_greeting_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=ZoneInfo("America/Toronto"))
-    return parsed.astimezone(ZoneInfo("America/Toronto"))
-
-
-def format_contextual_greeting(now: datetime, last_connected_at: datetime | None) -> str:
-    """Connection-aware greeting; the clock is used only for quick-return cooldown.
-
-    The existing formatter name is retained for room callers. Time-of-day
-    greetings are deliberately absent; ordinary connections use the neutral
-    online announcement, while quick-return wording remains unchanged.
-    """
-    if last_connected_at is not None:
-        elapsed = now - last_connected_at
-        if timedelta(0) <= elapsed <= timedelta(minutes=JARVIS_VOICE_GREETING_COOLDOWN_MINUTES):
-            base = random.choice(voice_lines.QUICK_RETURN_GREETINGS)
-            if not JARVIS_VOICE_GREETING_INCLUDE_STATUS:
-                return base
-            suffixes = (*JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES, voice_lines.QUICK_RETURN_EXTRA_SUFFIX)
-            return f"{base} {random.choice(suffixes)}"
-    return voice_lines.FALLBACK_GREETING
 
 
 def normalize_voice_transcript_wake_words(transcript: str) -> str:

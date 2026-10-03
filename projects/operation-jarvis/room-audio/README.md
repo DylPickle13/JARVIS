@@ -39,6 +39,12 @@ seconds. During a response, exact `stop` interrupts. Endpoint capture is continu
 idle ordinary speech is discarded by wake gating. Keep credentials, transcripts,
 and endpoint state private; do not add them to the repository.
 
+Startup, reconnect, and quick-return announcements are removed; both endpoint
+clients start and recover silently. The separate computer-presence arrival notice
+remains opt-in. Legacy greeting CLI flags are accepted but ignored, and `/greeting`
+returns no text or audio. Activating these source changes requires an explicitly
+authorized restart of affected servers/clients; preserve Session 10 and its history.
+
 Wake verification retains up to two seconds of the active capture preceding local
 wake detection, plus the existing ~300 ms tail, rather than sending a long preceding
 VAD segment. Follow-up commands and interrupts are not cropped. Apple verification

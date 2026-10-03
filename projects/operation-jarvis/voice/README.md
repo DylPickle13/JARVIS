@@ -5,7 +5,7 @@ The Mac-side speech code for JARVIS. Room audio uses it to transcribe speech and
 ## Files
 
 - `voice_pipeline.py`: pluggable ASR routing/fallback, optional direct oMLX chat, injected Pi RPC responses, transcript normalization, and bounded Piper synthesis.
-- `voice_lines.py`: side-effect-free catalogue of room announcements, greeting variants, and suffixes. Edit named defaults here rather than copying dialogue into callers.
+- `voice_lines.py`: side-effect-free catalogue of the remaining room announcements and fixed error notices. Edit named defaults here rather than copying dialogue into callers.
 - `asr_backends.py`: strict Apple Speech helper adapter plus the in-process oMLX callback adapter.
 - `apple_asr/`: compiled Swift command-line helper using macOS 26 `SpeechAnalyzer`, `SpeechTranscriber`, and `DictationTranscriber`.
 - `voice_commands.py`: exact busy-only `stop` control policy.
@@ -65,22 +65,25 @@ Room-specific ASR overrides use `JARVIS_ROOM_AUDIO_ASR_*`; see the [room-audio R
 ### Fixed dialogue and greeting controls
 
 Room dialogue defaults come from `voice_lines.py`; normal assistant answers and
-Watch playback still use generated/supplied text. Explicit environment overrides
-and the saved Mac endpoint startup text retain precedence over catalogue defaults.
+Watch playback still use generated/supplied text. Processing-acknowledgement
+environment overrides retain precedence over catalogue defaults.
 `JARVIS_VOICE_PROCESSING_ACK_ENABLED` and `JARVIS_VOICE_PROCESSING_ACK_TEXT`
 configure neutral-pipeline steering acknowledgements. Room-specific
 `JARVIS_ROOM_AUDIO_PROCESSING_ACK_*` values take precedence for the room bridge.
 An empty acknowledgement text suppresses it.
 
-`JARVIS_ROOM_AUDIO_GREETING_ENABLED=0` disables startup, reconnect, **and arrival**
-greetings. It does not disable the separate `Yes sir?` wake acknowledgement.
-`JARVIS_ROOM_AUDIO_GREETING_TEXT` overrides startup/reconnect wording, not the fixed
-arrival phrase. Scripted morning, afternoon, evening, and late-night greetings
-have been removed. Ordinary startup/reconnect uses the neutral online announcement;
-the saved Mac speaker startup override remains unchanged. Quick-return greetings
-retain their cooldown (`JARVIS_VOICE_GREETING_COOLDOWN_MINUTES`) and optional
-status suffixes (`JARVIS_VOICE_GREETING_INCLUDE_STATUS`). The clock is used only
-for that cooldown, not to select time-of-day wording.
+Startup, reconnect, quick-return, and time-of-day announcements have been removed.
+The client no longer requests or plays connection greetings. Legacy startup and
+reconnect CLI flags remain accepted but inert for installed-agent compatibility;
+their environment settings, saved startup text/state, and voice greeting cooldown/
+status settings are ignored. The legacy `/greeting` endpoint returns a successful
+disabled response with no text or audio, even with old text overrides present.
+
+`JARVIS_ROOM_AUDIO_GREETING_ENABLED=0` now disables only the separate arrival
+notice. It does not disable the `Yes sir?` wake acknowledgement or processing
+acknowledgements. `/health` reports connection greetings unsupported/disabled and
+reports arrival support separately as `arrivalGreetingSupported` and
+`arrivalGreetingEnabled`.
 
 Failure notices distinguish an incomplete request from a completed response that
 could not be rendered. Completion is recorded explicitly; speculative text is not
