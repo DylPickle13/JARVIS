@@ -1,5 +1,3 @@
-import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -9,22 +7,6 @@ const DEFAULT_JARVIS_ROOT = resolve(process.env.JARVIS_ROOT || process.cwd());
 const HEARTBEAT_MS = 2_000;
 const PRUNE_INTERVAL_MS = 60_000;
 const MAX_STATUS_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-
-// Monotonic elapsed time for one continuous activity, including automatic
-// retries/compaction. Consuming even a short/failed run prevents idle replay.
-export class CompletionDurationGate {
-  private startedAt: number | undefined;
-
-  constructor(private readonly now: () => number = () => performance.now()) {}
-
-  start() { this.startedAt ??= this.now(); }
-  reset() { this.startedAt = undefined; }
-  consume(): boolean {
-    const start = this.startedAt;
-    this.reset();
-    return start !== undefined && this.now() - start > 60_000;
-  }
-}
 
 type LocalPiSessionLifecycle = "new" | "idle" | "running" | "compacting" | "unknown";
 
@@ -77,30 +59,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   let historyProbe: (() => readonly unknown[]) | undefined;
   let compacting = false;
   let idleProbe: (() => boolean) | undefined;
-  let completionID: string | undefined;
-  let completionEligible = false;
-  const completionDuration = new CompletionDurationGate();
-
-  function notifySuccessfulCompletion() {
-    if (lifecycle !== "idle" || !completionID) return;
-    const shouldNotify = completionDuration.consume() && completionEligible;
-    const eventID = completionID;
-    completionID = undefined; // consume before I/O; heartbeat/settled coalesce
-    completionEligible = false;
-    if (!shouldNotify) return;
-    const pane = process.env.TMUX_PANE || "";
-    if (!/^%[0-9]+$/.test(pane)) return;
-    // No prompt, output, path, or credentials in arguments. The fixed helper
-    // independently checks this PID belongs to one of the nine approved panes.
-    try {
-      const child = spawn("/opt/homebrew/bin/python3", [
-        join(root, "projects", "operation-jarvis", "jarvisd", "jarvisd_core", "scheduler", "session_completion.py"),
-        pane, String(process.pid), eventID,
-      ], { stdio: "ignore", detached: true });
-      child.on("error", () => {});
-      child.unref();
-    } catch { /* completion notifications are best-effort and content-free */ }
-  }
+  // Telemetry only. Intentional pushes are sent by the separate notify tool.
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let lastPruneMs = 0;
 
@@ -142,7 +101,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     if (compacting) return "compacting";
     if (siriAdmissionPending) return "running"; // admission/auth wait or quarantined unknown delivery
     // Removing the Waiting label must not make an open interactive prompt safe
-    // for restart-all or premature completion notifications. It remains busy.
+    // for restart-all. It remains busy.
     if (promptActive || agentRunning || isIdle === false) return "running";
     // Positive evidence is monotonic within a session, but resets on a switch.
     // Failed history inspection must never manufacture a New badge.
@@ -208,7 +167,6 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
         lifecycle = resolvedLifecycle(!agentRunning);
       }
       writeStatus(`heartbeat-${lifecycle}`);
-      notifySuccessfulCompletion();
     }, HEARTBEAT_MS);
     heartbeat.unref?.();
   }
@@ -220,9 +178,6 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     sessionFile = ctx.sessionManager.getSessionFile() || "";
     const suffix = sessionFile ? safeFileName(sessionFile) : "ephemeral";
     statusPath = join(statusDir, `${process.pid}-${suffix}.json`);
-    completionID = undefined;
-    completionEligible = false; // session changes never replay the previous turn
-    completionDuration.reset();
     idleProbe = () => ctx.isIdle();
     agentRunning = !ctx.isIdle();
     hasConversation = undefined;
@@ -244,9 +199,6 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
   pi.on("agent_start", async (_event, ctx) => {
     cwd = ctx.cwd || cwd;
     sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
-    completionDuration.start();
-    completionID = randomUUID();
-    completionEligible = false;
     agentRunning = true;
     updateLifecycle("agent-start", false);
     ensureHeartbeat();
@@ -254,9 +206,7 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
 
   // agent_end is not idle: Pi may still retry, compact, or continue. Only
   // agent_settled authoritatively marks the end of automatic agent activity.
-  pi.on("agent_end", async (event, ctx) => {
-    const lastAssistant = [...event.messages].reverse().find((message) => message.role === "assistant");
-    completionEligible = lastAssistant?.stopReason === "stop";
+  pi.on("agent_end", async (_event, ctx) => {
     cwd = ctx.cwd || cwd;
     sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
     updateLifecycle("agent-end-awaiting-settle", false);
@@ -267,7 +217,6 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
     sessionFile = ctx.sessionManager.getSessionFile() || sessionFile;
     agentRunning = !ctx.isIdle();
     updateLifecycle("agent-settled", ctx.isIdle());
-    notifySuccessfulCompletion();
   });
 
   pi.on("ui_prompt_start", async () => {
@@ -300,9 +249,6 @@ export default function registerLocalPiSessionStatus(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     unsubscribeSiriAdmission?.();
-    completionDuration.reset();
-    completionID = undefined;
-    completionEligible = false;
     if (heartbeat) clearInterval(heartbeat);
     heartbeat = undefined;
     removeStatus();

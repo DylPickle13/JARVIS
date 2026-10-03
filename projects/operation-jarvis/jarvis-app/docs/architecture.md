@@ -69,6 +69,17 @@ The Mac hosts room-audio capture, wake detection, transcription, and responses t
 
 Notifications need more than app code: the signed build must have the right capabilities, the owner must opt in, devices must register, and the host must enable dispatch. Check each step before assuming alerts are active.
 
+Pi-session alerts are now intentional `notify(title, message)` calls, not
+automatic session-finish alerts. The historical `pi-session-completed` route
+is retained so already-installed iPhone/Watch clients open the originating fixed
+slot without a rebuild. The host filters and bounds custom Lock Screen text;
+heuristics do not guarantee detection of arbitrary private prose. Existing
+activation/registration, tap validation, foreground cleanup and scheduled-job
+alerts are preserved. Existing Pi sessions need owner-controlled `/reload` to
+expose the new tool. Revised Settings wording is source-only until a separately
+approved app release; this backend/extension change does not install apps or
+restart services.
+
 Build 144 used generic job alerts. Build 145 added short, sanitized job names and result previews, so the earlier generic-only description no longer covers the notification format. Full output stays in Jobs. Read the [notification history](implementation-history.md#native-iphone-and-apple-watch-apns-scheduled-job-notifications) and [privacy update](implementation-history.md#build-145-privacy-contract-addendum) before changing payload contents.
 
 ## Limits and evidence

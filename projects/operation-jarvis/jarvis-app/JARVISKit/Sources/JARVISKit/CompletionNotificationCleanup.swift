@@ -1,8 +1,9 @@
 import Foundation
 import UserNotifications
 
-/// Only validated Pi-completion deliveries enter the cleanup policy. No prompt,
-/// output, scheduled-job result, or routing inbox is retained here.
+/// Only validated Pi notifications enter the cleanup policy. The historical
+/// completion type name is retained; notification text, scheduled-job results,
+/// and routing inboxes are never retained here.
 struct CompletionNotificationDelivery: Sendable {
     let identifier: String
     let deliveredAt: Date

@@ -163,8 +163,8 @@ struct SettingsDetailView: View {
 
     private var notificationCard: some View {
         SettingsInlineCard("Notifications", symbol: "bell.badge.fill",
-                           detail: "Job alerts · \(notifications.overallTitle)", accessory: AnyView(
-            Toggle("Job result alerts", isOn: Binding(get: { notifications.desiredEnabled }, set: { enabled in
+                           detail: "JARVIS alerts · \(notifications.overallTitle)", accessory: AnyView(
+            Toggle("JARVIS alerts", isOn: Binding(get: { notifications.desiredEnabled }, set: { enabled in
                 Task { await notifications.setEnabled(enabled) }
             }))
             .labelsHidden().frame(minHeight: 44)
@@ -206,7 +206,7 @@ struct SettingsDetailView: View {
                 }
                 .settingsAction()
             }
-            Text("Best-effort alerts include result previews. Hide Lock Screen previews in iOS Show Previews; full results stay in Jobs.")
+            Text("Best-effort alerts include intentional Pi updates and scheduled-job previews, not automatic session-finish alerts. Tap a Pi alert to open its session. Hide Lock Screen previews in iOS Show Previews; full job results stay in Jobs.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
     }

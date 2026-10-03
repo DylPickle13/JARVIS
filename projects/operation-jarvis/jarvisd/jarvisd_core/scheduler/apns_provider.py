@@ -425,7 +425,7 @@ def _truncate_characters(value: str, maximum: int) -> str:
     return value[: maximum - 1].rstrip() + "…"
 
 
-def _plain_notification_text(value: str, *, replace_links: bool) -> str:
+def _plain_notification_text(value: str, *, replace_links: bool, link_destination: str = "Jobs") -> str:
     text = unicodedata.normalize(
         "NFC",
         str(value or "").replace("\r\n", "\n").replace("\r", "\n"),
@@ -437,8 +437,8 @@ def _plain_notification_text(value: str, *, replace_links: bool) -> str:
     )
     if replace_links:
         text = MARKDOWN_LINK_RE.sub(lambda match: match.group(1), text)
-        text = URL_RE.sub("link available in Jobs", text)
-        text = BARE_NETWORK_LOCATION_RE.sub("link available in Jobs", text)
+        text = URL_RE.sub(f"link available in {link_destination}", text)
+        text = BARE_NETWORK_LOCATION_RE.sub(f"link available in {link_destination}", text)
     # Result summaries are sanitized before persistence. This second, stricter
     # boundary deliberately falls back to generic text whenever a summary still
     # resembles private metadata, a credential, a token, or any local path.
@@ -530,6 +530,30 @@ def build_alert_payload(
     return encoded
 
 
+def build_session_notification_payload(session_id: int, *, title: str, message: str) -> bytes:
+    if type(session_id) is not int or not 1 <= session_id <= 9:
+        raise APNsConfigurationError("Pi session slot is invalid")
+    for value, maximum in ((title, 120), (message, 2048)):
+        if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+            raise APNsConfigurationError("Pi notification text is invalid")
+    safe_title = _plain_notification_text(title, replace_links=True, link_destination="the session")
+    safe_body = _plain_notification_text(message, replace_links=True, link_destination="the session")
+    safe_title = _truncate_utf8(safe_title or "JARVIS", MAX_ALERT_TITLE_BYTES)
+    safe_body = _truncate_utf8(
+        _truncate_characters(safe_body or "An update is ready in your Pi session.", MAX_ALERT_PREVIEW_CHARACTERS),
+        MAX_ALERT_BODY_BYTES,
+    )
+    # Retain the installed iPhone/Watch wire route: its historical name does not
+    # imply an automatic completion trigger. A tap opens only the fixed slot.
+    payload = json.dumps({"aps": {"alert": {"title": safe_title, "body": safe_body},
+                                  "sound": "default", "thread-id": f"jarvis-pi-session-{session_id}"},
+                          "route": "pi-session-completed", "routeVersion": 1, "sessionID": session_id},
+                         ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    if len(payload) > MAX_PAYLOAD_BYTES:
+        raise APNsConfigurationError("Pi notification payload exceeds the private JARVIS limit")
+    return payload
+
+
 class APNsProvider:
     """One-shot provider. Retry policy and outbox state remain scheduler-owned."""
 
@@ -588,20 +612,13 @@ class APNsProvider:
                                   payload=payload, collapse_key=job_id,
                                   apns_id=apns_id, expiration=expiration)
 
-    def send_session_completion(
+    def send_session_notification(
         self, *, topic: str, device_token: str, session_id: int,
-        apns_id: str, expiration: int | None = None,
+        title: str, message: str, apns_id: str, expiration: int | None = None,
     ) -> APNsSendResult:
-        if type(session_id) is not int or not 1 <= session_id <= 9:
-            raise APNsConfigurationError("Pi session slot is invalid")
-        # Static text only: no prompt, response, model, path, or session filename.
-        payload = json.dumps({"aps": {"alert": {
-            "title": "JARVIS Pi", "body": f"Session {session_id} finished."},
-            "sound": "default"}, "route": "pi-session-completed",
-            "routeVersion": 1, "sessionID": session_id},
-            separators=(",", ":")).encode("utf-8")
+        payload = build_session_notification_payload(session_id, title=title, message=message)
         return self._send_payload(topic=topic, device_token=device_token,
-                                  payload=payload, collapse_key=f"pi-session-{session_id}",
+                                  payload=payload, collapse_key=f"pi-notify-{apns_id}",
                                   apns_id=apns_id, expiration=expiration)
 
     def _send_payload(

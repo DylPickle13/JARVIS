@@ -92,7 +92,7 @@ test('Pi permission adapter does not own backend storage', () => {
 });
 
 test('session notification gate and receipts belong to backend', () => {
-  const source = readFileSync(join(root, '.pi/extensions/46-local-pi-session-status.ts'), 'utf8');
+  const source = readFileSync(join(root, '.pi/extensions/44-notify.ts'), 'utf8');
   assert.ok(source.includes('"jarvisd_core", "scheduler", "session_completion.py"'));
   assert.ok(!source.includes('"session-notifications", "enabled"'));
 });

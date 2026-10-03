@@ -19,35 +19,10 @@ const imported = await jiti.import(
 );
 const registerLocalPiSessionStatus = imported.default || imported;
 
-test("completion notifications require strictly more than one active minute", () => {
-  const { CompletionDurationGate } = imported;
-  for (const elapsed of [0, 59_999, 60_000, 60_001, 120_000]) {
-    let now = 0;
-    const gate = new CompletionDurationGate(() => now);
-    gate.start();
-    now = elapsed;
-    assert.equal(gate.consume(), elapsed > 60_000);
-    now += 120_000;
-    assert.equal(gate.consume(), false, "idle time must never resurrect a completion");
-    gate.start();
-    now += 100;
-    assert.equal(gate.consume(), false, "a new run gets its own clock");
-  }
-});
-
-test("completion duration includes automatic continuation but resets on session changes", () => {
-  let now = 0;
-  const gate = new imported.CompletionDurationGate(() => now);
-  assert.equal(gate.consume(), false, "restored sessions do not replay");
-  gate.start();
-  now = 40_000;
-  gate.start(); // retry/compaction continuation without settling
-  now = 60_001;
-  assert.equal(gate.consume(), true);
-  gate.start();
-  now += 120_000;
-  gate.reset(); // switch/shutdown
-  assert.equal(gate.consume(), false);
+test("local lifecycle telemetry never dispatches automatic completion pushes", async () => {
+  const source = await readFile(join(projectRoot, ".pi/extensions/46-local-pi-session-status.ts"), "utf8");
+  assert.equal(imported.CompletionDurationGate, undefined);
+  assert.doesNotMatch(source, /session_completion\.py|notifySuccessfulCompletion|spawn\(/);
 });
 
 async function statusPayload(root) {

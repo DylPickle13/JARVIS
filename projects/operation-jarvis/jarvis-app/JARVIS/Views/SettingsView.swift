@@ -97,7 +97,7 @@ struct SettingsDashboardContent: View {
                         Task { await notifications.setEnabled(enabled) }
                     }))
                     .font(.caption).frame(minHeight: 44)
-                    .accessibilityLabel("Job result alerts")
+                    .accessibilityLabel("JARVIS alerts")
                 )) {
                     summary("iPhone · \(notifications.iphoneState.title)", color: notificationColor(notifications.iphoneState))
                     summary("Watch · \(notifications.watchState.title)", color: notificationColor(notifications.watchState))

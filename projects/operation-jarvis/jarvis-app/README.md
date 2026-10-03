@@ -198,7 +198,7 @@ Captured in Apple simulators with sample data. The video shows the UI animations
 | Jobs | Read-only schedules and saved per-job results. |
 | Talk to JARVIS | A native Watch icon complication automatically opens native text input and submits once on native completion into the protected terminal service. Replaces Siri command registration on both platforms; signed deployment and physical acceptance are pending. See [setup and verification](docs/watch-talk-complication.md). |
 | Widgets | Neural Core and Open JARVIS surfaces, separate from native hardware command controls. |
-| Notifications | Opt-in scheduled-result and session-completion support. Signing, registration, permissions, and host activation are separate requirements. |
+| Notifications | Opt-in scheduled results and intentional Pi `notify(title, message)` alerts; automatic session-finish alerts are retired. Signing, registration, permissions, and host activation are separate requirements. |
 
 Feature availability depends on the client build and host configuration. The [status notes](docs/planned-work.md) track the build and deployment details that still need checking.
 

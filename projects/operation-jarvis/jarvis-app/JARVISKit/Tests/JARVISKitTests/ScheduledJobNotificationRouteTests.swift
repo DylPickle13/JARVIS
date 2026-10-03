@@ -60,6 +60,15 @@ final class ScheduledJobNotificationRouteTests: XCTestCase {
         }
     }
 
+    func testCustomPiAlertKeepsInstalledSessionTapContractAndIsNotAJobResult() throws {
+        let data = Data(#"{"aps":{"alert":{"title":"Build ready","body":"The checks passed, sir."}},"route":"pi-session-completed","routeVersion":1,"sessionID":4}"#.utf8)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(PiSessionCompletionNotificationRoute(route: payload["route"] as? String,
+            version: payload["routeVersion"], sessionID: payload["sessionID"])?.sessionID, 4)
+        XCTAssertNil(ScheduledJobNotificationRoute(route: payload["route"] as? String,
+            version: payload["routeVersion"], resultSequence: payload["resultSequence"]))
+    }
+
     private let base: [String: JSONValue] = [
         "route": .string("scheduled-job-result"),
         "routeVersion": .number(1),

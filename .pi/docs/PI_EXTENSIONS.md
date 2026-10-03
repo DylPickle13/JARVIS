@@ -45,12 +45,13 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `30-google-access.ts`: Google Workspace tool.
 - `34-maps.ts`: Google Maps places/geocode/routes natural-language tool.
 - `35-memory.ts`: explicit durable project-local memory; no prompt-time auto-recall or system-prompt mutation.
+- `44-notify.ts`: always-on `notify(title, message)` sends intentional, sanitized iPhone/Watch alerts through the existing backend. No lifecycle trigger, monitoring, or scheduling; see below.
 - `45-jarvis.ts`: focused `operation_jarvis_media`, `operation_jarvis_plugs`, and `operation_jarvis_purifier` tools.
 - `48-jarvis-security.ts`: `operation_jarvis_security` reads and guarded `operation_jarvis_automations` cloud rules; no polling/media.
 - `46-local-pi-session-status.ts`: sends lifecycle heartbeats to `jarvisd`, reporting New, Idle, Running, Compacting, or fail-closed Unknown.
   - New means no user/assistant messages or conversation summaries in the in-memory session tree. Metadata alone does not count. A fresh message clears New; restored, forked, or compacted history stays Idle when inactive.
   - After compaction, heartbeats check `ctx.isIdle()`. There is no Waiting mode: open interactive prompts remain Running/busy for restart and completion safety.
-  - A successful, settled mobile turn can call the content-free APNs completion helper only when its private gate is enabled and the continuous activity lasted strictly more than 60 seconds (monotonic time, including automatic retries/compaction). This shared cutoff applies to both iPhone and Watch. Short/failed completions are consumed, never delayed until idle time crosses the cutoff. Switching sessions/shutdown resets the clock. It does not replay history or reload Pi.
+  - Lifecycle/heartbeat events never send notifications. Automatic session-finish alerts and their one-minute cutoff are retired. The backend also rejects legacy lifecycle invocations from Pi processes that have not reloaded.
   - `jarvisd` derives Offline and fail-closed Unknown from the fixed tmux sessions.
 - `47-watch-terminal-speech.ts`: publishes only the current tmux-bound Pi session's latest completed assistant text blocks to a private Watch-speech runtime marker; thinking and tool activity are excluded.
 - `49-session-autoname.ts`: automatic, on-device session titles for `/resume`; see below.
@@ -61,6 +62,54 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `60-pdf-read-result.ts`: PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `98-slim-provider-payload.ts`: deterministic structured prompt/schema slimming, including OpenAI `additional_tools` and `tool_search_output` schemas. Never forces/flattens the initial prompt; see [prompt-cache compatibility](PROMPT_CACHE.md).
 - `99-lazy-tools.ts`: additive lazy optional tool activation, plus opt-in direct-call auto-loading on the patched JARVIS Pi runtime.
+
+## Intentional notifications
+
+`notify({ title, message })` sends sir a custom JARVIS push from an approved,
+PID-bound mobile session (slots 1–9). Use it for meaningful completed work,
+blockers, or important updates—not every finished turn. An explicit request to
+be notified when work is done should be honored after verifying the result.
+It does not watch external conditions, schedule reminders, or keep Pi awake.
+
+- The fixed backend helper receives a versioned, bounded envelope over stdin,
+  never text in shell/argv. Existing APNs activation, device opt-in, topics,
+  environment checks, private gates, and registry are retained unchanged.
+- Titles are capped at 120 UTF-8 bytes; body previews at 140 characters.
+  Known sensitive markers/paths fall back to generic text, links point back to
+  the session, and control/bidi characters are removed. This is a heuristic,
+  not a guarantee that arbitrary private prose can be recognized. Never submit
+  credentials, raw prompts, or conversation excerpts to the tool.
+- Identity-only receipts deduplicate a logical tool call without storing its
+  text/tokens. Only definite transient APNs rejections can retry, within the
+  existing four-attempt/five-minute limit. Unknown transmission, crashes, and
+  partial acceptance are never automatically replayed or backfilled.
+- `accepted` means Apple accepted the push, not screen delivery or readership.
+  `partial`, `ambiguous`, `disabled`, and unavailable-device/session outcomes
+  remain explicit tool errors; do not claim success or blindly resend.
+- Taps retain the existing fixed-session routing on installed iPhone/Watch apps.
+  The historical `pi-session-completed` wire name and cleanup types are retained
+  for compatibility; they no longer imply an automatic finished-turn trigger.
+  Scheduled-job alerts and foreground housekeeping are unchanged.
+- Existing Pi sessions need owner-controlled `/reload` (or a new process) to
+  expose `notify`; no service restart or app reinstall is needed for custom
+  payloads. Revised native Settings copy is source-only until a later approved
+  app build. No notification gate/registration is enabled by installing code.
+
+Verification: 118 Pi/lifecycle tests and 68 backend tests passed; the shared app
+package completed 290 tests (3 expected live-test skips), and the read-only smoke
+check passed 188 checks. One explicit live implementation-ready alert was accepted
+by Apple for both registered iPhone and Watch targets in slot 1. Its preview was
+privacy-adjusted. Sir confirmed receiving the alert; delivery on each device
+separately and tap-to-session acceptance remain unverified.
+Sir subsequently reloaded Pi; a direct `notify` tool check was accepted for both
+devices without preview adjustment. The shortened guidance was also reloaded.
+No notification gate/registration change, service restart, agent-initiated Pi
+reload, or native installation was performed.
+
+Offline checks: `node --test .pi/tests/notify.test.mjs .pi/tests/lazy-tools.test.mjs
+.pi/tests/cron.test.mjs .pi/scripts/tests/local-pi-session-status.test.mjs` and
+`.venv/bin/python -m unittest discover -s
+projects/operation-jarvis/jarvisd/tests/scheduler -v`.
 
 ## Automatic session names
 
@@ -85,6 +134,7 @@ Always-on/baseline tools exposed by this project include local coding tools plus
 - `ssh`
 - `web_search`, `fetch_content`, `get_search_content`
 - `maps`
+- `notify`
 - `load_tools`
 
 Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-tools`:

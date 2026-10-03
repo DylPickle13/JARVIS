@@ -58,7 +58,9 @@ public struct ScheduledJobNotificationRoute: Equatable, Sendable {
     }
 }
 
-/// Content-free completion alerts are informational, not Jobs-result routes.
+/// Intentional Pi alerts open a fixed terminal slot, never a Jobs result.
+/// The historical wire/type name is retained for already-installed clients;
+/// notification text and the decision to send are owned by the notify tool.
 public struct PiSessionCompletionNotificationRoute: Equatable, Sendable {
     public let sessionID: Int
 

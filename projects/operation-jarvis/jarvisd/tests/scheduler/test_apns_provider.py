@@ -74,34 +74,65 @@ class APNsProviderTests(unittest.TestCase):
             environment=environment,
         )
 
-    def testSessionCompletionPayloadIsStaticBoundedAndAppOnly(self):
+    def test_custom_session_notifications_keep_installed_app_routing(self):
         transport = FakeTransport(response=self.apns.APNsResponse(200, {}, b""))
         provider = self.apns.APNsProvider(self.configuration(), signer=FakeSigner(), transport=transport)
-        result = provider.send_session_completion(
-            topic=self.apns.IPHONE_APNS_TOPIC, device_token="ab" * 32,
-            session_id=3, apns_id=str(uuid.uuid4()),
-        )
-        self.assertEqual(result.outcome, "accepted")
-        payload = json.loads(transport.requests[0].body)
-        self.assertEqual(payload["aps"]["alert"]["body"], "Session 3 finished.")
-        self.assertEqual(payload["route"], "pi-session-completed")
-        self.assertNotIn("badge", payload["aps"])
-        self.assertLessEqual(len(transport.requests[0].body), 1024)
-        for slot in range(1, 10):
-            result = provider.send_session_completion(
-                topic=self.apns.WATCH_APNS_TOPIC, device_token="ab" * 32,
-                session_id=slot, apns_id=str(uuid.uuid4()),
-            )
-            self.assertEqual(result.outcome, "accepted")
-            payload = json.loads(transport.requests[-1].body)
-            self.assertEqual(payload["aps"]["alert"]["body"], f"Session {slot} finished.")
-            self.assertEqual(int(payload["sessionID"]), slot)
+        for topic in (self.apns.IPHONE_APNS_TOPIC, self.apns.WATCH_APNS_TOPIC):
+            for slot in range(1, 10):
+                result = provider.send_session_notification(
+                    topic=topic, device_token="ab" * 32, session_id=slot,
+                    title="Build ready", message="The build passed its checks, sir.", apns_id=str(uuid.uuid4()),
+                )
+                self.assertEqual(result.outcome, "accepted")
+                payload = json.loads(transport.requests[-1].body)
+                self.assertEqual(payload["aps"]["alert"], {"title": "Build ready", "body": "The build passed its checks, sir."})
+                self.assertEqual(payload["route"], "pi-session-completed")
+                self.assertEqual(payload["routeVersion"], 1)
+                self.assertEqual(payload["sessionID"], slot)
+                self.assertNotIn("badge", payload["aps"])
+                self.assertNotIn("resultSequence", payload)
+                self.assertLessEqual(len(transport.requests[-1].body), 1024)
+        # Distinct intentional updates do not collapse each other like automatic finishes.
+        self.assertNotEqual(transport.requests[0].headers["apns-collapse-id"],
+                            transport.requests[9].headers["apns-collapse-id"])
+        self.assertFalse(hasattr(provider, "send_session_completion"))
+
+    def test_session_preview_sanitizes_bounds_and_uses_session_not_jobs(self):
+        build = self.apns.build_session_notification_payload
+        for unsafe in ("TOKEN=super-secret", "Saved under /Users/example/private.txt",
+                       "Prompt: private conversation", "-----BEGIN PRIVATE KEY-----",
+                       "0123456789abcdef0123456789abcdef"):
+            payload = json.loads(build(2, title=unsafe, message=unsafe))
+            self.assertEqual(payload["aps"]["alert"], {
+                "title": "JARVIS", "body": "An update is ready in your Pi session."})
+        payload = json.loads(build(2, title="  Ready\u202e\x1b  ",
+                                  message="See [details](https://example.com/private), example.org/raw"))
+        self.assertEqual(payload["aps"]["alert"]["title"], "Ready")
+        self.assertIn("link available in the session", payload["aps"]["alert"]["body"])
+        self.assertNotIn("Jobs", payload["aps"]["alert"]["body"])
+        for title, message in (("🔥" * 120, "🔥" * 2048), ('"' * 120, '"' * 2048)):
+            encoded = build(9, title=title, message=message)
+            alert = json.loads(encoded)["aps"]["alert"]
+            self.assertLessEqual(len(encoded), self.apns.MAX_PAYLOAD_BYTES)
+            self.assertLessEqual(len(alert["title"].encode()), self.apns.MAX_ALERT_TITLE_BYTES)
+            self.assertLessEqual(len(alert["body"]), self.apns.MAX_ALERT_PREVIEW_CHARACTERS)
+
+    def test_session_notification_rejects_invalid_identity_and_text_before_transport(self):
+        signer, transport = FakeSigner(), FakeTransport()
+        provider = self.apns.APNsProvider(self.configuration(), signer=signer, transport=transport)
         for slot in [True, 0, 10, 1.5, "1"]:
             with self.assertRaises(self.apns.APNsConfigurationError):
-                provider.send_session_completion(
+                provider.send_session_notification(
                     topic=self.apns.IPHONE_APNS_TOPIC, device_token="ab" * 32,
-                    session_id=slot, apns_id=str(uuid.uuid4()),
-                )
+                    session_id=slot, title="Ready", message="Done", apns_id=str(uuid.uuid4()))
+        for title, message in (("", "Done"), ("Ready", " "), (True, "Done"),
+                               ("x" * 121, "Done"), ("Ready", "x" * 2049)):
+            with self.assertRaises(self.apns.APNsConfigurationError):
+                provider.send_session_notification(
+                    topic=self.apns.IPHONE_APNS_TOPIC, device_token="ab" * 32,
+                    session_id=1, title=title, message=message, apns_id=str(uuid.uuid4()))
+        self.assertFalse(signer.messages)
+        self.assertFalse(transport.requests)
 
     def send(
         self,

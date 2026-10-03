@@ -341,6 +341,7 @@ expected_extension_roots=(
   .pi/extensions/30-google-access.ts
   .pi/extensions/34-maps.ts
   .pi/extensions/35-memory.ts
+  .pi/extensions/44-notify.ts
   .pi/extensions/45-jarvis.ts
   .pi/extensions/46-local-pi-session-status.ts
   .pi/extensions/47-watch-terminal-speech.ts
@@ -658,7 +659,7 @@ assert 'com.operation-jarvis.jarvis.watchkitapp"' in provider
 assert 'MAX_ALERT_PREVIEW_CHARACTERS = 140' in provider
 assert 'SENSITIVE_CONTEXT_RE' in provider
 assert 'FALLBACK_ALERT_BODY' in provider
-iphone_copy = (root / 'JARVIS/Views/NotificationSettingsView.swift').read_text(encoding='utf-8')
+iphone_copy = (root / 'JARVIS/Views/SettingsDetailView.swift').read_text(encoding='utf-8')
 watch_copy = (root / 'JARVISWatch/Views/WatchConnectView.swift').read_text(encoding='utf-8')
 assert 'Show Previews' in iphone_copy
 assert 'Show Previews' in watch_copy
@@ -721,6 +722,7 @@ PY
   if command -v node >/dev/null 2>&1; then
     run_check "memory extension regression tests" node --test .pi/tests/memory.test.mjs
     run_check "scheduler adapter regression tests" node --test .pi/tests/cron.test.mjs
+    run_check "intentional notification regression tests" node --test .pi/tests/notify.test.mjs
   fi
   run_check "private scheduler CLI help" env PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py --help
 fi

@@ -27,6 +27,7 @@ const ALWAYS_ON_TOOLS = [
   "fetch_content",
   "get_search_content",
   "maps",
+  "notify",
   "load_tools",
 ] as const;
 
@@ -73,7 +74,7 @@ const GROUP_SUMMARIES: Record<ConcreteToolGroup, string> = {
 
 const GROUP_NAMES = Object.keys(TOOL_GROUPS) as ConcreteToolGroup[];
 const LOADABLE_GROUPS_TEXT = `${GROUP_NAMES.map((name) => `${name}=${GROUP_SUMMARIES[name]}`).join("; ")}; all=all loadable groups`;
-const BASELINE_TOOLS_TEXT = "coding, ssh, web_search/fetch_content/get_search_content, maps";
+const BASELINE_TOOLS_TEXT = "coding, ssh, web_search/fetch_content/get_search_content, maps, notify";
 const LOAD_TOOLS_DESCRIPTION = `Activate optional tools for this session by exact group name: ${LOADABLE_GROUPS_TEXT}.`;
 const LOAD_TOOLS_PROMPT_SNIPPET = "Activate optional tool groups; see its schema for group names.";
 

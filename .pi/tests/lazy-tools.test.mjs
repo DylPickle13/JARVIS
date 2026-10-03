@@ -24,7 +24,7 @@ const optionalNames = [
 // Registration and activation only: no real optional tool, model or device runs.
 function fixture() {
   const tools = new Map([...['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls', 'ssh',
-    'web_search', 'fetch_content', 'get_search_content', 'maps', 'codemode'], ...optionalNames]
+    'web_search', 'fetch_content', 'get_search_content', 'maps', 'notify', 'codemode'], ...optionalNames]
     .map(name => [name, { name }]));
   const handlers = new Map(), commands = new Map(), messages = [];
   let active = [...tools.keys()];
@@ -57,6 +57,13 @@ test('owner-requested standalone CLI is allowed while safety guidance remains in
   assert.match(prompt, /Never bypass safety gates or claim actions without tool results/);
   assert.match(playbook, /Unknown write outcome means stop, inspect, never replay/);
   assert.match(playbook, /never expose raw rules, credentials or media/);
+});
+
+test('intentional notify stays in the baseline after startup and reset', async () => {
+  const { pi, commands } = fixture();
+  assert(pi.getActiveTools().includes('notify'));
+  await commands.get('reset-tools').handler('', { ui: { notify: () => {} } });
+  assert(pi.getActiveTools().includes('notify'));
 });
 
 test('loader advertises only the eight supported groups', () => {

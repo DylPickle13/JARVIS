@@ -1,8 +1,8 @@
 # Private scheduler backend
 
 Operation JARVIS owns scheduling, execution, SQLite history, APNs registration/
-delivery, and Pi-session completion receipts. Pi extensions only translate tool
-calls or lifecycle events into fixed backend CLI invocations. The HTTP daemon
+delivery, and explicit Pi-notification receipts. Pi extensions only translate
+tool calls into fixed backend CLI invocations; lifecycle events no longer alert. The HTTP daemon
 continues exposing sanitized read-only job/result projections; no new remote job
 administration capability is introduced.
 
@@ -31,6 +31,27 @@ gitignored. The backend enforces these permissions without requiring Pi startup.
 `JARVIS_SESSION_NOTIFICATIONS_DIR` may explicitly override storage locations.
 Pi settings remain in `.pi`: reading model configuration does not make Pi the
 owner of execution or persistence.
+
+## Intentional Pi notifications
+
+`notify(title, message)` replaces automatic session-finish alerts. The fixed
+`session_completion.py --notify` adapter retains its historical filename but
+requires a strict versioned stdin envelope (pane/PID, event UUID, title/message).
+Legacy lifecycle argv is inert, even for Pi sessions that have not reloaded.
+
+Custom previews reuse the existing Lock Screen sanitizer and fixed-session tap
+route. Distinct explicit alerts have distinct collapse keys. Only receipt
+identities/outcomes are retained, never their text/tokens; no Jobs result or
+scheduler outbox is created. Existing activation gates, opted-in iPhone/Watch
+registrations, topics/environments, four-attempt/five-minute definite-rejection
+retry limits, invalidation, and no-unknown-replay behavior are preserved.
+
+Receipts report Apple acceptance, partial/unknown transmission, suppression,
+or disabled/unavailable targets—not physical delivery/readership. No watcher,
+reminder, gate activation, or service restart is introduced. Existing Pi sessions
+need owner-controlled `/reload` to load the new tool; installed native clients
+already support the retained `pi-session-completed` route and custom alert text.
+See [Pi notifications](../../../../../.pi/docs/PI_EXTENSIONS.md#intentional-notifications).
 
 ## Job categories
 
