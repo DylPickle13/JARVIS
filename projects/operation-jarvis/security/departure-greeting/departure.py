@@ -40,9 +40,10 @@ def parser():
 
 
 def status():
+    import runtime
     return {'result': 'departure_staged', 'mode': 'silent', 'delivery_enabled': False,
             'background_listener': False, 'arrival_enabled': False,
-            'phrase': 'Have a good day, sir', 'motion_window_seconds': 20,
+            'phrase': runtime.PHRASE, 'motion_window_seconds': 20,
             'cooldown_seconds': 120, 'minimum_motion_lead_seconds': 0.5,
             'maximum_sample_gap_seconds': 8, 'maximum_read_seconds': 2,
             'active_hours': '24/7', 'quiet_hours': None, 'person_gate_required': True,

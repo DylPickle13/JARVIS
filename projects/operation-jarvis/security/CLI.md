@@ -649,6 +649,9 @@ hub/device locks before connecting to the PCMA/8 kHz speaker transport. This
 fresh identity-only check skips the full settings snapshot to reduce startup
 delay; authentication and model/type verification are not cached or skipped.
 
+The quoted greetings below are example input supplied by the operator, not
+hardcoded automatic responses. Executing these commands produces audible output.
+
 ```sh
 ./security audio speak front-doorbell --text 'Hello, sir.' --confirm
 ./security audio play front-doorbell /path/to/message.mp3 --volume 30 --confirm

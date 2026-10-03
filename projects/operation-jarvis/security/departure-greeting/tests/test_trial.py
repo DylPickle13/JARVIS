@@ -62,6 +62,8 @@ class TrialTests(unittest.TestCase):
     def test_phrase_is_exact(self):
         self.assertEqual(runtime.PHRASE, 'Have a good day, sir')
         self.assertEqual(departure.status()['phrase'], runtime.PHRASE)
+        with patch.object(runtime, 'PHRASE', 'status fixture only'):
+            self.assertEqual(departure.status()['phrase'], 'status fixture only')
 
     def test_reservation_is_durable_before_worker(self):
         def play(root, attempt, expires):

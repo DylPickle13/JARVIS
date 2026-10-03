@@ -21,6 +21,11 @@ ROOT = ROOM.parents[2]
 DEFAULT_STATE = Path.home() / 'Library/Application Support/JARVIS/room-audio-mac'
 LABEL_PREFIX = 'com.operation-jarvis.room-audio-mac-'
 
+# Import only the side-effect-free catalogue, not the voice pipeline/services.
+if str(ROOM.parent / 'voice') not in sys.path:
+    sys.path.insert(0, str(ROOM.parent / 'voice'))
+import voice_lines  # noqa: E402
+
 
 def client_arguments(port: int, device: str) -> list[str]:
     return [str(ROOM / 'pi_room_audio_client.py'),
@@ -96,7 +101,7 @@ def configure(args) -> None:
         'JARVIS_ROOM_AUDIO_INTERRUPT_ASR_BACKEND': 'apple-dictation',
         'JARVIS_ROOM_AUDIO_INTERRUPT_ASR_FALLBACK_BACKEND': '',
         'JARVIS_ROOM_AUDIO_GREETING_STATE_PATH': str(state / 'greeting-state.json'),
-        'JARVIS_ROOM_AUDIO_GREETING_TEXT': 'The Mac room speaker is online, sir.',
+        'JARVIS_ROOM_AUDIO_GREETING_TEXT': voice_lines.MAC_STARTUP_GREETING,
         'JARVIS_ROOM_AUDIO_TTS_LEADING_SILENCE_MS': '450',
         'JARVIS_ROOM_AUDIO_DEVICE': args.device,
     }

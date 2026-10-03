@@ -25,7 +25,7 @@ from dataclasses import replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 
@@ -61,6 +61,7 @@ config.load_project_env(PROJECT_ROOT / ".env")
 
 import pi_rpc  # noqa: E402
 import voice_pipeline  # noqa: E402
+import voice_lines  # noqa: E402
 from asr_backends import AppleSpeechASRBackend, AppleSpeechASRSettings  # noqa: E402
 from voice_commands import STOP_COMMAND, parse_voice_interrupt_command  # noqa: E402
 from room_tts_prerender import RoomTTSPrerender  # noqa: E402
@@ -88,7 +89,7 @@ PROCESSING_ACK_ENABLED = config.get_str_env(
 ).lower() not in {"0", "false", "no", "off", ""}
 PROCESSING_ACK_TEXT = config.get_str_env(
     "JARVIS_ROOM_AUDIO_PROCESSING_ACK_TEXT",
-    config.get_str_env("JARVIS_VOICE_PROCESSING_ACK_TEXT", "Generating your response, sir."),
+    config.get_str_env("JARVIS_VOICE_PROCESSING_ACK_TEXT", voice_lines.PROCESSING_ACK),
 ).strip()
 ROOM_GREETING_ENABLED = config.get_str_env("JARVIS_ROOM_AUDIO_GREETING_ENABLED", "1").lower() not in {"0", "false", "no", "off", ""}
 ROOM_GREETING_TEXT = config.get_str_env("JARVIS_ROOM_AUDIO_GREETING_TEXT", "").strip()
@@ -108,7 +109,7 @@ WAKE_WORDS = tuple(
 VERIFIED_WAKE_PHRASE = "hey jarvis"
 # Explicit, time-bounded opt-in: wake candidates may contain private speech.
 WAKE_DIAGNOSTICS_UNTIL = config.get_int_env("JARVIS_ROOM_WAKE_DIAGNOSTICS_UNTIL", 0, minimum=0)
-WAKE_ACK_TEXT = "Yes sir?"
+WAKE_ACK_TEXT = voice_lines.WAKE_ACK
 WAKE_ACK_LEADING_SILENCE_MS = config.get_int_env("JARVIS_ROOM_AUDIO_WAKE_ACK_LEADING_SILENCE_MS", 450, minimum=0)
 TURN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$")
 
@@ -148,9 +149,13 @@ def _save_room_greeting_state_unlocked(state: dict[str, Any]) -> None:
         LOGGER.debug("Failed to write room-audio greeting state", exc_info=True)
 
 
-def select_room_greeting() -> str:
+def select_room_greeting(*, arrival: bool = False) -> str:
+    # One master switch covers startup, reconnect, and optional arrival speech.
+    # Wake acknowledgements are independent: they authorize the next request.
     if not ROOM_GREETING_ENABLED:
         return ""
+    if arrival:
+        return voice_lines.ARRIVAL_GREETING
     if ROOM_GREETING_TEXT:
         return ROOM_GREETING_TEXT
 
@@ -158,7 +163,7 @@ def select_room_greeting() -> str:
     parse_func = getattr(voice_pipeline, "parse_voice_greeting_timestamp", None)
     format_func = getattr(voice_pipeline, "format_contextual_greeting", None)
     if not (callable(now_func) and callable(parse_func) and callable(format_func)):
-        return "JARVIS online. At your service, sir."
+        return voice_lines.FALLBACK_GREETING
 
     now = now_func()
     with ROOM_GREETING_LOCK:
@@ -294,6 +299,8 @@ class RoomAudioBridge:
         pipeline_config = voice_pipeline.VoicePipelineConfig(stream_tts=False)
         pipeline_config = replace(
             pipeline_config,
+            processing_ack_enabled=PROCESSING_ACK_ENABLED,
+            processing_ack_text=PROCESSING_ACK_TEXT,
             asr_backend=config.get_str_env("JARVIS_ROOM_AUDIO_ASR_BACKEND", pipeline_config.asr_backend),
             asr_fallback_backend=config.get_str_env(
                 "JARVIS_ROOM_AUDIO_ASR_FALLBACK_BACKEND",
@@ -451,7 +458,7 @@ class RoomAudioBridge:
             self._synthesize_processing_ack()
 
     def synthesize_greeting(self, *, arrival: bool = False) -> dict[str, Any]:
-        greeting_text = 'Welcome back, sir' if arrival else select_room_greeting()
+        greeting_text = select_room_greeting(arrival=arrival)
         if not greeting_text:
             return {
                 "ok": True,
@@ -503,6 +510,7 @@ class RoomAudioBridge:
         include_ack: bool,
         turn_id: str = "",
         cancel_event: threading.Event | None = None,
+        on_reply_ready: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         ack_path: Path | None = None
         audio_paths: list[Path] = []
@@ -536,6 +544,7 @@ class RoomAudioBridge:
                 input_seconds=input_seconds,
                 asr_seconds=asr_seconds,
                 started_at=started_at,
+                on_reply_ready=on_reply_ready,
                 **synthesis_options,
             )
             # Take ownership before the cancellation check so every committed
@@ -615,6 +624,12 @@ class RoomAudioBridge:
         started_at: float,
         cancel_event: threading.Event,
     ) -> None:
+        reply_ready = False
+
+        def mark_reply_ready() -> None:
+            nonlocal reply_ready
+            reply_ready = True
+
         try:
             response = self._synthesize_accepted_turn(
                 wav_path,
@@ -625,6 +640,7 @@ class RoomAudioBridge:
                 include_ack=False,
                 turn_id=turn_id,
                 cancel_event=cancel_event,
+                on_reply_ready=mark_reply_ready,
             )
             response.update({"turnId": turn_id, "status": "done"})
         except (RoomAudioTurnCancelled, pi_rpc.PiRpcCancelledError):
@@ -651,7 +667,7 @@ class RoomAudioBridge:
                 error_audio_b64 = ""
                 try:
                     notice_path = self._pipeline.synthesize_notice(
-                        "I generated a response, sir, but the voice renderer failed before I could speak it."
+                        voice_lines.RENDER_FAILURE if reply_ready else voice_lines.REQUEST_FAILURE
                     )
                     try:
                         error_audio_b64 = base64.b64encode(combine_wavs([notice_path])).decode("ascii")

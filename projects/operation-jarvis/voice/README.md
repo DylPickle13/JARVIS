@@ -5,6 +5,7 @@ The Mac-side speech code for JARVIS. Room audio uses it to transcribe speech and
 ## Files
 
 - `voice_pipeline.py`: pluggable ASR routing/fallback, optional direct oMLX chat, injected Pi RPC responses, transcript normalization, and bounded Piper synthesis.
+- `voice_lines.py`: side-effect-free catalogue of room announcements, greeting variants, and suffixes. Edit named defaults here rather than copying dialogue into callers.
 - `asr_backends.py`: strict Apple Speech helper adapter plus the in-process oMLX callback adapter.
 - `apple_asr/`: compiled Swift command-line helper using macOS 26 `SpeechAnalyzer`, `SpeechTranscriber`, and `DictationTranscriber`.
 - `voice_commands.py`: exact busy-only `stop` control policy.
@@ -60,6 +61,33 @@ Voice settings use the `JARVIS_VOICE_*` prefix:
 - `JARVIS_VOICE_ASR_TIMEOUT_SECONDS`, `JARVIS_VOICE_LLM_TIMEOUT_SECONDS`, `JARVIS_VOICE_TTS_TIMEOUT_SECONDS`, `JARVIS_VOICE_MODEL_LOAD_TIMEOUT_SECONDS`.
 
 Room-specific ASR overrides use `JARVIS_ROOM_AUDIO_ASR_*`; see the [room-audio README](../room-audio/README.md). Warm-up skips oMLX when neither ASR nor direct chat uses it.
+
+### Fixed dialogue and greeting controls
+
+Room dialogue defaults come from `voice_lines.py`; normal assistant answers and
+Watch playback still use generated/supplied text. Explicit environment overrides
+and the saved Mac endpoint startup text retain precedence over catalogue defaults.
+`JARVIS_VOICE_PROCESSING_ACK_ENABLED` and `JARVIS_VOICE_PROCESSING_ACK_TEXT`
+configure neutral-pipeline steering acknowledgements. Room-specific
+`JARVIS_ROOM_AUDIO_PROCESSING_ACK_*` values take precedence for the room bridge.
+An empty acknowledgement text suppresses it.
+
+`JARVIS_ROOM_AUDIO_GREETING_ENABLED=0` disables startup, reconnect, **and arrival**
+greetings. It does not disable the separate `Yes sir?` wake acknowledgement.
+`JARVIS_ROOM_AUDIO_GREETING_TEXT` overrides startup/reconnect wording, not the fixed
+arrival phrase. Contextual greetings retain their Toronto-time selection, cooldown,
+and optional status suffixes (`JARVIS_VOICE_GREETING_INCLUDE_STATUS`).
+
+Failure notices distinguish an incomplete request from a completed response that
+could not be rendered. Completion is recorded explicitly; speculative text is not
+proof that a response is ready.
+
+The protected doorbell farewell intentionally remains in
+`security/departure-greeting/runtime.py`. Its status output shares that constant;
+playback still validates the pre-rendered phrase/WAV/hash. Changing its wording
+requires an explicit recording/metadata update, not merely a catalogue edit.
+Documentation examples and synthetic test dialogue are not operational canned
+responses. Historical farewells in the departure changelog are labelled as such.
 
 ## Tests
 

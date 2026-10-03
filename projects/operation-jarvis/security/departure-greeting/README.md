@@ -220,7 +220,8 @@ window. This is a continuity check, not physical departure/audio commissioning.
 ## Owner-authorized audible trial
 
 On 2026-09-29 the owner explicitly requested background activation for testing the
-next day, initially specifying **“Have a good trip, sir.”** On 2026-09-30 the owner
+next day, initially specifying **“Have a good trip, sir.”** (historical, no longer
+used). On 2026-09-30 the owner
 changed the phrase to **“Have a good day, sir”**; the private WAV and hash metadata
 were replaced without test playback. The installer opts in to an **experimental
 audible trial**, not a claim of physically verified departure detection. The owner subsequently requested **24/7 operation**, with no

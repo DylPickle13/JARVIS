@@ -11,6 +11,10 @@ C230 and D235 speaker audio is implemented in `security_audio.py`, with a local 
 JARVIS voice worker in `security_tts.py` and offline tests in
 `test_security_audio.py`. See [speaker audio commands](CLI.md#camera-and-doorbell-speaker-audio)
 for full-length speech/files, gain, looping, status and stop.
+CLI greeting examples are supplied test text, not automatic announcements. The
+private `private-notes/audio-poc/mic_duplex_probe.py` script is a **manual audible
+diagnostic** with a fixed test phrase, not a service; do not run it as an automated
+check or without an explicitly approved audible test.
 The standalone `security_quick_response*.py` uploader adds experimental native
 D235 saved quick responses, separate from talkback; see
 [saved-response commands](CLI.md#experimental-native-d235-saved-responses).
@@ -64,7 +68,7 @@ are changed. Source/tests/docs are trackable; credentials and runtime stay priva
 ## Departure greeting (owner-authorized trial)
 
 The separate [departure-greeting subproject](departure-greeting/README.md) implements
-outdoor-doorbell farewells only: **“Have a good trip, sir.”** Its explicitly opted-in
+outdoor-doorbell farewells only: **“Have a good day, sir”**. Its explicitly opted-in
 background trial correlates paired foyer-motion/door-contact hub snapshots and
 requires a fresh doorbell person event before speech, 24/7. The mandatory event
 gate defaults unverified/silent pending physical commissioning. It retains a durable

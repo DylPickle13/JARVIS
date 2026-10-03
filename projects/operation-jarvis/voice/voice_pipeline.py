@@ -25,6 +25,7 @@ import requests
 
 import config
 import asr_backends
+import voice_lines
 
 LOGGER = config.get_logger("operation_jarvis.voice.pipeline")
 
@@ -44,12 +45,7 @@ JARVIS_VOICE_GREETING_COOLDOWN_MINUTES = config.get_float_env(
 JARVIS_VOICE_GREETING_INCLUDE_STATUS = config.get_str_env(
     "JARVIS_VOICE_GREETING_INCLUDE_STATUS", "1"
 ).lower() not in {"0", "false", "no", "off", ""}
-JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES = (
-    "JARVIS online.",
-    "Systems are online.",
-    "Voice link established.",
-    "At your service.",
-)
+JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES = voice_lines.GREETING_STATUS_SUFFIXES
 
 
 def voice_local_now() -> datetime:
@@ -72,19 +68,19 @@ def format_contextual_greeting(now: datetime, last_connected_at: datetime | None
     if last_connected_at is not None:
         elapsed = now - last_connected_at
         if timedelta(0) <= elapsed <= timedelta(minutes=JARVIS_VOICE_GREETING_COOLDOWN_MINUTES):
-            base = random.choice(("Back already, sir?", "Returned so soon, sir?", "Welcome back, sir. That was quick."))
+            base = random.choice(voice_lines.QUICK_RETURN_GREETINGS)
             if not JARVIS_VOICE_GREETING_INCLUDE_STATUS:
                 return base
-            suffixes = (*JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES, "I'll pretend not to judge.")
+            suffixes = (*JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES, voice_lines.QUICK_RETURN_EXTRA_SUFFIX)
             return f"{base} {random.choice(suffixes)}"
     if 5 <= now.hour < 12:
-        base = random.choice(("Good morning, sir.", "Morning, sir."))
+        base = random.choice(voice_lines.MORNING_GREETINGS)
     elif 12 <= now.hour < 18:
-        base = random.choice(("Good afternoon, sir.", "Afternoon, sir."))
+        base = random.choice(voice_lines.AFTERNOON_GREETINGS)
     elif 18 <= now.hour < 24:
-        base = random.choice(("Good evening, sir.", "Evening, sir."))
+        base = random.choice(voice_lines.EVENING_GREETINGS)
     else:
-        base = random.choice(("You're up late, sir.", "Late night, sir."))
+        base = random.choice(voice_lines.LATE_NIGHT_GREETINGS)
     if not JARVIS_VOICE_GREETING_INCLUDE_STATUS:
         return base
     return f"{base} {random.choice(JARVIS_VOICE_CONTEXTUAL_GREETING_STATUS_SUFFIXES)}"
@@ -319,6 +315,8 @@ class VoicePipelineConfig:
     tts_piper_volume: float = field(default_factory=lambda: config.get_float_env("JARVIS_VOICE_TTS_PIPER_VOLUME", 0.95, minimum=0.0))
     tts_piper_noise_scale: float = field(default_factory=lambda: config.get_float_env("JARVIS_VOICE_TTS_PIPER_NOISE_SCALE", 0.55, minimum=0.0))
     tts_piper_noise_w_scale: float = field(default_factory=lambda: config.get_float_env("JARVIS_VOICE_TTS_PIPER_NOISE_W_SCALE", 0.70, minimum=0.0))
+    processing_ack_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_VOICE_PROCESSING_ACK_ENABLED", True))
+    processing_ack_text: str = field(default_factory=lambda: config.get_str_env("JARVIS_VOICE_PROCESSING_ACK_TEXT", voice_lines.PROCESSING_ACK))
     stream_tts: bool = field(default_factory=lambda: _env_bool("JARVIS_VOICE_STREAM_TTS", True))
     stream_start_words: int = field(default_factory=lambda: config.get_int_env("JARVIS_VOICE_STREAM_START_WORDS", 0, minimum=0))
     tts_strip_urls: bool = field(default_factory=lambda: _env_bool("JARVIS_VOICE_TTS_STRIP_URLS", True))
@@ -681,6 +679,7 @@ class VoicePipeline:
         asr_seconds: float | None = None,
         started_at: float | None = None,
         final_synthesis: Callable[[str], list[Path]] | None = None,
+        on_reply_ready: Callable[[], None] | None = None,
     ) -> VoicePipelineResult:
         """Run one user voice turn through ASR -> voice LLM -> TTS.
 
@@ -690,6 +689,8 @@ class VoicePipeline:
         can begin before the LLM has finished the whole reply. An optional
         final_synthesis renderer is invoked only after a successful completed
         response, allowing room callers to reuse matching silent pre-rendered WAVs.
+        on_reply_ready signals a completed, non-empty reply. In final-only mode
+        this happens before rendering; speculative streamed text never triggers it.
         """
         started_at = started_at if started_at is not None else time.monotonic()
         if transcript is None:
@@ -735,6 +736,8 @@ class VoicePipeline:
         llm_seconds = max(0.0, time.monotonic() - llm_started_at - tts_seconds)
         if not reply_text:
             raise VoicePipelineNoOutputError("Voice LLM produced no reply text.")
+        if on_reply_ready is not None:
+            on_reply_ready()
 
         if not stream_tts:
             tts_started_at = time.monotonic()
@@ -1146,7 +1149,7 @@ class VoicePipeline:
 
         def _emit_pending_steering_ack_if_ready(*, wait: bool) -> float:
             nonlocal pending_steering_ack
-            if not pending_steering_ack or not JARVIS_VOICE_PROCESSING_ACK_ENABLED or not JARVIS_VOICE_PROCESSING_ACK_TEXT:
+            if not pending_steering_ack or not self.config.processing_ack_enabled or not self.config.processing_ack_text:
                 return 0.0
             remaining_pause = tts_paused_until - time.monotonic()
             if remaining_pause > 0:
@@ -1154,7 +1157,7 @@ class VoicePipeline:
                     return 0.0
                 time.sleep(remaining_pause)
             pending_steering_ack = False
-            cleaned_ack = self._clean_text_for_tts(JARVIS_VOICE_PROCESSING_ACK_TEXT)
+            cleaned_ack = self._clean_text_for_tts(self.config.processing_ack_text)
             if not cleaned_ack:
                 return 0.0
             started_at = time.monotonic()
@@ -1181,7 +1184,7 @@ class VoicePipeline:
             spoken_tts_segment_keys.clear()
             spoken_segments = 0
             started_speaking = False
-            pending_steering_ack = JARVIS_VOICE_PROCESSING_ACK_ENABLED and bool(JARVIS_VOICE_PROCESSING_ACK_TEXT)
+            pending_steering_ack = self.config.processing_ack_enabled and bool(self.config.processing_ack_text)
             _drain_stale_delta_queue_after_steering()
             delay_seconds = _turn_context_steering_tts_delay_seconds(turn_context)
             if delay_seconds > 0:

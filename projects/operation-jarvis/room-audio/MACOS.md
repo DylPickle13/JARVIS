@@ -85,7 +85,10 @@ microphone access and Apple ASR permissions/assets must work under the agent.
   then five seconds to **start** one separate request. Busy-only exact “stop”
   cancels playback/generation. Capture stays open during normal replies; the
   existing startup-greeting path briefly releases capture before reopening it.
-- A fixed startup greeting says “The Mac room speaker is online, sir.”
+- A fixed startup greeting says “The Mac room speaker is online, sir.” Its setup
+  default comes from `../voice/voice_lines.py`; saved endpoint overrides are preserved.
+  `JARVIS_ROOM_AUDIO_GREETING_ENABLED=0` disables startup/reconnect and arrival
+  greetings, but not the separate wake acknowledgement.
 - The opt-in computer-presence watcher can request “Welcome back, sir” through
   authenticated loopback `POST /control/arrival` (`{}`). The next idle client
   report consumes a four-second, client-bound notice; `/arrival-audio` synthesizes
