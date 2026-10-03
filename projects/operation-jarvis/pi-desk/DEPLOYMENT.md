@@ -1,3 +1,21 @@
+# Selected white title contrast — 2026-10-03, 10:14 EDT
+
+The selected title already requested white, but the original bright purple badge
+has only **2.59:1** contrast with white. The active local viewer is in VS Code,
+which defaults to **4.5:1** minimum terminal contrast and can darken that white.
+Changed only the active badge background to deeper purple `#8D4CA3`, giving white
+**5.68:1** contrast. Inactive titles, bright brand/tab accents and terminal-wide
+settings are unchanged.
+
+**135 source tests passed**, including a new contrast-threshold regression test
+and active/inactive title checks in all layouts. Installed only `config/tmux.conf`
+and its manifest entry locally, then applied only the title format live. Verified
+all **9 display titles** and preserved **9 display/10 hosted-agent identities**
+and the attached viewer client. No viewers, agents, services or remote installs
+restarted. The two pre-existing unrelated manifest mismatches were left untouched.
+
+Rollback backup: `~/.local/state/pi-desk/backups/selected-title-contrast-20261003T141412838064Z/`.
+
 # White session titles — 2026-10-02, 23:35 EDT
 
 Every `Session N` pane title now uses true white (`#ffffff`). The active title

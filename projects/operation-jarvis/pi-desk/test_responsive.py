@@ -606,7 +606,7 @@ class WorkspaceTests(unittest.TestCase):
                         pane_id, session = pane.split(':')
                         label = core.tmux('display-message', '-p', '-t', pane_id,
                                           border_format).stdout.strip()
-                        style = ('#[fg=#ffffff,bg=#D183E8,bold]' if int(session) == number
+                        style = ('#[fg=#ffffff,bg=#8D4CA3,bold]' if int(session) == number
                                  else '#[fg=#ffffff,bg=#1e1e1e,nobold]')
                         self.assertEqual(label, f'#[default] {style} Session {session} #[default]')
                     self.assertEqual(self.focus(name), number)

@@ -2,6 +2,7 @@
 import datetime as dt
 import os
 from pathlib import Path
+import re
 import shutil
 import shlex
 import subprocess
@@ -437,11 +438,22 @@ class DesktopTests(unittest.TestCase):
         for option in ('pane-border-style', 'pane-active-border-style'):
             self.assertIn(f"set -g {option} 'fg=colour240,bg=#1e1e1e'", config)
 
-    def test_all_session_titles_are_white_with_active_brand_purple_badge(self):
+    def test_all_session_titles_are_white_with_active_purple_badge(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
         self.assertIn("set -g pane-border-format '#[default] #[fg=##ffffff,"
-                      "bg=#{?pane_active,##D183E8,##1e1e1e},#{?pane_active,bold,nobold}]"
+                      "bg=#{?pane_active,##8D4CA3,##1e1e1e},#{?pane_active,bold,nobold}]"
                       " Session #{@pi-desk-session} #[default] '", config)
+
+    def test_white_active_title_meets_vscode_default_contrast_threshold(self):
+        config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()
+        match = re.search(r'bg=#\{\?pane_active,##([0-9A-Fa-f]{6}),', config)
+        self.assertIsNotNone(match)
+        channels = [int(match.group(1)[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+                  for c in channels]
+        luminance = sum(c * weight for c, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+        # xterm can darken low-contrast white text even when tmux sends white.
+        self.assertGreaterEqual(1.05 / (luminance + 0.05), 4.5)
 
     def test_only_working_dots_pulse(self):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}

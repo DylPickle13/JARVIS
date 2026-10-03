@@ -25,11 +25,12 @@ are supported, with one elected status monitor per machine and failover on exit.
 
 The persistent `PI-DESK` top row uses the JARVIS app's dark accent purple
 (`#D183E8`); the selected session number uses it too. The active pane's `Session N`
-title is a bold purple badge with white text; inactive titles also use white text
-on the dark background. Pane dividers use thin grey lines in every focus state,
-keeping tmux's shared top
-junctions understated instead of emphasizing protruding corners or an incomplete
-outer frame. tmux's half-border focus indicator is disabled; the title badge and
+title is a bold deeper-purple (`#8D4CA3`) badge with white text. This keeps white
+above VS Code's default 4.5:1 contrast threshold, preventing automatic darkening
+of selected labels without changing terminal-wide settings. Inactive titles also
+use white text on the dark background. Pane dividers use thin grey lines in every
+focus state, keeping tmux's shared top junctions understated instead of emphasizing
+protruding corners or an incomplete outer frame. tmux's half-border focus indicator is disabled; the title badge and
 selected number identify focus even in one- and two-pane layouts. No extra rows or
 columns are used. The top row contains
 ten clickable session numbers and lifecycle dots, with shortcut hints aligned at
