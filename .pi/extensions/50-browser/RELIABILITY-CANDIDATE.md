@@ -1,10 +1,20 @@
-# Browser reliability candidate — OFFLINE ONLY
+# Browser reliability update — DEPLOYED; LIVE ACCEPTANCE PENDING
 
 Prepared 2026-10-03 on branch `browser/reliability-offline` in
-`.pi/runtime/browser-reliability-offline/`. **Not deployed or live-accepted.**
-The main worktree, running daemon, installed v2 Chrome extension/native host,
-Chrome profile, token and application tabs are unchanged. No automatic deployment,
-watcher, session-completion job or service restart is installed.
+`.pi/runtime/browser-reliability-offline/`, commit `e98889c`. Sir subsequently
+confirmed sessions 7/8 were finished and explicitly authorized deployment.
+The code was cherry-picked into main as `018be5b`; all 78 offline checks passed
+again there. At approximately **18:20 EDT on 2026-10-03**, only
+`com.jarvis.browser-bridge` was restarted with that approval.
+
+Read-only post-restart status confirmed native reconnection, connection generation 1,
+no current error/quarantine and all seven pre-existing work-tab IDs in window
+`1477433592`. Chrome, the installed v2 extension/native host, profile and credentials
+were not changed. No application page was filled, navigated or submitted by this
+deployment. Form-field contents were not inspected, so preserved tab IDs are not
+presented as a new unsaved-field verification. No live interaction/stress fixture
+was run. **Live acceptance remains pending an explicitly idle maintenance window.**
+No automatic deployment, watcher or session-completion job is installed.
 
 ## Evidence and scope
 
@@ -81,11 +91,14 @@ with another queued, local failure isolation, late underlying completion after
 request rejection, quarantine bypass refusal, safe release, preflight deadline
 handling, persistent reset/failure reporting, and actual MCP deadline selection.
 
-## Pending live acceptance / deployment gate
+## Deployment procedure / remaining live acceptance gate
 
-Do not merge/deploy until sir confirms sessions 7 and 8 are finished and approves
-an idle maintenance window. Completion is NOT inferred from a successful submission
-alone: each session may still be controlling other tabs. Do not poll/watch them.
+Sir's explicit session-completion confirmation and deployment approval fulfilled
+the deployment gate; the source deployment and bridge restart in steps 1–2 are
+complete. Step 3 applies when any prior client resumes browser work. Steps 4–5
+remain pending an explicitly idle maintenance window. Do not infer keyboard/mouse idleness from a
+successful application submission or a finished session, and do not poll/watch
+sessions to trigger deployment.
 
 1. Obtain fresh approval, have all browser clients pause, record the deployed commit
    and prepare rollback. Preserve personal/application tabs and unsaved values.
@@ -123,8 +136,9 @@ Only after quiescing the old daemon execution and inspecting uncertain outcomes 
 sir authorize restart/reconnection. No automatic reset is permitted to clear this
 fence. Service restart destroys leases/selections, not the existing Chrome tabs.
 
-Rollback restores the previously deployed browser-source commit and restarts only
-the daemon during the same approved maintenance window. Keep the installed v2
+Rollback reverts browser code commit `018be5b` (pre-deployment main was `6391988`)
+and restarts only the daemon during an approved maintenance window. Use a scoped
+revert, not a repository reset: unrelated work may be present. Keep the installed v2
 background extension/helper and stock-handshake guard. No CDP/profile/window fallback.
 
 Offline passes do not establish live wheel reliability, renderer behavior, or an

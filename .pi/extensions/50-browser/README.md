@@ -1,12 +1,19 @@
 # JARVIS browser bridge
 
-## Offline reliability candidate (not deployed)
+## Reliability update (deployed; live acceptance pending)
 
-See [RELIABILITY-CANDIDATE.md](RELIABILITY-CANDIDATE.md) for the staged long-text,
-local-failure isolation, unacknowledged-deadline quarantine, telemetry changes,
-offline tests and supervised deployment/rollback gate. The installed setup and
-historical live acceptance below describe the **previously deployed** build, not
-live acceptance of these changes. Do not deploy while sessions 7/8 are active.
+The backend reliability update was deployed with sir's approval on 2026-10-03
+at approximately 18:20 EDT, after sir confirmed sessions 7/8 were finished.
+78 offline tests passed; only the bridge was restarted. Automatic native
+reconnection succeeded and all seven work-tab IDs remained present in the same
+automation window. Chrome and its installed v2 extension/helper were not replaced
+or restarted. No application form was filled, navigated or submitted by deployment.
+
+See [RELIABILITY-CANDIDATE.md](RELIABILITY-CANDIDATE.md) for verified long-text
+replacement, session-local failure handling, unresolved-deadline quarantine,
+recovery diagnostics and rollback. **Live long-text/scrolling/multi-session fixture
+acceptance remains pending an explicitly idle maintenance window.** Historical
+focus/reconnect acceptance below is not live acceptance of this new backend code.
 
 ## Active local setup
 
