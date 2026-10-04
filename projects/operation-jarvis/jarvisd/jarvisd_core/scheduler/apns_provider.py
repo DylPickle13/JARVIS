@@ -41,6 +41,9 @@ MAX_PAYLOAD_BYTES = 1024
 MAX_ALERT_TITLE_BYTES = 120
 MAX_ALERT_PREVIEW_CHARACTERS = 140
 MAX_ALERT_BODY_BYTES = 640
+# Conservative watch-friendly limits for intentional Pi pushes only.
+MAX_SESSION_NOTIFICATION_TITLE_CHARACTERS = 24
+MAX_SESSION_NOTIFICATION_BODY_CHARACTERS = 60
 MARKDOWN_LINK_RE = re.compile(r"\[([^\]\n]{1,160})\]\([^)\s]+\)")
 URL_RE = re.compile(r"\b(?:[a-z][a-z0-9+.-]{1,15}://|www\.)[^\s<>()]+", re.IGNORECASE)
 BARE_NETWORK_LOCATION_RE = re.compile(
@@ -533,14 +536,19 @@ def build_alert_payload(
 def build_session_notification_payload(session_id: int, *, title: str, message: str) -> bytes:
     if type(session_id) is not int or not 1 <= session_id <= 9:
         raise APNsConfigurationError("Pi session slot is invalid")
+    # Retain the bounded input envelope for Pi sessions awaiting /reload;
+    # visible text below always uses the tighter intentional-notification caps.
     for value, maximum in ((title, 120), (message, 2048)):
         if not isinstance(value, str) or not value.strip() or len(value) > maximum:
             raise APNsConfigurationError("Pi notification text is invalid")
     safe_title = _plain_notification_text(title, replace_links=True, link_destination="the session")
     safe_body = _plain_notification_text(message, replace_links=True, link_destination="the session")
-    safe_title = _truncate_utf8(safe_title or "JARVIS", MAX_ALERT_TITLE_BYTES)
+    safe_title = _truncate_utf8(
+        _truncate_characters(safe_title or "JARVIS", MAX_SESSION_NOTIFICATION_TITLE_CHARACTERS),
+        MAX_ALERT_TITLE_BYTES,
+    )
     safe_body = _truncate_utf8(
-        _truncate_characters(safe_body or "An update is ready in your Pi session.", MAX_ALERT_PREVIEW_CHARACTERS),
+        _truncate_characters(safe_body or "An update is ready in your Pi session.", MAX_SESSION_NOTIFICATION_BODY_CHARACTERS),
         MAX_ALERT_BODY_BYTES,
     )
     # Retain the installed iPhone/Watch wire route: its historical name does not

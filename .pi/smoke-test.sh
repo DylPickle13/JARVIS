@@ -657,6 +657,8 @@ provider = Path('projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/apns_p
 assert 'com.operation-jarvis.jarvis"' in provider
 assert 'com.operation-jarvis.jarvis.watchkitapp"' in provider
 assert 'MAX_ALERT_PREVIEW_CHARACTERS = 140' in provider
+assert 'MAX_SESSION_NOTIFICATION_TITLE_CHARACTERS = 24' in provider
+assert 'MAX_SESSION_NOTIFICATION_BODY_CHARACTERS = 60' in provider
 assert 'SENSITIVE_CONTEXT_RE' in provider
 assert 'FALLBACK_ALERT_BODY' in provider
 iphone_copy = (root / 'JARVIS/Views/SettingsDetailView.swift').read_text(encoding='utf-8')

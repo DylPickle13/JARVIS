@@ -115,7 +115,51 @@ class APNsProviderTests(unittest.TestCase):
             alert = json.loads(encoded)["aps"]["alert"]
             self.assertLessEqual(len(encoded), self.apns.MAX_PAYLOAD_BYTES)
             self.assertLessEqual(len(alert["title"].encode()), self.apns.MAX_ALERT_TITLE_BYTES)
-            self.assertLessEqual(len(alert["body"]), self.apns.MAX_ALERT_PREVIEW_CHARACTERS)
+            self.assertLessEqual(len(alert["title"]), self.apns.MAX_SESSION_NOTIFICATION_TITLE_CHARACTERS)
+            self.assertLessEqual(len(alert["body"]), self.apns.MAX_SESSION_NOTIFICATION_BODY_CHARACTERS)
+
+    def test_session_watch_limits_preserve_exact_boundaries_including_unicode(self):
+        self.assertEqual(self.apns.MAX_SESSION_NOTIFICATION_TITLE_CHARACTERS, 24)
+        self.assertEqual(self.apns.MAX_SESSION_NOTIFICATION_BODY_CHARACTERS, 60)
+        for title, message in (
+            ("Notification Limits Live", "All checks passed. Details are available in your Pi session."),
+            ("🔔" * 24, "🔔" * 60),
+        ):
+            self.assertEqual(len(title), 24)
+            self.assertEqual(len(message), 60)
+            payload = json.loads(self.apns.build_session_notification_payload(2, title=title, message=message))
+            self.assertEqual(payload["aps"]["alert"], {"title": title, "body": message})
+            self.assertEqual(payload["route"], "pi-session-completed")
+            self.assertEqual(payload["sessionID"], 2)
+
+    def test_session_watch_caps_apply_to_legacy_input_and_expanded_links(self):
+        build = self.apns.build_session_notification_payload
+        for title, message in (
+            ("Long notification title " * 5, "Update details " * 120),
+            ("Ready", "example.com " * 5),
+        ):
+            alert = json.loads(build(2, title=title, message=message))["aps"]["alert"]
+            self.assertLessEqual(len(alert["title"]), 24)
+            self.assertLessEqual(len(alert["body"]), 60)
+            self.assertTrue(alert["body"].endswith("…"))
+            self.assertNotIn("example.com", alert["body"])
+
+    def test_session_privacy_filter_checks_text_beyond_the_visible_watch_limits(self):
+        alert = json.loads(self.apns.build_session_notification_payload(
+            2, title="Ready " * 5 + "TOKEN=super-secret",
+            message="Update details " * 5 + "Prompt: private conversation",
+        ))["aps"]["alert"]
+        self.assertEqual(alert, {"title": "JARVIS", "body": "An update is ready in your Pi session."})
+
+    def test_scheduled_alert_limits_remain_separate_from_watch_friendly_session_caps(self):
+        self.assertEqual(self.apns.MAX_ALERT_TITLE_BYTES, 120)
+        self.assertEqual(self.apns.MAX_ALERT_PREVIEW_CHARACTERS, 140)
+        alert = json.loads(self.apns.build_alert_payload(
+            1, job_name="Long scheduled notification title", status="success", summary="Review " * 30,
+        ))["aps"]["alert"]
+        self.assertEqual(alert["title"], "Long Scheduled Notification Title")
+        self.assertGreater(len(alert["title"]), 24)
+        self.assertEqual(len(alert["body"]), 140)
 
     def test_session_notification_rejects_invalid_identity_and_text_before_transport(self):
         signer, transport = FakeSigner(), FakeTransport()

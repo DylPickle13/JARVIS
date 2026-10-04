@@ -7,6 +7,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const MAX_NOTIFY_TITLE_CHARACTERS = 24;
+const MAX_NOTIFY_MESSAGE_CHARACTERS = 60;
 const OUTCOMES = ["accepted", "partial", "disabled", "unavailable", "failed", "ambiguous", "invalid", "retired"] as const;
 const DEVICE_OUTCOMES = ["accepted", "failed", "ambiguous", "suppressed"] as const;
 type NotifyOutcome = typeof OUTCOMES[number];
@@ -125,15 +127,16 @@ export function createNotifyTool(dispatch: Dispatch = dispatchNotification) {
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     executionMode: "sequential" as const,
     parameters: Type.Object({
-      title: Type.String({ minLength: 1, maxLength: 120, description: "Short, non-sensitive notification title." }),
-      message: Type.String({ minLength: 1, maxLength: 2048, description: "Concise message to sir; the Lock Screen preview is capped at 140 characters." }),
+      title: Type.String({ minLength: 1, maxLength: MAX_NOTIFY_TITLE_CHARACTERS, description: "Short, non-sensitive notification title; at most 24 characters." }),
+      message: Type.String({ minLength: 1, maxLength: MAX_NOTIFY_MESSAGE_CHARACTERS, description: "One complete sentence, at most 60 characters. Put the result first; details stay in this session." }),
     }, { additionalProperties: false }),
     async execute(toolCallID: string, params: { title: string; message: string }, signal: AbortSignal | undefined,
                   _onUpdate: unknown, ctx: ExtensionContext) {
       let result: NotifyResult;
       const pane = process.env.TMUX_PANE || "";
       if (![params.title, params.message].every(value => typeof value === "string" && value.trim())
-          || [...params.title].length > 120 || [...params.message].length > 2048) result = failure("invalid");
+          || [...params.title].length > MAX_NOTIFY_TITLE_CHARACTERS
+          || [...params.message].length > MAX_NOTIFY_MESSAGE_CHARACTERS) result = failure("invalid");
       else if (signal?.aborted || !/^%[0-9]+$/.test(pane)) result = failure("unavailable");
       else {
         const session = ctx.sessionManager.getSessionId();

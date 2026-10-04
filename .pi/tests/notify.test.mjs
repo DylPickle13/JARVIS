@@ -26,6 +26,11 @@ test('notify is model-callable with only title/message and no automatic event ho
   assert.equal(tool.name, 'notify');
   assert.deepEqual(Object.keys(tool.parameters.properties), ['title', 'message']);
   assert.equal(tool.parameters.additionalProperties, false);
+  assert.equal(tool.parameters.properties.title.maxLength, 24);
+  assert.equal(tool.parameters.properties.message.maxLength, 60);
+  assert.match(tool.parameters.properties.title.description, /at most 24 characters/);
+  assert.match(tool.parameters.properties.message.description, /One complete sentence, at most 60 characters/);
+  assert.match(tool.parameters.properties.message.description, /Put the result first; details stay in this session/);
   const [usage, privacy, outcomes] = tool.promptGuidelines;
   assert.equal(tool.promptGuidelines.length, 3);
   assert.match(usage, /meaningful completions/);
@@ -61,6 +66,20 @@ test('explicit tool dispatch carries text via request and returns Apple acceptan
   assert.equal(result.isError, false);
   assert.deepEqual(result.details, accepted);
   assert.match(result.content[0].text, /Screen delivery.*unverified/);
+});
+
+test('watch-friendly limits accept exact character boundaries without cropping, including emoji', async t => {
+  mobilePane(t);
+  const calls = [];
+  const tool = createNotifyTool(async request => { calls.push(request); return accepted; });
+  for (const character of ['x', '🔔']) {
+    const params = { title: character.repeat(24), message: character.repeat(60) };
+    const result = await tool.execute(`boundary-${character}`, params, undefined, undefined, ctx);
+    assert.equal(result.isError, false);
+    assert.equal(calls.at(-1).title, params.title);
+    assert.equal(calls.at(-1).message, params.message);
+  }
+  assert.equal(calls.length, 2);
 });
 
 test('one logical invocation has one receipt identity; new calls/sessions/processes differ', () => {
@@ -101,7 +120,10 @@ test('missing pane, pre-cancelled calls, and invalid text never dispatch', async
   assert.equal(result.details.outcome, 'unavailable');
   process.env.TMUX_PANE = '%12';
   for (const params of [{ title: ' ', message: 'Done' }, { title: 'Ready', message: '' },
-    { title: 'x'.repeat(121), message: 'Done' }, { title: 'Ready', message: 'x'.repeat(2049) }]) {
+    ...['x', '🔔'].flatMap(character => [
+      { title: character.repeat(25), message: 'Done' },
+      { title: 'Ready', message: character.repeat(61) },
+    ])]) {
     result = await tool.execute('call', params, undefined, undefined, ctx);
     assert.equal(result.details.outcome, 'invalid');
   }

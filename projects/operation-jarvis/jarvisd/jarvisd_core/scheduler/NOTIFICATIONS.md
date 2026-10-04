@@ -15,6 +15,18 @@ Successful runs with no output stay silent. Summaries do not change error retent
 
 When changing a script's output format, update the corresponding digest parser and fixtures. Never infer backup success from exit status alone, mix US and Canadian availability, or select prices from unrelated product families.
 
+## Intentional Pi notifications
+
+The separate `notify` tool composes titles of at most 24 characters and messages
+of at most 60 characters. `build_session_notification_payload` enforces those
+visible limits after privacy filtering and link handling, including for older Pi
+sessions that have not reloaded the extension. Its bounded legacy input envelope
+remains unchanged. Both iPhone and Watch receive the same short text; tap routing
+and dispatch gates are unchanged. These are conservative Watch-fit targets, not a
+guarantee for every Watch size or accessibility setting. Scheduled-job title and
+140-character body limits above are unaffected. No app rebuild is required;
+`/reload` or a new Pi session picks up the tool schema and composition guidance.
+
 Tests (no live pushes):
 
 ```sh

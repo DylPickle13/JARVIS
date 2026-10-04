@@ -74,9 +74,16 @@ It does not watch external conditions, schedule reminders, or keep Pi awake.
 - The fixed backend helper receives a versioned, bounded envelope over stdin,
   never text in shell/argv. Existing APNs activation, device opt-in, topics,
   environment checks, private gates, and registry are retained unchanged.
-- Titles are capped at 120 UTF-8 bytes; body previews at 140 characters.
-  Known sensitive markers/paths fall back to generic text, links point back to
-  the session, and control/bidi characters are removed. This is a heuristic,
+- `notify` titles are capped at 24 characters; messages at 60 characters.
+  Compose one complete sentence with the result first; full details stay in the
+  session. These are conservative Watch-fit targets, not a no-scrolling guarantee
+  for every Watch size or text setting. The initial Watch short look shows only
+  the title; the message appears in the long look. Both iPhone and Watch receive
+  the same short text; scheduled-job alerts retain their separate 140-character
+  body cap. The backend also bounds sanitized previews to 24/60, including for
+  older Pi sessions awaiting `/reload`; it retains the old bounded input envelope
+  for compatibility. Known sensitive markers/paths fall back to generic text,
+  links point back to the session, and control/bidi characters are removed. This is a heuristic,
   not a guarantee that arbitrary private prose can be recognized. Never submit
   credentials, raw prompts, or conversation excerpts to the tool.
 - Identity-only receipts deduplicate a logical tool call without storing its
@@ -105,6 +112,12 @@ Sir subsequently reloaded Pi; a direct `notify` tool check was accepted for both
 devices without preview adjustment. The shortened guidance was also reloaded.
 No notification gate/registration change, service restart, agent-initiated Pi
 reload, or native installation was performed.
+
+Watch-fit verification: 33 Pi regression tests and 72 backend tests passed;
+the read-only smoke check passed 190 checks. Apple accepted one full-length
+24-character title / 60-character message test for both iPhone and Watch,
+without preview adjustment. Sir confirmed that the full notification fits on
+his Apple Watch Series 11 without scrolling.
 
 Offline checks: `node --test .pi/tests/notify.test.mjs .pi/tests/lazy-tools.test.mjs
 .pi/tests/cron.test.mjs .pi/scripts/tests/local-pi-session-status.test.mjs` and
