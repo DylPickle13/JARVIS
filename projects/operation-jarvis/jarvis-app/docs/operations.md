@@ -36,9 +36,17 @@ its original shutdown state. Physical palette acceptance awaits owner review.
 Private evidence: `20261004T132854Z-build245-session-grey`, including frozen
 247-file source/hash manifest, exact signed/sealed archive, tests, four-bundle
 audit, one-shot installer and `deployment/result.json`. Exact signed build 244
-is the rollback for both devices; older recovery archives remain retained.
-Session-created simulator/archive build caches and Swift package scratch output
-were removed after verification; deployed/rollback archives and evidence remain.
+is the rollback for both devices. Session-created simulator/archive build caches
+and Swift package scratch output were removed after verification (2.82 GiB).
+
+Subsequent owner-requested cleanup removed **11 superseded signed archive trees**
+from builds 231–243, freeing another **1.20 GiB**. Only deployed build **245** and
+immediate rollback **244** retain signed archives; both payload seals and all four
+bundle signatures were reverified after cleanup. Every historical frozen source,
+audit, payload manifest/seal, deployment record, test log and result bundle remains,
+with private per-release pruning records. Active signing status/config had no
+references to the removed payloads. Historical entries below describe recovery
+retention at their original deployment time, not current archive availability.
 See [shared session colours](session-status-indicators.md).
 
 ## Orange compaction palette — build 244
