@@ -79,19 +79,25 @@ The right-hand header shows **remaining** account-wide Codex quota, using the
 same sanitized jarvisd cache as the JARVIS app:
 
 ```text
-Codex W:68% · 5h:91% left
+Codex W:68% · 5h:91%
 ```
 
-`W` means weekly, `5h` means the five-hour window. Click the block to show both
+`W` means weekly, `5h` means the five-hour window. Percentages still mean quota
+remaining, without a trailing word in the header. Click the block to show available
 reset countdowns in an eight-second, client-only status message; this never opens
-a pane or changes focus. Purple means at least 50% remaining, amber means below
-50%, and red means below 30% or a reached limit. Colour uses the lowest available,
-enforced window; an explicitly paused/not-enforced five-hour window shows
-`5h:paused` and does not trigger a low-quota colour. Missing windows show `n/a`,
-not 0%. Only real exhaustion displays 0%.
+a pane or changes focus. Only actual percentages (including `%`) are coloured,
+independently for each window: JARVIS iPhone's dark accent purple (`#D183E8`) at
+30% or more remaining, and its critical red (`#FF3847`) below 30%. There is no
+amber band. All other quota text, punctuation and placeholders use neutral grey
+(`#8A8A8A`). A five-hour window is shown only when a valid percentage is available
+and the window is not explicitly unenforced. Otherwise its entire section,
+separator and click-detail line are omitted; the header becomes `Codex W:68%`.
+There is no `5h:n/a` placeholder. Missing weekly values remain grey `n/a`, not 0%;
+hiding an unavailable 5h reading does not imply there is no limit. Only real
+exhaustion displays 0%.
 
 Shortcut hints shorten/disappear before quota does. When necessary the block
-shrinks to `Codex W:68% left`, then disappears if there is no room. Quota never
+shrinks to `Codex W:68%`, then disappears if there is no room. Quota never
 hides a session tab or takes a second row. A missing weekly value uses the
 five-hour value in the compact form instead.
 

@@ -39,16 +39,17 @@ QUOTA_OPTION = '@pi-desk-codex-quota'
 
 def footer_candidates(quota):
     # Quota outranks hints, but never consumes space belonging to session tabs.
-    labels = codex_quota.labels(quota) if quota is not None else ()
-    for label in (*labels, ''):
-        label = label.strip()  # Section spacing belongs to the renderer, not quota.
+    choices = codex_quota.label_segments(quota) if quota is not None else ()
+    for segments in (*choices, ()):
+        label = ''.join(text for text, _ in segments)
         for hints in HINTS:
             style = '#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold,nounderscore]'
             sections = []
             if label:
                 # status-format passes through strftime: literal % must be %%.
-                escaped = label.replace('%', '%%')
-                sections.append(f'#[range=user|codex,fg={codex_quota.color(quota)}]{escaped}'
+                escaped = ''.join(f'#[fg={foreground}]' + text.replace('%', '%%')
+                                  for text, foreground in segments)
+                sections.append(f'#[range=user|codex,fg={codex_quota.GREY}]{escaped}'
                                 + HINT_STYLE)
             sections.extend(HINT_STYLE + hint for hint in hints)
             divider = DIVIDER_STYLE + ' ┃ '

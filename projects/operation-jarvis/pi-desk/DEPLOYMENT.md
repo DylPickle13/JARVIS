@@ -1,3 +1,73 @@
+# Compact quota text and hidden unavailable 5h — 2026-10-04
+
+Quota labels no longer include the trailing `left` in either header variant or
+click details. Percentages still mean remaining quota; colours and spacing resets
+are unchanged. The 5h section now appears only when its normalized percentage is
+available and it is not explicitly unenforced. Missing/invalid 5h values omit the
+entire section and separator, with no `5h:n/a` or unavailable click-detail line.
+Real 0% remains visible; hiding unavailable data does not assert that no limit
+exists. The weekly-only header is **`Codex W:68%`**.
+
+**188 full source tests passed locally.** Regressions cover exact label text,
+missing 5h data for every enforcement state, valid zero/fractional percentages,
+responsive widths, independent percentage colours, neutral nonclickable dividers,
+literal `%` rendering and real terminal clicks. Each machine passed **36 focused
+quota tests before installation and 36 against its installed runtime**; the one
+source-only native-app parity test was skipped in each isolated run and passed
+locally.
+
+Installed only `codex_quota.py` and its manifest entry on mac-mini-64, mac-mini-16
+and Raspberry Pi. The renderer, all other installed/config hashes and manifest
+entries, attached clients and pane identities were preserved, including primary
+Mac hosted panes. The Pi display-service PID was unchanged. No viewers, services
+or agents restarted; live visual acceptance awaits reopened viewers.
+
+**Activation:** detach all Pi Desk viewers on each machine with Ctrl+A then d,
+then reopen `pi-desk`. Agents and conversations stay running; do not use F10.
+
+Rollback backups:
+- mac-mini-64: `~/.local/state/pi-desk/backups/quota-compact-labels-20261004T172213637259Z/`
+- mac-mini-16: `~/.local/state/pi-desk/backups/quota-compact-labels-20261004T172225613761Z/`
+- Raspberry Pi: `~/.local/state/pi-desk/backups/quota-compact-labels-20261004T172242906839Z/`
+
+# Codex percentage-only JARVIS palette — 2026-10-04
+
+Only actual quota percentages (digits and `%`) are coloured. Weekly and 5h values
+are evaluated independently using the JARVIS iPhone quota card's policy: dark
+accent **`#D183E8`** at 30% or more remaining, critical **`#FF3847`** below 30%
+(`JarvisPalette.critical` rounded to RGB8). No amber band or lowest-window colour
+spillover. Labels, punctuation, `left`, `n/a`, stale and unavailable text are
+neutral **`#8A8A8A`**. The entire quota block remains clickable; section dividers
+remain neutral and nonclickable.
+
+An explicitly not-enforced 5h window is omitted from both header choices and the
+click-detail message, including its separator, even if old percentage data is
+present. Missing data alone is not proof of no limit; unknown windows retain grey
+`n/a`. Remaining semantics, freshness, true-zero rounding, reset countdowns,
+responsive widths, tab priority and hint shortening are unchanged.
+
+**186 full source tests passed locally**, including source parity with the native
+app, per-character foreground/click ranges, hidden 5h data, narrow widths and real
+PTY emission of the exact grey/purple/red RGB values. On each machine, **34 quota
+tests passed before installation and 34 passed against its installed runtime**;
+one source-only sibling-app parity test was intentionally skipped in each isolated
+run and passed in the full local source suite.
+
+Installed only `codex_quota.py`, `desktop.py` and their two manifest entries on
+mac-mini-64, mac-mini-16 and Raspberry Pi. All unrelated installed/config hashes,
+manifest entries, attached display clients and pane identities were preserved,
+including hosted panes on the primary Mac; the Pi display-service PID was
+unchanged. No viewers, services or agents restarted. Live visual acceptance of
+this palette is pending until viewers are reopened.
+
+**Activation:** detach all Pi Desk viewers on each machine with Ctrl+A then d,
+then reopen `pi-desk`. Agents and conversations stay running; do not use F10.
+
+Rollback backups:
+- mac-mini-64: `~/.local/state/pi-desk/backups/quota-percent-palette-20261004T171240049711Z/`
+- mac-mini-16: `~/.local/state/pi-desk/backups/quota-percent-palette-20261004T171251777728Z/`
+- Raspberry Pi: `~/.local/state/pi-desk/backups/quota-percent-palette-20261004T171306249697Z/`
+
 # Header section dividers — 2026-10-04, 12:49 EDT
 
 Matching grey **`#8a8a8a`** / heavy **`┃`** dividers now separate the title

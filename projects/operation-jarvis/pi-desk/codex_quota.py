@@ -4,6 +4,11 @@ import math
 
 FRESH_SECONDS = 900  # Match jarvisd's quota cache, not the 12s session watchdog.
 UNAVAILABLE = {'status': 'unavailable'}
+# Match JARVIS iPhone's dark accent and JarvisPalette.critical (rounded to RGB8).
+GREY = '#8A8A8A'
+ACCENT = '#D183E8'
+CRITICAL = '#FF3847'
+CRITICAL_REMAINING_PERCENT = 30
 
 
 def timestamp(value):
@@ -86,30 +91,34 @@ def percent(value):
     return f'{rounded}%'
 
 
-def labels(value, now=None):
-    """Longest-first footer choices, with explicit remaining semantics."""
+def color(remaining):
+    """Colour one actual percentage, using JARVIS's per-value quota policy."""
+    remaining = number(remaining, 100)
+    if remaining is None:
+        return GREY
+    return CRITICAL if remaining < CRITICAL_REMAINING_PERCENT else ACCENT
+
+
+def label_segments(value, now=None):
+    """Longest-first choices of (text, colour); only percentages have accents."""
     quota = normalize(value, now)
     if quota['status'] != 'live':
-        return (f" Codex {quota['status']} ",)
+        return (((f"Codex {quota['status']}", GREY),),)
     weekly = quota['weekly']['remainingPercent']
-    five = ('paused' if quota['fiveHourEnforced'] is False else
-            percent(quota['fiveHour']['remainingPercent']))
-    compact = (f' Codex W:{percent(weekly)} left ' if weekly is not None else
-               f' Codex 5h:{five} left ')
-    return (f' Codex W:{percent(weekly)} · 5h:{five} left ', compact)
+    five = quota['fiveHour']['remainingPercent']
+    full = [('Codex W:', GREY), (percent(weekly), color(weekly))]
+    if quota['fiveHourEnforced'] is not False and five is not None:
+        full.extend(((' · 5h:', GREY), (percent(five), color(five))))
+    prefix, remaining = ('Codex W:', weekly) if weekly is not None else ('Codex 5h:', five)
+    compact = ((prefix, GREY), (percent(remaining), color(remaining)))
+    full = tuple(full)
+    return (full,) if full == compact else (full, compact)
 
 
-def color(value, now=None):
-    quota = normalize(value, now)
-    if quota['status'] != 'live':
-        return 'colour245'
-    remaining = [quota['weekly']['remainingPercent']]
-    if quota['fiveHourEnforced'] is not False:
-        remaining.append(quota['fiveHour']['remainingPercent'])
-    minimum = min((n for n in remaining if n is not None), default=100)
-    if quota['limitReached'] or minimum < 30:  # Same critical threshold as JARVIS.
-        return 'colour203'
-    return 'colour179' if minimum < 50 else '#D183E8'
+def labels(value, now=None):
+    """Plain-text equivalents, retaining the existing padded-label contract."""
+    return tuple(' ' + ''.join(text for text, _ in segments) + ' '
+                 for segments in label_segments(value, now))
 
 
 def reset_label(value, now):
@@ -136,13 +145,9 @@ def details(value, now=None):
     if quota['status'] == 'stale':
         return 'Codex usage stale; awaiting a fresh reading'
     weekly, five = quota['weekly'], quota['fiveHour']
-    fields = [f"Weekly: {percent(weekly['remainingPercent'])} left, {reset_label(weekly, now)}"]
-    if quota['fiveHourEnforced'] is False:
-        fields.append('5-hour: paused (not enforced)')
-    elif five['remainingPercent'] is None:
-        fields.append('5-hour: unavailable')
-    else:
-        fields.append(f"5-hour: {percent(five['remainingPercent'])} left, {reset_label(five, now)}")
+    fields = [f"Weekly: {percent(weekly['remainingPercent'])}, {reset_label(weekly, now)}"]
+    if quota['fiveHourEnforced'] is not False and five['remainingPercent'] is not None:
+        fields.append(f"5-hour: {percent(five['remainingPercent'])}, {reset_label(five, now)}")
     if quota['limitReached']:
         fields.append('limit reached')
     return 'Codex — ' + ' · '.join(fields)

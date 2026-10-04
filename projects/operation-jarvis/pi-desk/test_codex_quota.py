@@ -27,6 +27,28 @@ import install
 import status_stream
 
 
+def plain_text(markup):
+    return re.sub(r'#\[[^\]]*\]', '', markup).replace('%%', '%')
+
+
+def styled_cells(markup):
+    """Interpret foreground/range changes without losing quota click coverage."""
+    foreground, click_range = None, None
+    cells = []
+    for match in re.finditer(r'#\[([^\]]*)\]|(.)', markup.replace('%%', '%')):
+        if match[1] is not None:
+            for option in match[1].split(','):
+                if option.startswith('fg='):
+                    foreground = option[3:]
+                elif option.startswith('range=user|'):
+                    click_range = option[len('range=user|'):]
+                elif option == 'norange':
+                    click_range = None
+        else:
+            cells.append((match[2], foreground, click_range))
+    return cells
+
+
 def sample(now):
     return {'status': 'live', 'checkedAt': now.isoformat(),
             'weekly': {'remainingPercent': 68, 'resetAt': (now + dt.timedelta(days=2, hours=4)).isoformat()},
@@ -114,36 +136,83 @@ class QuotaTests(unittest.TestCase):
         for value, expected in ((0, '0%'), (.2, '1%'), (29.6, '30%'), (99.8, '99%'), (100, '100%')):
             self.assertEqual(quota.percent(value), expected)
 
-    def test_colors_and_paused_window(self):
-        for value, expected in ((68, '#D183E8'), (50, '#D183E8'), (49, 'colour179'), (30, 'colour179'), (29, 'colour203'), (0, 'colour203')):
-            self.quota['weekly']['remainingPercent'] = value
-            self.assertEqual(quota.color(self.quota, self.now), expected)
-        self.quota['weekly']['remainingPercent'] = 68
-        self.quota['fiveHour']['remainingPercent'] = 0
-        self.assertEqual(quota.color(self.quota, self.now), 'colour203')
+    def test_colors_match_per_percentage_app_policy(self):
+        for value, expected in ((100, '#D183E8'), (68, '#D183E8'), (50, '#D183E8'),
+                                (49, '#D183E8'), (30, '#D183E8'), (29.6, '#FF3847'),
+                                (29, '#FF3847'), (0, '#FF3847'), (None, '#8A8A8A')):
+            self.assertEqual(quota.color(value), expected)
+        for invalid in (True, -1, 101, '0', float('nan'), []):
+            self.assertEqual(quota.color(invalid), quota.GREY)
+
+    def test_quota_palette_matches_jarvis_iphone_source(self):
+        app = Path(__file__).resolve().parent.parent / 'jarvis-app'
+        if not app.is_dir():
+            self.skipTest('source-only app palette parity check')
+        brand = (app / 'JARVISKit/Sources/JARVISKit/BrandTheme.swift').read_text()
+        components = (app / 'JARVIS/Views/Components.swift').read_text()
+        models = (app / 'JARVISKit/Sources/JARVISKit/Models.swift').read_text()
+        home = (app / 'JARVIS/Views/HomeView.swift').read_text()
+        accent = re.search(r'darkAccent = JARVISBrandRGB\(red: (\d+), green: (\d+), blue: (\d+)\)', brand)
+        critical = re.search(r'static let critical = Color\(red: ([\d.]+), green: ([\d.]+), blue: ([\d.]+)\)', components)
+        self.assertIsNotNone(accent)
+        self.assertIsNotNone(critical)
+        self.assertEqual(quota.ACCENT, '#' + ''.join(f'{int(n):02X}' for n in accent.groups()))
+        self.assertEqual(quota.CRITICAL, '#' + ''.join(f'{int(float(n) * 255 + .5):02X}' for n in critical.groups()))
+        threshold = float(re.search(r'criticalRemainingPercent = ([\d.]+)', models)[1])
+        self.assertEqual(quota.CRITICAL_REMAINING_PERCENT, threshold)
+        self.assertIn('remainingPercent < criticalRemainingPercent', models)
+        self.assertIn('? JarvisPalette.critical\n            : JarvisPalette.accent', home)
+
+    def test_not_enforced_window_is_omitted_even_with_leftover_data(self):
         self.quota['fiveHourEnforced'] = False
-        self.assertEqual(quota.color(self.quota, self.now), '#D183E8')
-        self.assertIn('5h:paused', quota.labels(self.quota, self.now)[0])
-        self.assertIn('5-hour: paused (not enforced)', quota.details(self.quota, self.now))
+        for remaining in (0, 91, None):
+            self.quota['fiveHour']['remainingPercent'] = remaining
+            self.assertEqual(quota.labels(self.quota, self.now), (' Codex W:68% ',))
+            self.assertNotIn('5-hour', quota.details(self.quota, self.now))
+            for size, markup in desktop.footer_candidates(self.quota):
+                self.assertEqual(size, len(plain_text(markup)))
+                self.assertNotIn('5h:', markup)
+                self.assertNotIn('paused', markup)
+                self.assertNotIn(' · ', plain_text(markup))
         self.quota['limitReached'] = True
-        self.assertEqual(quota.color(self.quota, self.now), 'colour203')
         self.assertIn('limit reached', quota.details(self.quota, self.now))
+
+    def test_only_percentages_have_independent_colours_and_all_text_is_clickable(self):
+        for weekly, five, limit in ((68, 12, False), (12, 91, False),
+                                    (68, 12, True), (None, 91, False), (68, None, False)):
+            self.quota['weekly']['remainingPercent'] = weekly
+            self.quota['fiveHour']['remainingPercent'] = five
+            self.quota['limitReached'] = limit
+            for _, markup in desktop.footer_candidates(self.quota):
+                cells = [cell for cell in styled_cells(markup) if cell[2] == 'codex']
+                text = ''.join(cell[0] for cell in cells)
+                expected = [quota.GREY] * len(text)
+                for match in re.finditer(r'(W|5h):(\d+%)', text):
+                    value = weekly if match[1] == 'W' else five
+                    expected[match.start(2):match.end(2)] = [quota.color(value)] * len(match[2])
+                self.assertEqual([cell[1] for cell in cells], expected, text)
+                if text:
+                    self.assertTrue(text.startswith('Codex '))
+                    self.assertRegex(text, r'(?:\d+%|n/a)$')
+                self.assertTrue(all(cell[2] is None for cell in styled_cells(markup)
+                                    if cell[0] == '┃'))
 
     def test_unavailable_and_stale_do_not_show_old_percentages(self):
         for value, expected in ((None, 'unavailable'), ({'status': 'unavailable'}, 'unavailable'),
                                 ({**self.quota, 'status': 'stale'}, 'stale')):
             self.assertEqual(quota.labels(value, self.now), (f' Codex {expected} ',))
-            self.assertEqual(quota.color(value, self.now), 'colour245')
+            self.assertTrue(all(foreground == quota.GREY for segments in quota.label_segments(value, self.now)
+                                for _, foreground in segments))
             self.assertNotIn('%', quota.details(value, self.now))
 
     def test_details_and_reset_countdown(self):
         text = quota.details(self.quota, self.now)
-        self.assertIn('Weekly: 68% left, resets in 2d 4h', text)
-        self.assertIn('5-hour: 91% left, resets in 48m', text)
+        self.assertIn('Weekly: 68%, resets in 2d 4h', text)
+        self.assertIn('5-hour: 91%, resets in 48m', text)
         self.assertIn('resets in 47m', quota.details(self.quota, self.now + dt.timedelta(minutes=1)))
         self.quota['fiveHour']['resetAt'] = self.now.isoformat()
         self.assertIn('reset due; awaiting usage update', quota.details(self.quota, self.now))
-        self.assertIn('91% left', quota.details(self.quota, self.now))  # Reset time never fabricates replenishment.
+        self.assertIn('91%', quota.details(self.quota, self.now))  # Reset time never fabricates replenishment.
 
     def test_relative_reset_is_anchored_to_sample_not_redraw(self):
         self.quota['weekly'] = {'remainingPercent': 68, 'resetAfterSeconds': 7200}
@@ -152,17 +221,52 @@ class QuotaTests(unittest.TestCase):
         self.assertEqual(first['weekly']['resetAt'], later['weekly']['resetAt'])
         self.assertIn('resets in 1h 59m', quota.details(later, self.now + dt.timedelta(minutes=1)))
 
-    def test_missing_weekly_and_five_hour_are_explicit(self):
+    def test_missing_weekly_is_explicit_and_missing_five_hour_is_hidden(self):
         self.quota['weekly'] = None
         self.assertIn('W:n/a', quota.labels(self.quota, self.now)[0])
-        self.assertIn('5h:91% left', quota.labels(self.quota, self.now)[1])
+        self.assertIn('5h:91%', quota.labels(self.quota, self.now)[1])
         self.quota['fiveHourEnforced'] = False
         self.assertEqual(quota.normalize(self.quota, self.now), quota.UNAVAILABLE)
         self.quota['fiveHourEnforced'] = True
         self.quota['weekly'] = {'remainingPercent': 68}
         self.quota['fiveHour'] = None
-        self.assertIn('5h:n/a', quota.labels(self.quota, self.now)[0])
-        self.assertIn('5-hour: unavailable', quota.details(self.quota, self.now))
+        self.assertEqual(quota.labels(self.quota, self.now), (' Codex W:68% ',))
+        self.assertNotIn('5-hour', quota.details(self.quota, self.now))
+
+    def test_missing_five_hour_is_hidden_for_every_enforcement_state(self):
+        for enforced in (True, False, None):
+            for window in (None, {}, {'remainingPercent': None},
+                           {'remainingPercent': 'n/a'}, {'remainingPercent': 101},
+                           {'remainingPercent': True}):
+                value = {**self.quota, 'fiveHourEnforced': enforced, 'fiveHour': window}
+                self.assertEqual(quota.labels(value, self.now), (' Codex W:68% ',))
+                self.assertNotIn('5-hour', quota.details(value, self.now))
+                for size, markup in desktop.footer_candidates(value):
+                    text = plain_text(markup)
+                    self.assertNotIn('5h:', text)
+                    self.assertNotIn(' · ', text)
+                    self.assertEqual(size, len(text))
+        for enforced in (True, None):
+            for remaining in (0, .2, 29.6, 100):
+                value = {**self.quota, 'fiveHourEnforced': enforced,
+                         'fiveHour': {'remainingPercent': remaining}}
+                self.assertIn(f'5h:{quota.percent(remaining)}', quota.labels(value, self.now)[0])
+                self.assertIn(f'5-hour: {quota.percent(remaining)}', quota.details(value, self.now))
+
+    def test_labels_and_details_omit_left_without_replacing_it(self):
+        self.assertEqual(quota.labels(self.quota, self.now),
+                         (' Codex W:68% · 5h:91% ', ' Codex W:68% '))
+        for value in (self.quota, {**self.quota, 'fiveHourEnforced': False},
+                      {**self.quota, 'weekly': None}, quota.UNAVAILABLE,
+                      {**self.quota, 'status': 'stale'}):
+            for label in quota.labels(value, self.now):
+                self.assertNotRegex(label, r'\bleft\b')
+                self.assertNotIn('remaining', label)
+            self.assertNotRegex(quota.details(value, self.now), r'\bleft\b')
+            for size, markup in desktop.footer_candidates(value):
+                text = plain_text(markup)
+                self.assertNotRegex(text, r'\bleft\b')
+                self.assertEqual(size, len(text))
 
     def test_source_collector_uses_one_existing_state_read(self):
         response = mock.MagicMock()
@@ -216,7 +320,9 @@ class QuotaTests(unittest.TestCase):
             for count in (1, 2, 3):
                 for selected in (1, 5, 10):
                     plain = []
-                    for value in (self.quota, quota.UNAVAILABLE, {**self.quota, 'status': 'stale'}):
+                    for value in (self.quota, quota.UNAVAILABLE, {**self.quota, 'status': 'stale'},
+                                  {**self.quota, 'fiveHourEnforced': False},
+                                  {**self.quota, 'fiveHour': None}):
                         bar = desktop.responsive_selector({}, width, count, selected, quota=value)
                         plain.append(re.sub(r'#\[[^\]]*\]', '', bar).replace('%%', '%'))
                         self.assertIn(f'range=user|{selected},', bar)
@@ -227,14 +333,14 @@ class QuotaTests(unittest.TestCase):
                     self.assertTrue(all(len(text) <= width for text in plain), (width, plain))
 
     def test_footer_prioritizes_quota_before_hints_and_shortens(self):
-        wide = desktop.responsive_selector({}, 184, 3, 5, quota=self.quota).replace('%%', '%')
-        self.assertIn('W:68% · 5h:91% left', wide)
+        wide = plain_text(desktop.responsive_selector({}, 184, 3, 5, quota=self.quota))
+        self.assertIn('W:68% · 5h:91%', wide)
         self.assertIn('F10 Restart', wide)
-        compact = desktop.responsive_selector({}, 80, 1, 5, quota=self.quota).replace('%%', '%')
-        self.assertIn('W:68% · 5h:91% left', compact)
+        compact = plain_text(desktop.responsive_selector({}, 80, 1, 5, quota=self.quota))
+        self.assertIn('W:68% · 5h:91%', compact)
         self.assertNotIn('F10', compact)
-        weekly = desktop.responsive_selector({}, 70, 1, 5, quota=self.quota).replace('%%', '%')
-        self.assertIn('W:68% left', weekly)
+        weekly = plain_text(desktop.responsive_selector({}, 70, 1, 5, quota=self.quota))
+        self.assertIn('W:68%', weekly)
         self.assertNotIn('5h:', weekly)
         tiny = desktop.responsive_selector({}, 40, 1, 5, quota=self.quota)
         self.assertNotIn('range=user|codex', tiny)
@@ -243,15 +349,16 @@ class QuotaTests(unittest.TestCase):
         bar = desktop.responsive_selector({}, 184, 3, 5, quota=self.quota)
         plain = re.sub(r'#\[[^\]]*\]', '', bar).replace('%%', '%')
         self.assertIn(' PI-DESK ┃ ', plain)
-        self.assertTrue(plain.endswith('Codex W:68% · 5h:91% left ┃ F10 Restart ┃ Ctrl + ←/→ Switch '))
+        self.assertTrue(plain.endswith('Codex W:68% · 5h:91% ┃ F10 Restart ┃ Ctrl + ←/→ Switch '))
         right = bar.split('#[align=right', 1)[1]
         self.assertEqual(right.count(desktop.DIVIDER_STYLE + ' ┃ '), 2)
         self.assertEqual(right.count('range=user|codex'), 1)
-        self.assertIn('left' + desktop.HINT_STYLE + desktop.DIVIDER_STYLE, right)
+        self.assertIn('91%%' + desktop.HINT_STYLE + desktop.DIVIDER_STYLE, right)
         self.assertIn(desktop.DIVIDER_STYLE + ' ┃ ' + desktop.HINT_STYLE + 'F10 Restart', right)
 
     def test_footer_sizes_include_dividers_and_never_leave_orphans(self):
-        for value in (None, self.quota, quota.UNAVAILABLE, {**self.quota, 'status': 'stale'}):
+        for value in (None, self.quota, quota.UNAVAILABLE, {**self.quota, 'status': 'stale'},
+                      {**self.quota, 'fiveHourEnforced': False}):
             for size, markup in desktop.footer_candidates(value):
                 plain = re.sub(r'#\[[^\]]*\]', '', markup).replace('%%', '%')
                 self.assertEqual(size, len(plain), (size, plain))
@@ -283,7 +390,7 @@ class QuotaClickTests(unittest.TestCase):
         last = calls.call_args.args
         self.assertEqual(last[:5], ('display-message', '-c', '/dev/ttys002', '-d', '8000'))
         self.assertEqual(last[5], '-l')
-        self.assertIn('Weekly: 68% left', last[6])
+        self.assertIn('Weekly: 68%,', last[6])
         self.assertFalse(any('send-keys' in call.args or 'select-pane' in call.args for call in calls.call_args_list))
 
     def test_vanished_client_is_noop(self):
@@ -331,8 +438,10 @@ class QuotaTmuxTests(unittest.TestCase):
             self.assertLessEqual(len(re.sub(r'#\[[^\]]*\]', '', expanded)), width)
             self.assertIn('range=user|5,', expanded)
         wide = self.expanded(desktop.responsive_selector({}, 184, 3, 5, quota=self.quota))
-        self.assertIn('range=user|codex,fg=#D183E8', wide)
-        self.assertIn('W:68% · 5h:91% left', wide)
+        self.assertIn('range=user|codex,fg=#8A8A8A', wide)
+        self.assertIn('W:68% · 5h:91%', plain_text(wide))
+        self.assertIn('#[fg=#D183E8]68%#[fg=#8A8A8A]', wide)
+        self.assertIn('#[fg=#D183E8]91%' + desktop.HINT_STYLE, wide)
         self.assertIn('range=user|5,bg=#1e1e1e,fg=#D183E8,nobold,nounderscore] #[bold,underscore]05', wide)
 
     def test_legacy_dynamic_footer_is_valid_tmux_format(self):
@@ -347,7 +456,7 @@ class QuotaTmuxTests(unittest.TestCase):
         wide = self.expanded(bar.replace('#{client_width}', '184'))
         plain = re.sub(r'#\[[^\]]*\]', '', wide)
         self.assertIn(' PI-DESK ┃ ', plain)
-        self.assertTrue(plain.endswith('Codex W:68% · 5h:91% left ┃ F10 Restart ┃ Ctrl + ←/→ Switch '))
+        self.assertTrue(plain.endswith('Codex W:68% · 5h:91% ┃ F10 Restart ┃ Ctrl + ←/→ Switch '))
         no_quota = desktop.selector({})
         for width in (84, 86, 100, 105, 120, 130, 184):
             expanded = self.expanded(no_quota.replace('#{client_width}', str(width)))
@@ -356,6 +465,8 @@ class QuotaTmuxTests(unittest.TestCase):
             self.assertNotIn('#{?', plain)
 
     def test_real_status_and_mouse_click_keep_panes_untouched(self):
+        self.quota['fiveHour']['remainingPercent'] = 12
+        core.tmux('set-option', '-g', 'terminal-features', 'xterm-256color:RGB')
         master, slave = os.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 45, 184, 0, 0))
         child = None
@@ -377,12 +488,16 @@ class QuotaTmuxTests(unittest.TestCase):
                     env=dict(backend.clean_environment(), TERM='xterm-256color'))
                 output = b''
                 deadline = time.monotonic() + 2
-                while time.monotonic() < deadline and b'5h:91%' not in output:
+                while time.monotonic() < deadline and b'12%' not in output:
                     if select.select([master], [], [], .1)[0]:
                         output += os.read(master, 65536)
-                self.assertIn(b'W:68%', output)  # Literal %, not strftime deletion/%%.
-                self.assertIn(b'5h:91%', output)
-                self.assertNotIn(b'68%%', output)
+                visible = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b'', output)
+                self.assertIn(b'W:68%', visible)  # Literal %, not strftime deletion/%%.
+                self.assertIn(b'5h:12%', visible)
+                self.assertNotIn(b'68%%', visible)
+                self.assertIn(b'38;2;138;138;138', output)  # Neutral quota labels.
+                self.assertIn(b'38;2;209;131;232', output)  # Weekly accent.
+                self.assertIn(b'38;2;255;56;71', output)  # Five-hour critical.
                 # Derive the right-aligned quota target from the rendered footer.
                 right = self.expanded(desktop.footer(184, self.quota))
                 plain = re.sub(r'#\[[^\]]*\]', '', right)
@@ -390,11 +505,11 @@ class QuotaTmuxTests(unittest.TestCase):
                 os.write(master, f'\x1b[<0;{column};1M\x1b[<0;{column};1m'.encode())
                 deadline = time.monotonic() + 2
                 clicked = b''
-                while time.monotonic() < deadline and b'Weekly: 68% left' not in clicked:
+                while time.monotonic() < deadline and b'Weekly: 68%,' not in clicked:
                     if select.select([master], [], [], .1)[0]:
                         clicked += os.read(master, 65536)
-                self.assertIn(b'Weekly: 68% left', clicked)
-                self.assertIn(b'5-hour: 91% left', clicked)
+                self.assertIn(b'Weekly: 68%,', clicked)
+                self.assertIn(b'5-hour: 12%,', clicked)
                 self.assertEqual(core.tmux('list-panes', '-a', '-F', '#{pane_id}:#{pane_pid}:#{pane_in_mode}:#{pane_active}').stdout, before)
             finally:
                 if child is not None:
@@ -454,7 +569,7 @@ class QuotaTmuxTests(unittest.TestCase):
         self.assertEqual(core.tmux('list-panes', '-a', '-F', '#{pane_id}:#{pane_pid}').stdout, before)
         self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), 'on')
         self.assertEqual(core.tmux('show-options', '-gv', 'status-format[1]').stdout.strip(), '')
-        self.assertIn('5h:91%', current[self.name][0])
+        self.assertIn('5h:91%', plain_text(current[self.name][0]))
         self.assertNotIn('5h:', current[second][0])
         with mock.patch.object(desktop, 'tmux', wraps=core.tmux) as calls:
             desktop.render_viewers({}, False, current, '', session_rows=rows, quota=self.quota)
