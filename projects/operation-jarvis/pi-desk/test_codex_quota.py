@@ -308,7 +308,7 @@ class QuotaTmuxTests(unittest.TestCase):
         wide = self.expanded(desktop.responsive_selector({}, 184, 3, 5, quota=self.quota))
         self.assertIn('range=user|codex,fg=#D183E8', wide)
         self.assertIn('W:68% · 5h:91% left', wide)
-        self.assertIn('range=user|5,bg=#8D4CA3,fg=#ffffff,bold', wide)
+        self.assertIn('range=user|5,bg=#1e1e1e,fg=#D183E8,nobold,nounderscore] #[bold,underscore]05', wide)
 
     def test_legacy_dynamic_footer_is_valid_tmux_format(self):
         # client_width is zero without an attached client. Substitute the same

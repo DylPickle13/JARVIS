@@ -24,9 +24,12 @@ are supported, with one elected status monitor per machine and failover on exit.
 ## Interface
 
 The persistent `PI-DESK` top row uses the JARVIS app's dark accent purple
-(`#D183E8`). The visible session group has a continuous muted-purple (`#4B2D59`)
-background; its focused session number and the active pane's `Session N` title
-use a bold deeper-purple (`#8D4CA3`) badge with white text. This keeps white
+(`#D183E8`). The header has a uniform dark (`#1e1e1e`) background, with no boxes
+around session indicators. Numbers in the visible group use soft purple (`#B28CBD`);
+the focused number uses bright accent purple (`#D183E8`), bold and underlined.
+Only the digits receive focus decoration—not spaces, lifecycle glyphs or controls.
+The active pane's `Session N` title retains its bold deeper-purple (`#8D4CA3`)
+badge with white text. This keeps white
 above VS Code's default 4.5:1 contrast threshold, preventing automatic darkening
 of selected labels without changing terminal-wide settings. Inactive titles also
 use white text on the dark background. Horizontal title-row lines, shared junctions
@@ -43,8 +46,8 @@ ten sessions. Numbers use two digits, with muted separators matching the current
 one-, two-, or three-session groups; there are no group labels. Running
 sessions use a bright, single-cell rotating indicator every 250 ms (one-second
 cycle); compacting sessions rotate backwards every 500 ms (two-second cycle).
-Other states retain steady dots. Indicators sit on a neutral dark cell so their
-colours remain readable inside the purple focus badge. This uses the existing
+Other states retain steady dots. All dots/spinners and padding share the same dark
+header background, with number-only bold/underline explicitly reset. This uses the existing
 shared monitor, not terminal blink support. Animation frames reuse cached status
 and viewer metadata; metadata/health checks retain their 500 ms cadence and the
 host feed retains its three-second cadence. Frames update only changed headers,

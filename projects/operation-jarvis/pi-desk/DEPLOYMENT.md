@@ -1,3 +1,43 @@
+# Flat number-only header — 2026-10-04, 00:16 EDT
+
+Removed the header's purple tab backgrounds and contrasting indicator cut-outs.
+All tabs, lifecycle glyphs, gaps and controls now share dark `#1e1e1e`. Visible
+session-group numbers use soft purple `#B28CBD`; the focused number uses accent
+purple `#D183E8`, bold and underlined. Focus decoration is scoped to digits only,
+with explicit bold/underline resets before spaces, indicators and neighbouring
+controls. No rows, cells, click targets or responsive-layout policy changed.
+
+The pane's white-on-`#8D4CA3` **Session X** title badge and neutral heavy dividers
+are unchanged. Lifecycle colours, spinner directions/cadence, snapshot batching,
+quota priority and warning-row behaviour are unchanged. Both number purples clear
+VS Code's default 4.5:1 contrast threshold. This is navigation chrome only:
+**no jarvis-app source, build or phone/Watch deployment was needed**.
+
+**175 source tests passed locally**, with **39 focused pre-install tests on each
+remote machine** and **35 focused installed-runtime tests on all three machines**.
+Coverage includes all session/group/width combinations, tiny/sliding tabs, real
+PTY purple foreground/underline and orange/spinner emission, unchanged pane badges,
+real mouse clicks and quota ranges, uniform header backgrounds, contrast, and
+animation-only batching. Terminal/user visual acceptance remains pending after
+reopening the live viewer.
+
+Installed only `desktop.py` and its manifest entry on mac-mini-64, mac-mini-16
+and Raspberry Pi. Pre-existing unrelated manifest mismatches were left intact.
+Local **9 display/10 hosted-pane identities** and attached clients were preserved;
+remote machines had no display panes/clients. The Pi display-service PID and
+protected config hashes were preserved. No viewers, services or agents restarted.
+Temporary staging was removed after preserving test/deployment evidence in the
+private rollback backups below.
+
+**Activation:** detach all Pi Desk viewers on each machine with Ctrl+A then d,
+then reopen `pi-desk` so the elected monitor imports the flat renderer. Existing
+monitors retain the boxed header until reopened. F10 restarts agents, not the UI.
+
+Rollback backups:
+- mac-mini-64: `~/.local/state/pi-desk/backups/flat-session-header-20261004T041424242964Z/`
+- mac-mini-16: `~/.local/state/pi-desk/backups/flat-session-header-20261004T041424604895Z/`
+- Raspberry Pi: `~/.local/state/pi-desk/backups/flat-session-header-20261004T041425591787Z/`
+
 # Session groups, activity motion and orange compaction — 2026-10-03, 23:11 EDT
 
 The visible group now has a continuous muted-purple `#4B2D59` band, with the

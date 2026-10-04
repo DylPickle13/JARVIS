@@ -105,8 +105,8 @@ class LayoutTests(unittest.TestCase):
         for width in (4, 30, 80, 99, 100, 184):
             start = desktop.responsive_selector(states, width, 3, 1)
             next_frame = desktop.responsive_selector(states, width, 3, 1, frame=2)
-            self.assertEqual(start.replace('nobold]◐', 'nobold]◑', 1)
-                             .replace('nobold]◐', 'nobold]◒', 1), next_frame)
+            self.assertEqual(start.replace('nounderscore]◐', 'nounderscore]◑', 1)
+                             .replace('nounderscore]◐', 'nounderscore]◒', 1), next_frame)
         for width in (1, 2, 3):
             self.assertEqual(desktop.responsive_selector(states, width, 1, 1),
                              desktop.responsive_selector(states, width, 1, 1, frame=2))
@@ -764,13 +764,13 @@ class WorkspaceTests(unittest.TestCase):
         # tmux format expressions really evaluate: visible group has its tint.
         bar = desktop.responsive_selector({}, 184, 3, 1)
         expanded = core.tmux('display-message', '-p', '-t', name + ':0', '-F', bar).stdout
-        self.assertIn('range=user|1,bg=#8D4CA3,fg=#ffffff,bold', expanded)
-        self.assertIn('range=user|2,bg=#4B2D59,fg=colour252,nobold', expanded)
-        self.assertIn('range=user|3,bg=#4B2D59,fg=colour252,nobold', expanded)
+        self.assertIn('range=user|1,bg=#1e1e1e,fg=#D183E8,nobold,nounderscore] #[bold,underscore]01', expanded)
+        self.assertIn('range=user|2,bg=#1e1e1e,fg=#B28CBD,nobold,nounderscore] #[nobold,nounderscore]02', expanded)
+        self.assertIn('range=user|3,bg=#1e1e1e,fg=#B28CBD,nobold,nounderscore] #[nobold,nounderscore]03', expanded)
         self.assertIn('range=user|4,bg=#1e1e1e,', expanded)
         self.assertIn('range=user|10,bg=#1e1e1e,', expanded)
 
-    def test_header_group_and_focus_badges_follow_every_session_and_width(self):
+    def test_flat_header_group_and_focus_numbers_follow_every_session_and_width(self):
         for width, count in ((80, 1), (110, 2), (184, 3)):
             name = workspace.create(1, width, 45)
             for selected in range(1, 11):
@@ -778,10 +778,13 @@ class WorkspaceTests(unittest.TestCase):
                 bar = desktop.responsive_selector({'10': 'running'}, width, count, selected, frame=1)
                 expanded = core.tmux('display-message', '-p', '-t', name + ':0', '-F', bar).stdout
                 for n in range(1, 11):
-                    bg = '#8D4CA3' if n == selected else ('#4B2D59' if n in layout.group(selected, count) else '#1e1e1e')
-                    fg = '#ffffff,bold' if n == selected else 'colour252,nobold'
-                    self.assertIn(f'range=user|{n},bg={bg},fg={fg}', expanded)
-                self.assertIn('fg=colour77,bg=#1e1e1e,nobold]◓', expanded)
+                    fg = '#D183E8' if n == selected else ('#B28CBD' if n in layout.group(selected, count) else 'colour252')
+                    attributes = 'bold,underscore' if n == selected else 'nobold,nounderscore'
+                    padding = '' if width < 100 else ' '
+                    self.assertIn(f'range=user|{n},bg=#1e1e1e,fg={fg},nobold,nounderscore]'
+                                  f'{padding}#[{attributes}]{n:02d}#[nobold,nounderscore]', expanded)
+                self.assertEqual(set(re.findall(r'bg=(#[0-9A-Fa-f]{6})', expanded)), {'#1e1e1e'})
+                self.assertIn('fg=colour77,bg=#1e1e1e,nobold,nounderscore]◓', expanded)
                 self.assertLessEqual(len(re.sub(r'#\[[^\]]*\]', '', expanded.rstrip('\n'))), width)
 
     def test_spinner_and_exact_compaction_rgb_are_emitted_on_a_real_pty(self):
@@ -801,10 +804,15 @@ class WorkspaceTests(unittest.TestCase):
                 time.sleep(.01)
             else:
                 self.fail('Real PTY did not emit spinner and exact orange RGB')
-        # Both navigation backgrounds survive true-colour terminal rendering.
+        # Header foregrounds and focus underline survive real terminal rendering.
+        # The pane's Session X badge still emits purple BG below the flat header.
         received = b''.join(output)
-        self.assertIn(b'48;2;75;45;89', received)  # Muted group purple.
-        self.assertIn(b'48;2;141;76;163', received)  # Focus badge purple.
+        self.assertIn(b'38;2;178;140;189', received)  # Soft-purple group numbers.
+        self.assertIn(b'38;2;209;131;232', received)  # Focused number, accent purple.
+        self.assertNotIn(b'48;2;75;45;89', received)  # Old group tiles are gone.
+        self.assertTrue(any(b'4' in codes.split(b';') for codes in
+                            re.findall(rb'\x1b\[([0-9;]*)m', received)))
+        self.assertIn(b'48;2;141;76;163', received)  # Unchanged pane-title badge.
         self.assertEqual(self.identities(name), before)
         self.assertEqual(self.focus(name), 5)
 

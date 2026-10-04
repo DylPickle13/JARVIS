@@ -172,10 +172,11 @@ def working(states):
 
 def tab_style(number, visible):
     active = '#{==:#{@pi-desk-session},' + str(number) + '}'
-    background = '#{?' + active + ',##8D4CA3,#{?' + visible + ',##4B2D59,##1e1e1e}}'
-    foreground = '#{?' + active + ',##ffffff,colour252}'
-    weight = '#{?' + active + ',bold,nobold}'
-    return background, foreground, weight
+    background = '#1e1e1e'
+    foreground = '#{?' + active + ',##D183E8,#{?' + visible + ',##B28CBD,colour252}}'
+    attributes = ('#{?' + active + ',bold,nobold},'
+                  '#{?' + active + ',underscore,nounderscore}')
+    return background, foreground, attributes
 
 
 def status_indicator(state, frame, background):
@@ -188,9 +189,9 @@ def status_indicator(state, frame, background):
         # Compaction rotates backwards, at half the running cadence.
         index = -(frame // 2) if state == 'compacting' else frame
         glyph = frames[index % len(frames)]
-    # One neutral cell preserves lifecycle colour contrast even on a focus badge.
-    # Restore the tab background for its trailing padding; never blink the label.
-    return f'#[fg={color},bg=#1e1e1e,nobold]{glyph}#[bg={background}] '
+    # Indicators and padding share the flat header background. Number-only focus
+    # decoration must never leak into lifecycle glyphs or neighbouring controls.
+    return f'#[fg={color},bg={background},nobold,nounderscore]{glyph} '
 
 
 def selector(states, *, frame=0, quota=None):
@@ -198,16 +199,15 @@ def selector(states, *, frame=0, quota=None):
     for n in range(1, 11):
         key, _ = session_group(n)
         group = '#{==:#{session_name},group-' + key + '}'
-        background, foreground, weight = tab_style(n, group)
+        background, foreground, attributes = tab_style(n, group)
         dot = status_indicator(states.get(str(n)), frame, background)
-        parts.append(f'#[range=user|{n},bg={background},fg={foreground},{weight}] {n:02d} '
-                     f'{dot}#[norange,bg=#1e1e1e,nobold]')
+        parts.append(f'#[range=user|{n},bg={background},fg={foreground},nobold,nounderscore] '
+                     f'#[{attributes}]{n:02d}#[nobold,nounderscore] '
+                     f'{dot}#[norange,bg=#1e1e1e,nobold,nounderscore]')
         if n in (3, 6, 9):
             parts.append('#[fg=colour238] │ ')
         elif n != 10:
-            # Legacy tabs have an extra internal gap: include it in the group tint.
-            gap = '#{?' + group + ',##4B2D59,##1e1e1e}'
-            parts.append(f'#[bg={gap}] #[bg=#1e1e1e]')
+            parts.append(' ')
     if quota is None:
         parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold] '
                      '#{?#{>=:#{client_width},120},'
@@ -252,14 +252,15 @@ def responsive_selector(states, width, count, selected, *, frame=0, quota=None):
         used += 1
     for n in numbers:
         visible = '#{&&:#{e|>=:' + str(n) + ',#{@pi-desk-first}},#{e|<=:' + str(n) + ',#{@pi-desk-end}}}'
-        bg, fg, weight = tab_style(n, visible)
+        bg, fg, attributes = tab_style(n, visible)
         # Below four columns show just the selected number (no clipped indicator).
         label = f'{n:02d}' if width >= 2 else str(n % 10)
         dot = '' if width < 4 else status_indicator(states.get(str(n)), frame, bg)
-        text = label if compact else f' {label} '
-        parts.append(f'#[range=user|{n},bg={bg},fg={fg},{weight}]{text}{dot}'
-                     '#[norange,bg=#1e1e1e,nobold]')
-        used += len(text) + (2 if dot else 0)
+        padding = '' if compact else ' '
+        parts.append(f'#[range=user|{n},bg={bg},fg={fg},nobold,nounderscore]{padding}'
+                     f'#[{attributes}]{label}#[nobold,nounderscore]{padding}{dot}'
+                     '#[norange,bg=#1e1e1e,nobold,nounderscore]')
+        used += len(label) + 2 * len(padding) + (2 if dot else 0)
         if n in boundaries:
             parts.append('#[fg=colour238]' + separator)
             used += len(separator)

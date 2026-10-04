@@ -422,15 +422,15 @@ class DesktopTests(unittest.TestCase):
         bar = desktop.selector({})
         self.assertIn(' PI-DESK ', bar)
         self.assertIn('fg=#D183E8', bar)
-        self.assertIn('fg=#{?#{==:#{@pi-desk-session},1},##ffffff,colour252}', bar)
-        self.assertIn(',##8D4CA3,#{?', bar)
-        self.assertIn(',##4B2D59,##1e1e1e}}', bar)
+        self.assertIn('fg=#{?#{==:#{@pi-desk-session},1},##D183E8,#{?', bar)
+        self.assertIn(',##B28CBD,colour252}}', bar)
+        self.assertNotIn('bg=#{', bar)
         self.assertEqual(bar.count(' │ '), 3)
         for n in range(1, 11):
-            self.assertIn(f'] {n:02d} ', bar)
+            self.assertIn(f']{n:02d}#[nobold,nounderscore] ', bar)
         for n in (3, 6, 9):
             tab = bar.split(f'range=user|{n},', 1)[1].split('range=user|', 1)[0]
-            self.assertIn('#[norange,bg=#1e1e1e,nobold]#[fg=colour238] │ ', tab)
+            self.assertIn('#[norange,bg=#1e1e1e,nobold,nounderscore]#[fg=colour238] │ ', tab)
         self.assertNotIn('blink', bar)
 
     def test_session_dividers_are_heavy_and_neutral(self):
@@ -475,9 +475,9 @@ class DesktopTests(unittest.TestCase):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}
         start = desktop.selector(states)
         next_frame = desktop.selector(states, frame=2)
-        self.assertEqual(start.replace('nobold]◐', 'nobold]◑', 1)
-                         .replace('nobold]◐', 'nobold]◒', 1), next_frame)
-        self.assertIn('fg=#FF7A00,bg=#1e1e1e,nobold]◐', start)
+        self.assertEqual(start.replace('nounderscore]◐', 'nounderscore]◑', 1)
+                         .replace('nounderscore]◐', 'nounderscore]◒', 1), next_frame)
+        self.assertIn('fg=#FF7A00,bg=#1e1e1e,nobold,nounderscore]◐', start)
         for state in ('idle', 'new', 'offline', 'unknown', 'unrecognized'):
             values = {'1': state}
             self.assertEqual(desktop.selector(values), desktop.selector(values, frame=2))
@@ -490,20 +490,38 @@ class DesktopTests(unittest.TestCase):
         running = [desktop.status_indicator('running', n, '#1e1e1e') for n in range(4)]
         compacting = [desktop.status_indicator('compacting', n, '#1e1e1e') for n in range(8)]
         for value, glyph in zip(running, desktop.SPINNER_FRAMES):
-            self.assertIn('nobold]' + glyph, value)
+            self.assertIn('nobold,nounderscore]' + glyph, value)
         for value, glyph in zip(compacting, ('◐', '◐', '◒', '◒', '◑', '◑', '◓', '◓')):
-            self.assertIn('nobold]' + glyph, value)
+            self.assertIn('nobold,nounderscore]' + glyph, value)
 
     def test_ascii_and_static_spinner_options(self):
         with mock.patch.dict(os.environ, PI_DESK_SPINNER='ascii'):
             for n, glyph in enumerate(desktop.ASCII_SPINNER_FRAMES):
-                self.assertIn('nobold]' + glyph, desktop.status_indicator('running', n, '#1e1e1e'))
+                self.assertIn('nobold,nounderscore]' + glyph, desktop.status_indicator('running', n, '#1e1e1e'))
         with mock.patch.dict(os.environ, PI_DESK_SPINNER='off'):
             self.assertFalse(desktop.working({'1': 'running'}))
             self.assertEqual(desktop.selector({'1': 'running'}), desktop.selector({'1': 'running'}, frame=2))
-            self.assertIn('nobold]●', desktop.status_indicator('compacting', 2, '#1e1e1e'))
+            self.assertIn('nobold,nounderscore]●', desktop.status_indicator('compacting', 2, '#1e1e1e'))
         self.assertTrue(desktop.working({'10': 'compacting'}))
         self.assertFalse(desktop.working({'1': 'unknown'}))
+
+    def test_header_background_is_uniform_and_focus_never_decorates_indicators(self):
+        for bar in (desktop.selector({'1': 'running'}),
+                    desktop.responsive_selector({'1': 'running'}, 184, 3, 1)):
+            self.assertEqual(set(re.findall(r'bg=(#[0-9A-Fa-f]{6})', bar)), {'#1e1e1e'})
+            self.assertNotIn('bg=#{', bar)
+            self.assertNotIn('#4B2D59', bar)
+            self.assertNotIn('#8D4CA3', bar)
+            self.assertIn(']01#[nobold,nounderscore]', bar)
+            self.assertIn('nobold,nounderscore]◐ ', bar)
+
+    def test_header_number_purples_meet_vscode_contrast_threshold(self):
+        def luminance(color):
+            channels = [int(color[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+            linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+            return sum(c * weight for c, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+        for color in ('D183E8', 'B28CBD'):
+            self.assertGreaterEqual((luminance(color) + .05) / (luminance('1e1e1e') + .05), 4.5)
 
     def test_compaction_color_matches_shared_app_exact_rgb(self):
         app = Path(__file__).resolve().parent.parent / 'jarvis-app'
