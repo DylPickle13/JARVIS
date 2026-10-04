@@ -27,7 +27,6 @@ class BackupTests(unittest.TestCase):
         self.policy = json.loads((b.HERE / 'policy.json').read_text())
         (self.root / 'projects/jarvis-backup').mkdir(parents=True)
         (self.root / 'projects/jarvis-backup/policy.json').write_text(json.dumps(self.policy))
-        (self.root / 'projects/projects-drive-backup').symlink_to('jarvis-backup', target_is_directory=True)
         (self.root / 'projects/operation-jarvis/jarvisd/jarvisd_core/scheduler').mkdir(parents=True)
         (self.root / 'projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py').write_text('# fixture\n')
         (self.root / 'projects/operation-jarvis/data/scheduler').mkdir(parents=True)
@@ -45,7 +44,7 @@ class BackupTests(unittest.TestCase):
         self.password.chmod(0o600)
         self.config = self.base / 'config.json'
         self.config.write_text(json.dumps({
-            'source': str(self.root), 'state_dir': str(self.base / 'state'),
+            'source': str(self.root), 'state_dir': str(self.base / 'state'), 'minecraft': None,
             'repository': str(self.base / 'repository'),
             'password_file': str(self.password), 'rclone_config': str(self.base / 'rclone.conf'),
             'host': 'test-host', 'restic': shutil.which('restic') or '/opt/homebrew/bin/restic'

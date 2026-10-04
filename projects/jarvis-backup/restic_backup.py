@@ -20,6 +20,8 @@ import sys
 import tempfile
 import time
 
+from minecraft_checkpoint import MinecraftCheckpoint
+
 HERE = Path(__file__).resolve().parent
 DEFAULT_CONFIG = Path.home() / '.config/jarvis-backup/config.json'
 TAG = 'jarvis-recovery-v1'
@@ -60,7 +62,9 @@ def literal_pattern(path):
 
 
 def excluded(rel, policy):
-    return rel.name in policy['exclude_names'] or any(
+    preserved = any(Path(prefix) == rel or Path(prefix) in rel.parents
+                    for prefix in policy.get('keep_generated_prefixes', []))
+    return (rel.name in policy['exclude_names'] and not preserved) or any(
         fnmatch.fnmatchcase(rel.as_posix(), pattern) for pattern in policy['exclude_globs'])
 
 
@@ -128,6 +132,9 @@ class Backup:
         self.state.chmod(0o700)
         self.stage = self.state / 'sqlite'
         self.policy = json.loads((HERE / 'policy.json').read_text())
+        # Explicit null is only for installations/fixtures without Minecraft.
+        self.minecraft_settings = self.config.get('minecraft', self.policy.get('minecraft'))
+        self.minecraft_stage = self.state / 'minecraft'
         self.deadline = time.monotonic() + timeout
         self.lock_fd = None
         self.env = os.environ.copy()
@@ -211,6 +218,8 @@ class Backup:
             raise RuntimeError('Password file must be owner-only (chmod 600)')
         if self.root in key.resolve().parents:
             raise RuntimeError('Recovery password must not be inside backup source')
+        if self.minecraft_settings:
+            MinecraftCheckpoint(self.root, self.state, self.minecraft_settings, self.deadline).validate()
 
     def plan(self):
         self.validate_source()
@@ -222,12 +231,23 @@ class Backup:
 
     def backup(self):
         self.validate_source()
-        omitted, databases, total, count = inventory(self.root, self.policy)
+        minecraft = None
+        scan_policy = self.policy
+        if self.minecraft_settings:
+            checkpoint = MinecraftCheckpoint(self.root, self.state, self.minecraft_settings,
+                                             self.deadline, lock_fd=self.lock_fd)
+            minecraft = checkpoint.create()
+            # Read frozen world files, never the resumed live world during upload.
+            scan_policy = dict(self.policy, exclude_globs=self.policy['exclude_globs'] +
+                               [minecraft['world_relative']])
+        omitted, databases, total, count = inventory(self.root, scan_policy)
         # Only ephemeral staging is removed; never touch source databases.
         if self.stage.exists():
             shutil.rmtree(self.stage)
         self.stage.mkdir(mode=0o700)
         manifest = {'created_at': utcnow(), 'source': str(self.root), 'databases': [], 'samples': []}
+        if minecraft:
+            manifest['minecraft'] = dict(minecraft, stage=str(self.minecraft_stage))
         for db in databases:
             rel = db.relative_to(self.root)
             target = self.stage / rel
@@ -242,9 +262,12 @@ class Backup:
         # These top-level paths remain stable, enabling parent snapshot reuse.
         print(f'Drive backup started: {count:,} source files ({human_size(total)}), '
               f'{len(databases):,} databases.', flush=True)
+        sources = [str(self.root), str(self.stage)]
+        if minecraft:
+            sources.append(str(self.minecraft_stage))
         output = self.run(['backup', '--json', '--host', self.config['host'], '--tag', TAG,
                            '--group-by', 'host,tags', '--exclude-file', str(excludes),
-                           str(self.root), str(self.stage)], retries=3)
+                           *sources], retries=3)
         summaries = [json.loads(line) for line in output.splitlines() if line.startswith('{')]
         summary = next((s for s in reversed(summaries) if s.get('message_type') == 'summary'), {})
         snapshot = summary.get('snapshot_id')
@@ -252,7 +275,9 @@ class Backup:
             raise RuntimeError('Restic returned no snapshot ID')
         self.run(['check'], retries=2)
         self.verify(snapshot)
-        self.record(last_success_at=utcnow(), snapshot_id=snapshot, summary=summary, last_error=None)
+        self.record(last_success_at=utcnow(), snapshot_id=snapshot, summary=summary, last_error=None,
+                    minecraft_snapshot_id=snapshot if minecraft else None,
+                    minecraft_checkpoint_mode=minecraft['mode'] if minecraft else None)
         print('Drive backup: saved and verified\n'
               f'  Data processed: {human_size(summary.get("total_bytes_processed", 0))}\n'
               f'  New data stored (compressed): {human_size(summary.get("data_added_packed", 0))}\n'
@@ -276,9 +301,22 @@ class Backup:
     def verify(self, snapshot):
         # Restoring exact snapshot paths keeps this bounded; never restore over live data.
         with tempfile.TemporaryDirectory(prefix='restore-', dir=self.state) as tmp:
+            # Use the snapshot's manifest, not current live/staging state.
+            snapshot_manifest = json.loads(self.run(['dump', snapshot, str(self.stage / 'manifest.json')]))
+            minecraft = snapshot_manifest.get('minecraft')
             args = ['restore', snapshot, '--target', tmp, '--verify', '--include', str(self.stage)]
             for rel in self.policy['restore_samples']:
                 args.extend(['--include', str(self.root / rel)])
+            if minecraft:
+                stage = Path(minecraft['stage'])
+                if stage != self.minecraft_stage:
+                    raise RuntimeError('Unexpected Minecraft staging path in restore manifest')
+                args.extend(['--include', str(stage / 'manifest.json')])
+                for item in minecraft['samples']:
+                    rel = Path(item['relative_path'])
+                    if rel.is_absolute() or '..' in rel.parts:
+                        raise RuntimeError('Unsafe Minecraft restore sample path')
+                    args.extend(['--include', str(stage / rel)])
             self.run(args, retries=2)
             restored_stage = Path(tmp) / str(self.stage).lstrip('/')
             manifest = json.loads((restored_stage / 'manifest.json').read_text())
@@ -293,6 +331,12 @@ class Backup:
                 path = Path(tmp) / str(self.root).lstrip('/') / item['relative_path']
                 if digest(path) != item['sha256']:
                     raise RuntimeError('Restored sample checksum mismatch')
+            if minecraft:
+                restored_minecraft = Path(tmp) / str(self.minecraft_stage).lstrip('/')
+                for item in minecraft['samples']:
+                    if digest(restored_minecraft / item['relative_path']) != item['sha256']:
+                        raise RuntimeError('Restored Minecraft world/player/region checksum mismatch')
+                print(f'Minecraft restore checks passed: {len(minecraft["samples"])} world/player/region samples.', flush=True)
         self.record(last_restore_test_at=utcnow())
 
     def nightly(self):
@@ -340,6 +384,8 @@ class Backup:
         last = state.get('last_success_at')
         if not last:
             raise RuntimeError('No successful verified backup recorded')
+        if self.minecraft_settings and state.get('minecraft_snapshot_id') != state.get('snapshot_id'):
+            raise RuntimeError('No verified Minecraft recovery point recorded after consolidation')
         age = (datetime.now(timezone.utc) - datetime.fromisoformat(last)).total_seconds() / 3600
         if age < -0.1 or age > 36:
             raise RuntimeError(f'Backup is stale or clock is wrong: age {age:.1f} hours (limit 36h)')

@@ -1,5 +1,7 @@
 {
   "exclude_names": [".venv", ".venv-archive", ".sync-venv", "node_modules", "__pycache__", ".build", ".DS_Store"],
+  "keep_generated_prefixes": ["projects/minecraft-server/node", "projects/minecraft-server/jarvis-bot/node_modules"],
+  "minecraft": {"relative_path": "projects/minecraft-server", "screen_session": "minecraft", "java_host": "192.168.21.110", "java_port": 25565},
   "exclude_globs": [
     "*.pyc",
     "*.log",
@@ -11,7 +13,18 @@
     ".pi/runtime/pi-lazy-tools/releases",
     ".pi/logs",
     ".pi/scheduled-sessions",
-    "JARVIS-projects-backup.tar.gz"
+    "JARVIS-projects-backup.tar.gz",
+    "projects/minecraft-server/downloads",
+    "projects/minecraft-server/backups/restic-cache",
+    "projects/minecraft-server/server/cache",
+    "projects/minecraft-server/server/libraries",
+    "projects/minecraft-server/server/versions",
+    "projects/minecraft-server/server/.paper",
+    "projects/minecraft-server/server/plugins/.paper-remapped",
+    "projects/minecraft-server/server/logs",
+    "projects/minecraft-server/jarvis-bot/logs",
+    "projects/minecraft-server/.pi/sessions",
+    "projects/minecraft-server/data/pi-agent/sessions"
   ],
   "required_paths": ["projects", "projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py", "projects/operation-jarvis/data/scheduler/scheduler.sqlite", ".env", "README.md"],
   "restore_samples": ["README.md", "projects/jarvis-backup/policy.json"]

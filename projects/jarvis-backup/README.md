@@ -15,10 +15,10 @@ both implementations. Migration keeps the existing Drive tarball untouched.
 - Encryption password: `~/.config/jarvis-backup/restic-password`.
 - Private staging, cache, lock and status: `~/.local/state/jarvis-backup/`.
 
-On this host, the Git-ignored `projects/projects-drive-backup` symlink points to
-`jarvis-backup`, keeping the existing active and legacy job command paths valid.
-Job names, IDs, schedules, and history remain unchanged. Retain the link until
-those stored commands are explicitly migrated.
+Both stored backup job commands now reference `projects/jarvis-backup/` directly.
+The obsolete `projects/projects-drive-backup` compatibility link was removed
+with owner approval. Job names, IDs, schedules, enabled states and history remain
+unchanged; only their command paths were migrated.
 
 Config/key files are owner-only, outside the checkout, and never printed by the
 wrapper. The dedicated rclone configuration reuses an existing authorized Drive
@@ -59,16 +59,74 @@ using the SQLite online-backup API; copies use DELETE journal mode and pass
 `quick_check`. Live database files and their WAL/SHM/journal companions are
 excluded from the file backup. No source database is modified by the wrapper.
 
-The repository stores two absolute directory trees:
+The repository stores three absolute directory trees when Minecraft is enabled:
 
 1. `/Users/dylanrapanan/JARVIS` — ordinary source files.
 2. `/Users/dylanrapanan/.local/state/jarvis-backup/sqlite` — consistent database
    copies, preserving their paths relative to JARVIS, plus `manifest.json`.
+3. `/Users/dylanrapanan/.local/state/jarvis-backup/minecraft` — frozen Minecraft
+   world, also preserving its relative project path, plus a checkpoint manifest.
 
 The manifest records SHA-256 values of database copies and sample files. These
 copies are individually consistent, not one atomic transaction across apps.
 Other live files are read normally by Restic, not through an APFS snapshot.
 SQLite databases with unconventional filename extensions need explicit support.
+
+## Minecraft consistency and recovery
+
+The real original server lives at `projects/minecraft-server/`, with its own
+Git repository; the parent checkout ignores it. Full isolated recovery passed,
+the duplicate legacy4AM OS-cron job was retired with independent readback,
+and the home-directory compatibility symlink was removed. Runtime selector
+links remain valid. This implementation lives in
+`projects/jarvis-backup/` without an old-folder symlink. Stored scheduler command
+paths were migrated in place; IDs, names, schedules and history were preserved.
+
+Before a live backup, verify the Paper listener PID, executable, working
+directory and exact screen session. Send `save-off`, require a fresh server
+acknowledgement, then `save-all flush` and its acknowledgement. APFS-clone the
+whole modern `server/world/` tree locally; restore and acknowledge `save-on`
+**before** SQLite copying, upload, verification or maintenance. Restic excludes
+the resumed live world and reads only the frozen checkpoint. No nightly shutdown,
+player kick, gameplay action, pre-generation, or production empty-pause change.
+
+A shared advisory lock prevents overlaps with the legacy Minecraft backup.
+Already-disabled saves belong to an existing operation and are not taken over.
+Ordinary failures and SIGTERM/SIGINT restore saving in `finally`; an interrupted
+or unacknowledged restoration leaves `minecraft-autosave-pending.json` and blocks
+future checkpoints for owner review. SIGKILL/power loss cannot run cleanup;
+check saving state before clearing that marker. Unknown writes are not replayed.
+World checkpoints and separate SQLite transactions are not one atomic
+transaction across every plugin/application. Other ordinary files remain live.
+
+Nightly verification restores every SQLite copy, core world/dimension/player
+metadata and a rotating region sample per dimension, checking stored SHA-256
+values. Healthy status requires a recorded Minecraft-verified snapshot.
+Initial consolidation's full isolated Minecraft restore passed on October4,2026
+EDT, including seeds/player inventories/security, DH SQLite, JARs, Git, private
+runtimes and key permissions. Snapshot `b7bcf57a`; full evidence lives in the
+Minecraft consolidation workspace. Cold backup/verification took84m19s;
+full restore/audits10m34s. A subsequent normal incremental run (`dad1de71`)
+passed in2m03s under the780-second budget; the final post-cleanup run (`17533409`)
+passed in2m21s with both obsolete links absent. Added-data weekly rotating-quarter
+maintenance timing remains unmeasured. Nightly samples are not full-world proof.
+
+The policy excludes local recovery/download copies, generated Paper bootstrap
+caches, logs and private Pi session transcripts **without deleting them**.
+It keeps the DH SQLite database, worlds, plugins, security/Floodgate files,
+legacy recovery password, source/Git history, Java and private Node/Pi plus bot
+dependencies (explicit exceptions to the generic `node_modules` exclusion).
+Mojang/Paper bootstrap caches can be downloaded again. Retain old cloud snapshots,
+keys, the unconverted original and parked trial. The duplicate Minecraft schedule
+was retired only after full recovery proof and explicit owner approval.
+
+For Minecraft restoration, restore the ordinary project tree **and** its
+`sqlite` and `minecraft` staging trees from the same explicit snapshot. Validate
+the manifests/checksums, place the frozen world at the restored project's
+`server/world/`, and place each staged database at its manifest-relative path.
+Work only in an isolated directory. Never copy over a running server or reuse
+stale WAL/SHM files. See the Minecraft consolidation evidence for the initial
+full restore; a restored offline project was not automatically activated.
 
 ## Automation
 
