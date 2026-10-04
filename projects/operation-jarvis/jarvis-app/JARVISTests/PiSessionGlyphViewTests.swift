@@ -130,7 +130,7 @@ final class PiSessionGlyphViewTests: XCTestCase {
         XCTAssertFalse(dashboard.contains("Image(systemName: presentation.symbol)"))
         XCTAssertFalse(dashboard.contains(".piSessionMotion("))
         XCTAssertTrue(dashboard.contains("active: homeMotionActive && !app.isAwaitingFreshState"))
-        XCTAssertTrue(dashboard.contains(".accessibilityLabel(\"Pi session "))
+        XCTAssertTrue(dashboard.contains(".accessibilityLabel(spokenLabel)"))
         XCTAssertTrue(dashboard.contains(".accessibilityLabel(\"Room Audio, Pi session 10"))
         for path in ["JARVIS/Terminal/PiTerminalView.swift", "JARVISWatch/Views/WatchTerminalView.swift"] {
             let terminal = try String(contentsOf: root.appendingPathComponent(path))

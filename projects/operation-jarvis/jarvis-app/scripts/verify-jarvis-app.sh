@@ -311,7 +311,7 @@ reject_match 'removed iPhone Services polling and mutation must stay absent' -E 
 grep -q 'testHomeRefreshDoesNotPollRemovedServicesSurface' JARVISTests/AppStateTests.swift
 grep -q 'sessionIDs: \[1, 2, 3\]' JARVIS/Views/HomeView.swift
 grep -q 'sessionIDs: \[4, 5, 6\]' JARVIS/Views/HomeView.swift
-grep -q 'private func piSessionStatusSection(sessionID: Int, lifecycle: PiSessionLifecycle)' JARVIS/Views/HomeView.swift
+grep -q 'private func piSessionStatusSection(sessionID: Int, lifecycle: PiSessionLifecycle, name: String?)' JARVIS/Views/HomeView.swift
 grep -q 'label = "Offline"' JARVIS/Views/HomeView.swift
 grep -q 'label = "Idle"' JARVIS/Views/HomeView.swift
 grep -q 'label = "Running"' JARVIS/Views/HomeView.swift
@@ -1339,7 +1339,16 @@ assert '.activityCardEdge(' not in pi_content  # Motion stays inside the fixed g
 assert 'Text("\\(sessionID)")' in pi_content
 assert 'Circle()' not in pi_content and 'Text("Pi ' not in pi_content
 assert 'minHeight: 42' in pi_content and 'MinimalCard(padding: 8, glass: true)' in pi_content
-assert '.accessibilityLabel("Pi session ' in pi_content
+assert 'Text(title)' in pi_content and '.truncationMode(.tail)' in pi_content
+assert '.accessibilityLabel(spokenLabel)' in pi_content
+assert 'Pi session \\(sessionID), \\(title),' in pi_content
+assert 'name: session?.name' in rows and 'sessionName: name' in text
+assert 'PiSessionName.cardTitle(name: sessionName, lifecycle: lifecycle)' in pi_content
+name_policy = Path('JARVISKit/Sources/JARVISKit/PiSessionName.swift').read_text()
+assert 'maximumCharacters = 256' in name_policy
+assert 'lifecycle == .new ? "New session" : "Unnamed session"' in name_policy
+models = Path('JARVISKit/Sources/JARVISKit/Models.swift').read_text()
+assert 'public let name: String?' in models and 'name: try? values.decode(String.self, forKey: .name)' in models
 
 assert 'onOpenPiTerminal(.roomAudio)' in text
 assert 'let activeSpeakers = RoomAudioSpeaker.allCases.filter' in text

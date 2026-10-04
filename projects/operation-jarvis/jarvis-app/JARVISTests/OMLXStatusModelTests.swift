@@ -96,6 +96,68 @@ final class OMLXStatusModelTests: XCTestCase {
         }
     }
 
+    func testPiCardsUseActualNamesAndVoiceOverKeepsEveryLifecycle() {
+        for state in [PiSessionLifecycle.running, .compacting, .idle, .new, .offline, .unknown] {
+            let card = PiSessionCardContent(sessionID: 3, lifecycle: state, motionActive: false,
+                sessionName: "Dashboard polish")
+            XCTAssertEqual(card.title, "Dashboard polish")
+            XCTAssertEqual(card.spokenLabel, "Pi session 3, Dashboard polish, \(PiSessionIndicatorPresentation(lifecycle: state).label.lowercased())")
+        }
+    }
+
+    func testUnnamedPiCardsHaveTruthfulFallbackAndFullUntruncatedSpokenNames() {
+        let new = PiSessionCardContent(sessionID: 1, lifecycle: .new, motionActive: false)
+        XCTAssertEqual(new.title, "New session")
+        let busy = PiSessionCardContent(sessionID: 2, lifecycle: .running, motionActive: false)
+        XCTAssertEqual(busy.title, "Unnamed session")
+        let name = "Pi dashboard session naming, long title with full VoiceOver context"
+        let named = PiSessionCardContent(sessionID: 9, lifecycle: .unknown, motionActive: false, sessionName: name)
+        XCTAssertEqual(named.title, name)
+        XCTAssertEqual(named.spokenLabel, "Pi session 9, \(name), unknown")
+    }
+
+    func testNamedPiCardsKeepNormalBoundsAndExpandForAccessibility() throws {
+        for name in ["Native app", "日本語のセッション 🎛️", String(repeating: "Long title ", count: 20)] {
+            for width: CGFloat in [96, 114] {
+                let card = PiSessionCardContent(sessionID: 9, lifecycle: .running, motionActive: false, sessionName: name)
+                    .frame(width: width).environment(\.dynamicTypeSize, .large)
+                let image = try XCTUnwrap(ImageRenderer(content: card).uiImage)
+                XCTAssertEqual(image.size.width, width)
+                XCTAssertEqual(image.size.height, 58, accuracy: 0.5)
+            }
+        }
+        let card = PiSessionCardContent(sessionID: 9, lifecycle: .idle, motionActive: false,
+            sessionName: "Dashboard session names and accessibility layout")
+            .frame(width: 114).environment(\.dynamicTypeSize, .accessibility3)
+        XCTAssertGreaterThan(try XCTUnwrap(ImageRenderer(content: card).uiImage).size.height, 58)
+    }
+
+    func testNamedNineCardGridKeepsItsFootprintAndRoutesRemainOnFixedSlots() throws {
+        let grid = VStack(spacing: 8) {
+            ForEach(0..<3) { row in
+                HStack(spacing: 8) {
+                    ForEach(0..<3) { column in
+                        let slot = row * 3 + column + 1
+                        PiSessionCardContent(sessionID: slot, lifecycle: .running, motionActive: false,
+                            sessionName: "Actual session name \(slot)")
+                    }
+                }
+            }
+        }.frame(width: 358).environment(\.dynamicTypeSize, .large).environment(\.colorScheme, .dark)
+        let image = try XCTUnwrap(ImageRenderer(content: grid).uiImage)
+        XCTAssertEqual(image.size.height, 190, accuracy: 0.5)
+        XCTAssertEqual(image.size.width, 358)
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "pi-named-cards-normal"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let home = try String(contentsOf: root.appendingPathComponent("JARVIS/Views/HomeView.swift"))
+        XCTAssertTrue(home.contains("name: session?.name"))
+        XCTAssertTrue(home.contains("JARVISTerminalSlot(rawValue: sessionID)"))
+        XCTAssertTrue(home.contains(".truncationMode(.tail)"))
+    }
+
     func testPiStatusGlyphsMatchPiAndEveryNormalCardKeepsItsFootprint() throws {
         let states: [PiSessionLifecycle] = [.running, .compacting, .idle, .new, .offline, .unknown]
         let glyphs = ["⠋", "⠋", "●", "○", "×", "?"]

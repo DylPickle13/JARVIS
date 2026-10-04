@@ -47,6 +47,9 @@ from typing import Any, Callable
 
 from jarvisd_core import auth, commands, security_status, read_health
 from jarvisd_core.host_memory import collect_host_memory
+from jarvisd_core.pi_session_names import PiSessionNameReader, validated_name
+
+_PI_SESSION_NAMES = PiSessionNameReader()
 from jarvisd_core.config import _find_ancestor, _load_env_file, _resolve_jarvis_root
 from jarvisd_core.commands import COMMANDS, CommandError, PURIFIER_MODES, PURIFIER_SPEEDS
 from jarvisd_core.diagnostics import _safe_error
@@ -565,8 +568,8 @@ def _pi_history_has_conversation(session_file: object) -> bool | None:
         return None
 
 
-def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
-    """Return one Pi process's fresh lifecycle, or None for unknown evidence."""
+def _fresh_local_pi_status(pid: int, *, now: dt.datetime) -> tuple[str, dict] | None:
+    """Return the lifecycle and its same fresh PID-bound descriptor."""
     if not PI_LOCAL_SESSIONS.is_dir():
         return None
 
@@ -583,6 +586,7 @@ def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
         return None
 
     freshest: tuple[dt.datetime, str, dict] | None = None
+    ambiguous_session_file = False
     for path in candidates:
         try:
             if path.is_symlink():
@@ -623,6 +627,9 @@ def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
                 continue
             if freshest is None or timestamp > freshest[0]:
                 freshest = (timestamp, lifecycle, payload)
+                ambiguous_session_file = False
+            elif timestamp == freshest[0] and payload.get("sessionFile") != freshest[2].get("sessionFile"):
+                ambiguous_session_file = True
         except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
             continue
     if freshest is None:
@@ -634,11 +641,20 @@ def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
         has_conversation = payload.get("hasConversation")
         if type(has_conversation) is not bool:
             has_conversation = _pi_history_has_conversation(payload.get("sessionFile"))
-        return "idle" if has_conversation is True else "new" if has_conversation is False else "unknown"
-    return lifecycle
+        lifecycle = "idle" if has_conversation is True else "new" if has_conversation is False else "unknown"
+    if ambiguous_session_file:
+        # Preserve lifecycle compatibility, but do not choose a title from two
+        # equally fresh competing conversation identities.
+        payload = dict(payload, sessionFile=None)
+    return lifecycle, payload
 
 
-def _mobile_pi_state(session_id: int, lifecycle: str) -> dict:
+def _fresh_local_pi_lifecycle(pid: int, *, now: dt.datetime) -> str | None:
+    status = _fresh_local_pi_status(pid, now=now)
+    return status[0] if status else None
+
+
+def _mobile_pi_state(session_id: int, lifecycle: str, name: str | None = None) -> dict:
     """Build the lifecycle response with a Build 142 compatibility activity."""
     if lifecycle not in MOBILE_PI_PUBLIC_LIFECYCLES:
         lifecycle = "unknown"
@@ -649,7 +665,11 @@ def _mobile_pi_state(session_id: int, lifecycle: str) -> dict:
         active = False
     else:
         active = None
-    return {"sessionID": session_id, "lifecycle": lifecycle, "active": active}
+    result = {"sessionID": session_id, "lifecycle": lifecycle, "active": active}
+    title = validated_name(name)
+    if title is not None:
+        result["name"] = title  # Additive; older phone/Watch clients ignore it.
+    return result
 
 
 def _mobile_pi_session_states(*, now: dt.datetime | None = None) -> list[dict]:
@@ -689,6 +709,7 @@ def _mobile_pi_session_states(*, now: dt.datetime | None = None) -> list[dict]:
     observed_at = now or dt.datetime.now(dt.timezone.utc)
     states: list[dict] = []
     for session_id, name in MOBILE_TMUX_SESSIONS:
+        session_name = None
         rows = rows_by_name[name]
         if not rows:
             lifecycle = "offline"
@@ -701,8 +722,11 @@ def _mobile_pi_session_states(*, now: dt.datetime | None = None) -> list[dict]:
             elif pane_dead != "0" or not raw_pid.isdecimal() or int(raw_pid) <= 0:
                 lifecycle = "unknown"
             else:
-                lifecycle = _fresh_local_pi_lifecycle(int(raw_pid), now=observed_at) or "unknown"
-        states.append(_mobile_pi_state(session_id, lifecycle))
+                status = _fresh_local_pi_status(int(raw_pid), now=observed_at)
+                lifecycle = status[0] if status else "unknown"
+                if status:
+                    session_name = _PI_SESSION_NAMES.read(status[1].get("sessionFile"), root=PI_SESSION_HISTORY_ROOT)
+        states.append(_mobile_pi_state(session_id, lifecycle, session_name))
     return states
 
 

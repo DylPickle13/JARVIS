@@ -2,7 +2,30 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current verified iPhone build: 247**, installed once and independently
+**Current verified iPhone build: 248**, installed once and independently
+version/launch/process verified on **2026-10-04 at 12:58 EDT**. The nine Pi cards
+now display their actual saved names rather than written status labels, with
+unchanged numbers, 22-point status glyphs, 80 ms motion, dimensions and routes.
+Long names truncate visually; VoiceOver retains the full name and lifecycle.
+New unnamed sessions say New session; other missing names say Unnamed session.
+Room Audio keeps its meaningful label and controls.
+
+The matching backend was deployed at **12:55 EDT** from the exact installed
+baseline, preserving unrelated code/configuration and restarting the daemon in
+0.557 s with its watchdog coordinated. Live state verifies 7 saved names and
+3 unnamed New slots. All 16 unrelated service records and existing Pi panes were
+preserved; the subsequent iPhone install preserved all 18 service records.
+Frozen release validation passed 173 iPhone tests, 301 shared tests (3 expected
+skips), 37 terminal tests and both simulator builds; shipped-backend validation
+passed 795 tests (the operational source candidate separately passed 891).
+Candidate and exact iPhone rollback **247** passed four-bundle signing/profile/
+entitlement/seal audits. No Pi reload/restart, household device command or direct
+Watch install; Watch's last independent device verification remains 245. The owner
+confirmed the physical appearance looks good; VoiceOver acceptance is unconfirmed.
+See
+[session-name contract and deployment](docs/pi-session-names.md).
+
+**Previous verified iPhone build: 247**, installed once and independently
 version/launch/process verified on **2026-10-04 at 11:17 EDT**. All dashboard
 session glyphs, including Room Audio, are **22 pt instead of 18 pt** (22% larger),
 with unchanged card footprints, labels, colours, routes and 80 ms cadence.
@@ -19,8 +42,8 @@ Physical larger-icon/VoiceOver acceptance awaits owner review. See
 [deployment checks](docs/operations.md#larger-dashboard-glyphs--build-247).
 
 Owner-approved cleanup removed **1.17 GiB** of stale archives/build scratch.
-Signed iPhone recovery builds **247/246** and Watch recovery builds **245/244**
-remain verified and retained, along with historical source/audit/test evidence;
+Signed iPhone recovery builds **248/247** and Watch recovery builds **245/244**
+remain verified and retained (older 246 also remains), along with historical source/audit/test evidence;
 see [current retention](docs/operations.md#current-recovery-retention-and-cleanup).
 
 **Previous verified iPhone build: 246**, installed once and independently

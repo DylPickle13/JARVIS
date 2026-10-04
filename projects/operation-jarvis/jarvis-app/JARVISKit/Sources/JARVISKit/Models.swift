@@ -396,6 +396,8 @@ public enum PiSessionLifecycle: String, Codable, Equatable, Sendable {
 
 public struct PiMobileSession: Codable, Equatable, Sendable {
     public let sessionID: Int
+    /// Optional explicit Pi session_info name; missing on older backends.
+    public let name: String?
     public let lifecycle: PiSessionLifecycle?
     /// Build 142 compatibility during the host-first rollout. New UI resolves
     /// the lifecycle first and uses this only with an older jarvisd response.
@@ -404,11 +406,23 @@ public struct PiMobileSession: Codable, Equatable, Sendable {
     public init(
         sessionID: Int,
         lifecycle: PiSessionLifecycle? = nil,
-        active: Bool? = nil
+        active: Bool? = nil,
+        name: String? = nil
     ) {
         self.sessionID = sessionID
         self.lifecycle = lifecycle
         self.active = active
+        self.name = PiSessionName.validated(name)
+    }
+
+    private enum CodingKeys: String, CodingKey { case sessionID, lifecycle, active, name }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(sessionID: try values.decode(Int.self, forKey: .sessionID),
+                  lifecycle: try values.decodeIfPresent(PiSessionLifecycle.self, forKey: .lifecycle),
+                  active: try values.decodeIfPresent(Bool.self, forKey: .active),
+                  name: try? values.decode(String.self, forKey: .name))
     }
 
     public var resolvedLifecycle: PiSessionLifecycle {

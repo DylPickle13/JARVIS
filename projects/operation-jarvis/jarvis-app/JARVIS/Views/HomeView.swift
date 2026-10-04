@@ -60,6 +60,17 @@ struct PiSessionCardContent: View {
     let sessionID: Int
     let lifecycle: PiSessionLifecycle
     let motionActive: Bool
+    let sessionName: String?
+
+    init(sessionID: Int, lifecycle: PiSessionLifecycle, motionActive: Bool, sessionName: String? = nil) {
+        self.sessionID = sessionID
+        self.lifecycle = lifecycle
+        self.motionActive = motionActive
+        self.sessionName = PiSessionName.validated(sessionName)
+    }
+
+    var title: String { PiSessionName.cardTitle(name: sessionName, lifecycle: lifecycle) }
+    var spokenLabel: String { "Pi session \(sessionID), \(title), \(PiSessionIndicatorPresentation(lifecycle: lifecycle).label.lowercased())" }
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption) private var numberSize = 12.0
@@ -67,7 +78,6 @@ struct PiSessionCardContent: View {
     @ScaledMetric(relativeTo: .subheadline) private var statusSize = 14.0
 
     var body: some View {
-        let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
         MinimalCard(padding: 8, glass: true) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
@@ -77,17 +87,18 @@ struct PiSessionCardContent: View {
                     Spacer(minLength: 4)
                     PiSessionGlyph(lifecycle: lifecycle, active: motionActive, size: iconSize)
                 }
-                Text(presentation.label)
+                Text(title)
                     .font(.system(size: statusSize, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .truncationMode(.tail)
                     .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.85)
             }
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
         }
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Pi session \(sessionID), \(presentation.label.lowercased())")
+        .accessibilityLabel(spokenLabel)
     }
 }
 
@@ -311,10 +322,9 @@ struct HomeView: View {
                     guard let slot = JARVISTerminalSlot(rawValue: sessionID) else { return }
                     onOpenPiTerminal(slot)
                 } label: {
-                    let lifecycle = isStale
-                        ? PiSessionLifecycle.unknown
-                        : sessions?.first(where: { $0.sessionID == sessionID })?.resolvedLifecycle ?? .unknown
-                    piSessionStatusSection(sessionID: sessionID, lifecycle: lifecycle)
+                    let session = sessions?.first(where: { $0.sessionID == sessionID })
+                    let lifecycle = isStale ? PiSessionLifecycle.unknown : session?.resolvedLifecycle ?? .unknown
+                    piSessionStatusSection(sessionID: sessionID, lifecycle: lifecycle, name: session?.name)
                 }
                 .buttonStyle(JarvisPressStyle())
                 .accessibilityHint("Opens Pi \(sessionID)'s terminal on the Terminal tab")
@@ -322,10 +332,10 @@ struct HomeView: View {
         }
     }
 
-    private func piSessionStatusSection(sessionID: Int, lifecycle: PiSessionLifecycle) -> some View {
+    private func piSessionStatusSection(sessionID: Int, lifecycle: PiSessionLifecycle, name: String?) -> some View {
         PiSessionCardContent(sessionID: sessionID, lifecycle: lifecycle,
             motionActive: scenePhase == .active && app.activeSection == .home
-                && !app.isAwaitingFreshState)
+                && !app.isAwaitingFreshState, sessionName: name)
     }
 
     private func codexQuotaCard(_ state: StateSnapshot) -> AnyView {

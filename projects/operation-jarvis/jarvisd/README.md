@@ -21,6 +21,30 @@ Health UI belongs on System, not Home. Backend checks remain active. See [covera
 
 # jarvisd — shared control backend
 
+## Pi session names — deployed 2026-10-04 EDT
+
+Release `20261004T162812Z-pi-session-names` activated and verified at **12:55 EDT**,
+paired with iPhone build **248** installed at **12:58 EDT**. The fixed
+`mobileSessions` projection optionally includes actual saved `session_info.name`
+metadata from the same fresh PID descriptor's exact file. Names are never inferred
+from prompts or tmux IDs. The bounded reader handles rename/clear/resume and rejects
+stale/ambiguous identities; lifecycle compatibility and collector cadence are
+preserved. Live cached state verifies 7 names and 3 unnamed New sessions, with
+no name text logged.
+
+The candidate was prepared from the exact installed history-cadence release,
+changing only the name projection, new metadata helper and its focused tests;
+**795 frozen shipped-backend tests passed**. Unrelated installed differences and
+CLI/vendor/Python runtime were preserved; operational candidate tests separately
+passed 891. The documented watchdog-coordinated daemon restart took **0.557 s**.
+All 16 unrelated protected service records and existing Pi identities were
+preserved. Configuration/credentials, original history-file identity and its
+10-second cadence were verified unchanged. Existing API authentication and local
+readiness checks passed. Exact prior source/daemon/watchdog plists and a consistent
+read-only history backup remain retained. No hardware write, Pi reload/restart or
+new route was introduced. See the
+[native deployment and privacy/resource limits](../jarvis-app/docs/pi-session-names.md).
+
 **History access correction deployed (2026-09-30 EDT):**
 `20260930T041842Z-history-dashboard-access` now applies the same authorization as
 cached dashboard state. Trusted-network history needs no token; token mode still

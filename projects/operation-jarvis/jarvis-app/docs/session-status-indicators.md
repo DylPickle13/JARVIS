@@ -1,5 +1,9 @@
 # Shared Pi session indicators
 
+Build **248** now uses saved session names for the nine cards' written labels;
+[session-name deployment](pi-session-names.md) documents the backend/iPhone rollout.
+The glyphs, 22-point sizing, colours, motion and card geometry below are unchanged.
+
 ## Larger dashboard glyphs — build 247
 
 Build **247** raises the dashboard glyph base size to **22 pt**, up from build

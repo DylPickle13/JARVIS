@@ -11,9 +11,9 @@ archives** (builds 127, 239, 240, 241 and 242), the unused ignored
 `JARVISKit/.build/` cache, superseded validation source copies and duplicate
 temporary renders: **1.17 GiB of allocated artifacts** removed.
 
-The retained signed archives are **247** (deployed iPhone), **246** (exact iPhone
+Current recovery archives are **248** (deployed iPhone), **247** (exact iPhone
 rollback), **245** (last independently verified Watch) and **244** (exact Watch
-rollback). An unconfirmed Watch update is not grounds to discard its recovery
+rollback); the prior iPhone archive **246** also remains after the names rollout. An unconfirmed Watch update is not grounds to discard its recovery
 baseline. All four payload seals, four-bundle signatures and frozen source
 manifests were verified before and after cleanup.
 
@@ -25,6 +25,44 @@ before those superseded scratch directories were removed. The private build-247
 `stale-artifact-pruning.json` records the exact removals and retention checks.
 No runtime configuration, credentials, services or Pi history were removed.
 Historical retention statements below describe the state at their original time.
+
+## Named Pi cards — build 248
+
+Owner-approved backend and iPhone deployments are both installed and verified;
+see [session-name contract and deployment](pi-session-names.md). Backend release
+`20261004T162812Z-pi-session-names` activated at **2026-10-04 12:55 EDT**, with
+one 0.557-second daemon restart and the documented watchdog pause/resume.
+All 16 unrelated protected service records and existing Pi pane/window/process
+identities were preserved. Configuration/credential fingerprints, original
+history-file identity and 10-second history cadence are unchanged; exact prior
+backend source/plists and a consistent read-only history backup are retained.
+Only the name projection, new metadata helper and its focused tests differ from
+the exact installed backend baseline. All 795 frozen shipped-backend tests passed;
+the operational source candidate separately passed 891 tests.
+
+Signed build **248** installed once on the allowlisted iPhone and independently
+version/launch/process verified at **12:58 EDT**, launching the JARVIS tab.
+The nine cards display saved names, with unchanged numbers/glyphs/card geometry,
+status colours, 80 ms cadence and tap routes. Full names and lifecycle remain
+available to VoiceOver. Room Audio controls and phone/Watch Terminal capsules
+are unchanged. The live cached API verifies 7 saved names and 3 unnamed New slots.
+173 iPhone tests, 301 shared tests (3 expected skips), 37 terminal tests and both
+simulator builds passed from frozen source. The known plain-Paste assertion is
+still the only excluded native test. All four candidate and exact rollback-247
+bundles passed signature/profile/unchanged-entitlement and payload-seal audits;
+existing signing authority and byte-identical profiles were reused. No rebuild
+occurred after audit. The subsequent app-only install preserved all 18 service
+records and Pi identities, and restarted no services itself.
+
+No Pi reload/restart, household device command, direct Watch install/launch,
+install retry, uninstallation, unpairing, reboot, app-data removal or credential
+change. Watch's last independent device verification remains 245; iOS may sync the
+unchanged-source embedded companion. The owner confirmed the physical appearance
+looks good; physical VoiceOver acceptance remains unconfirmed. Private native evidence is `20261004T162812Z-build248-session-names`,
+including 251 frozen source inputs, signed archive, audit and one-shot deployment
+result; pre-release validation remains in `jarvis-session-names.3cdzjb`. The
+validation simulator returned to Shutdown and session-created build caches were
+removed.
 
 ## Larger dashboard glyphs — build 247
 
