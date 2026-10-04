@@ -1,0 +1,19 @@
+#!/bin/sh
+# Stable JARVIS entrypoint. Prefer the official managed launcher; retain npm
+# compatibility before migration. exec preserves signals and all arguments.
+set -eu
+agent_dir=${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}
+if [ -e "$agent_dir/install/managed-install.json" ]; then
+  if [ ! -x "$agent_dir/bin/pi" ]; then
+    printf 'Managed Pi launcher is missing: %s\n' "$agent_dir/bin/pi" >&2
+    exit 127
+  fi
+  exec "$agent_dir/bin/pi" "$@"
+fi
+for candidate in /opt/homebrew/bin/pi /usr/local/bin/pi; do
+  if [ -x "$candidate" ]; then
+    exec "$candidate" "$@"
+  fi
+done
+printf 'Pi is not installed; use https://pi.dev/install.sh\n' >&2
+exit 127

@@ -2,17 +2,15 @@
 // Opt-in live checks. No server settings, model load/unload APIs, real tools or
 // private session prompts are used. --generate exercises already-loaded models;
 // --allow-on-demand additionally permits ordinary inference to load a model.
-import { execFileSync } from 'node:child_process';
+import { piRuntimeRoot, piRequire, piDependencyRoot } from './pi-runtime.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
 import { deflateSync } from 'node:zlib';
 import assert from 'node:assert/strict';
-const modules = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
-const root = join(modules, '@earendil-works/pi-coding-agent');
-const ai = join(root, 'node_modules/@earendil-works/pi-ai');
-const { createJiti } = await import(pathToFileURL(join(root, 'node_modules/jiti/lib/jiti.mjs')));
+const root = piRuntimeRoot();
+const ai = piDependencyRoot('@earendil-works/pi-ai', root);
+const { createJiti } = piRequire(root)('jiti');
 const jiti = createJiti(import.meta.url, { interopDefault: true, alias: {
   '@earendil-works/pi-coding-agent': join(root, 'dist/index.js'),
   '@earendil-works/pi-ai/compat': join(ai, 'dist/compat.js'),

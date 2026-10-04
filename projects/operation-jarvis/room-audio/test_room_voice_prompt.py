@@ -15,7 +15,7 @@ class RoomVoicePromptTests(unittest.TestCase):
         command = shlex.split(supervisor.pi_command(history, {
             'model': 'fixture/model', 'thinking': 'medium',
         }))
-        self.assertEqual(command, ['/opt/homebrew/bin/pi', '--tui-mode', 'regular',
+        self.assertEqual(command, [str(supervisor.ROOT / '.pi/scripts/pi-cli'), '--tui-mode', 'regular',
             '--session', str(history), '--model', 'fixture/model', '--thinking', 'medium'])
         self.assertNotIn('--append-system-prompt', command)
         self.assertNotIn('--system-prompt', command)

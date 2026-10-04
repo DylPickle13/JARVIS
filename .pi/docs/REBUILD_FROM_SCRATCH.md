@@ -46,12 +46,18 @@ Also install/configure as needed:
 - Google Chrome or Chromium for the visible browser extension.
 - Access to the local oMLX/OpenAI-compatible endpoints used for Pi provider setup, PDF conversion, and ASR.
 
-Install or update Pi:
+Install Pi with its managed, dependency-pinned installer:
 
 ```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+curl -fsSL https://pi.dev/install.sh | sh
 pi --version
 ```
+
+Use `pi update` for subsequent updates. JARVIS launchers use
+`.pi/scripts/pi-cli`; Node test helpers use `.pi/scripts/pi-runtime.mjs` to
+support both managed and legacy npm layouts. See
+[managed-install migration notes](PI_MANAGED_INSTALL.md) before removing legacy
+compatibility paths on the deployed host.
 
 Authenticate with Pi's `/login` or supply the selected provider's API keys through `.env` or the shell. Pi RPC needs a working `pi` command on `PATH` when run from this repository.
 

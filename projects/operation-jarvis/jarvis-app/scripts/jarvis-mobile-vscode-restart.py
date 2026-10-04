@@ -32,7 +32,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 TMUX_BIN = Path("/opt/homebrew/bin/tmux")
 TMUX_SOCKET = "jarvis-mobile"
 TMUX_CONFIG = PROJECT_ROOT / "projects/operation-jarvis/jarvis-app/config/jarvis-mobile.tmux.conf"
-PI_BIN = Path("/opt/homebrew/bin/pi")
+PI_BIN = PROJECT_ROOT / ".pi/scripts/pi-cli"
 STATUS_DIR = PROJECT_ROOT / ".pi/runtime/local-pi-sessions"
 SESSION_DIR = (
     Path.home()

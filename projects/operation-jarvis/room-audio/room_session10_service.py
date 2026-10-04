@@ -25,7 +25,7 @@ def pi_command(session_file, config):
     # Match normal Pi sessions: discover the current shared prompt from ROOT.
     # The identity-gated extension adds spoken presentation only. Never load
     # the historical runtime/system.md snapshot or the standalone voice policy.
-    return shlex.join(['/opt/homebrew/bin/pi', '--tui-mode', 'regular',
+    return shlex.join([str(ROOT / '.pi/scripts/pi-cli'), '--tui-mode', 'regular',
         '--session', str(session_file), '--model', config['model'],
         '--thinking', config.get('thinking', 'high')])
 

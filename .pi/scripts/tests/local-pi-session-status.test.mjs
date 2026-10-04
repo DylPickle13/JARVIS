@@ -1,18 +1,13 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const globalNodeModules = execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
-const { createJiti } = await import(
-  pathToFileURL(
-    join(globalNodeModules, "@earendil-works", "pi-coding-agent", "node_modules", "jiti", "lib", "jiti.mjs"),
-  ).href,
-);
+import { piRequire } from "../pi-runtime.mjs";
+const { createJiti } = piRequire()("jiti");
 const jiti = createJiti(import.meta.url, { interopDefault: true });
 const imported = await jiti.import(
   join(projectRoot, ".pi", "extensions", "46-local-pi-session-status.ts"),

@@ -661,7 +661,7 @@ class TerminalServiceTests(unittest.TestCase):
                 'readonly JARVIS_ROOT="/Users/dylanrapanan/JARVIS"',
                 'readonly JARVIS_ROOT="{}"'.format(root),
             ).replace(
-                "readonly PI_COMMAND='/opt/homebrew/bin/pi --tui-mode regular'",
+                "readonly PI_COMMAND='/Users/dylanrapanan/JARVIS/.pi/scripts/pi-cli --tui-mode regular'",
                 "readonly PI_COMMAND='sleep 30'",
             )
             script.write_text(source, encoding="utf-8")

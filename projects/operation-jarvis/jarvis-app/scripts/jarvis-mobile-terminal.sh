@@ -5,7 +5,7 @@ readonly TMUX_BIN="/opt/homebrew/bin/tmux"
 readonly TMUX_SOCKET="jarvis-mobile"
 readonly TMUX_CONFIG="/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/config/jarvis-mobile.tmux.conf"
 readonly JARVIS_ROOT="/Users/dylanrapanan/JARVIS"
-readonly PI_COMMAND='/opt/homebrew/bin/pi --tui-mode regular'
+readonly PI_COMMAND='/Users/dylanrapanan/JARVIS/.pi/scripts/pi-cli --tui-mode regular'
 
 slot="1"
 slot_was_set="0"

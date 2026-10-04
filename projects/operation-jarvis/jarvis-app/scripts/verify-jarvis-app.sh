@@ -513,7 +513,7 @@ grep -q -- '--slot' scripts/jarvis-mobile-terminal.sh
 grep -Fq '"new-session", "-d", "-s", session' scripts/jarvis-mobile-terminal.sh
 grep -q 'attach-session' scripts/jarvis-mobile-terminal.sh
 grep -q 'export PATH="/opt/homebrew/bin:' scripts/jarvis-mobile-terminal.sh
-grep -q "PI_COMMAND='/opt/homebrew/bin/pi --tui-mode regular'" scripts/jarvis-mobile-terminal.sh
+grep -q "PI_COMMAND='/Users/dylanrapanan/JARVIS/.pi/scripts/pi-cli --tui-mode regular'" scripts/jarvis-mobile-terminal.sh
 reject_match 'Mobile Pi launcher must not restore fullscreen TUI mode' -Fq -- '--tui-mode fullscreen' scripts/jarvis-mobile-terminal.sh
 grep -q 'source-file "$TMUX_CONFIG"' scripts/jarvis-mobile-terminal.sh
 grep -q 'send-keys -X -N 1 scroll-up' config/jarvis-mobile.tmux.conf

@@ -3,13 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
-// npm --prefix propagates its project prefix to child `npm root -g` calls.
-// Resolve the actual Pi install without that test-runner override.
-process.env.PI_TEST_NODE_MODULES ||= execFileSync('npm', ['root', '-g'], {
-  encoding: 'utf8',
-  env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_config_.*prefix$/i.test(k))),
-}).trim();
+// Shared resolver supports managed/npm installs and strips npm prefix overrides.
 const { jiti } = await import('../../tests/helpers/pi-import.mjs');
 const { DaemonBrowserManager } = await jiti.import(new URL('./daemon-browser-manager.ts', import.meta.url).pathname);
 const { default: registerBrowser } = await jiti.import(new URL('./index.ts', import.meta.url).pathname);

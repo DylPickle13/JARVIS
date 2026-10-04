@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { piRequire } from '../../../.pi/scripts/pi-runtime.mjs';
 import { resolve } from 'node:path';
-const require = createRequire('/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/package.json');
+const require = piRequire();
 const { createJiti } = require('jiti');
 const jiti = createJiti(import.meta.url, { alias: { typebox: require.resolve('typebox') } });
 const root = resolve(import.meta.dirname, '../../..');

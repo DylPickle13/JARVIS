@@ -3,16 +3,17 @@ import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
-import { createRequire } from 'node:module';
+import { piRuntimeRoot, piRequire, piDependencyRoot } from '../pi-runtime.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const runtime = process.env.PI_CODEMODE_TEST_RUNTIME || '/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent';
+const runtime = piRuntimeRoot();
+const aiRoot = piDependencyRoot('@earendil-works/pi-ai', runtime);
 const sdk = await import(pathToFileURL(join(runtime, 'dist/bundle/index.js')));
-const requireRuntime = createRequire(join(runtime, 'package.json'));
+const requireRuntime = piRequire(runtime);
 const { createJiti } = requireRuntime('jiti');
 const { Type } = await import(pathToFileURL(requireRuntime.resolve('typebox')));
-const { EventStream } = await import(pathToFileURL(join(runtime, 'node_modules/@earendil-works/pi-ai/dist/index.js')));
+const { EventStream } = await import(pathToFileURL(join(aiRoot, 'dist/index.js')));
 const jiti = createJiti(import.meta.url, { interopDefault: true, alias: { typebox: requireRuntime.resolve('typebox') } });
 const lazyModule = await jiti.import(join(root, '.pi/extensions/99-lazy-tools.ts'));
 const slimModule = await jiti.import(join(root, '.pi/extensions/98-slim-provider-payload.ts'));
@@ -182,10 +183,10 @@ test('slimming preserves the initial prefix when a real prompt loads tools and s
   assert.equal(f.executed.length, 1);
 
   // Offline A/B: exercise both native addition formats, without a provider call.
-  const { convertResponsesMessages } = await import(pathToFileURL(join(runtime,
-    'node_modules/@earendil-works/pi-ai/dist/api/openai-responses-shared.js')));
-  const { resolveTranscriptTools } = await import(pathToFileURL(join(runtime,
-    'node_modules/@earendil-works/pi-ai/dist/utils/transcript.js')));
+  const { convertResponsesMessages } = await import(pathToFileURL(join(aiRoot,
+    'dist/api/openai-responses-shared.js')));
+  const { resolveTranscriptTools } = await import(pathToFileURL(join(aiRoot,
+    'dist/utils/transcript.js')));
   for (const supportsAdditionalTools of [true, false]) {
     const opts = { includeSystemPrompt: false, supportsMidConvoSystemMessages: true,
       supportsAdditionalTools, supportsToolSearch: true };

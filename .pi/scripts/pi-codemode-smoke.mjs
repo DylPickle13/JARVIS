@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Live, read-only codemode compatibility test. Uses configured credentials;
 // no persistent sessions/settings, no discovered tools, no production actions.
+import { piRuntimeRoot } from './pi-runtime.mjs';
 import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const runtime = process.env.PI_CODEMODE_TEST_RUNTIME || '/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent';
+const runtime = piRuntimeRoot();
 const sdk = await import(pathToFileURL(join(runtime, 'dist/bundle/index.js')));
 const config = JSON.parse(await readFile(join(root, '.pi/settings.json'), 'utf8'));
 const requested = process.argv.slice(2);

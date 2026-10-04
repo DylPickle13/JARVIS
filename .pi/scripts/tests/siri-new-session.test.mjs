@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { promisify } from "node:util";
-const modules = execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
-const { createJiti } = await import(pathToFileURL(join(modules, "@earendil-works/pi-coding-agent/node_modules/jiti/lib/jiti.mjs")));
+import { piRequire } from "../pi-runtime.mjs";
+const { createJiti } = piRequire()("jiti");
 const jiti = createJiti(import.meta.url, { interopDefault: true });
 const { SiriNewSessionGate, hasConversation, validPrompt, startSiriNewSessionServer } = await jiti.import(resolve(import.meta.dirname, "../../extensions/lib/siri-new-session.ts"));
 

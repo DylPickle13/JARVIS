@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { piRuntimeRoot } from '../scripts/pi-runtime.mjs';
 import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -109,7 +110,7 @@ test('slimming no longer carries metadata for the removed tool', () => {
 });
 
 test('settings template disables only unused built-ins through the real resource loader', async t => {
-  const runtime = process.env.PI_CODEMODE_TEST_RUNTIME || '/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent';
+  const runtime = piRuntimeRoot();
   const sdk = await import(pathToFileURL(join(runtime, 'dist/bundle/index.js')));
   const template = JSON.parse(readFileSync(join(root, '.pi/settings.example.json'), 'utf8'));
   assert.deepEqual(template.extensions, ['-builtin:llama.cpp', '-builtin:mcp']);

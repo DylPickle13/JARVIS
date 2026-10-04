@@ -3,14 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { piRuntimeRoot, piRequire, piDependencyRoot } from '../scripts/pi-runtime.mjs';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-const globalModules = process.env.PI_TEST_NODE_MODULES || execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
-const root = join(globalModules, '@earendil-works/pi-coding-agent');
-const aiRoot = join(root, 'node_modules/@earendil-works/pi-ai');
-const { createJiti } = await import(pathToFileURL(join(root, 'node_modules/jiti/lib/jiti.mjs')));
+const root = piRuntimeRoot();
+const aiRoot = piDependencyRoot('@earendil-works/pi-ai', root);
+const { createJiti } = piRequire(root)('jiti');
 const jiti = createJiti(import.meta.url, { interopDefault: true, alias: {
   '@earendil-works/pi-coding-agent': join(root, 'dist/index.js'),
   '@earendil-works/pi-ai/compat': join(aiRoot, 'dist/compat.js'),
