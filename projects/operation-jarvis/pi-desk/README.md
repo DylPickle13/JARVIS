@@ -45,15 +45,17 @@ indicators, always keeping the focused session clickable; Ctrl + ←/→ still r
 ten sessions. Numbers use two digits, with muted separators matching the current
 one-, two-, or three-session groups; there are no group labels. Running
 sessions use the ten-frame Pi-style braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) every
-250 ms (2.5-second cycle); compacting sessions rotate backwards every 500 ms
-(five-second cycle). Colours remain unchanged: running green, compacting orange
-`#FF7A00`, idle purple, new cyan, offline grey, unknown amber. Static icons are
+80 ms (0.8-second cycle), matching Pi TUI's default loader. Compacting uses the
+same speed and direction; colour distinguishes the busy states. The palette is: running green, compacting neutral grey
+`#8A8A8A`, idle purple, new cyan, offline grey, unknown amber. Static icons are
 idle `●`, new `○`, offline `×`, and unknown `?` (including missing/unrecognised
 states). All icons/spinners and padding share the same dark
 header background, with number-only bold/underline explicitly reset. This uses the existing
 shared monitor, not terminal blink support. Animation frames reuse cached status
 and viewer metadata; metadata/health checks retain their 500 ms cadence and the
-host feed retains its three-second cadence. Frames update only changed headers,
+host feed retains its three-second cadence. Frame deadlines stay independent of
+snapshot refreshes, so metadata checks do not shift the spinner cadence.
+Frames update only changed headers,
 not the warning row or pane layout. With no busy sessions there are no animation
 wakeups. Set `PI_DESK_SPINNER=ascii` before starting the elected monitor for a
 single-cell ASCII fallback (`|/-\\`, idle `.`, new `o`, offline `x`, unknown `?`),

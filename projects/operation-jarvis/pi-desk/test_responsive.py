@@ -105,8 +105,7 @@ class LayoutTests(unittest.TestCase):
         for width in (4, 30, 80, 99, 100, 184):
             start = desktop.responsive_selector(states, width, 3, 1)
             next_frame = desktop.responsive_selector(states, width, 3, 1, frame=2)
-            self.assertEqual(start.replace('nounderscore]⠋', 'nounderscore]⠹', 1)
-                             .replace('nounderscore]⠋', 'nounderscore]⠏', 1), next_frame)
+            self.assertEqual(start.replace('nounderscore]⠋', 'nounderscore]⠹'), next_frame)
         for width in (1, 2, 3):
             self.assertEqual(desktop.responsive_selector(states, width, 1, 1),
                              desktop.responsive_selector(states, width, 1, 1, frame=2))
@@ -365,7 +364,8 @@ class WorkspaceTests(unittest.TestCase):
         for number, width in ((2, 184), (5, 110), (9, 80)):
             workspace.create(number, width, 45)
         core.tmux('set-option', '-g', '@pi-desk-last', '5')
-        for state, expected_reads, expected_writes in (('idle', 3, 1), ('running', 2, 3)):
+        for state, expected_reads, expected_writes in (('idle', 3, 1), ('running', 1, 3),
+                                                      ('compacting', 1, 3)):
             feed = mock.Mock(backend=mock.Mock(host='test'),
                              connection='Mac connected · Session status live')
             feed.poll.return_value = {'1': state}
@@ -386,6 +386,38 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(len(args), expected_reads + expected_writes)
             self.assertEqual(feed.poll.call_count, expected_reads)
             self.assertEqual(health.poll.call_count, expected_reads)
+            feed.close.assert_called_once()
+
+    def test_snapshot_refresh_does_not_shift_spinner_frame_deadlines(self):
+        for state in ('running', 'compacting'):
+            feed = mock.Mock(backend=mock.Mock(host='test'),
+                             connection='Mac connected · Session status live')
+            feed.poll.return_value = {'5': state}
+            health = mock.Mock()
+            health.poll.return_value = ()
+            stop = mock.Mock()
+            stop.is_set.side_effect = [False] * 16 + [True]
+            clock, observed = [0], []
+            stop.wait.side_effect = lambda delay: clock.__setitem__(0, clock[0] + delay)
+
+            def render(states, frame, previous, *args, **kwargs):
+                observed.append((clock[0], frame))
+                return {}
+
+            with mock.patch.object(desktop, 'StatusFeed', return_value=feed), \
+                 mock.patch.object(desktop, 'HealthMonitor', return_value=health), \
+                 mock.patch.object(desktop.time, 'monotonic', side_effect=lambda: clock[0]), \
+                 mock.patch.object(desktop, 'persist_selection', return_value=''), \
+                 mock.patch.object(desktop, 'render_viewers', side_effect=render):
+                desktop.watch_status(stop)
+            changes = [row for i, row in enumerate(observed)
+                       if i == 0 or row[1] != observed[i - 1][1]]
+            self.assertEqual(len(changes), 14)
+            for frame, (timestamp, actual_frame) in enumerate(changes):
+                self.assertEqual(actual_frame, frame)
+                self.assertAlmostEqual(timestamp, frame * .08)
+            self.assertEqual(feed.poll.call_count, 3)  # 0, 500 ms, 1000 ms only.
+            self.assertEqual(health.poll.call_count, 3)
             feed.close.assert_called_once()
 
     def test_animation_updates_only_header_not_warning_or_row_count(self):
@@ -414,7 +446,7 @@ class WorkspaceTests(unittest.TestCase):
         health = mock.Mock()
         health.poll.return_value = ()
         stop = mock.Mock()
-        stop.is_set.side_effect = [False] * 4 + [True]
+        stop.is_set.side_effect = [False] * 9 + [True]
         clock = [0]
         stop.wait.side_effect = lambda delay: clock.__setitem__(0, clock[0] + delay)
         with mock.patch.object(desktop, 'StatusFeed', return_value=feed), \
@@ -425,7 +457,11 @@ class WorkspaceTests(unittest.TestCase):
             desktop.watch_status(stop)
         self.assertEqual(snapshot.call_count, 3)
         self.assertEqual(feed.poll.call_count, 3)
-        self.assertEqual([call.args[0] for call in stop.wait.call_args_list], [.25, .25, .5, .5])
+        waits = [call.args[0] for call in stop.wait.call_args_list]
+        expected = [.08] * 6 + [.02, .5, .5]
+        self.assertEqual(len(waits), len(expected))
+        for actual, delay in zip(waits, expected):
+            self.assertAlmostEqual(actual, delay)
         self.assertEqual(send.call_args_list[-1].args[0], [])  # Unchanged unknown header.
         self.assertFalse(any(glyph in str(send.call_args_list[-2]) for glyph in desktop.SPINNER_FRAMES))
 
@@ -797,14 +833,14 @@ class WorkspaceTests(unittest.TestCase):
         current = {}
         for frame in (0, 2):
             current = desktop.render_viewers(states, frame, current, '')
-            glyph = ('⠋' if frame == 0 else '⠏').encode('utf-8')
+            glyph = ('⠋' if frame == 0 else '⠹').encode('utf-8')
             for _ in range(100):
                 received = b''.join(output)
-                if glyph in received and b'38;2;255;122;0' in received:
+                if glyph in received and b'38;2;138;138;138' in received:
                     break
                 time.sleep(.01)
             else:
-                self.fail('Real PTY did not emit spinner and exact orange RGB')
+                self.fail('Real PTY did not emit spinner and exact grey RGB')
         for glyph in ('○', '×', '●', '?'):
             self.assertIn(glyph.encode('utf-8'), b''.join(output))
         # Header foregrounds and focus underline survive real terminal rendering.

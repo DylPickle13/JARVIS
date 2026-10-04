@@ -1,3 +1,44 @@
+# Pi-speed braille and neutral-grey compaction — 2026-10-04, 09:20 EDT
+
+Running and compacting now use identical forward braille animation every **80 ms**
+(0.8-second cycle), matching the installed Pi TUI loader's default interval.
+Frame deadlines remain independent of 500 ms metadata/health refreshes; the host
+feed remains three seconds. Idle/reduced-motion behaviour and changed-header-only
+batching are preserved. Compacting is now exact neutral grey **`#8A8A8A`**, matching
+Pi Desk's existing neutral grey; Running remains green and Offline stays static `×`.
+Pi's spinner colour is theme-dependent, so this is a neutral-grey choice rather
+than a claim that every Pi theme uses that RGB. Other colours, navigation styling,
+layouts, pane badges, click targets, warnings and quota behaviour are unchanged.
+
+**179 full source tests passed**, including exact app palette parity, forward
+spinner cycles, ASCII/reduced motion, independent snapshot/frame deadlines,
+responsive widths and real PTY grey/braille emission. **All three machines passed
+48 focused pre-install and 48 installed-runtime tests each.** The cross-project
+source-only palette assertion is covered locally, not run from isolated/installed
+Pi Desk directories that do not contain the sibling app project. Six shared app
+terminal/lifecycle colour tests passed; its verification shell syntax was checked.
+
+Installed only `desktop.py` and its manifest entry on mac-mini-64, mac-mini-16 and
+Raspberry Pi. All other installed source/config hashes, existing manifest
+mismatches, clients, pane identities and Pi display-service PID were preserved.
+No viewers, hosted agents or services restarted. Rollback and verification
+artifacts are retained; temporary staging/build caches were removed.
+
+**Native app follow-up:** `PiSessionLifecycle.statusColor`, its colour tests and
+the verification assertion mirror grey. Owner-approved build 245 was subsequently
+installed once and independently version/launch/process verified on both iPhone
+and Watch on 2026-10-04 at 09:43 EDT. Exact signed build 244 is retained for rollback;
+no backend/Pi restart. See [native app deployment](../jarvis-app/docs/operations.md#grey-compaction-palette--build-245).
+
+**Activation:** detach all Pi Desk viewers on each machine with Ctrl+A then d,
+then reopen `pi-desk`. F10 restarts agents, not the UI. Live visual acceptance
+remains pending until reopened.
+
+Rollback backups:
+- mac-mini-64: `~/.local/state/pi-desk/backups/pi-loader-cadence-20261004T131843969441Z/`
+- mac-mini-16: `~/.local/state/pi-desk/backups/pi-loader-cadence-20261004T131844346221Z/`
+- Raspberry Pi: `~/.local/state/pi-desk/backups/pi-loader-cadence-20261004T131845583039Z/`
+
 # Pi-style braille and distinct lifecycle icons — 2026-10-04, 00:52 EDT
 
 Running now uses the ten-frame braille spinner `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`. Compacting

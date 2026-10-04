@@ -326,7 +326,7 @@ grep -Fq 'case .compacting: return PiSessionLifecycle.compacting.statusColor' JA
 grep -Fq 'case .running: return .green' JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift
 grep -Fq 'case .idle: return .purple' JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift
 grep -Fq 'case .new: return .cyan' JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift
-grep -Fq 'case .compacting: return Color(red: 1, green: 122.0 / 255, blue: 0)' JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift
+grep -Fq 'case .compacting: return Color(red: 138.0 / 255, green: 138.0 / 255, blue: 138.0 / 255)' JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift
 grep -q 'onOpenPiTerminal: { slot in' JARVIS/JARVISApp.swift
 grep -q '_ = piTerminal.selectSlot(slot)' JARVIS/JARVISApp.swift
 grep -q 'func selectSlot(_ target: JARVISTerminalSlot) -> Bool' JARVIS/Terminal/PiTerminalController.swift

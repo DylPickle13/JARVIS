@@ -61,7 +61,7 @@ final class TerminalSessionStatusTests: XCTestCase {
         XCTAssertEqual(PiSessionLifecycle.idle.statusColor, .purple)
         XCTAssertEqual(PiSessionLifecycle.running.statusColor, .green)
         XCTAssertEqual(PiSessionLifecycle.new.statusColor, .cyan)
-        XCTAssertEqual(PiSessionLifecycle.compacting.statusColor, Color(red: 1, green: 122.0 / 255, blue: 0))
+        XCTAssertEqual(PiSessionLifecycle.compacting.statusColor, Color(red: 138.0 / 255, green: 138.0 / 255, blue: 138.0 / 255))
         XCTAssertNotEqual(PiSessionLifecycle.compacting.statusColor, PiSessionLifecycle.new.statusColor)
         XCTAssertNotEqual(PiSessionLifecycle.compacting.statusColor, PiSessionLifecycle.unknown.statusColor)
         XCTAssertEqual(PiSessionLifecycle.unknown.statusColor, Color(red: 0.96, green: 0.58, blue: 0.16))

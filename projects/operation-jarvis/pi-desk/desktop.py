@@ -20,9 +20,9 @@ import codex_quota
 from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, prepare_workspace
 
 STATE = Path.home() / '.local/state/pi-desk'
-COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': '#FF7A00',
+COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': '#8A8A8A',
           'offline': 245, 'unknown': 179}
-ANIMATION_SECONDS = 0.25
+ANIMATION_SECONDS = 0.08  # Match Pi TUI's default loader interval (80 ms).
 SNAPSHOT_SECONDS = 0.5
 SPINNER_FRAMES = ('⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏')
 ASCII_SPINNER_FRAMES = ('|', '/', '-', '\\')
@@ -191,9 +191,8 @@ def status_indicator(state, frame, background):
     glyph = icons.get(state, icons['unknown'])
     if state in ('running', 'compacting') and mode != 'off':
         frames = ASCII_SPINNER_FRAMES if mode == 'ascii' else SPINNER_FRAMES
-        # Compaction rotates backwards, at half the running cadence.
-        index = -(frame // 2) if state == 'compacting' else frame
-        glyph = frames[index % len(frames)]
+        # Both busy states match Pi; lifecycle colour distinguishes compaction.
+        glyph = frames[frame % len(frames)]
     # Indicators and padding share the flat header background. Number-only focus
     # decoration must never leak into lifecycle glyphs or neighbouring controls.
     return f'#[fg={color},bg={background},nobold,nounderscore]{glyph} '
@@ -433,8 +432,11 @@ def watch_status(stop):
                 stop.wait(SNAPSHOT_SECONDS)
                 continue
             # No busy sessions means no animation wakeups or redundant writes.
-            interval = ANIMATION_SECONDS if working(states) else SNAPSHOT_SECONDS
-            due = min(now + interval, next_snapshot)
+            # Snapshot deadlines can fall between animation ticks. Keep frames
+            # on their own clock so a 500 ms refresh does not shift the cadence.
+            next_frame = (frame + 1) * ANIMATION_SECONDS
+            due = min(next_frame if working(states) else now + SNAPSHOT_SECONDS,
+                      next_snapshot)
             stop.wait(max(0, due - time.monotonic()))
     finally:
         feed.close()

@@ -475,24 +475,26 @@ class DesktopTests(unittest.TestCase):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}
         start = desktop.selector(states)
         next_frame = desktop.selector(states, frame=2)
-        self.assertEqual(start.replace('nounderscore]⠋', 'nounderscore]⠹', 1)
-                         .replace('nounderscore]⠋', 'nounderscore]⠏', 1), next_frame)
-        self.assertIn('fg=#FF7A00,bg=#1e1e1e,nobold,nounderscore]⠋', start)
+        self.assertEqual(start.replace('nounderscore]⠋', 'nounderscore]⠹'), next_frame)
+        self.assertIn('fg=#8A8A8A,bg=#1e1e1e,nobold,nounderscore]⠋', start)
         for state in ('idle', 'new', 'offline', 'unknown', 'unrecognized'):
             values = {'1': state}
             self.assertEqual(desktop.selector(values), desktop.selector(values, frame=2))
         self.assertEqual(desktop.selector({}), desktop.selector({}, frame=2))
 
-    def test_running_rotates_quickly_and_compaction_reverses_more_slowly(self):
-        self.assertEqual(desktop.ANIMATION_SECONDS, 0.25)
-        for time, expected in ((0, 0), (.25, 1), (.5, 2), (.75, 3), (1, 4)):
+    def test_both_busy_states_match_pi_loader_speed_and_direction(self):
+        self.assertEqual(desktop.ANIMATION_SECONDS, 0.08)
+        self.assertEqual(desktop.SNAPSHOT_SECONDS, 0.5)
+        for time, expected in ((0, 0), (.079, 0), (.08, 1), (.159, 1),
+                               (.16, 2), (.24, 3), (.8, 10)):
             self.assertEqual(desktop.animation_frame(time), expected)
         self.assertEqual(desktop.SPINNER_FRAMES, tuple('⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'))
-        for n in range(40):  # Two complete compacting cycles and wrap-around.
+        for n in range(40):  # Four full cycles, including wrap-around.
             running = desktop.status_indicator('running', n, '#1e1e1e')
             compacting = desktop.status_indicator('compacting', n, '#1e1e1e')
-            self.assertIn('nounderscore]' + desktop.SPINNER_FRAMES[n % 10], running)
-            self.assertIn('nounderscore]' + desktop.SPINNER_FRAMES[-(n // 2) % 10], compacting)
+            suffix = ',bg=#1e1e1e,nobold,nounderscore]' + desktop.SPINNER_FRAMES[n % 10] + ' '
+            self.assertEqual(running, '#[fg=colour77' + suffix)
+            self.assertEqual(compacting, '#[fg=#8A8A8A' + suffix)
 
     def test_ascii_and_static_spinner_options(self):
         with mock.patch.dict(os.environ, PI_DESK_SPINNER='ascii'):
@@ -515,15 +517,16 @@ class DesktopTests(unittest.TestCase):
                     self.assertEqual(desktop.status_indicator(state, frame, '#1e1e1e'),
                                      f'#[fg=colour{color},bg=#1e1e1e,nobold,nounderscore]{glyph} ')
 
-    def test_ascii_icons_and_reverse_spinner_remain_single_ascii_characters(self):
+    def test_ascii_icons_and_matched_spinners_remain_single_ascii_characters(self):
         with mock.patch.dict(os.environ, PI_DESK_SPINNER='ascii'):
             for state, glyph in {'idle': '.', 'new': 'o', 'offline': 'x',
                                  'unknown': '?', None: '?'}.items():
                 self.assertTrue(desktop.status_indicator(state, 0, '#1e1e1e').isascii())
                 self.assertIn('nounderscore]' + glyph, desktop.status_indicator(state, 9, '#1e1e1e'))
             for frame in range(16):
-                glyph = desktop.ASCII_SPINNER_FRAMES[-(frame // 2) % 4]
-                self.assertIn('nounderscore]' + glyph, desktop.status_indicator('compacting', frame, '#1e1e1e'))
+                glyph = desktop.ASCII_SPINNER_FRAMES[frame % 4]
+                for state in ('running', 'compacting'):
+                    self.assertIn('nounderscore]' + glyph, desktop.status_indicator(state, frame, '#1e1e1e'))
         with mock.patch.dict(os.environ, PI_DESK_SPINNER='off'):
             for state, glyph in desktop.STATE_ICONS.items():
                 self.assertIn('nounderscore]' + glyph, desktop.status_indicator(state, 39, '#1e1e1e'))
@@ -568,8 +571,8 @@ class DesktopTests(unittest.TestCase):
     def test_compaction_color_matches_shared_app_exact_rgb(self):
         app = Path(__file__).resolve().parent.parent / 'jarvis-app'
         color = (app / 'JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift').read_text()
-        self.assertEqual(desktop.COLORS['compacting'], '#FF7A00')
-        self.assertIn('case .compacting: return Color(red: 1, green: 122.0 / 255, blue: 0)', color)
+        self.assertEqual(desktop.COLORS['compacting'], '#8A8A8A')
+        self.assertIn('case .compacting: return Color(red: 138.0 / 255, green: 138.0 / 255, blue: 138.0 / 255)', color)
 
     def test_invalid_input(self):
         for value in ('', '11', '-1', '01', '1;exit', 'left'):

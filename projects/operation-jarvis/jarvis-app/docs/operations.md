@@ -4,12 +4,50 @@
 
 Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.
 
+## Grey compaction palette — build 245
+
+Owner-approved build **245** was installed once on each allowlisted iPhone and
+Watch and independently version/launch/process verified on **2026-10-04 at
+09:43 EDT**. Compacting uses exact neutral grey `#8A8A8A`, shared by Home cards
+and phone/Watch terminal indicators and mirrored by Pi Desk. Native app motion,
+Reduce Motion, other lifecycle colours, routing, freshness and network cadence
+are unchanged. Only eight frozen colour/test/version/documentation inputs differ
+from deployed 244; no other feature, capability, dependency or credential changed.
+
+**163 iPhone tests, 290 shared tests (3 expected skips), 37 terminal tests and both
+simulator builds passed from frozen source.** The sole excluded assertion is the
+previously documented plain-Paste pixel test. Candidate and exact build-244 rollback
+passed four-bundle signature/profile/unchanged-entitlement audits and payload seals.
+The existing paid-team identity/profiles and pinned dependencies were reused;
+no portal/provisioning changes or rebuild between audit and installation.
+
+A transient Watch developer-transport disconnect stopped the first read-only
+preflight before any physical write; one fresh read-only preflight passed.
+Immediately before installation, both targets again passed allowlist/identity,
+pairing, usable developer-services, unlock and installed-baseline-244 checks.
+Each then received exactly one install. Both versions and running processes were
+independently verified, including final-version readbacks. No install retry.
+
+All **18 protected service records** and existing Pi pane/window/process identities
+were preserved. No backend/Pi restart, uninstallation, unpairing, reboot, app-data
+removal or credential change. The dedicated validation simulator was restored to
+its original shutdown state. Physical palette acceptance awaits owner review.
+
+Private evidence: `20261004T132854Z-build245-session-grey`, including frozen
+247-file source/hash manifest, exact signed/sealed archive, tests, four-bundle
+audit, one-shot installer and `deployment/result.json`. Exact signed build 244
+is the rollback for both devices; older recovery archives remain retained.
+Session-created simulator/archive build caches and Swift package scratch output
+were removed after verification; deployed/rollback archives and evidence remain.
+See [shared session colours](session-status-indicators.md).
+
 ## Orange compaction palette — build 244
 
 Owner-approved build **244** was installed once on each allowlisted iPhone and
 Watch and independently version/launch/process verified on **2026-10-03 at
-23:32 EDT**. The shared Pi lifecycle palette now uses exact orange `#FF7A00` for
-Compacting, matching Pi Desk and separating it from New cyan. Native app motion,
+23:32 EDT**. That release uses exact orange `#FF7A00` for Compacting, matching
+Pi Desk at deployment time and separating it from New cyan. Build 245 now replaces
+that palette with neutral grey `#8A8A8A`; see the verified deployment above. Native app motion,
 other lifecycle colours, layout, routing, freshness and polling are unchanged.
 Previously checked-in notification copy/comment clarifications accompany the
 release; no additional notification-routing behavior or capability was added.
