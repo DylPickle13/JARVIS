@@ -12,7 +12,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITES = ('backend', 'plugs', 'purifier', 'security', 'archive', 'voice', 'presence', 'audio',
-          'keyboard', 'pi-desk', 'terminal', 'android-monitor', 'departure', 'docs',
+          'keyboard', 'pi-desk', 'terminal', 'android-monitor', 'departure', 'picture-frame', 'docs',
           'sdk', 'swift')
 
 
@@ -51,6 +51,7 @@ def main():
             'terminal': ([python, '-B', '-m', 'unittest', 'discover', '-s', 'terminald/tests', '-v'], ROOT / 'jarvis-app'),
             'android-monitor': ([python, '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py', '-v'], ROOT / 'security/android-monitor'),
             'departure': ([security, '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-v'], ROOT / 'security/departure-greeting'),
+            'picture-frame': ([python, '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-v'], ROOT / 'picture-frame'),
             'docs': ([python, '-B', '-m', 'unittest', 'discover', '-p', 'test_*.py', '-v'], ROOT / 'scripts'),
             'sdk': (['bash', '-c', 'bash verify-kasa-sdk.sh && bash verify-vesync-sdk.sh && bash verify-delegation-sdk.sh'], ROOT / 'jarvisd'),
             'swift': (['swift', 'test', '--scratch-path', scratch + '/swift'], ROOT / 'jarvis-app/JARVISKit'),

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "serial": "USB_SERIAL_FROM_DEVICES",
+  "package": "dk.frameo.frame",
+  "identity": {
+    "hardware_serial": "COPY_FROM_INSPECTED_PROBE",
+    "manufacturer": "COPY_FROM_INSPECTED_PROBE",
+    "model": "COPY_FROM_INSPECTED_PROBE",
+    "build_fingerprint": "COPY_FROM_INSPECTED_PROBE"
+  }
+}

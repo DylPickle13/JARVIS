@@ -13,6 +13,7 @@ This directory connects JARVIS to household plugs, air purifiers, speakers, secu
 - **Security:** reviewed CLI source in `security/`, with private credentials/inventory/media kept ignored. jarvisd exposes token-protected on-demand status only. Pi tools add local reads and explicit Tapo cloud automation management; writes are gated by revision checks and readback verification.
 - **Air purifier:** VeSync/Levoit Vital 200S-P status and validated controls.
 - **[Keyboard and mouse](keyboard/):** wired-AK820 lighting, Razer controls, and Karabiner mappings/owned-handle transport. An owner-authorized watcher checks authenticated basement proximity approximately every three seconds: either device nearby resumes minute-spaced white liked effects; both away applies white ripples once and turns mouse lighting off. Unknown/stale leaves lighting unchanged. The private `Keyboard lights` job relays alerts, not device writes. See [automation details](keyboard/docs/AUTOMATION.md) and [Razer status](keyboard/docs/RAZER.md).
+- **[Picture frame](picture-frame/):** local-first Frameo preparation: pinned ADB controller, explicit dry-run/apply controls, private screenshots, experimental photo transfer and an arrival checklist. Offline-tested only; the ordered frame is not yet paired or physically accepted.
 - **Media:** Google Cast, YouTube, Spotify Connect, and short room speech.
 - **Provider quotas:** read-only Codex/Copilot status for `jarvisd` and the apps.
 - **Private jobs:** the local scheduler and its limited, owner-only result history, shown read-only in Jobs.
@@ -26,6 +27,7 @@ projects/operation-jarvis/
 ├── jarvisd/                    # shared control backend, API, tests, LaunchAgents
 ├── jarvis-app/                 # iPhone, Watch, widgets, JARVISKit, terminald
 ├── pi-desk/                    # living-room Pi terminal, boot service, backups, tests
+├── picture-frame/              # Frameo ADB commissioning/controller; no daemon or live acceptance
 ├── presence/                   # independent Mac/Pi BLE proximity collectors
 ├── quotas/                     # read-only provider quota collection
 ├── room-audio/                 # Mac-hosted room conversations and audio endpoints
@@ -114,7 +116,7 @@ Keep room-service work separate from the protected mobile tmux sessions. Announc
 ```bash
 # Broad offline verification, using existing component environments only.
 # Includes backend/scheduler, SDK fences, device adapters, security/archive, room audio,
-# presence, keyboard/C++, Pi Desk, terminald, Android policies, and docs.
+# presence, keyboard/C++, Pi Desk, picture-frame, terminald, Android policies, and docs.
 python3 scripts/verify-offline.py
 
 # Optional shared Swift package checks; live tests remain disabled.
@@ -122,6 +124,7 @@ python3 scripts/verify-offline.py --suite swift
 
 # A focused run, or local Markdown target validation:
 python3 scripts/verify-offline.py --suite backend --suite sdk
+python3 scripts/verify-offline.py --suite picture-frame
 python3 scripts/verify_docs.py
 
 # Native source contracts/builds: run in an isolated development checkout.

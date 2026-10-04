@@ -1,0 +1,11 @@
+# Fail-closed source allowlist: photos, configs, captures and runtime never belong here.
+*
+!.gitignore
+!README.md
+!config.example.json
+!frame_control.py
+!frame_cli.py
+!docs/
+!docs/*.md
+!tests/
+!tests/*.py
