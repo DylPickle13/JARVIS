@@ -35,30 +35,31 @@ after sir restarted the sessions and the standalone pre-migration VS Code
 process exited. All ten remaining Pi process IDs matched the `jarvis-ios`
 panes launched through `.pi/scripts/pi-cli`; this conversation's tool ancestry
 also resolved to one of those managed sessions. Only the verified symlink was
-unlinked. The full legacy runtime backup was retained, but is no longer an
-active runtime dependency.
+unlinked. The legacy runtime backup was temporarily retained, then deleted
+with sir's explicit approval after verification (see below).
 
 After removing the package link, all **183 Node + 40 Python tests passed
 again**, all three executable paths returned 1.0.2, and the runtime resolver
 selected the managed release. No services or browser windows were restarted
 by the cleanup. Future updates use `pi update`.
 
-## Backup and verification
+## Verification and approved backup disposal
 
-Private backup directory (mode 0700):
-`~/.pi/backups/pre-managed-migration-20261003-214502/`.
+The private migration backup at
+`~/.pi/backups/pre-managed-migration-20261003-214502/` was deleted with sir's
+explicit approval after cleanup passed. This removed the config archive,
+legacy runtime snapshot, original source copies, and installer/test records,
+reclaiming approximately **203.6 MiB of allocated space**. Fifteen temporary
+installer/test files from this work were also deleted. No active release,
+session history, browser profile, live configuration, or unrelated file was
+removed.
 
-- `pi-config-extensions.tar.gz`: project Pi config/extensions/dependencies and
-  global settings/credentials; verified by reading every archive member;
-  SHA-256 recorded in `SHA256SUMS`. Sessions, browser profiles, generated runtime,
-  and caches are excluded and left in place.
-- `npm-runtime-1.0.2`: full legacy package snapshot; 15,013 regular files verified
-  against the source by SHA-256 before migration; symlink targets also verified.
-- `original-source/`: pre-change launcher/test files outside `.pi`.
-- `agent-before-install/`: current global agent JSON immediately before install.
-- `installer-executed.sh` / `installer.log`: installer copy and successful log.
-- `agent-before-install-hashes.json`: global agent JSON hashes; all unchanged
-  immediately after installation.
+Before disposal, 21 focused runtime/codemode/lazy-tool tests passed again;
+managed metadata and active package version were checked, and known launcher
+link directories had no references into the backup. All three CLI entrypoints
+still returned 1.0.2 afterward. The original archive had been verified by reading
+every member, and the runtime snapshot's 15,013 regular files had been checked
+by SHA-256. Global agent JSON hashes were unchanged after installation.
 
 Before and after migration: **183 Node tests + 37 terminal Python tests + 3
 room-prompt Python tests passed**. No model calls or live home/browser actions
@@ -70,11 +71,8 @@ locked package version were checked.
 
 ## Recovery
 
-Do not restore the entire backup over live sessions or credentials. The original
-runtime can be smoke-tested directly via
-`node ~/.pi/backups/pre-managed-migration-20261003-214502/npm-runtime-1.0.2/dist/bundle/cli.js --version`.
-For an actual rollback, stop and obtain approval for affected service/session
-changes first. Preserve the managed installation and current conversation files;
-restore only the necessary launch/config files from the private backup, using
-its archive member prefixes. Retain the backup for recovery; the legacy
-package link has been removed.
+The migration backup is no longer available. Git retains the launcher/test
+source history; it does not back up credentials or conversation files. If the
+managed package needs repair, use the official installer after obtaining
+approval for affected service/session changes. Preserve live configuration and
+session history; do not remove `~/.pi/agent` to reinstall the CLI.
