@@ -10,8 +10,8 @@ MAX_GAP = 30
 
 
 def initial():
-    return dict(version=1, mode=None, away_since=None, away_checks=0, last_tick=None,
-                pending=False, fault=False)
+    return dict(version=2, mode=None, away_since=None, away_checks=0, last_tick=None,
+                pending=False, fault=False, completed_at=None)
 
 
 def send(action):
@@ -26,21 +26,30 @@ def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=No
     if not config['enabled']:
         return '', 0
     state = store.load('display-state.json', initial())
-    # Migrate old state conservatively: no previous check counts as confirmed.
-    if type(state) is dict and set(state) == set(initial()) - {'away_checks'}:
-        state.update(away_checks=0, away_since=None)
+    migrated = False
+    # Legacy state did not distinguish initial nearby from a completed wake.
+    # Migration publishes no phone action and NEVER clears a pending/fault latch.
+    if type(state) is dict and type(state.get('version')) is int and state['version'] == 1:
+        legacy = set(initial()) - {'completed_at'}
+        if set(state) == legacy - {'away_checks'}:
+            state.update(away_checks=0, away_since=None)
+        if set(state) == legacy:
+            state.update(version=2, completed_at=None)
+            migrated = True
     if (type(state) is not dict or set(state) != set(initial())
-            or type(state['version']) is not int or state['version'] != 1
+            or type(state['version']) is not int or state['version'] != 2
             or state['mode'] not in (None, 'nearby', 'away')
             or type(state['away_checks']) is not int or not 0 <= state['away_checks'] <= 3
             or any(state[k] is not None and not cycle.finite(state[k])
-                   for k in ('away_since', 'last_tick'))
+                   for k in ('away_since', 'last_tick', 'completed_at'))
             or any(type(state[k]) is not bool for k in ('pending', 'fault'))):
         raise cycle.CycleError('state')
 
     def save():
         store.save('display-state.json', state)
 
+    if migrated:
+        save()  # Persist schema only, including every existing uncertainty marker.
     if state['pending']:
         if not state['fault']:
             state['fault'] = True
@@ -97,6 +106,14 @@ def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=No
         state['fault'] = True
         save()
         return 'ERROR: Display lock/wake failed or is uncertain; automatic retries blocked pending owner review.', 1
-    state.update(mode=presence, away_since=None, away_checks=0, pending=False, fault=False)
+    # Publish only after the helper completed and the durable pending marker can
+    # be cleared. The phone relay never treats an initial nearby as a wake.
+    completed = now()
+    if not cycle.finite(completed) or completed < current:
+        state['fault'] = True
+        save()
+        return 'ERROR: Display lock/wake failed or is uncertain; automatic retries blocked pending owner review.', 1
+    state.update(mode=presence, away_since=None, away_checks=0, pending=False,
+                 fault=False, completed_at=completed, last_tick=completed)
     save()
     return '', 0

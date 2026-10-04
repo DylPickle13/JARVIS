@@ -34,13 +34,19 @@ public final class MonitorService extends Service {
                 if (n == null || !n.isConnected() || n.getType() != ConnectivityManager.TYPE_WIFI)
                     throw new Exception("Wi-Fi unavailable");
                 JSONObject r = client.poll();
-                if (r.getInt("version") != 1) throw new Exception("Version mismatch");
+                if (r.getInt("version") != 2 || !"computer-display".equals(r.getString("source")))
+                    throw new Exception("Computer-display protocol required");
                 state = r.getString("state");
                 age = r.isNull("ageSeconds") ? Double.NaN : r.getDouble("ageSeconds");
                 age += (SystemClock.elapsedRealtime() - began) / 1000.0;
                 lastContact = SystemClock.elapsedRealtime();
                 if (age >= 0 && age <= 15 && (state.equals("nearby") || state.equals("away")))
-                    text = "Connected over Wi-Fi / TLS — " + state;
+                    text = "Following computer display over Wi-Fi / TLS — " + state;
+                else if ("awaiting-transition".equals(r.optString("reason")))
+                    text = "Connected / waiting for first computer wake/sleep — unchanged";
+                else if ("transition-pending".equals(r.optString("reason")))
+                    text = "Connected / computer transition pending — unchanged";
+                else text = "Connected / computer state unavailable — unchanged";
             } catch (Exception e) {
                 // No raw exception text, tokens, URLs or request headers in logs/notifications.
                 state = "unknown"; age = Double.NaN;
@@ -51,7 +57,7 @@ public final class MonitorService extends Service {
             main.post(new Runnable() { @Override public void run() {
                 if (destroyed) return;
                 tick(s, a + (SystemClock.elapsedRealtime() - fetched) / 1000.0, t);
-                if (!destroyed) worker.postDelayed(poll, 5000);
+                if (!destroyed) worker.postDelayed(poll, 1000);
             }});
         }
     };
@@ -138,6 +144,9 @@ public final class MonitorService extends Service {
         out.println("pending=" + prefs.getBoolean("pending", false));
         out.println("status=" + status);
         out.println("nativePlayer=" + (PlayerLauncher.configured(this) && prefs.getBoolean("native_player", true)));
+        out.println("discoveryRoute=" + (client != null && client.hasDiscoveryRoute()));
+        out.println("lastContactAgeSeconds=" + (lastContact == 0 ? -1 :
+            (SystemClock.elapsedRealtime() - lastContact) / 1000));
     }
     private void wake() {
         PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);

@@ -193,8 +193,20 @@ a normal display/inactivity timeout in System Settings as a fallback.
   change on OS updates; absence/failure blocks display sleep rather than claiming a
   lock. The owner confirmed the original two-minute departure/return behavior worked;
   the three-check safeguard still needs a physical timing check.
-- Runtime files: `display-config.json` (opt-in), `display-state.json` (transitions,
-  timer, pending/fault). Messages use the existing minute-based alert outbox.
+- Runtime files: `display-config.json` (opt-in), `display-state.json` (version 2:
+  transitions, timer, pending/fault, and `completed_at`). Messages use the existing
+  minute-based alert outbox. `completed_at` is persisted only after a successful
+  lock/sleep or wake helper result, together with clearing pending. Migration from
+  version 1 preserves all uncertainty state and sets this marker to null; initial
+  nearby does not manufacture a completed wake.
+- The security Android monitor (v1.9) now follows this completed display mode through
+  its existing read-only relay. Fresh matching basement presence, a held watcher
+  singleton, enabled display config, a fresh heartbeat/check and no pending/fault
+  are all required. The relay reads under a nonblocking shared `cycle.lock` and
+  never changes controller state. The phone has no separate away timer; it normally
+  follows completion within about one second plus request/dispatch time. Disabling
+  Computer presence stops the watcher and makes phone replies unknown/unchanged.
+  Offline/stale phones are not guaranteed simultaneous; physical acceptance is separate.
 
 After manual security setup, enable under the shared watcher lock:
 

@@ -26,7 +26,7 @@ public final class MainActivity extends Activity {
         scroll.addView(body); setContentView(scroll);
         TextView title = new TextView(this); title.setText("JARVIS Monitor"); title.setTextSize(24); body.addView(title);
         TextView info = new TextView(this);
-        info.setText("Uses basement presence, like Computer presence. Nearby: wake + camera viewer. Two fresh away checks: lock/sleep. Unknown: unchanged.\nKeep on a wall charger and home Wi-Fi. Device Administrator grants ONLY screen locking, not wipe or password changes. Secure locks still require your PIN.\nThe app starts after reboot if enabled. Disable here before removing Administrator permission or uninstalling.");
+        info.setText("Follows completed Computer presence display actions: computer wake → wake + camera viewer; computer lock/sleep → lock/sleep. No independent away timer or initial-nearby wake. Unknown/paused: unchanged.\nKeep on a wall charger and home Wi-Fi. Device Administrator grants ONLY screen locking, not wipe or password changes. Secure locks still require your PIN.\nThe app starts after reboot if enabled. Disable here before removing Administrator permission or uninstalling.");
         info.setTextSize(16); body.addView(info);
         status = new TextView(this); status.setTextSize(17); body.addView(status);
         button(body, "1. Grant screen-lock permission", new View.OnClickListener() { public void onClick(View v) {

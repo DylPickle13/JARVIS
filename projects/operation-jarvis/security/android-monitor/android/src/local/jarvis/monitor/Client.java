@@ -39,6 +39,7 @@ public final class Client {
         discovery = new Discovery(context, pin);
     }
     public void close() { discovery.close(); }
+    public boolean hasDiscoveryRoute() { return discovery.hasRoute(); }
     private static String read(InputStream in, int limit) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[512];

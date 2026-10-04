@@ -123,13 +123,66 @@ class DisplayTests(unittest.TestCase):
     def test_old_state_migrates_without_counting_previous_check(self):
         state = display.initial()
         del state['away_checks']
-        state.update(away_since=0, last_tick=0)
+        del state['completed_at']
+        state.update(version=1, away_since=0, last_tick=0)
         self.store.data['display-state.json'] = state
         self.tick(3)
         self.tick(6)
         self.assertEqual(self.actions, [])
         self.tick(9)
         self.assertEqual(self.actions, ['lock-sleep'])
+
+    def test_completed_marker_only_after_success(self):
+        self.tick(0, 'nearby')
+        self.assertIsNone(self.store.data['display-state.json']['completed_at'])
+        self.tick(3)
+        self.tick(6)
+        self.assertIsNone(self.store.data['display-state.json']['completed_at'])
+        def check_pending(action):
+            self.assertTrue(self.store.data['display-state.json']['pending'])
+            self.assertIsNone(self.store.data['display-state.json']['completed_at'])
+            self.actions.append(action)
+        self.tick(9, apply=check_pending)
+        self.assertEqual(self.store.data['display-state.json']['completed_at'], 9)
+        self.tick(12, 'nearby')
+        self.assertEqual(self.store.data['display-state.json']['completed_at'], 12)
+
+    def test_v1_migration_preserves_pending_and_fault_without_publish(self):
+        for pending, fault in ((True, True), (True, False), (False, False)):
+            self.store = Store()
+            state = display.initial()
+            del state['completed_at']
+            state.update(version=1, mode='nearby', pending=pending, fault=fault)
+            self.store.data['display-state.json'] = state
+            self.tick(10, 'nearby')
+            saved = self.store.data['display-state.json']
+            self.assertEqual(saved['version'], 2)
+            self.assertEqual(saved['pending'], pending)
+            self.assertIsNone(saved['completed_at'])
+        self.assertEqual(self.actions, [])
+
+    def test_failed_action_never_publishes_completed_marker(self):
+        self.tick(0)
+        self.tick(3)
+        def fail(action):
+            raise RuntimeError()
+        self.tick(6, apply=fail)
+        saved = self.store.data['display-state.json']
+        self.assertIsNone(saved['completed_at'])
+        self.assertTrue(saved['pending'])
+        self.assertTrue(saved['fault'])
+
+    def test_completion_time_reversal_keeps_pending(self):
+        self.tick(0)
+        self.tick(3)
+        times = iter([6, 5])
+        payload = {'ok': True, 'zones': [{'zone': 'basement', 'subject': 'dylan',
+                   'stale': False, 'ageSeconds': 0, 'state': 'away'}]}
+        output, code = display.run_once(self.store, now=lambda: next(times),
+                          get_presence=lambda: payload, apply=lambda action: None)
+        self.assertEqual(code, 1)
+        self.assertTrue(self.store.data['display-state.json']['pending'])
+        self.assertIsNone(self.store.data['display-state.json']['completed_at'])
 
     def test_persisted_away_does_not_repeat(self):
         self.away()

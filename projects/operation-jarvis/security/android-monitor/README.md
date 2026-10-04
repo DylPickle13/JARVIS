@@ -5,7 +5,8 @@ display and a private, hardware-decoded RTSP/TCP viewer, **not** the doorbell's
 settings, recordings, alarms, or computer. v1.5 replaced the leaking tinyCam
 playback path; v1.6 adds listen-only audio, defaulting on in v1.6.1 at the owner's
 request. v1.7 adds optional, phone-local GPU lens correction; v1.8 adds a lightweight
-local Voice focus audio filter. tinyCam was subsequently
+local Voice focus audio filter. **v1.9 synchronizes screen actions with completed
+computer display actions and repairs Android 6 discovery.** tinyCam was subsequently
 uninstalled at the owner's request; private rollback backups remain on the Mac.
 DroidCam (`com.dev47apps.obsdroidcam`) was also uninstalled at the owner's request;
 it is not part of this viewer's playback path.
@@ -13,25 +14,35 @@ it is not part of this viewer's playback path.
 ## Architecture
 
 ```
-Existing authenticated basement presence → dedicated Mac read-only TLS relay
-                                         ← phone polls over home Wi-Fi every 5s
-Phone: fresh away twice → DevicePolicyManager.lockNow()
-       fresh nearby → wake screen → private viewer (only if no secure keyguard)
+Computer presence display controller → durable completed action
+  + fresh matching basement presence → dedicated Mac read-only TLS relay (v2)
+                                      ← phone polls over home Wi-Fi every 1s
+Phone: completed computer lock/sleep → DevicePolicyManager.lockNow()
+       completed computer wake → wake → private viewer (only if no secure keyguard)
 ```
 
-Uses the **same basement signal as Computer presence**, not a new BLE scanner or
-modified cron job. The computer watcher, scheduler, and presence backend are
-unchanged. The separate phone service has finer polling than the minute-based
-cron alert relay. BLE presence is an estimate, not proof that a person is present.
+**v1.9 follows Computer presence's completed display decisions**, not independent
+presence timers. No new BLE scanner, scheduler job or backend policy is introduced.
+The existing display controller adds a durable completion timestamp; its three-away-
+check safeguard and lock verification are unchanged. The minute cron remains an
+alert relay. BLE presence is an estimate, not proof that a person is present.
 
-- Two consecutive fresh away checks normally add 5–10 seconds after the backend
-  reports away; the collector also has its own nearby hold. Nearby normally reacts
-  on the next poll. Slow requests extend the interval; no catch-up polling.
+- The phone applies the first eligible completed computer mode, with no second
+  phone-away timer. Normally it follows within about one second plus network/dispatch
+  time, after the computer helper completed. It is not physically simultaneous.
+  Slow requests extend the interval; no catch-up polling.
+- Replies require enabled display config, a held watcher singleton, fresh heartbeat
+  and display check (0–15 seconds), no pending/fault, and fresh matching basement
+  presence. Read-only state is bounded/owner-checked and read under a nonblocking
+  shared `cycle.lock`; backend fetches are outside that lock. Disabled/stopped,
+  initial, uncertain, busy or stale computer state yields unknown, never a phone action.
 - Unknown/stale/error responses, age outside 0–15 seconds, Wi-Fi loss, and Mac
   outages leave the screen unchanged. Fetch/dispatch latency counts toward age.
-- Unknown, unplugging, clock reversal, or a polling gap over 15 seconds breaks
-  consecutive-away confirmation. Repeated known states do not repeat actions.
-- A fresh initial nearby state may wake/open the selected viewer; initial away needs two checks.
+- Unknown/unplugging leaves the phone unchanged. Repeated applied modes do not
+  repeat actions; the computer owns away confirmation and clock/gap handling.
+- Initial nearby does **not** wake either device. Version-1 display-state migration
+  preserves pending/fault and has no completed timestamp; the phone waits for the
+  next successful computer sleep/wake instead of fabricating a startup wake.
 - **Wall power required for automatic screen actions.** On battery the helper
   releases its CPU/Wi-Fi locks and pauses actions. There is no USB runtime dependency.
   No wireless ADB is enabled. Screen sleep is not full phone shutdown: while plugged
@@ -53,7 +64,8 @@ outside loopback and RFC1918 private-LAN ranges. The legacy fixed-address mode r
 available by setting `discovery` false in private `server.json`.
 There is no port forwarding, public relay, cloud service, CORS API or write route.
 `GET /v1/presence` requires a random monitor-only bearer credential and returns only
-protocol version, `nearby`/`away`/`unknown`, and age. The presence relay never carries main JARVIS/camera credentials,
+protocol version 2, source `computer-display`, completed `nearby`/`away`/`unknown`
+mode, age, and an allowlisted waiting reason for unknown. The presence relay never carries main JARVIS/camera credentials,
 BLE identifiers, room inventory or RSSI. The viewer's separate camera account is
 provisioned privately over USB, not sent by the relay. Request logging is
 disabled. Backend failure yields unknown, not cached away.
@@ -65,13 +77,18 @@ it never becomes the trusted identity. A different certificate fails closed befo
 the bearer credential is sent. The generated certificate expires after 825 days;
 renewal requires deliberate re-pairing, but an IP change does not.
 
-### Automatic LAN discovery (v1.2)
+### Automatic LAN discovery (v1.9, originally v1.2)
 
 The Mac advertises `_jarvis-monitor._tcp` through its built-in Bonjour (`dns-sd`).
 The instance name contains only a public certificate fingerprint prefix, never tokens,
-presence, or camera details. Android's `NsdManager` resolves that instance directly,
-without depending on Android 6's unsupported ordinary `.local` hostname lookup.
-Discovery refreshes every 30 seconds and is stopped when the helper is disabled.
+presence, or camera details. **v1.9 replaces Android 6's stuck native NSD resolver**
+with a bounded exact-instance IPv4 mDNS SRV/A lookup on the existing polling worker.
+Only that certificate-derived service and its linked `.local` host are queried,
+not a broad LAN scan. Legacy-unicast replies go to an ephemeral UDP port; no
+multicast receive lock, extra permission, thread or native resolver channel is needed.
+Queries refresh every 30 seconds, bound receive time to 1.8 seconds and at most 16
+packets of 4 KiB, reject non-RFC1918 sources/addresses and malformed/compression-loop
+records, and stop with the helper. All hints remain untrusted until pinned TLS checks.
 Only RFC1918 IPv4 destinations are accepted. The original configured endpoint remains
 a fallback when no discovered address is available; failed discovery/TLS leaves the
 screen unchanged. Spoofed advertisements can disrupt availability, not bypass pairing.
@@ -254,8 +271,9 @@ and is not part of this source.
   that budget. Retries never wake a screen or change presence.
 - Holding the status label deliberately closes only this viewer's RTSP socket,
   useful for a scoped reconnection test; it does not change Wi-Fi or the camera.
-- Existing fresh-nearby/two-fresh-away/unknown/keyguard/power/pending-action gates
-  remain unchanged. Viewer startup never unlocks a secure keyguard.
+- Unknown/keyguard/power/pending-action gates remain unchanged. v1.9 replaces
+  fresh-nearby/two-fresh-away timing with completed computer-display decisions.
+  Viewer startup never unlocks a secure keyguard.
 
 ### Optional lens correction (v1.7)
 
@@ -695,15 +713,52 @@ python3 -m unittest discover -s tests -v
 JAVA="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17}"
 mkdir -p /tmp/jarvis-monitor-policy-test
 "$JAVA/bin/javac" -d /tmp/jarvis-monitor-policy-test \
-  android/src/local/jarvis/monitor/Policy.java tests/PolicyTest.java
+  android/src/local/jarvis/monitor/Policy.java \
+  android/src/local/jarvis/monitor/MdnsDiscovery.java \
+  tests/PolicyTest.java tests/MdnsDiscoveryTest.java
 "$JAVA/bin/java" -cp /tmp/jarvis-monitor-policy-test PolicyTest
+"$JAVA/bin/java" -cp /tmp/jarvis-monitor-policy-test MdnsDiscoveryTest
 ```
+
+Current v1.9 offline coverage additionally verifies completed-display synchronization,
+startup/migration suppression, pending/fault/disabled/stopped watcher gates, lock contention,
+read-only storage, clock/freshness bounds and narrow mDNS parsing. `tests/PolicyTest.java`
+now covers the synchronized policy; `tests/MdnsDiscoveryTest.java` covers bounded DNS
+parsing, compression, exact SRV-to-A association and RFC1918 filtering.
+
+The historical live fixtures below were written for the standalone v1/v1.2 policy;
+**do not run them against v1.9** as synchronization acceptance. They require adapting
+fixtures to protocol v2. No computer screen cycle is forced during ordinary deployment;
+an owner-controlled real walk-away/return remains the physical timing check.
 
 The offline Python suite covers sanitization, auth, minimal/no-store responses, no proxy/write
 routes, LAN-only peer admission, credential-free discovery advertisements and the ARP
 repair's frame construction, identity/subnet checks, fresh-reply requirement, bounded
-receive draining and fail-closed dispatch. Twenty standalone Java policy assertions cover transitions, debounce, stale,
-unknown, age/clock/gap bounds, power gating, persisted states and no replay.
+receive draining and fail-closed dispatch. Current standalone Java checks cover
+synchronized transitions, stale/unknown/invalid age, power gating, persisted states,
+no replay and scoped mDNS parsing (19 policy + 24 discovery assertions).
+
+### v1.9 deployment acceptance — 2026-10-04
+
+- 212 keyboard/watcher tests and 50 monitor Python tests passed, plus the 43 Java
+  assertions above. An offline full-controller → relay test proves no phone mode
+  before the third computer away check and no return mode before completed wake.
+- Signed APK 1.9 (code 13) installed in place with the retained signer. The installed
+  APK checksum matches the verified build; no pairing/app-data reset or camera setting
+  change. Private source/APK rollback backup is outside Git.
+- Computer presence was briefly disabled/re-enabled through its scheduler lifecycle;
+  the existing Python 3.13 watcher and read-only relay are running. Display schema
+  migrated to version 2 without pending/fault or a fabricated completion marker.
+- Phone diagnostics show enabled=true, pending=false, discoveryRoute=true and
+  authenticated replies aged 0 seconds across multiple 30-second discovery refreshes.
+  The original paired address remains immutable and outdated; discovery supplies
+  the working route while TLS still authenticates the original identity and pin.
+- The already-awake phone viewer was reopened via its verified owner UI after update.
+  One active player, no retries, unchanged Strong lens correction, and advancing
+  decoded/GL frame counts were observed without capturing camera images.
+- No computer lock/sleep/wake or fabricated presence was forced for acceptance.
+  Current initial-nearby state deliberately waits for the next completed computer
+  transition. **A real owner walk-away/return timing check is still pending.**
 
 `tests/handset_acceptance.py` is an **explicit, physical screen test**, not an automatic
 unit test. It temporarily stops only this relay and supplies phone-only TLS fixtures
