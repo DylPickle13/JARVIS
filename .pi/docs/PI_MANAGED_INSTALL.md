@@ -23,35 +23,25 @@ Dependencies are installed with `npm ci --ignore-scripts` from the release lock.
   are unchanged. No live services, Pi sessions, browser windows, or Spaces were
   restarted or manipulated during migration.
 
-## Compatibility for existing processes
+## Compatibility and completed cleanup
 
-Two explicit compatibility links remain on the deployed host:
+`/opt/homebrew/bin/pi` -> `~/.pi/agent/bin/pi` remains as an executable alias
+for shell command caches and older supervisor code. It always launches the
+**managed current release**, not the backup snapshot.
 
-1. `/opt/homebrew/bin/pi` -> `~/.pi/agent/bin/pi`.
-   Keep this for shell command caches and the already-running room-audio
-   supervisor, whose in-memory code still references the old CLI path. It
-   always launches the **managed current release**, not the snapshot.
-2. `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent` ->
-   `~/.pi/backups/pre-managed-migration-20261003-214502/npm-runtime-1.0.2`.
-   This preserves on-disk code/assets for already-running npm-era Pi sessions.
-   New project helpers prefer the managed runtime; this is not their default.
-   Do not delete this snapshot while older sessions may still use it. Remove
-   the package link only during a separately approved cleanup after old
-   processes have exited. Do not run npm install/uninstall against this bridge.
+The temporary package link at
+`/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent` was removed
+after sir restarted the sessions and the standalone pre-migration VS Code
+process exited. All ten remaining Pi process IDs matched the `jarvis-ios`
+panes launched through `.pi/scripts/pi-cli`; this conversation's tool ancestry
+also resolved to one of those managed sessions. Only the verified symlink was
+unlinked. The full legacy runtime backup was retained, but is no longer an
+active runtime dependency.
 
-Existing sessions retain their running code. For maintenance now, invoke
-`pi update` from a shell using the managed launcher rather than relying on an
-old session's in-process update implementation.
-
-Follow-up verification: sir restarted all ten pi-desk-backed `jarvis-ios`
-sessions at approximately 21:59 EDT. All ten pane start commands use
-`.pi/scripts/pi-cli`, which selects the managed launcher. The only remaining
-pre-migration Pi process is the standalone VS Code session carrying this
-migration conversation (started at 21:41 EDT). Its ancestry was verified from
-the tool subprocess. Keep the legacy package link until that session also
-exits/restarts, then recheck for old processes before removing **only that
-symlink**. The `/opt/homebrew/bin/pi` executable alias already selects managed
-Pi and can remain for compatibility. Do not remove the backup.
+After removing the package link, all **183 Node + 40 Python tests passed
+again**, all three executable paths returned 1.0.2, and the runtime resolver
+selected the managed release. No services or browser windows were restarted
+by the cleanup. Future updates use `pi update`.
 
 ## Backup and verification
 
@@ -86,5 +76,5 @@ runtime can be smoke-tested directly via
 For an actual rollback, stop and obtain approval for affected service/session
 changes first. Preserve the managed installation and current conversation files;
 restore only the necessary launch/config files from the private backup, using
-its archive member prefixes. Do not delete the backup while the compatibility
-package link points into it.
+its archive member prefixes. Retain the backup for recovery; the legacy
+package link has been removed.
