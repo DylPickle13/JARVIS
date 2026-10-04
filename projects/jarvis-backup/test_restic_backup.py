@@ -89,7 +89,9 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(any(c.args[0][0] == 'prune' for c in run.call_args_list), not dry_run)
 
     def test_policy_keeps_unique_data_and_secrets(self):
-        for path in ['.env', 'projects/temp/analysis.py', 'projects/laya-model/models/custom.safetensors',
+        for path in ['.env',
+                     'projects/job-search/data-ai-analyst-assessment/prepare_submission.py',
+                     'projects/laya-model/models/custom.safetensors',
                      'projects/foo/building-notes.md', '.git', '.pi/runtime/pi-lazy-tools/source',
                      'projects/job-search/data-ai-analyst-assessment/assessment.ipynb',
                      'projects/job-search/data-ai-analyst-assessment/data/trades.csv',
