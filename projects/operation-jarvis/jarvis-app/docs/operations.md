@@ -16,10 +16,11 @@ owner-approved cleanup removed the obsolete build-246 signed archive, reclaiming
 **111.75 MiB allocated**. Build-248's session-created build caches had already been
 removed after deployment, releasing **2.91 GiB**; its archive and evidence remain.
 
-Current recovery archives are **249** (deployed on both devices), **248** (exact
-immediate rollback for both), plus retained older **247**, **245** and **244**.
-The build-249 preflight independently verified that Watch had received 248; both
-devices now independently verify 249. No older archive was removed by this rollout.
+Current recovery archives are **249** (deployed and owner-accepted on both devices)
+and **248** (exact immediate signed rollback for both). The build-249 preflight
+independently verified that Watch had received 248; both devices now independently
+verify 249. No older archive was removed during installation; the subsequent
+owner-approved cleanup is recorded below.
 At the earlier build-248 cleanup, all four then-retained payload seals,
 four-bundle signatures and frozen source manifests were verified before and after
 pruning 246. Every non-binary byte of
@@ -72,9 +73,23 @@ The dedicated validation simulator returned to Shutdown.
 
 Private evidence: `20261004T202531Z-build249-watch-wrapping`, including frozen source,
 signed sealed archive, exact rollback reference, test logs/result bundle, audit and
-one-shot deployment result. Historical rollback archives and evidence remain intact.
+one-shot deployment result. Exact rollback 248 and historical evidence remain intact.
 Only this session's generated build caches were removed after verification,
 reclaiming **2.91 GiB**; candidate/rollback seals and frozen inputs were rechecked.
+
+After the owner confirmed Session 10 works and the fix was committed/pushed,
+owner-approved cleanup removed the superseded **244, 245 and 247** archive trees
+and deduplicated the initial temporary verification checkout: **340.43 MiB net
+allocated space reclaimed**. Every file from that checkout is retained by exact
+hash in the frozen build-249 source or its `pre-release-validation/` evidence.
+All historical frozen source, audits, manifests/seals, deployment logs and test
+results remain. Both current archives' seals, all four signatures each and frozen
+source inputs were verified before and after pruning. All 18 protected services
+and existing Pi identities were preserved; unrelated backup work was untouched.
+Private `stale-artifact-pruning.json` and per-release `primary-archive-pruned.json`
+records distinguish removed binaries from retained evidence. No runtime data,
+credentials, profiles, active services or signed build-249/build-248 payloads were
+removed.
 
 ## Named Pi cards — build 248
 

@@ -60,6 +60,13 @@ remaining physical acceptance checks were not run. Frozen source, logs, result b
 archive, audit and one-shot installation evidence are retained privately in
 `20261004T202531Z-build249-watch-wrapping`.
 
+After owner acceptance and the fix's commit/push, authorized cleanup removed
+superseded build-244/245/247 binaries and deduplicated the initial verification
+checkout, reclaiming **340.43 MiB net allocated space**. Signed builds **249 and
+248** remain, with seals/signatures/frozen inputs reverified; every historical
+source, audit, deployment log and test result is retained. No service or Pi
+identity changed. See [current recovery retention](operations.md#current-recovery-retention-and-cleanup).
+
 ## Physical acceptance (installed build 249)
 
 1. Open Session 10 with its existing wide pane. Confirm the complete final answer
