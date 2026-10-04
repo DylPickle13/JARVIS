@@ -96,14 +96,29 @@ class LayoutTests(unittest.TestCase):
             for count, separators in ((1, 0), (2, 4), (3, 3)):
                 with self.subTest(width=width, count=count):
                     bar = desktop.responsive_selector({}, width, count, 5)
-                    self.assertEqual(bar.count('┃'), separators)
-                    self.assertEqual(bar.count('#[fg=#8a8a8a]'), separators)
+                    tabs = bar.split('#[align=right', 1)[0]
+                    self.assertEqual(tabs.count('┃'), separators + 1)
+                    self.assertEqual(tabs.count('#[fg=#8a8a8a]'), separators + 1)
                     self.assertNotIn('│', bar)
                     self.assertNotIn('fg=colour238', bar)
                     for n in range(1, 11):
                         self.assertIn(f'range=user|{n},', bar)
         self.assertIn('‹', desktop.responsive_selector({}, 30, 1, 10))
         self.assertIn('›', desktop.responsive_selector({}, 30, 1, 1))
+
+    def test_title_divider_never_hides_a_session_tab(self):
+        for count, last_plain_width in ((1, 49), (2, 53), (3, 52)):
+            for width in (last_plain_width, last_plain_width + 1, last_plain_width + 2):
+                bar = desktop.responsive_selector({}, width, count, 5)
+                tabs = bar.split('#[align=right', 1)[0]
+                self.assertEqual(re.findall(r'range=user\|(\d+),', tabs),
+                                 [str(n) for n in range(1, 11)])
+                self.assertEqual('PI-DESK #[fg=#8a8a8a]┃ ' in tabs,
+                                 width == last_plain_width + 2)
+        for width in (1, 20, 29, 30, 40):
+            bar = desktop.responsive_selector({}, width, 3, 5)
+            self.assertNotIn('PI-DESK #[fg=#8a8a8a]┃ ', bar)
+            self.assertIn('range=user|5,', bar)
 
     def test_header_indicators_rotate_in_all_widths(self):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}
@@ -750,8 +765,8 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(self.identities(wide), before)
         self.assertEqual(self.visible(small), (7, 8))
         bars = desktop.render_viewers({}, False, {})
-        self.assertEqual(bars[wide][0].count('┃'), 3)
-        self.assertEqual(bars[small][0].count('┃'), 4)
+        self.assertEqual(bars[wide][0].split('#[align=right', 1)[0].count('┃'), 4)
+        self.assertEqual(bars[small][0].split('#[align=right', 1)[0].count('┃'), 5)
         self.resize(wide_client, wide_tty, 80)
         self.assertEqual(self.visible(wide), (2,))
         self.assertEqual(self.visible(small), (7, 8))

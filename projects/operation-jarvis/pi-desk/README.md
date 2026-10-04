@@ -39,7 +39,11 @@ background also clears VS Code's default adjustment threshold. tmux's half-borde
 the title badge and selected number identify focus even in one- and two-pane
 layouts. No extra rows or columns are used. The top row contains
 ten clickable session numbers and lifecycle icons, with shortcut hints aligned at
-the right. Hints shorten or disappear as space runs out; below 100 columns the
+the right. A matching grey `┃` separates `PI-DESK` from the session tabs, and
+separates Codex quota, Restart and Switch on the right. Control dividers appear
+only between visible sections; their cell widths count toward hint shortening.
+The title divider is omitted if it would hide a session tab, including sliding-tab
+layouts. Hints shorten or disappear as space runs out; below 100 columns the
 tabs tighten. Extremely narrow terminals show a sliding subset with hidden-tab
 indicators, always keeping the focused session clickable; Ctrl + ←/→ still reaches all
 ten sessions. Numbers use two digits, with heavy `┃` separators in the same true-colour grey
@@ -121,7 +125,8 @@ changes. Shrinking uses the table boundaries; growing requires four extra column
 (109 for two, 162 for three) to avoid oscillation at a boundary.
 
 Focus is preserved: session 5 stays selected through `4/5/6` → `5/6` → `5`.
-The header separators follow the group size and disappear in one-session mode.
+The session-group separators follow the group size and disappear in one-session
+mode; title/control dividers remain when space permits.
 The final group is not padded with empty panes. Each viewer has a private local
 display workspace, so a narrow window cannot rearrange another wider window.
 Existing display attachment processes are parked in hidden windows and reused

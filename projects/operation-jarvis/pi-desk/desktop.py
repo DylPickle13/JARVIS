@@ -30,8 +30,10 @@ STATE_ICONS = {'running': '●', 'compacting': '●', 'idle': '●',
                'new': '○', 'offline': '×', 'unknown': '?'}
 ASCII_STATE_ICONS = {'running': '*', 'compacting': '*', 'idle': '.',
                      'new': 'o', 'offline': 'x', 'unknown': '?'}
-HINTS = (' F10 Restart · Ctrl + ←/→ Switch ',
-         ' F10 · Ctrl + ←/→ ', ' F10 Restart ', '')
+HINTS = (('F10 Restart', 'Ctrl + ←/→ Switch'),
+         ('F10', 'Ctrl + ←/→'), ('F10 Restart',), ())
+DIVIDER_STYLE = '#[norange,fg=#8a8a8a,bg=#1e1e1e,nobold,nounderscore]'
+HINT_STYLE = '#[norange,fg=colour245,bg=#1e1e1e,nobold,nounderscore]'
 QUOTA_OPTION = '@pi-desk-codex-quota'
 
 
@@ -39,14 +41,21 @@ def footer_candidates(quota):
     # Quota outranks hints, but never consumes space belonging to session tabs.
     labels = codex_quota.labels(quota) if quota is not None else ()
     for label in (*labels, ''):
-        for hint in HINTS:
-            style = '#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold]'
+        label = label.strip()  # Section spacing belongs to the renderer, not quota.
+        for hints in HINTS:
+            style = '#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold,nounderscore]'
+            sections = []
             if label:
                 # status-format passes through strftime: literal % must be %%.
                 escaped = label.replace('%', '%%')
-                style += f'#[range=user|codex,fg={codex_quota.color(quota)}]{escaped}'
-                style += '#[norange,fg=colour245]'
-            yield len(label) + len(hint), style + hint
+                sections.append(f'#[range=user|codex,fg={codex_quota.color(quota)}]{escaped}'
+                                + HINT_STYLE)
+            sections.extend(HINT_STYLE + hint for hint in hints)
+            divider = DIVIDER_STYLE + ' ┃ '
+            leading = trailing = ' ' if sections else ''
+            size = (len(label) + sum(map(len, hints)) + 3 * max(0, len(sections) - 1)
+                    + len(leading) + len(trailing))
+            yield size, style + leading + divider.join(sections) + trailing
 
 
 def footer(available, quota):
@@ -199,7 +208,8 @@ def status_indicator(state, frame, background):
 
 
 def selector(states, *, frame=0, quota=None):
-    parts = ['#[align=left,norange,fg=#D183E8,bg=#1e1e1e,nobold] PI-DESK ']
+    parts = ['#[align=left,norange,fg=#D183E8,bg=#1e1e1e,nobold,nounderscore] PI-DESK '
+             '#[fg=#8a8a8a]#{?#{e|>=:#{client_width},86},┃ ,}']
     for n in range(1, 11):
         key, _ = session_group(n)
         group = '#{==:#{session_name},group-' + key + '}'
@@ -212,21 +222,15 @@ def selector(states, *, frame=0, quota=None):
             parts.append('#[fg=#8a8a8a] ┃ ')
         elif n != 10:
             parts.append(' ')
-    if quota is None:
-        parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold] '
-                     '#{?#{>=:#{client_width},120},'
-                     'F10 Restart · Ctrl + ←/→ Switch,'
-                     'F10 · Ctrl + ←/→} ')
-    else:
-        # Legacy groups still use client-width formats rather than viewer metadata.
-        right = ''
-        used = 9 + 10 * 6 + 3 * 3 + 6
-        for size, markup in reversed(list(footer_candidates(quota))):
-            # Nested branches may pass through strftime repeatedly; generate
-            # literal % only after those passes. Compare widths numerically.
-            escaped = markup.replace(',', '#,').replace('%%', '#{a:37}')
-            right = '#{?#{e|>=:#{client_width},' + str(used + size) + '},' + escaped + ',' + right + '}'
-        parts.append(right)
+    # Legacy groups still use client-width formats rather than viewer metadata.
+    right = ''
+    used = 11 + 10 * 6 + 3 * 3 + 6
+    for size, markup in reversed(list(footer_candidates(quota))):
+        # Nested branches may pass through strftime repeatedly; generate
+        # literal % only after those passes. Compare widths numerically.
+        escaped = markup.replace(',', '#,').replace('%%', '#{a:37}')
+        right = '#{?#{e|>=:#{client_width},' + str(used + size) + '},' + escaped + ',' + right + '}'
+    parts.append(right)
     return ''.join(parts)
 
 
@@ -239,6 +243,9 @@ def responsive_selector(states, width, count, selected, *, frame=0, quota=None):
     separator = '┃' if compact else ' ┃ '
     boundaries = tuple(n for n in range(1, 10) if count > 1 and n % count == 0)
     total = len(brand) + 10 * tab_width + len(boundaries) * len(separator)
+    # Decoration must not turn an otherwise complete tab row into sliding tabs.
+    brand_divider = '┃ ' if brand and total + 2 <= width else ''
+    total += len(brand_divider)
     numbers = list(range(1, 11))
     overflow = total > width
     if width < 4:
@@ -249,8 +256,10 @@ def responsive_selector(states, width, count, selected, *, frame=0, quota=None):
         first = max(1, min(selected - available // 2, 11 - available))
         numbers = list(range(first, min(11, first + available)))
         boundaries = ()
-    parts = [f'#[align=left,norange,fg=#D183E8,bg=#1e1e1e,nobold]{brand}']
-    used = len(brand)
+    parts = [f'#[align=left,norange,fg=#D183E8,bg=#1e1e1e,nobold,nounderscore]{brand}']
+    if brand_divider:
+        parts.append('#[fg=#8a8a8a]' + brand_divider)
+    used = len(brand) + len(brand_divider)
     if overflow and numbers[0] > 1 and used + len(numbers) * tab_width < width:
         parts.append('#[fg=colour245]‹')
         used += 1

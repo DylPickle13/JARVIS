@@ -1,3 +1,33 @@
+# Header section dividers — 2026-10-04, 12:49 EDT
+
+Matching grey **`#8a8a8a`** / heavy **`┃`** dividers now separate the title
+from session tabs, Codex quota from Restart, and Restart from Switch. Right-hand
+dividers appear only between visible sections, with explicit neutral styling and
+no clickable quota range. Their widths participate in responsive hint selection;
+quota and session tabs retain priority. The title divider is omitted when adding
+it would hide a tab, including sliding-tab layouts. Legacy headers use the same
+section renderer and bounded hint choices. No extra rows or pane-layout changes.
+
+**183 full source tests passed locally**, including real terminal rendering,
+quota clicks, exact width accounting, all narrow-width navigation cases, neutral
+styles and no dangling separators. Each machine also passed **6,600 responsive
+render cases before installation and 6,600 against its installed runtime**.
+
+Installed only `desktop.py` and its manifest entry on mac-mini-64, mac-mini-16
+and Raspberry Pi. All other installed/config hashes, manifest entries, attached
+clients and pane identities were preserved, including hosted panes on the primary
+Mac; the Pi display-service PID was unchanged. No viewers, services or agents
+restarted. Sir confirmed the updated header looks good; other terminals were not
+independently visually checked.
+
+**Activation:** detach all Pi Desk viewers on each machine with Ctrl+A then d,
+then reopen `pi-desk`. Agents and conversations stay running; do not use F10.
+
+Rollback backups:
+- mac-mini-64: `~/.local/state/pi-desk/backups/header-section-dividers-20261004T164910279401Z/`
+- mac-mini-16: `~/.local/state/pi-desk/backups/header-section-dividers-20261004T164910690246Z/`
+- Raspberry Pi: `~/.local/state/pi-desk/backups/header-section-dividers-20261004T164923597232Z/`
+
 # Header dividers match pane dividers — 2026-10-04, 11:21 EDT
 
 Status-bar group separators now use exact pane-divider grey **`#8a8a8a`** and

@@ -415,7 +415,7 @@ class DesktopTests(unittest.TestCase):
         for n in range(1, 11):
             self.assertIn(f'range=user|{n},', bar)
         for text in ('fg=colour77', 'F10', '#{session_name}', '#{@pi-desk-session}',
-                     '#[align=right,norange', 'Ctrl + ←/→ Switch'):
+                     '#[align=right#,norange', 'Ctrl + ←/→ Switch'):
             self.assertIn(text, bar)
 
     def test_quiet_selector_groups(self):
@@ -425,7 +425,8 @@ class DesktopTests(unittest.TestCase):
         self.assertIn('fg=#{?#{==:#{@pi-desk-session},1},##D183E8,#{?', bar)
         self.assertIn(',##B28CBD,colour252}}', bar)
         self.assertNotIn('bg=#{', bar)
-        self.assertEqual(bar.count(' ┃ '), 3)
+        self.assertEqual(bar.count('#[fg=#8a8a8a] ┃ '), 3)
+        self.assertIn('#[fg=#8a8a8a]#{?#{e|>=:#{client_width},86},┃ ,}', bar)
         for n in range(1, 11):
             self.assertIn(f']{n:02d}#[nobold,nounderscore] ', bar)
         for n in (3, 6, 9):

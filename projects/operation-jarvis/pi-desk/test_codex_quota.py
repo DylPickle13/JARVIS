@@ -239,6 +239,31 @@ class QuotaTests(unittest.TestCase):
         tiny = desktop.responsive_selector({}, 40, 1, 5, quota=self.quota)
         self.assertNotIn('range=user|codex', tiny)
 
+    def test_footer_sections_use_neutral_nonclickable_dividers(self):
+        bar = desktop.responsive_selector({}, 184, 3, 5, quota=self.quota)
+        plain = re.sub(r'#\[[^\]]*\]', '', bar).replace('%%', '%')
+        self.assertIn(' PI-DESK ┃ ', plain)
+        self.assertTrue(plain.endswith('Codex W:68% · 5h:91% left ┃ F10 Restart ┃ Ctrl + ←/→ Switch '))
+        right = bar.split('#[align=right', 1)[1]
+        self.assertEqual(right.count(desktop.DIVIDER_STYLE + ' ┃ '), 2)
+        self.assertEqual(right.count('range=user|codex'), 1)
+        self.assertIn('left' + desktop.HINT_STYLE + desktop.DIVIDER_STYLE, right)
+        self.assertIn(desktop.DIVIDER_STYLE + ' ┃ ' + desktop.HINT_STYLE + 'F10 Restart', right)
+
+    def test_footer_sizes_include_dividers_and_never_leave_orphans(self):
+        for value in (None, self.quota, quota.UNAVAILABLE, {**self.quota, 'status': 'stale'}):
+            for size, markup in desktop.footer_candidates(value):
+                plain = re.sub(r'#\[[^\]]*\]', '', markup).replace('%%', '%')
+                self.assertEqual(size, len(plain), (size, plain))
+                self.assertFalse(plain.strip().startswith('┃'), plain)
+                self.assertFalse(plain.strip().endswith('┃'), plain)
+                self.assertNotIn('┃  ┃', plain)
+                self.assertEqual(markup.count('range=user|codex'), int('Codex' in plain))
+        for width in range(100):
+            markup = desktop.footer(width, self.quota)
+            plain = re.sub(r'#\[[^\]]*\]', '', markup).replace('%%', '%')
+            self.assertLessEqual(len(plain), width)
+
     def test_installer_includes_shared_module(self):
         self.assertIn('codex_quota.py', install.FILES)
 
@@ -319,7 +344,16 @@ class QuotaTmuxTests(unittest.TestCase):
             plain = re.sub(r'#\[[^\]]*\]', '', expanded)
             self.assertLessEqual(len(plain), width, (width, plain))
             self.assertNotIn('#{?', plain)
-        self.assertIn('W:68%', self.expanded(bar.replace('#{client_width}', '184')))
+        wide = self.expanded(bar.replace('#{client_width}', '184'))
+        plain = re.sub(r'#\[[^\]]*\]', '', wide)
+        self.assertIn(' PI-DESK ┃ ', plain)
+        self.assertTrue(plain.endswith('Codex W:68% · 5h:91% left ┃ F10 Restart ┃ Ctrl + ←/→ Switch '))
+        no_quota = desktop.selector({})
+        for width in (84, 86, 100, 105, 120, 130, 184):
+            expanded = self.expanded(no_quota.replace('#{client_width}', str(width)))
+            plain = re.sub(r'#\[[^\]]*\]', '', expanded)
+            self.assertLessEqual(len(plain), width, (width, plain))
+            self.assertNotIn('#{?', plain)
 
     def test_real_status_and_mouse_click_keep_panes_untouched(self):
         master, slave = os.openpty()
@@ -349,8 +383,11 @@ class QuotaTmuxTests(unittest.TestCase):
                 self.assertIn(b'W:68%', output)  # Literal %, not strftime deletion/%%.
                 self.assertIn(b'5h:91%', output)
                 self.assertNotIn(b'68%%', output)
-                # Quota starts at column 129 at this width; SGR click its label.
-                os.write(master, b'\x1b[<0;133;1M\x1b[<0;133;1m')
+                # Derive the right-aligned quota target from the rendered footer.
+                right = self.expanded(desktop.footer(184, self.quota))
+                plain = re.sub(r'#\[[^\]]*\]', '', right)
+                column = 184 - len(plain) + plain.index('Codex') + 3
+                os.write(master, f'\x1b[<0;{column};1M\x1b[<0;{column};1m'.encode())
                 deadline = time.monotonic() + 2
                 clicked = b''
                 while time.monotonic() < deadline and b'Weekly: 68% left' not in clicked:
