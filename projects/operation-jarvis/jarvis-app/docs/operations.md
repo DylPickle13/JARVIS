@@ -4,6 +4,111 @@
 
 Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.
 
+## Current recovery retention and cleanup
+
+Owner-approved cleanup after build 247 removed **five obsolete secondary rollback
+archives** (builds 127, 239, 240, 241 and 242), the unused ignored
+`JARVISKit/.build/` cache, superseded validation source copies and duplicate
+temporary renders: **1.17 GiB of allocated artifacts** removed.
+
+The retained signed archives are **247** (deployed iPhone), **246** (exact iPhone
+rollback), **245** (last independently verified Watch) and **244** (exact Watch
+rollback). An unconfirmed Watch update is not grounds to discard its recovery
+baseline. All four payload seals, four-bundle signatures and frozen source
+manifests were verified before and after cleanup.
+
+Every historical frozen release source, audit, payload manifest/seal, deployment
+record, test log and result bundle remains. Pre-release validation evidence moved
+byte-for-byte from the two dashboard cache directories into builds 246/247's
+`pre-release-validation/evidence/`; private release-plan references were updated
+before those superseded scratch directories were removed. The private build-247
+`stale-artifact-pruning.json` records the exact removals and retention checks.
+No runtime configuration, credentials, services or Pi history were removed.
+Historical retention statements below describe the state at their original time.
+
+## Larger dashboard glyphs — build 247
+
+Owner-approved build **247** was installed once on the allowlisted iPhone and
+independently version/launch/process verified on **2026-10-04 at 11:17 EDT**.
+The shared dashboard glyph base size increases from **18 to 22 pt** (22% larger)
+for all nine Pi cards and Room Audio. Dynamic Type, card footprints/spacing,
+labels, colours, routes, freshness and the 80 ms Running/Compacting cadence are
+unchanged. Phone/Watch Terminal capsules and Watch UI source are unchanged;
+see [session indicators](session-status-indicators.md#larger-dashboard-glyphs--build-247).
+
+Frozen-source validation passed **169 iPhone tests, 296 shared tests (3 expected
+live-test skips), 37 terminal tests and both simulator builds**. The pre-existing
+plain-Paste pixel assertion remains excluded. Tests cover the shared 22-point
+size, glyph coverage/rendering, real busy animation/off-page stopping and unchanged
+58-point normal cards/190-point nine-card grid. The indicator source contract
+passed; the dedicated simulator returned to its original shutdown state.
+
+The signed candidate and exact signed rollback **246** each passed four-bundle
+signature/profile/unchanged-entitlement audits and payload seals. Existing
+paid-team signing authority and all four byte-identical cached profiles were
+reused; no portal/provisioning, dependency, credential or capability change.
+There was no rebuild between audit and installation.
+
+Fresh identity/allowlist, pairing, compatible developer services, unlock and
+installed-baseline-246 checks passed immediately before the sole physical install.
+Independent installed-version and running-process readbacks passed, including a
+final-version read; launch selected the JARVIS dashboard. All **18 protected
+service records** and existing Pi pane/window/process identities were preserved.
+No backend/Pi restart, direct Watch install/launch, install retry, uninstallation,
+unpairing, reboot or app-data removal occurred. iOS may sync the unchanged-source
+embedded companion; Watch's last independent device verification remains build
+**245**, not a newly verified Watch update.
+
+Physical 22-point appearance/VoiceOver acceptance awaits owner review. Private
+evidence: `20261004T150607Z-build247-larger-glyphs`, including 248 frozen source
+inputs/hash manifest, signed/sealed archive, tests/audit, one-shot installer and
+`deployment/result.json`. Exact signed build **246** is retained as immediate
+rollback; older retained build-245/build-244 archives were not removed.
+
+## Dashboard braille — build 246
+
+Owner-approved build **246** was installed once on the allowlisted iPhone and
+independently version/launch/process verified on **2026-10-04 at 10:42 EDT**.
+JARVIS's nine session cards and Room Audio now use the Pi-style ten-frame braille
+spinner, forward at 80 ms/frame for both Running and Compacting. Static states
+use distinct glyphs. Colours, card dimensions/labels/routes, accessibility,
+freshness and network cadence are preserved. Phone/Watch Terminal capsules and
+Watch UI are unchanged; see [session indicators](session-status-indicators.md).
+
+Frozen-source validation passed **168 iPhone tests, 296 shared tests (3 expected
+live-test skips), 37 terminal tests and both simulator builds**. The pre-existing
+plain-Paste pixel assertion remains excluded. Real hosted tests verified busy
+animation and off-page stopping; font coverage, light/dark rendering and card
+footprints passed. The full source/unit verifier passed for the pre-version
+candidate. The dedicated simulator returned to its original shutdown state.
+
+The exact signed archive and exact rollback **245** each passed all four bundle
+signature/profile/unchanged-entitlement audits. Existing paid-team identity and
+profiles, pinned dependencies and capabilities were reused; no portal/provisioning
+changes or rebuild between audit and installation. The initial private audit log
+predicate omitted XCTest's closing quote; after checking the actual passing test
+record, its punctuation was corrected and the unchanged archive passed audit.
+No physical writes occurred before the corrected audit passed.
+
+Fresh identity/allowlist, pairing, developer-service, unlock and baseline-245
+checks passed immediately before the one-shot iPhone install. Independent installed
+version and running-process readbacks passed, including a final-version read.
+No install retry, uninstallation, unpairing, reboot, app-data removal or credential
+change. All **18 protected service records** and existing Pi pane/window/process
+identities were preserved; no backend/Pi restart was issued.
+
+No direct Watch install or launch was issued for this iPhone-only UI change. iOS
+may sync the unchanged-source embedded companion; Watch's last independent
+version/launch/process verification remains build **245**. A post-install read-only
+Watch inventory was unavailable; it does not establish an update or removal.
+The owner accepted build 246's indicator appearance; VoiceOver acceptance remains
+unconfirmed. Build 247 now supplies the larger 22-point glyphs described above.
+
+Private evidence: `20261004T143234Z-build246-dashboard-braille`, including 248-file
+frozen source/hash manifest, exact signed/sealed archive, tests/audits, one-shot
+installer and `deployment/result.json`. Exact signed build **245** is retained as
+immediate rollback; the older retained build-244 archive was not removed.
+
 ## Grey compaction palette — build 245
 
 Owner-approved build **245** was installed once on each allowlisted iPhone and

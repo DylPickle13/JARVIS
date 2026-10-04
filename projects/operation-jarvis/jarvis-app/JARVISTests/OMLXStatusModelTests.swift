@@ -96,13 +96,12 @@ final class OMLXStatusModelTests: XCTestCase {
         }
     }
 
-    func testPiStatusSymbolsExistAndEveryNormalCardKeepsItsFootprint() throws {
+    func testPiStatusGlyphsMatchPiAndEveryNormalCardKeepsItsFootprint() throws {
         let states: [PiSessionLifecycle] = [.running, .compacting, .idle, .new, .offline, .unknown]
-        let symbols = ["waveform", "arrow.down.right.and.arrow.up.left", "pause.fill", "plus", "bolt.slash.fill", "questionmark"]
-        for (state, symbol) in zip(states, symbols) {
+        let glyphs = ["⠋", "⠋", "●", "○", "×", "?"]
+        for (state, glyph) in zip(states, glyphs) {
             let presentation = PiSessionIndicatorPresentation(lifecycle: state)
-            XCTAssertEqual(presentation.symbol, symbol)
-            XCTAssertNotNil(UIImage(systemName: symbol), symbol)
+            XCTAssertEqual(presentation.glyph, glyph)
             for width: CGFloat in [96, 114] {
                 let card = PiSessionCardContent(sessionID: 9, lifecycle: state, motionActive: false)
                     .frame(width: width)
@@ -139,6 +138,8 @@ final class OMLXStatusModelTests: XCTestCase {
             attachment.name = size == .large ? "pi-nine-cards-normal" : "pi-nine-cards-accessibility"
             attachment.lifetime = .keepAlways
             add(attachment)
+            try XCTUnwrap(image.pngData()).write(to: URL(fileURLWithPath:
+                "/tmp/jarvis-dashboard-braille-\(size == .large ? "normal" : "accessibility").png"))
         }
     }
 

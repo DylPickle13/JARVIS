@@ -36,6 +36,7 @@
 		357F018439F498E3E4F7CE50 /* NeuralCoreContinuousAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5136B3B670CA19BFD429B9D /* NeuralCoreContinuousAnimation.swift */; };
 		36A69B470B414FB117BBFF90 /* JARVISKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3ABAE6AF34972138CF478F09 /* JARVISKit */; };
 		37659D732715E9025136CB27 /* NeuralCoreC2Decoration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D47342CED96CA7B12B466D /* NeuralCoreC2Decoration.swift */; };
+		3E1D0D3FC45D31C13727CD14 /* PiSessionGlyphViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE51AB918925F05C1347ED89 /* PiSessionGlyphViewTests.swift */; };
 		3E813DC18BB1B495005B7295 /* PiTerminalPasteControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF061A1013CCC419548F2E89 /* PiTerminalPasteControl.swift */; };
 		3E9DFCDE1569E8FE73FBE598 /* PiTerminalClipboardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD71A8A31F806B007B4B34AF /* PiTerminalClipboardTests.swift */; };
 		42EC3171702509A4088C16D9 /* FillRect-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = 8AC50929D8C075ED60E109B1 /* FillRect-Regular.otf */; };
@@ -235,6 +236,7 @@
 		9E59FF1EC8B04806AC245F3F /* WatchPushNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPushNotificationCoordinator.swift; sourceTree = "<group>"; };
 		A3237249D6B7F3438CE97C67 /* WatchJobsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchJobsModel.swift; sourceTree = "<group>"; };
 		A5136B3B670CA19BFD429B9D /* NeuralCoreContinuousAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreContinuousAnimation.swift; sourceTree = "<group>"; };
+		AE51AB918925F05C1347ED89 /* PiSessionGlyphViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiSessionGlyphViewTests.swift; sourceTree = "<group>"; };
 		B200DC8F89C4123D6B0AAF08 /* SettingsDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDetailView.swift; sourceTree = "<group>"; };
 		B20440B35638B5FF94AF10A0 /* WatchTerminalProvisioningSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTerminalProvisioningSettings.swift; sourceTree = "<group>"; };
 		B3E32755A9AB7BFF1E2C07B9 /* JARVISWidgetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISWidgetTheme.swift; sourceTree = "<group>"; };
@@ -311,6 +313,7 @@
 				88764939E043048E6692C482 /* JobsPresentationTests.swift */,
 				D8AA41F4C1B6F7971B326286 /* OMLXStatusModelTests.swift */,
 				2C8DEE39E010FD51DF01CE39 /* PiAttachmentTests.swift */,
+				AE51AB918925F05C1347ED89 /* PiSessionGlyphViewTests.swift */,
 				059A9491E7F412C62EE24748 /* PiSessionMaintenanceTests.swift */,
 				FD71A8A31F806B007B4B34AF /* PiTerminalClipboardTests.swift */,
 				F14810D55E1EA67ABAF4F26C /* ReactorTitleTests.swift */,
@@ -789,6 +792,7 @@
 				C090C98DB4B95B2F5B97A281 /* JobsPresentationTests.swift in Sources */,
 				F8CF13DAF79ACDD1903AB377 /* OMLXStatusModelTests.swift in Sources */,
 				164A7C5B2C9AA9272A226560 /* PiAttachmentTests.swift in Sources */,
+				3E1D0D3FC45D31C13727CD14 /* PiSessionGlyphViewTests.swift in Sources */,
 				0EAC2EC1F167762F6098083F /* PiSessionMaintenanceTests.swift in Sources */,
 				3E9DFCDE1569E8FE73FBE598 /* PiTerminalClipboardTests.swift in Sources */,
 				8D4618C0F437C03EA5E5A532 /* ReactorTitleTests.swift in Sources */,
@@ -988,7 +992,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 245;
+				CURRENT_PROJECT_VERSION = 247;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1093,7 +1097,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 245;
+				CURRENT_PROJECT_VERSION = 247;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

@@ -23,22 +23,15 @@ enum PiSessionIndicatorTone: Equatable {
 }
 
 struct PiSessionIndicatorPresentation: Equatable {
+    let lifecycle: PiSessionLifecycle
     let label: String
     let tone: PiSessionIndicatorTone
-    var symbol: String {
-        switch tone {
-        case .running: return "waveform"
-        case .compacting: return "arrow.down.right.and.arrow.up.left"
-        case .idle: return "pause.fill"
-        case .new: return "plus"
-        case .offline: return "bolt.slash.fill"
-        case .unknown: return "questionmark"
-        }
-    }
-    var animatesIcon: Bool { tone == .running || tone == .compacting }
+    var glyph: String { PiSessionGlyphs.glyph(lifecycle: lifecycle) }
+    var animatesIcon: Bool { PiSessionGlyphs.isBusy(lifecycle) }
     var allowsActivityEdge: Bool { animatesIcon || tone == .idle }
 
     init(lifecycle: PiSessionLifecycle) {
+        self.lifecycle = lifecycle
         switch lifecycle {
         case .offline:
             label = "Offline"
@@ -70,12 +63,11 @@ struct PiSessionCardContent: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption) private var numberSize = 12.0
-    @ScaledMetric(relativeTo: .body) private var iconSize = 18.0
+    @ScaledMetric(relativeTo: .body) private var iconSize = PiSessionGlyphs.dashboardSize
     @ScaledMetric(relativeTo: .subheadline) private var statusSize = 14.0
 
     var body: some View {
         let presentation = PiSessionIndicatorPresentation(lifecycle: lifecycle)
-        let color = presentation.tone.color
         MinimalCard(padding: 8, glass: true) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
@@ -83,13 +75,7 @@ struct PiSessionCardContent: View {
                         .font(.system(size: numberSize, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 4)
-                    Image(systemName: presentation.symbol)
-                        .font(.system(size: iconSize, weight: .semibold))
-                        // Normalize SF Symbol line boxes; glyph choice must not resize a card.
-                        .frame(height: iconSize)
-                        .foregroundStyle(color)
-                        .piSessionMotion(lifecycle: lifecycle, active: motionActive)
-                        .accessibilityHidden(true)
+                    PiSessionGlyph(lifecycle: lifecycle, active: motionActive, size: iconSize)
                 }
                 Text(presentation.label)
                     .font(.system(size: statusSize, weight: .semibold))
@@ -114,6 +100,7 @@ struct HomeView: View {
     }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
+    @ScaledMetric(relativeTo: .body) private var roomAudioIconSize = PiSessionGlyphs.dashboardSize
     private var usesAccessibilityLayout: Bool { dynamicTypeSize.isAccessibilitySize }
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 8), count: usesAccessibilityLayout ? 1 : 2)
@@ -194,8 +181,9 @@ struct HomeView: View {
                                 Text("Room Audio").font(.subheadline.weight(.semibold))
                                     .lineLimit(1).minimumScaleFactor(0.85)
                                 Spacer(minLength: 4)
-                                Image(systemName: presentation.symbol).foregroundStyle(presentation.tone.color)
-                                    .piSessionMotion(lifecycle: lifecycle, active: homeMotionActive)
+                                PiSessionGlyph(lifecycle: lifecycle,
+                                    active: homeMotionActive && !app.isAwaitingFreshState,
+                                    size: roomAudioIconSize)
                             }
                             Text(speakerSummary).font(.caption2).foregroundStyle(.secondary)
                                 .lineLimit(1).minimumScaleFactor(0.85)

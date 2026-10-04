@@ -2,7 +2,44 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current verified iPhone and Watch build: 245**, installed once on each device
+**Current verified iPhone build: 247**, installed once and independently
+version/launch/process verified on **2026-10-04 at 11:17 EDT**. All dashboard
+session glyphs, including Room Audio, are **22 pt instead of 18 pt** (22% larger),
+with unchanged card footprints, labels, colours, routes and 80 ms cadence.
+Phone/Watch Terminal capsules and Watch source are unchanged. All 169 iPhone tests,
+296 shared tests (3 expected skips), 37 terminal tests and both simulator builds
+passed from frozen source; the known plain-Paste pixel assertion remains excluded.
+Candidate and exact signed rollback **246** passed four-bundle signature/profile/
+unchanged-entitlement/dependency audits; existing signing identity/profiles were
+reused. All 18 protected service records and existing Pi panes were preserved.
+No backend/Pi restart or direct Watch install; iOS may sync the unchanged-source
+embedded companion. Watch's last independent device verification remains **245**.
+Physical larger-icon/VoiceOver acceptance awaits owner review. See
+[larger indicators](docs/session-status-indicators.md#larger-dashboard-glyphs--build-247) and
+[deployment checks](docs/operations.md#larger-dashboard-glyphs--build-247).
+
+Owner-approved cleanup removed **1.17 GiB** of stale archives/build scratch.
+Signed iPhone recovery builds **247/246** and Watch recovery builds **245/244**
+remain verified and retained, along with historical source/audit/test evidence;
+see [current retention](docs/operations.md#current-recovery-retention-and-cleanup).
+
+**Previous verified iPhone build: 246**, installed once and independently
+version/launch/process verified on **2026-10-04 at 10:42 EDT**. JARVIS's nine Pi
+cards and Room Audio now use Pi-style braille for Running/Compacting at 80 ms/frame,
+with distinct static glyphs for Idle/New/Offline/Unknown. Card labels, dimensions,
+routes and phone/Watch Terminal capsules are unchanged. All 168 iPhone tests,
+296 shared tests (3 expected skips), 37 terminal tests and both simulator builds
+passed from frozen source; the known plain-Paste pixel assertion remains excluded.
+Candidate and exact signed rollback **245** passed all four bundle/signature/profile/
+unchanged-entitlement/dependency audits. All 18 protected service records and
+existing Pi panes were preserved. No backend/Pi restart or direct Watch install;
+iOS may sync the unchanged-source embedded companion. Watch's last independent
+version/launch/process verification remains **245**. The owner accepted the
+indicator appearance; VoiceOver acceptance remains unconfirmed. See
+[session indicators](docs/session-status-indicators.md#dashboard-braille--build-246) and
+[deployment checks](docs/operations.md#dashboard-braille--build-246).
+
+**Previous iPhone and last independently verified Watch build: 245**, installed once on each device
 and independently version/launch/process verified on **2026-10-04 at 09:43 EDT**.
 Compacting is neutral grey `#8A8A8A`, matching Pi Desk. Exact signed build 244 is
 retained for rollback on both devices.

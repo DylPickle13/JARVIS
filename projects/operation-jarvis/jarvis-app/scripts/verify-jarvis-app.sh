@@ -1332,9 +1332,10 @@ assert 'onOpenPiTerminal(slot)' in rows and 'JARVISTerminalSlot(rawValue: sessio
 assert 'PiSessionLifecycle.unknown' in rows and 'isStale' in rows
 assert 'MinimalCard(padding: 8)' in text
 pi_content = text.split('struct PiSessionCardContent: View', 1)[1].split('struct HomeView: View', 1)[0]
-assert 'Image(systemName: presentation.symbol)' in pi_content
-assert '.piSessionMotion(lifecycle: lifecycle, active: motionActive)' in pi_content
-assert '.activityCardEdge(' not in pi_content  # Motion stays inside the original icon.
+assert 'PiSessionGlyph(lifecycle: lifecycle, active: motionActive, size: iconSize)' in pi_content
+assert 'Image(systemName: presentation.symbol)' not in text
+assert '.piSessionMotion(' not in text
+assert '.activityCardEdge(' not in pi_content  # Motion stays inside the fixed glyph box.
 assert 'Text("\\(sessionID)")' in pi_content
 assert 'Circle()' not in pi_content and 'Text("Pi ' not in pi_content
 assert 'minHeight: 42' in pi_content and 'MinimalCard(padding: 8, glass: true)' in pi_content
@@ -1344,10 +1345,39 @@ assert 'onOpenPiTerminal(.roomAudio)' in text
 assert 'let activeSpeakers = RoomAudioSpeaker.allCases.filter' in text
 assert 'app.roomAudio[speaker]?.allowsStop == true' in text
 assert 'context.date.timeIntervalSince($0) <= 6' in text
-assert '.piSessionMotion(lifecycle: lifecycle, active: homeMotionActive)' in text
+assert 'active: homeMotionActive && !app.isAwaitingFreshState' in text
+assert 'size: roomAudioIconSize' in text
+assert text.count('PiSessionGlyph(lifecycle: lifecycle') == 2
+assert '@ScaledMetric(relativeTo: .body) private var iconSize = PiSessionGlyphs.dashboardSize' in text
+assert '@ScaledMetric(relativeTo: .body) private var roomAudioIconSize = PiSessionGlyphs.dashboardSize' in text
 assert 'minimumInterval: 1, paused: !homeMotionActive' in text
 assert '.disabled(activeSpeakers.isEmpty || !app.roomAudioStopping.isEmpty)' in text
 assert 'await app.stopAllRoomAudio()' in text
+
+glyph = Path('JARVISKit/Sources/JARVISKit/PiSessionGlyph.swift').read_text()
+for marker in ['dashboardSize: CGFloat = 22', 'frameInterval: TimeInterval = 0.08',
+               '["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]',
+               'case .running, .compacting:', 'case .idle: return "●"',
+               'case .new: return "○"', 'case .offline: return "×"',
+               'case .unknown: return "?"', 'ActivityMotionGate.allows(active: active',
+               'scenePhase == .active', 'reduceMotion: reduceMotion',
+               'luminanceReduced: luminanceReduced', 'TimelineView(.periodic(',
+               'by: PiSessionGlyphs.frameInterval', '.frame(width: size, height: size)',
+               '.allowsHitTesting(false)', '.accessibilityHidden(true)']:
+    assert marker in glyph, marker
+for forbidden in ['Task {', 'Timer', 'URLSession', '.piSessionMotion(', 'repeatForever']:
+    assert forbidden not in glyph, forbidden
+# Cross-project source-only contract: Pi Desk remains the reference sequence.
+import ast
+assignments = {node.targets[0].id: ast.literal_eval(node.value)
+               for node in ast.parse(Path('../pi-desk/desktop.py').read_text()).body
+               if isinstance(node, ast.Assign) and len(node.targets) == 1
+               and isinstance(node.targets[0], ast.Name)
+               and node.targets[0].id in ('SPINNER_FRAMES', 'ANIMATION_SECONDS', 'STATE_ICONS')}
+assert assignments['ANIMATION_SECONDS'] == 0.08
+assert assignments['SPINNER_FRAMES'] == ('⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏')
+assert all(assignments['STATE_ICONS'][state] == icon
+           for state, icon in [('idle', '●'), ('new', '○'), ('offline', '×'), ('unknown', '?')])
 
 pi_motion = Path('JARVISKit/Sources/JARVISKit/PiSessionMotion.swift').read_text()
 for marker in ['ActivityMotionGate.allows(active: active && lifecycle != .unknown',
