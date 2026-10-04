@@ -105,8 +105,8 @@ class LayoutTests(unittest.TestCase):
         for width in (4, 30, 80, 99, 100, 184):
             start = desktop.responsive_selector(states, width, 3, 1)
             next_frame = desktop.responsive_selector(states, width, 3, 1, frame=2)
-            self.assertEqual(start.replace('nounderscore]◐', 'nounderscore]◑', 1)
-                             .replace('nounderscore]◐', 'nounderscore]◒', 1), next_frame)
+            self.assertEqual(start.replace('nounderscore]⠋', 'nounderscore]⠹', 1)
+                             .replace('nounderscore]⠋', 'nounderscore]⠏', 1), next_frame)
         for width in (1, 2, 3):
             self.assertEqual(desktop.responsive_selector(states, width, 1, 1),
                              desktop.responsive_selector(states, width, 1, 1, frame=2))
@@ -427,7 +427,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(feed.poll.call_count, 3)
         self.assertEqual([call.args[0] for call in stop.wait.call_args_list], [.25, .25, .5, .5])
         self.assertEqual(send.call_args_list[-1].args[0], [])  # Unchanged unknown header.
-        self.assertNotIn('◐', str(send.call_args_list[-2]))
+        self.assertFalse(any(glyph in str(send.call_args_list[-2]) for glyph in desktop.SPINNER_FRAMES))
 
     def test_status_monitor_retries_failed_batch_without_caching_it(self):
         name = workspace.create(5, 184, 45)
@@ -784,7 +784,7 @@ class WorkspaceTests(unittest.TestCase):
                     self.assertIn(f'range=user|{n},bg=#1e1e1e,fg={fg},nobold,nounderscore]'
                                   f'{padding}#[{attributes}]{n:02d}#[nobold,nounderscore]', expanded)
                 self.assertEqual(set(re.findall(r'bg=(#[0-9A-Fa-f]{6})', expanded)), {'#1e1e1e'})
-                self.assertIn('fg=colour77,bg=#1e1e1e,nobold,nounderscore]◓', expanded)
+                self.assertIn('fg=colour77,bg=#1e1e1e,nobold,nounderscore]⠙', expanded)
                 self.assertLessEqual(len(re.sub(r'#\[[^\]]*\]', '', expanded.rstrip('\n'))), width)
 
     def test_spinner_and_exact_compaction_rgb_are_emitted_on_a_real_pty(self):
@@ -792,11 +792,12 @@ class WorkspaceTests(unittest.TestCase):
         output = []
         self.attach(name, output=output)
         before = self.identities(name)
-        states = {'4': 'new', '5': 'compacting', '6': 'unknown', '10': 'running'}
+        states = {'1': 'offline', '2': 'idle', '4': 'new', '5': 'compacting',
+                  '6': 'unknown', '10': 'running'}
         current = {}
         for frame in (0, 2):
             current = desktop.render_viewers(states, frame, current, '')
-            glyph = ('◐' if frame == 0 else '◒').encode('utf-8')
+            glyph = ('⠋' if frame == 0 else '⠏').encode('utf-8')
             for _ in range(100):
                 received = b''.join(output)
                 if glyph in received and b'38;2;255;122;0' in received:
@@ -804,6 +805,8 @@ class WorkspaceTests(unittest.TestCase):
                 time.sleep(.01)
             else:
                 self.fail('Real PTY did not emit spinner and exact orange RGB')
+        for glyph in ('○', '×', '●', '?'):
+            self.assertIn(glyph.encode('utf-8'), b''.join(output))
         # Header foregrounds and focus underline survive real terminal rendering.
         # The pane's Session X badge still emits purple BG below the flat header.
         received = b''.join(output)

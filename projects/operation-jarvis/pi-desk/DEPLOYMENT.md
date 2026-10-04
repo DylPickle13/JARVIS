@@ -1,3 +1,40 @@
+# Pi-style braille and distinct lifecycle icons — 2026-10-04, 00:52 EDT
+
+Running now uses the ten-frame braille spinner `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`. Compacting
+uses the same frames backwards at half the cadence. Existing 250 ms/500 ms frame
+intervals, cached snapshots and changed-header-only batching are preserved.
+Static states now use idle `●`, new `○`, offline `×`, and unknown `?`; missing or
+unrecognised states are explicitly unknown. ASCII mode uses `|/-\\`, `.`, `o`,
+`x`, `?`; reduced-motion mode keeps working states as steady dots and retains
+static-state distinctions.
+
+Lifecycle colours, flat backgrounds, group/focus digits, pane-title badges,
+click targets, responsive widths, quota priority and warnings are unchanged.
+**No jarvis-app source, build or device deployment was needed.**
+
+**178 full source tests passed locally. All three machines passed 46 focused
+pre-install tests and 46 installed-runtime tests each.** Coverage includes full
+spinner cycles/wrap-around, reverse half-cadence, every static/fallback state,
+ASCII/reduced motion, native single-cell widths, real tmux/PTY icon emission and
+orange RGB, responsive layouts and mouse ranges. Menlo/CoreText and the Pi's
+configured Foot/Fontconfig fallback glyph coverage were checked. Live visual
+acceptance remains pending after reopening viewers.
+
+Installed only `desktop.py` and its manifest entry on mac-mini-64, mac-mini-16
+and Raspberry Pi. Existing manifest mismatches, configs, attached clients,
+hosted/display pane identities and the Pi display-service PID were preserved.
+No viewers, agents or services restarted. Rollback files and verification logs
+are retained; temporary staging was removed.
+
+**Activation:** detach all Pi Desk viewers on each machine with Ctrl+A then d,
+then reopen `pi-desk`. Existing elected monitors keep their previously imported
+renderer until reopened. F10 restarts agents, not the UI.
+
+Rollback backups:
+- mac-mini-64: `~/.local/state/pi-desk/backups/braille-state-icons-20261004T044423179719Z/`
+- mac-mini-16: `~/.local/state/pi-desk/backups/braille-state-icons-20261004T044423428683Z/`
+- Raspberry Pi: `~/.local/state/pi-desk/backups/braille-state-icons-20261004T044424538414Z/`
+
 # Flat number-only header — 2026-10-04, 00:16 EDT
 
 Removed the header's purple tab backgrounds and contrasting indicator cut-outs.

@@ -24,8 +24,12 @@ COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': '#FF7A00',
           'offline': 245, 'unknown': 179}
 ANIMATION_SECONDS = 0.25
 SNAPSHOT_SECONDS = 0.5
-SPINNER_FRAMES = ('◐', '◓', '◑', '◒')
+SPINNER_FRAMES = ('⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏')
 ASCII_SPINNER_FRAMES = ('|', '/', '-', '\\')
+STATE_ICONS = {'running': '●', 'compacting': '●', 'idle': '●',
+               'new': '○', 'offline': '×', 'unknown': '?'}
+ASCII_STATE_ICONS = {'running': '*', 'compacting': '*', 'idle': '.',
+                     'new': 'o', 'offline': 'x', 'unknown': '?'}
 HINTS = (' F10 Restart · Ctrl + ←/→ Switch ',
          ' F10 · Ctrl + ←/→ ', ' F10 Restart ', '')
 QUOTA_OPTION = '@pi-desk-codex-quota'
@@ -182,8 +186,9 @@ def tab_style(number, visible):
 def status_indicator(state, frame, background):
     color = COLORS.get(state, COLORS['unknown'])
     color = f'colour{color}' if isinstance(color, int) else color
-    glyph = '●'
     mode = os.environ.get('PI_DESK_SPINNER', 'unicode')
+    icons = ASCII_STATE_ICONS if mode == 'ascii' else STATE_ICONS
+    glyph = icons.get(state, icons['unknown'])
     if state in ('running', 'compacting') and mode != 'off':
         frames = ASCII_SPINNER_FRAMES if mode == 'ascii' else SPINNER_FRAMES
         # Compaction rotates backwards, at half the running cadence.

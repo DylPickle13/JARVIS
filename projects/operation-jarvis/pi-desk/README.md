@@ -38,22 +38,27 @@ true-colour grey (`#8a8a8a`) in every focus state. Its 4.83:1 contrast on the da
 background also clears VS Code's default adjustment threshold. tmux's half-border focus indicator is disabled;
 the title badge and selected number identify focus even in one- and two-pane
 layouts. No extra rows or columns are used. The top row contains
-ten clickable session numbers and lifecycle dots, with shortcut hints aligned at
+ten clickable session numbers and lifecycle icons, with shortcut hints aligned at
 the right. Hints shorten or disappear as space runs out; below 100 columns the
 tabs tighten. Extremely narrow terminals show a sliding subset with hidden-tab
 indicators, always keeping the focused session clickable; Ctrl + ←/→ still reaches all
 ten sessions. Numbers use two digits, with muted separators matching the current
 one-, two-, or three-session groups; there are no group labels. Running
-sessions use a bright, single-cell rotating indicator every 250 ms (one-second
-cycle); compacting sessions rotate backwards every 500 ms (two-second cycle).
-Other states retain steady dots. All dots/spinners and padding share the same dark
+sessions use the ten-frame Pi-style braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) every
+250 ms (2.5-second cycle); compacting sessions rotate backwards every 500 ms
+(five-second cycle). Colours remain unchanged: running green, compacting orange
+`#FF7A00`, idle purple, new cyan, offline grey, unknown amber. Static icons are
+idle `●`, new `○`, offline `×`, and unknown `?` (including missing/unrecognised
+states). All icons/spinners and padding share the same dark
 header background, with number-only bold/underline explicitly reset. This uses the existing
 shared monitor, not terminal blink support. Animation frames reuse cached status
 and viewer metadata; metadata/health checks retain their 500 ms cadence and the
 host feed retains its three-second cadence. Frames update only changed headers,
 not the warning row or pane layout. With no busy sessions there are no animation
 wakeups. Set `PI_DESK_SPINNER=ascii` before starting the elected monitor for a
-single-cell ASCII fallback, or `PI_DESK_SPINNER=off` for steady dots (reduced motion).
+single-cell ASCII fallback (`|/-\\`, idle `.`, new `o`, offline `x`, unknown `?`),
+or `PI_DESK_SPINNER=off` for reduced motion: running/compacting become steady `●`
+while static states retain their distinct icons.
 These settings belong to that machine's shared monitor, not individual viewers. A second row appears only for
 connection/diagnostic warnings and disappears when healthy, returning its terminal
 row to the coding panes. Healthy diagnostic values are hidden.

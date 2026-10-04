@@ -475,9 +475,9 @@ class DesktopTests(unittest.TestCase):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}
         start = desktop.selector(states)
         next_frame = desktop.selector(states, frame=2)
-        self.assertEqual(start.replace('nounderscore]◐', 'nounderscore]◑', 1)
-                         .replace('nounderscore]◐', 'nounderscore]◒', 1), next_frame)
-        self.assertIn('fg=#FF7A00,bg=#1e1e1e,nobold,nounderscore]◐', start)
+        self.assertEqual(start.replace('nounderscore]⠋', 'nounderscore]⠹', 1)
+                         .replace('nounderscore]⠋', 'nounderscore]⠏', 1), next_frame)
+        self.assertIn('fg=#FF7A00,bg=#1e1e1e,nobold,nounderscore]⠋', start)
         for state in ('idle', 'new', 'offline', 'unknown', 'unrecognized'):
             values = {'1': state}
             self.assertEqual(desktop.selector(values), desktop.selector(values, frame=2))
@@ -487,12 +487,12 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(desktop.ANIMATION_SECONDS, 0.25)
         for time, expected in ((0, 0), (.25, 1), (.5, 2), (.75, 3), (1, 4)):
             self.assertEqual(desktop.animation_frame(time), expected)
-        running = [desktop.status_indicator('running', n, '#1e1e1e') for n in range(4)]
-        compacting = [desktop.status_indicator('compacting', n, '#1e1e1e') for n in range(8)]
-        for value, glyph in zip(running, desktop.SPINNER_FRAMES):
-            self.assertIn('nobold,nounderscore]' + glyph, value)
-        for value, glyph in zip(compacting, ('◐', '◐', '◒', '◒', '◑', '◑', '◓', '◓')):
-            self.assertIn('nobold,nounderscore]' + glyph, value)
+        self.assertEqual(desktop.SPINNER_FRAMES, tuple('⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'))
+        for n in range(40):  # Two complete compacting cycles and wrap-around.
+            running = desktop.status_indicator('running', n, '#1e1e1e')
+            compacting = desktop.status_indicator('compacting', n, '#1e1e1e')
+            self.assertIn('nounderscore]' + desktop.SPINNER_FRAMES[n % 10], running)
+            self.assertIn('nounderscore]' + desktop.SPINNER_FRAMES[-(n // 2) % 10], compacting)
 
     def test_ascii_and_static_spinner_options(self):
         with mock.patch.dict(os.environ, PI_DESK_SPINNER='ascii'):
@@ -505,6 +505,48 @@ class DesktopTests(unittest.TestCase):
         self.assertTrue(desktop.working({'10': 'compacting'}))
         self.assertFalse(desktop.working({'1': 'unknown'}))
 
+    def test_static_state_icons_are_distinct_and_unknown_is_explicit(self):
+        icons = {'idle': '●', 'new': '○', 'offline': '×', 'unknown': '?',
+                 'unrecognized': '?', None: '?'}
+        for state, glyph in icons.items():
+            for frame in (0, 1, 9, 10, 39):
+                with self.subTest(state=state, frame=frame):
+                    color = desktop.COLORS.get(state, desktop.COLORS['unknown'])
+                    self.assertEqual(desktop.status_indicator(state, frame, '#1e1e1e'),
+                                     f'#[fg=colour{color},bg=#1e1e1e,nobold,nounderscore]{glyph} ')
+
+    def test_ascii_icons_and_reverse_spinner_remain_single_ascii_characters(self):
+        with mock.patch.dict(os.environ, PI_DESK_SPINNER='ascii'):
+            for state, glyph in {'idle': '.', 'new': 'o', 'offline': 'x',
+                                 'unknown': '?', None: '?'}.items():
+                self.assertTrue(desktop.status_indicator(state, 0, '#1e1e1e').isascii())
+                self.assertIn('nounderscore]' + glyph, desktop.status_indicator(state, 9, '#1e1e1e'))
+            for frame in range(16):
+                glyph = desktop.ASCII_SPINNER_FRAMES[-(frame // 2) % 4]
+                self.assertIn('nounderscore]' + glyph, desktop.status_indicator('compacting', frame, '#1e1e1e'))
+        with mock.patch.dict(os.environ, PI_DESK_SPINNER='off'):
+            for state, glyph in desktop.STATE_ICONS.items():
+                self.assertIn('nounderscore]' + glyph, desktop.status_indicator(state, 39, '#1e1e1e'))
+                self.assertFalse(desktop.working({'1': state}))
+
+    def test_all_indicator_glyphs_occupy_one_terminal_cell(self):
+        import ctypes
+        import locale
+        width = ctypes.CDLL(None).wcwidth
+        width.argtypes, width.restype = [ctypes.c_wchar], ctypes.c_int
+        original = locale.setlocale(locale.LC_CTYPE)
+        try:
+            locale.setlocale(locale.LC_CTYPE, '')
+            glyphs = set(desktop.SPINNER_FRAMES + desktop.ASCII_SPINNER_FRAMES)
+            glyphs.update(desktop.STATE_ICONS.values())
+            glyphs.update(desktop.ASCII_STATE_ICONS.values())
+            for glyph in glyphs:
+                with self.subTest(glyph=glyph):
+                    self.assertEqual(len(glyph), 1)
+                    self.assertEqual(width(glyph), 1)
+        finally:
+            locale.setlocale(locale.LC_CTYPE, original)
+
     def test_header_background_is_uniform_and_focus_never_decorates_indicators(self):
         for bar in (desktop.selector({'1': 'running'}),
                     desktop.responsive_selector({'1': 'running'}, 184, 3, 1)):
@@ -513,7 +555,7 @@ class DesktopTests(unittest.TestCase):
             self.assertNotIn('#4B2D59', bar)
             self.assertNotIn('#8D4CA3', bar)
             self.assertIn(']01#[nobold,nounderscore]', bar)
-            self.assertIn('nobold,nounderscore]◐ ', bar)
+            self.assertIn('nobold,nounderscore]⠋ ', bar)
 
     def test_header_number_purples_meet_vscode_contrast_threshold(self):
         def luminance(color):
