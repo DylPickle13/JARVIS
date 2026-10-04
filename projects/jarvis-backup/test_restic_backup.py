@@ -25,8 +25,9 @@ class BackupTests(unittest.TestCase):
         self.root = self.base / 'source'
         self.root.mkdir()
         self.policy = json.loads((b.HERE / 'policy.json').read_text())
-        (self.root / 'projects/projects-drive-backup').mkdir(parents=True)
-        (self.root / 'projects/projects-drive-backup/policy.json').write_text(json.dumps(self.policy))
+        (self.root / 'projects/jarvis-backup').mkdir(parents=True)
+        (self.root / 'projects/jarvis-backup/policy.json').write_text(json.dumps(self.policy))
+        (self.root / 'projects/projects-drive-backup').symlink_to('jarvis-backup', target_is_directory=True)
         (self.root / 'projects/operation-jarvis/jarvisd/jarvisd_core/scheduler').mkdir(parents=True)
         (self.root / 'projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py').write_text('# fixture\n')
         (self.root / 'projects/operation-jarvis/data/scheduler').mkdir(parents=True)
@@ -89,11 +90,14 @@ class BackupTests(unittest.TestCase):
 
     def test_policy_keeps_unique_data_and_secrets(self):
         for path in ['.env', 'projects/temp/analysis.py', 'projects/laya-model/models/custom.safetensors',
-                     'projects/foo/building-notes.md', '.git', '.pi/runtime/pi-lazy-tools/source']:
+                     'projects/foo/building-notes.md', '.git', '.pi/runtime/pi-lazy-tools/source',
+                     'projects/job-search/data-ai-analyst-assessment/assessment.ipynb',
+                     'projects/job-search/data-ai-analyst-assessment/data/trades.csv',
+                     'projects/job-search/data-ai-analyst-assessment/cheat-sheets/notes.md']:
             self.assertFalse(b.excluded(Path(path), self.policy), path)
         for path in ['projects/foo/.venv', 'projects/foo/.build',
                      'projects/operation-jarvis/keyboard/karabiner/upstream/src/apps/SettingsWindow/build',
-                     'projects/temp/assessment/.runtime', 'projects/foo/node_modules']:
+                     'projects/job-search/data-ai-analyst-assessment/.runtime', 'projects/foo/node_modules']:
             self.assertTrue(b.excluded(Path(path), self.policy), path)
 
     def test_inventory_prunes_and_does_not_follow_symlinks(self):

@@ -6,7 +6,7 @@ I built JARVIS to keep a Mac-hosted AI workspace within reach from my iPhone, Ap
 
 It runs on the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent), which handles the agent loop and model interaction. My work is in the custom tools, backend services, and native apps that connect it all.
 
-[Explore the architecture](#architecture-at-a-glance) · [Native apps](projects/operation-jarvis/jarvis-app/README.md) · [Setup and operation](projects/operation-jarvis/docs/runtime-guide.md)
+[Explore the architecture](#architecture-at-a-glance) · [Directory layout](#directory-layout) · [Documentation](#documentation) · [Native apps](projects/operation-jarvis/jarvis-app/README.md) · [Setup and operation](projects/operation-jarvis/docs/runtime-guide.md)
 
 ## See the native apps
 
@@ -49,6 +49,37 @@ Watch / Siri terminal access   → terminald → protected Pi sessions
 
 Sessions and services run on my own hardware, with either a local or cloud model provider. Web research, Google services, and some device integrations still need external services, so local-first does not mean offline.
 
+## Directory layout
+
+The JARVIS root is the Pi workspace and the home of shared infrastructure. `projects/` groups individual components and local work; it is not the agent's project root.
+
+Main directories and shared files:
+
+```text
+JARVIS/
+├── .pi/                 # workspace-specific Pi configuration and agent infrastructure
+│   ├── extensions/      # custom tools and shared extension helpers
+│   ├── scripts/         # launchers, attachment helpers, and verification utilities
+│   ├── tests/           # extension regression tests
+│   ├── docs/            # Pi integration, setup, and rebuild documentation
+│   ├── memory/          # durable-memory backend and private local database
+│   └── runtime/         # private generated state, sockets, caches, and logs
+├── projects/            # applications, integrations, and local personal work
+├── config.py            # shared environment parsing and logging
+├── pi_rpc.py            # shared Pi RPC client for local services
+├── requirements.txt     # dependencies for the root Python runtime
+├── .env.example         # tracked shared-configuration template
+├── .env                 # private local configuration; ignored by Git
+├── .venv/               # root Python environment; ignored by Git
+└── attachments/         # private Pi attachment copies; ignored by Git
+```
+
+**Why `.pi/` is outside `projects/`:** Pi launched from `JARVIS/` discovers its project configuration and extensions here. This directory is separate from the default user-level `~/.pi/agent/`, which holds Pi's installed runtime, user configuration, and sessions.
+
+**Why Python files live at the root:** `config.py` and `pi_rpc.py` provide shared support rather than belonging to one standalone project. The root environment serves that shared runtime; components may also have their own dependency files and environments.
+
+**Source versus local state:** `.pi/` contains both tracked source and ignored private/generated data. Only selected projects are tracked; private and local-only work is deliberately excluded. See [`.gitignore`](.gitignore) for the actual Git policy, which is separate from backup coverage.
+
 ## Explore the implementation
 
 | Area | Start here | Supporting tests |
@@ -61,15 +92,27 @@ Sessions and services run on my own hardware, with either a local or cloud model
 
 **Stack:** Python, TypeScript/JavaScript, Swift/SwiftUI, SQLite, SSH/tmux, macOS, iOS/watchOS, and Raspberry Pi.
 
+## Documentation
+
+Start with the workspace guides for Pi tooling, or the runtime guides for JARVIS services. Component-specific documentation stays beside its source; this index connects the guides without relocating them.
+
+### Pi tooling and workspace — [`.pi/docs/`](.pi/docs/)
+
+- [Managed Pi installation](.pi/docs/PI_MANAGED_INSTALL.md) — runtime layout, verification, and recovery.
+- [Pi extensions](.pi/docs/PI_EXTENSIONS.md) — custom tools and integration reference.
+- [Optional codemode](.pi/docs/CODEMODE.md) — integration and verification notes.
+- [Rebuild from scratch](.pi/docs/REBUILD_FROM_SCRATCH.md) — restoring the workspace and its dependencies.
+
+### JARVIS architecture and runtime — [`projects/operation-jarvis/docs/`](projects/operation-jarvis/docs/)
+
+- [Setup and runtime guide](projects/operation-jarvis/docs/runtime-guide.md) — setup, component map, and runtime safety.
+- [Shared backend architecture](projects/operation-jarvis/docs/backend-architecture.md) — backend boundaries and refactoring history.
+- [Native app documentation](projects/operation-jarvis/jarvis-app/docs/README.md) — app architecture, verification, and operations.
+- [Room audio](projects/operation-jarvis/room-audio/README.md) — audio pipeline, components, and checks.
+
 ## Setup and limitations
 
 This is my personal setup, not a one-click installer. To run it, you need a Mac host, the Pi coding agent, and credentials for whichever integrations you choose. The Apple apps need Xcode and appropriate signing; room audio also needs a Raspberry Pi. The guides cover each component separately.
-
-- [Setup and runtime guide](projects/operation-jarvis/docs/runtime-guide.md)
-- [Detailed rebuild instructions](.pi/docs/REBUILD_FROM_SCRATCH.md)
-- [Pi extensions](.pi/docs/PI_EXTENSIONS.md)
-- [Native app architecture, verification, and operations](projects/operation-jarvis/jarvis-app/docs/README.md)
-- [Room audio](projects/operation-jarvis/room-audio/README.md)
 
 ## Running it safely
 

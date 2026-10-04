@@ -7,12 +7,12 @@
     "projects/operation-jarvis/keyboard/karabiner/upstream/pkgroot",
     "projects/operation-jarvis/keyboard/karabiner/upstream/src/*/build",
     "projects/operation-jarvis/keyboard/karabiner/upstream/vendor/*/build",
-    "projects/temp/*/.runtime",
+    "projects/job-search/data-ai-analyst-assessment/.runtime",
     ".pi/runtime/pi-lazy-tools/releases",
     ".pi/logs",
     ".pi/scheduled-sessions",
     "JARVIS-projects-backup.tar.gz"
   ],
   "required_paths": ["projects", "projects/operation-jarvis/jarvisd/jarvisd_core/scheduler/runner.py", "projects/operation-jarvis/data/scheduler/scheduler.sqlite", ".env", "README.md"],
-  "restore_samples": ["README.md", "projects/projects-drive-backup/policy.json"]
+  "restore_samples": ["README.md", "projects/jarvis-backup/policy.json"]
 }

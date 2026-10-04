@@ -8,10 +8,10 @@
 /projects/*
 !/projects/apple-foundation-models/
 !/projects/phone-recording/
-!/projects/projects-drive-backup/
-!/projects/projects-drive-backup/*.py
-!/projects/projects-drive-backup/*.json
-!/projects/projects-drive-backup/*.md
+!/projects/jarvis-backup/
+!/projects/jarvis-backup/*.py
+!/projects/jarvis-backup/*.json
+!/projects/jarvis-backup/*.md
 !/projects/operation-jarvis/
 !/projects/operation-jarvis/**
 /projects/operation-jarvis/.env

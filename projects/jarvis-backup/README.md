@@ -6,6 +6,7 @@ both implementations. Migration keeps the existing Drive tarball untouched.
 
 ## Installed layout
 
+- Implementation: `projects/jarvis-backup/`.
 - Source: `/Users/dylanrapanan/JARVIS` (whole checkout, not just projects).
 - Repository: `rclone:jarvis-drive:restic-mac-mini-64`.
 - Drive parent: [JARVIS Backups](https://drive.google.com/drive/folders/1L6arvVqmmmELCcnzMtkcxAgjwLIFuCAZ).
@@ -13,6 +14,11 @@ both implementations. Migration keeps the existing Drive tarball untouched.
 - Dedicated rclone credentials: `~/.config/jarvis-backup/rclone.conf`.
 - Encryption password: `~/.config/jarvis-backup/restic-password`.
 - Private staging, cache, lock and status: `~/.local/state/jarvis-backup/`.
+
+On this host, the Git-ignored `projects/projects-drive-backup` symlink points to
+`jarvis-backup`, keeping the existing active and legacy job command paths valid.
+Job names, IDs, schedules, and history remain unchanged. Retain the link until
+those stored commands are explicitly migrated.
 
 Config/key files are owner-only, outside the checkout, and never printed by the
 wrapper. The dedicated rclone configuration reuses an existing authorized Drive
@@ -121,7 +127,7 @@ automatic `unlock`, repair, repository reinitialization or credential rotation.
 From the JARVIS checkout:
 
 ```bash
-SCRIPT=projects/projects-drive-backup/restic_backup.py
+SCRIPT=projects/jarvis-backup/restic_backup.py
 /opt/homebrew/bin/python3 "$SCRIPT" plan
 /opt/homebrew/bin/python3 "$SCRIPT" backup
 /opt/homebrew/bin/python3 "$SCRIPT" snapshots
@@ -140,7 +146,7 @@ Run tests, including an isolated local Restic repository and WAL recovery:
 
 ```bash
 /opt/homebrew/bin/python3 -m unittest discover \
-  -s projects/projects-drive-backup -p 'test_*.py' -v
+  -s projects/jarvis-backup -p 'test_*.py' -v
 ```
 
 ## Restore to a scratch directory
