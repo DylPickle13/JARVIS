@@ -1,3 +1,58 @@
+# Session groups, activity motion and orange compaction — 2026-10-03, 23:11 EDT
+
+The visible group now has a continuous muted-purple `#4B2D59` band, with the
+focused number in the same bold white-on-`#8D4CA3` badge as its pane title.
+One-/two-/three-session groups, session 10, narrow sliding tabs, click targets,
+quota priority and warning-row behaviour are preserved. Each lifecycle glyph
+has a neutral dark cell to keep its colour readable within the navigation badge.
+
+Running uses a bright single-cell spinner at 250 ms/frame; Compacting rotates
+backwards at 500 ms/frame in exact vivid orange **`#FF7A00`**, replacing blue.
+Other states keep steady dots. `PI_DESK_SPINNER=ascii` provides an ASCII fallback;
+`PI_DESK_SPINNER=off` disables motion. Settings apply to the elected machine-wide
+monitor. Intermediate animation frames reuse cached metadata/status, leaving
+500 ms bookkeeping and the three-second host stream unchanged. Only changed
+header rows are written, batched across viewers; no warning/row-count writes on
+animation-only ticks and no animation wakeups when all sessions are non-busy.
+
+The app's shared `PiSessionLifecycle.statusColor`, its tests and verification
+assertion mirror the exact orange across Home and phone/Watch terminal indicators.
+Native app motion, other colours, networking and accessibility are unchanged.
+An offscreen palette preview was reviewed, but physical visual acceptance remains
+pending. The app source is verified, **not installed on physical devices**; signed
+phone/Watch deployment remains a separate owner approval.
+
+**173 tests passed on each Mac and on the Pi** (two platform-specific skips on
+Linux). A pre-existing test's one-cell layout-rounding assumption was made
+portable after isolated tmux 3.5a demonstrated widths `60/60/62` for its native
+184-column even-horizontal layout; newer tmux spreads remainder cells instead.
+No layout algorithm was changed. **34 focused installed-runtime tests passed on
+each machine**, including real PTY orange/spinner/badge emission, all focus/group
+combinations, ASCII/static fallbacks, stale status and cached animation snapshots.
+The app package completed **290 tests, three expected skips, zero failures** in
+an isolated checkout. No physical-device install or full signed archive is claimed.
+
+Installed `desktop.py` only on mac-mini-64. The two old remote installs were
+advanced to the compatible current runtime plus `config/tmux.conf`; private
+client config, launchers, services, foot/labwc adapters and unrelated files were
+preserved. All source hashes verify against the deployed changes. Existing
+manifest mismatches remain untouched: local `backend.py`/`restart_status.py`, and
+Pi `config/foot.ini`. Local **10 display/10 hosted-pane identities** and attached
+clients were preserved; remote machines had no display panes/clients to replace.
+The Pi service PID and protected adapter/config hashes were preserved. No viewers,
+services or hosted agents were restarted.
+
+**Activation:** detach all Pi Desk viewers on a machine with Ctrl+A then d and
+reopen `pi-desk` so its elected monitor imports the new renderer. Existing monitors
+retain old code. The Pi display service was not restarted automatically; request
+that separately if it owns the viewer. Do not use F10: that restarts agents, not
+the renderer.
+
+Rollback backups (private deployment/identity/hash evidence included):
+- mac-mini-64: `~/.local/state/pi-desk/backups/session-indicators-20261004T030939521855Z/`
+- mac-mini-16: `~/.local/state/pi-desk/backups/session-indicators-20261004T030939701711Z/`
+- Raspberry Pi: `~/.local/state/pi-desk/backups/session-indicators-20261004T030940880961Z/`
+
 # Codex quota header — 2026-10-03, 21:37 EDT
 
 Added a clickable, account-wide **remaining quota** block to the existing top

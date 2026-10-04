@@ -4,6 +4,48 @@
 
 Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.
 
+## Orange compaction palette — build 244
+
+Owner-approved build **244** was installed once on each allowlisted iPhone and
+Watch and independently version/launch/process verified on **2026-10-03 at
+23:32 EDT**. The shared Pi lifecycle palette now uses exact orange `#FF7A00` for
+Compacting, matching Pi Desk and separating it from New cyan. Native app motion,
+other lifecycle colours, layout, routing, freshness and polling are unchanged.
+Previously checked-in notification copy/comment clarifications accompany the
+release; no additional notification-routing behavior or capability was added.
+
+**163 iPhone tests, 290 shared tests (3 expected skips), 37 terminal tests and both
+simulator builds passed from frozen source.** Only the previously documented plain
+Paste pixel test was excluded. The exact signed archive and exact build-243
+rollback passed all four bundle/signature/profile/entitlement/dependency audits.
+Existing paid-team identity/profiles and feature flags were retained; dependencies,
+credentials and entitlements were not changed. The audited archive was not rebuilt
+between audit and installation.
+
+Fresh device allowlist/identity, pairing, developer-service, lock-state and
+installed-baseline-243 checks passed before the first physical write. The Watch's
+initial connecting transport reported unknown developer mode; bounded read-only
+checks subsequently verified enabled mode and a compatible DDI. No device writes
+occurred during that connection check. Each device later received exactly one
+installation and its installed version and running process were read back
+independently, including final-version checks.
+
+All **16 active PIDs across 17 protected service records** and existing Pi
+pane/window/process identities were preserved. No backend service or Pi restart, uninstallation, unpairing, reboot,
+app-data removal or credential change. The isolated validation simulator was
+returned to its previous shutdown state. Physical palette acceptance awaits owner
+review; an installed-version/launch check does not itself prove perceived colour.
+
+Private evidence: `20261004T032028Z-build244-session-orange`, including frozen
+source/hash manifest, test results, exact signed archive, payload seal, four-bundle
+audit, one-shot deployment helper and `deployment/result.json`. Exact signed build
+243 remains retained as rollback for both devices. Owner-requested cleanup removed
+approximately 3.1 GiB of session-created build caches, temporary palette/test
+checkouts and local/remote Pi Desk staging. Exact deployed/rollback archives,
+frozen source/manifests, audits, test results and Pi Desk rollback backups remain;
+both archive seals/signatures and frozen inputs verify after cleanup. See
+[shared session colours](session-status-indicators.md).
+
 ## Balanced Settings grid — build 243
 
 Owner-approved build **243** was installed once on the allowlisted iPhone and

@@ -308,7 +308,7 @@ class QuotaTmuxTests(unittest.TestCase):
         wide = self.expanded(desktop.responsive_selector({}, 184, 3, 5, quota=self.quota))
         self.assertIn('range=user|codex,fg=#D183E8', wide)
         self.assertIn('W:68% · 5h:91% left', wide)
-        self.assertIn('range=user|5,bg=#16252a,fg=#D183E8,bold', wide)
+        self.assertIn('range=user|5,bg=#8D4CA3,fg=#ffffff,bold', wide)
 
     def test_legacy_dynamic_footer_is_valid_tmux_format(self):
         # client_width is zero without an attached client. Substitute the same
@@ -384,6 +384,8 @@ class QuotaTmuxTests(unittest.TestCase):
             health.poll.return_value = ()
             stop = mock.Mock()
             stop.is_set.side_effect = [False, False, False, True]
+            clock = [0]
+            stop.wait.side_effect = lambda delay: clock.__setitem__(0, clock[0] + delay)
             writes = []
             def send(*args, **kwargs):
                 if args[0] == 'source-file':
@@ -392,7 +394,7 @@ class QuotaTmuxTests(unittest.TestCase):
             with mock.patch.object(desktop, 'STATE', Path(directory)), \
                  mock.patch.object(desktop, 'StatusFeed', return_value=feed), \
                  mock.patch.object(desktop, 'HealthMonitor', return_value=health), \
-                 mock.patch.object(desktop, 'pulse_is_dim', return_value=False), \
+                 mock.patch.object(desktop.time, 'monotonic', side_effect=lambda: clock[0]), \
                  mock.patch.object(desktop, 'tmux', side_effect=send) as calls:
                 desktop.watch_status(stop)
             self.assertEqual(len(writes), 2)

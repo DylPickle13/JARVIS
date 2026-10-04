@@ -20,9 +20,12 @@ import codex_quota
 from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, prepare_workspace
 
 STATE = Path.home() / '.local/state/pi-desk'
-COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': 75,
+COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': '#FF7A00',
           'offline': 245, 'unknown': 179}
-PULSE_PHASE_SECONDS = 0.75
+ANIMATION_SECONDS = 0.25
+SNAPSHOT_SECONDS = 0.5
+SPINNER_FRAMES = ('◐', '◓', '◑', '◒')
+ASCII_SPINNER_FRAMES = ('|', '/', '-', '\\')
 HINTS = (' F10 Restart · Ctrl + ←/→ Switch ',
          ' F10 · Ctrl + ←/→ ', ' F10 Restart ', '')
 QUOTA_OPTION = '@pi-desk-codex-quota'
@@ -157,31 +160,54 @@ def save_selection(number, publish=True):
     write_selection(str(number))
 
 
-def pulse_is_dim(now=None):
+def animation_frame(now=None):
     now = time.monotonic() if now is None else now
-    return bool(int(now / PULSE_PHASE_SECONDS) % 2)
+    return int(now / ANIMATION_SECONDS)
 
 
-def selector(states, *, pulse_dim=False, quota=None):
+def working(states):
+    return (os.environ.get('PI_DESK_SPINNER') != 'off'
+            and any(state in ('running', 'compacting') for state in states.values()))
+
+
+def tab_style(number, visible):
+    active = '#{==:#{@pi-desk-session},' + str(number) + '}'
+    background = '#{?' + active + ',##8D4CA3,#{?' + visible + ',##4B2D59,##1e1e1e}}'
+    foreground = '#{?' + active + ',##ffffff,colour252}'
+    weight = '#{?' + active + ',bold,nobold}'
+    return background, foreground, weight
+
+
+def status_indicator(state, frame, background):
+    color = COLORS.get(state, COLORS['unknown'])
+    color = f'colour{color}' if isinstance(color, int) else color
+    glyph = '●'
+    mode = os.environ.get('PI_DESK_SPINNER', 'unicode')
+    if state in ('running', 'compacting') and mode != 'off':
+        frames = ASCII_SPINNER_FRAMES if mode == 'ascii' else SPINNER_FRAMES
+        # Compaction rotates backwards, at half the running cadence.
+        index = -(frame // 2) if state == 'compacting' else frame
+        glyph = frames[index % len(frames)]
+    # One neutral cell preserves lifecycle colour contrast even on a focus badge.
+    # Restore the tab background for its trailing padding; never blink the label.
+    return f'#[fg={color},bg=#1e1e1e,nobold]{glyph}#[bg={background}] '
+
+
+def selector(states, *, frame=0, quota=None):
     parts = ['#[align=left,norange,fg=#D183E8,bg=#1e1e1e,nobold] PI-DESK ']
     for n in range(1, 11):
         key, _ = session_group(n)
         group = '#{==:#{session_name},group-' + key + '}'
-        active = '#{==:#{@pi-desk-session},' + str(n) + '}'
-        background = '#{?' + group + ',#16252a,#1e1e1e}'
-        foreground = '#{?' + active + ',##D183E8,colour252}'
-        weight = '#{?' + active + ',bold,nobold}'
-        state = states.get(str(n))
-        color = COLORS.get(state, COLORS['unknown'])
-        # Pulse only working dots; never blink text, selection, or idle sessions.
-        if pulse_dim:
-            color = {'running': 22, 'compacting': 24}.get(state, color)
+        background, foreground, weight = tab_style(n, group)
+        dot = status_indicator(states.get(str(n)), frame, background)
         parts.append(f'#[range=user|{n},bg={background},fg={foreground},{weight}] {n:02d} '
-                     f'#[fg=colour{color}]● #[norange,bg=#1e1e1e,nobold]')
+                     f'{dot}#[norange,bg=#1e1e1e,nobold]')
         if n in (3, 6, 9):
             parts.append('#[fg=colour238] │ ')
         elif n != 10:
-            parts.append(' ')
+            # Legacy tabs have an extra internal gap: include it in the group tint.
+            gap = '#{?' + group + ',##4B2D59,##1e1e1e}'
+            parts.append(f'#[bg={gap}] #[bg=#1e1e1e]')
     if quota is None:
         parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold] '
                      '#{?#{>=:#{client_width},120},'
@@ -200,7 +226,7 @@ def selector(states, *, pulse_dim=False, quota=None):
     return ''.join(parts)
 
 
-def responsive_selector(states, width, count, selected, *, pulse_dim=False, quota=None):
+def responsive_selector(states, width, count, selected, *, frame=0, quota=None):
     """Fit actual terminal cells; retain clickable numbers even on tiny displays."""
     width = max(1, width)
     compact = width < 100
@@ -225,18 +251,11 @@ def responsive_selector(states, width, count, selected, *, pulse_dim=False, quot
         parts.append('#[fg=colour245]‹')
         used += 1
     for n in numbers:
-        active = '#{==:#{@pi-desk-session},' + str(n) + '}'
         visible = '#{&&:#{e|>=:' + str(n) + ',#{@pi-desk-first}},#{e|<=:' + str(n) + ',#{@pi-desk-end}}}'
-        bg = '#{?' + visible + ',#16252a,#1e1e1e}'
-        fg = '#{?' + active + ',##D183E8,colour252}'
-        weight = '#{?' + active + ',bold,nobold}'
-        state = states.get(str(n))
-        color = COLORS.get(state, COLORS['unknown'])
-        if pulse_dim:
-            color = {'running': 22, 'compacting': 24}.get(state, color)
-        # Below four columns show just the selected number (no clipped dot).
+        bg, fg, weight = tab_style(n, visible)
+        # Below four columns show just the selected number (no clipped indicator).
         label = f'{n:02d}' if width >= 2 else str(n % 10)
-        dot = '' if width < 4 else f'#[fg=colour{color}]● '
+        dot = '' if width < 4 else status_indicator(states.get(str(n)), frame, bg)
         text = label if compact else f' {label} '
         parts.append(f'#[range=user|{n},bg={bg},fg={fg},{weight}]{text}{dot}'
                      '#[norange,bg=#1e1e1e,nobold]')
@@ -262,8 +281,8 @@ def apply_status_commands(commands):
         tmux('source-file', stream.name)
 
 
-def render_viewers(states, dim, previous, warning=None, *, session_rows=None,
-                   global_rows=None, quota=None, quota_payload=None):
+def render_viewers(states, frame, previous, warning=None, *, session_rows=None,
+                   global_rows=None, previous_global_rows=None, quota=None, quota_payload=None):
     # A local tmux array shadows the entire global array, not just index 0.
     if warning is None:
         warning = (global_rows[1] if global_rows is not None else
@@ -274,11 +293,11 @@ def render_viewers(states, dim, previous, warning=None, *, session_rows=None,
     if quota_payload is not None:
         commands.append(['set-option', '-g', QUOTA_OPTION, quota_payload])
     if global_rows is not None:
-        commands.extend([
-            ['set-option', '-g', 'status-format[0]', global_rows[0]],
-            ['set-option', '-g', 'status-format[1]', global_rows[1]],
-            ['set-option', '-g', 'status', '2' if global_rows[1] else 'on'],
-        ])
+        for index, value in enumerate(global_rows):
+            if previous_global_rows is None or previous_global_rows[index] != value:
+                commands.append(['set-option', '-g', f'status-format[{index}]', value])
+        if previous_global_rows is None or previous_global_rows[1] != global_rows[1]:
+            commands.append(['set-option', '-g', 'status', '2' if global_rows[1] else 'on'])
     current = {}
     for row in session_rows.splitlines():
         fields = row.split('\t')
@@ -288,11 +307,13 @@ def render_viewers(states, dim, previous, warning=None, *, session_rows=None,
         if (not workspace.is_viewer(name) or not all(v.isdecimal() for v in fields[1:])
                 or int(count) not in (1, 2, 3) or int(selected) not in range(1, 11)):
             continue
-        bar = responsive_selector(states, int(width), int(count), int(selected), pulse_dim=dim, quota=quota)
+        bar = responsive_selector(states, int(width), int(count), int(selected), frame=frame, quota=quota)
         current[name] = (bar, warning)
-        if previous.get(name) != current[name]:
-            writes = [['set-option', '-t', name, 'status-format[0]', bar],
-                      ['set-option', '-t', name, 'status-format[1]', warning]]
+        cached = previous.get(name)
+        if cached != current[name]:
+            writes = [['set-option', '-t', name, f'status-format[{index}]', value]
+                      for index, value in enumerate(current[name])
+                      if cached is None or cached[index] != value]
             # A viewer may close after the snapshot. Guard at execution time so
             # its disappearance cannot abort updates for the surviving viewers.
             exists = '#{S:#{?#{==:#{session_name},' + name + '},1,}}'
@@ -375,20 +396,26 @@ def watch_status(stop):
     previous = None
     previous_quota = None
     viewer_rows = {}
+    next_snapshot = 0
     try:
         while not stop.is_set():
+            now = time.monotonic()
             try:
-                session_rows = persist_selection(include_viewers=True)
-                # One shared monitor drives a 0.75-second-per-phase brightness cycle.
-                # Static states produce identical rows, so they cause no extra writes.
-                states, dim = feed.poll(), pulse_is_dim()
-                quota = codex_quota.normalize(feed.quota)
-                encoded = json.dumps(quota, separators=(',', ':'), sort_keys=True)
-                rows = (selector(states, pulse_dim=dim, quota=quota),
-                        ' '.join(filter(None, (status_line(), health_line(feed.connection, health.poll())))))
-                viewer_rows = render_viewers(states, dim, viewer_rows, rows[1],
+                if now >= next_snapshot:
+                    # Keep the existing metadata/health cadence and three-second
+                    # host stream. Intermediate animation frames use this snapshot.
+                    session_rows = persist_selection(include_viewers=True)
+                    states = feed.poll()
+                    quota = codex_quota.normalize(feed.quota)
+                    encoded = json.dumps(quota, separators=(',', ':'), sort_keys=True)
+                    warning = ' '.join(filter(None, (status_line(), health_line(feed.connection, health.poll()))))
+                    next_snapshot = now + SNAPSHOT_SECONDS
+                frame = animation_frame(now)
+                rows = (selector(states, frame=frame, quota=quota), warning)
+                viewer_rows = render_viewers(states, frame, viewer_rows, warning,
                     session_rows=session_rows, global_rows=rows if rows != previous else None,
-                    quota=quota, quota_payload=encoded if encoded != previous_quota else None)
+                    previous_global_rows=previous, quota=quota,
+                    quota_payload=encoded if encoded != previous_quota else None)
                 previous = rows
                 previous_quota = encoded
             except (OSError, RuntimeError, subprocess.TimeoutExpired):
@@ -396,7 +423,13 @@ def watch_status(stop):
                 previous = None
                 previous_quota = None
                 viewer_rows = {}
-            stop.wait(.5)
+                next_snapshot = 0
+                stop.wait(SNAPSHOT_SECONDS)
+                continue
+            # No busy sessions means no animation wakeups or redundant writes.
+            interval = ANIMATION_SECONDS if working(states) else SNAPSHOT_SECONDS
+            due = min(now + interval, next_snapshot)
+            stop.wait(max(0, due - time.monotonic()))
     finally:
         feed.close()
 

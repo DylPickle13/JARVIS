@@ -100,12 +100,16 @@ class LayoutTests(unittest.TestCase):
         self.assertIn('‹', desktop.responsive_selector({}, 30, 1, 10))
         self.assertIn('›', desktop.responsive_selector({}, 30, 1, 1))
 
-    def test_header_dots_pulse(self):
+    def test_header_indicators_rotate_in_all_widths(self):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}
-        bright = desktop.responsive_selector(states, 184, 3, 1)
-        dim = desktop.responsive_selector(states, 184, 3, 1, pulse_dim=True)
-        self.assertEqual(bright.replace('fg=colour77]●', 'fg=colour22]●')
-                         .replace('fg=colour75]●', 'fg=colour24]●'), dim)
+        for width in (4, 30, 80, 99, 100, 184):
+            start = desktop.responsive_selector(states, width, 3, 1)
+            next_frame = desktop.responsive_selector(states, width, 3, 1, frame=2)
+            self.assertEqual(start.replace('nobold]◐', 'nobold]◑', 1)
+                             .replace('nobold]◐', 'nobold]◒', 1), next_frame)
+        for width in (1, 2, 3):
+            self.assertEqual(desktop.responsive_selector(states, width, 1, 1),
+                             desktop.responsive_selector(states, width, 1, 1, frame=2))
 
     def test_debounces_size_changes_without_subprocess_polling(self):
         # Script time and samples: wall-clock sleeps can legitimately exceed the
@@ -338,8 +342,8 @@ class WorkspaceTests(unittest.TestCase):
             unchanged = desktop.render_viewers(states, False, current, warning, session_rows=rows)
         calls.assert_not_called()
         self.assertEqual(unchanged, current)
-        desktop.render_viewers(states, True, current, '', session_rows=rows,
-                               global_rows=(desktop.selector(states, pulse_dim=True), ''))
+        desktop.render_viewers(states, 2, current, '', session_rows=rows,
+                               global_rows=(desktop.selector(states, frame=2), ''))
         self.assertEqual(core.tmux('show-options', '-gv', 'status').stdout.strip(), 'on')
         for name in names:
             self.assertEqual(core.tmux('show-options', '-Av', '-t', name,
@@ -357,11 +361,11 @@ class WorkspaceTests(unittest.TestCase):
         rows = core.tmux('list-sessions', '-F', desktop.VIEWER_STATUS_FORMAT).stdout
         self.assertNotIn(closed, desktop.render_viewers({}, False, current, 'warning', session_rows=rows))
 
-    def test_status_monitor_uses_one_read_and_at_most_one_write_per_tick(self):
+    def test_status_monitor_reuses_snapshots_for_intermediate_animation_frames(self):
         for number, width in ((2, 184), (5, 110), (9, 80)):
             workspace.create(number, width, 45)
         core.tmux('set-option', '-g', '@pi-desk-last', '5')
-        for state, expected_writes in (('idle', 1), ('running', 3)):
+        for state, expected_reads, expected_writes in (('idle', 3, 1), ('running', 2, 3)):
             feed = mock.Mock(backend=mock.Mock(host='test'),
                              connection='Mac connected · Session status live')
             feed.poll.return_value = {'1': state}
@@ -369,16 +373,61 @@ class WorkspaceTests(unittest.TestCase):
             health.poll.return_value = ()
             stop = mock.Mock()
             stop.is_set.side_effect = [False, False, False, True]
+            clock = [0]
+            stop.wait.side_effect = lambda delay: clock.__setitem__(0, clock[0] + delay)
             with mock.patch.object(desktop, 'StatusFeed', return_value=feed), \
                  mock.patch.object(desktop, 'HealthMonitor', return_value=health), \
-                 mock.patch.object(desktop, 'pulse_is_dim', side_effect=[False, True, False]), \
+                 mock.patch.object(desktop.time, 'monotonic', side_effect=lambda: clock[0]), \
                  mock.patch.object(desktop, 'tmux', wraps=core.tmux) as calls:
                 desktop.watch_status(stop)
             args = [call.args for call in calls.call_args_list]
-            self.assertEqual(sum('list-sessions' in call for call in args), 3)
+            self.assertEqual(sum('list-sessions' in call for call in args), expected_reads)
             self.assertEqual(sum(call[0] == 'source-file' for call in args), expected_writes)
-            self.assertEqual(len(args), 3 + expected_writes)
+            self.assertEqual(len(args), expected_reads + expected_writes)
+            self.assertEqual(feed.poll.call_count, expected_reads)
+            self.assertEqual(health.poll.call_count, expected_reads)
             feed.close.assert_called_once()
+
+    def test_animation_updates_only_header_not_warning_or_row_count(self):
+        name = workspace.create(5, 184, 45)
+        states = {'5': 'running', '10': 'compacting'}
+        rows = core.tmux('list-sessions', '-F', desktop.VIEWER_STATUS_FORMAT).stdout
+        global_rows = (desktop.selector(states), 'warning')
+        current = desktop.render_viewers(states, 0, {}, 'warning', session_rows=rows,
+                                        global_rows=global_rows)
+        before = self.identities(name)
+        with mock.patch.object(desktop, 'apply_status_commands') as send:
+            desktop.render_viewers(states, 1, current, 'warning', session_rows=rows,
+                                   global_rows=(desktop.selector(states, frame=1), 'warning'),
+                                   previous_global_rows=global_rows)
+        commands = send.call_args.args[0]
+        self.assertEqual(len(commands), 2)  # Global header plus one guarded viewer header.
+        self.assertIn('status-format[0]', str(commands))
+        self.assertNotIn('status-format[1]', str(commands))
+        self.assertNotIn("'status',", str(commands))
+        self.assertEqual(self.identities(name), before)
+
+    def test_stale_status_stops_spinner_and_idle_wakeups_resume(self):
+        feed = mock.Mock(backend=mock.Mock(host='test'),
+                         connection='Mac connected · Session status live')
+        feed.poll.side_effect = [{'10': 'running'}, {}, {}]
+        health = mock.Mock()
+        health.poll.return_value = ()
+        stop = mock.Mock()
+        stop.is_set.side_effect = [False] * 4 + [True]
+        clock = [0]
+        stop.wait.side_effect = lambda delay: clock.__setitem__(0, clock[0] + delay)
+        with mock.patch.object(desktop, 'StatusFeed', return_value=feed), \
+             mock.patch.object(desktop, 'HealthMonitor', return_value=health), \
+             mock.patch.object(desktop.time, 'monotonic', side_effect=lambda: clock[0]), \
+             mock.patch.object(desktop, 'persist_selection', return_value='') as snapshot, \
+             mock.patch.object(desktop, 'apply_status_commands') as send:
+            desktop.watch_status(stop)
+        self.assertEqual(snapshot.call_count, 3)
+        self.assertEqual(feed.poll.call_count, 3)
+        self.assertEqual([call.args[0] for call in stop.wait.call_args_list], [.25, .25, .5, .5])
+        self.assertEqual(send.call_args_list[-1].args[0], [])  # Unchanged unknown header.
+        self.assertNotIn('◐', str(send.call_args_list[-2]))
 
     def test_status_monitor_retries_failed_batch_without_caching_it(self):
         name = workspace.create(5, 184, 45)
@@ -389,6 +438,8 @@ class WorkspaceTests(unittest.TestCase):
         health.poll.return_value = ()
         stop = mock.Mock()
         stop.is_set.side_effect = [False, False, True]
+        clock = [0]
+        stop.wait.side_effect = lambda delay: clock.__setitem__(0, clock[0] + delay)
         failed = []
 
         def send(*args, **kwargs):
@@ -399,7 +450,7 @@ class WorkspaceTests(unittest.TestCase):
 
         with mock.patch.object(desktop, 'StatusFeed', return_value=feed), \
              mock.patch.object(desktop, 'HealthMonitor', return_value=health), \
-             mock.patch.object(desktop, 'pulse_is_dim', return_value=False), \
+             mock.patch.object(desktop.time, 'monotonic', side_effect=lambda: clock[0]), \
              mock.patch.object(desktop, 'tmux', side_effect=send) as calls:
             desktop.watch_status(stop)
         self.assertEqual(sum(call.args[0] == 'source-file' for call in calls.call_args_list), 2)
@@ -433,7 +484,9 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(self.identities(name), before)
             widths = list(map(int, real_tmux('list-panes', '-t', name + ':0',
                                            '-F', '#{pane_width}').stdout.splitlines()))
-            self.assertLessEqual(max(widths) - min(widths), 1)
+            # tmux 3.5 assigns all division-remainder cells to the last pane;
+            # newer tmux spreads them. Both are valid even-horizontal layouts.
+            self.assertLessEqual(max(widths) - min(widths), len(widths) - 1)
 
     def test_failed_mutation_batch_keeps_navigation_gated_and_recovers(self):
         name = workspace.create(2, 184, 45)
@@ -711,9 +764,49 @@ class WorkspaceTests(unittest.TestCase):
         # tmux format expressions really evaluate: visible group has its tint.
         bar = desktop.responsive_selector({}, 184, 3, 1)
         expanded = core.tmux('display-message', '-p', '-t', name + ':0', '-F', bar).stdout
-        self.assertIn('range=user|1,bg=#16252a,fg=#D183E8,bold', expanded)
+        self.assertIn('range=user|1,bg=#8D4CA3,fg=#ffffff,bold', expanded)
+        self.assertIn('range=user|2,bg=#4B2D59,fg=colour252,nobold', expanded)
+        self.assertIn('range=user|3,bg=#4B2D59,fg=colour252,nobold', expanded)
         self.assertIn('range=user|4,bg=#1e1e1e,', expanded)
         self.assertIn('range=user|10,bg=#1e1e1e,', expanded)
+
+    def test_header_group_and_focus_badges_follow_every_session_and_width(self):
+        for width, count in ((80, 1), (110, 2), (184, 3)):
+            name = workspace.create(1, width, 45)
+            for selected in range(1, 11):
+                workspace.reconcile(name, selected, width)
+                bar = desktop.responsive_selector({'10': 'running'}, width, count, selected, frame=1)
+                expanded = core.tmux('display-message', '-p', '-t', name + ':0', '-F', bar).stdout
+                for n in range(1, 11):
+                    bg = '#8D4CA3' if n == selected else ('#4B2D59' if n in layout.group(selected, count) else '#1e1e1e')
+                    fg = '#ffffff,bold' if n == selected else 'colour252,nobold'
+                    self.assertIn(f'range=user|{n},bg={bg},fg={fg}', expanded)
+                self.assertIn('fg=colour77,bg=#1e1e1e,nobold]◓', expanded)
+                self.assertLessEqual(len(re.sub(r'#\[[^\]]*\]', '', expanded.rstrip('\n'))), width)
+
+    def test_spinner_and_exact_compaction_rgb_are_emitted_on_a_real_pty(self):
+        name = workspace.create(5, 184, 45)
+        output = []
+        self.attach(name, output=output)
+        before = self.identities(name)
+        states = {'4': 'new', '5': 'compacting', '6': 'unknown', '10': 'running'}
+        current = {}
+        for frame in (0, 2):
+            current = desktop.render_viewers(states, frame, current, '')
+            glyph = ('◐' if frame == 0 else '◒').encode('utf-8')
+            for _ in range(100):
+                received = b''.join(output)
+                if glyph in received and b'38;2;255;122;0' in received:
+                    break
+                time.sleep(.01)
+            else:
+                self.fail('Real PTY did not emit spinner and exact orange RGB')
+        # Both navigation backgrounds survive true-colour terminal rendering.
+        received = b''.join(output)
+        self.assertIn(b'48;2;75;45;89', received)  # Muted group purple.
+        self.assertIn(b'48;2;141;76;163', received)  # Focus badge purple.
+        self.assertEqual(self.identities(name), before)
+        self.assertEqual(self.focus(name), 5)
 
     def test_warning_row_and_heights_with_session_specific_header(self):
         name = workspace.create(5, 184, 45)

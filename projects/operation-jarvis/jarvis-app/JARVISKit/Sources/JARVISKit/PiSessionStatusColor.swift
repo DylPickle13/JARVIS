@@ -9,7 +9,8 @@ public extension PiSessionLifecycle {
         case .idle: return .purple
         case .running: return .green
         case .new: return .cyan
-        case .compacting: return .blue
+        // Exact #FF7A00, shared with Pi Desk; New remains cyan.
+        case .compacting: return Color(red: 1, green: 122.0 / 255, blue: 0)
         case .unknown: return Color(red: 0.96, green: 0.58, blue: 0.16)
         }
     }

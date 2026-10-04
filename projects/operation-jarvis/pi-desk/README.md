@@ -24,8 +24,9 @@ are supported, with one elected status monitor per machine and failover on exit.
 ## Interface
 
 The persistent `PI-DESK` top row uses the JARVIS app's dark accent purple
-(`#D183E8`); the selected session number uses it too. The active pane's `Session N`
-title is a bold deeper-purple (`#8D4CA3`) badge with white text. This keeps white
+(`#D183E8`). The visible session group has a continuous muted-purple (`#4B2D59`)
+background; its focused session number and the active pane's `Session N` title
+use a bold deeper-purple (`#8D4CA3`) badge with white text. This keeps white
 above VS Code's default 4.5:1 contrast threshold, preventing automatic darkening
 of selected labels without changing terminal-wide settings. Inactive titles also
 use white text on the dark background. Horizontal title-row lines, shared junctions
@@ -40,9 +41,17 @@ tabs tighten. Extremely narrow terminals show a sliding subset with hidden-tab
 indicators, always keeping the focused session clickable; Ctrl + ←/→ still reaches all
 ten sessions. Numbers use two digits, with muted separators matching the current
 one-, two-, or three-session groups; there are no group labels. Running
-and compacting dots alternate between bright and clearly dim shades every 0.75
-seconds (a 1.5-second full cycle); other states stay steady. This uses the existing
-shared monitor, not terminal blink support. A second row appears only for
+sessions use a bright, single-cell rotating indicator every 250 ms (one-second
+cycle); compacting sessions rotate backwards every 500 ms (two-second cycle).
+Other states retain steady dots. Indicators sit on a neutral dark cell so their
+colours remain readable inside the purple focus badge. This uses the existing
+shared monitor, not terminal blink support. Animation frames reuse cached status
+and viewer metadata; metadata/health checks retain their 500 ms cadence and the
+host feed retains its three-second cadence. Frames update only changed headers,
+not the warning row or pane layout. With no busy sessions there are no animation
+wakeups. Set `PI_DESK_SPINNER=ascii` before starting the elected monitor for a
+single-cell ASCII fallback, or `PI_DESK_SPINNER=off` for steady dots (reduced motion).
+These settings belong to that machine's shared monitor, not individual viewers. A second row appears only for
 connection/diagnostic warnings and disappears when healthy, returning its terminal
 row to the coding panes. Healthy diagnostic values are hidden.
 Coding workspaces adapt automatically to the terminal width, keeping the selected
@@ -257,7 +266,9 @@ agents and can encounter that host-side reflow caveat.
 
 ## Status and diagnostics
 
-Running green, Idle purple, New cyan, Compacting blue, Offline grey, Unknown amber.
+Running green, Idle purple, New cyan, Compacting vivid orange (`#FF7A00`), Offline
+grey, Unknown muted amber. Compaction's exact RGB is mirrored by the JARVIS app's
+shared phone/Watch/Home palette; the app's native animation is unchanged.
 The host projects numbered lifecycle labels from the existing trusted-loopback
 jarvisd endpoint every 3 seconds. Local viewing uses a local subprocess; remote
 viewing streams the same installed helper over SSH. No transcript data is sent

@@ -2,7 +2,19 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current verified iPhone build: 243**, installed once and independently
+**Current verified iPhone and Watch build: 244**, installed once on each device
+and independently version/launch/process verified on **2026-10-03 at 23:32 EDT**.
+Compacting is vivid orange `#FF7A00`, matching Pi Desk and distinct from New cyan.
+The native app animations and other lifecycle colours are unchanged. Frozen-source
+verification passed 163 iPhone tests, 290 shared tests (3 expected skips), 37
+terminal tests and both simulator builds. Candidate and exact build-243 rollback
+passed four-bundle signature/profile/entitlement/dependency audits. Protected
+service PIDs and existing Pi panes were preserved; no backend/Pi restart or app-data
+removal. Physical colour acceptance awaits owner review. See
+[shared session colours](docs/session-status-indicators.md) and
+[deployment checks](docs/operations.md#orange-compaction-palette--build-244).
+
+**Previous verified iPhone build: 243**, installed once and independently
 version/launch/process verified on **2026-10-02 at 16:06 EDT**. Settings now uses
 four equal Liquid Glass summary cards, a full-width Diagnostics & Maintenance card,
 and separate glass detail pages for editing credentials/endpoints and notification
@@ -227,6 +239,13 @@ Pi runs the agent on the Mac. The apps connect to it rather than running a separ
 ## Neural Core artwork
 
 [Neural Core C2 / Dendrites and beam motion](docs/neural-core-c2-candidate.md) preserve the silver-white palette and central focus, with subtle organic branches, brighter central highlights, and outward-travelling pulses. Build166 was installed and visually accepted on iPhone; Watch deployment of these changes remains unconfirmed. See the linked implementation record for verification and device-acceptance limits.
+
+## Pi session status colours
+
+Compacting now uses vivid orange `#FF7A00`, mirrored exactly by Pi Desk, while New
+remains cyan. The shared Home/phone/Watch palette shipped in build 244,
+installed and independently verified on both devices on 2026-10-03 at 23:32 EDT.
+See [shared session colours](docs/session-status-indicators.md).
 
 ## Verification
 

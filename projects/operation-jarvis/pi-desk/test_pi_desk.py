@@ -422,7 +422,9 @@ class DesktopTests(unittest.TestCase):
         bar = desktop.selector({})
         self.assertIn(' PI-DESK ', bar)
         self.assertIn('fg=#D183E8', bar)
-        self.assertIn('fg=#{?#{==:#{@pi-desk-session},1},##D183E8,colour252}', bar)
+        self.assertIn('fg=#{?#{==:#{@pi-desk-session},1},##ffffff,colour252}', bar)
+        self.assertIn(',##8D4CA3,#{?', bar)
+        self.assertIn(',##4B2D59,##1e1e1e}}', bar)
         self.assertEqual(bar.count(' │ '), 3)
         for n in range(1, 11):
             self.assertIn(f'] {n:02d} ', bar)
@@ -469,23 +471,45 @@ class DesktopTests(unittest.TestCase):
         # xterm can darken low-contrast white text even when tmux sends white.
         self.assertGreaterEqual(1.05 / (luminance + 0.05), 4.5)
 
-    def test_only_working_dots_pulse(self):
+    def test_only_working_indicators_rotate_without_dimming(self):
         states = {'1': 'running', '2': 'compacting', '3': 'idle'}
-        bright = desktop.selector(states)
-        dim = desktop.selector(states, pulse_dim=True)
-        self.assertEqual(bright.replace('fg=colour77]●', 'fg=colour22]●')
-                         .replace('fg=colour75]●', 'fg=colour24]●'), dim)
+        start = desktop.selector(states)
+        next_frame = desktop.selector(states, frame=2)
+        self.assertEqual(start.replace('nobold]◐', 'nobold]◑', 1)
+                         .replace('nobold]◐', 'nobold]◒', 1), next_frame)
+        self.assertIn('fg=#FF7A00,bg=#1e1e1e,nobold]◐', start)
         for state in ('idle', 'new', 'offline', 'unknown', 'unrecognized'):
             values = {'1': state}
-            self.assertEqual(desktop.selector(values), desktop.selector(values, pulse_dim=True))
-        self.assertEqual(desktop.selector({}), desktop.selector({}, pulse_dim=True))
+            self.assertEqual(desktop.selector(values), desktop.selector(values, frame=2))
+        self.assertEqual(desktop.selector({}), desktop.selector({}, frame=2))
 
-    def test_dot_pulse_uses_quick_full_cycle(self):
-        self.assertEqual(desktop.PULSE_PHASE_SECONDS, 0.75)
-        self.assertFalse(desktop.pulse_is_dim(0.0))
-        self.assertTrue(desktop.pulse_is_dim(0.75))
-        self.assertFalse(desktop.pulse_is_dim(1.5))
-        self.assertTrue(desktop.pulse_is_dim(2.25))
+    def test_running_rotates_quickly_and_compaction_reverses_more_slowly(self):
+        self.assertEqual(desktop.ANIMATION_SECONDS, 0.25)
+        for time, expected in ((0, 0), (.25, 1), (.5, 2), (.75, 3), (1, 4)):
+            self.assertEqual(desktop.animation_frame(time), expected)
+        running = [desktop.status_indicator('running', n, '#1e1e1e') for n in range(4)]
+        compacting = [desktop.status_indicator('compacting', n, '#1e1e1e') for n in range(8)]
+        for value, glyph in zip(running, desktop.SPINNER_FRAMES):
+            self.assertIn('nobold]' + glyph, value)
+        for value, glyph in zip(compacting, ('◐', '◐', '◒', '◒', '◑', '◑', '◓', '◓')):
+            self.assertIn('nobold]' + glyph, value)
+
+    def test_ascii_and_static_spinner_options(self):
+        with mock.patch.dict(os.environ, PI_DESK_SPINNER='ascii'):
+            for n, glyph in enumerate(desktop.ASCII_SPINNER_FRAMES):
+                self.assertIn('nobold]' + glyph, desktop.status_indicator('running', n, '#1e1e1e'))
+        with mock.patch.dict(os.environ, PI_DESK_SPINNER='off'):
+            self.assertFalse(desktop.working({'1': 'running'}))
+            self.assertEqual(desktop.selector({'1': 'running'}), desktop.selector({'1': 'running'}, frame=2))
+            self.assertIn('nobold]●', desktop.status_indicator('compacting', 2, '#1e1e1e'))
+        self.assertTrue(desktop.working({'10': 'compacting'}))
+        self.assertFalse(desktop.working({'1': 'unknown'}))
+
+    def test_compaction_color_matches_shared_app_exact_rgb(self):
+        app = Path(__file__).resolve().parent.parent / 'jarvis-app'
+        color = (app / 'JARVISKit/Sources/JARVISKit/PiSessionStatusColor.swift').read_text()
+        self.assertEqual(desktop.COLORS['compacting'], '#FF7A00')
+        self.assertIn('case .compacting: return Color(red: 1, green: 122.0 / 255, blue: 0)', color)
 
     def test_invalid_input(self):
         for value in ('', '11', '-1', '01', '1;exit', 'left'):
