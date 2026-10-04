@@ -1,3 +1,30 @@
+# Header dividers match pane dividers — 2026-10-04, 11:21 EDT
+
+Status-bar group separators now use exact pane-divider grey **`#8a8a8a`** and
+heavy vertical **`┃`**, replacing the darker `colour238` / light `│` in both
+legacy and responsive headers. Compact/full spacing, group boundaries, terminal
+cell counts, clickable tabs, lifecycle colours/animation and pane styling are
+unchanged. One-session and sliding-overflow headers still omit group separators.
+
+**180 full source tests passed locally**, including a real single-pane PTY test
+that verifies header-only heavy glyphs and exact grey RGB emission. Each of the
+three installed runtimes passed **121 renderer checks** across compact/full
+widths, all group sizes and all selected sessions.
+
+Installed only `desktop.py` and its manifest entry on mac-mini-64, mac-mini-16 and
+Raspberry Pi. Other installed/config hashes, attached display clients and pane
+identities were preserved; the Pi display-service PID was unchanged. No viewers,
+services or hosted agents restarted. Existing monitors retain their imported
+renderer, so live visual acceptance remains pending until viewers are reopened.
+
+**Activation:** detach all Pi Desk viewers on each machine with Ctrl+A then d,
+then reopen `pi-desk`. Agents and conversations remain running; F10 is not needed.
+
+Rollback backups:
+- mac-mini-64: `~/.local/state/pi-desk/backups/matching-header-dividers-20261004T152110946107Z/`
+- mac-mini-16: `~/.local/state/pi-desk/backups/matching-header-dividers-20261004T152111413585Z/`
+- Raspberry Pi: `~/.local/state/pi-desk/backups/matching-header-dividers-20261004T152113198383Z/`
+
 # Pi-speed braille and neutral-grey compaction — 2026-10-04, 09:20 EDT
 
 Running and compacting now use identical forward braille animation every **80 ms**

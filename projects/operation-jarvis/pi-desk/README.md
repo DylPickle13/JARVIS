@@ -42,8 +42,9 @@ ten clickable session numbers and lifecycle icons, with shortcut hints aligned a
 the right. Hints shorten or disappear as space runs out; below 100 columns the
 tabs tighten. Extremely narrow terminals show a sliding subset with hidden-tab
 indicators, always keeping the focused session clickable; Ctrl + ←/→ still reaches all
-ten sessions. Numbers use two digits, with muted separators matching the current
-one-, two-, or three-session groups; there are no group labels. Running
+ten sessions. Numbers use two digits, with heavy `┃` separators in the same true-colour grey
+(`#8a8a8a`) and line weight as the pane dividers, matching the current one-, two-,
+or three-session groups; there are no group labels. Running
 sessions use the ten-frame Pi-style braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) every
 80 ms (0.8-second cycle), matching Pi TUI's default loader. Compacting uses the
 same speed and direction; colour distinguishes the busy states. The palette is: running green, compacting neutral grey

@@ -425,12 +425,12 @@ class DesktopTests(unittest.TestCase):
         self.assertIn('fg=#{?#{==:#{@pi-desk-session},1},##D183E8,#{?', bar)
         self.assertIn(',##B28CBD,colour252}}', bar)
         self.assertNotIn('bg=#{', bar)
-        self.assertEqual(bar.count(' │ '), 3)
+        self.assertEqual(bar.count(' ┃ '), 3)
         for n in range(1, 11):
             self.assertIn(f']{n:02d}#[nobold,nounderscore] ', bar)
         for n in (3, 6, 9):
             tab = bar.split(f'range=user|{n},', 1)[1].split('range=user|', 1)[0]
-            self.assertIn('#[norange,bg=#1e1e1e,nobold,nounderscore]#[fg=colour238] │ ', tab)
+            self.assertIn('#[norange,bg=#1e1e1e,nobold,nounderscore]#[fg=#8a8a8a] ┃ ', tab)
         self.assertNotIn('blink', bar)
 
     def test_session_dividers_are_heavy_and_neutral(self):
@@ -439,6 +439,10 @@ class DesktopTests(unittest.TestCase):
         self.assertIn('set -g pane-border-indicators off', config)
         for option in ('pane-border-style', 'pane-active-border-style'):
             self.assertIn(f"set -g {option} 'fg=#8a8a8a,bg=#1e1e1e'", config)
+        bar = desktop.selector({})
+        self.assertEqual(bar.count('#[fg=#8a8a8a] ┃ '), 3)
+        self.assertNotIn('│', bar)
+        self.assertNotIn('fg=colour238', bar)
 
     def test_border_grey_meets_vscode_default_contrast_threshold(self):
         config = (Path(__file__).resolve().parent / 'config/tmux.conf').read_text()

@@ -92,11 +92,16 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(layout.group(10, 3), (10,))
 
     def test_header_groups_and_click_targets(self):
-        for count, separators in ((1, 0), (2, 4), (3, 3)):
-            bar = desktop.responsive_selector({}, 184, count, 5)
-            self.assertEqual(bar.count('│'), separators)
-            for n in range(1, 11):
-                self.assertIn(f'range=user|{n},', bar)
+        for width in (80, 99, 100, 184):
+            for count, separators in ((1, 0), (2, 4), (3, 3)):
+                with self.subTest(width=width, count=count):
+                    bar = desktop.responsive_selector({}, width, count, 5)
+                    self.assertEqual(bar.count('┃'), separators)
+                    self.assertEqual(bar.count('#[fg=#8a8a8a]'), separators)
+                    self.assertNotIn('│', bar)
+                    self.assertNotIn('fg=colour238', bar)
+                    for n in range(1, 11):
+                        self.assertIn(f'range=user|{n},', bar)
         self.assertIn('‹', desktop.responsive_selector({}, 30, 1, 10))
         self.assertIn('›', desktop.responsive_selector({}, 30, 1, 1))
 
@@ -714,6 +719,24 @@ class WorkspaceTests(unittest.TestCase):
         for glyph in glyphs:
             self.assertIn(glyph, received)
 
+    def test_header_dividers_emit_pane_grey_and_heavy_glyph_on_a_real_pty(self):
+        # A single pane has no vertical border, so any ┃ comes from the header.
+        name = workspace.create(1, 80, 45)
+        output = []
+        self.attach(name, 80, output=output)
+        self.assertEqual(self.visible(name), (1,))
+        bar = desktop.responsive_selector({}, 80, 3, 1)
+        core.tmux('set-option', '-t', name, 'status-format[0]', bar)
+        glyph = '┃'.encode('utf-8')
+        for _ in range(100):
+            received = b''.join(output)
+            if glyph in received and b'38;2;138;138;138' in received:
+                break
+            time.sleep(.02)
+        self.assertIn(glyph, received)
+        self.assertIn(b'38;2;138;138;138', received)
+        self.assertNotIn('│'.encode('utf-8'), received)
+
     def test_two_viewers_have_independent_sizes_focus_and_headers(self):
         wide = workspace.create(2, 184, 45)
         small = workspace.create(5, 80, 35)
@@ -727,8 +750,8 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(self.identities(wide), before)
         self.assertEqual(self.visible(small), (7, 8))
         bars = desktop.render_viewers({}, False, {})
-        self.assertEqual(bars[wide][0].count('│'), 3)
-        self.assertEqual(bars[small][0].count('│'), 4)
+        self.assertEqual(bars[wide][0].count('┃'), 3)
+        self.assertEqual(bars[small][0].count('┃'), 4)
         self.resize(wide_client, wide_tty, 80)
         self.assertEqual(self.visible(wide), (2,))
         self.assertEqual(self.visible(small), (7, 8))

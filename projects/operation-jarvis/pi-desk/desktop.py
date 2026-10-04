@@ -209,7 +209,7 @@ def selector(states, *, frame=0, quota=None):
                      f'#[{attributes}]{n:02d}#[nobold,nounderscore] '
                      f'{dot}#[norange,bg=#1e1e1e,nobold,nounderscore]')
         if n in (3, 6, 9):
-            parts.append('#[fg=colour238] │ ')
+            parts.append('#[fg=#8a8a8a] ┃ ')
         elif n != 10:
             parts.append(' ')
     if quota is None:
@@ -236,7 +236,7 @@ def responsive_selector(states, width, count, selected, *, frame=0, quota=None):
     compact = width < 100
     brand = ' PI-DESK ' if width >= 30 else ''
     tab_width = 4 if compact else 6
-    separator = '│' if compact else ' │ '
+    separator = '┃' if compact else ' ┃ '
     boundaries = tuple(n for n in range(1, 10) if count > 1 and n % count == 0)
     total = len(brand) + 10 * tab_width + len(boundaries) * len(separator)
     numbers = list(range(1, 11))
@@ -266,7 +266,7 @@ def responsive_selector(states, width, count, selected, *, frame=0, quota=None):
                      '#[norange,bg=#1e1e1e,nobold,nounderscore]')
         used += len(label) + 2 * len(padding) + (2 if dot else 0)
         if n in boundaries:
-            parts.append('#[fg=colour238]' + separator)
+            parts.append('#[fg=#8a8a8a]' + separator)
             used += len(separator)
     if overflow and numbers[-1] < 10 and used < width:
         parts.append('#[fg=colour245]›')
