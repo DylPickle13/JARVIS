@@ -573,19 +573,6 @@ section "Pi tool activation runtime checks"
 if command -v node >/dev/null 2>&1; then
   run_check "group cleanup and built-in selection regression tests (offline mocks only)" node --test .pi/tests/lazy-tools.test.mjs
   run_check "current Pi codemode and tool activation regression tests (offline mocks only)" node --test .pi/scripts/tests/pi-codemode.test.mjs
-  # Retained rollback artifacts do not imply the legacy runtime is installed.
-  if [ -f .pi/runtime/pi-lazy-tools/build.json ]; then
-    if node - "$(command -v pi)" <<'NODE'
-const fs = require('fs');
-const build = JSON.parse(fs.readFileSync('.pi/runtime/pi-lazy-tools/build.json', 'utf8'));
-process.exit(process.argv[2] && fs.realpathSync(process.argv[2]) === fs.realpathSync(build.cli) ? 0 : 1);
-NODE
-    then
-      run_check "installed legacy SDK/bundle/RPC hidden-tool execution regression tests (offline mocks only)" node .pi/scripts/pi-lazy-runtime.mjs test
-    else
-      info "Legacy lazy-execution build is inactive; retained for rollback, not tested as the current runtime."
-    fi
-  fi
 fi
 
 section "Operation JARVIS focused tools (offline mocks only)"

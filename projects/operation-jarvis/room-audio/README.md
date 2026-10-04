@@ -95,6 +95,55 @@ Owner-approved activation on September 29, 2026 verified the Session 10 capabili
 and both servers enabled with freshly idle clients. Human spoken-turn validation
 remains pending; health/telemetry alone does not prove acoustic performance.
 
+## Bounded server logs
+
+**Port 8791 is active; port 8793 remains staged until separately approved.**
+
+Server source sends Python stderr and existing stderr-backed loggers to
+`.pi/runtime/room-audio-logs/server-<port>.log`. Defaults are **one MiB per file
+plus three backups** (approximately four MiB per server), with separate files for
+8791 and 8793. The log directory is mode `0700`; active/rotated files are `0600`.
+Logger levels/formatters and non-stderr handlers are unchanged. Importing the
+helper does not create files or redirect a running process.
+
+Successful `GET /health`, `GET /control/status` and `POST /client-state` access
+logs are coalesced per client/method/route over 60 seconds, with a suppressed count
+on the next logged success. Failures and ordinary turns remain logged. Access logs
+omit query strings and arbitrary path values. This is not a general exception or
+transcript scrubber; keep operational logs private.
+
+Optional settings (no live configuration was changed):
+- `JARVIS_ROOM_AUDIO_LOG_FILE`: override the port-specific path; never share one
+  rotating file between independent server processes.
+- `JARVIS_ROOM_AUDIO_LOG_MAX_BYTES`: default 1048576, constrained to 64 KiB–16 MiB.
+- `JARVIS_ROOM_AUDIO_LOG_BACKUP_COUNT`: default 3, constrained to 1–10.
+- `JARVIS_ROOM_AUDIO_ROUTINE_LOG_INTERVAL`: default 60 seconds, constrained to 10–600.
+
+Native OS-fd-2 output still uses launchd's fallback stderr file. Setup failure
+retains that original stream with a fixed warning instead of preventing startup;
+those fallback files are not automatically rotated by this Python helper.
+
+The accumulated `.pi/runtime/room_audio_server.launchd.err.log` was cleared in
+place after verifying its append-mode writer and preserving the latest two MiB
+of complete diagnostic lines in a private, verified compressed tail archive under
+`.pi/runtime/room-audio-log-archive/`. The writer PID/inode were preserved; no
+service, endpoint, Session 10 or browser was restarted. Copy/truncate has a small
+concurrent-write loss window and is not a complete historical backup.
+
+Owner-approved activation restarted only `com.operation-jarvis.room-audio-server`
+(port 8791) after fresh idle telemetry. The new server holds the private bounded
+log; health is OK and the existing endpoint reconnected online/idle. Five read-only
+health probes produced one access-log entry, confirming coalescing. The other five
+room-service PIDs, Session 10's owner descriptor/PID, conversation configuration,
+and private project configuration remained unchanged. No voice/device action was
+sent; launchd fallback stderr stayed unchanged during the probes.
+
+Port 8793 was not restarted, so its logging change remains staged. Any further
+activation requires separate owner approval during an idle window; do not restart
+endpoint clients, the shared wake service or Session 10. Ten new logging tests and
+the full 173-test room suite passed offline; the focused tests passed again after
+activation. Health/telemetry alone does not establish spoken-turn/acoustic acceptance.
+
 ## Checks
 
 Offline regression suite from the repository root:

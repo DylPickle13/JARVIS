@@ -54,6 +54,7 @@ if str(VOICE_ROOT) not in sys.path:
 
 from room_audio_control import RoomAudioControl
 from room_audio_followup import WakeFollowups
+from room_audio_logging import bounded_stderr, RoutineRequestLogGate
 
 import config  # noqa: E402
 
@@ -71,6 +72,15 @@ LOGGER = config.get_logger("operation_jarvis.room_audio")
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8791
+ROUTINE_REQUEST_LOG_GATE = RoutineRequestLogGate(min(
+    600.0, config.get_float_env("JARVIS_ROOM_AUDIO_ROUTINE_LOG_INTERVAL", 60.0, minimum=10.0)
+))
+ROUTINE_REQUESTS = {("GET", "/health"), ("GET", "/control/status"), ("POST", "/client-state")}
+ACCESS_LOG_PATHS = {
+    "/", "/health", "/control/status", "/turn-result", "/arrival-audio", "/greeting",
+    "/client-state", "/control/stop", "/control/arrival", "/wake-followup", "/synthesize",
+    "/turn", "/interrupt",
+}
 DEFAULT_MAX_REQUEST_BYTES = 25 * 1024 * 1024
 WATCH_SPEECH_MAX_REQUEST_BYTES = 256 * 1024
 WATCH_SPEECH_MAX_TEXT_BYTES = 32 * 1024
@@ -1004,6 +1014,27 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003 - stdlib signature
         LOGGER.info("%s - %s", self.address_string(), fmt % args)
 
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        # Keep query values, arbitrary paths and request bodies out of access logs.
+        try:
+            path = urlparse(getattr(self, "path", "/other")).path.rstrip("/") or "/"
+        except ValueError:
+            path = "/other"
+        command = getattr(self, "command", None)
+        method = command if command in {"GET", "POST", "HEAD", "OPTIONS", "PUT", "PATCH", "DELETE", "CONNECT", "TRACE"} else "OTHER"
+        try:
+            status = int(code)
+        except (TypeError, ValueError):
+            status = 0
+        suppressed = 0
+        if 200 <= status < 300 and (method, path) in ROUTINE_REQUESTS:
+            should_log, suppressed = ROUTINE_REQUEST_LOG_GATE.record(self.address_string(), f"{method} {path}")
+            if not should_log:
+                return
+        route = path if path in ACCESS_LOG_PATHS else "/other"
+        LOGGER.info("HTTP %s %s status=%s%s", method, route, status or "unknown",
+                    f" suppressed={suppressed}" if suppressed else "")
+
     def _send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
         self.send_response(status.value)
@@ -1312,6 +1343,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    default_log_file = PROJECT_ROOT / ".pi/runtime/room-audio-logs" / f"server-{args.port}.log"
+    log_file = Path(config.get_str_env("JARVIS_ROOM_AUDIO_LOG_FILE") or str(default_log_file))
+    max_bytes = min(16 * 1024 * 1024, config.get_int_env(
+        "JARVIS_ROOM_AUDIO_LOG_MAX_BYTES", 1024 * 1024, minimum=64 * 1024,
+    ))
+    backup_count = min(10, config.get_int_env("JARVIS_ROOM_AUDIO_LOG_BACKUP_COUNT", 3, minimum=1))
+    with bounded_stderr(log_file, max_bytes=max_bytes, backup_count=backup_count):
+        return _serve(args)
+
+
+def _serve(args: argparse.Namespace) -> int:
     bridge = RoomAudioBridge()
     try:
         bridge.warm_processing_ack()

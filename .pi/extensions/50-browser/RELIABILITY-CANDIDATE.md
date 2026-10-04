@@ -1,8 +1,9 @@
 # Browser reliability update — DEPLOYED; LIVE CHECKS PASSED
 
-Prepared 2026-10-03 on branch `browser/reliability-offline` in
-`.pi/runtime/browser-reliability-offline/`, commit `e98889c`. Sir subsequently
-confirmed sessions 7/8 were finished and explicitly authorized deployment.
+Prepared 2026-10-03 on branch `browser/reliability-offline` in the historical
+`.pi/runtime/browser-reliability-offline/` worktree, commit `e98889c`.
+Sir subsequently confirmed sessions 7/8 were finished and explicitly authorized
+deployment.
 The code was cherry-picked into main as `018be5b`; all 78 offline checks passed
 again there. At approximately **18:20 EDT on 2026-10-03**, only
 `com.jarvis.browser-bridge` was restarted with that approval.
@@ -102,17 +103,18 @@ copy. Python syntax checks passed and the live fixture's missing-permission guar
 was verified to exit before loading credentials or contacting Chrome. These were
 offline-only results; subsequent live verification is recorded above.
 
-Run only this command during active application work:
+Re-run the deployed offline suite without live browser access:
 
 ```sh
-npm --prefix .pi/runtime/browser-reliability-offline/.pi/extensions/50-browser test
+npm --prefix .pi/extensions/50-browser test
 ```
 
-The candidate worktree has its own APFS copy-on-write copy of the pinned dependency
-directory, **not a symlink to live dependencies**. No installer or patcher was run.
-Tests build extension fixtures only in temporary directories; they do not install
-anything or connect to Chrome. Candidate dependency writes cannot modify the live
-directory.
+The original candidate worktree had its own APFS copy-on-write dependency copy,
+**not a symlink to live dependencies**. No installer or patcher was run there.
+That clean worktree and its dependency copy were removed after verifying the
+changes were incorporated into main; the branch/commit and acceptance reports remain.
+The deployed suite above builds extension fixtures only in temporary directories; it does not
+install anything, patch dependencies, or connect to Chrome.
 
 New coverage includes full-value verification, empty clear, newline normalization,
 shadow focus, truncation, focus loss, pre-mutation budget rejection, simultaneous

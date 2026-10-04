@@ -62,12 +62,12 @@ This is a bounded compatibility smoke test, not a guarantee for arbitrary script
 all switching permutations, every third-party tool, or future model/server updates.
 No production device or account operations were used in these tests.
 
-Eight model-free integration tests cover startup/reset, opt-out/exclusion,
+Nine model-free integration tests cover startup/reset, opt-out/exclusion,
 optional-group loading, callable snapshots, permission rejection with recovery,
 excluded nested tools, cancellation and payload guidance preservation.
 A real offline CLI/RPC startup also confirmed codemode alongside the full JARVIS
-baseline. The older `pi-lazy-tools.test.mjs` targets Pi 0.85.1 and cannot run against
-Pi 1.0.0 unchanged (its `pi-ai/dist/utils/deferred-tools.js` import no longer exists).
+baseline. Current optional-group regression coverage also lives in
+`.pi/tests/lazy-tools.test.mjs`.
 
 ## Re-run
 

@@ -379,7 +379,7 @@ The owner-only database keeps up to 500 sanitized results from successes with ou
 | Symptom | First check |
 |---|---|
 | Pi does not see custom tools | Run `pi list`, then `/reload`; verify files under `.pi/extensions/`, `.pi/extensions/50-browser/node_modules`, and package installs under `.pi/npm/node_modules/`. |
-| Optional tool hidden | Call `load_tools({ groups: ["<group>"] })` or `/load-tools <group>`. For automatic direct-call activation, build/install the [version-pinned lazy-execution runtime](PI_LAZY_EXECUTION.md). |
+| Optional tool hidden | Call `load_tools({ groups: ["<group>"] })` or `/load-tools <group>`. The managed runtime uses explicit optional-group loading; no custom Pi build is needed. |
 | Web search unavailable | Check stock pi-web-access package loading, provider availability, and upstream configuration (normally `~/.pi/web-search.json`). The custom `/web-access-config` command is retired. |
 | Maps unavailable | Check `GOOGLE_MAPS_API_KEY`; confirm Places API (New), Geocoding API, and Routes API are enabled for the key. |
 | Browser tools unavailable | Run `npm install` in `.pi/extensions/50-browser`; check Google Chrome path or set `PI_BROWSER_CHROME_PATH`. |

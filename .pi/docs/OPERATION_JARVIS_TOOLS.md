@@ -110,7 +110,7 @@ Offline, no hardware:
 node --test .pi/scripts/tests/jarvis-purifiers.test.mjs \
   .pi/tests/operation-jarvis-security.test.mjs \
   .pi/tests/slim-provider-payload.test.mjs \
-  .pi/scripts/tests/pi-lazy-tools.test.mjs
+  .pi/tests/lazy-tools.test.mjs
 (cd projects/operation-jarvis/security && \
   .venv-313/bin/python -m unittest test_security_smart_actions test_security_cli -q)
 ```

@@ -69,6 +69,30 @@ no session-start hooks were dispatched. `pi`, `.pi/scripts/pi-cli`, and the
 legacy executable path all returned 1.0.2. Managed marker, selected version, and
 locked package version were checked.
 
+## Retired project build cleanup
+
+The old project-local Pi 0.85.1 build trees, builder, legacy regression suite and
+lazy-execution guide have been removed. The clean, already-incorporated browser
+candidate worktree was removed through Git; its branch and acceptance reports remain.
+Current tool-loading tests and deployed browser dependencies are retained.
+
+Uncommitted legacy patch variants and their base commits were preserved in a small,
+source-only archive at `~/.pi/backups/retired-jarvis-lazy-tools-20261004T024035Z/`.
+This is not an executable rollback or a credential/session backup. The current
+managed runtime and project configuration were unchanged. Stale attachment sockets
+and regenerable caches were pruned. Verification passed: 172 smoke checks with no
+warnings or failures, 78 deployed-browser offline tests, and four managed-runtime tests.
+
+A subsequent owner-approved log pass cleared the accumulated room-audio stderr file
+in place, preserving a verified recent two-MiB compressed diagnostic tail under
+`.pi/runtime/room-audio-log-archive/`. The original writer PID/inode were preserved
+during truncation; no service was restarted then. A later explicitly approved idle
+activation restarted only the port-8791 server. Private one-MiB logs with three
+backups and 60-second routine-request coalescing are active there; health and fresh
+endpoint telemetry passed. The other five room-service PIDs and Session 10's owner
+were unchanged. Port 8793 remains staged, not restarted; see the
+[room-audio logging activation notes](../../projects/operation-jarvis/room-audio/README.md#bounded-server-logs).
+
 ## Recovery
 
 The migration backup is no longer available. Git retains the launcher/test

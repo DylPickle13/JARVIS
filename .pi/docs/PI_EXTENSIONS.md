@@ -165,11 +165,9 @@ Optional tool groups are loaded with `load_tools({ groups: [...] })` or `/load-t
 
 `99-lazy-tools.ts` is the registry for group descriptions, prompt snippets, parameter help, and `/load-tools` usage. When the model calls `load_tools`, Pi adds tools without removing existing ones and records the new names in the result. Providers with native deferred loading, such as GPT-5.6, receive the definitions there rather than in a changed initial tool prefix. Other providers receive the normal full active-tool list. Manual `/load-tools` has no tool-result anchor, so it may refresh the provider cache once.
 
-The [JARVIS lazy-execution runtime](PI_LAZY_EXECUTION.md) also accepts valid direct calls to registered optional tools. It activates the group and executes the call once through the usual validation and safety hooks. Unknown, removed, and CLI/SDK-excluded tools remain unavailable.
+The current managed Pi runtime uses explicit `load_tools` or `/load-tools` to activate optional groups. The old custom Pi 0.85.1 build and its tooling are retired; historical compatibility remains feature-detected in the extension.
 
-A direct call may refresh the provider prefix once because Pi keeps an already-used tool's schema immediate rather than deferring it. Use `load_tools` to discover unfamiliar schemas or take advantage of native deferred loading. Stock Pi requires explicit loading.
-
-Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full group playbooks are returned by model-called `load_tools` (or appended to the original direct call's result after auto-loading) and remain in conversation context. Manual `/load-tools` queues the same hidden playbook for the next user turn. `98-slim-provider-payload.ts` preserves the registry-generated top-level `load_tools` description and also slims schemas nested in OpenAI `additional_tools` and `tool_search_output` items. Startup changes use structured prompt sections, not a forced whole-prompt replacement that would flatten later tool additions into the cached prefix. The smoke test checks these invariants for drift.
+Optional tools omit active-only `promptSnippet`/`promptGuidelines`; their full group playbooks are returned by model-called `load_tools` and remain in conversation context. Manual `/load-tools` queues the same hidden playbook for the next user turn. `98-slim-provider-payload.ts` preserves the registry-generated top-level `load_tools` description and also slims schemas nested in OpenAI `additional_tools` and `tool_search_output` items. Startup changes use structured prompt sections, not a forced whole-prompt replacement that would flatten later tool additions into the cached prefix. The smoke test checks these invariants for drift.
 
 Memory is explicit: loading `memory` makes search, remember, update, forget, list, and status available. It does not recall memories automatically or change the system prompt between turns.
 
@@ -177,7 +175,7 @@ Prior Pi/JARVIS sessions are searched directly with baseline coding tools. The p
 
 The `operation_jarvis` group is the household-control suite, distinct from Pi coding, Minecraft, and cron jobs. Focused schemas retain short purpose/parameter descriptions even after provider slimming. No domain playbook is injected into the baseline system prompt. See [Operation JARVIS tools](OPERATION_JARVIS_TOOLS.md) for migration and examples. Existing sessions need an owner-controlled `/reload` or a new session; do not reset or restart live services.
 
-Authenticated GitHub CLI access is intentionally lazy: discover its schema by loading `github`. Known valid direct calls also auto-load on the JARVIS runtime. Ordinary local `git` operations continue to use the baseline coding shell.
+Authenticated GitHub CLI access is intentionally lazy: discover its schema by loading `github`. Automatic activation on direct calls was limited to the retired legacy runtime. Ordinary local `git` operations continue to use the baseline coding shell.
 
 ## Scheduled-job categories
 
