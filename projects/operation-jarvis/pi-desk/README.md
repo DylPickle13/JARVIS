@@ -49,6 +49,42 @@ Coding workspaces adapt automatically to the terminal width, keeping the selecte
 session visible and focused. No extra menu pane. Last selected session is restored
 independently on each machine.
 
+### Codex quota in the header
+
+The right-hand header shows **remaining** account-wide Codex quota, using the
+same sanitized jarvisd cache as the JARVIS app:
+
+```text
+Codex W:68% · 5h:91% left
+```
+
+`W` means weekly, `5h` means the five-hour window. Click the block to show both
+reset countdowns in an eight-second, client-only status message; this never opens
+a pane or changes focus. Purple means at least 50% remaining, amber means below
+50%, and red means below 30% or a reached limit. Colour uses the lowest available,
+enforced window; an explicitly paused/not-enforced five-hour window shows
+`5h:paused` and does not trigger a low-quota colour. Missing windows show `n/a`,
+not 0%. Only real exhaustion displays 0%.
+
+Shortcut hints shorten/disappear before quota does. When necessary the block
+shrinks to `Codex W:68% left`, then disappears if there is no room. Quota never
+hides a session tab or takes a second row. A missing weekly value uses the
+five-hour value in the compact form instead.
+
+Unavailable and stale readings show muted `Codex unavailable` / `Codex stale`,
+without old percentages. Quota freshness is independent of session status: the
+sample retains its original checked timestamp and expires after 15 minutes,
+matching jarvisd's quota cache. Reset countdowns use the absolute reset timestamp;
+a passed reset never invents a replenished quota. No credentials, account details,
+provider errors, or conversation contents leave the host. The existing three-second
+state stream carries one extra allowlisted field; there are no additional provider
+requests or model probes. Older viewers ignore that field and retain session status.
+
+After updating Python files, detach **all viewers on the updated machine** with
+Ctrl+A then d, and reopen `pi-desk` so the elected monitor loads the new renderer.
+Hosted agents and their conversations keep running. Remote installs require the
+same source update separately.
+
 ### Responsive layout
 
 | Terminal columns (initial open) | Maximum visible sessions | Groups |
@@ -287,7 +323,9 @@ owns only its compositor/display and does not control presence/audio/Bluetooth/S
   the status monitor saves selection in the background. Cross-group keys reconcile
   the display through Python, as do missing/dead-pane repairs.
 - `navigate.py`: fallback for adaptive and legacy workspaces.
-- `health.py`, `status_stream.py`: bounded diagnostics and host lifecycle projection.
+- `health.py`, `status_stream.py`: bounded diagnostics and host lifecycle/quota projection.
+- `codex_quota.py`: sanitized quota wire contract, independent freshness, colours,
+  responsive labels and reset-countdown details.
 - `install.py`: common deployment, manifest and allowlisted rollback copies.
 - `launch.sh`, `config/`: optional Pi fullscreen adapter, shared tmux configuration,
   and Mac Terminal launcher.

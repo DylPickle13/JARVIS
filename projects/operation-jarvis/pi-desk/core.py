@@ -11,6 +11,7 @@ import re
 import termios
 
 from backend import clean_environment, load
+from codex_quota import normalize as normalize_quota, UNAVAILABLE
 
 ROOT = Path(__file__).resolve().parent
 SOCKET = 'pi-desk'
@@ -33,6 +34,7 @@ class StatusFeed:
         self.process = None
         self.buffer = b''
         self.states = {}
+        self.quota = dict(UNAVAILABLE)
         self.received = 0
         self.retry_at = 0
         self.started = 0
@@ -51,6 +53,7 @@ class StatusFeed:
         self.process = None
         self.buffer = b''
         self.states = {}
+        self.quota = dict(UNAVAILABLE)
         self.received = 0
 
     def fail(self):
@@ -89,6 +92,7 @@ class StatusFeed:
                                 if not isinstance(payload, dict):
                                     raise ValueError('Expected status object')
                                 self.states = valid_states(payload)
+                                self.quota = normalize_quota(payload.get('codexQuota'))
                                 self.received = now
                                 self.failed = False
                                 available = any(state != 'unknown' for state in self.states.values())
@@ -96,9 +100,11 @@ class StatusFeed:
                                                    'Mac connected · Session status unavailable')
                             except (ValueError, TypeError):
                                 self.states = {}
+                                self.quota = dict(UNAVAILABLE)
                                 self.connection = 'Mac connected · Invalid status data'
         if self.process and now - (self.received or self.started) > STALE_AFTER:
             self.fail()
+        self.quota = normalize_quota(self.quota)
         return self.states if now - self.received < STALE_AFTER else {}
 
 

@@ -1,3 +1,56 @@
+# Codex quota header — 2026-10-03, 21:37 EDT
+
+Added a clickable, account-wide **remaining quota** block to the existing top
+row: `Codex W:68% · 5h:91% left` (example values). It shrinks to weekly-only when
+needed, gives way to session navigation on tiny terminals, and never creates a
+second row. Shortcut hints yield first. Purple/amber/red indicate the lowest
+available enforced quota window, with critical red below 30% matching JARVIS.
+Paused five-hour windows do not trigger low-quota colours; missing/stale values
+are explicit, never fabricated as 0% or renewed by streaming an old sample.
+
+`codex_quota.py` whitelists percentages, timestamps, enforcement and limit state
+from jarvisd's existing quota cache. `status_stream.py` adds a backwards-compatible
+`codexQuota` field beside the original numeric session keys. No credentials,
+account details, provider errors or conversations are emitted, and no additional
+provider requests/model probes are made. Quota uses its own 15-minute freshness
+limit, independent of session freshness. Reset timestamps remain anchored to the
+sample, and a passed reset does not invent replenished quota.
+
+Clicking displays eight-second reset-countdown details only in the invoking
+client's status message, without changing focus, injecting input, opening a pane,
+or leaking run-shell failures into view-mode. The quota cache and changed headers
+share the existing batched tmux write; reset-only sample changes do not rewrite
+headers. Literal percentages survive tmux's strftime handling, including nested
+legacy header formats.
+
+**167 source tests and 167 installed-runtime tests passed**, including 30 new
+quota tests, every responsive width from 1–220 columns, real PTY rendering and
+mouse clicking, malformed/stale data, old streams, and unchanged pane identities.
+Installed only `codex_quota.py`, `core.py`, `status_stream.py`, `desktop.py`, and
+`install.py` locally after verifying existing target bytes against their source
+baseline. Their manifest entries verify; the two pre-existing unrelated
+`backend.py`/`restart_status.py` manifest mismatches remain untouched.
+
+All **9 display pane and 10 hosted-agent identities**, and attached clients, were
+preserved during atomic installation. No live configuration, viewer, agent,
+service or remote install restart was initiated by this deployment. Subsequent
+verification found a separate client-invoked agent restart already in progress:
+hosted PIDs changed and parked display window IDs moved, while display pane
+IDs/PIDs and attached clients remained unchanged. That worker was not started,
+cancelled or retried by this update; its progress was `7/10 ready`, waiting for
+sessions #3, #7 and #8. Before/final identity metadata is retained in the backup.
+
+Existing imported monitors retain the old renderer: after current maintenance
+completes, detach **all local viewers** with Ctrl+A then d and reopen `pi-desk`
+to activate it. F10 restarts agents, not the Pi Desk renderer. Detaching/reopening
+normally leaves hosted agents and conversations running. Remote installs require
+the same source update separately. A live, read-only collector check confirmed
+ten sessions and an available weekly reading; the provider did not supply a
+five-hour reading.
+
+Rollback backup:
+`~/.local/state/pi-desk/backups/codex-header-20261004T013648706204Z/`.
+
 # Heavy session borders — 2026-10-03, 12:29 EDT
 
 Switched `pane-border-lines` from `single` to `heavy`: horizontal lines,

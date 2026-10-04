@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Persistent tmux selector with an optional warning row; no extra pane."""
 import fcntl
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -15,12 +16,35 @@ import workspace
 from layout import RESIZE_DELAY, capacity, group as session_members, shape
 from health import HealthMonitor
 from backend import clean_environment
+import codex_quota
 from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, prepare_workspace
 
 STATE = Path.home() / '.local/state/pi-desk'
 COLORS = {'running': 77, 'idle': 141, 'new': 80, 'compacting': 75,
           'offline': 245, 'unknown': 179}
 PULSE_PHASE_SECONDS = 0.75
+HINTS = (' F10 Restart · Ctrl + ←/→ Switch ',
+         ' F10 · Ctrl + ←/→ ', ' F10 Restart ', '')
+QUOTA_OPTION = '@pi-desk-codex-quota'
+
+
+def footer_candidates(quota):
+    # Quota outranks hints, but never consumes space belonging to session tabs.
+    labels = codex_quota.labels(quota) if quota is not None else ()
+    for label in (*labels, ''):
+        for hint in HINTS:
+            style = '#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold]'
+            if label:
+                # status-format passes through strftime: literal % must be %%.
+                escaped = label.replace('%', '%%')
+                style += f'#[range=user|codex,fg={codex_quota.color(quota)}]{escaped}'
+                style += '#[norange,fg=colour245]'
+            yield len(label) + len(hint), style + hint
+
+
+def footer(available, quota):
+    return next(markup for size, markup in footer_candidates(quota) if size <= available)
+
 VIEWER_STATUS_FORMAT = ('#{session_name}\t#{window_width}\t'
                         '#{@pi-desk-capacity}\t#{@pi-desk-session}')
 FOCUS_FORMAT = ('#{session_name}\t#{window_width}\t#{@pi-desk-capacity}\t'
@@ -138,7 +162,7 @@ def pulse_is_dim(now=None):
     return bool(int(now / PULSE_PHASE_SECONDS) % 2)
 
 
-def selector(states, *, pulse_dim=False):
+def selector(states, *, pulse_dim=False, quota=None):
     parts = ['#[align=left,norange,fg=#D183E8,bg=#1e1e1e,nobold] PI-DESK ']
     for n in range(1, 11):
         key, _ = session_group(n)
@@ -158,14 +182,25 @@ def selector(states, *, pulse_dim=False):
             parts.append('#[fg=colour238] │ ')
         elif n != 10:
             parts.append(' ')
-    parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold] '
-                 '#{?#{>=:#{client_width},120},'
-                 'F10 Restart · Ctrl + ←/→ Switch,'
-                 'F10 · Ctrl + ←/→} ')
+    if quota is None:
+        parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold] '
+                     '#{?#{>=:#{client_width},120},'
+                     'F10 Restart · Ctrl + ←/→ Switch,'
+                     'F10 · Ctrl + ←/→} ')
+    else:
+        # Legacy groups still use client-width formats rather than viewer metadata.
+        right = ''
+        used = 9 + 10 * 6 + 3 * 3 + 6
+        for size, markup in reversed(list(footer_candidates(quota))):
+            # Nested branches may pass through strftime repeatedly; generate
+            # literal % only after those passes. Compare widths numerically.
+            escaped = markup.replace(',', '#,').replace('%%', '#{a:37}')
+            right = '#{?#{e|>=:#{client_width},' + str(used + size) + '},' + escaped + ',' + right + '}'
+        parts.append(right)
     return ''.join(parts)
 
 
-def responsive_selector(states, width, count, selected, *, pulse_dim=False):
+def responsive_selector(states, width, count, selected, *, pulse_dim=False, quota=None):
     """Fit actual terminal cells; retain clickable numbers even on tiny displays."""
     width = max(1, width)
     compact = width < 100
@@ -212,11 +247,7 @@ def responsive_selector(states, width, count, selected, *, pulse_dim=False):
     if overflow and numbers[-1] < 10 and used < width:
         parts.append('#[fg=colour245]›')
         used += 1
-    for hint in (' F10 Restart · Ctrl + ←/→ Switch ',
-                 ' F10 · Ctrl + ←/→ ', ' F10 Restart ', ''):
-        if len(hint) + used <= width:
-            parts.append('#[align=right,norange,fg=colour245,bg=#1e1e1e,nobold]' + hint)
-            break
+    parts.append(footer(width - used, quota))
     return ''.join(parts)
 
 
@@ -231,7 +262,8 @@ def apply_status_commands(commands):
         tmux('source-file', stream.name)
 
 
-def render_viewers(states, dim, previous, warning=None, *, session_rows=None, global_rows=None):
+def render_viewers(states, dim, previous, warning=None, *, session_rows=None,
+                   global_rows=None, quota=None, quota_payload=None):
     # A local tmux array shadows the entire global array, not just index 0.
     if warning is None:
         warning = (global_rows[1] if global_rows is not None else
@@ -239,6 +271,8 @@ def render_viewers(states, dim, previous, warning=None, *, session_rows=None, gl
     if session_rows is None:
         session_rows = tmux('list-sessions', '-F', VIEWER_STATUS_FORMAT).stdout
     commands = []
+    if quota_payload is not None:
+        commands.append(['set-option', '-g', QUOTA_OPTION, quota_payload])
     if global_rows is not None:
         commands.extend([
             ['set-option', '-g', 'status-format[0]', global_rows[0]],
@@ -254,7 +288,7 @@ def render_viewers(states, dim, previous, warning=None, *, session_rows=None, gl
         if (not workspace.is_viewer(name) or not all(v.isdecimal() for v in fields[1:])
                 or int(count) not in (1, 2, 3) or int(selected) not in range(1, 11)):
             continue
-        bar = responsive_selector(states, int(width), int(count), int(selected), pulse_dim=dim)
+        bar = responsive_selector(states, int(width), int(count), int(selected), pulse_dim=dim, quota=quota)
         current[name] = (bar, warning)
         if previous.get(name) != current[name]:
             writes = [['set-option', '-t', name, 'status-format[0]', bar],
@@ -309,7 +343,7 @@ def configuration_version():
     import hashlib
     digest = hashlib.sha256(str(ROOT).encode())
     for name in ('desktop.py', 'native_navigation.py', 'core.py', 'layout.py',
-                 'workspace.py', 'navigate.py', 'config/tmux.conf'):
+                 'workspace.py', 'navigate.py', 'codex_quota.py', 'config/tmux.conf'):
         digest.update((ROOT / name).read_bytes())
     return digest.hexdigest()
 
@@ -339,6 +373,7 @@ def watch_status(stop):
     feed = StatusFeed()
     health = HealthMonitor(feed.backend.host)
     previous = None
+    previous_quota = None
     viewer_rows = {}
     try:
         while not stop.is_set():
@@ -347,14 +382,19 @@ def watch_status(stop):
                 # One shared monitor drives a 0.75-second-per-phase brightness cycle.
                 # Static states produce identical rows, so they cause no extra writes.
                 states, dim = feed.poll(), pulse_is_dim()
-                rows = (selector(states, pulse_dim=dim),
+                quota = codex_quota.normalize(feed.quota)
+                encoded = json.dumps(quota, separators=(',', ':'), sort_keys=True)
+                rows = (selector(states, pulse_dim=dim, quota=quota),
                         ' '.join(filter(None, (status_line(), health_line(feed.connection, health.poll())))))
                 viewer_rows = render_viewers(states, dim, viewer_rows, rows[1],
-                    session_rows=session_rows, global_rows=rows if rows != previous else None)
+                    session_rows=session_rows, global_rows=rows if rows != previous else None,
+                    quota=quota, quota_payload=encoded if encoded != previous_quota else None)
                 previous = rows
+                previous_quota = encoded
             except (OSError, RuntimeError, subprocess.TimeoutExpired):
                 feed.close()
                 previous = None
+                previous_quota = None
                 viewer_rows = {}
             stop.wait(.5)
     finally:
@@ -488,6 +528,21 @@ def main():
             workspace.destroy(group)
 
 
+def show_quota(client_pid):
+    """Transient, client-scoped status message; never write to a coding pane."""
+    clients = tmux('list-clients', '-F', '#{client_pid}\t#{client_name}').stdout.splitlines()
+    client = next((fields[1] for row in clients
+                   if len(fields := row.split('\t')) == 2 and fields[0] == str(client_pid)), None)
+    if client is None:
+        return
+    raw = tmux('show-options', '-gv', QUOTA_OPTION, check=False).stdout.strip()
+    try:
+        quota = json.loads(raw) if len(raw) <= 4096 else None
+    except (ValueError, TypeError):
+        quota = None
+    tmux('display-message', '-c', client, '-d', '8000', '-l', codex_quota.details(quota), check=False)
+
+
 def dispatch(args):
     if not args:
         return main()
@@ -495,6 +550,12 @@ def dispatch(args):
         return 2
     action, value, client = args
     if action == 'click':
+        if value == 'codex':
+            try:
+                show_quota(int(client))
+            except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired):
+                pass  # A vanished client must not open tmux's run-shell view-mode.
+            return 0
         try:
             session_number(value)
         except ValueError:
