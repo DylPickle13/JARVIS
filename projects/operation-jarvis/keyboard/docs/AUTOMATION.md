@@ -9,7 +9,40 @@
 
 ## Behavior
 
-The watcher calls the existing authenticated `presence/status.py` client, sleeps three seconds after each bounded check, and repeats. Slow requests extend the interval; there is no catch-up loop. No model calls are involved.
+The watcher calls the existing authenticated `presence/status.py` client once per pass, runs the four independent device controllers concurrently, sleeps three seconds after every controller has finished, and repeats. Slow requests still extend the interval; there is no overlapping/catch-up loop. No model calls are involved.
+
+### Parallel device controllers
+
+- A fixed four-worker thread pool inside the existing watcher runs keyboard,
+  mouse, displays and LED strip concurrently. It is reused across passes; no new
+  daemon, scanner, service, poll rate or device policy is introduced.
+- Snapshot fetch/copy/validation is protected by a short mutex. Each worker gets
+  its own age-adjusted copy of the one authenticated snapshot. Hardware execution
+  is outside that mutex; each controller retains its pre-write freshness checks,
+  durable pending markers, cooldowns and independent files/fault state.
+- Alert/diagnostic results are merged by the coordinator in stable controller
+  order only after all workers settle. Presence-failure diagnostics are guarded
+  by the snapshot mutex, so only one fetch/failure diagnostic occurs per pass.
+- The watcher singleton and outer `cycle.lock` remain held while workers execute.
+  Even a worker exception or partial submission failure waits for every started
+  worker before returning/raising. No overlapping passes, cancelled/replayed
+  commands or automatic uncertainty acknowledgements.
+- Monitor wake no longer waits for keyboard/mouse/LED completion within its pass.
+  The display worker still performs **lock → verify lock → sleep** sequentially;
+  three fresh departure checks, the backend nearby hold and the greeting's
+  three-minute cooldown are unchanged. Initial nearby still does not wake.
+- This removes inter-device dependencies, **not** Bluetooth/polling delay. The
+  next pass and optional greeting evaluation still wait for the slowest worker.
+  An explicitly requested LED diagnostic probe remains a serial preflight.
+
+Validation: 208 offline keyboard/watcher tests pass, including 15 dedicated
+concurrency tests repeated 20 times (300 additional test executions). Tests use temp state
+and mocked commands: barriers prove all four device commands overlap, monitor
+wake proceeds while lighting is blocked, copies/alerts are isolated, and the
+cycle lock survives failures until all started work completes. Pending faults,
+no-replay behavior, stale rejection and three-check departure gating are covered.
+Live deployment verifies process/heartbeat/controller state, not physical parallel
+arrival timing; a real walk-away/return acceptance test remains owner-controlled.
 
 - **Either device nearby:** first fresh basement `nearby` report resumes randomly selected liked effects, white `#FFFFFF`, highest brightness, medium speed. Ordinary effect changes remain at least 60 seconds apart, excluding presence transitions. Do not repeat the last successful coloured rotation effect.
 - **Both away:** first fresh basement `away` report applies **`ripples`, `#FFFFFF`, `highest`, `medium`, `left_to_right`** once. Repeated away checks and watcher restarts do not resend a successful away profile. Black RGB is no longer the requested away behavior.
@@ -20,7 +53,7 @@ The watcher calls the existing authenticated `presence/status.py` client, sleeps
 - `away_applied` and `last_effect` are last successful requests, **not lighting readback**. Manual/external changes are not detected.
 - Keyboard `breath` remains one of the nine liked effects, per the owner's clarification.
 - **Mouse nearby → steady; away → off. Never breathing.** `mouse_cycle.py` allowlists only these two effects. The owner's default mouse brightness is **20%**, applied and acknowledged via the bridge. Presence transitions preserve that brightness; they leave DPI and polling untouched. Brightness is not reasserted on every poll or verified across power loss. No repeated command for unchanged presence or a watcher restart; a fresh presence transition can send one command after the three-second cooldown. Unknown/stale presence leaves the mouse unchanged.
-- Mouse and keyboard use separate persisted state/faults and separate daemon journals. A keyboard command failure does not prevent a fresh, safe mouse update. The snapshot's age includes fetch latency and time spent commanding the first device; the mouse refuses a snapshot that has aged out.
+- Mouse and keyboard use separate persisted state/faults and separate daemon journals. A keyboard command failure does not prevent a fresh, safe mouse update. The snapshot's age includes fetch latency and elapsed worker time; each controller refuses a snapshot that has aged out. The mouse no longer waits for keyboard completion.
 
 ## Mac arrival greeting
 
@@ -194,7 +227,7 @@ The keyboard uses the existing signed Karabiner owned-handle bridge: one validat
 - Persist a pending marker before every command. A timeout, short/unrecognized result or crash after reservation blocks later writes until explicit owner acknowledgment. Restarts and state migrations never clear this block.
 - Known pre-write failures may be attempted again only after at least **60 seconds**, even if presence flips. Never retry them at the three-second polling rate.
 - No unconditional startup write. Startup requires fresh presence, valid state/preferences and all write gates. A persisted successful away profile is not replayed on startup.
-- A singleton `watcher.lock`, shared `cycle.lock`, and the CLI's `.lighting.lock` prevent duplicate watcher processes and overlapping local operations.
+- A singleton `watcher.lock`, shared `cycle.lock`, and the keyboard CLI's `.lighting.lock` prevent duplicate watchers, overlapping passes and multiple keyboard commands. Different device controllers intentionally overlap within one locked pass.
 - The owner authorized responsive transitions; these add writes beyond normal once-per-minute rotation. Firmware persistence/storage wear remains unknown. Flapping presence can therefore increase wear risk; no zero-risk claim is made.
 
 ## Notifications
@@ -253,7 +286,7 @@ launchctl bootout gui/$(id -u)/com.jarvis.ajazz-keyboard-watch
 
 Prefer enabling the Computer presence job to restore both halves. Enabling can
 resume device actions; it does not acknowledge any uncertain controller action.
-The currently installed job and watcher remain disabled after this change.
+Lifecycle changes do not implicitly enable either half; use the explicit job enable/disable operation and verify its result.
 
 For an independent maintenance restart only, first inspect/clear the intentional
 launchd disable flag with owner authorization, then bootstrap only when intended:

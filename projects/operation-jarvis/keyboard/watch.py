@@ -2,6 +2,7 @@
 """Owner-authorized three-second presence watcher and silent scheduler alert relay."""
 import argparse
 import contextlib
+from concurrent.futures import ThreadPoolExecutor, wait
 import fcntl
 import json
 import logging
@@ -170,8 +171,12 @@ def snapshot(store):
 
 
 def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.send,
-         mouse_apply=None, display_apply=None, led_apply=None):
-    """Called with cycle.lock held. Share one age-adjusted presence snapshot."""
+         mouse_apply=None, display_apply=None, led_apply=None, executor=None):
+    """One locked pass; independent controllers run concurrently and all settle.
+
+    Keep cycle.lock held until this returns/raises. Workers own distinct controller
+    files; only the coordinator merges alerts after every worker has finished.
+    """
     value = snapshot(store)  # Corrupt outbox blocks all controllers before any writes.
     led_cycle.probe_once(store)  # Owner-requested status only; never clears a write latch.
     cached = None
@@ -179,8 +184,15 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
     observed = None
     failure = None
     diagnosed = False
+    presence_lock = threading.Lock()
 
     def shared_presence():
+        # Serialize only snapshot fetch/copy/validation, never device execution.
+        # This also makes the single-fetch and single diagnostic guarantees atomic.
+        with presence_lock:
+            return aged_presence()
+
+    def aged_presence():
         nonlocal cached, fetched, observed, failure, diagnosed
         if not fetched:
             observed = time.monotonic()
@@ -214,7 +226,7 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
             raise
         return payload
 
-    for run in (
+    runners = (
         lambda: cycle.run_once(store, now=now, get_presence=shared_presence,
                                apply=apply, responsive=True),
         lambda: mouse_cycle.run_once(store, now=now, get_presence=shared_presence,
@@ -223,12 +235,34 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
                                        apply=display_apply),
         lambda: led_cycle.run_once(store, now=now, get_presence=shared_presence,
                                    apply=led_apply),
-    ):
-        output, code = run()
+    )
+    context = (contextlib.nullcontext(executor) if executor is not None else
+               ThreadPoolExecutor(max_workers=4, thread_name_prefix='presence-controller'))
+    with context as workers:
+        futures = []
+        try:
+            for run in runners:
+                futures.append(workers.submit(run))
+        finally:
+            # Even submission/worker failure must not release cycle.lock while
+            # another controller is still executing. Never cancel/replay writes.
+            wait(futures)
+        results, worker_errors = [], []
+        for future in futures:
+            try:
+                results.append(future.result())
+            except Exception as exc:
+                worker_errors.append(exc)
+    for output, code in results:
         if output:
             diagnose(store, 'controller-alert', at=now(), message=output)
             value['alerts'].append({'message': output, 'code': code, 'at': now()})
             value['alerts'] = value['alerts'][-QUEUE_LIMIT:]
+    if worker_errors:
+        # Preserve sibling alerts, but never advertise a failed pass as healthy.
+        # Every started task is already settled; caller may now safely release its lock.
+        store.save('watcher.json', value)
+        raise worker_errors[0]
     arrival_cycle.run_once(store, now=now, get_presence=shared_presence)
     value['heartbeat'] = now()
     store.save('watcher.json', value)
@@ -283,14 +317,15 @@ def watch():
     os.close(fd)
     handler = RotatingFileHandler(log_path, maxBytes=65536, backupCount=1)
     logger.addHandler(handler)
-    with locked(store, 'watcher.lock'):
+    with locked(store, 'watcher.lock'), ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix='presence-controller') as workers:
         store.save('watcher-started.json', time.time())
         diagnose(store, 'watcher-start', at=time.time())
         failing = False
         while not stop.is_set():
             try:
                 with locked(store, 'cycle.lock'):
-                    step(store)
+                    step(store, executor=workers)
                 failing = False
             except BlockingIOError:
                 pass  # Another bounded operation holds the shared safety lock.

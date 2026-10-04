@@ -142,15 +142,25 @@ class SharedWatcherTests(unittest.TestCase):
         keyboard.assert_not_called()
         mouse_sender.assert_not_called()
 
-    def test_mouse_ages_snapshot_after_slow_keyboard_operation(self):
+    def test_mouse_rechecks_snapshot_after_slow_local_persistence(self):
         clock = [0]
-        def keyboard(_):
-            clock[0] = 16
+        original_save = self.store.save
+        def save(name, value):
+            original_save(name, value)
+            if name == 'mouse-state.json' and value.get('pending'):
+                clock[0] = 16
+        original_tick = mouse.tick
+        def tick(*args, **kwargs):
+            kwargs['monotonic'] = lambda: clock[0]
+            return original_tick(*args, **kwargs)
         mouse_sender = Mock()
-        with patch('time.monotonic', side_effect=lambda: clock[0]):
+        with patch.object(self.store, 'save', side_effect=save), patch.object(
+                mouse, 'tick', side_effect=tick), patch(
+                'time.monotonic', side_effect=lambda: clock[0]):
             watch.step(self.store, now=lambda: 100, get_presence=lambda: presence(),
-                       apply=keyboard, mouse_apply=mouse_sender)
+                       apply=Mock(), mouse_apply=mouse_sender)
         mouse_sender.assert_not_called()
+        self.assertFalse(self.store.load('mouse-state.json', {})['pending'])
         self.assertIn('presence', self.store.load('mouse-alerts.json', []))
 
     def test_mouse_error_and_recovery_are_latched(self):
