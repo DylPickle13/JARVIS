@@ -28,6 +28,7 @@ const ALWAYS_ON_TOOLS = [
   "get_search_content",
   "maps",
   "notify",
+  "intercom",
   "load_tools",
 ] as const;
 

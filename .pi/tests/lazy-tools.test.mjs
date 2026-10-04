@@ -25,7 +25,7 @@ const optionalNames = [
 // Registration and activation only: no real optional tool, model or device runs.
 function fixture() {
   const tools = new Map([...['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls', 'ssh',
-    'web_search', 'fetch_content', 'get_search_content', 'maps', 'notify', 'codemode'], ...optionalNames]
+    'web_search', 'fetch_content', 'get_search_content', 'maps', 'notify', 'intercom', 'codemode'], ...optionalNames]
     .map(name => [name, { name }]));
   const handlers = new Map(), commands = new Map(), messages = [];
   let active = [...tools.keys()];
@@ -65,6 +65,24 @@ test('intentional notify stays in the baseline after startup and reset', async (
   assert(pi.getActiveTools().includes('notify'));
   await commands.get('reset-tools').handler('', { ui: { notify: () => {} } });
   assert(pi.getActiveTools().includes('notify'));
+});
+
+test('intercom stays callable after startup and reset without loading optional groups', async () => {
+  const { pi, commands } = fixture();
+  assert(pi.getActiveTools().includes('intercom'));
+  for (const name of optionalNames) assert(!pi.getActiveTools().includes(name));
+  await commands.get('reset-tools').handler('', { ui: { notify: () => {} } });
+  assert(pi.getActiveTools().includes('intercom'));
+});
+
+test('baseline remains valid when intercom is not installed', async () => {
+  const { pi, commands } = fixture();
+  const allTools = pi.getAllTools;
+  pi.getAllTools = () => allTools().filter(tool => tool.name !== 'intercom');
+  await commands.get('reset-tools').handler('', { ui: { notify: () => {} } });
+  assert(!pi.getActiveTools().includes('intercom'));
+  assert(pi.getActiveTools().includes('notify'));
+  assert(pi.getActiveTools().includes('codemode'));
 });
 
 test('loader advertises only the eight supported groups', () => {
