@@ -6,6 +6,7 @@
 !/departure.py
 !/runtime.py
 !/speaker.py
+!/phrase_bank.py
 !/watcher.py
 !/person_gate.py
 !/sensor_trial.py
@@ -15,6 +16,7 @@
 /tests/*
 !/tests/test_departure.py
 !/tests/test_trial.py
+!/tests/test_phrase_bank.py
 !/tests/test_person_gate.py
 !/tests/test_sensor_trial.py
 !/tests/test_identity_preflight.py

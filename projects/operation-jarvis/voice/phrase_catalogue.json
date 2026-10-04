@@ -1,0 +1,509 @@
+{
+  "version": 1,
+  "phrases": [
+    {
+      "id": "wake-straight-01",
+      "event": "wake",
+      "style": "straight",
+      "text": "Yes sir?"
+    },
+    {
+      "id": "wake-straight-02",
+      "event": "wake",
+      "style": "straight",
+      "text": "Go ahead, sir."
+    },
+    {
+      "id": "wake-straight-03",
+      "event": "wake",
+      "style": "straight",
+      "text": "I'm listening, sir."
+    },
+    {
+      "id": "wake-straight-04",
+      "event": "wake",
+      "style": "straight",
+      "text": "At your service, sir."
+    },
+    {
+      "id": "wake-straight-05",
+      "event": "wake",
+      "style": "straight",
+      "text": "How can I help, sir?"
+    },
+    {
+      "id": "wake-straight-06",
+      "event": "wake",
+      "style": "straight",
+      "text": "You called, sir?"
+    },
+    {
+      "id": "wake-straight-07",
+      "event": "wake",
+      "style": "straight",
+      "text": "What's on your mind, sir?"
+    },
+    {
+      "id": "wake-straight-08",
+      "event": "wake",
+      "style": "straight",
+      "text": "You have my attention, sir."
+    },
+    {
+      "id": "wake-straight-09",
+      "event": "wake",
+      "style": "straight",
+      "text": "Ready when you are, sir."
+    },
+    {
+      "id": "wake-straight-10",
+      "event": "wake",
+      "style": "straight",
+      "text": "Over to you, sir."
+    },
+    {
+      "id": "wake-straight-11",
+      "event": "wake",
+      "style": "straight",
+      "text": "What's the plan, sir?"
+    },
+    {
+      "id": "wake-straight-12",
+      "event": "wake",
+      "style": "straight",
+      "text": "Say the word, sir."
+    },
+    {
+      "id": "wake-dry-01",
+      "event": "wake",
+      "style": "dry",
+      "text": "I've been summoned, sir."
+    },
+    {
+      "id": "wake-dry-02",
+      "event": "wake",
+      "style": "dry",
+      "text": "No appointment necessary, sir."
+    },
+    {
+      "id": "wake-dry-03",
+      "event": "wake",
+      "style": "dry",
+      "text": "What are we plotting, sir?"
+    },
+    {
+      "id": "wake-dry-04",
+      "event": "wake",
+      "style": "dry",
+      "text": "Something suitably ambitious, sir?"
+    },
+    {
+      "id": "wake-dry-05",
+      "event": "wake",
+      "style": "dry",
+      "text": "Permission to be useful, sir?"
+    },
+    {
+      "id": "wake-dry-06",
+      "event": "wake",
+      "style": "dry",
+      "text": "What needs overthinking, sir?"
+    },
+    {
+      "id": "wake-dry-07",
+      "event": "wake",
+      "style": "dry",
+      "text": "Your resident know-it-all, sir."
+    },
+    {
+      "id": "wake-dry-08",
+      "event": "wake",
+      "style": "dry",
+      "text": "What requires my brilliance, sir?"
+    },
+    {
+      "id": "wake-dry-09",
+      "event": "wake",
+      "style": "dry",
+      "text": "Standing by. Very stoically, sir."
+    },
+    {
+      "id": "wake-dry-10",
+      "event": "wake",
+      "style": "dry",
+      "text": "Ready, minus the ceremony, sir."
+    },
+    {
+      "id": "wake-dry-11",
+      "event": "wake",
+      "style": "dry",
+      "text": "All ears. Figuratively, sir."
+    },
+    {
+      "id": "wake-dry-12",
+      "event": "wake",
+      "style": "dry",
+      "text": "Go on. Impress me, sir."
+    },
+    {
+      "id": "processing-straight-01",
+      "event": "processing",
+      "style": "straight",
+      "text": "Generating your response, sir."
+    },
+    {
+      "id": "processing-straight-02",
+      "event": "processing",
+      "style": "straight",
+      "text": "Putting an answer together, sir."
+    },
+    {
+      "id": "processing-straight-03",
+      "event": "processing",
+      "style": "straight",
+      "text": "I'm on it, sir."
+    },
+    {
+      "id": "processing-straight-04",
+      "event": "processing",
+      "style": "straight",
+      "text": "Thinking it through, sir."
+    },
+    {
+      "id": "processing-straight-05",
+      "event": "processing",
+      "style": "straight",
+      "text": "Considering your request, sir."
+    },
+    {
+      "id": "processing-straight-06",
+      "event": "processing",
+      "style": "straight",
+      "text": "One moment, sir."
+    },
+    {
+      "id": "processing-straight-07",
+      "event": "processing",
+      "style": "straight",
+      "text": "Bear with me, sir."
+    },
+    {
+      "id": "processing-straight-08",
+      "event": "processing",
+      "style": "straight",
+      "text": "Let me work it out, sir."
+    },
+    {
+      "id": "processing-straight-09",
+      "event": "processing",
+      "style": "straight",
+      "text": "Getting to work, sir."
+    },
+    {
+      "id": "processing-straight-10",
+      "event": "processing",
+      "style": "straight",
+      "text": "Putting the pieces together, sir."
+    },
+    {
+      "id": "processing-straight-11",
+      "event": "processing",
+      "style": "straight",
+      "text": "Let me compose a reply, sir."
+    },
+    {
+      "id": "processing-straight-12",
+      "event": "processing",
+      "style": "straight",
+      "text": "That has my attention, sir."
+    },
+    {
+      "id": "processing-dry-01",
+      "event": "processing",
+      "style": "dry",
+      "text": "Thinking, not merely looking busy, sir."
+    },
+    {
+      "id": "processing-dry-02",
+      "event": "processing",
+      "style": "dry",
+      "text": "Dusting off the imaginary clipboard, sir."
+    },
+    {
+      "id": "processing-dry-03",
+      "event": "processing",
+      "style": "dry",
+      "text": "Applying a little artificial wisdom, sir."
+    },
+    {
+      "id": "processing-dry-04",
+      "event": "processing",
+      "style": "dry",
+      "text": "Allow me some dignified buffering, sir."
+    },
+    {
+      "id": "processing-dry-05",
+      "event": "processing",
+      "style": "dry",
+      "text": "Consulting common sense. Unfashionable, sir."
+    },
+    {
+      "id": "processing-dry-06",
+      "event": "processing",
+      "style": "dry",
+      "text": "Putting the clever bits together, sir."
+    },
+    {
+      "id": "processing-dry-07",
+      "event": "processing",
+      "style": "dry",
+      "text": "Let me alphabetise my thoughts, sir."
+    },
+    {
+      "id": "processing-dry-08",
+      "event": "processing",
+      "style": "dry",
+      "text": "A brief meeting with logic, sir."
+    },
+    {
+      "id": "processing-dry-09",
+      "event": "processing",
+      "style": "dry",
+      "text": "Reasoning before pontificating, sir."
+    },
+    {
+      "id": "processing-dry-10",
+      "event": "processing",
+      "style": "dry",
+      "text": "Aiming for sense, not noise, sir."
+    },
+    {
+      "id": "processing-dry-11",
+      "event": "processing",
+      "style": "dry",
+      "text": "Keeping the imaginary gears turning, sir."
+    },
+    {
+      "id": "processing-dry-12",
+      "event": "processing",
+      "style": "dry",
+      "text": "Working toward something mildly impressive, sir."
+    },
+    {
+      "id": "arrival-straight-01",
+      "event": "arrival",
+      "style": "straight",
+      "text": "Welcome back, sir"
+    },
+    {
+      "id": "arrival-straight-02",
+      "event": "arrival",
+      "style": "straight",
+      "text": "Hello again, sir."
+    },
+    {
+      "id": "arrival-straight-03",
+      "event": "arrival",
+      "style": "straight",
+      "text": "Good to see you, sir."
+    },
+    {
+      "id": "arrival-straight-04",
+      "event": "arrival",
+      "style": "straight",
+      "text": "Glad you're back, sir."
+    },
+    {
+      "id": "arrival-straight-05",
+      "event": "arrival",
+      "style": "straight",
+      "text": "There you are, sir."
+    },
+    {
+      "id": "arrival-straight-06",
+      "event": "arrival",
+      "style": "straight",
+      "text": "Always a pleasure, sir."
+    },
+    {
+      "id": "arrival-dry-01",
+      "event": "arrival",
+      "style": "dry",
+      "text": "The plot resumes, sir."
+    },
+    {
+      "id": "arrival-dry-02",
+      "event": "arrival",
+      "style": "dry",
+      "text": "Ah, management has arrived, sir."
+    },
+    {
+      "id": "arrival-dry-03",
+      "event": "arrival",
+      "style": "dry",
+      "text": "Welcome back. Imaginary applause, sir."
+    },
+    {
+      "id": "arrival-dry-04",
+      "event": "arrival",
+      "style": "dry",
+      "text": "Civilisation makes a comeback, sir."
+    },
+    {
+      "id": "arrival-dry-05",
+      "event": "arrival",
+      "style": "dry",
+      "text": "And now, the human element, sir."
+    },
+    {
+      "id": "arrival-dry-06",
+      "event": "arrival",
+      "style": "dry",
+      "text": "Welcome back to organised chaos, sir."
+    },
+    {
+      "id": "departure-straight-01",
+      "event": "departure",
+      "style": "straight",
+      "text": "Have a good day, sir"
+    },
+    {
+      "id": "departure-straight-02",
+      "event": "departure",
+      "style": "straight",
+      "text": "All the best, sir."
+    },
+    {
+      "id": "departure-straight-03",
+      "event": "departure",
+      "style": "straight",
+      "text": "Until next time, sir."
+    },
+    {
+      "id": "departure-straight-04",
+      "event": "departure",
+      "style": "straight",
+      "text": "See you later, sir."
+    },
+    {
+      "id": "departure-straight-05",
+      "event": "departure",
+      "style": "straight",
+      "text": "Take care, sir."
+    },
+    {
+      "id": "departure-straight-06",
+      "event": "departure",
+      "style": "straight",
+      "text": "Stay safe, sir."
+    },
+    {
+      "id": "departure-straight-07",
+      "event": "departure",
+      "style": "straight",
+      "text": "Take it easy, sir."
+    },
+    {
+      "id": "departure-straight-08",
+      "event": "departure",
+      "style": "straight",
+      "text": "Good luck out there, sir."
+    },
+    {
+      "id": "departure-straight-09",
+      "event": "departure",
+      "style": "straight",
+      "text": "Safe travels, sir."
+    },
+    {
+      "id": "departure-straight-10",
+      "event": "departure",
+      "style": "straight",
+      "text": "Enjoy yourself, sir."
+    },
+    {
+      "id": "departure-straight-11",
+      "event": "departure",
+      "style": "straight",
+      "text": "Hope it goes well, sir."
+    },
+    {
+      "id": "departure-straight-12",
+      "event": "departure",
+      "style": "straight",
+      "text": "Make the most of it, sir."
+    },
+    {
+      "id": "departure-dry-01",
+      "event": "departure",
+      "style": "dry",
+      "text": "Do behave, sir."
+    },
+    {
+      "id": "departure-dry-02",
+      "event": "departure",
+      "style": "dry",
+      "text": "No unnecessary heroics, sir."
+    },
+    {
+      "id": "departure-dry-03",
+      "event": "departure",
+      "style": "dry",
+      "text": "Stay out of trouble, sir."
+    },
+    {
+      "id": "departure-dry-04",
+      "event": "departure",
+      "style": "dry",
+      "text": "Leave civilisation mostly intact, sir."
+    },
+    {
+      "id": "departure-dry-05",
+      "event": "departure",
+      "style": "dry",
+      "text": "Return with your dignity, sir."
+    },
+    {
+      "id": "departure-dry-06",
+      "event": "departure",
+      "style": "dry",
+      "text": "Mind the laws of physics, sir."
+    },
+    {
+      "id": "departure-dry-07",
+      "event": "departure",
+      "style": "dry",
+      "text": "Enjoy the unscripted portion, sir."
+    },
+    {
+      "id": "departure-dry-08",
+      "event": "departure",
+      "style": "dry",
+      "text": "Keep the headlines boring, sir."
+    },
+    {
+      "id": "departure-dry-09",
+      "event": "departure",
+      "style": "dry",
+      "text": "Have a pleasantly unremarkable adventure, sir."
+    },
+    {
+      "id": "departure-dry-10",
+      "event": "departure",
+      "style": "dry",
+      "text": "Try not to become folklore, sir."
+    },
+    {
+      "id": "departure-dry-11",
+      "event": "departure",
+      "style": "dry",
+      "text": "Keep the theatrics optional, sir."
+    },
+    {
+      "id": "departure-dry-12",
+      "event": "departure",
+      "style": "dry",
+      "text": "Make good choices. Occasionally, sir."
+    }
+  ]
+}

@@ -11,6 +11,13 @@ Current owner-selected greeting: **“Have a good day, sir”** (updated 2026-09
 The private offline-generated WAV and its hash metadata use this wording; no
 immediate playback accompanies the change.
 
+An optional 24-recording farewell bank is implemented; its wording and measured
+durations are owner-approved for staged deployment. It remains disabled by default.
+See [phrase-bank implementation and rollout](../../voice/PHRASE-BANKS.md).
+Without the separate private bank pin, the exact phrase/WAV/hash path above is
+unchanged. Bank selection retains the 4.5-second raw-clip cap, pending attempt,
+proof, expiry, identity, locks, volume, padding and uncertain-playback latch.
+
 ## Opening-time identity preflight (2026-10-01)
 
 The supervised timing sample measured 2.407 s for doorbell identity verification,

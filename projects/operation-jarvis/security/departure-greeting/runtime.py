@@ -182,6 +182,7 @@ def installed_status(root):
                 and state.get('health') == 'observing',
             'health': state.get('health', 'unknown'), 'fault': state.get('fault'),
             'pending': state.get('pending') is not None,
+            'phrase_bank_configured': (root / 'phrase-bank.json').exists(),
             'last_reason': state.get('last_reason'), 'last_outcome': state.get('last_outcome'),
             'read_count': state.get('read_count', 0), 'candidate_count': state.get('candidate_count', 0),
             'completed_count': state.get('completed_count', 0), 'volume': value['volume'],

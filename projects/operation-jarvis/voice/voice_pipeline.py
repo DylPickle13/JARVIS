@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import unicodedata
+import uuid
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -320,6 +321,8 @@ class VoicePipeline:
         self._history_lock = threading.Lock()
         self._active_llm_response: requests.Response | None = None
         self._active_llm_response_lock = threading.Lock()
+        # Opt-in room adapter only; ordinary answers/Watch speech are unaffected.
+        self.processing_ack_provider: Callable[[str], Path | None] | None = None
         self._piper_voice: PiperVoice | None = None
         self._piper_voice_key: tuple[str, str] | None = None
         self._piper_lock = threading.RLock()
@@ -1055,6 +1058,7 @@ class VoicePipeline:
             raise VoicePipelineError("Voice response callback is not configured.")
 
         delta_queue: queue.Queue[str | None] = queue.Queue()
+        steering_request_id = uuid.uuid4().hex
         result: dict[str, str] = {"text": ""}
         errors: list[BaseException] = []
 
@@ -1108,13 +1112,25 @@ class VoicePipeline:
                 if not wait:
                     return 0.0
                 time.sleep(remaining_pause)
+            cancel = turn_context.get('cancelEvent') if isinstance(turn_context, dict) else None
+            if ((cancel is not None and cancel.is_set())
+                    or _turn_context_steering_generation(turn_context) != last_steering_generation):
+                return 0.0
             pending_steering_ack = False
             cleaned_ack = self._clean_text_for_tts(self.config.processing_ack_text)
             if not cleaned_ack:
                 return 0.0
             started_at = time.monotonic()
-            ack_path = self._synthesize_segment(cleaned_ack)
+            provider = self.processing_ack_provider
+            ack_path = (provider(f'steering:{steering_request_id}:{last_steering_generation}')
+                        if provider is not None else self._synthesize_segment(cleaned_ack))
             elapsed = time.monotonic() - started_at
+            if ack_path is None:
+                return elapsed
+            if ((cancel is not None and cancel.is_set())
+                    or _turn_context_steering_generation(turn_context) != last_steering_generation):
+                ack_path.unlink(missing_ok=True)
+                return elapsed
             audio_paths.append(ack_path)
             audio_path_callback(ack_path, last_steering_generation)
             return elapsed

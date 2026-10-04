@@ -6,6 +6,7 @@ The Mac-side speech code for JARVIS. Room audio uses it to transcribe speech and
 
 - `voice_pipeline.py`: pluggable ASR routing/fallback, optional direct oMLX chat, injected Pi RPC responses, transcript normalization, and bounded Piper synthesis.
 - `voice_lines.py`: side-effect-free catalogue of the remaining room announcements and fixed error notices. Edit named defaults here rather than copying dialogue into callers.
+- `phrase_catalogue.json`, `phrase_banks.py`, `render_phrase_banks.py`: opt-in approved-text banks, validated pre-rendered recordings and shared durable selection. See [PHRASE-BANKS.md](PHRASE-BANKS.md); not activated by default.
 - `asr_backends.py`: strict Apple Speech helper adapter plus the in-process oMLX callback adapter.
 - `apple_asr/`: compiled Swift command-line helper using macOS 26 `SpeechAnalyzer`, `SpeechTranscriber`, and `DictationTranscriber`.
 - `voice_commands.py`: exact busy-only `stop` control policy.

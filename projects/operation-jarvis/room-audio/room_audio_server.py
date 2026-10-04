@@ -62,6 +62,7 @@ config.load_project_env(PROJECT_ROOT / ".env")
 import pi_rpc  # noqa: E402
 import voice_pipeline  # noqa: E402
 import voice_lines  # noqa: E402
+from phrase_banks import room_banks_from_env  # noqa: E402
 from asr_backends import AppleSpeechASRBackend, AppleSpeechASRSettings  # noqa: E402
 from voice_commands import STOP_COMMAND, parse_voice_interrupt_command  # noqa: E402
 from room_tts_prerender import RoomTTSPrerender  # noqa: E402
@@ -275,7 +276,11 @@ class RoomAudioBridge:
                 pipeline_config.interrupt_asr_fallback_backend,
             ),
         )
+        self._phrase_banks = room_banks_from_env(pipeline_config,
+            wake_padding=WAKE_ACK_LEADING_SILENCE_MS, padding=DEFAULT_TTS_LEADING_SILENCE_MS)
         self._pipeline = voice_pipeline.VoicePipeline(pipeline_config, response_callback=self._run_pi_response)
+        if self._phrase_banks is not None:
+            self._pipeline.processing_ack_provider = self._processing_ack_path
         self._tts_prerender_enabled = self.conversation_session_id == 10 and config.get_str_env(
             'JARVIS_ROOM_AUDIO_TTS_PRERENDER', '1'
         ).lower() not in {'0', 'false', 'no', 'off', ''}
@@ -412,12 +417,43 @@ class RoomAudioBridge:
                     path.unlink(missing_ok=True)
             return self._wake_ack_audio_b64
 
+    def _announcement(self, event: str, key: str) -> tuple[str, str]:
+        if event == 'processing' and (not PROCESSING_ACK_ENABLED or not PROCESSING_ACK_TEXT.strip()):
+            return '', ''
+        banks = getattr(self, '_phrase_banks', None)
+        if banks is not None and (event != 'processing' or PROCESSING_ACK_TEXT == voice_lines.PROCESSING_ACK):
+            clip = banks.choose(event, key)
+            return (clip.text, banks.audio[clip.id]) if clip is not None else ('', '')
+        if event == 'wake':
+            return WAKE_ACK_TEXT, self._synthesize_wake_ack()
+        return PROCESSING_ACK_TEXT, self._synthesize_processing_ack()
+
+    def _processing_ack_path(self, key: str) -> Path | None:
+        if not PROCESSING_ACK_ENABLED or not PROCESSING_ACK_TEXT.strip():
+            return None
+        banks = getattr(self, '_phrase_banks', None)
+        if banks is not None and PROCESSING_ACK_TEXT == voice_lines.PROCESSING_ACK:
+            clip = banks.choose('processing', key)
+            return clip.temporary() if clip is not None else None
+        return self._pipeline.synthesize_notice(PROCESSING_ACK_TEXT)
+
+    def phrase_bank_status(self) -> dict[str, Any]:
+        banks = getattr(self, '_phrase_banks', None)
+        result = banks.status() if banks is not None else {'enabled': False}
+        result['processingOverride'] = PROCESSING_ACK_TEXT != voice_lines.PROCESSING_ACK
+        return result
+
     def warm_processing_ack(self) -> None:
-        self._synthesize_wake_ack()
-        if PROCESSING_ACK_ENABLED and PROCESSING_ACK_TEXT:
+        # Bundle construction already validated/preloaded all bank recordings.
+        # Warm-up must never reserve an entry or advance a shuffled bag.
+        if getattr(self, '_phrase_banks', None) is None:
+            self._synthesize_wake_ack()
+        if (PROCESSING_ACK_ENABLED and PROCESSING_ACK_TEXT
+                and (getattr(self, '_phrase_banks', None) is None
+                     or PROCESSING_ACK_TEXT != voice_lines.PROCESSING_ACK)):
             self._synthesize_processing_ack()
 
-    def synthesize_greeting(self, *, arrival: bool = False) -> dict[str, Any]:
+    def synthesize_greeting(self, *, arrival: bool = False, request_key: str = '') -> dict[str, Any]:
         greeting_text = select_room_greeting(arrival=arrival)
         if not greeting_text:
             return {
@@ -428,6 +464,16 @@ class RoomAudioBridge:
                 "audioContentType": "",
             }
 
+        banks = getattr(self, '_phrase_banks', None)
+        if banks is not None:
+            if not request_key:
+                raise ValueError('arrival request ID required')
+            clip = banks.choose('arrival', request_key)
+            return {'ok': True, 'greetingEnabled': clip is not None,
+                    'greetingText': clip.text if clip is not None else '',
+                    'audioWavBase64': banks.audio[clip.id] if clip is not None else '',
+                    'audioContentType': 'audio/wav' if clip is not None else '',
+                    'model': self.model, 'thinking': self.thinking}
         greeting_path: Path | None = None
         try:
             greeting_path = self._pipeline.synthesize_notice(greeting_text)
@@ -484,7 +530,7 @@ class RoomAudioBridge:
             raise_if_cancelled()
             if include_ack and PROCESSING_ACK_ENABLED and PROCESSING_ACK_TEXT:
                 try:
-                    ack_path = self._pipeline.synthesize_notice(PROCESSING_ACK_TEXT)
+                    ack_path = self._processing_ack_path('turn:' + (turn_id or uuid.uuid4().hex))
                 except Exception:
                     LOGGER.warning("Failed to synthesize room-audio processing acknowledgement", exc_info=True)
 
@@ -822,7 +868,13 @@ class RoomAudioBridge:
             return self._wake_rejection("two_part_client_required", started)
         # No command ASR, processing ack, job, or LLM for the initial wake clip,
         # even when it contains extra words. The user speaks the request next.
-        audio = self._synthesize_wake_ack()
+        control = getattr(self, 'control', None)
+        if ((control is not None and control.is_cancelled(requested_turn_id))
+                or self._followups.has_turn(requested_turn_id)):
+            return self._wake_rejection('wake_cancelled_or_duplicate', started)
+        ack_text, audio = self._announcement('wake', requested_turn_id)
+        if not audio:
+            return self._wake_rejection('wake_ack_unavailable_or_duplicate', started)
         ticket = self._followups.issue(client_key, requested_turn_id)
         control = getattr(self, "control", None)
         if control is not None and control.is_cancelled(requested_turn_id):
@@ -831,7 +883,7 @@ class RoomAudioBridge:
         return {"ok": True, "accepted": True, "pending": False, "status": "awaiting_command",
                 "turnId": requested_turn_id, "wakeTicket": ticket,
                 "listenSeconds": self._followups.start_seconds,
-                "ackText": WAKE_ACK_TEXT, "audioWavBase64": audio, "audioContentType": "audio/wav",
+                "ackText": ack_text, "audioWavBase64": audio, "audioContentType": "audio/wav",
                 "totalSeconds": time.monotonic() - started}
 
     def handle_wav_async_ack(
@@ -854,13 +906,6 @@ class RoomAudioBridge:
         if is_followup_cancellation(transcript):
             return {"ok": True, "accepted": False, "pending": False, "status": "cancelled",
                     "audioWavBase64": "", "ackText": ""}
-
-        ack_audio_b64 = ""
-        if PROCESSING_ACK_ENABLED and PROCESSING_ACK_TEXT:
-            try:
-                ack_audio_b64 = self._synthesize_processing_ack()
-            except Exception:
-                LOGGER.warning("Failed to synthesize room-audio processing acknowledgement", exc_info=True)
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as job_tmp:
             job_tmp.write(wav_path.read_bytes())
@@ -887,6 +932,15 @@ class RoomAudioBridge:
         control = getattr(self, "control", None)
         if control is not None and control.is_cancelled(turn_id):
             cancel_event.set()
+        ack_text, ack_audio_b64 = '', ''
+        if not cancel_event.is_set():
+            try:
+                ack_text, ack_audio_b64 = self._announcement('processing', 'turn:' + turn_id)
+            except Exception:
+                LOGGER.warning('Failed to prepare room acknowledgement', exc_info=True)
+        if cancel_event.is_set() or (control is not None and control.is_cancelled(turn_id)):
+            cancel_event.set()
+            ack_text, ack_audio_b64 = '', ''
         threading.Thread(
             target=self._finish_async_turn,
             args=(turn_id, job_wav_path, transcript, input_seconds, asr_seconds, started, cancel_event),
@@ -902,7 +956,7 @@ class RoomAudioBridge:
             "turnId": turn_id,
             "transcript": transcript,
             "normalizedTranscript": normalize_wake_words(transcript),
-            "ackText": PROCESSING_ACK_TEXT if PROCESSING_ACK_ENABLED else "",
+            "ackText": ack_text if ack_audio_b64 else "",
             "audioWavBase64": ack_audio_b64,
             "audioContentType": "audio/wav" if ack_audio_b64 else "",
             "inputSeconds": input_seconds,
@@ -934,6 +988,7 @@ class RoomAudioBridge:
             asr_seconds=asr_seconds,
             started_at=started,
             include_ack=PROCESSING_ACK_ENABLED,
+            turn_id=requested_turn_id,
         )
 
 
@@ -1003,7 +1058,11 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 self._send_json({'ok': False}, HTTPStatus.FORBIDDEN)
                 return
             try:
-                self._send_json(self.server.bridge.synthesize_greeting(arrival=True))
+                request_key = self.headers.get('x-jarvis-arrival-id', '')
+                if request_key and not TURN_ID_PATTERN.fullmatch(request_key):
+                    raise ValueError('invalid arrival request ID')
+                options = {'request_key': request_key} if request_key else {}
+                self._send_json(self.server.bridge.synthesize_greeting(arrival=True, **options))
             except Exception:
                 self._send_json({'ok': False}, HTTPStatus.SERVICE_UNAVAILABLE)
             return
@@ -1048,6 +1107,7 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 "greetingSupported": False,
                 "greetingEnabled": False,
                 "greetingTextOverride": False,
+                "phraseBanks": self.server.bridge.phrase_bank_status(),
                 "arrivalGreetingSupported": True,
                 "arrivalGreetingEnabled": ROOM_GREETING_ENABLED,
                 "asyncAckSupported": True,

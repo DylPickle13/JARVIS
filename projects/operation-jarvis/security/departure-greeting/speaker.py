@@ -14,6 +14,7 @@ import departure
 import person_gate
 import runtime
 import identity_preflight
+import phrase_bank
 import security_audio as audio
 
 
@@ -59,13 +60,18 @@ def play_once(root, request, *, clock=time.time):
     if (not speaker or speaker.get('model') != 'D235' or not speaker.get('host')
             or not motion or speaker.get('hub') != motion.get('hub')):
         return 'failed_before_play'
-    meta = runtime.read_json(root / 'phrase.json')
+    try:
+        clip = phrase_bank.select(root, attempt, expires)
+    except Exception:
+        return 'failed_before_play'  # No legacy fallback for a broken enabled bank.
     source = root / 'phrase.wav'
-    if (not meta or meta.get('phrase') != runtime.PHRASE or source.is_symlink()
-            or not source.is_file() or source.stat().st_mode & 0o077 or source.stat().st_uid != os.getuid()
-            or source.stat().st_size > 1024 * 1024
-            or hashlib.sha256(source.read_bytes()).hexdigest() != meta.get('sha256')):
-        return 'failed_before_play'
+    if clip is None:
+        meta = runtime.read_json(root / 'phrase.json')
+        if (not meta or meta.get('phrase') != runtime.PHRASE or source.is_symlink()
+                or not source.is_file() or source.stat().st_mode & 0o077 or source.stat().st_uid != os.getuid()
+                or source.stat().st_size > 1024 * 1024
+                or hashlib.sha256(source.read_bytes()).hexdigest() != meta.get('sha256')):
+            return 'failed_before_play'
     attempted = False
     stage = 'identity'
     def diagnose(exc):
@@ -141,6 +147,13 @@ def play_once(root, request, *, clock=time.time):
             with tempfile.TemporaryDirectory(prefix='jarvis-departure-') as temporary:
                 tmp = runtime.private_dir(Path(temporary))
                 quoted_playback_path(tmp / 'playback.wav')  # Fail before any session/send.
+                if clip is not None:
+                    # Snapshot already hash-validated bytes, not a mutable bundle
+                    # pathname. Existing prepare adds the protected doorbell padding.
+                    selected = tmp / 'phrase.wav'
+                    selected.write_bytes(clip.audio)
+                    selected.chmod(0o600)
+                    args.file = str(selected)
                 stage = 'prepare'
                 mark('prepare_started')
                 file, seconds = audio.prepare(args, tmp, value['volume'], check)

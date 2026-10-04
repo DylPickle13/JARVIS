@@ -974,7 +974,7 @@ class RoomAudioTurnController:
             started = time.monotonic()
             try:
                 request = urllib.request.Request(self.args.server_url.rstrip('/') + '/arrival-audio',
-                    headers={'x-jarvis-room-token': self.args.token})
+                    headers={'x-jarvis-room-token': self.args.token, 'x-jarvis-arrival-id': turn})
                 with urllib.request.urlopen(request, timeout=6) as response:
                     audio = json.loads(response.read(2 * 1024 * 1024))
                 if cancel.is_set() or not self.capture_online or time.monotonic() - started > 6:
