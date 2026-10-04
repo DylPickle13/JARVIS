@@ -1,6 +1,6 @@
 # System Prompt Token Audit Workflow
 
-Updated: 2026-10-02 EDT
+Updated: 2026-10-04 EDT
 
 For the Pi 1.0 forced-prompt cache invalidator, its fix and offline prefix tests,
 see [Prompt-cache compatibility](PROMPT_CACHE.md). Persisted transcripts alone do
@@ -8,6 +8,28 @@ not show request-time forced-prompt projection; audit the full `session.prompt()
 lifecycle before attributing a miss to provider routing.
 
 Use this guide to see how much of a Pi request comes from instructions, tool schemas, and conversation text. Run payload captures only in an isolated development checkout: the temporary extension deliberately stops Pi before sending the request.
+
+## Latest offline wording audit
+
+The 2026-10-04 shortening pass preserved the local facts, owner-directed Intercom
+policy, browser/SSH/privacy safeguards, and editing rules. It changed the local
+context/template and added exact known-line compactions; tool schemas, on-demand
+playbooks, model settings, services, and Intercom behavior were not changed.
+
+| Instruction text | Before (chars) | After (chars) | Reduction |
+|---|---:|---:|---:|
+| Project `.pi/APPEND_SYSTEM.md` | 2,992 | 2,301 | 23.1% |
+| Generated rules section | 3,734 | 3,378 | 9.5% |
+| Reconstructed system instructions | 8,705 | 7,658 | 12.0% |
+
+These are offline character counts, **not provider tokens or full-request sizes**.
+The reconstruction used only the current session's structured instruction
+snapshot, replaced its addendum with the current on-disk context, and applied the
+startup/request slimming hooks. It excludes schemas and conversation; no Pi run,
+provider request, live session reload, or payload-capture extension was used.
+All 31 targeted slimming/lazy-tool/codemode tests passed, including unknown-rule,
+safety-policy, schema, and cache-prefix preservation checks. Existing sessions
+need an owner-controlled `/reload` while idle to activate the changes.
 
 ## What is being measured
 

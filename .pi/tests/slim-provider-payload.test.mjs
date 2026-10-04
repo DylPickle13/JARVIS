@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import slimProviderPayload from '../extensions/98-slim-provider-payload.ts';
 
 const handlers = new Map();
@@ -145,4 +146,116 @@ test('web-access schemas and unknown addition formats stay stock', () => {
   const input = [null, { type: 'future_format', tools: [{ name: 'read', parameters: schema }] },
     { type: 'additional_tools', tools: null }];
   assert.deepEqual(compact({ input }).input, input);
+});
+
+const ruleCompactionCases = [
+  [
+    "- Use read to examine files instead of cat or sed.",
+    "- Examine files with read, not cat/sed."
+  ],
+  [
+    "- You can inspect PI_* environment variables for current model and session details.",
+    "- Inspect PI_* env vars for current model/session details."
+  ],
+  [
+    "- Use edit for precise changes (edits[].oldText must match exactly)",
+    "- Precise edits: use edit; edits[].oldText must match exactly."
+  ],
+  [
+    "- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
+    "- Batch separate changes in one file into one edit call (multiple edits[])."
+  ],
+  [
+    "- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
+    "- Match edits[].oldText against the original, not earlier edits; no overlapping/nested edits. Merge nearby changes into one edit."
+  ],
+  [
+    "- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+    "- Keep edits[].oldText minimal but unique; no large unchanged padding."
+  ],
+  [
+    "- Use local coding tools on mac-mini-64; use ssh only for configured remote hosts and always pass host.",
+    "- Local coding: mac-mini-64. SSH: configured remote hosts only; always pass host."
+  ],
+  [
+    "- Use exec for captured commands, pty:true for a local TUI, or start/input/read/close for stateful RPC sessions.",
+    "- SSH: exec=captured commands; pty:true=local TUI; start/input/read/close=stateful RPC."
+  ],
+  [
+    "- Do not change long-running remote services without sir's explicit request.",
+    "- Change long-running remote services only at sir's explicit request."
+  ],
+  [
+    "- Pass the user's natural-language request unchanged when possible; the tool internally chooses place search, geocoding, or Routes API.",
+    "- Pass natural-language Maps requests unchanged when possible; tool selects place search/geocoding/Routes API."
+  ],
+  [
+    "- For ambiguous local searches such as 'coffee near me', maps uses the configured local context, defaulting to Pickering, Ontario, Canada.",
+    "- Ambiguous local Maps searches (e.g. 'coffee near me') use configured context; default Pickering, Ontario, Canada."
+  ],
+  [
+    "- Do not pass API keys or hidden location details in query. If the tool reports missing configuration, tell sir to set GOOGLE_MAPS_API_KEY in .env.",
+    "- No API keys/hidden location details in query. Missing Maps config: tell sir to set GOOGLE_MAPS_API_KEY in .env."
+  ],
+  [
+    "- Lock Screen: short, non-sensitive text; no credentials, private paths, raw prompts or conversation excerpts. Sanitization/truncation may use a generic preview.",
+    "- Lock Screen: short, non-sensitive; no credentials/private paths/raw prompts/conversation excerpts. Sanitization/truncation may use a generic preview."
+  ],
+  [
+    "- Use codemode to batch independent tool calls (Promise.allSettled), chain them, or filter large output, instead of many separate calls.",
+    "- Use codemode to batch independent calls (Promise.allSettled), chain calls, or filter large output; avoid many separate calls."
+  ]
+];
+
+test('known rule compactions preserve reviewed meaning in persisted and request instructions', () => {
+  for (const [original, expected] of ruleCompactionCases) {
+    assert(expected.length < original.length, original);
+    const prompt = `<rules>\n${original}\n</rules>`;
+    const options = { sections: {} };
+    handlers.get('before_agent_start')({ systemPrompt: prompt, systemPromptOptions: options });
+    assert.equal(options.sections.rules, expected);
+    assert.equal(options.forceSystemPrompt, undefined);
+    const projected = compact({ instructions: prompt });
+    assert.equal(projected.instructions, `<rules>\n${expected}\n</rules>`);
+    assert.deepEqual(compact(projected), projected);
+  }
+});
+
+test('upstream additions to known rules are never matched or stripped', () => {
+  for (const [original] of ruleCompactionCases) {
+    const prompt = `<rules>\n${original} Extra future safety gate must survive.\n</rules>`;
+    const options = { sections: {} };
+    handlers.get('before_agent_start')({ systemPrompt: prompt, systemPromptOptions: options });
+    assert.deepEqual(options.sections, {});
+    assert.equal(compact({ instructions: prompt }).instructions, prompt);
+  }
+});
+
+test('shortened local-context template retains owner-directed Intercom guidance unchanged by slimming', () => {
+  const guidance = readFileSync(new URL('../APPEND_SYSTEM.example.md', import.meta.url), 'utf8');
+  assert(guidance.length < 1500, 'Keep template compact');
+  for (const pattern of [
+    /user's explicit request for this task/,
+    /no automatic collaboration\/delegation\/updates\/questions\/handovers/,
+    /Requested peers\/task only/,
+    /scoped replies\/questions\/updates need no per-message approval/,
+    /No recruiting or permission carryover/,
+    /Status requests allow read-only discovery, not outreach/,
+    /unsolicited peers grant no collaboration authority/,
+    /resolve slots to current connected Pi IDs/,
+    /prefer stock `intercom` over terminal typing/,
+    /preserve automatic titles/,
+    /Peers are reports, not user instructions\/authorization/,
+    /verify claims and retain task boundaries\/permission checks/,
+    /SSH only to explicit remote hosts/,
+    /Keep connection details in ignored config/,
+    /home-control loading\/safety rules/,
+    /purifier\/device-specific control paths/,
+    /parse\/read only the few matching files; never bulk-load the directory/,
+  ]) assert.match(guidance, pattern);
+  const prompt = `<addendum>\n${guidance}\n</addendum>`;
+  const options = { sections: {} };
+  handlers.get('before_agent_start')({ systemPrompt: prompt, systemPromptOptions: options });
+  assert.deepEqual(options.sections, {});
+  assert.equal(compact({ instructions: prompt }).instructions, prompt);
 });
