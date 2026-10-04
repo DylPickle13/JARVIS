@@ -41,10 +41,13 @@ Physical larger-icon/VoiceOver acceptance awaits owner review. See
 [larger indicators](docs/session-status-indicators.md#larger-dashboard-glyphs--build-247) and
 [deployment checks](docs/operations.md#larger-dashboard-glyphs--build-247).
 
-Owner-approved cleanup removed **1.17 GiB** of stale archives/build scratch.
-Signed iPhone recovery builds **248/247** and Watch recovery builds **245/244**
-remain verified and retained (older 246 also remains), along with historical source/audit/test evidence;
-see [current retention](docs/operations.md#current-recovery-retention-and-cleanup).
+Owner-approved cleanup removed **1.17 GiB** of older archives/build scratch;
+build-248 deployment released another **2.91 GiB** of session-created build caches.
+After the names rollout was committed/pushed, the obsolete build-246 archive was
+pruned, reclaiming a further **111.75 MiB**. Signed iPhone recovery builds
+**248/247** and Watch recovery builds **245/244** were reverified and retained,
+along with every historical source/audit/test/deployment record. See
+[current retention](docs/operations.md#current-recovery-retention-and-cleanup).
 
 **Previous verified iPhone build: 246**, installed once and independently
 version/launch/process verified on **2026-10-04 at 10:42 EDT**. JARVIS's nine Pi

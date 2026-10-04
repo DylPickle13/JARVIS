@@ -11,11 +11,23 @@ archives** (builds 127, 239, 240, 241 and 242), the unused ignored
 `JARVISKit/.build/` cache, superseded validation source copies and duplicate
 temporary renders: **1.17 GiB of allocated artifacts** removed.
 
+After the names rollout was committed/pushed and visually accepted, additional
+owner-approved cleanup removed the obsolete build-246 signed archive, reclaiming
+**111.75 MiB allocated**. Build-248's session-created build caches had already been
+removed after deployment, releasing **2.91 GiB**; its archive and evidence remain.
+
 Current recovery archives are **248** (deployed iPhone), **247** (exact iPhone
 rollback), **245** (last independently verified Watch) and **244** (exact Watch
-rollback); the prior iPhone archive **246** also remains after the names rollout. An unconfirmed Watch update is not grounds to discard its recovery
+rollback). An unconfirmed Watch update is not grounds to discard its recovery
 baseline. All four payload seals, four-bundle signatures and frozen source
-manifests were verified before and after cleanup.
+manifests were verified before and after pruning 246. Every non-binary byte of
+build-246's frozen sources, audit, payload manifest/seal, deployment record, logs
+and test results was retained. All 18 protected service records and existing Pi
+pane identities were unchanged; unrelated Pi Desk work was untouched. The private
+build-248 `stale-artifact-pruning.json` records removal and retention checks.
+The live backend and exact prior backend rollback, including source/plists and
+history backup, remain retained; unrelated project/security backups were not
+classified as stale merely because their names contain “backup”.
 
 Every historical frozen release source, audit, payload manifest/seal, deployment
 record, test log and result bundle remains. Pre-release validation evidence moved
