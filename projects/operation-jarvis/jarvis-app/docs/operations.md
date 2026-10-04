@@ -16,11 +16,13 @@ owner-approved cleanup removed the obsolete build-246 signed archive, reclaiming
 **111.75 MiB allocated**. Build-248's session-created build caches had already been
 removed after deployment, releasing **2.91 GiB**; its archive and evidence remain.
 
-Current recovery archives are **248** (deployed iPhone), **247** (exact iPhone
-rollback), **245** (last independently verified Watch) and **244** (exact Watch
-rollback). An unconfirmed Watch update is not grounds to discard its recovery
-baseline. All four payload seals, four-bundle signatures and frozen source
-manifests were verified before and after pruning 246. Every non-binary byte of
+Current recovery archives are **249** (deployed on both devices), **248** (exact
+immediate rollback for both), plus retained older **247**, **245** and **244**.
+The build-249 preflight independently verified that Watch had received 248; both
+devices now independently verify 249. No older archive was removed by this rollout.
+At the earlier build-248 cleanup, all four then-retained payload seals,
+four-bundle signatures and frozen source manifests were verified before and after
+pruning 246. Every non-binary byte of
 build-246's frozen sources, audit, payload manifest/seal, deployment record, logs
 and test results was retained. All 18 protected service records and existing Pi
 pane identities were unchanged; unrelated Pi Desk work was untouched. The private
@@ -37,6 +39,42 @@ before those superseded scratch directories were removed. The private build-247
 `stale-artifact-pruning.json` records the exact removals and retention checks.
 No runtime configuration, credentials, services or Pi history were removed.
 Historical retention statements below describe the state at their original time.
+
+## Watch wide-pane wrapping — build 249
+
+Owner-approved build **249** was installed once on each allowlisted iPhone and
+Watch and independently version/launch/process verified on **2026-10-04 at
+16:39 EDT**. See [wide-pane diagnosis, fix and acceptance](watch-terminal-wrapping.md).
+The 172-column Session 10 pane had a complete answer after “Ontario”; Watch's
+minimum FIT font was clipping it because wrapping still used the full pane width.
+Output now wraps at actual Watch cell capacity, with unchanged typography and ANSI
+styles. The editor remains cursor-following and unwrapped; Crown history can reach
+the oldest wrapped source row. No PTY resize or terminal input is emitted.
+
+**173 iPhone tests, 304 shared tests (3 expected skips), 37 terminal tests and both
+simulator builds passed from 252 frozen source inputs.** The pre-existing plain
+Paste pixel assertion remains the only native test exclusion. Candidate and exact
+rollback **248** passed all four signature/profile/unchanged-entitlement and payload
+seal audits. Existing paid-team signing authority and byte-identical profiles were
+reused; capabilities, pinned dependencies and backend code are unchanged. No portal
+change or rebuild occurred between audit and installation.
+
+An initial read-only Watch preflight timed out before any physical write. One fresh
+preflight passed and authoritatively read installed build **248 on both devices**.
+Fresh identity/allowlist, pairing, usable compatible developer services, unlock and
+baseline checks passed again immediately before installation. Each product received
+exactly one install, with independent final version and running-process readbacks.
+All **18 protected service records** and existing Pi pane/window/process identities
+were preserved. No backend/Pi restart, install retry, uninstall, unpairing, reboot,
+app-data removal or credential change occurred. The owner confirmed Session 10
+wrapping works; broader Crown/editor/VoiceOver acceptance remains unconfirmed.
+The dedicated validation simulator returned to Shutdown.
+
+Private evidence: `20261004T202531Z-build249-watch-wrapping`, including frozen source,
+signed sealed archive, exact rollback reference, test logs/result bundle, audit and
+one-shot deployment result. Historical rollback archives and evidence remain intact.
+Only this session's generated build caches were removed after verification,
+reclaiming **2.91 GiB**; candidate/rollback seals and frozen inputs were rechecked.
 
 ## Named Pi cards — build 248
 

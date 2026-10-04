@@ -704,7 +704,9 @@ grep -q 'private static let ansiParseCacheLimit = 3' JARVISWatch/Views/WatchTerm
 grep -q 'if ansiParseCache.count >= Self.ansiParseCacheLimit' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalANSIParser.wrapped(' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'WatchTerminalLayout.mirrorFontSize(' JARVISWatch/Views/WatchTerminalView.swift
-grep -q 'let outputColumns = max(1, frame.columns)' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'let outputColumns = WatchTerminalLayout.mirrorDisplayColumns(' JARVISWatch/Views/WatchTerminalView.swift
+grep -q 'let minimumSourceRows = outputColumns < frame.columns ? 1 : maximumSourceRows' JARVISWatch/Views/WatchTerminalView.swift
+reject_match 'wide panes must wrap at Watch capacity, not overflow at the font floor' -Fq 'let outputColumns = max(1, frame.columns)' JARVISWatch/Views/WatchTerminalView.swift
 reject_match 'Watch terminal must not restore the rejected oversized font' -Fq 'wrappedOutputFontSize = 12.0' JARVISKit/Sources/JARVISKit/WatchTerminal.swift JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'public var liveEditorRange: Range<Int>?' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'frame.liveEditorRange' JARVISWatch/Views/WatchTerminalView.swift

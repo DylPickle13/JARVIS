@@ -1094,9 +1094,9 @@ struct WatchTerminalView: View {
     ) -> some View {
         let headerHeight = CGFloat(39)
         let contentWidth = max(1, geometry.size.width - 10)
-        // Keep the original accepted FIT typography for every terminal row.
-        // The mode button remains removed; this one fixed presentation requires
-        // neither local wrapping nor horizontal panning.
+        // Preserve FIT typography, but a desktop-width pane may hit the font
+        // floor before all its columns fit. Reflow output locally in that case;
+        // never resize the authoritative PTY or require horizontal panning.
         let outputFontSize = CGFloat(
             WatchTerminalLayout.mirrorFontSize(
                 availableWidth: Double(contentWidth),
@@ -1106,7 +1106,11 @@ struct WatchTerminalView: View {
         let outputLineHeight = CGFloat(
             WatchTerminalLayout.lineHeight(fontSize: Double(outputFontSize))
         )
-        let outputColumns = max(1, frame.columns)
+        let outputColumns = WatchTerminalLayout.mirrorDisplayColumns(
+            availableWidth: Double(contentWidth),
+            fontSize: Double(outputFontSize),
+            terminalColumns: frame.columns
+        )
 
         let allLocalStyles = controller.parsedANSILines(frame.ansiLines)
         let editorRange = frame.liveEditorRange
@@ -1130,9 +1134,13 @@ struct WatchTerminalView: View {
         )
         let maximumVisualLines = max(1, Int(outputHeight / outputLineHeight))
         let maximumSourceRows = maximumVisualLines
+        // Wrapped source rows occupy several visual rows. Stopping a full
+        // source page from the oldest edge would leave its leading wraps forever
+        // hidden by suffix(maximumVisualLines). Allow Crown access to row zero.
+        let minimumSourceRows = outputColumns < frame.columns ? 1 : maximumSourceRows
         let safeOffset = min(
             max(0, scrollOffset),
-            frame.maximumOutputScrollOffset(maximumSourceRows: maximumSourceRows)
+            frame.maximumOutputScrollOffset(maximumSourceRows: minimumSourceRows)
         )
         let absoluteEnd = max(0, frame.absoluteOutputEnd - safeOffset)
         let absoluteStart = max(0, absoluteEnd - maximumSourceRows)

@@ -115,6 +115,87 @@ final class WatchTerminalTests: XCTestCase {
         XCTAssertEqual(editor[0].style.foreground, parsed[0][0].style.foreground)
     }
 
+    func testMirrorColumnsFitWatchWidthWhenDesktopPaneHitsFontFloor() {
+        for width in [140.0, 156.0, 176.0, 190.0] {
+            for terminalColumns in [48, 80, 132, 172, 200] {
+                let font = WatchTerminalLayout.mirrorFontSize(
+                    availableWidth: width, terminalColumns: terminalColumns
+                )
+                let columns = WatchTerminalLayout.mirrorDisplayColumns(
+                    availableWidth: width, fontSize: font, terminalColumns: terminalColumns
+                )
+                XCTAssertLessThanOrEqual(columns, terminalColumns)
+                XCTAssertLessThanOrEqual(
+                    Double(columns) * font * WatchTerminalLayout.monospacedCharacterWidthRatio,
+                    width + 1e-9
+                )
+                if terminalColumns == 48, width >= 176 {
+                    XCTAssertEqual(columns, 48, "Already-fitting panes must not change")
+                }
+                if terminalColumns == 172 {
+                    XCTAssertEqual(font, WatchTerminalLayout.minimumMirrorFontSize)
+                    XCTAssertLessThan(columns, 172)
+                }
+            }
+        }
+        XCTAssertEqual(WatchTerminalLayout.mirrorDisplayColumns(
+            availableWidth: 0, fontSize: 5.5, terminalColumns: 172
+        ), 1)
+    }
+
+    func testSession10WideAnswerWrapsPastOntarioThroughItsLastWord() {
+        let answer = " For the Mandarin Restaurant lunch buffet in Ontario, it's CAD $27.99 Monday through Friday, "
+            + "and CAD $32.99 on weekends and holidays, before beverages, tax, and tip."
+        let font = WatchTerminalLayout.mirrorFontSize(availableWidth: 176, terminalColumns: 172)
+        let columns = WatchTerminalLayout.mirrorDisplayColumns(
+            availableWidth: 176, fontSize: font, terminalColumns: 172
+        )
+        let parsed = WatchTerminalANSIParser.parse(lines: ["\u{1b}[38;2;229;229;229m" + answer])
+        let wrapped = WatchTerminalANSIParser.wrapped(lines: parsed, displayColumns: columns)
+        let text = wrapped.map { $0.map(\.text).joined() }
+
+        XCTAssertGreaterThan(text.count, 1)
+        XCTAssertTrue(text.allSatisfy { $0.count <= columns })
+        XCTAssertTrue(text.last?.hasSuffix("tax, and tip.") == true)
+        XCTAssertEqual(text.joined(separator: " "), answer)
+        XCTAssertTrue(wrapped.flatMap { $0 }.allSatisfy { $0.style == parsed[0][0].style })
+    }
+
+    func testCrownCanReachEveryWrappedRowIncludingOldestHistory() {
+        let width = 176.0
+        let columns = WatchTerminalLayout.mirrorDisplayColumns(
+            availableWidth: width,
+            fontSize: WatchTerminalLayout.mirrorFontSize(availableWidth: width, terminalColumns: 172),
+            terminalColumns: 172
+        )
+        let output = (0..<24).map { row in
+            "row-\(row) " + String(repeating: "word ", count: 28) + "end-\(row)"
+        }
+        let divider = String(repeating: "─", count: 172)
+        let frame = WatchTerminalFrame(
+            session: .roomAudio, sequence: 1, paneID: "%0", columns: 172, rows: 8,
+            cursorColumn: 0, cursorRow: 4, alternateScreen: false, mouseMode: false,
+            historySize: 21, screenStart: 21,
+            lines: output + [divider, "", divider, "directory", "tokens"]
+        )
+        let capacity = 12
+        let allRows = WatchTerminalANSIParser.wrapped(
+            lines: WatchTerminalANSIParser.parse(lines: output), displayColumns: columns
+        ).map { $0.map(\.text).joined() }
+        var reached = Set<String>()
+        for offset in 0...frame.maximumOutputScrollOffset(maximumSourceRows: 1) {
+            let end = frame.absoluteOutputEnd - offset
+            let range = max(0, end - capacity)..<end
+            let source = frame.localANSILines(inAbsoluteRange: range)!
+            let visible = WatchTerminalANSIParser.wrapped(
+                lines: WatchTerminalANSIParser.parse(lines: source), displayColumns: columns
+            ).suffix(capacity).map { $0.map(\.text).joined() }
+            reached.formUnion(visible)
+        }
+        XCTAssertEqual(reached, Set(allRows))
+        XCTAssertTrue(reached.contains(allRows[0]), "The oldest wrapped row must remain reachable")
+    }
+
     func testFrameFindsUnwrappedPiEditorAndMapsAbsoluteHistory() {
         let divider = String(repeating: "─", count: 48)
         let lines = [

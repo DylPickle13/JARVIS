@@ -1532,8 +1532,21 @@ public enum WatchTerminalLayout {
         return min(maximumMirrorFontSize, max(minimumMirrorFontSize, fitted))
     }
 
+    /// The font floor can prevent a wide desktop pane from fitting on Watch.
+    /// Wrap at the number of cells that actually fit, not the PTY's width. For
+    /// narrow panes this preserves the original FIT layout and typography.
+    public static func mirrorDisplayColumns(
+        availableWidth: Double,
+        fontSize: Double,
+        terminalColumns: Int
+    ) -> Int {
+        guard availableWidth > 0, fontSize > 0 else { return 1 }
+        let fitted = Int((availableWidth / fontSize / monospacedCharacterWidthRatio + 1e-9).rounded(.down))
+        return min(max(1, terminalColumns), max(1, fitted))
+    }
+
     /// Legacy readable wrapping helper retained for compatibility tests. The
-    /// Watch UI now renders exact ANSI grid cells rather than reconstructing Pi.
+    /// Watch UI renders captured ANSI cells, with local wrapping where needed.
     public static func wrapTerminalLine(_ line: String, displayColumns: Int) -> [String] {
         let columns = max(1, displayColumns)
         let trimmed = trimmingTrailingWhitespace(line)

@@ -270,7 +270,7 @@ Captured in Apple simulators with sample data. The video shows the UI animations
 | iPhone JARVIS | Pi session status, room-audio state, Codex quota and read-only model-server telemetry. |
 | iPhone Home | Health/history, smart plugs and purifier controls. |
 | iPhone terminal | SSH-backed access to persistent Pi sessions, with native keyboard controls. Photos/Files staging is gated by the signed build's attachment configuration. |
-| Apple Watch | JARVIS, Home, Terminal and Jobs pages, with bounded foreground refresh and explicit stale/unavailable states. |
+| Apple Watch | JARVIS, Home, Terminal and Jobs pages, with bounded foreground refresh and explicit stale/unavailable states. [Wide-pane wrapping fix](docs/watch-terminal-wrapping.md) is installed and independently verified as build 249 on both devices; the owner confirmed Session 10 wrapping works. |
 | Jobs | Read-only schedules and saved per-job results. |
 | Talk to JARVIS | A native Watch icon complication automatically opens native text input and submits once on native completion into the protected terminal service. Replaces Siri command registration on both platforms; signed deployment and physical acceptance are pending. See [setup and verification](docs/watch-talk-complication.md). |
 | Widgets | iPhone: Neural Core and Open JARVIS. Watch: those two plus Talk to JARVIS (fixed Session 10 input). No household-device write controls. |
