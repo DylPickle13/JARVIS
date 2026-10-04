@@ -48,6 +48,7 @@ LAUNCHD_LABEL = "com.jarvis.pi-scheduler"
 LAUNCHD_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCHD_LABEL}.plist"
 DEFAULT_PATH = config.DEFAULT_SCHEDULER_PATH
 DIRECT_STDOUT_MODEL = "__direct_stdout__"
+COMPUTER_PRESENCE_JOB_ID = "job_2cce9751d483"
 PI_FIRST_ENABLED_MODEL = "__pi_first_enabled__"
 PRIVATE_FILE_MODE = 0o600
 PRIVATE_DIR_MODE = 0o700
@@ -1321,16 +1322,54 @@ def list_public_results(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def set_computer_presence_controller(enabled: bool) -> None:
+    """Fixed owner-authorized lifecycle coupling, shared by every CLI adapter."""
+    action = "enable" if enabled else "disable"
+    script = ROOT / "projects/operation-jarvis/keyboard/watch_control.py"
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), action], capture_output=True, text=True, timeout=25,
+        )
+        payload = json.loads(result.stdout)
+        expected = "running" if enabled else "stopped"
+        if result.returncode or payload.get("ok") is not True or payload.get("controller") != expected:
+            raise ValueError("Controller result not verified")
+    except Exception:
+        # Do not expose subprocess output, replay uncertain commands, or imply both
+        # halves stopped. The caller has already persisted schedule disabled.
+        raise RuntimeError(
+            "Computer presence schedule is disabled, but its controller lifecycle "
+            "could not be verified. Inspect controller state before retrying."
+        ) from None
+
+
 def set_enabled(args: argparse.Namespace, enabled: bool) -> dict[str, Any]:
     with closing(connect()) as conn:
         job = conn.execute("SELECT * FROM jobs WHERE id=? OR name=?", (args.job_id, args.job_id)).fetchone()
         if not job:
             raise ValueError(f"Job not found: {args.job_id}")
-        next_run = compute_next_run(job["schedule"], job["kind"]) if enabled else job["next_run_at"]
-        with conn:
-            conn.execute("UPDATE jobs SET enabled=?,next_run_at=?,updated_at=? WHERE id=?", (1 if enabled else 0, next_run, iso(), job["id"]))
-        updated = dict(conn.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone())
-    return {"ok": True, "message": f"{'Enabled' if enabled else 'Disabled'} {job['name']}", "job": updated}
+        controlled = job["id"] == COMPUTER_PRESENCE_JOB_ID
+        owner = acquire_lock(conn, "computer-presence-control") if controlled else None
+        if controlled and owner is None:
+            raise RuntimeError("Another Computer presence lifecycle change is in progress")
+        try:
+            # Refresh after obtaining the cross-process lifecycle lock.
+            job = conn.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+            next_run = compute_next_run(job["schedule"], job["kind"]) if enabled else job["next_run_at"]
+            if controlled:
+                with conn:
+                    conn.execute("UPDATE jobs SET enabled=0,updated_at=? WHERE id=?", (iso(), job["id"]))
+                set_computer_presence_controller(enabled)
+            with conn:
+                conn.execute("UPDATE jobs SET enabled=?,next_run_at=?,updated_at=? WHERE id=?", (1 if enabled else 0, next_run, iso(), job["id"]))
+            updated = dict(conn.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone())
+        finally:
+            if owner is not None:
+                release_lock(conn, "computer-presence-control", owner)
+    message = f"{'Enabled' if enabled else 'Disabled'} {job['name']}"
+    if controlled:
+        message += f" and its controller ({'running' if enabled else 'stopped'})"
+    return {"ok": True, "message": message, "job": updated}
 
 
 def remove_job(args: argparse.Namespace) -> dict[str, Any]:
@@ -1338,8 +1377,20 @@ def remove_job(args: argparse.Namespace) -> dict[str, Any]:
         job = conn.execute("SELECT * FROM jobs WHERE id=? OR name=?", (args.job_id, args.job_id)).fetchone()
         if not job:
             raise ValueError(f"Job not found: {args.job_id}")
-        with conn:
-            conn.execute("DELETE FROM jobs WHERE id=?", (job["id"],))
+        controlled = job["id"] == COMPUTER_PRESENCE_JOB_ID
+        owner = acquire_lock(conn, "computer-presence-control") if controlled else None
+        if controlled and owner is None:
+            raise RuntimeError("Another Computer presence lifecycle change is in progress")
+        try:
+            if controlled:
+                with conn:
+                    conn.execute("UPDATE jobs SET enabled=0,updated_at=? WHERE id=?", (iso(), job["id"]))
+                set_computer_presence_controller(False)
+            with conn:
+                conn.execute("DELETE FROM jobs WHERE id=?", (job["id"],))
+        finally:
+            if owner is not None:
+                release_lock(conn, "computer-presence-control", owner)
     return {"ok": True, "message": f"Removed {job['name']} ({job['id']})"}
 
 

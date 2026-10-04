@@ -95,6 +95,30 @@ contents) and verify its integrity. Keep job-specific assignments out of schema
 migrations. Roll back code without restoring an old database over newer executions;
 the additive column is safe for old code to ignore.
 
+## Computer presence lifecycle
+
+The owner-authorized job `job_2cce9751d483` is coupled to the existing local
+`com.jarvis.ajazz-keyboard-watch` LaunchAgent. `enable` starts/enables that watcher;
+`disable` stops/disables it, including across logins. Name lookup resolves the
+stored ID first: another job named Computer presence cannot trigger this hook.
+Removing the registered job also stops its watcher before deletion.
+
+This is backend-owned, so Pi tool, slash-command and direct CLI consumers all
+share the behavior without an extension reload. Its scheduled `watch.py --alerts`
+execution remains an alert relay, not a second device controller. No other job,
+read-only inventory call, presence collector, backend service or cadence changes.
+
+A cross-process scheduler lock serializes toggles/removal. The schedule is
+persisted disabled before one bounded invocation of `keyboard/watch_control.py`;
+it is enabled only after the controller reports running. Failed/uncertain control
+leaves the schedule disabled and reports that the controller state is unverified.
+There is no automatic command replay, new installation, plist/runtime replacement,
+physical-output restoration, unlock, or pending/fault-state acknowledgement.
+The helper verifies the fixed existing installation, uses its own private lifecycle
+lock, and checks launchd's disable flag and process exit/start. Stop does not itself
+wake displays or switch lights off. Live enable testing requires owner intent;
+offline tests use a temp database and mocked launchd, with no device writes.
+
 ## Worker and consumers
 
 The one-minute launchd worker remains independent of the HTTP process. Its label

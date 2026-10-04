@@ -11,6 +11,7 @@ import cycle
 BOOT = str(time.time_ns())
 ENV = Path.home() / 'Library/Application Support/JARVIS/room-audio-mac/environment.json'
 URL = 'http://127.0.0.1:8793/control/arrival'
+GREETING_COOLDOWN = 180
 _worker = None
 _results = deque(maxlen=8)
 
@@ -49,11 +50,18 @@ def run_once(store, *, get_presence, now=time.time, apply=dispatch):
                 history.append(_results.popleft())
             store.save('arrival-results.json', history[-16:])
         at = now()
+        if not cycle.finite(at):
+            return
         state = store.load('arrival-state.json', {})
         if not isinstance(state, dict):
             return  # Corrupt state fails closed.
+        last_attempt = state.get('lastAttempt')
+        if last_attempt is not None and not cycle.finite(last_attempt):
+            return
         if state.get('boot') != BOOT:
-            state = {'boot': BOOT, 'awaySince': None, 'lastCheck': None, 'lastAttempt': None}
+            # Restart breaks absence qualification, but never erases the cooldown.
+            state = {'boot': BOOT, 'awaySince': None, 'lastCheck': None,
+                     'lastAttempt': last_attempt}
         try:
             payload = get_presence()
             mode = cycle.basement(payload)
@@ -69,7 +77,10 @@ def run_once(store, *, get_presence, now=time.time, apply=dispatch):
         if not cycle.finite(previous) or not 0 <= at - previous <= 15:
             state['awaySince'] = None
         since = state.get('awaySince')
-        greet = mode == 'nearby' and cycle.finite(since) and at - since >= 30
+        greet = (mode == 'nearby' and cycle.finite(since) and at - since >= 30
+                 and (last_attempt is None or at - last_attempt >= GREETING_COOLDOWN))
+        # A suppressed return consumes the absence too: never greet belatedly
+        # just because the cooldown expires while someone stays at the desk.
         state['awaySince'] = (since if cycle.finite(since) else at) if mode == 'away' else None
         state['lastCheck'] = at
         if greet:

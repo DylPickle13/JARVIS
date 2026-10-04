@@ -3,7 +3,7 @@
 ## Active components
 
 - Local user LaunchAgent **`com.jarvis.ajazz-keyboard-watch`** runs `watch.py --watch` for both the AK820 and Razer, using one age-adjusted presence snapshot per poll.
-- Private JARVIS scheduler job **`Keyboard lights`**, ID **`job_41fb6dd73fce`**, runs `watch.py --alerts` every minute using `__direct_stdout__`. It only relays keyboard/mouse alerts and checks watcher health; it never sends lighting commands. Its name, ID and one-minute cadence are unchanged.
+- Private JARVIS scheduler job **`Computer presence`**, ID **`job_2cce9751d483`**, runs `watch.py --alerts` every minute using `__direct_stdout__`. Scheduled runs only relay alerts and check watcher health; they never send device commands. **Explicit enable/disable now also starts/stops the existing watcher**, through the scheduler backend's fixed-ID lifecycle hook. Disabling persists the launchd disable flag across logins; enabling reuses the installed plist and Python 3.13 override. Other jobs are unaffected.
 - The previous minute-based lighting job (`job_bf8f4ff68cb5`) was disabled and removed. No duplicate lighting scheduler remains.
 - The watcher was explicitly authorized by the owner. No collector/backend service or global scheduler cadence was changed; no new BLE scan or keyboard backend route was added.
 
@@ -29,7 +29,13 @@ snapshot. `arrival-config.json` containing `{"enabled": true}` opts in. The minu
 Computer presence job remains an alert relay; its schedule is unchanged.
 
 - After at least 30 seconds of continuously fresh away checks, the first fresh
-  nearby check attempts **“Welcome back, sir”** through the Mac PowerConf room client.
+  nearby check attempts **“Welcome back, sir”** through the Mac PowerConf room client,
+  subject to a **180-second cooldown between dispatch attempts**. The last attempt
+  is persisted before dispatch and survives watcher restarts. Skipped/uncertain
+  delivery still consumes the cooldown; future or invalid timestamps fail closed.
+- A return during cooldown consumes that absence without speaking. There is no
+  delayed greeting when the timer expires while seated; a new qualified absence
+  and return is needed. The existing 30-second absence qualification is unchanged.
 - Startup/restart, unknown/stale/negative-age samples, backwards time, and gaps
   over 15 seconds reset absence qualification. No startup arrival greeting.
 - `arrival-state.json` is saved before asynchronous dispatch; uncertain delivery
@@ -228,13 +234,29 @@ cd /Users/dylanrapanan/JARVIS/projects/operation-jarvis/keyboard
 launchctl print gui/$(id -u)/com.jarvis.ajazz-keyboard-watch
 ```
 
-To explicitly stop lighting automation, unload the watcher (disabling the alert job alone does NOT stop it):
+To stop all Computer presence actions, **disable the Computer presence scheduler
+job** (`job_2cce9751d483`). The backend now disables and unloads the watcher as part
+of that operation and verifies process exit. Even an already-disabled job reconciles
+the watcher to stopped. Removing this exact job also stops its watcher first.
+
+Lifecycle changes are serialized, never replace the installed plist/runtime,
+never wake/unlock or change physical outputs, and never clear pending/fault state.
+A failed/uncertain lifecycle operation leaves the schedule disabled and reports
+that controller state is not verified; there is no automatic replay. Read-only
+job inventory/status and unrelated jobs do not control the watcher.
+
+For explicit maintenance only, unload the watcher independently:
 
 ```sh
 launchctl bootout gui/$(id -u)/com.jarvis.ajazz-keyboard-watch
 ```
 
-After confirming it has exited, restart only when intended:
+Prefer enabling the Computer presence job to restore both halves. Enabling can
+resume device actions; it does not acknowledge any uncertain controller action.
+The currently installed job and watcher remain disabled after this change.
+
+For an independent maintenance restart only, first inspect/clear the intentional
+launchd disable flag with owner authorization, then bootstrap only when intended:
 
 ```sh
 launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/com.jarvis.ajazz-keyboard-watch.plist"

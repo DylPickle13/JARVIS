@@ -26,8 +26,8 @@ class ArrivalTests(unittest.TestCase):
             'state': mode, 'stale': False, 'ageSeconds': age}]}
         arrival.run_once(self.store, now=lambda: at, get_presence=lambda: payload, apply=self.send)
 
-    def absence(self):
-        for at in range(0, 34, 3): self.step(at)
+    def absence(self, start=0):
+        for at in range(start, start + 34, 3): self.step(at)
 
     def test_once_after_absence(self):
         self.absence()
@@ -74,6 +74,65 @@ class ArrivalTests(unittest.TestCase):
         self.store.data.clear()
         self.absence()
         self.step(36, 'nearby')
+        self.send.assert_not_called()
+
+    def test_cooldown_suppresses_bouncing_and_never_greets_late(self):
+        self.absence()
+        self.step(36, 'nearby')
+        self.absence(60)
+        self.step(96, 'nearby')
+        self.assertEqual(self.store.data['arrival-state.json']['lastAttempt'], 36)
+        for at in range(99, 220, 3):
+            self.step(at, 'nearby')
+        self.send.assert_called_once()
+        self.absence(222)
+        self.step(258, 'nearby')
+        self.assertEqual(self.send.call_count, 2)
+
+    def test_exact_three_minute_boundary(self):
+        for second_return, calls in ((215, 1), (216, 2)):
+            with self.subTest(second_return=second_return):
+                self.store = Store()
+                self.send = Mock()
+                self.absence()
+                self.step(36, 'nearby')
+                self.absence(second_return - 36)
+                self.step(second_return, 'nearby')
+                self.assertEqual(self.send.call_count, calls)
+
+    def test_restart_preserves_cooldown_but_resets_absence(self):
+        self.absence()
+        self.step(36, 'nearby')
+        self.store.data['arrival-state.json']['boot'] = 'old'
+        self.step(39, 'nearby')
+        self.assertEqual(self.store.data['arrival-state.json']['lastAttempt'], 36)
+        self.absence(60)
+        self.step(96, 'nearby')
+        self.send.assert_called_once()
+
+    def test_uncertain_dispatch_still_starts_cooldown(self):
+        self.send.side_effect = RuntimeError('uncertain')
+        self.absence()
+        self.step(36, 'nearby')
+        self.absence(60)
+        self.step(96, 'nearby')
+        self.send.assert_called_once()
+        self.assertEqual(self.store.data['arrival-state.json']['lastAttempt'], 36)
+
+    def test_invalid_or_future_attempt_timestamp_never_bypasses_cooldown(self):
+        for timestamp in ('bad', float('nan'), True, -1, 500):
+            with self.subTest(timestamp=timestamp):
+                self.store = Store()
+                self.send = Mock()
+                self.store.data['arrival-state.json'] = {'boot': 'old', 'lastAttempt': timestamp}
+                self.absence()
+                self.step(36, 'nearby')
+                self.send.assert_not_called()
+
+    def test_invalid_clock_never_dispatches(self):
+        self.absence()
+        for at in (float('nan'), -1, True):
+            self.step(at, 'nearby')
         self.send.assert_not_called()
 
     def test_save_failure_blocks_dispatch(self):
