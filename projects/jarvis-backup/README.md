@@ -116,9 +116,14 @@ caches, logs and private Pi session transcripts **without deleting them**.
 It keeps the DH SQLite database, worlds, plugins, security/Floodgate files,
 legacy recovery password, source/Git history, Java and private Node/Pi plus bot
 dependencies (explicit exceptions to the generic `node_modules` exclusion).
-Mojang/Paper bootstrap caches can be downloaded again. Retain old cloud snapshots,
-keys, the unconverted original and parked trial. The duplicate Minecraft schedule
-was retired only after full recovery proof and explicit owner approval.
+Mojang/Paper bootstrap caches can be downloaded again. Retain old cloud snapshots
+and recovery keys. After full recovery proof, the owner separately approved
+removing the disposable trial and completed local unconverted-world rollback,
+full-restore/checkpoint and publication-test copies. Compact verification records
+remain in the Minecraft consolidation workspace; active caches/transcripts and
+pending bot-change rollback are preserved. Policy exclusion itself never deletes
+files. The duplicate Minecraft schedule was retired only after full recovery
+proof and explicit owner approval.
 
 For Minecraft restoration, restore the ordinary project tree **and** its
 `sqlite` and `minecraft` staging trees from the same explicit snapshot. Validate
