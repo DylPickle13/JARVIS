@@ -16,11 +16,31 @@ owner-approved cleanup removed the obsolete build-246 signed archive, reclaiming
 **111.75 MiB allocated**. Build-248's session-created build caches had already been
 removed after deployment, releasing **2.91 GiB**; its archive and evidence remain.
 
-Current recovery archives include **252** (independently installed/version/process
-verified on both devices; physical acceptance pending), **251** (exact immediate
-signed rollback), **250**, previously owner-accepted **249** and historical **248**.
-Both devices now independently verify 252. No older archive or build cache was removed
-during this native-only rollout. Earlier owner-approved cleanup is recorded below.
+Current signed recovery archives are **252** (independently installed/version/process
+verified on both devices) and **251** (exact immediate signed rollback). Both devices
+independently verify 252. On **2026-10-05 at 17:35 EDT**, after the app change set was
+committed/pushed and the owner requested cleanup, **15 generated caches** and the
+superseded signed binary archives **248/249/250** were removed: **13.09 GiB net
+allocated artifacts**, with an observed **11.79 GiB increase in free disk space**.
+No archive or cache was removed during the deployment itself.
+
+Current/rollback source/payload seals and all eight bundle signatures passed before
+and after cleanup. Every historical frozen source, manifest/seal, audit, deployment/
+failure receipt, log and test-result bundle remains; the three pruned archives'
+plists, profiles, entitlements and signature reports were also retained. Frozen
+source inputs were not deduplicated or modified. The live/prior backend and history
+backup remain intact. All 18 protected service records, existing Pi panes, backend/
+registry/config/authentication and Minecraft/gateway/Pi identities were preserved;
+unrelated backup-project edits were untouched. No service/device lifecycle action,
+credential/profile/dependency change or rebuild occurred.
+
+Private build-252 `stale-artifact-pruning.json` records all 18 exact deletion roots,
+**9,518 evidence files verified by hash**, measured allocation/free-space deltas and
+before/after verification. Builds 248/249/250 carry `primary-archive-pruned.json`
+markers; their recovery references are historical, not runnable archive selections.
+Unclassified private rollback/candidate directories, active IPC, global caches and
+unrelated project/security backups were not pruned. Broader physical Crown/
+VoiceOver acceptance remains owner review. Earlier cleanup is recorded below.
 At the earlier build-248 cleanup, all four then-retained payload seals,
 four-bundle signatures and frozen source manifests were verified before and after
 pruning 246. Every non-binary byte of
