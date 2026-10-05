@@ -23,7 +23,13 @@ public extension SystemDashboardPresentation {
     var visualGroups: [SystemVisualGroup] {
         let rows = subsystemRows
         var groups: [SystemVisualGroup] = [
-            .init(id: "services", title: "Services", rows: services.map(\.row) + rows.filter { ["services", "backend", "backendHealth"].contains($0.id) }),
+            .init(id: "services", title: "Services", rows: backgroundServices.map(\.row)
+                + rows.filter { ["services", "backend"].contains($0.id) })
+        ]
+        if hasMinecraftServices {
+            groups.append(.init(id: "minecraft", title: "Minecraft", rows: minecraftServices.map(\.row)))
+        }
+        groups += [
             .init(id: "pi", title: "Pi", rows: rows.filter { ["pi", "codexQuota"].contains($0.id) }),
             .init(id: "network", title: "Network", rows: rows.filter { $0.id == "network" })
         ]
@@ -61,7 +67,17 @@ public extension SystemDashboardPresentation {
     var visualException: String? {
         guard isConnected else { return "Offline · cached evidence" }
         let groups = visualGroups.filter { [.issue, .unknown, .checking].contains($0.state) }
-        guard let group = groups.first(where: { $0.state == .issue }) ?? groups.first else { return nil }
+        if !groups.contains(where: { $0.state == .issue }),
+           subsystemRows.contains(where: { $0.id == "backendHealth" && $0.state == .issue }) {
+            return "Backend summary · issue"
+        }
+        guard let group = groups.first(where: { $0.state == .issue }) ?? groups.first else {
+            // Overall backend evidence still constrains the ring/header, but is
+            // not falsely attributed to Services when a different check failed.
+            guard let overall = subsystemRows.first(where: { $0.id == "backendHealth" }),
+                  [.issue, .unknown, .checking].contains(overall.state) else { return nil }
+            return "Backend summary · \(overall.state == .issue ? "issue" : "unverified")"
+        }
         let suffix = groups.count > 1 ? " · +\(groups.count - 1)" : ""
         return "\(group.title) · \(group.state == .issue ? "issue" : "unverified")\(suffix)"
     }

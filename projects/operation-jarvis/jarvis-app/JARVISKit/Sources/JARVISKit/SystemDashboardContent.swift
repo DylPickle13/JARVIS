@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Cached visual health summary. Only Services delegates a read-only detail route;
+/// Cached visual health summary. Services/Minecraft delegate read-only detail routes;
 /// platforms retain sheet, scrolling, gesture and refresh ownership.
 /// Platforms retain visibility, refresh policy, networking and Watch gestures.
 @MainActor
@@ -18,6 +18,7 @@ public struct SystemDashboardContent: View {
     public let refreshing: Bool
     public let onRefresh: (() -> Void)?
     public let onServices: (() -> Void)?
+    public let onMinecraft: (() -> Void)?
     public let onDetailVisibilityChanged: (Bool) -> Void
 
     public init(presentation: SystemDashboardPresentation, connectionLabel: String,
@@ -25,6 +26,7 @@ public struct SystemDashboardContent: View {
                 connectionError: String? = nil, refreshing: Bool = false,
                 onRefresh: (() -> Void)? = nil, historyModel: SystemHistoryModel? = nil,
                 onServices: (() -> Void)? = nil,
+                onMinecraft: (() -> Void)? = nil,
                 onDetailVisibilityChanged: @escaping (Bool) -> Void = { _ in }) {
         self.historyModel = historyModel ?? SystemHistoryModel()
         self.presentation = presentation
@@ -38,6 +40,7 @@ public struct SystemDashboardContent: View {
         self.refreshing = refreshing
         self.onRefresh = onRefresh
         self.onServices = onServices
+        self.onMinecraft = onMinecraft
         self.onDetailVisibilityChanged = onDetailVisibilityChanged
     }
 
@@ -83,8 +86,12 @@ public struct SystemDashboardContent: View {
         .onDisappear { onDetailVisibilityChanged(false) }
     }
 
+    private var usesDenseOverview: Bool {
+        presentation.includesDeviceCoverage || presentation.hasMinecraftServices
+    }
+
     private var visualCard: some View {
-        VStack(alignment: .leading, spacing: compact ? 5 : (presentation.includesDeviceCoverage ? 8 : 12)) {
+        VStack(alignment: .leading, spacing: compact ? 5 : (usesDenseOverview ? 8 : 12)) {
             HStack(spacing: compact ? 7 : 12) {
                 SystemCurrentHealthRing(presentation: presentation, diameter: compact ? 28 : 48)
                     .accessibilityHidden(true)
@@ -110,6 +117,11 @@ public struct SystemDashboardContent: View {
                             .buttonStyle(.plain)
                             .accessibilityHint("Shows read-only service status")
                             .accessibilityIdentifier("system-services-button")
+                    } else if group.id == "minecraft", let onMinecraft {
+                        Button(action: onMinecraft) { groupChip(group) }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Shows read-only Minecraft server and bot status")
+                            .accessibilityIdentifier("system-minecraft-button")
                     } else {
                         groupChip(group)
                     }
@@ -121,9 +133,9 @@ public struct SystemDashboardContent: View {
                     .accessibilityLabel(exception + ". " + (historyModel.notice ?? ""))
             }
         }
-        // Reserve the Services hit target without enlarging the one-screen overview.
-        .padding(.horizontal, compact ? 6 : (presentation.includesDeviceCoverage ? 12 : 14))
-        .padding(.vertical, compact ? 3 : (presentation.includesDeviceCoverage ? 10 : 12))
+        // Reserve detail hit targets without enlarging the one-screen overview.
+        .padding(.horizontal, compact ? 6 : (usesDenseOverview ? 12 : 14))
+        .padding(.vertical, compact ? 3 : (usesDenseOverview ? 10 : 12))
         .frame(maxWidth: .infinity, alignment: .leading)
         .jarvisGlassSurface(surface,
             in: RoundedRectangle(cornerRadius: compact ? 10 : 14, style: .continuous), glass: true)
@@ -139,7 +151,7 @@ public struct SystemDashboardContent: View {
                 Text(compact && group.id == "cast" ? "Cast" : group.title)
                     .font(.system(size: compact ? 8 : 11))
                     .lineLimit(1).minimumScaleFactor(0.8)
-                if group.id == "services", onServices != nil {
+                if hasDetailAction(group) {
                     Image(systemName: "chevron.right")
                         .font(.system(size: compact ? 6 : 8, weight: .semibold))
                         .accessibilityHidden(true)
@@ -147,7 +159,7 @@ public struct SystemDashboardContent: View {
             }
             .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: group.id == "services" && onServices != nil ? (compact ? 32 : 44) : nil)
+        .frame(maxWidth: .infinity, minHeight: hasDetailAction(group) ? (compact ? 32 : 44) : nil)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(group.accessibilityText + serviceEvidence(group))
@@ -176,9 +188,18 @@ public struct SystemDashboardContent: View {
         .accessibilityIdentifier("system-health-history")
     }
 
+    private func hasDetailAction(_ group: SystemVisualGroup) -> Bool {
+        (group.id == "services" && onServices != nil) || (group.id == "minecraft" && onMinecraft != nil)
+    }
+
     private func serviceEvidence(_ group: SystemVisualGroup) -> String {
-        guard group.id == "services" else { return "" }
-        return ". " + presentation.services.map {
+        let services: [SystemDashboardService]
+        switch group.id {
+        case "services": services = presentation.backgroundServices
+        case "minecraft": services = presentation.minecraftServices
+        default: return ""
+        }
+        return ". " + services.map {
             "\($0.row.title). \($0.requirement), \($0.executionMode). \($0.description ?? ""). \($0.technicalDetails.joined(separator: ". "))"
         }.joined(separator: ". ")
     }

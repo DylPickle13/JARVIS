@@ -16,11 +16,11 @@ owner-approved cleanup removed the obsolete build-246 signed archive, reclaiming
 **111.75 MiB allocated**. Build-248's session-created build caches had already been
 removed after deployment, releasing **2.91 GiB**; its archive and evidence remain.
 
-Current recovery archives include **250** (independently installed/version/process
-verified on both devices; physical acceptance pending), **249** (exact immediate
-signed rollback, previously owner-accepted) and historical **248**. Both devices
-now independently verify 250. No older archive or build cache was removed during
-this rollout. Earlier owner-approved cleanup is recorded below.
+Current recovery archives include **252** (independently installed/version/process
+verified on both devices; physical acceptance pending), **251** (exact immediate
+signed rollback), **250**, previously owner-accepted **249** and historical **248**.
+Both devices now independently verify 252. No older archive or build cache was removed
+during this native-only rollout. Earlier owner-approved cleanup is recorded below.
 At the earlier build-248 cleanup, all four then-retained payload seals,
 four-bundle signatures and frozen source manifests were verified before and after
 pruning 246. Every non-binary byte of
@@ -40,6 +40,89 @@ before those superseded scratch directories were removed. The private build-247
 `stale-artifact-pruning.json` records the exact removals and retention checks.
 No runtime configuration, credentials, services or Pi history were removed.
 Historical retention statements below describe the state at their original time.
+
+## Minecraft list deduplication — installed build 252
+
+Owner feedback identified duplicate Minecraft rows in build 251's Services and
+Minecraft details. The native-only correction uses disjoint list scopes on iPhone
+and Watch, including a non-Minecraft default. Exact-ID filtering leaves legacy/
+lookalike services visible. Complete backend inventory, overall-health evidence,
+readiness/freshness semantics, terminal/input ownership and cadence are unchanged.
+
+Validation passed **323 shared cases (3 expected skips)**, **177 iPhone tests**,
+both simulator builds, **916 backend tests**, **37 terminal contracts** and source/
+scheduler checks. The dedicated unsigned-validation simulator returned to Shutdown;
+its 254-input source copy, manifests, test log/result bundle and caches are retained.
+Frozen release verification repeated **177 iPhone tests**, **323 shared cases (3
+expected skips)**, **37 terminal contracts** and both simulator builds. Candidate
+252 and exact signed rollback 251 passed eight bundle signatures, byte-identical
+paid-team profiles, unchanged entitlements/dependency locks and source/payload seals.
+No rebuild followed sealing.
+
+The first read-only Watch lock-state request failed with CoreDevice error -1 and
+mobiledevice resource-allocation error -402653181 without writes. After owner-ready
+confirmation, fresh guarded identity/allowlist/pairing/compatible developer services/
+unlock/baseline-251 checks passed on both targets, then repeated before installation.
+The iPhone installed/version/process verified 252 once; a second Watch readiness
+failure stopped before any direct Watch install. Read-only inventory confirmed
+mixed versions 252/251. A scoped reviewed continuation, within the same authorized
+252 release, freshly rechecked **both** devices and completed the first/only Watch
+install. The original installer and iPhone installation were never replayed.
+Original helper hashes, partial receipt and per-device continuation evidence remain.
+
+Both versions/running processes independently verified **252 on 2026-10-05 at
+17:23 EDT**. All **18 protected service records** (17 continuous plus the periodic
+scheduler), existing Pi panes, Minecraft/gateway/Pi identities, live backend/source/
+registry/config/authentication fingerprints and **10-second history cadence** were
+preserved. No backend/Pi/Minecraft lifecycle action, uncertain-write retry, device
+reboot/unpairing/recovery/data removal, profile/credential/capability/dependency
+change or artifact/cache pruning occurred. Unrelated backup edits remain untouched.
+
+Private evidence: `20261005T205448Z-build252-minecraft-service-dedup`, including 254
+frozen inputs, sealed archive, rollback-251 reference, tests/audit, readiness evidence,
+`deployment/initial-result-stopped.json`, Watch-only authorization/receipt and final
+verification. The unsigned validation workspace and all old/failed artifacts remain.
+Physical disjoint-list/Crown/VoiceOver acceptance remains owner review.
+
+## Dedicated Minecraft health-card check — build 251
+
+Owner-approved **251** installed once on each allowlisted iPhone and Watch on
+**2026-10-05 at 16:42 EDT**; independent final version/running-process checks and
+live backend verification passed at **16:43 EDT**. Home now has a separate
+**Minecraft** indicator for server/bot evidence; tap it for their two read-only
+rows. Services keeps the complete inventory but no longer absorbs Minecraft in its
+card category. No new client requests or backend changes were deployed.
+
+Frozen revision 2 passed **176 iPhone tests**, **320 shared Swift cases (3 expected
+skips)**, **37 terminal contracts** and both simulator builds from **254 inputs**.
+The existing plain-Paste assertion remains the only native exclusion. Two first-
+revision legacy-scope landscape/accessibility limits failed; Xcode result collection
+then timed out without archive/device writes. Their immutable source/tests/cache
+are retained. Minecraft-enabled phone cards now reuse existing denser spacing;
+fonts, hit targets and limits were not weakened. The dedicated simulator returned
+to Shutdown.
+
+Sealed candidate 251 and exact rollback 250 passed eight bundle signatures,
+byte-identical paid-team profiles, unchanged entitlements and source/payload seals.
+No rebuild followed sealing. Fresh both-device identity/allowlist, pairing,
+compatible developer services, unlock and installed baseline 250 checks passed,
+then repeated at the guarded installation boundary. Each app was installed once;
+no retry, uninstall, unpairing, reboot or app-data removal occurred.
+
+This was **native-only**: no backend or Minecraft lifecycle action was taken.
+All **18 protected service records** (17 continuous plus the periodic scheduler),
+existing Pi panes, Minecraft/gateway/Pi identities, backend/source/registry/config/
+authentication fingerprints and **10-second history cadence** were preserved.
+Final observation: server running/listening; bot process running but disconnected.
+Neither was changed to make the new check green. Physical card/detail/Crown/
+VoiceOver acceptance remains owner review; listening is not gameplay/public-access
+proof. Unrelated backup-project working-tree changes were left untouched.
+
+Private evidence: `20261005T042513Z-build251-minecraft-health-card`, with source
+revision 2, signed sealed archive, rollback-250 reference, test/results, audits,
+fresh readiness evidence, one-shot deployment result and final verification.
+Failed revision 1, prior archives/backend/history backup and all caches remain;
+no pruning or portal/credential/capability/dependency changes occurred.
 
 ## Minecraft Services lists — build 250
 

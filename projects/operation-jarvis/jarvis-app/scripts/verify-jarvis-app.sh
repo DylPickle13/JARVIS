@@ -809,7 +809,7 @@ assert root.index('HomeView(') < root.index('SystemView()') < root.index('PiTerm
 assert 'case "system": selection = .system' in root
 assert 'SystemHealthCard' not in Path('JARVIS/Views/HomeView.swift').read_text()
 health = Path('JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift').read_text()
-# The overview stays bounded; only Services delegates a read-only platform detail route.
+# The overview stays bounded; Services/Minecraft delegate read-only platform detail routes.
 for forbidden in ['DisclosureGroup', 'ScrollView', '.sheet(', 'onTapGesture',
                   'statTile(', 'expandedServices', 'Task {', 'client.']:
     assert forbidden not in health
@@ -822,20 +822,27 @@ assert '.refreshable' in Path('JARVIS/Views/SystemView.swift').read_text()
 assert 'onDetailVisibilityChanged(false)' in health
 watch_health = Path('JARVISWatch/Views/WatchSystemHealthView.swift').read_text()
 assert 'WatchSystemCrownViewport' in watch_health  # Only the service sheet; overview stays one screen.
-assert '.sheet(isPresented: $showsServices)' in watch_health
-assert 'onDetailVisibilityChanged(covered)' in watch_health
+assert '.sheet(item: $serviceScope)' in watch_health
+assert 'onDetailVisibilityChanged(scope != nil)' in watch_health
 assert 'scenePhase == .active && !dimmed && showsServices' in watch_health
-assert 'onServices: { showsServices = true }' in watch_health
+assert 'onServices: { serviceScope = .services }' in watch_health
+assert 'onMinecraft: { serviceScope = .minecraft }' in watch_health
 phone_services = Path('JARVIS/Views/SystemView.swift').read_text()
-assert '.sheet(isPresented: $showsServices)' in phone_services
-assert 'onServices: { showsServices = true }' in phone_services
-assert 'app.setSystemDetailsCovered(covered || showsDetails)' in phone_services
+assert '.sheet(item: $serviceScope)' in phone_services
+assert 'onServices: { serviceScope = .services }' in phone_services
+assert 'onMinecraft: { serviceScope = .minecraft }' in phone_services
+assert 'app.setSystemDetailsCovered(scope != nil || showsDetails)' in phone_services
 for platform in [phone_services, watch_health]:
     assert 'SystemServicesContent(' in platform
+    assert 'scope: scope' in platform and '.navigationTitle(scope.title)' in platform
     assert 'serviceAction' not in platform
 assert 'Button(action: onServices)' in health and 'system-services-button' in health
+assert 'Button(action: onMinecraft)' in health and 'system-minecraft-button' in health
 services_content = Path('JARVISKit/Sources/JARVISKit/SystemServicesContent.swift').read_text()
-assert 'ForEach(presentation.services)' in services_content
+assert 'ForEach(scope.services(in: presentation))' in services_content
+assert 'case services, minecraft' in services_content
+assert 'presentation.minecraftServices : presentation.backgroundServices' in services_content
+assert 'scope: SystemServicesScope = .services' in services_content
 assert 'service.row.detail' in services_content
 for forbidden in ['Button(', 'Task {', 'client.', 'serviceAction', 'ScrollView', 'Timer(']:
     assert forbidden not in services_content

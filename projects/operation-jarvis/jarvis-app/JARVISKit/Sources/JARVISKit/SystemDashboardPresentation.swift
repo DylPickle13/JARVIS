@@ -19,6 +19,28 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
     public let backendVersion: String?
     public let uptimeText: String?
 
+    public static let minecraftServiceIDs = ["minecraft-server", "minecraft-jarvis-bot"]
+    public var hasMinecraftServices: Bool {
+        services.contains { Self.minecraftServiceIDs.contains($0.id) }
+    }
+    /// Keep both checks visible if a registered Minecraft inventory is incomplete.
+    /// Missing observations are unknown, never stopped or healthy.
+    public var minecraftServices: [SystemDashboardService] {
+        Self.minecraftServiceIDs.map { id in
+            services.first { $0.id == id } ?? .init(id: id,
+                row: .init(id: "service:\(id)",
+                    title: id == "minecraft-server" ? "Minecraft Server" : "Minecraft JARVIS Bot",
+                    state: .unknown,
+                    detail: isConnected ? "No cached service evidence" : "Offline · current status unverified",
+                    ageSeconds: nil),
+                description: nil, requirement: "Requirement unknown",
+                executionMode: "Execution mode unknown", technicalDetails: ["Service: \(id)"])
+        }
+    }
+    public var backgroundServices: [SystemDashboardService] {
+        services.filter { !Self.minecraftServiceIDs.contains($0.id) }
+    }
+
     public func freshnessFraction(for row: SystemHealthRow) -> Double? {
         guard let limit = SystemHealthPresentation.freshnessLimits[row.id],
               let age = row.ageSeconds, age.isFinite, age >= 0 else { return nil }
@@ -46,8 +68,18 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
             $0.id != "backend" && $0.id != "backendHealth" && (!includesSensors || $0.id != "services")
         }
     }
-    public var summary: String { isConnected ? health.summary : "Offline · cached data" }
-    public var state: SystemHealthState { isConnected ? health.state : .unknown }
+    public var summary: String {
+        guard isConnected else { return "Offline · cached data" }
+        return state == .unknown && health.state != .unknown ? "Status unknown" : health.summary
+    }
+    public var state: SystemHealthState {
+        guard isConnected else { return .unknown }
+        // An incomplete registered Minecraft pair cannot leave a healthy header
+        // while its dedicated check correctly says the missing member is unknown.
+        if health.state != .issue, hasMinecraftServices,
+           minecraftServices.contains(where: { $0.row.state == .unknown }) { return .unknown }
+        return health.state
+    }
     public var healthyServiceCount: Int { services.filter { $0.row.state == .healthy }.count }
     public var issueServiceCount: Int { services.filter { $0.row.state == .issue }.count }
     public var unknownServiceCount: Int {

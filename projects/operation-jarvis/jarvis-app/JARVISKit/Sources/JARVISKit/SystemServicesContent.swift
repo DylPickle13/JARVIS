@@ -1,17 +1,28 @@
 import SwiftUI
 
+public enum SystemServicesScope: String, Identifiable, Sendable {
+    case services, minecraft
+    public var id: String { rawValue }
+    public var title: String { self == .minecraft ? "Minecraft" : "Services" }
+    public func services(in presentation: SystemDashboardPresentation) -> [SystemDashboardService] {
+        self == .minecraft ? presentation.minecraftServices : presentation.backgroundServices
+    }
+}
+
 /// Pure cached-state rendering. Platforms own presentation, scrolling and refresh.
 /// No service actions, network requests, timers or optimistic status reconstruction.
 public struct SystemServicesContent: View {
     public let presentation: SystemDashboardPresentation
+    public let scope: SystemServicesScope
     public let compact: Bool
     public let accent: Color
     public let warning: Color
     public let surface: Color
 
-    public init(presentation: SystemDashboardPresentation, compact: Bool = false,
-                accent: Color, warning: Color, surface: Color) {
+    public init(presentation: SystemDashboardPresentation, scope: SystemServicesScope = .services,
+                compact: Bool = false, accent: Color, warning: Color, surface: Color) {
         self.presentation = presentation
+        self.scope = scope
         self.compact = compact
         self.accent = accent
         self.warning = warning
@@ -22,10 +33,10 @@ public struct SystemServicesContent: View {
         VStack(alignment: .leading, spacing: compact ? 8 : 12) {
             Text(presentation.isConnected ? "Read-only · cached observations" : "Offline · current status unverified")
                 .font(.caption).foregroundStyle(.secondary)
-            if presentation.services.isEmpty {
+            if scope.services(in: presentation).isEmpty {
                 Text("Service inventory unavailable or empty").font(.callout).foregroundStyle(.secondary)
             }
-            ForEach(presentation.services) { service in
+            ForEach(scope.services(in: presentation)) { service in
                 VStack(alignment: .leading, spacing: compact ? 4 : 6) {
                     HStack(alignment: .top, spacing: 7) {
                         Image(systemName: symbol(service.row.state))

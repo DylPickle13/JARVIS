@@ -3,9 +3,9 @@
 **Navigation update:** the health card lives at the top of iPhone **Home**, above
 plugs and purifier. The restored Watch **Home** contains health only; Plugs has
 a dedicated page, while purifier returns above Codex/oMLX on JARVIS.
-Build 250 makes only the deployed card's **Services** indicator actionable,
-opening the read-only detail list below. Watch Home supports Crown overflow for
-large text.
+Build 252 keeps **Minecraft** as its own health-card check and read-only server/bot
+detail. **Services** now excludes those two rows; neither list duplicates the other.
+Watch Home supports Crown overflow for large text.
 See [navigation and Home](navigation-and-home.md) for the verified rollout and pending physical acceptance.
 The build-specific records below retain their original navigation context.
 
@@ -46,9 +46,81 @@ and existing Pi identities. Exact rollback 249 and the prior backend are retaine
 Physical list/gesture/Crown/VoiceOver acceptance is pending owner review. Historical
 build records below retain their original scope and navigation context.
 
-**Owner-requested presentation follow-up:** surface Minecraft server/bot as their
-own health-card check instead of folding them into Services. This is not included
-in build 250; the deployed health card still groups them under Services.
+## Minecraft list deduplication (installed build 252)
+
+Owner review found that build 251's **Services** detail still repeated the two
+Minecraft rows despite the separate Minecraft check. The correction makes the
+read-only lists disjoint on both platforms: **Services** contains non-Minecraft
+rows; **Minecraft** contains only **Minecraft Server** and **Minecraft JARVIS Bot**.
+The default list scope is Services, so callers cannot accidentally restore the
+combined list. Filtering uses only the two exact registered IDs, not names or
+prefixes; unrelated services and legacy hosts retain their inventory.
+
+Complete cached/backend inventory and overall-health evidence are retained. Missing
+Minecraft members remain unknown placeholders in Minecraft only; offline/stale/
+expired/failed observations remain unverified. No requests, collector cadence,
+lifecycle controls, backend registrations or Crown/input ownership change.
+Validation passed **323 shared cases (3 expected live-test skips)**, **177 iPhone
+tests**, both simulator builds and the source/terminal contracts, including disjoint
+scopes, safe defaults, preserved statuses/evidence and compact/accessibility layouts.
+An early read-only Watch resource-allocation failure stopped preparation without
+writes. After the owner said ready, fresh dual-device identity/pairing/developer-
+service/unlock/baseline checks passed. The iPhone installed 252 once, but a second
+Watch readiness failure stopped the initial attempt before its Watch write.
+Read-only inventory independently confirmed iPhone 252 / Watch 251. A reviewed
+Watch-only continuation repeated **both** devices' fresh mixed-baseline checks and
+completed the first/only Watch install without replaying/reinstalling the iPhone.
+
+Both versions and running processes independently verified **252 on 2026-10-05 at
+17:23 EDT**. Frozen source/payload seals, eight candidate/rollback bundle signatures,
+unchanged profiles/entitlements/dependency pins, all 18 protected service records,
+existing Pi panes, backend/config/authentication/registry and Minecraft/gateway/Pi
+identities, and 10-second history cadence passed final verification. Signed rollback
+**251**, historical archives, failed-readiness/partial receipts, unsigned/frozen
+validation results and caches remain intact. No backend/Minecraft lifecycle action,
+uncertain-write retry, reboot/recovery, credential/provisioning change or pruning
+occurred. Physical disjoint-list/Crown/VoiceOver acceptance remains owner review.
+
+## Dedicated Minecraft health-card check (installed build 251)
+
+The owner-requested follow-up gives **Minecraft** its own indicator on iPhone and
+Watch Home, beside **Services**. Tap Minecraft for just **Minecraft Server** and
+**Minecraft JARVIS Bot**, with independent status/age/readiness evidence. Services
+still opens the full inventory, but its card indicator/accessibility evidence no
+longer folds in the Minecraft rows. The normal device-inclusive card has eight
+checks rather than seven; older hosts without Minecraft registrations keep their
+existing categories.
+
+The Minecraft indicator aggregates the worst evidence without hiding a stopped
+optional bot behind a running server's detail. A missing member of an advertised
+pair remains visible as unknown and cannot leave a healthy header. Offline, failed
+or expired collector observations remain unverified. Overall backend-only issues
+still constrain the ring/header and are labelled as backend summary issues, not
+falsely assigned to Services. No collector probes, polling cadence or backend behavior change.
+
+Both platform-owned read-only scopes share the existing sheet/lifecycle gates;
+Watch retains Crown overflow and suspends underlying input while covered. The
+closed card remains non-scrolling, with explicit small/large Watch, phone portrait/
+landscape and accessibility-text fixtures. Minecraft-enabled phone cards reuse
+the existing denser spacing even on legacy device scopes; typography, hit targets
+and test limits are unchanged. Frozen revision 2 passed **176 iPhone tests**, **320
+shared cases (3 expected live-test skips)**, **37 terminal contracts** and both
+simulator builds. The first revision's two accessibility-landscape failures and
+immutable source/test/cache evidence are retained.
+
+The owner-approved exact sealed **251** installed once on each device on
+**2026-10-05 at 16:42 EDT**; independent final version/running-process and live
+backend checks passed at **16:43 EDT**. Candidate and exact rollback **250** each
+passed all four bundle signature/profile/unchanged-entitlement audits. Fresh
+allowlisted identity, pairing, compatible developer services, unlock and installed
+baseline 250 checks passed before installation and again at each write boundary.
+No install retry, backend/Pi/Minecraft restart, credential/provisioning/dependency
+change or cleanup occurred. All 18 protected service records, existing Pi panes,
+Minecraft/gateway/Pi identities, registry/configuration/authentication fingerprints
+and 10-second history cadence were preserved. At final verification the server
+was listening; the bot process was running but disconnected, which the Minecraft
+check correctly exposes as not ready. Physical card/detail/Crown/VoiceOver
+acceptance remains owner review.
 
 ## Visual-only card on both devices (build 234)
 

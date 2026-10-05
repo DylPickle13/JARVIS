@@ -62,7 +62,7 @@ final class SystemDashboardViewTests: XCTestCase {
         SystemDashboardContent(presentation: presentation, connectionLabel: "Fixture · no network",
             compact: compact, accent: .purple, warning: .orange, surface: Color(.secondarySystemGroupedBackground),
             connectionError: presentation.isConnected ? nil : "Fixture connection unavailable",
-            onRefresh: compact ? nil : {}, onServices: {})
+            onRefresh: compact ? nil : {}, onServices: {}, onMinecraft: {})
             .padding(8)
     }
 
@@ -97,15 +97,17 @@ final class SystemDashboardViewTests: XCTestCase {
         return model
     }
 
-    func testVisualCardDelegatesOnlyReadOnlyServicesAndKeepsPlatformInputOwnership() throws {
+    func testVisualCardDelegatesOnlyReadOnlyServicesAndMinecraftAndKeepsPlatformInputOwnership() throws {
         let appRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(contentsOf: appRoot.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift"), encoding: .utf8)
         for forbidden in [".sheet(", "selectedDetail", "ScrollView", ".onTapGesture", ".gesture(", "digitalCrownRotation"] {
             XCTAssertFalse(source.contains(forbidden), forbidden)
         }
-        XCTAssertEqual(source.components(separatedBy: "Button(").count - 1, 2,
-                       "Only read-only Services and the separate iPhone refresh control are actionable")
+        XCTAssertEqual(source.components(separatedBy: "Button(").count - 1, 3,
+                       "Only read-only Services/Minecraft and the separate iPhone refresh control are actionable")
         XCTAssertTrue(source.contains("Button(action: onServices)"))
+        XCTAssertTrue(source.contains("Button(action: onMinecraft)"))
+        XCTAssertTrue(source.contains("system-minecraft-button"))
         let services = try String(contentsOf: appRoot.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemServicesContent.swift"), encoding: .utf8)
         for forbidden in ["Button(", "Task {", "client.", "serviceAction", "Timer("] {
             XCTAssertFalse(services.contains(forbidden), forbidden)
@@ -141,13 +143,13 @@ final class SystemDashboardViewTests: XCTestCase {
         }
     }
 
-    func testMinecraftServicesDetailFitsPhoneAndWatchWidthAndGrowsForCrownOverflow() throws {
+    func testMinecraftDetailFitsPhoneAndWatchWidthAndGrowsForCrownOverflow() throws {
         for offline in [false, true] {
             let dashboard = try presentation(offline: offline, includeExtraService: false, includeMinecraft: true)
             XCTAssertEqual(dashboard.services.count, 4)
             for (compact, width) in [(true, CGFloat(162)), (false, CGFloat(320))] {
                 for size in [DynamicTypeSize.large, .accessibility3] {
-                    let view = SystemServicesContent(presentation: dashboard, compact: compact,
+                    let view = SystemServicesContent(presentation: dashboard, scope: .minecraft, compact: compact,
                         accent: .purple, warning: .orange, surface: Color(.secondarySystemGroupedBackground))
                         .dynamicTypeSize(size)
                     let host = UIHostingController(rootView: view)
@@ -164,12 +166,81 @@ final class SystemDashboardViewTests: XCTestCase {
         }
     }
 
-    func testMinecraftDoesNotEnlargeClosedWatchOverview() throws {
-        let dashboard = try presentation(includeExtraService: false, sensorState: "healthy", deviceCoverage: true, includeMinecraft: true)
-        let host = UIHostingController(rootView: content(dashboard, compact: true))
-        let measured = host.sizeThatFits(in: CGSize(width: 162, height: 197))
-        XCTAssertLessThanOrEqual(measured.width, 162.5)
-        XCTAssertLessThanOrEqual(measured.height, 197.5)
+    func testDedicatedMinecraftCheckFitsClosedPhoneAndWatchOverview() throws {
+        for coverage in [false, true] {
+            for offline in [false, true] {
+                let dashboard = try presentation(offline: offline, includeExtraService: false,
+                    sensorState: "healthy", deviceCoverage: coverage, includeMinecraft: true)
+                XCTAssertEqual(dashboard.visualGroups.count, coverage ? 8 : 6)
+                XCTAssertTrue(dashboard.visualGroups.contains { $0.id == "minecraft" })
+                for (compact, viewport) in [(true, CGSize(width: 162, height: 197)),
+                                           (true, CGSize(width: 184, height: 224)),
+                                           (false, CGSize(width: 320, height: 450)),
+                                           (false, CGSize(width: 750, height: 270))] {
+                    for textSize in [DynamicTypeSize.large, .accessibility3] {
+                        let view = content(dashboard, compact: compact).dynamicTypeSize(textSize)
+                        let host = UIHostingController(rootView: view)
+                        let measured = host.sizeThatFits(in: viewport)
+                        XCTAssertLessThanOrEqual(measured.width, viewport.width + 0.5)
+                        XCTAssertLessThanOrEqual(measured.height, viewport.height + 0.5,
+                            "coverage=\(coverage), offline=\(offline), compact=\(compact), viewport=\(viewport), text=\(textSize)")
+                        host.view.frame = CGRect(origin: .zero, size: viewport); host.view.layoutIfNeeded()
+                        func scrolls(_ view: UIView) -> Int {
+                            (view is UIScrollView ? 1 : 0) + view.subviews.reduce(0) { $0 + scrolls($1) }
+                        }
+                        XCTAssertEqual(scrolls(host.view), 0)
+                        if coverage && !offline {
+                            let renderer = ImageRenderer(content: view.frame(width: viewport.width, height: viewport.height, alignment: .top)
+                                .background(Color.black).environment(\.colorScheme, .dark))
+                            renderer.scale = 3
+                            let attachment = XCTAttachment(image: try XCTUnwrap(renderer.uiImage))
+                            attachment.name = "dedicated-minecraft-check-\(compact)-\(Int(viewport.width))-\(textSize)"
+                            attachment.lifetime = .keepAlways; add(attachment)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testDedicatedServicesAndMinecraftSheetsDoNotDuplicateRowsAndFitDetailWidths() throws {
+        let dashboard = try presentation(includeMinecraft: true)
+        let services = SystemServicesScope.services.services(in: dashboard)
+        let minecraft = SystemServicesScope.minecraft.services(in: dashboard)
+        XCTAssertEqual(minecraft.map(\.id), SystemDashboardPresentation.minecraftServiceIDs)
+        XCTAssertEqual(services.count, 3)
+        XCTAssertEqual(dashboard.services.count, 5)
+        XCTAssertTrue(Set(services.map(\.id)).isDisjoint(with: minecraft.map(\.id)))
+        for scope in [SystemServicesScope.services, .minecraft] {
+            for compact in [false, true] {
+                for textSize in [DynamicTypeSize.large, .accessibility3] {
+                    let width: CGFloat = compact ? 162 : 320
+                    let view = SystemServicesContent(presentation: dashboard, scope: scope,
+                        compact: compact, accent: .purple, warning: .orange, surface: Color(.secondarySystemGroupedBackground))
+                        .dynamicTypeSize(textSize)
+                    let host = UIHostingController(rootView: view)
+                    let measured = host.sizeThatFits(in: CGSize(width: width, height: 10000))
+                    XCTAssertLessThanOrEqual(measured.width, width + 0.5)
+                    XCTAssertGreaterThan(measured.height, 100)
+                    let renderer = ImageRenderer(content: view.frame(width: width))
+                    renderer.scale = 2
+                    let attachment = XCTAttachment(image: try XCTUnwrap(renderer.uiImage))
+                    attachment.name = "disjoint-service-lists-\(scope)-\(compact)-\(textSize)"
+                    attachment.lifetime = .keepAlways; add(attachment)
+                }
+            }
+        }
+    }
+
+    func testDefaultServicesContentNeverRepeatsMinecraftRows() throws {
+        let dashboard = try presentation(includeMinecraft: true)
+        let view = SystemServicesContent(presentation: dashboard,
+            accent: .purple, warning: .orange, surface: Color(.secondarySystemGroupedBackground))
+        XCTAssertEqual(view.scope, .services)
+        XCTAssertEqual(view.scope.services(in: dashboard).map(\.id), dashboard.backgroundServices.map(\.id))
+        XCTAssertFalse(view.scope.services(in: dashboard).contains {
+            SystemDashboardPresentation.minecraftServiceIDs.contains($0.id)
+        })
     }
 
     func testOwnerDeviceGroupsFitPhoneAndWatch() throws {

@@ -5,7 +5,8 @@ struct SystemView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsDetails = false
-    @State private var showsServices = false
+    @State private var serviceScope: SystemServicesScope?
+    private var showsServices: Bool { serviceScope != nil }
 
     var body: some View {
         NavigationStack {
@@ -23,7 +24,8 @@ struct SystemView: View {
                             connectionError: app.stateErrorMessage ?? app.errorMessage,
                             refreshing: app.isStateLoading || app.isRefreshing,
                             historyModel: app.systemHistory,
-                            onServices: { showsServices = true })
+                            onServices: { serviceScope = .services },
+                            onMinecraft: { serviceScope = .minecraft })
                     }
                     HomeDeviceControls { covered in
                         showsDetails = covered
@@ -40,30 +42,30 @@ struct SystemView: View {
             .refreshable { await refreshSystem() }
             .onAppear { app.setSystemViewVisible(true) }
             .onDisappear { app.setSystemViewVisible(false) }
-            .onChange(of: showsServices) { _, covered in
-                app.setSystemDetailsCovered(covered || showsDetails)
+            .onChange(of: serviceScope) { _, scope in
+                app.setSystemDetailsCovered(scope != nil || showsDetails)
             }
-            .sheet(isPresented: $showsServices) { servicesSheet }
+            .sheet(item: $serviceScope) { scope in servicesSheet(scope: scope) }
         }
     }
 
-    private var servicesSheet: some View {
+    private func servicesSheet(scope: SystemServicesScope) -> some View {
         NavigationStack {
             ScrollView {
                 TimelineView(.animation(minimumInterval: 5, paused: scenePhase != .active || !showsServices)) { _ in
                     SystemServicesContent(presentation: .init(snapshot: app.lastState,
                         requestStartedAt: app.lastStateRequestStartedAt,
-                        isConnected: app.connectionState == .connected),
+                        isConnected: app.connectionState == .connected), scope: scope,
                         accent: JarvisPalette.accent, warning: JarvisPalette.warning,
                         surface: JarvisPalette.surface)
                 }
                 .padding(16)
             }
-            .navigationTitle("Services")
+            .navigationTitle(scope.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { showsServices = false }
+                    Button("Done") { serviceScope = nil }
                 }
             }
             .background(JarvisBackdrop())

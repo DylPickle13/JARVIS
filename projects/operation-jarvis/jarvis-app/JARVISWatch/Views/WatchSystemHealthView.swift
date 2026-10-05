@@ -5,7 +5,8 @@ struct WatchSystemHealthView: View {
     @ObservedObject var model: WatchConnectModel
     let active: Bool
     let onDetailVisibilityChanged: (Bool) -> Void
-    @State private var showsServices = false
+    @State private var serviceScope: SystemServicesScope?
+    private var showsServices: Bool { serviceScope != nil }
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.isLuminanceReduced) private var dimmed
 
@@ -19,29 +20,30 @@ struct WatchSystemHealthView: View {
                 accent: WatchJarvisStyle.accent, warning: WatchJarvisStyle.warning,
                 surface: WatchJarvisStyle.surface, connectionError: model.errorMessage,
                 historyModel: model.systemHistory,
-                onServices: { showsServices = true })
+                onServices: { serviceScope = .services },
+                onMinecraft: { serviceScope = .minecraft })
 
         }
         .frame(maxWidth: .infinity, alignment: .top)
-        .onChange(of: showsServices) { _, covered in onDetailVisibilityChanged(covered) }
+        .onChange(of: serviceScope) { _, scope in onDetailVisibilityChanged(scope != nil) }
         .onDisappear { onDetailVisibilityChanged(false) }
-        .sheet(isPresented: $showsServices) {
+        .sheet(item: $serviceScope) { scope in
             NavigationStack {
                 WatchSystemCrownViewport(active: scenePhase == .active && !dimmed && showsServices) {
                     TimelineView(.animation(minimumInterval: 5,
                         paused: scenePhase != .active || dimmed || !showsServices)) { _ in
                         SystemServicesContent(presentation: .init(snapshot: model.lastState,
                             requestStartedAt: SystemDashboardPresentation.snapshotGeneratedAt(model.lastState),
-                            isConnected: model.connectionState == .connected), compact: true,
+                            isConnected: model.connectionState == .connected), scope: scope, compact: true,
                             accent: WatchJarvisStyle.accent, warning: WatchJarvisStyle.warning,
                             surface: WatchJarvisStyle.surface)
                     }
                 }
                 .padding(.horizontal, 8)
-                .navigationTitle("Services")
+                .navigationTitle(scope.title)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showsServices = false }
+                        Button("Done") { serviceScope = nil }
                     }
                 }
             }
