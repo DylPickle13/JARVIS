@@ -197,9 +197,13 @@ Drag normally to select text; releasing the mouse keeps the highlight. Selection
 snapshots only the outer viewer pane, even when the nested agent terminal requests
 mouse input. That pane's display stays steady while selected; agents and other
 panes continue running. Click a pane, divider or header to dismiss and resume the
-live view. Escape or Enter also dismisses without copying. Double-click selects a
-word; triple-click selects a line. Layout/font changes can still invalidate or
-reshape terminal selections; this is not a browser DOM transcript.
+live view. A session-header click also focuses that pane's prompt. Typing while a
+mouse selection is active dismisses it and sends the full input to the prompt,
+including the first character. Escape or Enter dismisses without copying or
+submitting. Double-click selects a word; triple-click selects a line. Ordinary
+keyboard-entered tmux copy mode keeps its original controls. Layout/font changes
+can still invalidate or reshape terminal selections; this is not a browser DOM
+transcript.
 
 For **Cmd+C in local macOS VS Code**, install the optional
 [vscode-selection bridge](vscode-selection/README.md). Cmd+C copies without clearing

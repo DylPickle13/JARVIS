@@ -119,11 +119,11 @@ while True:
         os.write(self.master, f'\x1b[<{button};{x};{y}{"m" if release else "M"}'.encode())
         time.sleep(.04)
 
-    def drag(self):
-        self.mouse(0, 1, 2)
-        self.mouse(32, 6, 2)
-        self.mouse(32, 11, 2)
-        self.mouse(0, 11, 2, release=True)
+    def drag(self, y=2):
+        self.mouse(0, 1, y)
+        self.mouse(32, 6, y)
+        self.mouse(32, 11, y)
+        self.mouse(0, 11, y, release=True)
         self.wait(lambda: self.format('#{selection_present}|#{selection_active}') == '1|0')
 
     def test_drag_is_sticky_and_freezes_only_view_while_app_runs(self):
@@ -147,6 +147,111 @@ while True:
         self.mouse(0, 25, 3)
         self.wait(lambda: self.format('#{pane_mode}') == '')
         self.assertNotIn(b'\x1b[9001~', self.root.joinpath('input').read_bytes())
+
+    def test_typing_after_mouse_selection_resumes_input_without_losing_first_key(self):
+        # These include keys that stock copy mode treats as navigation/search,
+        # Unicode, and editing keys. None should disappear into the selection.
+        for mode in ('emacs', 'vi'):
+            self.tmux('set-option', '-g', 'mode-keys', mode)
+            for key in (b'fhello', b'qhello', b'nhello', b' hello',
+                        'éhello'.encode(), b'\x7f', b'\x1b[3~', b'\t'):
+                with self.subTest(mode=mode, key=key):
+                    self.drag()
+                    before = self.root.joinpath('input').read_bytes()
+                    os.write(self.master, key)
+                    self.wait(lambda: self.format('#{pane_mode}') == '')
+                    self.wait(lambda: self.root.joinpath('input').read_bytes() == before + key)
+                    self.assertFalse(self.clipboard.exists())
+
+    def test_clicking_transcript_then_typing_reaches_input(self):
+        # A single click above the prompt remains ordinary input focus.
+        self.mouse(0, 7, 2)
+        self.mouse(0, 7, 2, release=True)
+        before = self.root.joinpath('input').read_bytes()
+        os.write(self.master, b'first')
+        self.wait(lambda: self.root.joinpath('input').read_bytes() == before + b'first')
+        # Rapid clicks may become a word selection; typing must recover too.
+        time.sleep(.5)
+        for _ in range(2):
+            self.mouse(0, 7, 2)
+            self.mouse(0, 7, 2, release=True)
+        self.wait(lambda: self.format('#{selection_present}') == '1')
+        before = self.root.joinpath('input').read_bytes()
+        os.write(self.master, b'second')
+        self.wait(lambda: self.format('#{pane_mode}') == '')
+        self.wait(lambda: self.root.joinpath('input').read_bytes() == before + b'second')
+
+    def test_selection_fallback_replays_root_shortcuts_without_agent_input(self):
+        self.tmux('bind-key', '-T', 'root', 'C-Left', 'set-option', '-g',
+                  '@test-navigation', 'yes')
+        self.drag()
+        before = self.root.joinpath('input').read_bytes()
+        os.write(self.master, b'\x1b[1;5D')
+        self.wait(lambda: self.format('#{@test-navigation}') == 'yes')
+        self.assertEqual(self.format('#{pane_mode}'), '')
+        self.assertEqual(self.root.joinpath('input').read_bytes(), before)
+
+    def test_nested_tmux_selection_then_typing_reaches_hosted_input(self):
+        # Match the deployment: outer app requests mouse input because it is
+        # tmux, but the inner agent itself does not enable mouse reporting.
+        inner = self.socket + '-inner'
+        def inner_tmux(*args, check=True):
+            return subprocess.run(['tmux', '-L', inner, *args], capture_output=True,
+                                  text=True, timeout=3, check=check, env=self.env)
+        self.addCleanup(lambda: inner_tmux('kill-server', check=False))
+        root = self.root / 'inner'
+        root.mkdir()
+        program = root / 'app.py'
+        program.write_text(self.root.joinpath('app.py').read_text().replace(
+            r'\x1b[?1000h\x1b[?1006h', ''))
+        inner_tmux('-f', '/dev/null', 'new-session', '-d', '-s', 'hosted',
+                   '-x', '80', '-y', '19',
+                   shlex.join([sys.executable, str(program), str(root)]))
+        inner_tmux('set-option', '-g', 'mouse', 'on')
+        errors = root / 'attach-errors'
+        command = shlex.join([
+            'env', '-u', 'TMUX', '-u', 'TMUX_PANE', 'TERM=xterm-256color',
+            'tmux', '-L', inner, 'attach-session', '-t', '=hosted'])
+        self.tmux('respawn-pane', '-k', '-t', 'selection:0.0',
+                  '/bin/sh', '-c', command + ' 2>' + shlex.quote(str(errors)))
+        self.wait(lambda: errors.exists() and (
+            self.format('#{mouse_any_flag}') == '1'
+            or self.format('#{pane_dead}') == '1'))
+        self.assertEqual(self.format('#{mouse_any_flag}'), '1', errors.read_text())
+        self.wait(lambda: root.joinpath('ticks').exists())
+        self.assertEqual(inner_tmux('display-message', '-p', '-t', 'hosted:0.0',
+                                   '#{mouse_any_flag}').stdout.strip(), '0')
+        self.drag()
+        os.write(self.master, 'fhello é'.encode())
+        self.wait(lambda: root.joinpath('input').exists()
+                  and root.joinpath('input').read_bytes() == 'fhello é'.encode())
+        self.assertEqual(self.format('#{pane_mode}'), '')
+        self.assertEqual(inner_tmux('display-message', '-p', '-t', 'hosted:0.0',
+                                   '#{pane_mode}').stdout.strip(), '')
+
+    def test_header_click_dismisses_selection_and_focuses_clicked_prompt(self):
+        root = self.root / 'second'
+        root.mkdir()
+        self.tmux('split-window', '-h', '-t', 'selection:0', shlex.join([
+            sys.executable, str(self.root / 'app.py'), str(root)]), ';',
+            'select-pane', '-t', 'selection:0.0', ';',
+            'set-option', '-g', 'pane-border-status', 'top')
+        self.wait(lambda: root.joinpath('ticks').exists())
+        self.drag(y=3)
+        self.mouse(0, 65, 2)
+        self.mouse(0, 65, 2, release=True)
+        self.wait(lambda: self.format('#{pane_mode}') == '')
+        self.assertEqual(self.format('#{pane_index}', 'selection:0'), '1')
+        os.write(self.master, b'hello')
+        self.wait(lambda: root.joinpath('input').exists()
+                  and b'hello' in root.joinpath('input').read_bytes())
+        self.assertFalse(self.clipboard.exists())
+
+    def test_keyboard_copy_mode_keeps_its_original_navigation(self):
+        self.tmux('copy-mode', '-t', 'selection:0.0')
+        os.write(self.master, b'q')
+        self.wait(lambda: self.format('#{pane_mode}') == '')
+        self.assertFalse(self.root.joinpath('input').exists())
 
     def test_vi_mode_has_same_mouse_and_copy_behaviour(self):
         self.tmux('set-option', '-g', 'mode-keys', 'vi')

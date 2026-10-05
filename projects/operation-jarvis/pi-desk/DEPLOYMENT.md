@@ -1,3 +1,33 @@
+# Selection input-focus follow-up — 2026-10-04
+
+Reproduced the reported input trap in isolated terminals: a rapid transcript click
+can enter word-selection copy mode, whose search/navigation bindings then swallow
+ordinary typing. Mouse selections now use a dedicated, one-shot client key table.
+Typing cancels the snapshot and sends the original key directly to the app, keeping
+Unicode, editing keys and the first character in order even in one fast input burst.
+Desktop navigation/prefix/restart shortcuts are instead re-dispatched through the
+root table. Mouse-up, drag, repeated Cmd+C and word/line selection re-arm the table;
+Escape/Enter still dismiss without submitting. Keyboard-entered copy mode keeps
+its stock navigation. No VS Code extension or global editor-focus change is needed.
+
+Session-header/divider clicks now explicitly select the mouse-targeted pane after
+dismissing selection; the earlier resize action did not focus that pane. Divider
+drag resizing is unchanged. Mouse handlers retain the original coordinates rather
+than replaying synthetic mouse keys.
+
+**202 Python tests and 5 bridge tests passed**. New regressions cover click/typing,
+rapid multi-character input, copy-mode-reserved letters, Unicode, editing keys,
+root shortcut replay, stock keyboard copy mode, header-to-prompt focus and two
+nested isolated tmux servers matching the live agent's disabled mouse reporting.
+Installed only `config/tmux.conf` and its manifest hash locally, then reloaded the
+display configuration. Clients, viewer panes and all hosted-agent identities were
+unchanged. No agent restart, GUI focus switch, remote change or mobile-config edit.
+Sir confirmed the improved input behaviour in the actual VS Code session.
+
+Backup:
+`~/.local/state/pi-desk/backups/selection-focus-20261005T030609696595Z/`
+contains the preceding config/manifest and before/after identity snapshots.
+
 # Browser-style terminal selection — 2026-10-04
 
 Installed and activated **locally on mac-mini-64 only**. Ordinary drag enters the
