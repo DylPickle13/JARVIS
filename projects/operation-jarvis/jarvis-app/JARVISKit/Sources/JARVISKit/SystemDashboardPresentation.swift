@@ -89,8 +89,12 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
             if let label = service.label { details.append("Registration: \(label)") }
             if let configured = service.configured { details.append("Configured: \(configured ? "Yes" : "No")") }
             if let loaded = service.loaded { details.append("Loaded: \(loaded ? "Yes" : "No")") }
-            if let running = service.running { details.append("Running: \(running ? "Yes" : "No")") }
-            if let pid = service.pid { details.append("PID: \(pid)") }
+            let evidencePrefix = isConnected && observed != nil ? "" : "Cached "
+            if let running = service.running { details.append("\(evidencePrefix)running: \(running ? "Yes" : "No")") }
+            if let reason = service.readinessReason {
+                details.append("\(evidencePrefix)readiness: \(SystemHealthPresentation.readinessDetail(reason))")
+            }
+            if let pid = service.pid { details.append("\(evidencePrefix)PID: \(pid)") }
             if let code = service.lastExitCode { details.append("Last exit code: \(code)") }
             if let signal = service.lastExitSignal { details.append("Last exit signal: \(signal)") }
             if let error = service.error, !error.isEmpty { details.append("Error: \(error)") }

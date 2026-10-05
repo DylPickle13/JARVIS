@@ -19,6 +19,24 @@
       "sortOrder": 30,
       "critical": true,
       "allowedActions": []
+    },
+    "minecraft-server": {
+      "adapter": "minecraft-paper",
+      "displayName": "Minecraft Server",
+      "executionMode": "continuous",
+      "description": "Local Paper process and Java listener; not a gameplay or public-access check",
+      "sortOrder": 40,
+      "critical": false,
+      "allowedActions": []
+    },
+    "minecraft-jarvis-bot": {
+      "adapter": "minecraft-bot",
+      "displayName": "Minecraft JARVIS Bot",
+      "executionMode": "continuous",
+      "description": "Local Mineflayer process, server connection and Pi-agent availability",
+      "sortOrder": 50,
+      "critical": false,
+      "allowedActions": []
     }
   }
 }

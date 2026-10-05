@@ -809,7 +809,7 @@ assert root.index('HomeView(') < root.index('SystemView()') < root.index('PiTerm
 assert 'case "system": selection = .system' in root
 assert 'SystemHealthCard' not in Path('JARVIS/Views/HomeView.swift').read_text()
 health = Path('JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift').read_text()
-# Build 234+ uses a static visual card, not the retired detail-sheet overview.
+# The overview stays bounded; only Services delegates a read-only platform detail route.
 for forbidden in ['DisclosureGroup', 'ScrollView', '.sheet(', 'onTapGesture',
                   'statTile(', 'expandedServices', 'Task {', 'client.']:
     assert forbidden not in health
@@ -821,7 +821,24 @@ assert 'ScrollView' in Path('JARVIS/Views/SystemView.swift').read_text()
 assert '.refreshable' in Path('JARVIS/Views/SystemView.swift').read_text()
 assert 'onDetailVisibilityChanged(false)' in health
 watch_health = Path('JARVISWatch/Views/WatchSystemHealthView.swift').read_text()
-assert 'WatchSystemCrownViewport' not in watch_health
+assert 'WatchSystemCrownViewport' in watch_health  # Only the service sheet; overview stays one screen.
+assert '.sheet(isPresented: $showsServices)' in watch_health
+assert 'onDetailVisibilityChanged(covered)' in watch_health
+assert 'scenePhase == .active && !dimmed && showsServices' in watch_health
+assert 'onServices: { showsServices = true }' in watch_health
+phone_services = Path('JARVIS/Views/SystemView.swift').read_text()
+assert '.sheet(isPresented: $showsServices)' in phone_services
+assert 'onServices: { showsServices = true }' in phone_services
+assert 'app.setSystemDetailsCovered(covered || showsDetails)' in phone_services
+for platform in [phone_services, watch_health]:
+    assert 'SystemServicesContent(' in platform
+    assert 'serviceAction' not in platform
+assert 'Button(action: onServices)' in health and 'system-services-button' in health
+services_content = Path('JARVISKit/Sources/JARVISKit/SystemServicesContent.swift').read_text()
+assert 'ForEach(presentation.services)' in services_content
+assert 'service.row.detail' in services_content
+for forbidden in ['Button(', 'Task {', 'client.', 'serviceAction', 'ScrollView', 'Timer(']:
+    assert forbidden not in services_content
 assert 'showsSystemDetails || showsPurifierModeChoices' in Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 assert 'snapshotGeneratedAt(model.lastState)' in watch_health
 for forbidden in ['ScrollView', 'client.', 'Task {', 'refreshPurifier', 'refreshCodex', 'serviceAction']:

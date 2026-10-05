@@ -405,6 +405,23 @@ overrides remain supported. In a frozen artifact deployment explicitly configure
 `JARVISD_OPERATION_ROOT`, `JARVISD_PROJECT_ROOT`, and private services/event/log
 paths; preserve all existing authentication and runtime overrides.
 
+## Read-only Minecraft services (deployed 2026-10-04 EDT)
+
+The service registry now supports optional continuous **Minecraft Server** and
+**Minecraft JARVIS Bot** rows alongside existing LaunchAgents. A fixed local
+adapter verifies project cwd, private executable and process ownership; bounded
+listener/loopback health checks distinguish process running from readiness.
+No Minecraft control permission, startup or process-manager change is added.
+The iPhone/Watch Home Services indicator opens a read-only generic service list.
+See [contract, verification and separate deployment gates](docs/minecraft-services.md).
+Backend `20261005T032800Z-minecraft-services` activated at 23:55 EDT after 820
+frozen tests and three SDK gates. Signed native build **250** was independently
+installed/version/process verified on both devices at 23:56 EDT. Paper remained
+running with its verified Java listener; the bot remained stopped. Only jarvisd
+and its watchdog were cycled; credentials, legacy services, history and Pi/Minecraft
+process identities were preserved. Exact native 249/backend rollback is retained;
+physical Services/Crown/VoiceOver acceptance remains owner review.
+
 ## Cached service execution health
 
 Service observations now add `executionMode` (`continuous` or `periodic`),

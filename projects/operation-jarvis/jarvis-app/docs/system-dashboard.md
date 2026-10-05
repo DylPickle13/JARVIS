@@ -3,9 +3,52 @@
 **Navigation update:** the health card lives at the top of iPhone **Home**, above
 plugs and purifier. The restored Watch **Home** contains health only; Plugs has
 a dedicated page, while purifier returns above Codex/oMLX on JARVIS.
-The card remains noninteractive. Watch Home supports Crown overflow for large text.
+Build 250 makes only the deployed card's **Services** indicator actionable,
+opening the read-only detail list below. Watch Home supports Crown overflow for
+large text.
 See [navigation and Home](navigation-and-home.md) for the verified rollout and pending physical acceptance.
 The build-specific records below retain their original navigation context.
+
+## Read-only Services detail (installed build 250)
+
+The Home **Services** indicator now delegates a platform-owned sheet on iPhone
+and Watch. Shared `SystemServicesContent` renders every named service from cached
+state, including the new optional continuous **Minecraft Server** and
+**Minecraft JARVIS Bot** rows. There are no start/stop/restart buttons, direct
+Minecraft connections or dedicated service polls in either client.
+
+The phone list includes status, age, requirement/mode, description and technical
+evidence. Watch uses compact status/age rows and the existing Crown viewport for
+overflow. A small chevron identifies the Services action; the closed health card
+still fits one screen, including the seven-group/small-Watch fixtures. Platforms
+retain sheet, gesture, Crown and lifecycle ownership; covered history polling
+pauses. The service sheet reevaluates cached freshness while visible and cannot
+rejuvenate stale snapshots received from the phone or disk.
+
+Optional `ready` / `readinessReason` fields distinguish a running-but-disconnected
+bot or unavailable Pi agent from a stopped process. A probe failure is unverified,
+not false proof of stopping. Legacy services remain compatible. Process/readiness
+technical evidence shown while stale/offline is labelled cached.
+
+See the [backend contract and deployment gates](../../jarvisd/docs/minecraft-services.md).
+The owner-approved backend activated **2026-10-04 at 23:55 EDT**; sealed signed
+build **250** was installed once on each allowlisted device and independently
+version/launch/process verified at **23:56 EDT**. Frozen validation passed 175
+iPhone tests, 311 shared Swift cases (3 expected skips), 37 terminal contracts and
+both simulator builds; four candidate and four exact rollback-249 bundles passed
+signature/profile/unchanged-entitlement audits. Fresh dual-device checks passed
+before activation and again immediately before installation.
+
+Live observation showed Paper running with its verified Java listener and the bot
+stopped. Neither Minecraft process changed. The separate backend deployment cycled
+only jarvisd/watchdog; the app installer preserved all 18 protected service records
+and existing Pi identities. Exact rollback 249 and the prior backend are retained.
+Physical list/gesture/Crown/VoiceOver acceptance is pending owner review. Historical
+build records below retain their original scope and navigation context.
+
+**Owner-requested presentation follow-up:** surface Minecraft server/bot as their
+own health-card check instead of folding them into Services. This is not included
+in build 250; the deployed health card still groups them under Services.
 
 ## Visual-only card on both devices (build 234)
 

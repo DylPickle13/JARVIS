@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Static visual health summary. No card actions, sheets, scrolling or input ownership.
+/// Cached visual health summary. Only Services delegates a read-only detail route;
+/// platforms retain sheet, scrolling, gesture and refresh ownership.
 /// Platforms retain visibility, refresh policy, networking and Watch gestures.
 @MainActor
 public struct SystemDashboardContent: View {
@@ -16,12 +17,14 @@ public struct SystemDashboardContent: View {
     public let connectionError: String?
     public let refreshing: Bool
     public let onRefresh: (() -> Void)?
+    public let onServices: (() -> Void)?
     public let onDetailVisibilityChanged: (Bool) -> Void
 
     public init(presentation: SystemDashboardPresentation, connectionLabel: String,
                 compact: Bool = false, showsHeader: Bool = true, accent: Color, warning: Color, surface: Color,
                 connectionError: String? = nil, refreshing: Bool = false,
                 onRefresh: (() -> Void)? = nil, historyModel: SystemHistoryModel? = nil,
+                onServices: (() -> Void)? = nil,
                 onDetailVisibilityChanged: @escaping (Bool) -> Void = { _ in }) {
         self.historyModel = historyModel ?? SystemHistoryModel()
         self.presentation = presentation
@@ -34,6 +37,7 @@ public struct SystemDashboardContent: View {
         self.connectionError = connectionError
         self.refreshing = refreshing
         self.onRefresh = onRefresh
+        self.onServices = onServices
         self.onDetailVisibilityChanged = onDetailVisibilityChanged
     }
 
@@ -101,18 +105,14 @@ public struct SystemDashboardContent: View {
                       : Array(repeating: GridItem(.flexible(), spacing: compact ? 3 : 8), count: compact ? 3 : 5),
                       spacing: compact ? 4 : 8) {
                 ForEach(presentation.visualGroups) { group in
-                    VStack(spacing: compact ? 1 : 4) {
-                        Image(systemName: symbol(group.state))
-                            .font(.system(size: compact ? 12 : 20, weight: .medium))
-                            .foregroundStyle(color(group.state))
-                        Text(compact && group.id == "cast" ? "Cast" : group.title)
-                            .font(.system(size: compact ? 8 : 11))
-                            .lineLimit(1).minimumScaleFactor(0.8)
-                            .foregroundStyle(.secondary)
+                    if group.id == "services", let onServices {
+                        Button(action: onServices) { groupChip(group) }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Shows read-only service status")
+                            .accessibilityIdentifier("system-services-button")
+                    } else {
+                        groupChip(group)
                     }
-                    .frame(maxWidth: .infinity)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(group.accessibilityText + serviceEvidence(group))
                 }
             }
             if let exception {
@@ -121,11 +121,36 @@ public struct SystemDashboardContent: View {
                     .accessibilityLabel(exception + ". " + (historyModel.notice ?? ""))
             }
         }
-        .padding(compact ? 6 : (presentation.includesDeviceCoverage ? 12 : 14))
+        // Reserve the Services hit target without enlarging the one-screen overview.
+        .padding(.horizontal, compact ? 6 : (presentation.includesDeviceCoverage ? 12 : 14))
+        .padding(.vertical, compact ? 3 : (presentation.includesDeviceCoverage ? 10 : 12))
         .frame(maxWidth: .infinity, alignment: .leading)
         .jarvisGlassSurface(surface,
             in: RoundedRectangle(cornerRadius: compact ? 10 : 14, style: .continuous), glass: true)
         .accessibilityIdentifier("system-visual-card")
+    }
+
+    private func groupChip(_ group: SystemVisualGroup) -> some View {
+        VStack(spacing: compact ? 1 : 4) {
+            Image(systemName: symbol(group.state))
+                .font(.system(size: compact ? 12 : 20, weight: .medium))
+                .foregroundStyle(color(group.state))
+            HStack(spacing: 2) {
+                Text(compact && group.id == "cast" ? "Cast" : group.title)
+                    .font(.system(size: compact ? 8 : 11))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                if group.id == "services", onServices != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: compact ? 6 : 8, weight: .semibold))
+                        .accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: group.id == "services" && onServices != nil ? (compact ? 32 : 44) : nil)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(group.accessibilityText + serviceEvidence(group))
     }
 
     private var timeline: some View {

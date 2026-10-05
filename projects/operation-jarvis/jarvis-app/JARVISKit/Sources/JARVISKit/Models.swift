@@ -632,6 +632,9 @@ public struct ServiceActionResult: Codable, Equatable, Sendable {
     public let displayName: String?
     public let loaded: Bool?
     public let running: Bool?
+    /// Process existence is separate from bounded, service-specific readiness.
+    public let ready: Bool?
+    public let readinessReason: String?
     public let pid: Int?
     public let description: String?
     public let sortOrder: Int?

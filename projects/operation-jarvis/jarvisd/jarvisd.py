@@ -47,6 +47,7 @@ from typing import Any, Callable
 
 from jarvisd_core import auth, commands, security_status, read_health
 from jarvisd_core.host_memory import collect_host_memory
+from jarvisd_core.minecraft_services import ADAPTERS as MINECRAFT_ADAPTERS, collect_minecraft_services
 from jarvisd_core.pi_session_names import PiSessionNameReader, validated_name
 
 _PI_SESSION_NAMES = PiSessionNameReader()
@@ -790,6 +791,9 @@ def _launchctl_target(label: str) -> str:
 
 
 def _service_allowed_actions(spec: dict) -> list[str]:
+    # These observations never grant lifecycle control, even in a misconfigured registry.
+    if spec.get("adapter", "launchd") != "launchd":
+        return []
     raw = spec.get("allowedActions", [])
     if not isinstance(raw, list):
         return []
@@ -858,7 +862,25 @@ def _parse_launchctl_status(name: str, spec: dict, proc: subprocess.CompletedPro
     }
 
 
+def _minecraft_service_rows(services: dict) -> dict:
+    specs = {name: spec for name, spec in services.items()
+             if isinstance(spec, dict) and isinstance(spec.get("adapter"), str)
+             and spec["adapter"] in MINECRAFT_ADAPTERS}
+    if not specs:
+        return {}
+    observations = collect_minecraft_services(
+        {spec["adapter"] for spec in specs.values()}, JARVIS_ROOT / "projects" / "minecraft-server")
+    return {name: {"service": name, **_service_metadata(spec), **observations[spec["adapter"]]}
+            for name, spec in specs.items()}
+
+
 def _service_status(name: str, spec: dict) -> dict:
+    adapter = spec.get("adapter", "launchd")
+    if isinstance(adapter, str) and adapter in MINECRAFT_ADAPTERS:
+        return _minecraft_service_rows({name: spec})[name]
+    if adapter != "launchd":
+        return {"ok": False, "service": name, "running": None,
+                **_service_metadata(spec), "error": "Unsupported service adapter."}
     label = spec.get("label")
     metadata = _service_metadata(spec)
     if not isinstance(label, str) or not label:
@@ -913,7 +935,9 @@ def _service_status(name: str, spec: dict) -> dict:
 
 
 def _services_state(services: dict) -> dict:
-    return {name: _service_status(name, spec) for name, spec in services.items() if isinstance(spec, dict)}
+    minecraft = _minecraft_service_rows(services)
+    return {name: minecraft[name] if name in minecraft else _service_status(name, spec)
+            for name, spec in services.items() if isinstance(spec, dict)}
 
 
 def _load_services() -> dict:
@@ -1902,6 +1926,11 @@ def _service_action(name: str, action: str) -> dict:
     spec = services.get(name)
     if not isinstance(spec, dict):
         return {"ok": False, "service": name, "action": action, "error": f"unknown service {name!r}", "known": list(services)}
+    if spec.get("adapter", "launchd") != "launchd":
+        if action == "status":
+            return _service_status(name, spec) | {"action": action}
+        return {"ok": False, "service": name, "action": action,
+                "error": "This service supports read-only status only."}
     label = spec.get("label")
     if not isinstance(label, str) or not label:
         return {"ok": False, "service": name, "action": action, "error": "service has no launchctl label"}

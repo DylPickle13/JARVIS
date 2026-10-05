@@ -5,7 +5,7 @@ import JARVISKit
 
 @MainActor
 final class SystemDashboardViewTests: XCTestCase {
-    private func presentation(offline: Bool = false, includeExtraService: Bool = true, sensorState: String? = nil, deviceCoverage: Bool = false) throws -> SystemDashboardPresentation {
+    private func presentation(offline: Bool = false, includeExtraService: Bool = true, sensorState: String? = nil, deviceCoverage: Bool = false, includeMinecraft: Bool = false) throws -> SystemDashboardPresentation {
         let meta: [String: Any] = Dictionary(uniqueKeysWithValues:
             ["services", "pi", "plugs", "purifier", "network", "codexQuota"].map {
                 ($0, ["ok": true, "stale": false, "ageSeconds": 10] as [String: Any])
@@ -16,6 +16,13 @@ final class SystemDashboardViewTests: XCTestCase {
             "voice": ["ok": true, "displayName": "Room Audio Server", "critical": false, "running": false, "executionMode": "continuous"]]
         if includeExtraService {
             services["broken"] = ["ok": true, "displayName": "Required daemon", "critical": true, "running": false, "executionMode": "continuous"]
+        }
+        if includeMinecraft {
+            services["minecraft-server"] = ["ok": true, "displayName": "Minecraft Server",
+                "critical": false, "executionMode": "continuous", "running": true,
+                "ready": true, "readinessReason": "java_listening", "sortOrder": 40]
+            services["minecraft-jarvis-bot"] = ["ok": true, "displayName": "Minecraft JARVIS Bot",
+                "critical": false, "executionMode": "continuous", "running": false, "sortOrder": 50]
         }
         var object: [String: Any] = ["ok": true, "version": "test-fixture", "uptimeSeconds": 90000,
             "subsystemsMeta": meta, "subsystems": [
@@ -54,7 +61,8 @@ final class SystemDashboardViewTests: XCTestCase {
     private func content(_ presentation: SystemDashboardPresentation, compact: Bool) -> some View {
         SystemDashboardContent(presentation: presentation, connectionLabel: "Fixture · no network",
             compact: compact, accent: .purple, warning: .orange, surface: Color(.secondarySystemGroupedBackground),
-            connectionError: presentation.isConnected ? nil : "Fixture connection unavailable", onRefresh: compact ? nil : {})
+            connectionError: presentation.isConnected ? nil : "Fixture connection unavailable",
+            onRefresh: compact ? nil : {}, onServices: {})
             .padding(8)
     }
 
@@ -89,14 +97,19 @@ final class SystemDashboardViewTests: XCTestCase {
         return model
     }
 
-    func testVisualCardHasNoDetailRoutesOrInputHandlers() throws {
+    func testVisualCardDelegatesOnlyReadOnlyServicesAndKeepsPlatformInputOwnership() throws {
         let appRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(contentsOf: appRoot.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift"), encoding: .utf8)
         for forbidden in [".sheet(", "selectedDetail", "ScrollView", ".onTapGesture", ".gesture(", "digitalCrownRotation"] {
             XCTAssertFalse(source.contains(forbidden), forbidden)
         }
-        XCTAssertEqual(source.components(separatedBy: "Button(").count - 1, 1,
-                       "Only the separate iPhone refresh control may remain actionable")
+        XCTAssertEqual(source.components(separatedBy: "Button(").count - 1, 2,
+                       "Only read-only Services and the separate iPhone refresh control are actionable")
+        XCTAssertTrue(source.contains("Button(action: onServices)"))
+        let services = try String(contentsOf: appRoot.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemServicesContent.swift"), encoding: .utf8)
+        for forbidden in ["Button(", "Task {", "client.", "serviceAction", "Timer("] {
+            XCTAssertFalse(services.contains(forbidden), forbidden)
+        }
         XCTAssertTrue(source.contains("if !compact"))
         XCTAssertTrue(source.contains("group.accessibilityText + serviceEvidence(group)"))
         XCTAssertTrue(source.contains("bucket.coverageSeconds"))
@@ -126,6 +139,37 @@ final class SystemDashboardViewTests: XCTestCase {
             }
             model.configure(.init(endpoint: nil, surface: compact ? .watch : .phone, visible: false, interactive: false, connected: false))
         }
+    }
+
+    func testMinecraftServicesDetailFitsPhoneAndWatchWidthAndGrowsForCrownOverflow() throws {
+        for offline in [false, true] {
+            let dashboard = try presentation(offline: offline, includeExtraService: false, includeMinecraft: true)
+            XCTAssertEqual(dashboard.services.count, 4)
+            for (compact, width) in [(true, CGFloat(162)), (false, CGFloat(320))] {
+                for size in [DynamicTypeSize.large, .accessibility3] {
+                    let view = SystemServicesContent(presentation: dashboard, compact: compact,
+                        accent: .purple, warning: .orange, surface: Color(.secondarySystemGroupedBackground))
+                        .dynamicTypeSize(size)
+                    let host = UIHostingController(rootView: view)
+                    let measured = host.sizeThatFits(in: CGSize(width: width, height: 10000))
+                    XCTAssertLessThanOrEqual(measured.width, width + 0.5)
+                    XCTAssertGreaterThan(measured.height, 197, "Detail content must overflow, not silently drop services")
+                    let renderer = ImageRenderer(content: view.frame(width: width))
+                    renderer.scale = 2
+                    let attachment = XCTAttachment(image: try XCTUnwrap(renderer.uiImage))
+                    attachment.name = "minecraft-service-list-synthetic-\(compact)-\(offline)-\(size)"
+                    attachment.lifetime = .keepAlways; add(attachment)
+                }
+            }
+        }
+    }
+
+    func testMinecraftDoesNotEnlargeClosedWatchOverview() throws {
+        let dashboard = try presentation(includeExtraService: false, sensorState: "healthy", deviceCoverage: true, includeMinecraft: true)
+        let host = UIHostingController(rootView: content(dashboard, compact: true))
+        let measured = host.sizeThatFits(in: CGSize(width: 162, height: 197))
+        XCTAssertLessThanOrEqual(measured.width, 162.5)
+        XCTAssertLessThanOrEqual(measured.height, 197.5)
     }
 
     func testOwnerDeviceGroupsFitPhoneAndWatch() throws {

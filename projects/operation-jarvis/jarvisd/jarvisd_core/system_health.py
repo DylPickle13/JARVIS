@@ -23,6 +23,7 @@ REASONS = frozenset({
     'observation_expired', 'collector_failed', 'loading', 'details_missing',
     'required_service_missing', 'required_service_stopped', 'service_read_failed',
     'scheduled_check_failed', 'scheduled_completion_unknown', 'service_state_unknown',
+    'service_not_ready', 'service_readiness_unknown',
     'device_observation_failed', 'device_observation_unknown', 'snapshot_failed',
     'inventory_limit', 'monitoring_disabled', 'not_checked',
     'sensor_read_failed', 'sensor_read_unknown',
@@ -118,6 +119,11 @@ def _service(data):
             return observation('healthy', 'current')
         return observation('unknown', 'scheduled_completion_unknown')
     if data.get('running') is True:
+        if 'ready' in data:
+            if data['ready'] is False:
+                return observation('degraded', 'service_not_ready')
+            if data['ready'] is not True:
+                return observation('unknown', 'service_readiness_unknown')
         return observation('healthy', 'current')
     if critical is False and data.get('running') is False:
         return observation('inactive', 'optional_inactive')

@@ -116,7 +116,8 @@ public struct SystemHistoryResponse: Codable, Equatable, Sendable {
     static let allowedReasonCodes: Set<String> = ["current", "optional_inactive", "metadata_missing", "timestamp_invalid",
         "observation_expired", "collector_failed", "loading", "details_missing", "required_service_missing",
         "required_service_stopped", "service_read_failed", "scheduled_check_failed", "scheduled_completion_unknown",
-        "service_state_unknown", "device_observation_failed", "device_observation_unknown", "snapshot_failed", "inventory_limit",
+        "service_state_unknown", "service_not_ready", "service_readiness_unknown",
+        "device_observation_failed", "device_observation_unknown", "snapshot_failed", "inventory_limit",
         "monitoring_disabled", "not_checked", "sensor_read_failed", "sensor_read_unknown"]
 
     public func validated(window expected: SystemHistoryWindow, component: String? = nil, now: Date = Date()) throws -> Self {

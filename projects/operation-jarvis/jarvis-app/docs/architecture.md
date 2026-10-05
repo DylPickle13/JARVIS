@@ -48,6 +48,11 @@ Plug and purifier buttons call `jarvisd` directly, without an LLM. The daemon va
 
 Background collectors update a cache so each UI request does not need a fresh device probe. Saved values include their freshness and any errors. Once stale, they must no longer appear live. An older read that finishes late must not overwrite a confirmed command result.
 
+The source-only [Services detail](system-dashboard.md#read-only-services-detail-source-only-not-installed)
+uses that same cached state on both devices. Its optional Minecraft process/readiness
+fields come from jarvisd; clients never contact Minecraft directly or gain lifecycle
+controls. Installation and backend activation remain separate approval gates.
+
 Jobs reads the scheduler's limited inventory and saved results. It cannot edit schedules and does not expose prompts, model configuration, command lines, or private database paths. Notifications are configured separately; reading a result does not send one.
 
 ### Room audio

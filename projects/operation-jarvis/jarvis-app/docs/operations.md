@@ -16,11 +16,11 @@ owner-approved cleanup removed the obsolete build-246 signed archive, reclaiming
 **111.75 MiB allocated**. Build-248's session-created build caches had already been
 removed after deployment, releasing **2.91 GiB**; its archive and evidence remain.
 
-Current recovery archives are **249** (deployed and owner-accepted on both devices)
-and **248** (exact immediate signed rollback for both). The build-249 preflight
-independently verified that Watch had received 248; both devices now independently
-verify 249. No older archive was removed during installation; the subsequent
-owner-approved cleanup is recorded below.
+Current recovery archives include **250** (independently installed/version/process
+verified on both devices; physical acceptance pending), **249** (exact immediate
+signed rollback, previously owner-accepted) and historical **248**. Both devices
+now independently verify 250. No older archive or build cache was removed during
+this rollout. Earlier owner-approved cleanup is recorded below.
 At the earlier build-248 cleanup, all four then-retained payload seals,
 four-bundle signatures and frozen source manifests were verified before and after
 pruning 246. Every non-binary byte of
@@ -40,6 +40,47 @@ before those superseded scratch directories were removed. The private build-247
 `stale-artifact-pruning.json` records the exact removals and retention checks.
 No runtime configuration, credentials, services or Pi history were removed.
 Historical retention statements below describe the state at their original time.
+
+## Minecraft Services lists — build 250
+
+Owner-approved build **250** installed once on each allowlisted iPhone and Watch,
+with independent final version/launch/process verification on **2026-10-04 at
+23:56 EDT**. On Home, tap **Services** for the complete read-only inventory,
+including **Minecraft Server** and **Minecraft JARVIS Bot**. Watch's list uses the
+existing Crown overflow viewport. See [dashboard behavior](system-dashboard.md)
+and [backend observation/deployment contract](../../jarvisd/docs/minecraft-services.md).
+
+Frozen native validation: **175 iPhone tests**, **311 shared Swift cases (3 expected
+skips)**, **37 terminal contracts** and both simulator builds from 254 source inputs.
+The existing plain-Paste pixel assertion remains the only native exclusion. The
+first compact-layout validation failed its 197.5-pt limit; reviewed source revision
+2 reduces compact vertical padding one point per edge and passed. The original
+failed source and test evidence remain intact. Candidate 250 and exact rollback
+249 each passed all four bundle signature/profile/unchanged-entitlement audits;
+byte-identical paid-team profiles, credentials, capabilities and dependency pins
+were reused. No portal change or rebuild occurred after payload sealing.
+
+Three initial read-only Watch preflights disconnected without writes. After the
+owner confirmed readiness, fresh guarded checks authoritatively established build
+249 on both devices. Both-device identity/allowlist, pairing, compatible developer
+services, unlock and baseline checks passed again before backend activation and
+immediately before each one-shot installation. No install retry, unpairing, reboot,
+app-data removal or service restart was performed by the app installer. All 18
+protected service records and existing Pi pane/process identities were preserved.
+
+The separately authorized frozen installed-baseline backend passed **820 tests**
+and all three isolated SDK gates, then activated at **23:55 EDT**. Its registry
+preserves all legacy entries; only jarvisd and its resurrector were cycled, with a
+**0.603-second** daemon restart. Configuration/credential fingerprints, history-file
+identity and 10-second cadence, 16 unrelated service records and existing Pi panes
+were preserved. Paper remained running with its verified Java listener; the bot
+remained stopped. Minecraft/world/router configuration was untouched.
+
+Private evidence: native `20261005T032800Z-build250-minecraft-services`, backend
+`20261005T032800Z-minecraft-services`; exact signed rollback 249, previous backend
+source/plists/registry and consistent history backup remain retained. No cleanup
+was performed. Physical Services/Crown/VoiceOver acceptance remains owner review;
+process/listener verification is not gameplay, public-access or inference proof.
 
 ## Watch wide-pane wrapping — build 249
 

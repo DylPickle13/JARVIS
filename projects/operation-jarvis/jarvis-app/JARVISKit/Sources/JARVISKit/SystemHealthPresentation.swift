@@ -131,7 +131,13 @@ public struct SystemHealthPresentation: Equatable, Sendable {
                             status = .unknown; detail = "Scheduled check completion is unknown"
                         }
                     } else if service.running == true {
-                        status = .healthy; detail = "Running"
+                        if service.ready == false {
+                            status = .issue; detail = Self.readinessDetail(service.readinessReason)
+                        } else if service.ready == nil && service.readinessReason != nil {
+                            status = .unknown; detail = "Running · readiness unverified"
+                        } else {
+                            status = .healthy; detail = "Running"
+                        }
                     } else if service.critical == false && service.running == false {
                         status = .inactive; detail = "Stopped · not marked required"
                     } else if service.critical == true && service.running == false && service.executionMode == "continuous" {
@@ -212,6 +218,19 @@ public struct SystemHealthPresentation: Equatable, Sendable {
             }
         }
         rows = result
+    }
+
+    public static func readinessDetail(_ reason: String?) -> String {
+        switch reason {
+        case "java_listening": return "Running · Java listener verified"
+        case "java_not_listening": return "Running · Java listener unavailable"
+        case "bot_rpc_unavailable": return "Running · bot interface unavailable"
+        case "bot_disconnected": return "Running · disconnected from Minecraft"
+        case "bot_quarantined": return "Running · bot action quarantined"
+        case "agent_unavailable": return "Running · Pi agent unavailable"
+        case "bot_ready": return "Running · connected, Pi agent available"
+        default: return "Running · readiness unverified"
+        }
     }
 
     private static func overallRow(_ summary: CachedSystemHealthSummary,

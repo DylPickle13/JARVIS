@@ -5,6 +5,7 @@ struct SystemView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsDetails = false
+    @State private var showsServices = false
 
     var body: some View {
         NavigationStack {
@@ -12,7 +13,7 @@ struct SystemView: View {
                 VStack(spacing: 10) {
                     TabPageHeader(title: "Home")
                     TimelineView(.animation(minimumInterval: 5,
-                        paused: scenePhase != .active || app.activeSection != .system || showsDetails)) { _ in
+                        paused: scenePhase != .active || app.activeSection != .system || showsDetails || showsServices)) { _ in
                         // Timeline ticks schedule redraws, not the evaluation clock.
                         SystemDashboardContent(presentation: .init(snapshot: app.lastState,
                             requestStartedAt: app.lastStateRequestStartedAt,
@@ -21,11 +22,12 @@ struct SystemView: View {
                             warning: JarvisPalette.warning, surface: JarvisPalette.surface,
                             connectionError: app.stateErrorMessage ?? app.errorMessage,
                             refreshing: app.isStateLoading || app.isRefreshing,
-                            historyModel: app.systemHistory)
+                            historyModel: app.systemHistory,
+                            onServices: { showsServices = true })
                     }
                     HomeDeviceControls { covered in
                         showsDetails = covered
-                        app.setSystemDetailsCovered(covered)
+                        app.setSystemDetailsCovered(covered || showsServices)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -38,6 +40,33 @@ struct SystemView: View {
             .refreshable { await refreshSystem() }
             .onAppear { app.setSystemViewVisible(true) }
             .onDisappear { app.setSystemViewVisible(false) }
+            .onChange(of: showsServices) { _, covered in
+                app.setSystemDetailsCovered(covered || showsDetails)
+            }
+            .sheet(isPresented: $showsServices) { servicesSheet }
+        }
+    }
+
+    private var servicesSheet: some View {
+        NavigationStack {
+            ScrollView {
+                TimelineView(.animation(minimumInterval: 5, paused: scenePhase != .active || !showsServices)) { _ in
+                    SystemServicesContent(presentation: .init(snapshot: app.lastState,
+                        requestStartedAt: app.lastStateRequestStartedAt,
+                        isConnected: app.connectionState == .connected),
+                        accent: JarvisPalette.accent, warning: JarvisPalette.warning,
+                        surface: JarvisPalette.surface)
+                }
+                .padding(16)
+            }
+            .navigationTitle("Services")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showsServices = false }
+                }
+            }
+            .background(JarvisBackdrop())
         }
     }
 
