@@ -56,6 +56,15 @@ class BackupTests(unittest.TestCase):
                                (1024**4, '1.00 TiB')]:
             self.assertEqual(b.human_size(size), expected)
 
+    def test_cli_uses_one_hour_budget_and_allows_explicit_override(self):
+        for options, expected in [([], 3600), (['--timeout', '6000'], 6000)]:
+            with self.subTest(options=options), \
+                 patch('sys.argv', ['restic_backup.py', 'health', *options]), \
+                 patch.object(b, 'Backup', autospec=True) as constructor:
+                b.main()
+                constructor.assert_called_once_with(b.DEFAULT_CONFIG, expected)
+                constructor.return_value.health.assert_called_once_with(silent=False)
+
     def test_backup_summary_is_readable_and_preserves_raw_state(self):
         backup = b.Backup(self.config, 60)
         summary = {'message_type': 'summary', 'snapshot_id': 'abc12345',
@@ -100,6 +109,25 @@ class BackupTests(unittest.TestCase):
                      'projects/operation-jarvis/keyboard/karabiner/upstream/src/apps/SettingsWindow/build',
                      'projects/job-search/data-ai-analyst-assessment/.runtime', 'projects/foo/node_modules']:
             self.assertTrue(b.excluded(Path(path), self.policy), path)
+
+    def test_runtime_swift_build_exclusion_is_narrow_and_prunes_inventory(self):
+        generated = self.root / '.pi/runtime/minecraft-health-card-fixture/swift-build'
+        generated.mkdir(parents=True)
+        (generated / 'build.db').write_bytes(b'SQLite format 3\x00' + b'x' * 10000)
+        source = generated.parent / 'source/SystemView.swift'
+        source.parent.mkdir()
+        source.write_text('// unique source, not generated output\n')
+        for rel in ['.pi/runtime/minecraft-health-card-fixture/swift-build',
+                    '.pi/runtime/future-fixture/swift-build']:
+            self.assertTrue(b.excluded(Path(rel), self.policy), rel)
+        for rel in [str(source.relative_to(self.root)),
+                    '.pi/runtime/minecraft-health-card-fixture/swift-build-notes.md',
+                    'projects/custom/swift-build']:
+            self.assertFalse(b.excluded(Path(rel), self.policy), rel)
+        omitted, databases, total, count = b.inventory(self.root, self.policy)
+        self.assertIn(generated, omitted)
+        self.assertNotIn(generated / 'build.db', databases)
+        self.assertNotIn(source, omitted)
 
     def test_inventory_prunes_and_does_not_follow_symlinks(self):
         generated = self.root / 'projects/.venv'
@@ -210,12 +238,36 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(run.call_count, 1)
         self.assertNotIn('last_success_at', backup.load_state())
 
+    def test_restore_failure_keeps_previous_verified_snapshot_and_cannot_prune(self):
+        backup = b.Backup(self.config, 60)
+        backup.record(snapshot_id='previous', last_success_at='2026-10-04T23:35:41+00:00')
+        summary = {'message_type': 'summary', 'snapshot_id': 'unverified'}
+        output = io.StringIO()
+        with patch.object(backup, 'run', return_value=json.dumps(summary)) as run, \
+             patch.object(backup, 'verify', side_effect=TimeoutError('restore timeout')), \
+             patch.object(backup, 'maintain') as maintain, redirect_stdout(output):
+            with self.assertRaisesRegex(TimeoutError, 'restore timeout'):
+                backup.nightly()
+        self.assertEqual(backup.load_state()['snapshot_id'], 'previous')
+        self.assertEqual(backup.load_state()['last_success_at'], '2026-10-04T23:35:41+00:00')
+        self.assertEqual([call.args[0][0] for call in run.call_args_list], ['backup', 'check'])
+        maintain.assert_not_called()
+        self.assertIn('Drive upload completed', output.getvalue())
+        self.assertIn('starting restore verification', output.getvalue())
+        self.assertNotIn('saved and verified', output.getvalue())
+        self.assertNotIn('Drive backup job: completed', output.getvalue())
+
     @unittest.skipUnless(shutil.which('restic'), 'restic required for integration test')
     def test_local_repository_end_to_end(self):
         backup = b.Backup(self.config, 120)
         generated = self.root / 'projects/[fixture]/.venv'
         generated.mkdir(parents=True)
         (generated / 'exclude-me.txt').write_text('reproducible dependency')
+        swift_build = self.root / '.pi/runtime/fixture/swift-build'
+        swift_build.mkdir(parents=True)
+        (swift_build / 'exclude-swift-output.txt').write_text('reproducible Swift build')
+        source = swift_build.parent / 'source.swift'
+        source.write_text('// keep custom runtime source\n')
         with backup.locked():
             backup.run(['init'])
             backup.backup()
@@ -230,6 +282,8 @@ class BackupTests(unittest.TestCase):
             listing = backup.run(['ls', backup.load_state()['snapshot_id']])
             self.assertIn(str(self.root / '.env'), listing)
             self.assertNotIn('exclude-me.txt', listing)
+            self.assertNotIn('exclude-swift-output.txt', listing)
+            self.assertIn(str(source), listing)
             self.assertNotIn(str(self.dbpath), listing)
             self.assertIn(str(backup.stage / 'projects/operation-jarvis/data/scheduler/scheduler.sqlite'), listing)
             backup.maintain(dry_run=True)

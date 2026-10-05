@@ -11,6 +11,7 @@
     "projects/operation-jarvis/keyboard/karabiner/upstream/vendor/*/build",
     "projects/job-search/data-ai-analyst-assessment/.runtime",
     ".pi/runtime/pi-lazy-tools/releases",
+    ".pi/runtime/*/swift-build",
     ".pi/logs",
     ".pi/scheduled-sessions",
     "JARVIS-projects-backup.tar.gz",

@@ -24,6 +24,7 @@ from minecraft_checkpoint import MinecraftCheckpoint
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_CONFIG = Path.home() / '.config/jarvis-backup/config.json'
+DEFAULT_TIMEOUT_SECONDS = 60 * 60
 TAG = 'jarvis-recovery-v1'
 SQLITE_HEADER = b'SQLite format 3\x00'
 
@@ -273,7 +274,9 @@ class Backup:
         snapshot = summary.get('snapshot_id')
         if not snapshot:
             raise RuntimeError('Restic returned no snapshot ID')
+        print('Drive upload completed; checking repository structure.', flush=True)
         self.run(['check'], retries=2)
+        print('Repository structure passed; starting restore verification.', flush=True)
         self.verify(snapshot)
         self.record(last_success_at=utcnow(), snapshot_id=snapshot, summary=summary, last_error=None,
                     minecraft_snapshot_id=snapshot if minecraft else None,
@@ -398,7 +401,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['plan', 'init', 'backup', 'snapshots', 'verify', 'check', 'maintenance', 'health'])
     parser.add_argument('--config', type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument('--timeout', type=int, default=780, help='Total operation budget in seconds (below scheduler timeout)')
+    parser.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SECONDS,
+                        help='Total operation budget in seconds (default: 3600; keep below scheduler timeout)')
     parser.add_argument('--dry-run', action='store_true', help='Preview retention during maintenance; checks still run')
     parser.add_argument('--silent', action='store_true', help='Silent healthy watchdog result')
     parser.add_argument('--full', action='store_true', help='Read all repository data during check')

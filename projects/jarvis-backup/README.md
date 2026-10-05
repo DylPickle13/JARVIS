@@ -40,7 +40,8 @@ Included: project files/data, custom models, `.env`, root files, Git history,
 attachments, `.pi` configuration/extensions/memory/scheduler, and custom runtime
 source. `.gitignore` is deliberately NOT the backup policy.
 
-Excluded: named virtual environments, node_modules, Python caches, Swift `.build`,
+Excluded: named virtual environments, node_modules, Python caches, Swift `.build`
+and `.pi/runtime/*/swift-build` generated output (not adjacent runtime source),
 log files, selected Karabiner build outputs/pkgroot, assessment `.runtime`,
 regenerable pi-lazy-tools releases, scheduler session logs, transient special
 files, and the old tarball. Project `temp` itself, model weights and vendor source
@@ -180,10 +181,26 @@ in effect; pruned objects may remain in Drive trash until its normal expiration.
 Do not empty Drive trash automatically or run rclone sync on the repository.
 
 Operations use an owner-only advisory lock plus Restic's repository locks,
-bounded retries, network timeouts and a default 780-second total subprocess
-budget (below the scheduler's default 900 seconds). Lock conflicts are errors,
-not silent success. Initial/full checks can use a longer manual budget. No
-automatic `unlock`, repair, repository reinitialization or credential rotation.
+bounded retries, network timeouts and a default 3,600-second total operation
+budget (one hour), shared by backup, verification and due maintenance. The installed
+scheduler already allows 7,200 seconds (two hours); its configuration and other
+jobs are unchanged. A fresh scheduler's fallback is 900 seconds, so configure
+`JARVIS_SCHEDULER_TIMEOUT_SECONDS` above the backup budget before deployment
+(the runner caps it at 7,200 seconds). Lock conflicts are errors, not silent
+success. Initial/full checks can use a longer manual budget. No automatic
+`unlock`, repair, repository reinitialization or credential rotation.
+
+The October 5, 2026 overnight failure exhausted the former 780-second budget
+during restore verification, after upload and the structural check passed.
+Generated runtime Swift output is now excluded without deleting local files or
+old snapshots. Upload/check/restore phase markers make future failures easier
+to locate; a recovery point is still recorded as successful only after all
+restore checks pass. The owner-approved manual scheduler rerun on October 5
+completed in 2m35s: snapshot `affc2eae`, all 10 database copies, 2 source samples
+and 13 Minecraft world/player/region samples verified. Remote readback confirmed
+the generated Swift build tree was absent and the DH database remained included;
+health passed and the next scheduled run remained 3 AM EDT on October 6.
+Weekly maintenance was not due, so this rerun does not measure its duration.
 
 ## Commands
 
