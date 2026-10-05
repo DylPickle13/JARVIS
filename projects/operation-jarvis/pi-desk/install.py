@@ -66,6 +66,10 @@ def install(mode, project_root='/Users/dylanrapanan/JARVIS', pi_desktop=False):
         (app / name).chmod(0o700)
     remove_retired(app)
     shutil.copytree(SOURCE / 'config', app / 'config', dirs_exist_ok=True)
+    # Ship the optional, offline-buildable VS Code bridge without installing it
+    # or changing editor settings. Pi Desk remains usable in any terminal.
+    shutil.copytree(SOURCE / 'vscode-selection', app / 'vscode-selection', dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns('test_*', '__pycache__', '*.vsix'))
     config_dir = home / '.config/pi-desk'
     config_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     client = config_dir / 'client.json'

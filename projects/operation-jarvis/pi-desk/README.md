@@ -191,6 +191,27 @@ Alt+F11 in the Pi desktop. The Pi retains 1080p, 14 pt DejaVu/Noto Emoji and a b
 background. The Mac app requests a 173×47 terminal; ordinary CLI usage preserves
 the user's terminal size/profile.
 
+### Selecting and copying text
+
+Drag normally to select text; releasing the mouse keeps the highlight. Selection
+snapshots only the outer viewer pane, even when the nested agent terminal requests
+mouse input. That pane's display stays steady while selected; agents and other
+panes continue running. Click a pane, divider or header to dismiss and resume the
+live view. Escape or Enter also dismisses without copying. Double-click selects a
+word; triple-click selects a line. Layout/font changes can still invalidate or
+reshape terminal selections; this is not a browser DOM transcript.
+
+For **Cmd+C in local macOS VS Code**, install the optional
+[vscode-selection bridge](vscode-selection/README.md). Cmd+C copies without clearing
+the highlight, and native Option-drag selections retain VS Code's built-in copying.
+The bridge applies only to a terminal titled exactly `pi-desk`; normal terminals
+and editors are unchanged. No hosted-session configuration or restarts are needed.
+Without the bridge, use tmux's ordinary copy-mode keyboard controls. On macOS the
+Pi Desk display uses `pbcopy`; other terminals/platforms retain tmux's normal
+clipboard transport. Remote-shell clipboard behaviour is described in the bridge
+README. The shared installer ships the bridge but never installs it automatically
+or rewrites VS Code settings.
+
 ### Terminal tab title
 
 Pi Desk sets the outer terminal title to `pi-desk` while its tmux viewer is attached,

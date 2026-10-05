@@ -1,3 +1,46 @@
+# Browser-style terminal selection — 2026-10-04
+
+Installed and activated **locally on mac-mini-64 only**. Ordinary drag enters the
+outer viewer's copy mode even when the nested terminal requests mouse input.
+Release stops extending the selection without copying or cancelling. Cmd+C copies
+without clearing the highlight; a pane, divider or header click dismisses it.
+Double/triple click selects a word/line; Escape and Enter dismiss without copying.
+The mouse selection hides tmux's position overlay. Only the selected pane's display
+is held; the attachment and hosted agent continue running. Layout/font changes can
+still reshape terminal selections. This is not a DOM transcript viewer.
+
+An optional offline-built VS Code extension, `jarvis-local.pi-desk-selection@0.1.0`,
+provides Cmd+C (Ctrl+Shift+C elsewhere), scoped to an active terminal titled exactly
+`pi-desk` with no native terminal selection. It rechecks the title at invocation;
+normal terminals/editors and native Option-drag copying are untouched. The bridge
+reads only terminal names, not output or clipboard contents. It sends a dedicated
+User90 key, consumed by the display server and a strict no-op without a selection.
+macOS uses `/usr/bin/pbcopy`. A remote Mac shell copies to that remote Mac's clipboard;
+remote-client clipboard copying is not implemented. The shared installer ships the
+optional bridge without automatically installing it or editing editor settings.
+
+**196 full Python tests and 5 bridge tests passed**, followed by all **8 focused
+mouse/packaging tests against the installed runtime**. Tests use isolated PTYs and
+unique tmux servers, with a fake clipboard sink; they cover app-requested mouse
+input, sticky selection, frozen display with ongoing app output, repeated copy,
+no-op copy, both key tables, dismissal/focus, word/line selection, title changes,
+stale-context safety and native-copy scope. No private clipboard was read.
+
+Updated the installed `config/tmux.conf`, installer and optional bridge files plus
+only their manifest entries. The JARVIS workspace adds `piDesk.copySelection` to
+`terminal.integrated.commandsToSkipShell`, supplementing stock defaults. Display
+configuration was reloaded in place; Code's extension-host log confirms dynamic
+activation. **Attached clients, viewer panes and all ten hosted-agent identities
+were unchanged.** No agent/viewer restart, focus switch, remote change or mobile
+configuration change was performed. Sir confirmed the selection works in the
+actual VS Code window; no reload was required.
+
+Rollback backup:
+`~/.local/state/pi-desk/backups/browser-selection-20261005T001948578407Z/`
+includes prior runtime files/manifest, workspace settings and identity snapshots.
+`ROLLBACK.md` and `rollback-selection.tmux` restore just the overridden selection
+keys; reloading the old config alone would not remove the new bindings.
+
 # Compact quota text and hidden unavailable 5h — 2026-10-04
 
 Quota labels no longer include the trailing `left` in either header variant or

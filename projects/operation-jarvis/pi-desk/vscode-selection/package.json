@@ -1,0 +1,38 @@
+{
+  "name": "pi-desk-selection",
+  "displayName": "Pi Desk Selection",
+  "description": "Browser-style copy for Pi Desk's stable terminal selections.",
+  "version": "0.1.0",
+  "publisher": "jarvis-local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:piDesk.copySelection"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "piDesk.copySelection",
+        "title": "Pi Desk: Copy Selection"
+      }
+    ],
+    "keybindings": [
+      {
+        "key": "ctrl+shift+c",
+        "mac": "cmd+c",
+        "command": "piDesk.copySelection",
+        "when": "terminalFocus && piDesk.selectionTerminal && !terminalTextSelected"
+      }
+    ]
+  }
+}
