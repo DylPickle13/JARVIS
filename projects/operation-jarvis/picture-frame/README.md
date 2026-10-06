@@ -6,7 +6,14 @@ private screenshots and one PNG slideshow import are now verified on this unit.*
 Retail branding/USB connector details have not been recorded. **Wireless identity,
 status, backlight diagnostics and a private 1280×800 screenshot now pass using an
 explicitly owner-approved legacy LAN mode. It is unauthenticated ADB, not secure
-wireless debugging.** Sleep/wake, gestures and wireless photo import remain untested.
+wireless debugging.** USB-disconnected wireless PNG import is now physically
+confirmed. One disposable-card removal was also physically confirmed through an
+owner-assisted native UI pilot; this is not a general/headless deletion API.
+Wi-Fi wake is now physically confirmed. USB JPEG batch import/count acceptance
+used a private corrected staging pilot, without viewing photo contents. Sleep,
+gestures and reboot persistence remain untested. **The public CLI still has an
+[in-DCIM temporary-file importer limitation](docs/IMPORT_ACCEPTANCE.md); do not use
+it for unattended bulk imports on this unit.**
 See the [complete controls guide](docs/CONTROLS.md), [TCP policies](docs/DIRECT_TCP.md)
 and [capability audit](docs/CAPABILITIES.md).
 
@@ -43,6 +50,16 @@ Read commands (`devices`, `probe`, `status`, `backlight`) do contact ADB/the sel
 `capabilities`, `doctor`, and `pending` are local only.
 `devices` may start the host's standard ADB server; the project adds no daemon.
 
+## Status-only backend integration — deployed
+
+The [jarvisd availability entry](../jarvisd/docs/picture-frame-health.md) activated
+at **15:52 EDT on 2026-10-06** as `20261006T193632Z-picture-frame-health`.
+`health_worker.py --check` performs a pinned identity/package read only, through
+the existing serial health worker. Fresh results expose availability and last
+check time; stale/unverified results remain unknown. Actual backend launch-context
+and later periodic checks passed. No photos, controls, new API routes or background
+screen capture. The worker's default invocation remains a no-I/O dry-run.
+
 ## Start here
 
 ```bash
@@ -64,10 +81,10 @@ After that, examples (review before applying):
 ./frame status
 ./frame backlight
 ./frame screenshot --apply
-./frame wake                         # dry-run; request first physical test before applying
+./frame wake                         # dry-run; Wi-Fi visible wake is physically accepted
 ./frame next --slideshow-ready       # dry-run; slideshow/focus checks still required
-# Only after owner selection and computer-transfer mode confirmation:
-./frame upload /path/to/approved-photo.jpg --import-ready --apply
+# Applying upload remains experimental; read docs/IMPORT_ACCEPTANCE.md first.
+# The current CLI's in-DCIM staging is not accepted for unattended bulk import.
 ```
 
 `./frame` runs the entire CLI in the normally LAN-authorized Python 3.13 runtime;
@@ -126,18 +143,21 @@ live probe and refuses to replace existing pairing/pending state.
    confirm slideshow behavior and navigation direction physically.
 3. **LAN:** optional supervised wireless ADB setup; verify after a reboot before
    relying on it. Never forward ADB ports to the internet.
-4. **JARVIS integration:** use this CLI for deliberate commissioning; only after
-   device acceptance add a focused Pi tool/backend route. No current native-app
-   routes, tool schemas, services, LaunchAgents or automations were changed.
+4. **JARVIS integration:** availability-only tracking is deployed through the
+   existing jarvisd worker. Keep uploads/controls as deliberate commissioning;
+   no frame control/photo route, Pi control schema or native-app feature is added.
 5. **Future:** optional EXIF-safe resizing/HEIC conversion, bulk import with verified
    deduplication, captions/albums/schedules if the firmware exposes a reviewed path.
 
 The controller sends photos **unchanged**, including any embedded EXIF/GPS metadata.
-It only checks file signatures, not full image decodability. Remote `.part` staging,
-byte-count readback and no-clobber rename avoid exposing a half-written JPEG/PNG;
-this flow was accepted for one PNG on the received unit, not all media/firmware.
-Review/strip metadata
-and convert HEIC to JPEG/PNG before transfer. The 50 MiB limit is a conservative
+It only checks file signatures, not full image decodability. The checked-in
+uploader verifies remote `.part` byte counts before no-clobber rename, but its
+in-DCIM staging can trigger Frameo's unsupported-file warnings. Existing PNG
+acceptance does not generalize to bulk JPEG import. The private USB pilot's
+accepted outside-DCIM staging is not a public CLI mode; see
+[acceptance, privacy and cleanup limits](docs/IMPORT_ACCEPTANCE.md).
+Review/strip metadata and convert HEIC to JPEG/PNG before selecting a source;
+never analyze or convert owner photos without permission. The 50 MiB limit is a conservative
 project limit, not a documented Frameo limit. No family library was scanned.
 
 Frameo's documented computer transfer uses DCIM with its **Transfer from computer**

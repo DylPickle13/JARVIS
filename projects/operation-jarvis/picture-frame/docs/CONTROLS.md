@@ -1,7 +1,9 @@
 # Picture-frame controls
 
-All code/commands live in this project. No HTTP server, scheduled job, JARVIS
-backend route, Pi schema, native app control or background service was added.
+Reviewed public code/commands live in this project; private commissioning pilots
+remain outside Git. The [availability-only backend](../../jarvisd/docs/picture-frame-health.md)
+uses its existing worker. No frame control/photo route, Pi control schema, native
+app control, new frame daemon or scheduled media job was added.
 
 ## Current received-unit acceptance
 
@@ -18,11 +20,16 @@ controller checks cannot secure the frame's listener against other clients.
 Authenticated `connect-tcp` still requires a signed RSA challenge; it was not relaxed.
 No Mac privacy gate, signing identity, existing ADB server or other device was changed.
 
-One earlier **USB PNG** import was physically accepted. Wireless photo import,
-JPEG import, sleep/wake and slideshow gestures remain physically untested. The
-approved sample was not resent and no photo-library scan was performed. No USB
-unplug/reboot/persistence test was performed. Frameo's own sleep schedule can override
-Android state; the read-only Wi-Fi check found the display asleep and did not wake it.
+One earlier **USB PNG** import and a later **USB-disconnected wireless PNG** import
+were physically accepted. The disposable test card was removed through a guarded,
+owner-assisted native UI pilot, not a generic/headless delete command. **Wi-Fi wake**
+was separately physically confirmed after one dedicated wake-key dispatch.
+USB JPEG import/count acceptance used a private outside-DCIM staging pilot; the
+checked-in CLI's in-DCIM temporary paths can trigger unsupported-file warnings.
+See [import acceptance and the known staging limitation](IMPORT_ACCEPTANCE.md).
+No photo contents were previewed or analyzed during the batch. Sleep, slideshow
+gestures and reboot/persistence remain unaccepted. Frameo's schedule may override
+Android display state.
 
 ## Launcher
 
@@ -54,8 +61,8 @@ first-time display/transfer tests:
 ./frame previous --slideshow-ready       # dry-run
 ./frame brightness 180                  # stored Android setting, NOT visible dimming here
 ./frame upload /path/to/approved.png     # dry-run; no file read
-# Only after owner selection and computer-transfer mode confirmation:
-./frame upload /path/to/approved.png --import-ready --apply
+# Applying upload remains experimental: review the staging limitation first.
+# Do not use the current uploader for unattended bulk imports on this unit.
 ```
 
 Sleep/wake use dedicated keycodes and verify Android screen state. Navigation
@@ -69,6 +76,13 @@ content-hash `.part` destination, remote byte-count verification, no-clobber ren
 no overwrite, dedup journal and no claim of slideshow import. Source bytes/EXIF/GPS
 are preserved: strip sensitive metadata/convert HEIC before selecting a source.
 Unknown writes remain durably pending; no retry or cleanup/replay occurs.
+
+**Known importer issue:** temporary `.part` files inside DCIM generated native
+unsupported-file warnings on this unit. Only the private USB pilot has accepted
+outside-DCIM staging; this is not implemented by the public CLI. Do not interpret
+transfer success as native import, blindly resend files, delete raw sources, or
+convert originals merely because temporary names appear in the unsupported list.
+See [acceptance and cleanup boundaries](IMPORT_ACCEPTANCE.md).
 
 ## Deliberate transport lifecycle
 

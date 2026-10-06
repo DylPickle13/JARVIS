@@ -2784,6 +2784,8 @@ def main(*, control_factory=None, local_control=False) -> int:
         local_token = read_token()
     from jarvisd_core.device_health import load_registry, ProbeWorker
     DEVICE_REGISTRY = load_registry(os.environ.get('JARVISD_DEVICE_REGISTRY', ''))
+    from jarvisd_core.frame_health import configure as configure_frame_probe
+    frame_probe = configure_frame_probe(DEVICE_REGISTRY, os.environ)
     device_keys = ['devices/' + row['id'] for row in DEVICE_REGISTRY
         if row['kind'] != 'unmonitored' and row['expectation'] == 'always'
         and (row['kind'] != 'security' or row['selector'] in SECURITY_POLL_ALIASES)]
@@ -2848,7 +2850,7 @@ def main(*, control_factory=None, local_control=False) -> int:
                         except Exception:
                             pass
                     sys.stderr.write('[jarvisd] system history storage unavailable\n')
-            DEVICE_PROBES = ProbeWorker(DEVICE_REGISTRY)
+            DEVICE_PROBES = ProbeWorker(DEVICE_REGISTRY, frame=frame_probe)
             DEVICE_PROBES.start()
             MONITOR_WORKER = MonitorWorker(store, lambda: _monitor_observations(integrations))
             MONITOR_WORKER.start()

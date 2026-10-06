@@ -8,6 +8,7 @@
 !frame
 !frame_tcp.py
 !install_tcp_deps.py
+!health_worker.py
 !docs/
 !docs/*.md
 !tests/

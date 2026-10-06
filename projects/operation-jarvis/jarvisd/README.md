@@ -21,6 +21,20 @@ Health UI belongs on System, not Home. Backend checks remain active. See [covera
 
 # jarvisd — shared control backend
 
+## Picture-frame availability — deployed 2026-10-06 EDT
+
+Release `20261006T193632Z-picture-frame-health` activated at **15:52 EDT** from the
+exact installed Home-automations baseline. A single opt-in `frame` entry checks
+the approved hardware/build pins and installed Frameo package, reporting fresh
+availability or unreachable/unknown evidence with timestamps. The actual backend
+launch-context check and later periodic observations passed. Frozen verification
+passed **862 backend tests, 11 worker tests and all SDK gates**. Only jarvisd and
+its watchdog restarted (0.334 s to liveness); the original 26 registry entries,
+unrelated services/Pi, configuration and SQLite history/cadence were preserved.
+No controls, photos, new API routes or native app changes. The bounded worker
+preserves the shared controller lock and private legacy consent. See
+[scope, activation evidence, limitations and rollback](docs/picture-frame-health.md).
+
 ## Home automation cards — backend and native build 254 deployed
 
 The closed authenticated Home command route and cached state projection support

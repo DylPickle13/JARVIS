@@ -1,6 +1,7 @@
 """Device coverage over existing caches plus bounded, read-only reachability probes.
 
-No discovery, authentication, commands, cloud recovery, sensor reads or retries.
+No discovery, controls, cloud recovery, sensor reads or retries. The optional
+frame worker performs only the already-approved identity/package read.
 The private registry selects fixed checks at startup; HTTP reads only project caches.
 Reachability and USB attachment are deliberately NOT integration/physical health.
 """
@@ -19,10 +20,11 @@ import threading
 import time
 
 MAX_DEVICES = 40
-KINDS = {'plug', 'purifier', 'security', 'omlx', 'tcp', 'usb', 'heartbeat', 'unmonitored'}
+KINDS = {'plug', 'purifier', 'security', 'omlx', 'tcp', 'usb', 'heartbeat', 'frame', 'unmonitored'}
 SCOPES = {'plug': 'integration_read', 'purifier': 'integration_read',
           'security': 'status_read', 'omlx': 'integration_read',
-          'tcp': 'tcp_reachability', 'usb': 'usb_attachment', 'heartbeat': 'process_heartbeat', 'unmonitored': 'none'}
+          'tcp': 'tcp_reachability', 'usb': 'usb_attachment', 'heartbeat': 'process_heartbeat',
+          'frame': 'frame_identity_read', 'unmonitored': 'none'}
 LIMITS = {'plug': 30, 'purifier': 90, 'security': 120, 'omlx': 120}
 
 
@@ -54,7 +56,7 @@ def validate(value):
         if type(kind) is not str or kind not in KINDS or row['expectation'] not in ('always', 'optional'):
             raise ValueError('Invalid device check')
         fields = set(row) - {'id', 'name', 'kind', 'expectation', 'dependsOn'}
-        expected = {'host', 'port'} if kind == 'tcp' else {'vendorID', 'productID'} if kind == 'usb' else {'path', 'timestampKey', 'maxAge', 'faultKey'} if kind == 'heartbeat' else set() if kind == 'unmonitored' else {'selector'}
+        expected = {'host', 'port'} if kind == 'tcp' else {'vendorID', 'productID'} if kind == 'usb' else {'path', 'timestampKey', 'maxAge', 'faultKey'} if kind == 'heartbeat' else set() if kind in ('unmonitored', 'frame') else {'selector'}
         if fields != expected:
             raise ValueError('Invalid check configuration')
         if kind == 'tcp':
@@ -77,12 +79,14 @@ def validate(value):
                 raise ValueError('Invalid heartbeat expiry')
             if any(type(row[k]) is not str or not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_]{0,47}', row[k]) for k in ('timestampKey', 'faultKey')):
                 raise ValueError('Invalid heartbeat fields')
-        elif kind != 'unmonitored':
+        elif kind not in ('unmonitored', 'frame'):
             if type(row['selector']) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,96}', row['selector']):
                 raise ValueError('Invalid cache selector')
         deps = row.get('dependsOn', [])
         if type(deps) is not list or len(deps) > 4 or any(type(x) is not str for x in deps) or len(set(deps)) != len(deps):
             raise ValueError('Invalid dependencies')
+    if sum(row['kind'] == 'frame' for row in devices) > 1:
+        raise ValueError('Only one commissioned picture-frame check is supported')
     graph = {row['id']: row.get('dependsOn', []) for row in devices}
     visited = set()
     def visit(key, path):
@@ -198,8 +202,9 @@ def probe_heartbeat(row, now):
 
 class ProbeWorker:
     """One serial worker, 60s AFTER completion, no catch-up/retry. <=40 probes."""
-    def __init__(self, registry, *, tcp=probe_tcp, usb=usb_inventory, clock=time.monotonic, wall=time.time):
-        self.registry, self.tcp, self.usb = registry, tcp, usb
+    def __init__(self, registry, *, tcp=probe_tcp, usb=usb_inventory, frame=None,
+                 clock=time.monotonic, wall=time.time):
+        self.registry, self.tcp, self.usb, self.frame = registry, tcp, usb, frame
         self.clock, self.wall = clock, wall
         self._rows, self._lock = {}, threading.Lock()
         self._stop, self._thread = threading.Event(), None
@@ -210,11 +215,13 @@ class ProbeWorker:
             if self._stop.is_set():
                 break
             kind = row['kind']
-            if kind not in ('tcp', 'usb', 'heartbeat'):
+            if kind not in ('tcp', 'usb', 'heartbeat', 'frame'):
                 continue
             try:
                 if kind == 'tcp':
                     ok, reason = self.tcp(row)
+                elif kind == 'frame':
+                    ok, reason = self.frame(row) if self.frame is not None else (None, 'configuration_unavailable')
                 elif kind == 'heartbeat':
                     ok, reason = probe_heartbeat(row, self.wall())
                 else:
@@ -229,14 +236,15 @@ class ProbeWorker:
                         ok = (row['vendorID'], row['productID']) in usb
                         reason = None if ok else 'usb_not_attached'
             except Exception:
-                ok, reason = False, 'check_failed'
+                ok, reason = (None if kind == 'frame' else False), 'check_failed'
             now, tick = self.wall(), self.clock()
             with self._lock:
                 old = self._rows.get(row['id'], {})
-                self._rows[row['id']] = {'ok': ok is True, 'reason': reason, 'tick': tick,
-                    'lastAttemptAt': stamp(now),
-                    'lastSuccessAt': stamp(now) if ok else old.get('lastSuccessAt'),
-                    'consecutiveFailures': 0 if ok else old.get('consecutiveFailures', 0) + 1}
+                self._rows[row['id']] = {'ok': ok if kind == 'frame' else ok is True,
+                    'reason': reason, 'tick': tick, 'lastAttemptAt': stamp(now),
+                    'lastSuccessAt': stamp(now) if ok is True else old.get('lastSuccessAt'),
+                    'consecutiveFailures': (0 if ok is True else old.get('consecutiveFailures', 0)
+                        if kind == 'frame' and ok is None else old.get('consecutiveFailures', 0) + 1)}
 
     def snapshot(self):
         with self._lock:
@@ -312,6 +320,10 @@ def project(registry, state, security, omlx, probes, *, enabled=True, security_a
                     row.update(reason='observation_expired')
                 elif item.get('ok') is True or item.get('availability') == 'available':
                     row.update(state='available', reason='current')
+                elif kind == 'frame' and item.get('ok') is None:
+                    from .frame_health import UNKNOWN_REASONS
+                    reason = item.get('reason')
+                    row.update(reason=reason if type(reason) is str and reason in UNKNOWN_REASONS else 'check_failed')
                 else:
                     safe = item.get('reason')
                     row.update(state='unavailable', reason=safe if safe in {
@@ -338,6 +350,7 @@ def incident_observations(coverage):
     # Missing checks are data-unavailability incidents, not claims of physical outage.
     # Optional/sleeping devices never create incidents. Blocked children are omitted:
     # MonitorStore holds any prior incident without reporting a false recovery.
-    return {'devices/' + row['id']: (None if row['blockedBy'] else row['state'] == 'available')
+    return {'devices/' + row['id']: (None if row['blockedBy'] or
+                (row['scope'] == 'frame_identity_read' and row['state'] == 'unknown') else row['state'] == 'available')
             for row in coverage['devices']
             if row['coverage'] == 'background' and row['expectation'] == 'always'}

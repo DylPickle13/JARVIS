@@ -95,8 +95,11 @@ The strict Python transport and an independent key-free handshake both found
 **00:37 EDT, 2026-10-06**: no listener, LAN refusal and fresh USB checks were verified.
 The later explicit request superseded that retirement with scoped legacy acceptance.
 Re-enablement was dispatched once, its listener verified, then TCP pins/status/capture
-accepted. No photo was resent; sleep/wake/swipes, wireless upload, USB-unplug/reboot
-and persistence remain untested.
+accepted. No photo was resent during that commissioning correction. Later
+USB-disconnected PNG import and Wi-Fi wake were separately physically confirmed;
+sleep/swipes/reboot/persistence remain unaccepted. USB JPEG batch acceptance used a
+private corrected staging pilot; the public CLI still has an in-DCIM temporary-file
+limitation. See [import acceptance](IMPORT_ACCEPTANCE.md).
 
 References: [adb-shell release](https://pypi.org/project/adb-shell/0.4.4/),
 [documented TCP/signing API](https://adb-shell.readthedocs.io/en/stable/adb_shell.adb_device.html),

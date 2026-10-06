@@ -3,9 +3,18 @@
 Extends the existing jarvisd monitoring worker, incident store and authenticated
 health APIs. No parallel daemon, dashboard server or notification service.
 
-## Deployment — 2026-09-30 EDT
+## Picture-frame availability — deployed 2026-10-06 EDT
 
-Backend release `20261001T015215Z-device-coverage` is active. Its frozen backend
+Release `20261006T193632Z-picture-frame-health` adds one read-only, identity-checked
+frame entry to the existing worker: **27 entries**, with the original 26 unchanged.
+The actual backend launch-context check and later periodic observations passed.
+Only jarvisd/watchdog restarted; alerts remain disabled, and unrelated services,
+Pi identities, configuration and SQLite history/cadence were preserved. See
+[picture-frame scope, verification and rollback](picture-frame-health.md).
+
+## Device-coverage deployment — 2026-09-30 EDT
+
+The device-coverage slice shipped as `20261001T015215Z-device-coverage`. Its frozen backend
 passed 777 tests. The prior installed backend passed 759 tests before preparation.
 The operational source checkout's broader suite has 20 pre-existing vendor-fence
 pin errors; those pins were not refreshed or weakened. The candidate was built
@@ -82,10 +91,12 @@ Check kinds:
 | `tcp` | One connect/close to a configured numeric private/Tailscale IPv4 address and port; 2s timeout; no DNS/discovery/retry |
 | `usb` | One bounded local IORegistry enumeration per cycle; exact `vendorID`/`productID`; never opens HID control handles |
 | `heartbeat` | Owner-only bounded JSON file, `path`, `timestampKey`, `maxAge` (30–300s), `faultKey`; current process heartbeat only |
+| `frame` | Opt-in pinned Frameo identity/package read through a bounded worker; no controls or photo reads. [Deployed status-only scope](picture-frame-health.md) |
 | `unmonitored` | Explicit coverage gap; never healthy by omission |
 
 The probe worker runs serially, waiting 60s after each completed cycle, with no
-catch-up burst. Only TCP/USB/heartbeat checks are new. Probe evidence expires at
+catch-up burst. TCP/USB/heartbeat checks were added in the deployed coverage slice;
+the optional frame check is the separately deployed status-only addition. Probe evidence expires at
 150s; existing caches retain their own expiry. HTTP overview requests do not run
 probes, renew oMLX foreground leases or create hub sessions. Shared sensor polling
 and departure logic are unchanged. A probe cannot restart a service or device.

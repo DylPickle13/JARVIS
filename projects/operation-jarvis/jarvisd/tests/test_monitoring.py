@@ -139,6 +139,29 @@ class HTTPTests(unittest.TestCase):
             self.reader.assert_not_called()
             self.coordinator.snapshot.assert_called_with(client_active=False, start_collectors=False)
 
+    def test_frame_health_reuses_authenticated_cached_overview_without_hardware_reads(self):
+        from jarvisd_core.device_health import validate
+        inventory = validate({'version': 1, 'devices': [
+            {'id': 'picture-frame', 'name': 'Picture frame', 'kind': 'frame', 'expectation': 'always'}]})
+        probes = Mock()
+        probes.snapshot.return_value = {'picture-frame': {'ok': True, 'ageSeconds': 1,
+            'lastAttemptAt': '2026-10-06T00:00:00Z', 'lastSuccessAt': '2026-10-06T00:00:00Z'}}
+        monitor = Mock(storage_available=True)
+        monitor.store.status.return_value = {}
+        with patch.object(daemon, 'DEVICE_REGISTRY', inventory), patch.object(daemon, 'DEVICE_PROBES', probes), \
+             patch.object(daemon, 'MONITOR_WORKER', monitor):
+            self.assertEqual(self.request('/api/v1/health', token='')[0], 401)
+            for path in ('/api/v1/health', '/api/v1/monitor/status', '/api/v1/state?mode=cached'):
+                code, body, _ = self.request(path)
+                self.assertEqual(code, 200)
+                row = body['deviceHealth']['devices'][0]
+                self.assertEqual((row['id'], row['state'], row['scope']),
+                    ('picture-frame', 'available', 'frame_identity_read'))
+                self.assertEqual(row['lastAttemptAt'], '2026-10-06T00:00:00Z')
+            probes.tick.assert_not_called()
+            probes.frame.assert_not_called()
+            self.reader.assert_not_called()
+
     def test_dashboard_api_auth_and_private_history(self):
         worker = Mock(storage_available=True)
         worker.store.status.return_value = {'security/door': {'availability': 'unavailable'}}
