@@ -64,6 +64,19 @@ final class MinecraftServiceTests: XCTestCase {
         XCTAssertTrue(result.services[0].technicalDetails.contains("readiness: Running · Java listener verified"))
     }
 
+    func testInformationalBotRetainsDiagnosticsWithoutAnIssueInMinecraftOrOverall() throws {
+        var bot = self.bot
+        bot["healthPolicy"] = "informational"
+        bot["running"] = true; bot["ready"] = false; bot["readinessReason"] = "bot_disconnected"
+        let result = dashboard(try snapshot(bot: bot))
+        let row = try XCTUnwrap(result.services.first { $0.id == "minecraft-jarvis-bot" })
+        XCTAssertEqual(row.row.state, .inactive)
+        XCTAssertEqual(row.row.detail, "Running · disconnected from Minecraft")
+        XCTAssertTrue(row.technicalDetails.contains("Health: Informational · excluded from overall health"))
+        XCTAssertEqual(result.visualGroups.first { $0.id == "minecraft" }?.state, .healthy)
+        XCTAssertEqual(result.state, .healthy)
+    }
+
     func testRunningButDisconnectedOrMissingAgentIsNotStoppedOrHealthy() throws {
         for (reason, detail) in [("bot_disconnected", "Running · disconnected from Minecraft"),
                                  ("agent_unavailable", "Running · Pi agent unavailable"),

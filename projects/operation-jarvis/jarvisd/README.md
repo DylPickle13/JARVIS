@@ -21,6 +21,22 @@ Health UI belongs on System, not Home. Backend checks remain active. See [covera
 
 # jarvisd — shared control backend
 
+## Optional Minecraft bot health — deployed 2026-10-05 EDT
+
+Owner-approved `20261005T230631Z-informational-bot` activated at **19:15 EDT**.
+Only the bot's explicit optional `healthPolicy: informational` is excluded from
+system health; its real process/readiness/error observations remain visible.
+825 frozen backend tests and three isolated SDK gates passed. Only jarvisd and
+its watchdog were cycled (0.548 s daemon restart); existing configuration/auth,
+registry entries, history identity/cadence, unrelated services, Pi panes and
+Minecraft identities were preserved. Sensor failures/latch remain unchanged.
+Matching native **253** installed once on both devices and independently
+version/process verified at **19:21 EDT**, after a read-only Watch preflight
+failure and fresh owner-ready continuation. No device write was replayed. All
+18 protected services, Pi panes and backend/Minecraft identities were preserved
+during native installation; exact signed 252 rollback remains retained.
+See [policy, verification and deployment](docs/minecraft-services.md#informational-bot-health-policy--deployed).
+
 ## Pi session names — deployed 2026-10-04 EDT
 
 Release `20261004T162812Z-pi-session-names` activated and verified at **12:55 EDT**,

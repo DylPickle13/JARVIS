@@ -97,6 +97,10 @@ def _collector(snapshot, name, now):
 def _service(data):
     if not isinstance(data, dict):
         return observation('unknown', 'details_missing')
+    if data.get('critical') is False and data.get('healthPolicy') == 'informational':
+        # This is an expectation policy, not fabricated process/readiness evidence.
+        # Preserve the complete observation in state; only health impact is inactive.
+        return observation('inactive', 'optional_inactive')
     if data.get('ok') is not True:
         return observation('unavailable', 'service_read_failed')
     critical = data.get('critical')

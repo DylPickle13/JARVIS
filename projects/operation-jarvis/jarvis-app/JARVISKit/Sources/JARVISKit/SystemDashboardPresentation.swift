@@ -118,6 +118,9 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
                     ageSeconds: observed?.ageSeconds ?? collector?.ageSeconds)
             }
             var details = ["Service: \(key)"]
+            if service.critical == false && service.healthPolicy == "informational" {
+                details.append("Health: Informational · excluded from overall health")
+            }
             if let label = service.label { details.append("Registration: \(label)") }
             if let configured = service.configured { details.append("Configured: \(configured ? "Yes" : "No")") }
             if let loaded = service.loaded { details.append("Loaded: \(loaded ? "Yes" : "No")") }

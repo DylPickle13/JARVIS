@@ -32,6 +32,7 @@
     "minecraft-jarvis-bot": {
       "adapter": "minecraft-bot",
       "displayName": "Minecraft JARVIS Bot",
+      "healthPolicy": "informational",
       "executionMode": "continuous",
       "description": "Local Mineflayer process, server connection and Pi-agent availability",
       "sortOrder": 50,

@@ -109,7 +109,20 @@ public struct SystemHealthPresentation: Equatable, Sendable {
                     guard let service = services[key] else { continue }
                     let status: SystemHealthState
                     let detail: String
-                    if !service.ok {
+                    if service.critical == false && service.healthPolicy == "informational" {
+                        status = .inactive
+                        if !service.ok {
+                            detail = "Informational · status read unavailable"
+                        } else if service.running == false {
+                            detail = "Stopped · on demand"
+                        } else if service.running == true {
+                            detail = service.ready == false ? Self.readinessDetail(service.readinessReason)
+                                : service.ready == nil && service.readinessReason != nil
+                                    ? "Running · readiness unverified" : "Running · informational"
+                        } else {
+                            detail = "Informational · process status unverified"
+                        }
+                    } else if !service.ok {
                         status = .issue; detail = "Service status read failed"
                     } else if service.critical == true && service.configured == false {
                         status = .issue; detail = "Required service is not configured"

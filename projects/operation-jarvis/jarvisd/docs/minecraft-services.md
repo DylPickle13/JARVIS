@@ -56,6 +56,62 @@ not-ready services as degraded, and unverified readiness as unknown. History use
 paths, cancellation reasons, logs, conversations, world files or player data are
 published. No readiness is inferred for legacy services.
 
+## Informational bot health policy — deployed
+
+At the owner's request, the bot registry explicitly sets
+`healthPolicy: informational`. Only an explicit optional (`critical: false`)
+service can opt out of the health verdict; missing/unknown policies and required
+services retain existing failure handling. The bot's process/readiness/error
+observations remain unchanged and visible. Its health component is inactive,
+not falsely healthy, whether stopped, disconnected, quarantined or unverified.
+Paper and sensor failures still affect overall health.
+
+The matching shared native projection keeps the truthful status/detail row but
+excludes that informational row from issue/unknown counts and Minecraft/overall
+health. Older native builds do not understand this additive field, so a backend
+change alone cannot correct their locally computed indicator.
+
+Owner-approved backend `20261005T230631Z-informational-bot` activated and verified
+at **19:15 EDT on 2026-10-05**, after a fresh both-device readiness check. Only
+jarvisd and its watchdog were cycled; the daemon restart took **0.548 s**. The
+candidate preserves the exact installed baseline and changes only two runtime
+files, one focused test and the bot's private registry policy. All 825 frozen
+backend tests and three isolated SDK gates passed. Truthful bot observations
+remain `running: true`, `ready: false`, `bot_disconnected`, while its health
+component is inactive. Existing registry/auth/configuration/history identity and
+10-second cadence, 16 unrelated protected service records, Pi panes and
+Minecraft process identities were preserved. The sensor reader latch remains
+untouched; overall health still reports the genuine sensor-read failure.
+
+Matching native **253** is frozen, signed and audited against exact rollback
+**252**: 254 inputs, 327 shared tests (three expected skips), 177 iPhone tests,
+37 terminal tests, both simulator builds and all eight candidate/rollback bundle
+signatures passed. Existing profiles are byte-identical, entitlements and locked
+dependencies unchanged; the exact sealed archive is retained without rebuilding.
+The initial installation preflight then failed on the Watch's read-only unlock
+check with CoreDevice error -1 / mobiledevice resource allocation -402653181.
+That initial attempt issued **no app installation**. Original stopped receipt
+and per-device evidence are retained. After the owner's new **ready** response,
+fresh both-device identity/allowlist/DDI/unlock/baseline-252 checks passed again.
+A scoped continuation verified that neither physical-write boundary had been
+entered, retained the prior baseline/failure evidence, and invoked the unchanged
+sealed one-shot installer. Each device received its first/only install. Both
+versions and running processes independently verified **253 at 19:21 EDT**.
+Candidate and exact rollback-252 source/payload seals plus all eight bundle
+signatures passed final verification. All 18 protected service records, Pi panes,
+backend/source/registry/config/authentication and Minecraft/gateway/Pi identities
+were preserved during native installation; history remains at 10 seconds. No
+native-side service restart, install retry, rebuild after sealing, reboot,
+unpairing, erase, portal/credential/dependency change or cleanup occurred. Physical
+card/detail/Crown/VoiceOver acceptance remains owner review.
+
+Offline verification: 921 backend tests passed; the shared native package ran
+327 tests with three expected live-test skips and no failures. Regression cases
+retain stopped/disconnected/quarantined/unknown bot evidence, reject opt-outs for
+required services, preserve default monitoring and unrelated failures, and verify
+Minecraft/overall presentation plus model round trips. These are source tests,
+not frozen-release verification or physical acceptance.
+
 ## Bounds and freshness
 
 A bulk collection shares one process/cwd/executable/listener inventory for both

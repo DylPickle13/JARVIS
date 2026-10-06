@@ -823,6 +823,10 @@ def _service_metadata(spec: dict) -> dict:
         "description": description.strip()[:500] if description else None,
         "sortOrder": max(-1000, min(1000, sort_order)) if sort_order is not None else None,
         "critical": spec.get("critical") is True,
+        # Explicit optional services may remain visible without defining system health.
+        # Missing, malformed or required-service policies retain normal monitoring.
+        "healthPolicy": ("informational" if spec.get("critical") is False
+                         and spec.get("healthPolicy") == "informational" else "monitored"),
         "executionMode": (spec.get("executionMode", "continuous")
                           if spec.get("executionMode", "continuous") in ("continuous", "periodic") else None),
         "configured": configured,

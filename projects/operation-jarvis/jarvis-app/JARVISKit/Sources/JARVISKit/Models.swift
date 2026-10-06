@@ -639,6 +639,9 @@ public struct ServiceActionResult: Codable, Equatable, Sendable {
     public let description: String?
     public let sortOrder: Int?
     public let critical: Bool?
+    /// Explicit optional informational services do not define overall system health.
+    /// Missing/unknown policies preserve existing monitoring behavior.
+    public let healthPolicy: String?
     /// "periodic" jobs may be loaded and healthy without a running process.
     public let executionMode: String?
     public let lastExitCode: Int?

@@ -4,6 +4,46 @@
 
 Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.
 
+## Informational bot health — installed build 253
+
+Owner approved the backend update and matching iPhone/Watch rollout on
+2026-10-05. Backend `20261005T230631Z-informational-bot` is installed and verified;
+its optional bot policy no longer affects overall health, while actual
+running/readiness/error observations remain visible. Sensor failures and their
+reader latch are unchanged. See [backend policy and deployment](../../jarvisd/docs/minecraft-services.md#informational-bot-health-policy--deployed).
+
+Native **253** was installed once on each allowlisted device and independently
+version/process verified on both at **19:21 EDT on 2026-10-05**.
+Only five shared model/health/test files and two version inputs differ from the
+exact installed-252 source; the remaining 247 frozen inputs retain prior bytes.
+327 shared tests (three expected skips), 177 iPhone tests, 37 terminal tests and
+both simulator builds passed. All eight candidate/rollback bundle signatures,
+byte-identical paid-team profiles, unchanged entitlements/dependency locks and
+source/payload seals passed. Exact installed build 252 remains retained.
+
+Both-device readiness passed immediately before backend activation at 19:15 EDT,
+but the app installer's repeat Watch unlock check failed before its physical-write
+boundary: CoreDevice -1 / mobiledevice resource allocation -402653181. **Neither
+app was installed or launched by that attempt.** The stopped receipt remains
+`deployment/initial-result-stopped.json`. After a fresh owner **ready** response,
+a scoped continuation checked that no physical write had been attempted, passed
+both-device identity/allowlist/DDI/unlock/baseline-252 checks, retained the original
+baseline/failure evidence and ran the unchanged audited one-shot installer. Phone
+and Watch each received their first/only installation; neither was retried.
+
+Final checks independently verified both installed versions and running processes,
+all eight candidate/rollback bundle signatures and both source/payload seals.
+All 18 protected service records (17 continuous plus the periodic runner), existing
+Pi panes, backend/source/registry/config/authentication, Minecraft/gateway/Pi
+identities and 10-second history cadence were preserved. The app installation
+restarted no service, rebuilt no sealed product and changed no credentials,
+profiles, entitlements or dependencies. The dedicated simulator is Shutdown.
+Physical card/detail/Crown/VoiceOver acceptance remains owner review.
+
+Private evidence: `20261005T230631Z-build253-informational-bot`. No rollback,
+archive, failed-attempt evidence or generated cache was pruned. Backend and native
+installation remain separate operations; the app installer restarts no services.
+
 ## Current recovery retention and cleanup
 
 Owner-approved cleanup after build 247 removed **five obsolete secondary rollback
@@ -16,9 +56,10 @@ owner-approved cleanup removed the obsolete build-246 signed archive, reclaiming
 **111.75 MiB allocated**. Build-248's session-created build caches had already been
 removed after deployment, releasing **2.91 GiB**; its archive and evidence remain.
 
-Current signed recovery archives are **252** (independently installed/version/process
-verified on both devices) and **251** (exact immediate signed rollback). Both devices
-independently verify 252. On **2026-10-05 at 17:35 EDT**, after the app change set was
+Current signed recovery archives are **253** (independently installed/version/process
+verified on both devices) and **252** (exact immediate signed rollback); **251** is
+also retained. Both devices independently verify 253. The historical cleanup
+below preceded the 253 rollout. On **2026-10-05 at 17:35 EDT**, after the app change set was
 committed/pushed and the owner requested cleanup, **15 generated caches** and the
 superseded signed binary archives **248/249/250** were removed: **13.09 GiB net
 allocated artifacts**, with an observed **11.79 GiB increase in free disk space**.

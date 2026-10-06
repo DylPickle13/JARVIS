@@ -37,6 +37,51 @@ final class SystemHealthTests: XCTestCase {
         .init(snapshot: snapshot, requestStartedAt: now, now: now.addingTimeInterval(elapsed))
     }
 
+    func testInformationalBotPreservesEvidenceWithoutChangingOverallHealth() throws {
+        let cases: [[String: Any]] = [
+            ["ok": true, "running": false],
+            ["ok": true, "running": true, "ready": false, "readinessReason": "bot_disconnected"],
+            ["ok": true, "running": true, "ready": false, "readinessReason": "bot_quarantined"],
+            ["ok": true, "running": true, "readinessReason": "health_unavailable"],
+            ["ok": false, "running": NSNull()],
+            ["ok": true, "running": true, "ready": true],
+        ]
+        for fields in cases {
+            var bot: [String: Any] = ["critical": false, "healthPolicy": "informational"]
+            bot.merge(fields) { _, new in new }
+            let snapshot = try snapshot(services: ["minecraft-jarvis-bot": bot])
+            let value = health(snapshot)
+            XCTAssertEqual(value.state, .healthy)
+            XCTAssertEqual(value.rows.first { $0.id == "service:minecraft-jarvis-bot" }?.state, .inactive)
+            let observation = try XCTUnwrap(snapshot.subsystems?.services?.services?["minecraft-jarvis-bot"])
+            XCTAssertEqual(observation.ok, fields["ok"] as? Bool)
+            XCTAssertEqual(observation.running, fields["running"] as? Bool)
+            XCTAssertEqual(observation.ready, fields["ready"] as? Bool)
+            XCTAssertEqual(observation.healthPolicy, "informational")
+            let decoded = try JSONDecoder().decode(StateSnapshot.self, from: JSONEncoder().encode(snapshot))
+            XCTAssertEqual(decoded, snapshot)
+        }
+    }
+
+    func testInformationalPolicyCannotSilenceRequiredOrDefaultServiceFailures() throws {
+        for policy in ["informational", "unknown"] {
+            var service = required
+            service["healthPolicy"] = policy; service["running"] = false
+            XCTAssertEqual(health(try snapshot(services: ["required": service])).state, .issue)
+        }
+        let service: [String: Any] = ["ok": true, "critical": false, "running": true,
+                                      "ready": false, "readinessReason": "bot_disconnected"]
+        XCTAssertEqual(health(try snapshot(services: ["legacy": service])).state, .issue)
+    }
+
+    func testInformationalBotDoesNotHideAnUnrelatedServiceIssue() throws {
+        let bot: [String: Any] = ["ok": false, "critical": false, "healthPolicy": "informational"]
+        var server = required; server["running"] = false
+        let value = health(try snapshot(services: ["minecraft-jarvis-bot": bot, "server": server]))
+        XCTAssertEqual(value.issueCount, 1)
+        XCTAssertEqual(value.rows.first { $0.id == "service:server" }?.state, .issue)
+    }
+
     func testCurrentCachedSnapshotAndNestedServicesRoundTrip() throws {
         let value = try snapshot()
         XCTAssertEqual(value.subsystems?.services?.services?["scheduler"]?.running, true)
