@@ -72,6 +72,31 @@ tool are retired; CLI commands and backend routes are unchanged. See the
 [tool guide](../../.pi/docs/OPERATION_JARVIS_TOOLS.md) for schemas, safety gates,
 offline tests and rollout. No new daemon or polling is installed.
 
+### Cast recipient identity
+
+Keep Cast names/addresses and optional identity pins in the ignored root `.env`.
+`OPERATION_JARVIS_CAST_SPEAKERS_UUID` and `OPERATION_JARVIS_CAST_TV_UUID` pin the
+existing verified target, not a newly discovered device. When configured, lookup
+uses the UUID and checks the exact configured friendly name; missing, malformed or
+ambiguous identity refuses name/host fallback. Without a pin, both exact name and
+saved host must match uniquely. An unrelated first discovery result is never used.
+A UUID can follow the same device across address drift without automatically
+rewriting its saved address or its backend device-health registry entry.
+
+On 2026-10-05, an owner-authorized speaker repair corrected a stale address in both
+the root Cast configuration and the live registry selected by
+`JARVISD_DEVICE_REGISTRY`. Discovery also exposed a same-named Cast group; the
+physical Nest Audio's model and stable UUID were verified before pinning the speaker
+alias. The name collision was reproduced through the normal read-only tool, and
+then three ordinary pinned status reads selected the correct physical device.
+Normal backend probes reported the speaker available with its incident closed;
+only jarvisd and its watchdog reloaded. The sensor reader's PID, cooldown and counters
+were preserved, and the hub/sensor health stayed healthy. No volume, mute or media
+write was used as a smoke test. The SDK/dependencies and public tool schema were
+unchanged. Regression tests are in `scripts/test_cast_selection.py`; owner-only
+routing/identity/reload evidence stays outside Git under
+`~/Library/Application Support/JARVIS/cast-recovery/20261005T234535Z/`.
+
 ## Native app
 
 See [`jarvis-app/README.md`](jarvis-app/README.md). The app provides:

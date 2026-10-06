@@ -13,6 +13,7 @@ import socket
 import sys
 from dataclasses import dataclass, replace
 from typing import Any, Optional, Tuple
+from uuid import UUID
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class CastTarget:
     location: str = "Unknown"
     cast_type: str = "cast"
     aliases: Tuple[str, ...] = ()
+    uuid: str = ""
 
 
 def _cast_env(name: str, default: str = "") -> str:
@@ -40,6 +42,7 @@ TV_TARGET = CastTarget(
     location=_cast_env("OPERATION_JARVIS_CAST_TV_LOCATION", "Configured location"),
     cast_type="tv",
     aliases=("television", "screen"),
+    uuid=_cast_env("OPERATION_JARVIS_CAST_TV_UUID"),
 )
 SPEAKERS_TARGET = CastTarget(
     alias="speakers",
@@ -49,6 +52,7 @@ SPEAKERS_TARGET = CastTarget(
     location=_cast_env("OPERATION_JARVIS_CAST_SPEAKERS_LOCATION", "Configured location"),
     cast_type="group",
     aliases=("speaker", "speaker-group", "speakers-group"),
+    uuid=_cast_env("OPERATION_JARVIS_CAST_SPEAKERS_UUID"),
 )
 CONFIGURED_TARGETS = (TV_TARGET, SPEAKERS_TARGET)
 DEFAULT_DEVICE_ALIAS = "tv"
@@ -185,27 +189,52 @@ def find_cast(
     host: str,
     discovery_timeout: float,
     socket_timeout: float,
+    expected_uuid: Optional[str] = None,
 ) -> Tuple[Optional[Any], Optional[Any]]:
-    """Find the target Chromecast by exact friendly name, falling back to known host."""
+    """Select a pinned UUID, or an exact name+host; never an arbitrary Cast."""
     print(f'Looking for Chromecast named "{name}" at {host}...')
 
     browser = None
     casts = []
+    # Validate before discovery. UUID lookup cannot be won by a same-named group.
+    wanted_uuid = UUID(expected_uuid) if expected_uuid else None
+
+    def choose(candidates: Any) -> Optional[Any]:
+        matches = [cast for cast in candidates if getattr(cast, "name", None) == name]
+        if wanted_uuid is not None:
+            matches = [cast for cast in matches if str(getattr(cast, "uuid", "")) == str(wanted_uuid)]
+        else:
+            matches = [cast for cast in matches if host_matches(cast, host)]
+        return matches[0] if len(matches) == 1 else None
+
+    def discard(candidates: Any, selected: Optional[Any] = None) -> None:
+        for candidate in candidates:
+            if candidate is not selected:
+                try:
+                    candidate.disconnect(timeout=3, blocking=True)
+                except Exception:
+                    pass
 
     try:
+        selectors = {"uuids": [wanted_uuid]} if wanted_uuid is not None else {"friendly_names": [name]}
         casts, browser = pychromecast.get_listed_chromecasts(
-            friendly_names=[name],
+            **selectors,
             known_hosts=[host],
             discovery_timeout=discovery_timeout,
             timeout=socket_timeout,
         )
     except Exception as exc:
-        print(f"Name-based discovery failed: {exc}")
+        print(f"Target discovery failed: {exc}")
 
-    if casts:
-        return casts[0], browser
+    selected = choose(casts)
+    discard(casts, selected)
+    if selected is not None:
+        return selected, browser
+    if wanted_uuid is not None:
+        print("Pinned Cast identity missing or ambiguous; refusing name/host fallback.")
+        return None, browser
 
-    print("No exact friendly-name match found. Trying known-host discovery...")
+    print("No exact name+host match found. Trying known-host discovery...")
     stop_discovery(browser)
     browser = None
 
@@ -220,27 +249,11 @@ def find_cast(
         print(f"Known-host discovery failed: {exc}")
         return None, browser
 
-    if not casts:
-        return None, browser
-
-    exact_name_matches = [cast for cast in casts if getattr(cast, "name", None) == name]
-    if exact_name_matches:
-        return exact_name_matches[0], browser
-
-    host_matches_list = [cast for cast in casts if host_matches(cast, host)]
-    if host_matches_list:
-        return host_matches_list[0], browser
-
-    print("Discovered casts, but none matched the target host/name exactly:")
-    for cast in casts:
-        cast_info = getattr(cast, "cast_info", None)
-        print(
-            "  - "
-            f"name={getattr(cast, 'name', None)!r}, "
-            f"host={getattr(cast_info, 'host', None)!r}, "
-            f"uuid={getattr(cast, 'uuid', None)}"
-        )
-    return casts[0], browser
+    selected = choose(casts)
+    discard(casts, selected)
+    if selected is None:
+        print("Configured Cast target missing or ambiguous; refusing unrelated devices.")
+    return selected, browser
 
 
 def print_cast_summary(cast: Any) -> None:
@@ -332,6 +345,7 @@ def main() -> int:
             host=args.host,
             discovery_timeout=args.discovery_timeout,
             socket_timeout=args.socket_timeout,
+            expected_uuid=target.uuid,
         )
 
         if cast is None:

@@ -127,7 +127,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
 
 def get_connected_cast(args: argparse.Namespace) -> Tuple[Any, Any, Any]:
     """Return (pychromecast, cast, browser) for the configured target."""
-    apply_target_defaults(args)
+    target = apply_target_defaults(args)
 
     if not args.skip_tcp_check:
         if not check_tcp_port(args.host, args.port, timeout=min(args.socket_timeout, 5.0)):
@@ -143,6 +143,7 @@ def get_connected_cast(args: argparse.Namespace) -> Tuple[Any, Any, Any]:
         host=args.host,
         discovery_timeout=args.discovery_timeout,
         socket_timeout=args.socket_timeout,
+        expected_uuid=target.uuid,
     )
     if cast is None:
         stop_discovery(browser)
