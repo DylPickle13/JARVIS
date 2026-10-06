@@ -1,7 +1,7 @@
 {
   "exclude_names": [".venv", ".venv-archive", ".sync-venv", "node_modules", "__pycache__", ".build", ".DS_Store"],
   "keep_generated_prefixes": ["projects/minecraft-server/node", "projects/minecraft-server/jarvis-bot/node_modules"],
-  "minecraft": {"relative_path": "projects/minecraft-server", "screen_session": "minecraft", "java_host": "192.168.21.110", "java_port": 25565},
+  "minecraft": {"relative_path": "projects/minecraft-server", "screen_session": "minecraft", "java_host": "192.168.21.198", "java_port": 25565},
   "exclude_globs": [
     "*.pyc",
     "*.log",

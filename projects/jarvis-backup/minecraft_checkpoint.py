@@ -52,8 +52,11 @@ class MinecraftCheckpoint:
         expected = {'server-port': str(self.settings['java_port']),
                     'server-ip': self.settings['java_host'], 'online-mode': 'false',
                     'white-list': 'true', 'enforce-whitelist': 'true'}
-        if any(properties.get(k) != v for k, v in expected.items()):
-            raise RuntimeError('Minecraft source/endpoint/security settings do not match the approved server')
+        mismatches = [f'{key}: expected {value!r}, found {properties.get(key)!r}'
+                      for key, value in expected.items() if properties.get(key) != value]
+        if mismatches:
+            raise RuntimeError('Minecraft source/endpoint/security settings do not match the approved server: '
+                               + '; '.join(mismatches))
         if self.marker.exists():
             raise RuntimeError('An interrupted Minecraft checkpoint requires autosave-state review before another backup')
 

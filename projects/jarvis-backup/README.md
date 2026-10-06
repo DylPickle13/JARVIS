@@ -83,6 +83,14 @@ links remain valid. This implementation lives in
 `projects/jarvis-backup/` without an old-folder symlink. Stored scheduler command
 paths were migrated in place; IDs, names, schedules and history were preserved.
 
+The policy pins the approved Java endpoint to `192.168.21.198:25565` and checks
+`server.properties` against it, including whitelist/security settings. A future
+LAN address migration must explicitly update `minecraft.java_host` in this
+policy (or an existing local Minecraft config override) after reviewing the
+server's actual listener identity. Never auto-accept a changed address, wildcard
+bind or security setting to make a failed job pass. Mismatch errors name the
+setting and expected/actual values; no credentials are included.
+
 Before a live backup, verify the Paper listener PID, executable, working
 directory and exact screen session. Send `save-off`, require a fresh server
 acknowledgement, then `save-all flush` and its acknowledgement. APFS-clone the
@@ -201,6 +209,19 @@ and 13 Minecraft world/player/region samples verified. Remote readback confirmed
 the generated Swift build tree was absent and the DH database remained included;
 health passed and the next scheduled run remained 3 AM EDT on October 6.
 Weekly maintenance was not due, so this rerun does not measure its duration.
+
+The October 6 overnight failure was unrelated to the timeout: the production
+server moved from `192.168.21.110` to `192.168.21.198` after the October 5 test,
+but the backup policy still pinned the previous address. Validation failed before
+any checkpoint commands or upload. The approved policy now matches the actual
+local listener, executable and working directory; endpoint/security checks and
+Minecraft autosave protections remain strict. Regression tests cover endpoint
+migrations and each rejected endpoint/security mismatch before console writes.
+All 38 tests passed. The manual scheduler rerun on October 6 completed in 4m03s:
+snapshot `b1b49dee`, 10 database copies, 2 source samples and 13 Minecraft samples
+verified. Remote readback confirmed the archived policy and server endpoint/security
+settings agree; health passed, autosave was restored and no pending marker remained.
+The next scheduled run remains October 7 at 3 AM EDT. Weekly maintenance was not due.
 
 ## Commands
 

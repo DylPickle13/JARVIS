@@ -44,6 +44,40 @@ class MinecraftTests(unittest.TestCase):
         self.off = 'Automatic saving is now disabled'
         self.on = 'Automatic saving is now enabled'
 
+    def test_endpoint_and_security_mismatches_fail_before_console_write(self):
+        properties = self.root / 'server/server.properties'
+        original = properties.read_text().splitlines()
+        cases = [('server-ip', '192.168.21.198'), ('server-ip', '0.0.0.0'),
+                 ('server-ip', ''), ('server-ip', None), ('server-port', '25566'),
+                 ('online-mode', 'true'), ('white-list', 'false'),
+                 ('enforce-whitelist', 'false')]
+        for key, value in cases:
+            with self.subTest(key=key, value=value):
+                lines = [line for line in original if not line.startswith(key + '=')]
+                if value is not None:
+                    lines.append(f'{key}={value}')
+                properties.write_text('\n'.join(lines) + '\n')
+                with patch.object(self.checkpoint, 'running_info') as running, \
+                     patch.object(self.checkpoint, 'command') as command:
+                    with self.assertRaisesRegex(RuntimeError, key + ': expected .*found'):
+                        self.checkpoint.create()
+                running.assert_not_called()
+                command.assert_not_called()
+                self.assertFalse(self.checkpoint.marker.exists())
+                self.assertFalse(self.checkpoint.stage.exists())
+
+    def test_lan_change_requires_explicit_matching_policy_without_relaxing_security(self):
+        properties = self.root / 'server/server.properties'
+        properties.write_text(properties.read_text().replace('192.168.21.110', '192.168.21.198'))
+        with self.assertRaisesRegex(RuntimeError, "server-ip: expected '192.168.21.110', found '192.168.21.198'"):
+            self.checkpoint.validate()
+        settings = dict(self.settings, java_host='192.168.21.198')
+        migrated = MinecraftCheckpoint(self.source, self.state, settings, time.monotonic() + 60)
+        migrated.validate()
+        properties.write_text(properties.read_text().replace('enforce-whitelist=true', 'enforce-whitelist=false'))
+        with self.assertRaisesRegex(RuntimeError, 'enforce-whitelist: expected .*found'):
+            migrated.validate()
+
     def test_stopped_world_is_frozen_and_all_samples_verified(self):
         with patch.object(self.checkpoint, 'running_info', return_value=None):
             manifest = self.checkpoint.create()
