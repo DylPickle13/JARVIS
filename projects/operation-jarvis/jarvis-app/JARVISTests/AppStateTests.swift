@@ -5,6 +5,45 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testHomeControlPendingReceiptDoesNotOptimisticallyChangeObservedState() async throws {
+        let now = Date()
+        let revision = String(repeating: "a", count: 32)
+        let state = StateSnapshot(ok: true, homeAutomations: .init(automaticVoice: .init(
+            available: true, enabled: true, revision: revision, observedAt: now.formatted(.iso8601),
+            validUntil: now.addingTimeInterval(30).formatted(.iso8601))))
+        let api = FakeAPI(stateResponses: [state, state])
+        let defaults = UserDefaults(suiteName: "jarvis.home-command.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        app.connectionState = .connected
+        let command = HomeAutomationCommand(control: .automaticVoice, enabled: false, revision: revision)
+        let result = await app.setHomeAutomation(command)
+        XCTAssertEqual(result.homeAutomation?.status, "pending")
+        XCTAssertEqual(api.homeCommands, [command])
+        XCTAssertTrue(api.commands.isEmpty, "No generic device command fallback")
+        XCTAssertEqual(app.lastState?.homeAutomations?.automaticVoice?.enabled, true)
+        XCTAssertTrue(app.isHomeAutomationBusy(.automaticVoice), "Old snapshots cannot refund a pending receipt")
+    }
+
+    func testHomeControlChangedRevisionNeverDispatches() async {
+        let now = Date()
+        let state = StateSnapshot(ok: true, homeAutomations: .init(automaticVoice: .init(
+            available: true, enabled: true, revision: String(repeating: "a", count: 32), observedAt: now.formatted(.iso8601),
+            validUntil: now.addingTimeInterval(30).formatted(.iso8601))))
+        let api = FakeAPI(stateResponses: [state])
+        let defaults = UserDefaults(suiteName: "jarvis.home-stale.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        app.connectionState = .connected
+        let result = await app.setHomeAutomation(.init(control: .automaticVoice, enabled: false,
+            revision: String(repeating: "b", count: 32)))
+        XCTAssertFalse(result.ok)
+        XCTAssertTrue(api.homeCommands.isEmpty)
+        XCTAssertTrue(api.commands.isEmpty)
+    }
+
     func testRoomSpeakersRefreshIndependentlyAndStopOnlySelectedTurn() async throws {
         let api = FakeAPI()
         let defaults = UserDefaults(suiteName: "jarvis.rooms.\(UUID().uuidString)")!
@@ -1368,6 +1407,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var scheduledJobResultSequence: Int?
     var stateResponses: [StateSnapshot]
     var commands: [String] = []
+    var homeCommands: [HomeAutomationCommand] = []
     var commandParams: [[String: JSONValue]] = []
     var stateCalls = 0
     var cachedStateCalls = 0
@@ -1460,6 +1500,14 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         codexRefreshCalls += 1
         return try await state(endpoint)
+    }
+
+    func setHomeAutomation(_ endpoint: JarvisEndpoint, command: HomeAutomationCommand) async throws -> CommandResult {
+        homeCommands.append(command)
+        let object: [String: Any] = ["requestID": command.requestID, "control": command.control.rawValue,
+            "enabled": command.enabled, "status": "pending"]
+        let receipt = try JSONDecoder().decode(HomeAutomationReceipt.self, from: JSONSerialization.data(withJSONObject: object))
+        return CommandResult(ok: true, action: "home-automation-set", homeAutomation: receipt)
     }
 
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult {

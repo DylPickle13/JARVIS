@@ -69,6 +69,7 @@ public protocol JarvisAPI: Sendable {
     func stateRetryingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
     func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult
+    func setHomeAutomation(_ endpoint: JarvisEndpoint, command: HomeAutomationCommand) async throws -> CommandResult
     func events(_ endpoint: JarvisEndpoint, since: Int?, limit: Int) async throws -> EventsResponse
     func systemHistory(_ endpoint: JarvisEndpoint, window: SystemHistoryWindow, component: String?) async throws -> SystemHistoryResponse
     func services(_ endpoint: JarvisEndpoint) async throws -> ServicesListResponse
@@ -92,6 +93,10 @@ public protocol JarvisAPI: Sendable {
 }
 
 public extension JarvisAPI {
+    func setHomeAutomation(_ endpoint: JarvisEndpoint, command: HomeAutomationCommand) async throws -> CommandResult {
+        throw JarvisError.transport("Home automation controls unavailable.")
+    }
+
     /// Older/mock clients must not fall back to a device/active-state request.
     func systemHistory(_ endpoint: JarvisEndpoint, window: SystemHistoryWindow, component: String?) async throws -> SystemHistoryResponse {
         throw JarvisError.transport("System history unavailable.")
@@ -203,6 +208,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         body: Data? = nil,
         requestTimeout: TimeInterval? = nil,
         deviceWrite: Bool = false,
+        writeRequestID: String? = nil,
         refuseRedirect: Bool = false,
         responseByteLimit: Int? = nil,
         as type: T.Type
@@ -211,7 +217,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         if let requestTimeout { request.timeoutInterval = max(0.2, requestTimeout) }
         request.httpBody = body
         if deviceWrite {
-            request.setValue(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
+            request.setValue(writeRequestID ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
                              forHTTPHeaderField: "x-jarvis-request-id")
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.timeoutInterval = 45
@@ -382,6 +388,18 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         let isDeviceWrite = ["plug-on", "plug-off", "plug-toggle", "purifier-set"].contains(action)
         return try await perform(endpoint, isDeviceWrite ? "/api/v1/device-command" : "/api/v1/command",
                                  method: "POST", body: body, deviceWrite: isDeviceWrite, as: CommandResult.self)
+    }
+
+    public func setHomeAutomation(_ endpoint: JarvisEndpoint, command: HomeAutomationCommand) async throws -> CommandResult {
+        guard command.isValid else { throw JarvisError.badURL("Invalid Home automation command.") }
+        let body = try JSONEncoder().encode(command)
+        let result = try await perform(endpoint, "/api/v1/home-automation-command", method: "POST", body: body,
+            deviceWrite: true, writeRequestID: command.requestID, responseByteLimit: 16_384, as: CommandResult.self)
+        guard result.action == "home-automation-set", result.homeAutomation?.matches(command) == true,
+              result.homeAutomation.map({ result.ok == ["pending", "verified"].contains($0.status) }) == true else {
+            throw JarvisError.decoding("Home command receipt unconfirmed; refresh state, never resend automatically.")
+        }
+        return result
     }
 
     public func events(_ endpoint: JarvisEndpoint, since: Int? = nil, limit: Int = 100) async throws -> EventsResponse {

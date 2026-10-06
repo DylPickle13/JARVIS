@@ -679,7 +679,7 @@ private final class RequestRecorder: @unchecked Sendable {
     }
 }
 
-private final class MockURLProtocol: URLProtocol {
+final class MockURLProtocol: URLProtocol {
     static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
     override class func canInit(with request: URLRequest) -> Bool { true }

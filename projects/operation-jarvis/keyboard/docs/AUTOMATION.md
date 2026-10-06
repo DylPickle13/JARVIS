@@ -57,6 +57,14 @@ arrival timing; a real walk-away/return acceptance test remains owner-controlled
 
 ## Mac arrival greeting
 
+Owner-approved Home **Automatic Voice** support is activated on 2026-10-05 EDT
+with the shared unsolicited-speech policy initialized On, the required-policy
+flag/common root installed, and native build 254 verified on phone/Watch. Source
+opt-in and cooldown were preserved; no greeting test ran. It does not disable the
+Computer presence scheduler or desk controllers. Off discards absence arming,
+On requires a fresh event, and generation checks prevent pending speech across
+Off/On. Cooldowns remain intact. See [Home cards and activation boundary](../../jarvis-app/docs/home-automations.md).
+
 `arrival_cycle.py` runs after the existing controllers using their shared basement
 snapshot. `arrival-config.json` containing `{"enabled": true}` opts in. The minute
 Computer presence job remains an alert relay; its schedule is unchanged.

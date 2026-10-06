@@ -21,6 +21,26 @@ Health UI belongs on System, not Home. Backend checks remain active. See [covera
 
 # jarvisd — shared control backend
 
+## Home automation cards — backend and native build 254 deployed
+
+The closed authenticated Home command route and cached state projection support
+Automatic Voice (unsolicited announcements only) and the privately pinned Barn
+door Protocol. Voice suppression preserves desk automation and shared sensor
+reads. Durable receipts precede mutations; cloud changes are single-flight,
+revision-bound, one-shot and readback-verified, never auto-login/retry/execute.
+Owner-approved backend `20261006T014750Z-home-automations` and six affected speech
+producers are activated: Automatic Voice On, Barn Door Off. Source opt-ins,
+sensor/speech safeguards, shared room/Pi identities, configuration and history
+are preserved; no cloud mutation or physical output test ran. Frozen installed-
+baseline verification passed 846 tests plus all SDK gates. Native 254 was
+installed once/version/process verified on both devices at 22:13 EDT, following
+two retained pre-install Watch readiness failures and owner reconnection. All
+immediate gates passed; no install/write retry or service restart occurred during
+the native rollout. Backend health and shared On/Off state verified healthy;
+physical acceptance remains owner review. Exact backend and signed-native 253
+rollback evidence are retained. See
+[native behaviour, private policy activation and guarded rollout](../jarvis-app/docs/home-automations.md).
+
 ## Optional Minecraft bot health — deployed 2026-10-05 EDT
 
 Owner-approved `20261005T230631Z-informational-bot` activated at **19:15 EDT**.

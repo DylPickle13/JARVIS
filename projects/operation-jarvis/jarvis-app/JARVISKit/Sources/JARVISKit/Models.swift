@@ -184,6 +184,7 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
     public let subsystemsMeta: [String: SubsystemMetadata]?
     public let health: CachedSystemHealthSummary?
     public let deviceHealth: DeviceHealthCoverage?
+    public let homeAutomations: HomeAutomationsSnapshot?
 
     public init(
         ok: Bool,
@@ -198,7 +199,8 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
         subsystems: Subsystems? = nil,
         subsystemsMeta: [String: SubsystemMetadata]? = nil,
         health: CachedSystemHealthSummary? = nil,
-        deviceHealth: DeviceHealthCoverage? = nil
+        deviceHealth: DeviceHealthCoverage? = nil,
+        homeAutomations: HomeAutomationsSnapshot? = nil
     ) {
         self.ok = ok
         self.loading = loading
@@ -213,6 +215,7 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
         self.subsystemsMeta = subsystemsMeta
         self.health = health
         self.deviceHealth = deviceHealth
+        self.homeAutomations = homeAutomations
     }
 }
 
@@ -324,7 +327,8 @@ public extension StateSnapshot {
             subsystems: updatedSubsystems,
             subsystemsMeta: subsystemsMeta,
             health: health,
-            deviceHealth: deviceHealth
+            deviceHealth: deviceHealth,
+            homeAutomations: homeAutomations
         )
     }
 }
@@ -577,6 +581,7 @@ public struct CommandResult: Codable, Equatable, Sendable {
     public let error: String?
     public let plug: PlugCommandData?
     public let airPurifier: PurifierCommandData?
+    public let homeAutomation: HomeAutomationReceipt?
     public let summary: String?
 
     public var purifierVerificationPending: Bool {
@@ -590,6 +595,7 @@ public struct CommandResult: Codable, Equatable, Sendable {
         error: String? = nil,
         plug: PlugCommandData? = nil,
         airPurifier: PurifierCommandData? = nil,
+        homeAutomation: HomeAutomationReceipt? = nil,
         summary: String? = nil
     ) {
         self.ok = ok
@@ -597,6 +603,7 @@ public struct CommandResult: Codable, Equatable, Sendable {
         self.error = error
         self.plug = plug
         self.airPurifier = airPurifier
+        self.homeAutomation = homeAutomation
         self.summary = summary
     }
 }

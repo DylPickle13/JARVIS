@@ -5,7 +5,10 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'jarvisd'))
+from jarvisd_core import automatic_voice
 import cycle
 
 BOOT = str(time.time_ns())
@@ -16,9 +19,13 @@ _worker = None
 _results = deque(maxlen=8)
 
 
-def dispatch():
+def dispatch(policy_revision=None):
     """Bounded background request; no retry, fallback, or sensitive logging."""
     global _worker
+    gate = automatic_voice.current()
+    revision = policy_revision or (gate.revision if gate else None)
+    if not automatic_voice.admitted('computer-arrival', revision):
+        return
     if _worker is not None and _worker.is_alive():
         return
     def send():
@@ -27,7 +34,10 @@ def dispatch():
             token = env['JARVIS_ROOM_AUDIO_TOKEN']
             if not isinstance(token, str) or not token:
                 return
-            request = urllib.request.Request(URL, data=b'{}', method='POST', headers={
+            if not automatic_voice.admitted('computer-arrival', revision):
+                return
+            data = json.dumps({'policyRevision': revision}).encode()
+            request = urllib.request.Request(URL, data=data, method='POST', headers={
                 'Content-Type': 'application/json', 'x-jarvis-room-token': token})
             with urllib.request.urlopen(request, timeout=2) as response:
                 result = json.loads(response.read(2048))
@@ -62,6 +72,17 @@ def run_once(store, *, get_presence, now=time.time, apply=dispatch):
             # Restart breaks absence qualification, but never erases the cooldown.
             state = {'boot': BOOT, 'awaySince': None, 'lastCheck': None,
                      'lastAttempt': last_attempt}
+        gate = automatic_voice.current()
+        revision = gate.revision if gate else None
+        if state.get('policyRevision') != revision:
+            state['awaySince'] = None
+            state['lastCheck'] = None
+        state['policyRevision'] = revision
+        if gate is None or not gate.enabled:
+            state['awaySince'] = None
+            state['lastCheck'] = None
+            store.save('arrival-state.json', state)
+            return
         try:
             payload = get_presence()
             mode = cycle.basement(payload)
@@ -86,7 +107,10 @@ def run_once(store, *, get_presence, now=time.time, apply=dispatch):
         if greet:
             state['lastAttempt'] = at
         store.save('arrival-state.json', state)  # Consume before dispatch, including crashes.
-        if greet:
-            apply()
+        if greet and automatic_voice.admitted('computer-arrival', revision):
+            if apply is dispatch:
+                dispatch(revision)
+            else:
+                apply()
     except Exception:
         return  # Optional audio must never block the desk controllers.

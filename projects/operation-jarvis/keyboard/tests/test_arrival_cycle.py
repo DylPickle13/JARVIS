@@ -1,7 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import arrival_cycle as arrival
@@ -134,6 +134,30 @@ class ArrivalTests(unittest.TestCase):
         for at in (float('nan'), -1, True):
             self.step(at, 'nearby')
         self.send.assert_not_called()
+
+    def test_master_off_discards_absence_without_erasing_cooldown(self):
+        self.absence()
+        state = self.store.data['arrival-state.json']
+        state['lastAttempt'] = 10
+        with patch.object(arrival.automatic_voice, 'current', return_value=arrival.automatic_voice.Policy(False, 'b'*32)):
+            self.step(36, 'nearby')
+        self.assertEqual(state['lastAttempt'], 10)
+        self.assertIsNone(state['awaySince'])
+        self.send.assert_not_called()
+
+    def test_off_on_generation_cannot_backfill_old_absence(self):
+        self.absence()
+        with patch.object(arrival.automatic_voice, 'current', return_value=arrival.automatic_voice.Policy(True, 'b'*32)):
+            self.step(36, 'nearby')
+        self.send.assert_not_called()
+        self.assertIsNone(self.store.data['arrival-state.json']['awaySince'])
+
+    def test_policy_change_before_dispatch_consumes_without_speech(self):
+        self.absence()
+        with patch.object(arrival.automatic_voice, 'admitted', return_value=False):
+            self.step(36, 'nearby')
+        self.send.assert_not_called()
+        self.assertEqual(self.store.data['arrival-state.json']['lastAttempt'], 36)
 
     def test_save_failure_blocks_dispatch(self):
         self.absence()

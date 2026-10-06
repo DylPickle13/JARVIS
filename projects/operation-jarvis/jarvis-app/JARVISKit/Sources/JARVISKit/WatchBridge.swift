@@ -172,6 +172,7 @@ public protocol WatchBridgeDelegate: AnyObject {
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String)
     func watchBridgeDidReceivePurifierCommand(_ bridge: WatchBridge, command: WatchPurifierCommand, requestID: String)
     func watchBridgeDidReceivePurifierRefresh(_ bridge: WatchBridge, retry: Bool, requestID: String)
+    func watchBridgeDidReceiveHomeAutomationCommand(_ bridge: WatchBridge, command: HomeAutomationCommand, requestID: String)
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult)
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError)
     func watchBridgeDidReceivePushRegistration(_ bridge: WatchBridge, registration: JARVISPushRegistration)
@@ -185,6 +186,7 @@ public extension WatchBridgeDelegate {
     func watchBridgeDidReceivePlugCommand(_ bridge: WatchBridge, name: String, isOn: Bool, requestID: String) {}
     func watchBridgeDidReceivePurifierCommand(_ bridge: WatchBridge, command: WatchPurifierCommand, requestID: String) {}
     func watchBridgeDidReceivePurifierRefresh(_ bridge: WatchBridge, retry: Bool, requestID: String) {}
+    func watchBridgeDidReceiveHomeAutomationCommand(_ bridge: WatchBridge, command: HomeAutomationCommand, requestID: String) {}
     func watchBridgeDidReceiveCommandResult(_ bridge: WatchBridge, requestID: String, result: CommandResult) {}
     func watchBridgeDidReceiveCommandError(_ bridge: WatchBridge, requestID: String, error: WatchCommandError) {}
     func watchBridgeDidReceivePushRegistration(_ bridge: WatchBridge, registration: JARVISPushRegistration) {}
@@ -319,12 +321,19 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         return await requestCommand(type: "purifierRefresh", payload: payload, timeout: .seconds(30))
     }
 
+    public func requestHomeAutomationCommand(_ command: HomeAutomationCommand) async -> Result<CommandResult, WatchRelayFailure> {
+        guard command.isValid, let payload = try? JSONEncoder().encode(command) else {
+            return .failure(.rejected("Invalid Home automation command."))
+        }
+        return await requestCommand(type: "homeAutomationCommand", payload: payload, timeout: .seconds(30), requestID: command.requestID)
+    }
+
     private func requestCommand(
         type: String,
         payload: Data,
-        timeout: Duration
+        timeout: Duration,
+        requestID: String = UUID().uuidString
     ) async -> Result<CommandResult, WatchRelayFailure> {
-        let requestID = UUID().uuidString
         let message = WatchMessage(type: type, requestID: requestID, payload: payload)
         return await withTaskCancellationHandler(operation: {
             await withCheckedContinuation { continuation in
@@ -560,6 +569,12 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
                   let command = try? JSONDecoder().decode(WatchPurifierCommand.self, from: data),
                   command.isValid, type == command.relayMessageType else { return }
             delegate?.watchBridgeDidReceivePurifierCommand(self, command: command, requestID: requestID)
+        case "homeAutomationCommand":
+            guard validateCommandDelivery(raw, requestID: requestID),
+                  let data = raw["payload"] as? Data,
+                  let command = try? JSONDecoder().decode(HomeAutomationCommand.self, from: data),
+                  command.isValid, command.requestID == requestID else { return }
+            delegate?.watchBridgeDidReceiveHomeAutomationCommand(self, command: command, requestID: requestID)
         case "purifierRefresh":
             guard validateCommandDelivery(raw, requestID: requestID),
                   let data = raw["payload"] as? Data,
@@ -694,6 +709,7 @@ public final class WatchBridge: NSObject, @unchecked Sendable {
         timeout: Duration = .seconds(30)
     ) async -> Result<CommandResult, WatchRelayFailure> { .failure(.unavailable) }
     public func requestPurifierRefresh(retry: Bool = false) async -> Result<CommandResult, WatchRelayFailure> { .failure(.unavailable) }
+    public func requestHomeAutomationCommand(_ command: HomeAutomationCommand) async -> Result<CommandResult, WatchRelayFailure> { .failure(.unavailable) }
     public func requestStateData(timeout: Duration = .seconds(15)) async -> Result<Data, WatchRelayFailure> {
         .failure(.unavailable)
     }

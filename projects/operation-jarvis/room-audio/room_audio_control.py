@@ -2,6 +2,11 @@
 import re
 import threading
 import time
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'jarvisd'))
+from jarvisd_core import automatic_voice
 
 ID = re.compile(r"[a-f0-9]{32}\Z")
 
@@ -42,18 +47,27 @@ class RoomAudioControl:
             self._prune()
             result = {"ok": True, "cancelTurnID": turn if turn in self.cancelled else None}
             if self.arrival is not None:
-                owner, expires = self.arrival
+                owner, expires, revision = self.arrival
                 self.arrival = None  # Consume even if client is busy or delivery is uncertain.
-                if owner == client and phase == 'idle' and self.clock() < expires:
+                if (owner == client and phase == 'idle' and self.clock() < expires
+                        and automatic_voice.admitted('computer-arrival', revision)):
                     result['arrivalNotice'] = True
+                    result['arrivalPolicyRevision'] = revision
             return result
 
-    def request_arrival(self):
+    def request_arrival(self, revision=None):
+        gate = automatic_voice.current()
+        if revision is None:
+            if gate is None or gate.revision != 'legacy':
+                return {'ok': True, 'accepted': False}
+            revision = 'legacy'
+        if not revision or not automatic_voice.admitted('computer-arrival', revision):
+            return {'ok': True, 'accepted': False}
         with self.lock:
             status = self._status()
             if not status['clientOnline'] or status['phase'] != 'idle' or self.arrival is not None:
                 return {'ok': True, 'accepted': False}
-            self.arrival = (self.client, self.clock() + 4)
+            self.arrival = (self.client, self.clock() + 4, revision)
             return {'ok': True, 'accepted': True}
 
     def _prune(self):

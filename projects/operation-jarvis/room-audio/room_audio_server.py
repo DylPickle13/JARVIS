@@ -52,7 +52,7 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(VOICE_ROOT) not in sys.path:
     sys.path.insert(0, str(VOICE_ROOT))
 
-from room_audio_control import RoomAudioControl
+from room_audio_control import RoomAudioControl, automatic_voice
 from room_audio_followup import WakeFollowups
 from room_audio_logging import bounded_stderr, RoutineRequestLogGate
 
@@ -1092,8 +1092,19 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 request_key = self.headers.get('x-jarvis-arrival-id', '')
                 if request_key and not TURN_ID_PATTERN.fullmatch(request_key):
                     raise ValueError('invalid arrival request ID')
+                gate = automatic_voice.current()
+                revision = self.headers.get('x-jarvis-voice-policy', '')
+                if not revision and gate is not None and gate.revision == 'legacy':
+                    revision = 'legacy'
+                if not automatic_voice.admitted('computer-arrival', revision):
+                    self._send_json({'ok': False}, HTTPStatus.CONFLICT)
+                    return
                 options = {'request_key': request_key} if request_key else {}
-                self._send_json(self.server.bridge.synthesize_greeting(arrival=True, **options))
+                response = self.server.bridge.synthesize_greeting(arrival=True, **options)
+                if not automatic_voice.admitted('computer-arrival', revision):
+                    self._send_json({'ok': False}, HTTPStatus.CONFLICT)
+                    return
+                self._send_json({**response, 'automaticVoiceRevision': revision})
             except Exception:
                 self._send_json({'ok': False}, HTTPStatus.SERVICE_UNAVAILABLE)
             return
@@ -1229,9 +1240,18 @@ class RoomAudioHandler(BaseHTTPRequestHandler):
                 return
             try:
                 length = int(self.headers.get('content-length', '0'))
-                if length != 2 or self.rfile.read(length) != b'{}':
+                if not 2 <= length <= 256:
                     raise ValueError('invalid arrival')
-                self._send_json(self.server.bridge.control.request_arrival())
+                payload = json.loads(self.rfile.read(length))
+                gate = automatic_voice.current()
+                if payload == {} and gate is not None and gate.revision == 'legacy':
+                    revision = 'legacy'
+                elif (type(payload) is dict and set(payload) == {'policyRevision'}
+                        and type(payload['policyRevision']) is str):
+                    revision = payload['policyRevision']
+                else:
+                    raise ValueError('invalid arrival')
+                self._send_json(self.server.bridge.control.request_arrival(revision))
             except ValueError:
                 self._send_json({'ok': False}, HTTPStatus.BAD_REQUEST)
             return

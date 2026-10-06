@@ -38,6 +38,9 @@ import urllib.request
 import wave
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'jarvisd'))
+from jarvisd_core import automatic_voice
+
 DEFAULT_SERVER_URL = os.environ.get("JARVIS_ROOM_AUDIO_SERVER_URL", "http://127.0.0.1:8791").rstrip("/")
 DEFAULT_AUDIO_DEVICE = os.environ.get("JARVIS_ROOM_AUDIO_DEVICE", "plughw:CARD=PowerConf,DEV=0")
 DEFAULT_PLAYBACK_DEVICE = os.environ.get("JARVIS_ROOM_AUDIO_PLAYBACK_DEVICE")
@@ -955,7 +958,7 @@ class RoomAudioTurnController:
         if busy and result.get("cancelTurnID") == turn:
             self.cancel_local(turn)
         if result.get('arrivalNotice') is True:
-            self.start_arrival_notice()
+            self.start_arrival_notice(result.get('arrivalPolicyRevision'))
 
     def _report_loop(self) -> None:
         while not self._report_stop.is_set():
@@ -963,7 +966,12 @@ class RoomAudioTurnController:
             except Exception: pass  # Never log authentication headers or private voice data.
             self._report_stop.wait(1)
 
-    def start_arrival_notice(self) -> None:
+    def start_arrival_notice(self, revision=None) -> None:
+        gate = automatic_voice.current()
+        if revision is None and gate is not None and gate.revision == 'legacy':
+            revision = 'legacy'
+        if not revision or not automatic_voice.admitted('computer-arrival', revision):
+            return
         turn, cancel = uuid.uuid4().hex, threading.Event()
         with self._lock:
             if (self._turn_id or not self.capture_online or self._reserved_followup
@@ -974,10 +982,12 @@ class RoomAudioTurnController:
             started = time.monotonic()
             try:
                 request = urllib.request.Request(self.args.server_url.rstrip('/') + '/arrival-audio',
-                    headers={'x-jarvis-room-token': self.args.token, 'x-jarvis-arrival-id': turn})
+                    headers={'x-jarvis-room-token': self.args.token, 'x-jarvis-arrival-id': turn,
+                             'x-jarvis-voice-policy': revision})
                 with urllib.request.urlopen(request, timeout=6) as response:
                     audio = json.loads(response.read(2 * 1024 * 1024))
-                if cancel.is_set() or not self.capture_online or time.monotonic() - started > 6:
+                if (cancel.is_set() or not self.capture_online or time.monotonic() - started > 6
+                        or not automatic_voice.admitted('computer-arrival', revision)):
                     return
                 self.set_state(turn, 'PLAYING')
                 play_response_audio(audio, device=self.args.playback_device,

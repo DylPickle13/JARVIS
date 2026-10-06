@@ -127,6 +127,27 @@ final class TabNavigationTests: XCTestCase {
         XCTAssertFalse(TabSwipeNavigation.Coordinator.hasOverlay(controller))
     }
 
+    func testNewAutomationCardsFitSmallPhoneAndAccessibilityTextWithoutTransport() {
+        let defaults = UserDefaults(suiteName: "jarvis.automation-layout.\(UUID().uuidString)")!
+        let app = AppState(store: EndpointStore(defaults: defaults), historyEndpointProvider: { _ in nil })
+        app.connectionState = .connected
+        app.setActiveSection(.system)
+        let now = Date()
+        func state(_ count: Int) -> HomeAutomationState {
+            .init(available: true, enabled: false, revision: String(repeating: "a", count: count),
+                observedAt: now.formatted(.iso8601), validUntil: now.addingTimeInterval(30).formatted(.iso8601))
+        }
+        app.lastState = .init(ok: true, homeAutomations: .init(automaticVoice: state(32), barnDoor: state(64)))
+        for size in [DynamicTypeSize.large, .accessibility3] {
+            let view = HomeAutomationCards { _ in }.environmentObject(app).dynamicTypeSize(size)
+            let host = UIHostingController(rootView: view)
+            let measured = host.sizeThatFits(in: CGSize(width: 288, height: 3000))
+            XCTAssertLessThanOrEqual(measured.width, 288.5)
+            XCTAssertEqual(measured.height, size.isAccessibilitySize ? 116 : 54, accuracy: 0.5,
+                           "Automation cards must use the same 54-point height as smart plugs")
+        }
+    }
+
     func testMovedHomeControlsFitSmallPhoneAndLargeText() throws {
         let defaults = UserDefaults(suiteName: "jarvis.home-layout.\(UUID().uuidString)")!
         let app = AppState(store: EndpointStore(defaults: defaults), historyEndpointProvider: { _ in nil })

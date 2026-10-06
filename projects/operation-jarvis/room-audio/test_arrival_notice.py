@@ -36,6 +36,30 @@ class ArrivalPlaybackTests(unittest.TestCase):
                 client.start_arrival_notice()
                 request.assert_not_called()
 
+    def test_master_off_suppresses_only_arrival_without_request(self):
+        client = self.make_client()
+        with patch.object(client_module.automatic_voice, 'current',
+                return_value=client_module.automatic_voice.Policy(False, 'a'*32)), \
+                patch.object(client_module.urllib.request, 'urlopen') as request:
+            client.start_arrival_notice('a'*32)
+            request.assert_not_called()
+            self.assertFalse(client.is_busy())
+
+    def test_off_on_during_synthesis_cannot_play_old_notice(self):
+        client = self.make_client()
+        with patch.object(client_module.automatic_voice, 'current',
+                return_value=client_module.automatic_voice.Policy(True, 'a'*32)) as gate, \
+                patch.object(client_module, 'play_response_audio') as play:
+            def reply(*args, **kwargs):
+                gate.return_value = client_module.automatic_voice.Policy(True, 'b'*32)
+                return io.BytesIO(json.dumps({'ok': True, 'audioWavBase64': 'test'}).encode())
+            with patch.object(client_module.urllib.request, 'urlopen', side_effect=reply) as request:
+                client.start_arrival_notice('a'*32)
+                client._turn_thread.join(2)
+                request.assert_called_once()
+                play.assert_not_called()
+                self.assertFalse(client.is_busy())
+
     def test_network_failure_does_not_play_or_retry(self):
         client = self.make_client()
         with patch.object(client_module.urllib.request, 'urlopen', side_effect=TimeoutError) as request, \
@@ -69,6 +93,16 @@ class ArrivalNoticeTests(unittest.TestCase):
         self.assertFalse(self.control.request_arrival()['accepted'])
         self.assertTrue(self.report()['arrivalNotice'])
         self.assertNotIn('arrivalNotice', self.report())
+
+    def test_off_on_invalidates_admitted_pending_notice(self):
+        import room_audio_control
+        with patch.object(room_audio_control.automatic_voice, 'current',
+                return_value=room_audio_control.automatic_voice.Policy(True, 'a'*32)) as gate:
+            self.report()
+            self.assertTrue(self.control.request_arrival('a'*32)['accepted'])
+            gate.return_value = room_audio_control.automatic_voice.Policy(True, 'b'*32)
+            self.assertNotIn('arrivalNotice', self.report())
+            self.assertIsNone(self.control.arrival)
 
     def test_expired_skip(self):
         self.report()

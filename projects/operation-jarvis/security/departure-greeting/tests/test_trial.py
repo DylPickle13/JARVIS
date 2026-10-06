@@ -53,6 +53,35 @@ class TrialTests(unittest.TestCase):
     def sample(self, at=START):
         return departure.Sample(0, at, True, True, 0.1)
 
+    def test_master_off_suppresses_delivery_without_touching_reader_safeguards(self):
+        before = dict(self.journal.state)
+        play = Mock()
+        with patch.object(watcher.automatic_voice, 'current',
+                return_value=watcher.automatic_voice.Policy(False, 'a'*32)):
+            result = self.deliver(self.root, self.journal, self.sample(), now=lambda: START.timestamp(), speaker=play)
+        self.assertEqual(result, 'suppressed')
+        self.assertEqual(self.journal.state, before)
+        play.assert_not_called()
+
+    def test_old_departure_generation_is_rejected_after_off_on(self):
+        play = Mock()
+        with patch.object(watcher.automatic_voice, 'current',
+                return_value=watcher.automatic_voice.Policy(True, 'b'*32)):
+            result = self.deliver(self.root, self.journal, self.sample(), now=lambda: START.timestamp(),
+                speaker=play, voice_revision='a'*32)
+        self.assertEqual(result, 'suppressed')
+        play.assert_not_called()
+        self.assertIsNone(self.journal.state['pending'])
+
+    def test_off_on_before_worker_prevents_doorbell_transport(self):
+        request = {'attempt': 'one', 'expires': START.timestamp() + person_gate.VOICE_ONSET_SECONDS}
+        runtime.save_json(self.root / 'voice-admission.json', {**request, 'revision': 'a'*32})
+        with patch.object(speaker.automatic_voice, 'current',
+                return_value=speaker.automatic_voice.Policy(True, 'b'*32)), \
+                patch.object(departure.cli, 'registry') as registry:
+            self.assertEqual(speaker.play_once(self.root, request, clock=lambda: START.timestamp()), 'failed_before_play')
+        registry.assert_not_called()
+
     def test_owner_authorized_louder_volume_is_bounded(self):
         runtime.save_json(self.root / 'config.json', {**self.value, 'volume': 100})
         self.assertEqual(runtime.config(self.root)['volume'], 100)

@@ -4,6 +4,93 @@
 
 Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.
 
+## Health-first compact Home controls — installed build 256
+
+Owner approved the unchanged 44-point Watch control row **below health**, matching
+unchanged iPhone Home. Only runtime delta is relocation of the identical health
+component; all sizes, warnings, accessibility and input/write safeguards remain.
+Frozen 259-input verification passed 336 shared cases (three expected live skips),
+184 native tests, 37 terminal tests, both simulator builds and the full signed
+archive/profile/entitlement/dependency/source/payload audits.
+
+The first Watch lock-state query failed with resource-allocation error -402653181
+at **23:16 EDT**, before invoking either installer. Failure/zero-write evidence
+is retained. After owner **“ready”**, a new scoped continuation rechecked both
+allowlisted devices and artifacts, waited ten seconds for read-only CoreDevice
+resources to unwind and used the unchanged one-shot installer with every immediate
+gate intact. **256 installed once on each iPhone/Watch**, independently version/
+process verified at **23:20 EDT on 2026-10-05**. Final verification repeated eight
+candidate/rollback signatures and both source/payload seals.
+
+All 18 protected service records (17 continuous), existing Pi/Minecraft/gateway
+identities, backend/configuration/authentication and history cadence are preserved.
+Policy/binding/receipt files and all six producer plists are byte-identical; cached
+state is Voice On, Barn Door Off. No service/control change, physical output test,
+failed-gate bypass, write retry, connection reset, credential/dependency/profile
+change, rebuild or pruning occurred. Exact signed **255** is immediate rollback.
+Owner accepted the result and authorized commit/push and verified stale-artifact
+cleanup. Physical Crown/page-swipe/VoiceOver commissioning remains separate.
+Do not rerun completed/failed helpers.
+
+### Compact sizing revision — build 255 history
+
+Owner approved native-only compact cards with **“yes please”**, then **“ready”**
+after the first Watch resource-allocation check stopped before either installer
+boundary. A new scoped zero-prior-write continuation passed both devices' fresh
+identity/DDI/unlock/baseline/seal checks and used the unchanged one-shot installer
+with all immediate gates intact. **255 installed once on each iPhone/Watch** and
+was independently version/process verified at **22:59 EDT on 2026-10-05**.
+
+Phone cards are **54 points**, matching smart plugs; Watch cards form a **44-point
+side-by-side row above health** at normal text sizes. The title is **Voice** and
+static subtitles are removed. Warnings, accessibility, Crown/page handling,
+confirmation ownership and every command safeguard remain. Physical acceptance
+is owner review.
+
+Frozen validation passed **336 shared cases** (three expected live skips),
+**184 iPhone tests**, **37 terminal tests**, both simulator builds and signing/
+profile/entitlement/dependency/source/payload audits across **259 inputs**.
+Final verification repeated eight candidate/rollback signatures and both artifacts'
+source/payload seals; all 18 protected service records (17 continuous), existing
+Pi/Minecraft/gateway identities, backend/configuration/authentication and history
+cadence are preserved. Policy/binding/receipts and all six producer definitions
+are byte-identical. Cached state is Voice On, Barn Door Off. No backend/service/
+control/credential/dependency change, physical output test, failed-gate bypass,
+write retry, connection reset or pruning occurred. Exact signed **254** is immediate
+rollback. Original failure receipts are retained; do not rerun completed helpers.
+See [Home controls status and rollback](home-automations.md).
+
+### Original Home feature/backend deployment — build 254
+
+Owner-approved Home controls deployment activated the backend and six affected
+speech producers on 2026-10-05 EDT. Automatic Voice is On; Barn Door remains Off
+with its cloud revision unchanged. Existing opt-ins, sensor/speech safeguards,
+shared Session 10/Pi identity, configuration and history remain preserved. No
+cloud mutation or physical output test was performed.
+
+Native **254** was installed once on each allowlisted iPhone/Watch and
+independently version/process verified at **22:13 EDT on 2026-10-05**. Frozen
+verification passed 335 shared cases (three expected skips), 180 iPhone tests,
+37 terminal tests, both simulator builds and signing/profile/entitlement/lock/
+source/payload audits. All eight candidate/rollback signatures and both seals
+passed again after installation. Exact signed build 253 rollback is retained.
+
+Two earlier Watch lock-state RSD allocation failures (-402653181) stopped before
+any app-install attempt. After owner **reconnected**, a new scoped continuation
+retained both failures/baselines, verified zero earlier app writes, passed both
+devices' fresh readiness/seal checks, allowed a bounded ten-second resource-unwind
+pause, and used the unchanged one-shot installer with all immediate gates intact.
+Neither installation was retried; no failed check was bypassed. All 18 protected
+service records (17 continuous plus the periodic runner), existing Pi panes,
+backend/source/registry/configuration/authentication, Minecraft/gateway/Pi
+identities and 10-second history cadence were preserved during app installation.
+No service restart, connection reset, reboot/unpair/uninstall, credential/profile/
+entitlement/dependency change, rebuild or pruning occurred. Final shared state is
+Automatic Voice On, Barn Door Off; backend health is healthy. Physical Home card/
+Crown/VoiceOver/audio commissioning remains owner review. Source commit/push was
+separately authorized after the accepted build-256 placement revision.
+See [Home controls status, validation and rollback](home-automations.md#deployment-status--2026-10-05-edt).
+
 ## Informational bot health — installed build 253
 
 Owner approved the backend update and matching iPhone/Watch rollout on
@@ -56,10 +143,10 @@ owner-approved cleanup removed the obsolete build-246 signed archive, reclaiming
 **111.75 MiB allocated**. Build-248's session-created build caches had already been
 removed after deployment, releasing **2.91 GiB**; its archive and evidence remain.
 
-Current signed recovery archives are **253** (independently installed/version/process
-verified on both devices) and **252** (exact immediate signed rollback); **251** is
-also retained. Both devices independently verify 253. The historical cleanup
-below preceded the 253 rollout. On **2026-10-05 at 17:35 EDT**, after the app change set was
+Current signed recovery archives are **256** (independently installed/version/process
+verified on both devices) and **255** (exact immediate signed rollback); **254**,
+**253**, **252** and **251** are also retained. Both devices independently verify 256.
+The historical cleanup below preceded the 253/254/255/256 rollouts. On **2026-10-05 at 17:35 EDT**, after the app change set was
 committed/pushed and the owner requested cleanup, **15 generated caches** and the
 superseded signed binary archives **248/249/250** were removed: **13.09 GiB net
 allocated artifacts**, with an observed **11.79 GiB increase in free disk space**.

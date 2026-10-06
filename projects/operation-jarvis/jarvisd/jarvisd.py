@@ -110,6 +110,8 @@ API_TOKEN = os.environ.get("JARVIS_API_TOKEN", "")
 EVENT_TOKEN = os.environ.get("JARVISD_EVENT_TOKEN", "")
 # Opt-in local launcher path. No worker, cache, or startup device reads.
 SECURITY_CLI = os.environ.get("JARVISD_SECURITY_CLI", "")
+# Separate opt-in capability: never promote the frozen read-only security launcher.
+SMART_ACTIONS_CLI = os.environ.get("JARVISD_SMART_ACTIONS_CLI", "")
 # Monitoring is enabled only during explicit daemon startup, never on import.
 MONITORING_ENABLED = False
 SECURITY_POLL_ALIASES = ()
@@ -2456,8 +2458,12 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                 if query != {"mode": ["cached"]}:
                     self._send(400, {"ok": False, "error": "cached mode cannot request refresh"})
                     return
-                self._send(200, _with_system_health(
-                    STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False)))
+                snapshot = _with_system_health(
+                    STATE_COORDINATOR.snapshot(client_active=False, start_collectors=False))
+                controls = getattr(self.server, 'home_automations', None)
+                if controls is not None:
+                    snapshot['homeAutomations'] = controls.snapshot(active=False)
+                self._send(200, snapshot)
                 return
             # Authenticated hosts may request an immediate refresh of the
             # read-only Codex usage collector. The response remains the fast
@@ -2469,7 +2475,11 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                         STATE_COORDINATOR.request_refresh(subsystem, retry_cooldown=query.get("retryCooldown") == ["true"])
                     else:
                         STATE_COORDINATOR.request_refresh(subsystem)
-            self._send(200, collect_state())
+            snapshot = collect_state()
+            controls = getattr(self.server, 'home_automations', None)
+            if controls is not None:
+                snapshot['homeAutomations'] = controls.snapshot(active=True)
+            self._send(200, snapshot)
             return
         if path == "/api/v1/events":
             if not self._auth_or_respond():
@@ -2583,6 +2593,33 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                 return
             started, result = _start_signing_renewal()
             self._send(202 if started else 409, result)
+            return
+        if self.path == "/api/v1/home-automation-command":
+            if not self._auth_or_respond():
+                return
+            self.close_connection = True
+            controls = getattr(self.server, 'home_automations', None)
+            if controls is None:
+                self._send(503, {"ok": False, "error": "Home controls unavailable"})
+                return
+            ids = self.headers.get_all('x-jarvis-request-id', [])
+            if (len(ids) != 1 or re.fullmatch(r'[0-9a-f]{32}', ids[0]) is None
+                    or self.headers.get_all('Transfer-Encoding')
+                    or len(self.headers.get_all('Content-Length', [])) != 1
+                    or self.headers.get('Content-Type') != 'application/json'):
+                self._send(400, {"ok": False, "error": "Invalid Home command framing"})
+                return
+            self.connection.settimeout(5)
+            try:
+                payload = self._read_json()
+                result = controls.submit(payload, ids[0])
+                self._send(202 if result.get('homeAutomation', {}).get('status') == 'pending' else 200, result)
+            except RequestInputError as exc:
+                self._send(exc.status, {"ok": False, "error": exc.message})
+            except (ValueError, TypeError):
+                self._send(409, {"ok": False, "error": "Home control unavailable or changed; refresh before acting"})
+            except Exception:
+                self._send(503, {"ok": False, "error": "Outcome unknown; inspect configuration, never resend automatically"})
             return
         if self.path == "/api/v1/device-command":
             if not self._auth_or_respond():
@@ -2766,6 +2803,9 @@ def main(*, control_factory=None, local_control=False) -> int:
         server_type = ControlHTTPServer if control_factory is not None or local_control else ThreadingHTTPServer
         server = server_type((HOST, PORT), Handler)
         server.daemon_threads = True
+        from jarvisd_core.home_automations import HomeAutomations
+        from jarvisd_core.automatic_voice import root_path
+        server.home_automations = HomeAutomations(root_path(), SMART_ACTIONS_CLI)
         if local_control:
             server.local_control_token = local_token
             server.native_request_lock = threading.Lock()
@@ -2822,6 +2862,9 @@ def main(*, control_factory=None, local_control=False) -> int:
                 runtime.close()
         finally:
             if server is not None:
+                controls = getattr(server, 'home_automations', None)
+                if controls is not None:
+                    controls.close()
                 server.server_close()
             if DEVICE_PROBES is not None:
                 DEVICE_PROBES.stop()

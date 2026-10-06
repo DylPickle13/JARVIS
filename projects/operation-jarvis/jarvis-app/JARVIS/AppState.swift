@@ -171,6 +171,7 @@ public final class AppState: ObservableObject {
 
     @Published public var endpointDraft: String
     @Published public private(set) var busyOperations: Set<String> = []
+    @Published public private(set) var homeAutomationReceipts: [HomeAutomationControl: HomeAutomationReceipt] = [:]
     @Published public private(set) var activeSection: AppSection = .home
 
     private var appIsActive = false
@@ -647,6 +648,44 @@ public final class AppState: ObservableObject {
         guard let result = await send(action, params), result.ok else { return false }
         if refreshState { await fetchState() }
         return true
+    }
+
+    public func isHomeAutomationBusy(_ control: HomeAutomationControl) -> Bool {
+        if isOperationBusy("home-automation:\(control.rawValue)") { return true }
+        if let receipt = homeAutomationReceipts[control],
+           lastState?.homeAutomations?[control]?.operation?.requestID != receipt.requestID { return true }
+        return lastState?.homeAutomations?[control]?.operation?.status == "pending"
+    }
+
+    @discardableResult
+    public func setHomeAutomation(_ command: HomeAutomationCommand) async -> CommandResult {
+        let key = "home-automation:\(command.control.rawValue)"
+        guard command.isValid, beginOperation(key) else {
+            return CommandResult(ok: false, error: "Home control invalid or already changing.")
+        }
+        defer { endOperation(key) }
+        await fetchState()
+        guard connectionState == .connected, stateErrorMessage == nil,
+              let state = lastState?.homeAutomations?[command.control],
+              state.canChange(command.control, connected: true), state.revision == command.revision,
+              let endpoint = activeEndpoint else {
+            operationErrorMessage = "Home configuration changed or is unavailable; refresh first."
+            return CommandResult(ok: false, error: operationErrorMessage)
+        }
+        do {
+            let result = try await client.setHomeAutomation(endpoint, command: command)
+            guard result.homeAutomation?.matches(command) == true else {
+                throw JarvisError.decoding("Home command receipt unconfirmed; refresh without resending.")
+            }
+            homeAutomationReceipts[command.control] = result.homeAutomation
+            if !result.ok { operationErrorMessage = result.error }
+            await fetchState()
+            return result
+        } catch {
+            operationErrorMessage = "Change unconfirmed. Refresh configuration; do not resend automatically."
+            await fetchState()
+            return CommandResult(ok: false, error: operationErrorMessage)
+        }
     }
 
     public func setPlug(_ name: String, isOn: Bool) async -> Bool {

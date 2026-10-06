@@ -18,6 +18,7 @@ struct WatchDashboardContent: View {
     @State private var pageMotionGeneration = UUID()
     @State private var selectedPage: WatchDashboardPage = .terminal
     @State private var showsSystemDetails = false
+    @State private var barnConfirmation: HomeAutomationCommand?
     @State private var showsPurifierModeChoices = false
     @State private var showsPurifierFanChoices = false
     private struct PurifierDetailRoute: Identifiable {
@@ -27,7 +28,7 @@ struct WatchDashboardContent: View {
     @State private var purifierDetail: PurifierDetailRoute?
 
     private var overlayOwnsInput: Bool {
-        showsSystemDetails || showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered
+        showsSystemDetails || barnConfirmation != nil || showsPurifierModeChoices || showsPurifierFanChoices || purifierDetail != nil || isDashboardCovered
     }
     private var overviewInteractive: Bool { scenePhase == .active && selectedPage == .jarvis }
 
@@ -104,6 +105,18 @@ struct WatchDashboardContent: View {
                 model.cancelCodexQuotaViewRefresh()
             }
         }
+        .onChange(of: barnConfirmation) { _, _ in updateOMLXPresentation() }
+        .confirmationDialog("Enable Barn Door Protocol?", isPresented: Binding(
+            get: { barnConfirmation != nil }, set: { if !$0 { barnConfirmation = nil } }), titleVisibility: .visible) {
+            Button("Enable protocol", role: .destructive) {
+                guard let command = barnConfirmation else { return }
+                barnConfirmation = nil
+                Task { await model.setHomeAutomation(command) }
+            }
+            Button("Cancel", role: .cancel) { barnConfirmation = nil }
+        } message: {
+            Text("May trigger physical actions immediately or later. Disabling does not stop an alarm already sounding.")
+        }
         .onChange(of: showsSystemDetails) { _, _ in updateOMLXPresentation() }
         .onChange(of: showsPurifierModeChoices) { _, _ in updateOMLXPresentation() }
         .onChange(of: showsPurifierFanChoices) { _, _ in updateOMLXPresentation() }
@@ -127,6 +140,7 @@ struct WatchDashboardContent: View {
         .onChange(of: reduceMotion) { _, reduced in if reduced { cancelPageMotion() } }
         .onChange(of: dimmed) { _, value in if value { cancelPageMotion() } }
         .onDisappear {
+            barnConfirmation = nil
             cancelPageMotion()
             model.setJobsPageVisible(false)
             model.setOMLXPresentation(systemVisible: false, covered: true)
@@ -230,15 +244,9 @@ struct WatchDashboardContent: View {
         pageIsMoving = false
     }
 
-    @ViewBuilder
     private var resolvedHomePage: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            WatchSystemCrownViewport(active: scenePhase == .active && selectedPage == .home && !overlayOwnsInput) {
-                homePage
-            }
-        } else {
+        WatchSystemCrownViewport(active: scenePhase == .active && !dimmed && selectedPage == .home && !overlayOwnsInput) {
             homePage
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
 
@@ -248,9 +256,62 @@ struct WatchDashboardContent: View {
             WatchSystemHealthView(model: model,
                 active: scenePhase == .active && !overlayOwnsInput,
                 onDetailVisibilityChanged: { showsSystemDetails = $0 })
+            TimelineView(.animation(minimumInterval: 5,
+                paused: scenePhase != .active || dimmed || selectedPage != .home || overlayOwnsInput)) { context in
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 4) {
+                        ForEach(HomeAutomationControl.allCases, id: \.self) { control in
+                            homeAutomationCard(control, at: context.date)
+                        }
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        ForEach(HomeAutomationControl.allCases, id: \.self) { control in
+                            homeAutomationCard(control, at: context.date)
+                        }
+                    }
+                }
+            }
+            ForEach(HomeAutomationControl.allCases, id: \.self) { control in
+                if let warning = model.lastState?.homeAutomations?[control]?.outcomeWarning {
+                    Text("\(control.title): \(warning)")
+                        .font(.caption2).foregroundStyle(WatchJarvisStyle.warning)
+                }
+            }
+            if let message = model.errorMessage {
+                Text(message).font(.caption2).foregroundStyle(WatchJarvisStyle.warning)
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
+    }
+
+    private func homeAutomationCard(_ control: HomeAutomationControl, at now: Date) -> some View {
+        let state = model.lastState?.homeAutomations?[control]
+        let connected = model.connectionState == .connected
+        let busy = model.isHomeAutomationBusy(control)
+        let label = busy ? (connected ? "Changing…" : "Unconfirmed") : state?.label(connected: connected, now: now) ?? "Unavailable"
+        return Button {
+            guard let enabled = state?.enabled, let revision = state?.revision else { return }
+            let command = HomeAutomationCommand(control: control, enabled: !enabled, revision: revision,
+                confirmed: control == .barnDoor && !enabled)
+            if control == .barnDoor && !enabled { barnConfirmation = command }
+            else { Task { await model.setHomeAutomation(command) } }
+        } label: {
+            HomeAutomationCardContent(control: control, status: label,
+                enabled: connected && state?.isFresh(now: now) == true ? state?.enabled : nil,
+                busy: busy, hasWarning: state?.outcomeWarning != nil || label == "Unconfirmed",
+                size: .watch, accent: WatchJarvisStyle.accent, warning: WatchJarvisStyle.warning,
+                surface: WatchJarvisStyle.surface)
+        }
+        .buttonStyle(JarvisPressStyle())
+        .disabled(busy || dimmed || scenePhase != .active || state?.canChange(control, connected: connected, now: now) != true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("home-automation-\(control.rawValue)")
+        .accessibilityLabel(control.title)
+        .accessibilityValue(label + (state?.outcomeWarning.map { ". \($0)" } ?? ""))
+        .accessibilityHint(control == .automaticVoice ? "Changes unsolicited announcements. Started speech may finish."
+            : "Enabling requires confirmation. Disabling does not silence an active alarm.")
     }
 
     private var resolvedOverviewPage: some View {

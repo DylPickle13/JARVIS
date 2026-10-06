@@ -88,6 +88,7 @@
 		CB31E7E24C064DFDC8844981 /* PiAttachmentProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 539EA6AF53BDC5A406B64C5D /* PiAttachmentProtocol.swift */; };
 		CCDF0C295CFB30AAA3C0EC0B /* JARVISWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 96FAF133194F2E675B54A1CD /* JARVISWatch.app */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CE5D4B62A65FF62754C9299D /* SystemDashboardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 019B4EC3DCA629C42662CED3 /* SystemDashboardViewTests.swift */; };
+		CFBE2511A09DD164B27FC247 /* HomeAutomationCardLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94BC0C7EFEAAD50237989520 /* HomeAutomationCardLayoutTests.swift */; };
 		D250A7189D6C70AD54591AFE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888D11D79E21EC5437B45339 /* SettingsView.swift */; };
 		D8ABD891AB536358B3617BD4 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD52E36404CFBA273498ACD2 /* Components.swift */; };
 		D94BD92DD63667D2452675A2 /* TabPageAnimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EB248B127049A4476D078B9 /* TabPageAnimator.swift */; };
@@ -228,6 +229,7 @@
 		8AC50929D8C075ED60E109B1 /* FillRect-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FillRect-Regular.otf"; sourceTree = "<group>"; };
 		8C187EFE35D060320CD74856 /* NeuralCoreWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralCoreWidget.swift; sourceTree = "<group>"; };
 		9124232A0F34048DC8088B36 /* ReactorTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReactorTitle.swift; sourceTree = "<group>"; };
+		94BC0C7EFEAAD50237989520 /* HomeAutomationCardLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAutomationCardLayoutTests.swift; sourceTree = "<group>"; };
 		96FAF133194F2E675B54A1CD /* JARVISWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JARVISWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9A275952024515DF0771793A /* JARVISApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISApp.swift; sourceTree = "<group>"; };
 		9B3AC136DE1B8BC7C0D3A7C1 /* HomeDeviceControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeDeviceControls.swift; sourceTree = "<group>"; };
@@ -310,6 +312,7 @@
 			isa = PBXGroup;
 			children = (
 				07D516ABB5391773DE0EFFF9 /* AppStateTests.swift */,
+				94BC0C7EFEAAD50237989520 /* HomeAutomationCardLayoutTests.swift */,
 				88764939E043048E6692C482 /* JobsPresentationTests.swift */,
 				D8AA41F4C1B6F7971B326286 /* OMLXStatusModelTests.swift */,
 				2C8DEE39E010FD51DF01CE39 /* PiAttachmentTests.swift */,
@@ -789,6 +792,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9E9F58260B97E592FE005E0A /* AppStateTests.swift in Sources */,
+				CFBE2511A09DD164B27FC247 /* HomeAutomationCardLayoutTests.swift in Sources */,
 				C090C98DB4B95B2F5B97A281 /* JobsPresentationTests.swift in Sources */,
 				F8CF13DAF79ACDD1903AB377 /* OMLXStatusModelTests.swift in Sources */,
 				164A7C5B2C9AA9272A226560 /* PiAttachmentTests.swift in Sources */,
@@ -992,7 +996,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 253;
+				CURRENT_PROJECT_VERSION = 256;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1097,7 +1101,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 253;
+				CURRENT_PROJECT_VERSION = 256;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

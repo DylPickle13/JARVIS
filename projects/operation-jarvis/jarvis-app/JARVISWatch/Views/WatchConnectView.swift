@@ -132,6 +132,8 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     @Published var cachedAt: Date?
     @Published var busyPlug: String?
     @Published var purifierBusy = false
+    @Published private(set) var busyHomeAutomations: Set<HomeAutomationControl> = []
+    @Published private(set) var homeAutomationReceipts: [HomeAutomationControl: HomeAutomationReceipt] = [:]
     @Published private(set) var busyPurifierDeviceID: String?
     @Published var selectedPurifierID: String?
     @Published private(set) var purifierRefreshing = false
@@ -549,6 +551,50 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             isViaPhone = false
             connectionState = .failed
             errorMessage = directError ?? "JARVIS is unreachable."
+        }
+    }
+
+    func isHomeAutomationBusy(_ control: HomeAutomationControl) -> Bool {
+        if busyHomeAutomations.contains(control) { return true }
+        if let receipt = homeAutomationReceipts[control],
+           lastState?.homeAutomations?[control]?.operation?.requestID != receipt.requestID { return true }
+        return lastState?.homeAutomations?[control]?.operation?.status == "pending"
+    }
+
+    func setHomeAutomation(_ command: HomeAutomationCommand) async {
+        guard command.isValid, !isHomeAutomationBusy(command.control) else { return }
+        busyHomeAutomations.insert(command.control)
+        defer { busyHomeAutomations.remove(command.control) }
+        errorMessage = nil
+        await refresh()
+        guard connectionState == .connected,
+              let state = lastState?.homeAutomations?[command.control],
+              state.canChange(command.control, connected: true), state.revision == command.revision else {
+            errorMessage = "Fresh Home configuration required; refresh first."
+            return
+        }
+        do {
+            let result: CommandResult
+            if isViaPhone || store.endpoint == nil {
+                pendingRelay = true
+                defer { pendingRelay = false }
+                switch await WatchBridge.shared.requestHomeAutomationCommand(command) {
+                case .success(let response): result = response
+                case .failure: throw JarvisError.transport("Relay outcome unconfirmed; refresh without resending.")
+                }
+            } else if let endpoint = store.endpoint {
+                result = try await client.setHomeAutomation(endpoint, command: command)
+            } else { return }
+            guard result.homeAutomation?.matches(command) == true else {
+                errorMessage = result.error ?? "Home command receipt unconfirmed; refresh without resending."
+                return
+            }
+            homeAutomationReceipts[command.control] = result.homeAutomation
+            if !result.ok { errorMessage = result.error }
+            await refresh()
+        } catch {
+            errorMessage = "Change unconfirmed. Refresh configuration; do not resend automatically."
+            await refresh()
         }
     }
 

@@ -10,6 +10,8 @@ import tempfile
 import time
 import wave
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'jarvisd'))
+from jarvisd_core import automatic_voice
 import departure
 import person_gate
 import runtime
@@ -48,6 +50,15 @@ def play_once(root, request, *, clock=time.time):
     value = runtime.config(root)
     attempt = request.get('attempt')
     expires = request.get('expires')
+    gate = automatic_voice.current()
+    admission = runtime.read_json(root / 'voice-admission.json')
+    revision = 'legacy' if gate is not None and gate.revision == 'legacy' else None
+    if admission is not None:
+        if admission.get('attempt') != attempt or admission.get('expires') != expires:
+            return 'failed_before_play'
+        revision = admission.get('revision')
+    if not revision or not automatic_voice.admitted('doorbell-departure', revision):
+        return 'failed_before_play'
     if (type(attempt) is not str or journal.state['pending'] != attempt
             or type(expires) not in (int, float) or not 0 < expires - clock() <= person_gate.VOICE_ONSET_SECONDS):
         return 'expired_before_play'
@@ -91,6 +102,7 @@ def play_once(root, request, *, clock=time.time):
     session = None
     def check():
         if not attempted and (clock() > expires or not runtime.config(root)['enabled']
+                or not automatic_voice.admitted('doorbell-departure', revision)
                 or not person_gate.valid_proof(root, attempt, expires, now=clock())):
             raise Expired()
     class DeadlineSession(audio.CameraSession):

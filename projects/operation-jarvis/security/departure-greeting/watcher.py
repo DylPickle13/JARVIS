@@ -11,6 +11,8 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'jarvisd'))
+from jarvisd_core import automatic_voice
 import departure
 import person_gate
 import runtime
@@ -136,7 +138,11 @@ def run_speaker(root, attempt, expires):
 
 
 async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
-                  reader=None, confirm=person_gate.confirm, require_close=False):
+                  reader=None, confirm=person_gate.confirm, require_close=False, voice_revision=None):
+    gate = automatic_voice.current()
+    voice_revision = voice_revision or (gate.revision if gate else None)
+    if not automatic_voice.admitted('doorbell-departure', voice_revision):
+        return 'suppressed'
     value = runtime.config(root)
     age = now() - sample.observed_at.timestamp()
     if (not value['enabled'] or journal.blocked or not 0 <= age <= 1
@@ -175,7 +181,9 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
         journal.event(evidence.reason)
         journal.finish(attempt, 'failed_before_play')
         return 'failed_before_play'
-    if not runtime.config(root)['enabled'] or not 0 <= now() - sample.observed_at.timestamp() < person_gate.MAX_WORKER_START_AGE:
+    if (not runtime.config(root)['enabled']
+            or not automatic_voice.admitted('doorbell-departure', voice_revision)
+            or not 0 <= now() - sample.observed_at.timestamp() < person_gate.MAX_WORKER_START_AGE):
         journal.finish(attempt, 'expired_before_play')
         return 'expired_before_play'
     journal.event(evidence.reason)
@@ -184,6 +192,12 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
     if cached is not None:
         entry = departure.cli.registry(departure.SECURITY_ROOT / 'devices.json')[value['speaker_device']]
         identity_preflight.ticket(root, cached, attempt, expires, entry, departure.SECURITY_ROOT / '.env')
+    try:
+        runtime.save_json(root / 'voice-admission.json', {'attempt': attempt,
+            'expires': expires, 'revision': voice_revision})
+    except Exception:
+        journal.finish(attempt, 'failed_before_play')
+        return 'failed_before_play'
     try:
         outcome = speaker(root, attempt, expires)
     except Exception:
@@ -232,6 +246,7 @@ async def watch(root):
     last_pair = None
     busy_reported = False
     read_failures = 0
+    voice_revision = None
     try:
         while True:
             value = runtime.config(root)
@@ -270,7 +285,15 @@ async def watch(root):
                 read_failures = 0
                 publish_snapshot(root, value, sample)
                 busy_reported = False
+                voice_policy = automatic_voice.current()
+                revision = voice_policy.revision if voice_policy else None
+                if revision != voice_revision or voice_policy is None or not voice_policy.enabled:
+                    detector.reset()  # Never bridge Off/On or reconstruct a suppressed departure.
+                voice_revision = revision
                 decision = detector.accept(sample)
+                if voice_policy is None or not voice_policy.enabled:
+                    detector.reset()
+                    decision = {'decision': 'suppressed', 'reason': 'automatic_voice_disabled'}
                 journal.state['read_count'] += 1
                 journal.state['health'] = 'observing' if person_gate.permitted(gate_policy) else 'awaiting_person_verification'
                 pair = (sample.motion, sample.door_open)
@@ -282,7 +305,8 @@ async def watch(root):
                     await reader.preflight_identity(value)
                 if decision['decision'] == 'candidate':
                     journal.state['candidate_count'] += 1
-                    await deliver(root, journal, sample, reader=reader, require_close=True)
+                    await deliver(root, journal, sample, reader=reader, require_close=True,
+                                  voice_revision=voice_revision)
                     reader.identity_evidence = None
                     identity_preflight.clear(root)
                     detector.reset()  # No replay of events during speaker work.

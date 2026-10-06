@@ -18,6 +18,20 @@ Without the separate private bank pin, the exact phrase/WAV/hash path above is
 unchanged. Bank selection retains the 4.5-second raw-clip cap, pending attempt,
 proof, expiry, identity, locks, volume, padding and uncertain-playback latch.
 
+## Home Automatic Voice control — activated 2026-10-05 EDT
+
+The new shared unsolicited-speech policy suppresses farewells without disabling
+this watcher or removing shared dashboard sensor readings. Policy generations
+reset only in-memory departure arming; a generation-bound worker admission is
+checked before playback. Existing enabled/person/identity/proof/expiry/cooldown,
+pending/fault and completed-count safeguards remain unchanged. Off does not stop
+audio already started; On does not replay a suppressed event or clear a fault.
+Owner-approved rollout initialized the shared policy On and restarted this
+watcher with its required-policy flag/common root. Fresh paired snapshots resumed;
+pending/fault/cooldown/completed-count state was preserved. Native 254 is verified
+on both devices. No departure event or doorbell audio test was performed. See
+[Home cards, source dependencies and activation](../../jarvis-app/docs/home-automations.md).
+
 ## Opening-time identity preflight (2026-10-01)
 
 The supervised timing sample measured 2.407 s for doorbell identity verification,
