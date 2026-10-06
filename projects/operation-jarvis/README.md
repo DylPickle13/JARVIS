@@ -13,7 +13,7 @@ This directory connects JARVIS to household plugs, air purifiers, speakers, secu
 - **Security:** reviewed CLI source in `security/`, with private credentials/inventory/media kept ignored. jarvisd exposes token-protected on-demand status only. Pi tools add local reads and explicit Tapo cloud automation management; writes are gated by revision checks and readback verification.
 - **Air purifier:** VeSync/Levoit Vital 200S-P status and validated controls.
 - **[Keyboard and mouse](keyboard/):** wired-AK820 lighting, Razer controls, and Karabiner mappings/owned-handle transport. An owner-authorized watcher checks authenticated basement proximity approximately every three seconds: either device nearby resumes minute-spaced white liked effects; both away applies white ripples once and turns mouse lighting off. Unknown/stale leaves lighting unchanged. The private `Keyboard lights` job relays alerts, not device writes. See [automation details](keyboard/docs/AUTOMATION.md) and [Razer status](keyboard/docs/RAZER.md).
-- **[Picture frame](picture-frame/):** local-first Frameo preparation: pinned ADB controller, explicit dry-run/apply controls, private screenshots, experimental photo transfer and an arrival checklist. Offline-tested only; the ordered frame is not yet paired or physically accepted.
+- **[Picture frame](picture-frame/):** pinned, dry-run/apply Frameo ADB controller with private screenshots and photo transfer. Received-unit USB pairing, screenshots and one PNG import are accepted; headless brightness is not. See the [capability audit](picture-frame/docs/CAPABILITIES.md); sleep/wake and navigation remain untested, and owner-approved legacy Wi-Fi now verifies pins/status/backlight/private capture, explicitly without authentication. See the [complete controls guide](picture-frame/docs/CONTROLS.md); strict RSA mode is unchanged.
 - **Media:** Google Cast, YouTube, Spotify Connect, and short room speech.
 - **Provider quotas:** read-only Codex/Copilot status for `jarvisd` and the apps.
 - **Private jobs:** the local scheduler and its limited, owner-only result history, shown read-only in Jobs.
@@ -27,7 +27,7 @@ projects/operation-jarvis/
 ├── jarvisd/                    # shared control backend, API, tests, LaunchAgents
 ├── jarvis-app/                 # iPhone, Watch, widgets, JARVISKit, terminald
 ├── pi-desk/                    # living-room Pi terminal, boot service, backups, tests
-├── picture-frame/              # Frameo ADB commissioning/controller; no daemon or live acceptance
+├── picture-frame/              # pinned Frameo controller; partial USB acceptance; no project daemon
 ├── presence/                   # independent Mac/Pi BLE proximity collectors
 ├── quotas/                     # read-only provider quota collection
 ├── room-audio/                 # Mac-hosted room conversations and audio endpoints

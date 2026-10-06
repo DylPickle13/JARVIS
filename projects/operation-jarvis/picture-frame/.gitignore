@@ -5,6 +5,9 @@
 !config.example.json
 !frame_control.py
 !frame_cli.py
+!frame
+!frame_tcp.py
+!install_tcp_deps.py
 !docs/
 !docs/*.md
 !tests/

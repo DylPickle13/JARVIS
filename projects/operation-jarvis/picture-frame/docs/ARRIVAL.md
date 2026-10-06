@@ -1,7 +1,9 @@
 # Arrival and commissioning checklist
 
-No frame has been connected or controlled during preparation. All live checks below
-are deferred until arrival and explicit owner approval. Do not test another Android
+No frame was connected or controlled during preparation. The received unit has now
+been USB-paired and partially accepted with explicit owner approval; current results
+are recorded below and in the [menu-free capability audit](CAPABILITIES.md).
+Retain this checklist for further commissioning. Do not test another Android
 phone/dashboard as a substitute.
 
 ## 1. Inspect before changing settings
@@ -59,6 +61,9 @@ Ask before applying each first-time test; do not run a scripted sleep/wake loop.
 - [ ] Record current brightness/mode. Test a moderate `brightness 180 --apply`.
   This selects **manual** brightness; restoring a number does not restore auto mode.
   Restore the owner's preferred mode/setting on the frame afterwards if desired.
+  **Received-unit result:** this Android setting is overridden by Frameo and did not
+  visibly dim the frame, even at 0. The native Frameo slider did dim it, but that
+  requires the Display page and is not a verified headless brightness API.
 - [ ] Owner-approved `sleep --apply`, then a separate `wake --apply` when requested.
   Neither means full device shutdown. Frameo's own schedule may override Android state.
 - [ ] With slideshow visible, try `next --slideshow-ready --apply` once. Visually
@@ -99,6 +104,13 @@ comes before any new attempt.
 
 ## 5. Optional LAN ADB — supervised, not required
 
+**Received-unit follow-up (2026-10-06 EDT):** strict RSA TCP rejected this firmware's
+unauthenticated handshake; the owner first approved retirement, then explicitly
+requested re-enablement accepting the risk. Scoped **legacy LAN is now selected**;
+TCP identity/status/backlight and a private 1280×800 capture pass. Authentication
+was not added. Do not repeat the generic historical setup below as recovery;
+use the [controls/lifecycle guide](CONTROLS.md) and [TCP policies](DIRECT_TCP.md).
+
 Only on a trusted private LAN and after USB acceptance. Opening wireless ADB exposes
 privileged debugging access; authentication/firmware behavior varies. No port
 forwarding, public host, guest-Wi-Fi workaround, automatic discovery or reconnect loop.
@@ -118,6 +130,8 @@ not auto-connect. An address is a routing hint, not trusted device identity.
 If `wifi-enable` times out, do not repeat it: inspect the listener/frame and pending
 state first. It restarts ADB, so the USB connection may change.
 
+- [ ] Require a real existing-key challenge for authenticated mode; a property is not proof.
+  Legacy mode instead requires separate explicit USB-first, exact-frame owner risk acceptance.
 - [ ] Compare on-device identity before accepting the LAN transport.
 - [ ] After an owner-approved reboot, check whether wireless ADB survives.
   Do **not** promise persistence; many Android builds revert to USB debugging.
@@ -128,16 +142,17 @@ state first. It restarts ADB, so the USB connection may change.
 Remote control at another home requires a separately approved secure network design,
 not publishing TCP 5555. Nothing in this project is an internet photo-sharing service.
 
-## Acceptance record (fill in after arrival)
+## Acceptance record (received unit, 2026-10-05–06 EDT)
 
 | Item | Current result |
 |---|---|
 | Ordered listing | Amazon.ca `B088NHSVJN`, 10.1-inch Frameo / BIGASUO listing |
-| Actual hardware / Frameo firmware | Not inspected |
-| ADB menu / USB authorization | Not tested |
-| Identity / installed package | Not paired |
-| Android display / brightness effects | Not tested |
+| Actual hardware / Frameo firmware | Generic Allwinner Digital Photo Frame / Android 6.0.1 probed; private build pins retained; retail branding/connector not recorded |
+| ADB menu / USB authorization | Owner enabled beta/ADB; USB online and authorized |
+| Identity / installed package | Paired privately; `net.frameo.frame`; repeated identity matches |
+| Android display / brightness effects | Readbacks/private screenshots verified; Android brightness ignored; native Frameo slider dimming physically confirmed, not headless |
+| Sleep / wake | Not tested |
 | Slideshow navigation | Not tested |
-| JPEG/PNG import into slideshow | Not tested |
-| Wireless ADB / reboot persistence | Not tested |
+| JPEG/PNG import into slideshow | One approved PNG physically confirmed; JPEG not yet physically tested |
+| Wireless ADB / reboot persistence | Owner re-enabled after accepting unauthenticated LAN risk; scoped legacy mode selected. TCP identity/status/backlight and private 1280×800 screenshot verified. No wireless upload, USB-unplug/reboot or persistence acceptance |
 | Existing household devices/services | Not changed by this project |

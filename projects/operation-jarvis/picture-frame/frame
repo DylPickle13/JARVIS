@@ -1,0 +1,11 @@
+#!/bin/sh
+# Run the entire CLI in the reviewed, normally LAN-authorized runtime.
+# No networking/permission proxy, service, implicit connection, or --apply injection.
+set -eu
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PYTHON=${JARVIS_FRAME_PYTHON:-"$HERE/../security/.venv-313/bin/python"}
+if [ ! -x "$PYTHON" ]; then
+    printf '%s\n' 'Reviewed frame Python runtime is unavailable; set JARVIS_FRAME_PYTHON to an explicitly approved interpreter.' >&2
+    exit 1
+fi
+exec "$PYTHON" -B "$HERE/frame_cli.py" "$@"

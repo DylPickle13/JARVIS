@@ -29,9 +29,14 @@ point. Its upload path defaults to `/sdcard/Frameo` and broadcasts a media scan;
 that does not establish Frameo slideshow ingestion. Its documentation overstates
 wireless persistence for firmware we have not seen.
 
-Our independent standard-library implementation avoids HTTP entirely and uses the
-already-installed host `adb`. No dependency install, service or code from the
-community project is needed. A future authenticated backend/tool must delegate to
+Our independent standard-library USB implementation avoids HTTP entirely and uses
+the already-installed host `adb`. No service or code from the community project is
+needed. An [optional in-process TCP backend](DIRECT_TCP.md) uses hash-pinned
+adb-shell source privately, not either Frameo HTTP wrapper. Authenticated mode
+still requires a signed RSA challenge. A separate owner-accepted legacy policy
+binds the exact endpoint/package/build and performs no host-key authentication;
+its risk is explicit in every live result. See the [controls guide](CONTROLS.md).
+A future authenticated backend/tool must delegate to
 the same pinned, locked, pending-aware controller, not invent another write path.
 Do not expose arbitrary shell or direct ADB transport parameters to an app/API.
 
@@ -55,13 +60,17 @@ Owner-authorized command
 Probe/pair are explicit: hardware serial (`ro.serialno`, fallback `ro.boot.serialno`),
 manufacturer, model and build fingerprint must be nonempty. Package candidates
 must include an exact `frameo` namespace component; unusual vendor builds fail
-closed for review. All subsequent target operations use `-s` and recheck those pins.
+closed for review. All subsequent target operations use `-s` or one explicit
+in-process TCP endpoint and recheck those pins.
 Switching transport preserves the pins. Build updates deliberately require review.
 This is not tamper-proof identity: Android properties can be spoofed and legacy
 network ADB security depends on the device. Keep debugging local and supervised.
 
 Brightness changes Android's manual mode and 0–255 setting, then reads both back.
-It does not guess panel PWM limits. Sleep/wake use dedicated SLEEP/WAKEUP keycodes,
+It does not guess panel PWM limits. On the received unit, Frameo's window-level
+brightness override defeated that setting: readback changed but visible output did
+not. The native slider was physically accepted, not headless brightness control.
+See the [menu-free capability audit](CAPABILITIES.md) for verified/untested limits. Sleep/wake use dedicated SLEEP/WAKEUP keycodes,
 not the state-toggling POWER key. Unknown power output remains unknown.
 
 Navigation requires explicit visible-slideshow confirmation and exact Frameo focus.

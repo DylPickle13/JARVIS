@@ -4,6 +4,7 @@ No server, root, database edits, device auto-selection, arbitrary shell, or retr
 ADB identity properties are a safety fence, not cryptographic device attestation.
 """
 import contextlib
+from datetime import datetime, timezone
 import fcntl
 import hashlib
 import ipaddress
@@ -16,6 +17,7 @@ import stat
 import struct
 import subprocess
 import tempfile
+import time
 import uuid
 
 DEFAULT_CONFIG = Path.home() / "Library/Application Support/JARVIS/picture-frame/config.json"
@@ -30,6 +32,10 @@ PROPERTIES = {
     "build_fingerprint": "ro.build.fingerprint",
 }
 PIN_FIELDS = tuple(PROPERTIES)
+LEGACY_LAN_WARNING = (
+    "Owner accepted unauthenticated LAN ADB for this exact frame/endpoint. "
+    "Other reachable LAN clients may obtain debugging access; pins are not authentication."
+)
 
 
 class FrameError(Exception):
@@ -171,6 +177,51 @@ def validate_identity(identity):
             raise FrameError("Identity property is missing/unknown: " + field + ". Review the device manually.")
 
 
+def validate_legacy_approval(approval, serial, package, identity):
+    validate_serial(serial)
+    validate_package(package)
+    validate_identity(identity)
+    if ":" not in serial or not isinstance(approval, dict):
+        raise FrameError("Legacy LAN requires explicit private-endpoint owner approval.")
+    if (approval.get("schema_version") != 1 or
+            approval.get("policy") != "owner_accepted_unauthenticated_lan_adb" or
+            approval.get("accepted") is not True or approval.get("serial") != serial or
+            approval.get("package") != package or approval.get("identity") != identity):
+        raise FrameError("Legacy LAN approval is missing or differs from the exact endpoint/package/build pins.")
+    try:
+        accepted_at = datetime.fromisoformat(approval["accepted_at_utc"])
+        if accepted_at.tzinfo is None:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        raise FrameError("Legacy LAN approval timestamp is invalid.") from None
+
+
+def tcp_listener_ports(snapshot):
+    lines = [line for line in snapshot.splitlines() if line.strip()]
+    if not lines or "local_address" not in lines[0]:
+        raise FrameError("TCP listener snapshot could not be validated.")
+    ports = set()
+    for line in lines[1:]:
+        parts = line.split()
+        if len(parts) < 4 or not re.fullmatch(r"[0-9A-Fa-f]{8,32}:[0-9A-Fa-f]{4}", parts[1]):
+            raise FrameError("TCP listener snapshot is malformed.")
+        if parts[3] == "0A":
+            ports.add(int(parts[1].rsplit(":", 1)[1], 16))
+    return ports
+
+
+def backlight_state(display, power):
+    actual = set(re.findall(r"(?m)^\s*mScreenBrightness=(\d+)\s*$", display))
+    override = set(re.findall(r"mScreenBrightnessOverrideFromWindowManager=(\d+)", power))
+    def bounded(values):
+        if len(values) != 1:
+            return None
+        value = int(next(iter(values)))
+        return value if 0 <= value <= 255 else None
+    return {"effective_backlight": bounded(actual), "window_brightness_override": bounded(override),
+            "visible_effect": "not_physically_verified"}
+
+
 def png_dimensions(data):
     if len(data) < 33 or not data.startswith(PNG_SIGNATURE) or data[12:16] != b"IHDR":
         raise FrameError("Device did not return a PNG screenshot.")
@@ -218,8 +269,19 @@ class Controller:
         if config.get("schema_version") != 1:
             raise FrameError("Unsupported configuration version.")
         validate_serial(config.get("serial"))
+        backend = config.get("adb_backend", "platform_tools")
+        if backend not in ("platform_tools", "direct_tcp", "legacy_lan"):
+            raise FrameError("Unsupported saved ADB backend.")
+        if backend in ("direct_tcp", "legacy_lan") and ":" not in config["serial"]:
+            raise FrameError("TCP configuration requires a literal private-LAN target.")
         validate_package(config.get("package"))
         validate_identity(config.get("identity"))
+        if backend == "legacy_lan":
+            validate_legacy_approval(config.get("legacy_lan_approval"), config["serial"],
+                                     config["package"], config["identity"])
+            usb = validate_serial(config.get("usb_serial"))
+            if ":" in usb:
+                raise FrameError("Legacy LAN recovery requires the exact original USB serial.")
         return config
 
     def checked(self, config):
@@ -292,9 +354,137 @@ class Controller:
                 raise FrameError("Resolve the pending write before changing transport.")
             config = self.config()
             candidate = {**config, "serial": serial}
+            if config.get("adb_backend") == "legacy_lan" and ":" in serial:
+                raise FrameError("Changing a legacy LAN endpoint requires fresh USB acceptance.")
+            if ":" not in serial:
+                candidate.pop("adb_backend", None)
+                candidate.pop("legacy_lan_approval", None)
+                candidate.pop("usb_serial", None)
             self.checked(candidate)
             save_json(self.config_path, candidate)
             return {"status": "transport_updated", "hardware_changed": False}
+
+    def connect_tcp(self, serial, apply=False):
+        """Explicit authenticated direct connection; not platform-tools use-transport."""
+        validate_serial(serial)
+        if ":" not in serial:
+            raise FrameError("Direct TCP acceptance requires a literal private-LAN IPv4:port.")
+        if not apply:
+            return {"status": "dry_run", "operation": "connect_tcp", "device_contacted": False}
+        if getattr(self.adb, "backend", None) != "direct_tcp":
+            raise FrameError("Direct TCP acceptance requires the authenticated in-process backend.")
+        with self.lock():
+            if self.pending_path.exists():
+                raise FrameError("Resolve the pending write before accepting a TCP backend.")
+            config = self.config()
+            candidate = {**config, "serial": serial, "adb_backend": "direct_tcp"}
+            self.checked(candidate)
+            if self.adb.shell(serial, "getprop", "ro.adb.secure") != "1":
+                raise FrameError("ADB authentication property is not confirmed; no transport selected.")
+            save_json(self.config_path, candidate)
+            return {"status": "direct_tcp_selected", "identity_matches": True,
+                    "hardware_changed": False, "physical_acceptance": "not_verified"}
+
+    def connect_legacy_lan(self, serial, apply=False, accept_risk=False, factory=None):
+        """Separate explicitly approved legacy policy; authenticated TCP stays strict."""
+        validate_serial(serial)
+        if ":" not in serial:
+            raise FrameError("Legacy LAN acceptance requires ONE private-LAN IPv4:port.")
+        if not apply:
+            return {"status": "dry_run", "operation": "connect_legacy_lan", "device_contacted": False,
+                    "security_warning": LEGACY_LAN_WARNING}
+        if not accept_risk:
+            raise FrameError("Explicit --accept-unauthenticated-lan is required; no device contacted.")
+        if getattr(self.adb, "backend", "platform_tools") != "platform_tools":
+            raise FrameError("Legacy LAN must be accepted from the verified USB/platform-tools route.")
+        with self.lock():
+            if self.pending_path.exists():
+                raise FrameError("Resolve the pending write before accepting legacy LAN.")
+            config = self.config()
+            if ":" in config["serial"]:
+                raise FrameError("Select the exact verified USB transport before legacy LAN acceptance.")
+            self.checked(config)
+            address = self.adb.shell(config["serial"], "ip", "-4", "addr", "show", "wlan0")
+            ips = re.findall(r"\binet\s+(\d+\.\d+\.\d+\.\d+)/", address)
+            if len(ips) != 1 or ips[0] != serial.rsplit(":", 1)[0]:
+                raise FrameError("Requested endpoint differs from the paired frame's own active Wi-Fi address.")
+            approval = {"schema_version": 1, "policy": "owner_accepted_unauthenticated_lan_adb",
+                        "accepted": True, "serial": serial, "package": config["package"],
+                        "identity": dict(config["identity"]),
+                        "accepted_at_utc": datetime.now(timezone.utc).isoformat()}
+            candidate = {**config, "serial": serial, "usb_serial": config["serial"],
+                         "adb_backend": "legacy_lan", "legacy_lan_approval": approval}
+            if factory is None:
+                from frame_tcp import LegacyLanAdb
+                factory = LegacyLanAdb
+            transport = factory(self.runtime / "tcp-deps", approval)
+            try:
+                if getattr(transport, "backend", None) != "legacy_lan":
+                    raise FrameError("Legacy acceptance requires its separately scoped transport policy.")
+                Controller(transport, self.config_path).checked(candidate)
+                save_json(self.config_path, candidate)
+            finally:
+                transport.close()
+            return {"status": "legacy_lan_selected", "identity_matches": True,
+                    "hardware_changed": False, "adb_authentication": "not_provided_by_device",
+                    "security_warning": LEGACY_LAN_WARNING, "physical_acceptance": "not_verified"}
+
+    def wifi_disable(self, apply=False, usb_serial=None):
+        """Retire the listener once over exact USB; never an implicit device fallback."""
+        if usb_serial is not None:
+            validate_serial(usb_serial)
+            if ":" in usb_serial:
+                raise FrameError("Wireless retirement requires an exact USB serial.")
+        if not apply:
+            return {"status": "dry_run", "operation": "wifi-disable", "device_contacted": False}
+        if getattr(self.adb, "backend", "platform_tools") != "platform_tools":
+            raise FrameError("Retire wireless debugging through USB/platform-tools only.")
+        with self.lock():
+            if self.pending_path.exists():
+                raise FrameError("An earlier write is pending; no wireless retirement dispatched.")
+            config = self.config()
+            serial = validate_serial(usb_serial or config.get("usb_serial") or config["serial"])
+            if ":" in serial:
+                raise FrameError("Supply the exact USB serial; no discovery or wireless fallback.")
+            candidate = {**config, "serial": serial}
+            for field in ("adb_backend", "legacy_lan_approval", "usb_serial"):
+                candidate.pop(field, None)
+            self.checked(candidate)
+            port = self.adb.shell(serial, "getprop", "service.adb.tcp.port")
+            if port not in ("", "0", "-1") and (not port.isdecimal() or not 1 <= int(port) <= 65535):
+                raise FrameError("Unexpected TCP port property; no retirement dispatched.")
+            self._begin("wifi-disable")
+            dispatched = port not in ("", "0", "-1")
+            if dispatched:
+                response = self.adb.call(["usb"], serial=serial)
+                if response != "restarting in USB mode":
+                    raise FrameError("USB-mode response unexpected; inspect pending state, do not replay.")
+                time.sleep(5)
+            self.checked(candidate)
+            current = self.adb.shell(serial, "getprop", "service.adb.tcp.port")
+            persistent = self.adb.shell(serial, "getprop", "persist.adb.tcp.port")
+            listeners = set()
+            for source in ("/proc/net/tcp", "/proc/net/tcp6"):
+                listeners.update(tcp_listener_ports(self.adb.shell(serial, "cat", source)))
+            selected_port = int(config["serial"].rsplit(":", 1)[1]) if ":" in config["serial"] else 5555
+            affected_port = int(port) if port.isdecimal() and int(port) > 0 else selected_port
+            if current not in ("", "0", "-1") or affected_port in listeners:
+                raise FrameError("TCP listener shutdown not verified; pending retained, no replay.")
+            if persistent not in ("", "0", "-1"):
+                raise FrameError("Persistent TCP port remains configured; inspect pending state, no replay.")
+            save_json(self.config_path, candidate)
+            self._finish()
+            return {"status": "usb_only_verified", "dispatch_count": int(dispatched),
+                    "usb_identity_matches": True, "tcp_listener_absent": True,
+                    "persistent_tcp_port_unset": True}
+
+    def backlight(self):
+        with self.lock():
+            config = self.config()
+            self.checked(config)
+            display = self.adb.shell(config["serial"], "dumpsys", "display")
+            power = self.adb.shell(config["serial"], "dumpsys", "power")
+            return {"status": "read", "identity_matches": True, **backlight_state(display, power)}
 
     def screenshot(self, apply=False):
         if not apply:
