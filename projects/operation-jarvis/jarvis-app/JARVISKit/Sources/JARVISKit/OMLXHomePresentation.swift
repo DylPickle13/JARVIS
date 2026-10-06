@@ -1,14 +1,14 @@
 import Foundation
 
-/// iPhone-only row selection. Keep the full observation set for warnings,
-/// update indicators and motion; hidden idle hosts are not missing hosts.
+/// iPhone-only row selection. Fresh loaded/loading inventory, not request
+/// activity, owns visibility. Keep all observations for peer warnings and motion.
 public struct OMLXHomePresentation: Equatable, Sendable {
     public let visibleRows: [OMLXServerSummary]
     public let status: String?
 
     public init(rows: [OMLXServerSummary]) {
         visibleRows = rows.filter {
-            $0.fresh && [.loading, .queued, .prefill, .processing, .generating].contains($0.phase)
+            $0.fresh && $0.phase != .unknown && $0.details?.modelNames.isEmpty == false
         }
         let uncertain = rows.filter { !$0.fresh || $0.phase == .unknown }
         if rows.isEmpty {
@@ -19,7 +19,11 @@ public struct OMLXHomePresentation: Equatable, Sendable {
         } else if let row = uncertain.first {
             status = "\(row.compactServerLabel) \(row.status.lowercased())"
         } else {
-            status = visibleRows.isEmpty ? "Idle" : nil
+            if visibleRows.isEmpty {
+                status = "No models loaded"
+            } else {
+                status = visibleRows.allSatisfy { $0.phase == .ready } ? "Idle" : nil
+            }
         }
     }
 }

@@ -266,6 +266,71 @@ final class OMLXStatusModelTests: XCTestCase {
         }
     }
 
+    func testPhoneLoadedRowsKeepTheirHeightBetweenTurnsAndOnlyShrinkOnUnload() throws {
+        let now = Date(timeIntervalSince1970: 100)
+        func source(_ id: String, active: Bool = false, loaded: Bool = true) throws -> OMLXServerStatus {
+            let name = id == "mac-mini-64" ? "Qwen3.6-35B-A3B-4bit" : "Qwen3.5-9B-4bit"
+            let requests = active ? #"[{"id":"r","phase":"generating","tokensPerSecond":32}]"# : "[]"
+            let models = loaded ? """
+            {"id":"\(name)","isLoading":false,"activeRequests":\(active ? 1 : 0),"queuedRequests":0,"requests":\(requests)}
+            """ : ""
+            let used: Int64 = id == "mac-mini-64" ? 25_769_803_776 : 9_663_676_416
+            let total: Int64 = id == "mac-mini-64" ? 68_719_476_736 : 17_179_869_184
+            let json = """
+            {"id":"\(id)","ok":true,"stale":false,"ageSeconds":0,"models":[\(models)],
+             "hostMemory":{"ok":true,"stale":false,"ageSeconds":0,"usedBytes":\(used),"totalBytes":\(total),
+                           "definition":"macos-nonpurgeable-anonymous-wired-compressed"}}
+            """
+            return try JSONDecoder().decode(OMLXServerStatus.self, from: Data(json.utf8))
+        }
+        func render(_ sources: [OMLXServerStatus], size: DynamicTypeSize,
+                    name: String, peerUnavailable: Bool = false) throws -> UIImage {
+            let rows = OMLXSnapshot.serverIDs.map { id in
+                OMLXServerSummary(id: id, server: sources.first { $0.id == id }, now: now,
+                    requestStartedAt: now, available: !(peerUnavailable && id == "mac-mini-16"))
+            }
+            let content = MinimalCard(padding: 11) {
+                // Exercise the production iPhone selector, not Watch's full-row default.
+                OMLXSummaryContent(rows: rows, homeRowsOnly: true)
+            }
+            let renderer = ImageRenderer(content: content.frame(width: 358)
+                .environment(\.scenePhase, .active).environment(\.colorScheme, .dark)
+                .environment(\.dynamicTypeSize, size))
+            renderer.scale = 2
+            let image = try XCTUnwrap(renderer.uiImage)
+            XCTAssertEqual(image.size.width, 358)
+            let imageName = "omlx-loaded-\(name)-\(size == .large ? "normal" : "accessibility")"
+            let attachment = XCTAttachment(image: image)
+            attachment.name = imageName
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            try XCTUnwrap(image.pngData()).write(to: URL(fileURLWithPath:
+                "/tmp/\(imageName).png"))
+            return image
+        }
+        let busy = try source("mac-mini-64", active: true)
+        let idle = try source("mac-mini-64")
+        let peer = try source("mac-mini-16")
+        let unloaded = try source("mac-mini-64", loaded: false)
+        let emptyPeer = try source("mac-mini-16", loaded: false)
+        for size in [DynamicTypeSize.large, .accessibility3] {
+            let generating = try render([busy, peer], size: size, name: "generating")
+            let betweenTurns = try render([idle, peer], size: size, name: "idle")
+            let nextTurn = try render([busy, peer], size: size, name: "next-turn")
+            XCTAssertEqual(betweenTurns.size.height, generating.size.height, accuracy: 0.5,
+                "Idle loaded models must not collapse the production iPhone card")
+            XCTAssertEqual(nextTurn.size.height, betweenTurns.size.height, accuracy: 0.5)
+            if size == .large { XCTAssertEqual(betweenTurns.size.height, 89, accuracy: 0.5) }
+            let oneLoaded = try render([unloaded, peer], size: size, name: "one-unloaded")
+            let noneLoaded = try render([unloaded, emptyPeer], size: size, name: "all-unloaded")
+            XCTAssertLessThan(oneLoaded.size.height, betweenTurns.size.height)
+            XCTAssertLessThan(noneLoaded.size.height, oneLoaded.size.height)
+            let outage = try render([idle, peer], size: size, name: "peer-unavailable", peerUnavailable: true)
+            XCTAssertEqual(outage.size.height, oneLoaded.size.height, accuracy: 0.5,
+                "A peer warning must not hide the healthy loaded row")
+        }
+    }
+
     func testWatchConfiguredOwnerDeduplicatesStateRefreshAndStopsForDimmedCoveredOrOffPage() async throws {
         let gate = OMLXFetchGate()
         let model = OMLXStatusModel(fetch: { _ in try await gate.fetch() })

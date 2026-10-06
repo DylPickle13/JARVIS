@@ -12,13 +12,18 @@ Watch layout and polling are unchanged.
 
 ## oMLX
 
-Only fresh loading, queued, prefill, processing, or generating hosts get a row
-on iPhone. Loaded-but-idle models do not. The heading remains when both rows are
-hidden, with Idle only when both hosts are known fresh and ready. Missing,
-checking, stale, and unknown peers remain visible in the heading, even while
-another host is busy. The full observation set still drives the update dot and
-existing animation gates. Metric headings disappear when there are no rows.
-The shared view defaults to showing all rows, preserving Watch behavior.
+The build 258 candidate keeps an iPhone host row whenever fresh, known activity
+telemetry lists loaded or loading models, including **loaded-but-idle** models.
+Idle rows retain their names and independently fresh Mac RAM readings; generation
+speed is `—` and activity motion stops normally. The heading says Idle when the
+visible models are ready, or No models loaded when fresh inventories are empty.
+A fresh unload removes only that host's row. Missing, checking, stale, and unknown
+peers remain warnings in the heading, not proof of idle or unloading. No sticky
+cache, grace-period timer, extra request or backend schema change is introduced.
+The full observation set still drives the update dot and existing animation gates.
+Metric headings disappear when there are no rows. The shared view defaults to
+showing all rows, preserving Watch behavior. See
+[loaded-model visibility and release gates](omlx-loaded-models.md).
 
 ## Backend compatibility review (2026-09-22)
 

@@ -831,7 +831,7 @@ phone_services = Path('JARVIS/Views/SystemView.swift').read_text()
 assert '.sheet(item: $serviceScope)' in phone_services
 assert 'onServices: { serviceScope = .services }' in phone_services
 assert 'onMinecraft: { serviceScope = .minecraft }' in phone_services
-assert 'app.setSystemDetailsCovered(scope != nil || showsDetails)' in phone_services
+assert 'app.setSystemDetailsCovered(scope != nil || showsDetails || showsHomeConfirmation)' in phone_services
 for platform in [phone_services, watch_health]:
     assert 'SystemServicesContent(' in platform
     assert 'scope: scope' in platform and '.navigationTitle(scope.title)' in platform
@@ -846,7 +846,7 @@ assert 'scope: SystemServicesScope = .services' in services_content
 assert 'service.row.detail' in services_content
 for forbidden in ['Button(', 'Task {', 'client.', 'serviceAction', 'ScrollView', 'Timer(']:
     assert forbidden not in services_content
-assert 'showsSystemDetails || showsPurifierModeChoices' in Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
+assert 'showsSystemDetails || barnConfirmation != nil || showsPurifierModeChoices' in Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 assert 'snapshotGeneratedAt(model.lastState)' in watch_health
 for forbidden in ['ScrollView', 'client.', 'Task {', 'refreshPurifier', 'refreshCodex', 'serviceAction']:
     assert forbidden not in watch_health
@@ -883,7 +883,7 @@ grep -Fq 'onAdvancePage: { selectPage(.plugs) }' JARVISWatch/Views/WatchDashboar
 grep -Fq 'onPreviousPage: { selectPage(.home) }' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'alwaysOnInterval: Duration = .seconds(15)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'The dedicated Plugs grid must not collapse the pager viewport.' JARVISWatch/Views/WatchDashboardContent.swift
-grep -Fq 'WatchSystemCrownViewport(active: scenePhase == .active && selectedPage == .home' JARVISWatch/Views/WatchDashboardContent.swift
+grep -Fq 'WatchSystemCrownViewport(active: scenePhase == .active && !dimmed && selectedPage == .home && !overlayOwnsInput)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'plugButton(name, minimumHeight: tileHeight)' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'minHeight: minimumHeight' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func pageHeader(_ title: String, symbol: String)' JARVISWatch/Views/WatchDashboardContent.swift
@@ -1009,11 +1009,27 @@ grep -q 'homeControlPollsSinceResources >= 3' JARVIS/AppState.swift
 grep -q 'Task.sleep(for: self.appIsInteractive' JARVISWatch/Views/WatchConnectView.swift
 grep -q '? self.activeRefreshInterval : JARVISRefreshPolicy.alwaysOnInterval' JARVISWatch/Views/WatchConnectView.swift
 grep -q 'client.resolveState(' JARVISWatch/Views/WatchConnectView.swift
-grep -q 'private var cachedAuthenticationToken: String?' JARVISWatch/Views/WatchConnectView.swift
-grep -q 'if let cachedAuthenticationToken { return cachedAuthenticationToken }' JARVISWatch/Views/WatchConnectView.swift
-grep -q 'guard let token = store.token, !token.isEmpty else { return "" }' JARVISWatch/Views/WatchConnectView.swift
-grep -q 'cachedAuthenticationToken = token' JARVISWatch/Views/WatchConnectView.swift
-[[ "$(grep -c 'store.token' JARVISWatch/Views/WatchConnectView.swift)" == "1" ]]
+# Owner cancelled enrollment. Removal is explicit and target-local; the original
+# API-token/SSH/backend credentials and independent oMLX fix remain untouched.
+python3 - <<'PYAPIROLLBACK'
+from pathlib import Path
+assert not Path('JARVIS/Terminal/APIProvisioningController.swift').exists()
+assert not Path('JARVISKit/Sources/JARVISKit/APIConfiguration.swift').exists()
+assert not Path('scripts/jarvis-api-provisioning.py').exists()
+store = Path('JARVISKit/Sources/JARVISKit/EndpointStore.swift').read_text()
+assert 'configurationAccount' not in store and 'hasAPIEnrollment' not in store
+bridge = Path('JARVISKit/Sources/JARVISKit/WatchBridge.swift').read_text()
+assert 'provisionAPIConfiguration' not in bridge and 'apiConfiguration' not in bridge
+cleanup = Path('JARVISKit/Sources/JARVISKit/APIRolloutRemoval.swift').read_text()
+assert 'jarvis.api.configuration.v1' in cleanup and 'lookup() == errSecItemNotFound' in cleanup
+assert 'kSecReturnData' not in cleanup and 'errSecSuccess || status == errSecItemNotFound' in cleanup
+phone = Path('JARVIS/Views/SettingsDetailView.swift').read_text()
+watch = Path('JARVISWatch/Views/WatchConnectView.swift').read_text()
+assert 'APIRolloutRemoval.remove()' in phone
+assert 'APIRolloutRemoval.remove(defaults: JARVISSharedStore.defaults)' in watch
+assert 'showTalkPrompt || showsAPIRolloutRemoval' in watch
+print('Rollout removed; owner-only record cleanup with verified absence: OK')
+PYAPIROLLBACK
 grep -q 'let frameChanged = self.frame != next' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'if frameChanged { self.frame = next }' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'if self.status != .live { self.status = .live }' JARVISWatch/Views/WatchTerminalView.swift
@@ -1445,6 +1461,19 @@ for path in ['JARVIS/JARVISApp.swift', 'JARVISWatch/JARVISWatchApp.swift']:
     text = Path(path).read_text()
     assert 'sceneDidBecomeActive()' in text and 'sceneWillResignActive()' in text
 PYCLEANUP
+
+printf '%s\n' '== oMLX loaded-model Home visibility wiring =='
+python3 - <<'PYOMLXHOME'
+from pathlib import Path
+phone = Path('JARVIS/Views/OMLXStatusCard.swift').read_text()
+shared = Path('JARVISKit/Sources/JARVISKit/OMLXSummaryContent.swift').read_text()
+watch = Path('JARVISWatch/Views/WatchOMLXCard.swift').read_text()
+assert 'OMLXSummaryContent(rows: rows, motionActive: active, homeRowsOnly: true)' in phone
+assert 'homeRowsOnly: Bool = false' in shared
+assert 'let visibleRows = homeRowsOnly ? home.visibleRows : rows' in shared
+assert 'homeRowsOnly' not in watch, 'Watch must retain its existing full-row default'
+assert 'activeRowsOnly' not in phone + shared + watch
+PYOMLXHOME
 
 printf '%s\n' '== JARVISKit tests (live tests opt-in) =='
 if [[ "${JARVIS_LIVE_TESTS:-0}" == "1" ]]; then

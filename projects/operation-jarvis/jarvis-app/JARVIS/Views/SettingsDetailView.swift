@@ -20,6 +20,8 @@ struct SettingsDetailView: View {
     @State private var setupCode = ""
     @State private var setupCodeSent = false
     @State private var confirmation: SettingsEditorConfirmation?
+    @State private var rolloutRemovalConfirmed = false
+    @State private var rolloutRemovalMessage: String?
 
     private var rowLayout: AnyLayout {
         dynamicTypeSize.isAccessibilitySize
@@ -33,6 +35,22 @@ struct SettingsDetailView: View {
                 switch destination {
                 case .connection:
                     connectionCard
+                    SettingsInlineCard("Token rollout removal", symbol: "lock.slash") {
+                        Button(rolloutRemovalConfirmed ? "Enrollment removed" : "Remove rollout enrollment") {
+                            rolloutRemovalConfirmed = APIRolloutRemoval.remove()
+                            rolloutRemovalMessage = rolloutRemovalConfirmed
+                                ? "Added enrollment record removed and absence verified."
+                                : "Removal unconfirmed. Unlock this device before trying again."
+                        }
+                        .disabled(rolloutRemovalConfirmed)
+                        .settingsAction()
+                        Text("Removes only the cancelled rollout’s new record on this iPhone. Keeps the endpoint, older credentials, SSH login and backend token unchanged.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        if let message = rolloutRemovalMessage {
+                            Text(message).font(.caption)
+                                .accessibilityIdentifier("api-rollout-removal-result")
+                        }
+                    }
                     Text("Leave the endpoint override blank to discover the Mac automatically over LAN or Tailscale.")
                         .font(.callout).foregroundStyle(.secondary)
                 case .iphoneTerminal:

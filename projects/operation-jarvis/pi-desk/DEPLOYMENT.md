@@ -1,3 +1,27 @@
+# Token rollout reversal — 2026-10-06, restored and verified
+
+Owner requested undo. Source and installed `status_stream.py` exactly match the
+retained pre-rollout helper; original tests restored and **202 source tests passed**.
+The first attempt stopped **before any helper write, manifest change or feed signal**
+on an outdated backend baseline. That stop remains retained. Fresh owner approval
+and the independently verified newer picture-frame-health baseline allowed a new
+scoped attempt, not replay of the failed helper.
+
+Only installed `status_stream.py` and its manifest entry were restored; all other
+files/entries, including existing `backend.py`/`restart_status.py` drift, stayed
+unchanged. One PID/start/parent-checked SIGTERM ended authenticated child 60359;
+unchanged CLI supervisor 78848 started restored child 89601. **Ten fresh sanitized
+sessions** and cleared warning verified at **16:39 EDT**. Existing clients, pane/
+process identities, agents, all 18 service records, backend/config/authentication,
+credentials, Pi/Minecraft identities and three-second cadence were preserved. No
+full installer, remote update, daemon/model restart or GUI focus switch occurred.
+
+Original failure/source backups: `~/Library/Application Support/JARVIS/api-auth-rollout/20261006T194627Z-revert/`.
+Success/backup of authenticated helper: `~/Library/Application Support/JARVIS/api-auth-rollout/20261006T203825Z-revert-feed-continuation/`.
+Authoritative completion: `result.json`, status `pre-rollout-helper-restored-feed-verified`.
+**Never replay completed/failed helpers.** Trusted-network mode remains; a future
+token-mode request needs fresh approval and consumer verification.
+
 # Selection input-focus follow-up — 2026-10-04
 
 Reproduced the reported input trap in isolated terminals: a rapid transcript click

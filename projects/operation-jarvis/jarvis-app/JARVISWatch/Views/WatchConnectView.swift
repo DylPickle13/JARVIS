@@ -8,6 +8,9 @@ struct WatchConnectView: View {
     @StateObject private var notifications = WatchPushNotificationCoordinator.shared
     @State private var terminalRequestSequence = 0
     @State private var showTalkPrompt = false
+    @State private var showsAPIRolloutRemoval = CommandLine.arguments.contains("-jarvisRemoveTokenRollout")
+    @State private var rolloutRemovalConfirmed = false
+    @State private var rolloutRemovalMessage: String?
 
     var body: some View {
         // TimelineView gives frontmost Always On snapshots a supported periodic
@@ -51,6 +54,23 @@ struct WatchConnectView: View {
         }
         .sheet(isPresented: $notifications.showPermissionExplanation) {
             WatchNotificationPermissionView(notifications: notifications)
+        }
+        .sheet(isPresented: $showsAPIRolloutRemoval) {
+            ScrollView {
+                VStack(spacing: 12) {
+                    Text("Token rollout removal").font(.headline)
+                    Text("Removes only the added Watch enrollment record. Existing endpoint, older credentials and terminal setup are preserved.").font(.caption)
+                    Button(rolloutRemovalConfirmed ? "Enrollment removed" : "Remove rollout enrollment") {
+                        rolloutRemovalConfirmed = APIRolloutRemoval.remove(defaults: JARVISSharedStore.defaults)
+                        rolloutRemovalMessage = rolloutRemovalConfirmed
+                            ? "Added record removed and absence verified."
+                            : "Removal unconfirmed. Unlock this Watch before trying again."
+                    }
+                    .disabled(rolloutRemovalConfirmed)
+                    if let message = rolloutRemovalMessage { Text(message).font(.caption) }
+                    Button("Done") { showsAPIRolloutRemoval = false }
+                }.padding()
+            }
         }
         .onChange(of: showTalkPrompt) { _, showing in
             if !showing { openTerminalIfRequested() }
@@ -110,7 +130,7 @@ struct WatchConnectView: View {
         WatchDashboardContent(
             model: model,
             jobs: model.jobs,
-            isDashboardCovered: notifications.showPermissionExplanation || showTalkPrompt,
+            isDashboardCovered: notifications.showPermissionExplanation || showTalkPrompt || showsAPIRolloutRemoval,
             terminalRequestSequence: terminalRequestSequence,
             requestedJobRoute: notifications.pendingRoute,
             onJobRouteConsumed: notifications.consumePendingRoute

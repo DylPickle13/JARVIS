@@ -7,24 +7,96 @@ final class OMLXSummaryTests: XCTestCase {
     func model(_ id: String = "m", active: Int = 0, queued: Int = 0, loading: Bool = false, requests: String = "[]") -> String {
         "{\"id\":\"\(id)\",\"isLoading\":\(loading),\"activeRequests\":\(active),\"queuedRequests\":\(queued),\"requests\":\(requests)}"
     }
-    func server(_ models: [String], age: Double = 0, stale: Bool = false) throws -> OMLXServerStatus {
-        let json = "{\"id\":\"mac-mini-64\",\"ok\":true,\"stale\":\(stale),\"ageSeconds\":\(age),\"lastSuccessAt\":\"2026-09-09T00:00:00Z\",\"models\":[\(models.joined(separator: ","))]}"
+    func server(_ models: [String], age: Double = 0, stale: Bool = false,
+                id: String = "mac-mini-64", hostMemory: String? = nil) throws -> OMLXServerStatus {
+        let memory = hostMemory.map { ",\"hostMemory\":\($0)" } ?? ""
+        let json = "{\"id\":\"\(id)\",\"ok\":true,\"stale\":\(stale),\"ageSeconds\":\(age),\"lastSuccessAt\":\"2026-09-09T00:00:00Z\",\"models\":[\(models.joined(separator: ","))]\(memory)}"
         return try JSONDecoder().decode(OMLXServerStatus.self, from: Data(json.utf8))
     }
     func summary(_ server: OMLXServerStatus, available: Bool = true, now: Date? = nil) -> OMLXServerSummary {
         .init(id: server.id, server: server, now: now ?? self.now, requestStartedAt: self.now, available: available)
     }
 
-    func testHomeHidesIdleRowsAndKeepsOnlyIndependentlyActiveHosts() throws {
+    func testHomeKeepsLoadedIdleRowsAlongsideIndependentlyActiveHosts() throws {
         let idle = summary(try server([model()]))
-        let activeServer = try server([model(active: 1)])
-        let active = OMLXServerSummary(id: "mac-mini-16", server: activeServer,
-            now: now, requestStartedAt: now, available: true)
-        XCTAssertEqual(OMLXHomePresentation(rows: [idle, idle]).visibleRows, [])
-        XCTAssertEqual(OMLXHomePresentation(rows: [idle, idle]).status, "Idle")
-        XCTAssertEqual(OMLXHomePresentation(rows: [idle, active]).visibleRows.map(\.id), ["mac-mini-16"])
+        let idlePeer = summary(try server([model("peer")], id: "mac-mini-16"))
+        let active = summary(try server([model(active: 1)], id: "mac-mini-16"))
+        XCTAssertEqual(OMLXHomePresentation(rows: [idle, idlePeer]).visibleRows, [idle, idlePeer])
+        XCTAssertEqual(OMLXHomePresentation(rows: [idle, idlePeer]).status, "Idle")
+        XCTAssertEqual(OMLXHomePresentation(rows: [idle, active]).visibleRows.map(\.id), ["mac-mini-64", "mac-mini-16"])
         XCTAssertNil(OMLXHomePresentation(rows: [idle, active]).status)
-        XCTAssertEqual(OMLXHomePresentation(rows: [active, summary(activeServer)]).visibleRows.count, 2)
+    }
+
+    func testHomeLoadedRowSurvivesGenerationIdleAndNextTurnWithMemoryIntact() throws {
+        let memory = #"{"ok":true,"stale":false,"ageSeconds":0,"usedBytes":12884901888,"totalBytes":68719476736,"definition":"macos-nonpurgeable-anonymous-wired-compressed"}"#
+        let request = #"[{"id":"r","phase":"generating","tokensPerSecond":32}]"#
+        for active in [1, 0, 1] {
+            let row = summary(try server([model("Qwen3.6-35B-A3B-4bit", active: active,
+                requests: active == 0 ? "[]" : request)], hostMemory: memory))
+            let home = OMLXHomePresentation(rows: [row])
+            XCTAssertEqual(home.visibleRows.map(\.id), ["mac-mini-64"])
+            XCTAssertEqual(home.visibleRows.first?.modelLabel, "Q3.6-35B")
+            XCTAssertEqual(home.visibleRows.first?.hostMemoryText, "12G")
+            XCTAssertEqual(home.status, active == 0 ? "Idle" : nil)
+            XCTAssertEqual(row.speedText, active == 0 ? "—" : "32")
+            XCTAssertEqual(row.hasActiveWork, active != 0)
+            XCTAssertEqual(row.breathesStatus, active != 0)
+            XCTAssertEqual(OMLXMotionPolicy(rows: [row], active: true, sceneActive: true,
+                reduceMotion: false, luminanceReduced: false).pulsesCPU, active != 0)
+        }
+    }
+
+    func testHomeRemovesModelsOnlyWhenFreshInventoryConfirmsUnload() throws {
+        let loaded = summary(try server([model()]))
+        let unloaded = summary(try server([]))
+        XCTAssertTrue(unloaded.fresh)
+        XCTAssertEqual(unloaded.phase, .ready)
+        XCTAssertEqual(OMLXHomePresentation(rows: [loaded]).visibleRows, [loaded])
+        XCTAssertEqual(OMLXHomePresentation(rows: [unloaded]).visibleRows, [])
+        XCTAssertEqual(OMLXHomePresentation(rows: [unloaded]).status, "No models loaded")
+        XCTAssertEqual(OMLXHomePresentation(rows: [loaded]).visibleRows, [loaded], "A later load needs no local sticky-row cache")
+    }
+
+    func testHomeHostUnloadDoesNotHideItsLoadedIdlePeer() throws {
+        let loaded = summary(try server([model()]))
+        let peer = summary(try server([model("peer")], id: "mac-mini-16"))
+        let unloaded = summary(try server([]))
+        XCTAssertEqual(OMLXHomePresentation(rows: [loaded, peer]).visibleRows, [loaded, peer])
+        XCTAssertEqual(OMLXHomePresentation(rows: [unloaded, peer]).visibleRows, [peer])
+        XCTAssertEqual(OMLXHomePresentation(rows: [unloaded, peer]).status, "Idle")
+    }
+
+    func testHomeKeepsOneRowForManyLoadedIdleModels() throws {
+        let row = summary(try server((0..<20).map { model("model-\($0)") }))
+        let home = OMLXHomePresentation(rows: [row])
+        XCTAssertEqual(home.visibleRows, [row])
+        XCTAssertEqual(home.visibleRows.first?.details?.modelNames.count, 20)
+        XCTAssertTrue(home.visibleRows.first?.modelLabel.hasSuffix(" +19") == true)
+        XCTAssertEqual(home.status, "Idle")
+    }
+
+    func testHomeLoadedIdleRowKeepsPeerHealthWarnings() throws {
+        let loaded = summary(try server([model()]))
+        let unavailable = OMLXServerSummary(id: "mac-mini-16", server: nil, now: now,
+            requestStartedAt: nil, available: false)
+        let stale = summary(try server([model("peer")], stale: true, id: "mac-mini-16"))
+        let unknown = summary(try server([model("peer", active: -1)], id: "mac-mini-16"))
+        for (peer, warning) in [(unavailable, "16G unavailable"), (stale, "16G stale"), (unknown, "16G unknown")] {
+            let home = OMLXHomePresentation(rows: [loaded, peer])
+            XCTAssertEqual(home.visibleRows, [loaded])
+            XCTAssertEqual(home.status, warning)
+        }
+    }
+
+    func testHomeDoesNotPresentExpiredOrUnavailableInventoryAsLoadedIdle() throws {
+        let source = try server([model()])
+        for row in [summary(source, now: now.addingTimeInterval(6.01)), summary(source, available: false)] {
+            let home = OMLXHomePresentation(rows: [row])
+            XCTAssertTrue(home.visibleRows.isEmpty)
+            XCTAssertEqual(home.status, "Stale")
+            XCTAssertNotEqual(home.status, "No models loaded")
+            XCTAssertNotEqual(home.status, "Idle")
+        }
     }
 
     func testHomeIncludesLoadingQueuePrefillAndGenerationButNotUnknown() throws {

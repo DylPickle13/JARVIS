@@ -1,5 +1,43 @@
 # Native app build and operations
 
+## Token rollout reversal — installed build 259
+
+Owner requested undo on 2026-10-06. Pre-enrollment API/client/Watch behavior is
+restored; provisioning code and helper are removed. The five build-258 oMLX
+runtime/regression inputs remain byte-identical. Explicit device-local removal
+is limited to `jarvis.api.configuration.v1` and `jarvis.api.enrolled.v1`, with
+attribute-only absence verification. It never reads/exports a credential or
+clears legacy tokens, endpoints, SSH credentials or app data. Phone: Settings →
+Connection → Token rollout removal. The Watch removal sheet is requested with
+reviewed `-jarvisRemoveTokenRollout` launch argument; deletion still requires the
+owner's button press. Do not infer cleanup from installation.
+
+**259 installed once per iPhone/Watch**, independently version/process verified
+at **16:38 EDT, 2026-10-06**. The owner supplied fresh readiness after the earlier
+zero-write Watch developer-tunnel failures. A new scoped continuation checked the
+same signed artifact, both devices and every immediate gate; no failed installer
+was replayed. All 18 service records (17 continuous), backend/config/authentication,
+Pi/Minecraft/gateway identities and ten-second history cadence were preserved.
+Post-install verification passed all 16 candidate/preserved bundle signatures,
+profiles/entitlements and source/payload seals. A later owner-approved request
+to reopen the Watch removal screen stopped on a lock-state resource-allocation
+failure **before any app relaunch**. The owner then deferred the unused Watch
+record: no retry/reset/cleanup is pending. Earlier removal success was reported
+without explicitly identifying a device; do not claim both vaults cleared.
+Future removal requires a fresh owner request. Installation does not prove
+credential deletion or physical UI acceptance.
+
+Pi Desk's exact preceding helper/tests are restored; 202 tests passed. Its first
+rollback stopped before any write/signal on an outdated backend baseline. That
+stop is retained. A new owner-authorized attempt against the verified newer
+picture-frame-health release restored only helper/manifest entry and reconnected
+one existing child, with unchanged supervisor/viewers/agents and ten fresh sessions
+verified at 16:39 EDT. No daemon/watchdog/model restart, backend credential change,
+physical output test, remote-host update or GUI focus switch occurred. Preserve
+sealed 257/258, exact signed 256 recovery and both success/failure evidence. Existing
+policy remains trusted-network. See [retained oMLX contract](omlx-loaded-models.md).
+
+
 [App overview](../README.md) · [Architecture](architecture.md) · [Documentation index](README.md)
 
 Use this guide to build, test, and prepare the app for installation. Installing on a device still needs owner approval. Before using an archived command, check its version, device target, and signing setup.

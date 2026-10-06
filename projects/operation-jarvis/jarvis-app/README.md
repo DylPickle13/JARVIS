@@ -2,7 +2,29 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
-**Current verified iPhone build: 248**, installed once and independently
+## Token rollout reversal — installed build 259
+
+Owner requested undo on 2026-10-06. Pre-enrollment connection/client/Watch behavior
+is restored and provisioning/token-transfer code removed. The five build-258 oMLX
+runtime/regression inputs remain byte-identical: fresh loaded idle models stay
+visible, with `—` idle speed, fresh RAM and rows removed only on real unload.
+
+Removal of only the added target-local configuration account/marker is an explicit
+owner action with absence readback. Legacy API/SSH/backend credentials and app data
+are preserved. **259 installed once on both iPhone and Watch**, independently
+version/process verified at **16:38 EDT** after fresh owner readiness and every
+immediate gate. Earlier zero-write Watch/baseline failures and their helpers remain
+retained, not replayed. Pi Desk's exact preceding helper and original tests are now
+restored; 202 tests passed and one scoped status-child reconnect was verified with
+ten fresh sessions. Backend/config/authentication and services remain unchanged.
+The owner deferred the unused Watch enrollment-record cleanup after the
+zero-relaunch developer-service failure. No cleanup/retry is pending; the record
+is not read by 259. Earlier removal UI was owner-reported on an unspecified device,
+not confirmation of both vaults. Future cleanup requires a fresh owner request.
+See [reversal scope](docs/api-authentication.md), [operations](docs/operations.md),
+and [retained oMLX fix](docs/omlx-loaded-models.md).
+
+**Historical verified iPhone build: 248**, installed once and independently
 version/launch/process verified on **2026-10-04 at 12:58 EDT**. The nine Pi cards
 now display their actual saved names rather than written status labels, with
 unchanged numbers, 22-point status glyphs, 80 ms motion, dimensions and routes.

@@ -4,6 +4,17 @@ One lightweight terminal workspace for the same ten Mac-hosted Pi Coding Agent
 sessions, on **mac-mini-64, mac-mini-16 and Raspberry Pi**. No browser, desktop
 streaming, or VS Code dependency. The agents always run on mac-mini-64.
 
+## Token rollout reversal — 2026-10-06
+
+At owner request, source and installed status helper/tests are restored to exact
+pre-rollout behavior; 202 tests passed. The initial rollback stopped before writes/
+signals because a newer backend changed its inherited baseline; failure retained.
+Fresh owner approval and verified newer baseline allowed a new helper/manifest-only
+rollback and one scoped status-child reconnect. Ten fresh sanitized sessions and
+unchanged supervisor/viewers/agents, unrelated installed files and all 18 service
+records were verified. No backend credentials/policy or remote hosts were changed.
+See [deployment status](DEPLOYMENT.md).
+
 ## Open it
 
 ```sh
