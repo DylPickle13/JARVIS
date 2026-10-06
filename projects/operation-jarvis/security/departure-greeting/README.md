@@ -472,6 +472,42 @@ reader were reloaded; other security services and shared CLI/audio behavior are
 unchanged. A supervised test is still required before treating physical event mapping
 or departure accuracy as commissioned.
 
+### Hub routing recovery (2026-10-05)
+
+Owner-authorized diagnosis found a stale saved hub address. Unauthenticated LAN
+identification was followed by authentication, stable hub MAC matching and exact
+T100/T110 child-identity checks. Three fresh paired reads passed both before the
+configuration update and through the corrected saved configuration. Radio freshness
+remains unknown; these checks do not commission physical sensor events or departure.
+
+Two consumers needed the address-only correction: `JARVIS_SECURITY_HUB_HOST` in
+security's ignored `.env`, and the `hub` entry in the live registry selected by
+`JARVISD_DEVICE_REGISTRY`. The deployed security wrapper still reads that same `.env`;
+jarvisd's device-health probe caches its registry and required a reload. Credentials,
+other env lines, configured sensor aliases and every other device-registry entry
+were preserved. A router DHCP reservation can prevent future address drift; no
+router setting or automatic address-discovery/reset policy was changed.
+
+The reader was stopped and its singleton lock verified before recovery. With fresh
+identity/paired-read evidence, no pending playback and no unknown outcome, only the
+journal's `sensor_read_requires_review` fault field was cleared. Cooldown, outcomes,
+counters, phrase, trial/person policies and delivery safeguards were retained.
+Restart established a silent baseline instead of replaying a persisted opening.
+Only the reader, jarvisd and its watchdog cycled; backend code/plists, unrelated
+services and existing Pi panes were retained. Normal backend observations then
+reported the hub, both sensors and shared reader available, with security and overall
+health healthy; the hub incident closed. No greeting/audio test or hardware write
+was requested, and the completed count remained unchanged. Minecraft's informational
+health policy and the 10-second history cadence were unaffected. The separate
+family-room-speaker availability warning was not part of this repair.
+
+Owner-only evidence is under
+`~/Library/Application Support/JARVIS/departure-greeting/hub-recovery-20261005T233202Z/`.
+It retains identity/read proof, before-state and registry evidence, action markers,
+verification and the initial read-only preflight failure. Never treat this past
+recovery as authorization/evidence to clear a later fault, especially pending or
+unknown playback. No app rebuild/reinstallation was needed.
+
 - `departure.py`: policy, bounded silent observer, local status/disable command.
 - `watcher.py`: singleton background reader and guarded delivery coordinator.
 - `speaker.py`: one expiring, reserved farewell through the outdoor D235 only.
