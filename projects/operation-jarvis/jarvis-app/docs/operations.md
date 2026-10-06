@@ -144,8 +144,36 @@ owner-approved cleanup removed the obsolete build-246 signed archive, reclaiming
 removed after deployment, releasing **2.91 GiB**; its archive and evidence remain.
 
 Current signed recovery archives are **256** (independently installed/version/process
-verified on both devices) and **255** (exact immediate signed rollback); **254**,
-**253**, **252** and **251** are also retained. Both devices independently verify 256.
+verified on both devices) and **255** (exact immediate signed rollback). Both devices
+independently verify 256. After owner acceptance and explicit commit/push/cleanup
+approval, feature commit [`a8de79d`](https://github.com/DylPickle13/JARVIS/commit/a8de79d9511dab6f82e98ed95cfc9e1f26e60cbb)
+was pushed and remote HEAD verified. Fresh checkout verification passed **942 backend
+tests**, Python syntax and LaunchAgent gates; signed native release validation remains
+336 shared / 184 iPhone / 37 terminal cases and both simulator builds.
+
+At **23:36 EDT on 2026-10-05**, owner-authorized cleanup removed **14 generated
+build caches** and obsolete primary signed archives **251/252/253/254**, across
+**18 exact roots**: **14.38 GiB allocated artifacts removed**, with an observed
+**12.82 GiB increase in available disk space**. Source snapshots, source/payload
+manifests and seals, audits, deployment/failure receipts, all logs/test-result
+bundles and the removed archives' plist/profile/entitlement/signature metadata
+remain. **7,907 retained evidence files** passed before/after hash verification.
+The current 256 and exact 255 rollback passed both source/payload seals and all
+eight bundle signatures before/after cleanup. No current signed payload was rebuilt.
+
+All 18 protected service records (17 continuous), existing Pi panes, backend/
+configuration/authentication/history/Minecraft/gateway identities and byte-identical
+policy/binding/receipts/six producer definitions are preserved. No service/device/
+control action, credential/profile/dependency change or global/IPC/security/backup
+cleanup occurred. Unrelated picture-frame work was neither staged nor touched.
+The initial preparation stopped before deleting anything when its unrelated-doc
+snapshot changed concurrently; its original failure and zero-deletion proof remain.
+A new scoped pass kept every deletion/seal/evidence/process guard and recorded foreign
+edits without freezing or restoring live documentation. Private build-256
+`owner-commit-cleanup-20261006T032758Z/cleanup.json` records the measurements and
+checks. Pruned builds 251–254 have `primary-archive-pruned.json` markers; their old
+recovery references are historical, not runnable. Earlier cleanup follows.
+
 The historical cleanup below preceded the 253/254/255/256 rollouts. On **2026-10-05 at 17:35 EDT**, after the app change set was
 committed/pushed and the owner requested cleanup, **15 generated caches** and the
 superseded signed binary archives **248/249/250** were removed: **13.09 GiB net

@@ -61,6 +61,28 @@ write/input guard. Synthetic full-content renders at 162/184-point widths were
 reviewed in light/dark; these are fixtures, not physical Watch screenshots or a
 promise of no Crown overflow. The dedicated validation simulator is Shutdown.
 
+## Source commit and verified cleanup — 2026-10-05 EDT
+
+Owner accepted the layout and authorized commit/push and stale-file cleanup.
+Feature commit [`a8de79d`](https://github.com/DylPickle13/JARVIS/commit/a8de79d9511dab6f82e98ed95cfc9e1f26e60cbb)
+contains exactly **36 scoped source/test/documentation files**. GitHub/main HEAD
+was independently verified; unrelated picture-frame edits and all private data
+were excluded. Fresh offline verification passed **942 backend tests** and syntax/
+plist gates; native frozen verification remains 336 shared / 184 iPhone / 37
+terminal tests and both simulator builds. No runtime activation followed Git changes.
+
+At **23:36 EDT**, verified cleanup removed 14 reproducible caches and four obsolete
+primary archives (251–254): **14.38 GiB allocated**, with **12.82 GiB observed new
+available space**. Installed **256** and exact signed rollback **255**, every frozen
+source, manifest/seal/audit, deployment/failure receipt, log and test-result bundle
+remain; pruned archive signing/profile/plist/entitlement metadata is retained.
+**7,907 evidence files** and all eight current/rollback signatures passed before/
+after checks. The 18 protected service records, Pi/Minecraft/gateway identities,
+backend/configuration/authentication/history, policy/binding/ledger and six producer
+plists are unchanged. No service/device/control action or unrelated-project cleanup.
+Historical release-plan references to removed archives are not runnable recovery
+selections; pruning markers and the private cleanup receipt document retention.
+
 ## Compact sizing revision — build 255 history
 
 Latest source renames the visible **Automatic Voice** title to **Voice** and
