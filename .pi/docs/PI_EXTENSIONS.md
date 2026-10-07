@@ -1,6 +1,6 @@
 # Pi Extensions
 
-Updated: 2026-10-02 EDT
+Updated: 2026-10-06 EDT
 
 JARVIS adds its tools and session helpers through `.pi/extensions/`. The read-only `.pi/smoke-test.sh` checks the extension list for additions or removals. Shared helpers in `.pi/extensions/lib/` are excluded because they are not standalone extensions.
 
@@ -27,6 +27,7 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `lib/env.ts`: `.env` discovery/parsing and env lookup helpers.
 - `lib/path.ts`: safe user path normalization helpers.
 - `lib/text.ts`: bounded text truncation helper.
+- `lib/reaper-query-policy.ts`: REAPER-only source-query guidance shared by both bridge tools and the REAPER group-loading playbook.
 - `lib/attach/`: private transactional attachment storage, image preparation, native-picker invocation, temporary Mac SSH picker transport, and the exact-process mobile Unix-socket endpoint used by `/attach` and the native iPhone paperclip.
 - `lib/ssh-pty.ts`: local `node-pty` wrapper and headless xterm screen used for bidirectional SSH terminal sessions. Runtime dependencies are declared in `lib/package.json`.
 
@@ -62,6 +63,35 @@ Extensions import these shared helpers from `.pi/extensions/lib/`:
 - `60-pdf-read-result.ts`: PDF read-result replacement via oMLX MarkItDown with local `pdftotext` fallback.
 - `98-slim-provider-payload.ts`: deterministic structured prompt/schema slimming, including OpenAI `additional_tools` and `tool_search_output` schemas. Never forces/flattens the initial prompt; see [prompt-cache compatibility](PROMPT_CACHE.md).
 - `99-lazy-tools.ts`: additive lazy optional tool activation, plus opt-in direct-call auto-loading on the patched JARVIS Pi runtime.
+
+## REAPER inspection queries
+
+Keep inspection data small **before querying/printing**, not merely in the UI
+preview. Prefer inline Lua returning selected fields, filtered collections and
+explicit pages (normally at most 50 rows / 8 KiB of text). Do not return complete
+project/track state chunks, all FX parameters, or full action catalogs.
+
+If the bridge is unavailable and owner-authorized startup needs UI inspection,
+query window names and named controls directly. Filter the Actions list by the
+exact bridge name, then inspect at most 20 matching rows. Never request AppleScript
+`entire contents` of a REAPER window/application or dump its accessibility tree.
+Return scalar fields with per-field and total serialized-output limits; include
+counts/`has_more` when paging. Save larger authorized diagnostics privately and
+print only a path and short summary, not their full stdout.
+
+This guidance is included in both REAPER tools and explicit/repeated/automatic
+REAPER group loading. It does not modify generic SSH execution, transport, audio
+routing, recording, or bridge timeouts. It is query guidance, not a hard SSH guard
+or a repair of already-overfilled session history. New processes (or an
+owner-controlled `/reload`) pick it up; no running session is automatically
+reloaded or repaired.
+
+Offline regression checks:
+
+```sh
+node --test .pi/tests/reaper-query-policy.test.mjs \
+  .pi/tests/lazy-tools.test.mjs .pi/tests/slim-provider-payload.test.mjs
+```
 
 ## Intentional notifications
 

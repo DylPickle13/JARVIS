@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawn } from "node:child_process";
+import { REAPER_QUERY_GUIDELINES } from "./lib/reaper-query-policy";
 
 const DEFAULT_HOST = "mac-mini-16";
 const DEFAULT_REMOTE_DIR = "/Users/dylanrapanan/Library/CloudStorage/GoogleDrive-shredder131517@gmail.com/My Drive/music/reaper/reaper-bridge";
@@ -132,7 +133,8 @@ export default function reaperBridgeExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "reaper_ping",
     label: "REAPER Ping",
-    description: "Ping the JARVIS REAPER bridge running on mac-mini-16 and return the live project status. Load with load_tools({ groups: [\"reaper\"] }) before use.",
+    description: "Ping the JARVIS REAPER bridge running on mac-mini-16 and return the live project status. Load with load_tools({ groups: [\"reaper\"] }) before use. If unavailable, inspect only specific authorized UI controls; never dump REAPER's full accessibility tree.",
+    promptGuidelines: REAPER_QUERY_GUIDELINES,
     parameters: Type.Object({
       timeoutSeconds: Type.Optional(Type.Number({ description: "Overall timeout in seconds. Default 10, max 120." })),
       host: Type.Optional(Type.String({ description: `SSH host alias. Default ${DEFAULT_HOST}.` })),
@@ -157,9 +159,10 @@ export default function reaperBridgeExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "reaper_lua",
     label: "REAPER Lua",
-    description: "Run inline Lua inside the live REAPER session via the JARVIS bridge on mac-mini-16. The Lua is sent over stdin and is not saved as a script. Load with load_tools({ groups: [\"reaper\"] }) before use.",
+    description: "Run inline Lua inside the live REAPER session via the JARVIS bridge on mac-mini-16. The Lua is sent over stdin and is not saved as a script. Load with load_tools({ groups: [\"reaper\"] }) before use. Inspection queries must return small, filtered pages, not whole project/FX/action dumps.",
+    promptGuidelines: REAPER_QUERY_GUIDELINES,
     parameters: Type.Object({
-      code: Type.String({ description: "Lua code to execute inside REAPER. Return a table/string/number/boolean/nil for JSON output." }),
+      code: Type.String({ description: "Lua code to execute inside REAPER. Return a table/string/number/boolean/nil for JSON output. For inspection, select only requested fields and bound loops/text at source; normally return at most 50 rows and 8 KiB of text, with counts/has_more for further pages." }),
       timeoutSeconds: Type.Optional(Type.Number({ description: "Overall timeout in seconds. Default 10, max 120." })),
       host: Type.Optional(Type.String({ description: `SSH host alias. Default ${DEFAULT_HOST}.` })),
       remoteDir: Type.Optional(Type.String({ description: `Remote reaper-bridge directory. Default ${DEFAULT_REMOTE_DIR}.` })),
