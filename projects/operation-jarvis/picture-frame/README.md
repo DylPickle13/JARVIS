@@ -52,13 +52,17 @@ Read commands (`devices`, `probe`, `status`, `backlight`) do contact ADB/the sel
 
 ## Status-only backend integration — deployed
 
-The [jarvisd availability entry](../jarvisd/docs/picture-frame-health.md) activated
-at **15:52 EDT on 2026-10-06** as `20261006T193632Z-picture-frame-health`.
-`health_worker.py --check` performs a pinned identity/package read only, through
-the existing serial health worker. Fresh results expose availability and last
-check time; stale/unverified results remain unknown. Actual backend launch-context
-and later periodic checks passed. No photos, controls, new API routes or background
-screen capture. The worker's default invocation remains a no-I/O dry-run.
+The [jarvisd availability entry](../jarvisd/docs/picture-frame-health.md) now uses
+**network-only reachability**, superseding its earlier ADB-dependent identity read.
+`health_worker.py --check` sends one bounded echo to the USB-commissioned frame
+address on the pinned local interface; visible conflicting MAC metadata is rejected.
+A ping is not authenticated identity, a lit screen, or Frameo internet/cloud status.
+The worker loads no ADB dependencies and reads no controller configuration, keys,
+photos or pending state. Fresh results expose availability and last check time;
+stale/unverified results remain unknown. No new API, controls or daemon. Normal
+power cycles do not require ADB recovery for this check, provided the frame returns
+to the same Wi-Fi/address. A changed/reused address needs explicit review; no DHCP
+reservation or discovery is added. Default invocation remains a no-I/O dry-run.
 
 ## Start here
 

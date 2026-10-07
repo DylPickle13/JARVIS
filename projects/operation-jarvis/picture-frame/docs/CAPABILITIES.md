@@ -130,6 +130,9 @@ fresh identity/focus/layout checks, the controller lock, an explicit apply flag 
 a durable pre-dispatch pending marker. It is not a reusable brightness API.
 
 The separate [availability-only jarvisd integration](../../jarvisd/docs/picture-frame-health.md)
-is deployed through its existing worker. No frame control/photo API, Pi control
-schema, native-app control, new frame daemon or media scheduler was added. Follow
+is deployed through its existing worker, now as network-only address reachability.
+Wireless debugging is not required for monitoring; this is not screen or cloud
+status. Previously accepted Wi-Fi controls remain commissioning evidence, not an
+always-enabled listener. No frame control/photo API, Pi control schema, native-app
+control, new frame daemon or media scheduler was added. Follow
 the [commissioning checklist](ARRIVAL.md) for any further tests.

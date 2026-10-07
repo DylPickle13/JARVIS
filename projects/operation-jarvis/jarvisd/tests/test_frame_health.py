@@ -145,7 +145,7 @@ class HealthProjectionTests(unittest.TestCase):
         self.assertEqual(self.project()['devices'][0]['state'], 'unknown')
         self.worker.tick()
         row = self.project()['devices'][0]
-        self.assertEqual(row['scope'], 'frame_identity_read')
+        self.assertEqual(row['scope'], 'frame_network_reachability')
         self.assertEqual(row['state'], 'available')
         self.assertIsNotNone(row['lastAttemptAt'])
         success = row['lastSuccessAt']

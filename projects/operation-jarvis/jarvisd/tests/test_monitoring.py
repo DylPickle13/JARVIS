@@ -156,7 +156,7 @@ class HTTPTests(unittest.TestCase):
                 self.assertEqual(code, 200)
                 row = body['deviceHealth']['devices'][0]
                 self.assertEqual((row['id'], row['state'], row['scope']),
-                    ('picture-frame', 'available', 'frame_identity_read'))
+                    ('picture-frame', 'available', 'frame_network_reachability'))
                 self.assertEqual(row['lastAttemptAt'], '2026-10-06T00:00:00Z')
             probes.tick.assert_not_called()
             probes.frame.assert_not_called()

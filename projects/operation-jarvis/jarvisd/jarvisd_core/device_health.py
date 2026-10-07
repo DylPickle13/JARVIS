@@ -24,7 +24,7 @@ KINDS = {'plug', 'purifier', 'security', 'omlx', 'tcp', 'usb', 'heartbeat', 'fra
 SCOPES = {'plug': 'integration_read', 'purifier': 'integration_read',
           'security': 'status_read', 'omlx': 'integration_read',
           'tcp': 'tcp_reachability', 'usb': 'usb_attachment', 'heartbeat': 'process_heartbeat',
-          'frame': 'frame_identity_read', 'unmonitored': 'none'}
+          'frame': 'frame_network_reachability', 'unmonitored': 'none'}
 LIMITS = {'plug': 30, 'purifier': 90, 'security': 120, 'omlx': 120}
 
 
@@ -351,6 +351,6 @@ def incident_observations(coverage):
     # Optional/sleeping devices never create incidents. Blocked children are omitted:
     # MonitorStore holds any prior incident without reporting a false recovery.
     return {'devices/' + row['id']: (None if row['blockedBy'] or
-                (row['scope'] == 'frame_identity_read' and row['state'] == 'unknown') else row['state'] == 'available')
+                (row['scope'] == 'frame_network_reachability' and row['state'] == 'unknown') else row['state'] == 'available')
             for row in coverage['devices']
             if row['coverage'] == 'background' and row['expectation'] == 'always'}

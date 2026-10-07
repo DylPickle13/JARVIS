@@ -5,9 +5,10 @@ health APIs. No parallel daemon, dashboard server or notification service.
 
 ## Picture-frame availability — deployed 2026-10-06 EDT
 
-Release `20261006T193632Z-picture-frame-health` adds one read-only, identity-checked
-frame entry to the existing worker: **27 entries**, with the original 26 unchanged.
-The actual backend launch-context check and later periodic observations passed.
+One status-only frame entry remains in the existing worker: **27 entries**, with
+the original 26 unchanged. Its current check is network-only address reachability,
+not ADB/hardware identity, display status or Frameo cloud connectivity. This
+supersedes the earlier `20261006T193632Z-picture-frame-health` identity-read release.
 Only jarvisd/watchdog restarted; alerts remain disabled, and unrelated services,
 Pi identities, configuration and SQLite history/cadence were preserved. See
 [picture-frame scope, verification and rollback](picture-frame-health.md).
@@ -91,7 +92,7 @@ Check kinds:
 | `tcp` | One connect/close to a configured numeric private/Tailscale IPv4 address and port; 2s timeout; no DNS/discovery/retry |
 | `usb` | One bounded local IORegistry enumeration per cycle; exact `vendorID`/`productID`; never opens HID control handles |
 | `heartbeat` | Owner-only bounded JSON file, `path`, `timestampKey`, `maxAge` (30–300s), `faultKey`; current process heartbeat only |
-| `frame` | Opt-in pinned Frameo identity/package read through a bounded worker; no controls or photo reads. [Deployed status-only scope](picture-frame-health.md) |
+| `frame` | Opt-in commissioned-address LAN reachability through a bounded worker; no ADB, controls or photo reads. [Deployed status-only scope and address limitations](picture-frame-health.md) |
 | `unmonitored` | Explicit coverage gap; never healthy by omission |
 
 The probe worker runs serially, waiting 60s after each completed cycle, with no

@@ -1,7 +1,9 @@
 """Bounded, read-only frame probe. No import-time I/O or HTTP/control surface.
 
 Worker/interpreter paths are owner configuration, never request parameters.
-The worker reuses the commissioned controller's exact identity and legacy consent.
+The worker checks fresh LAN reachability at the privately commissioned address,
+rejecting a conflicting MAC when local cache data is visible. This is not hardware
+identity or cloud availability. No ADB, controller config, keys or photo dependencies.
 """
 import json
 import os
