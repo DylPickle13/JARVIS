@@ -1,11 +1,13 @@
 """Bounded Minecraft save-pause/checkpoint; never hold autosave off during upload."""
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import signal
+import stat
 import subprocess
 import time
 
@@ -97,25 +99,70 @@ class MinecraftCheckpoint:
         if current != owner:
             raise RuntimeError('Minecraft process identity changed; refusing console write')
         log = self.root / 'server/logs/latest.log'
-        before = log.stat()
-        offset = before.st_size
-        subprocess.run(['screen', '-S', owner['session'], '-p', '0', '-X', 'stuff', command + '\r'],
-                       check=True, capture_output=True, text=True, timeout=5)
-        # Acceptance by screen is not execution. Require a fresh server acknowledgement.
-        until = time.monotonic() + timeout
-        while time.monotonic() < until:
-            if log.stat().st_ino != before.st_ino:
-                raise RuntimeError('Minecraft log rotated during checkpoint; state is unknown')
-            with log.open() as f:
-                f.seek(offset)
-                fresh = f.read()
-            for marker in success:
-                # Match exact server replies, not player chat containing the same words.
-                pattern = (r'^\[\d{2}:\d{2}:\d{2}(?: INFO)?\](?: \[Server thread/INFO\])?: '
-                           + re.escape(marker) + r'\.?\s*$')
-                if re.search(pattern, fresh, re.IGNORECASE | re.MULTILINE):
-                    return marker
-            time.sleep(0.1)
+        patterns = [(marker, re.compile(
+            r'^\[\d{2}:\d{2}:\d{2}(?: INFO)?\](?: \[Server thread/INFO\])?: '
+            + re.escape(marker) + r'\.?\s*$', re.IGNORECASE)) for marker in success]
+        with ExitStack() as opened:
+            def open_log(expected):
+                if not stat.S_ISREG(expected.st_mode):
+                    raise RuntimeError('Minecraft log is not a regular file; state is unknown')
+                fd = os.open(log, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                stream = opened.enter_context(os.fdopen(fd, 'rb'))
+                info = os.fstat(stream.fileno())
+                if (info.st_dev, info.st_ino) != (expected.st_dev, expected.st_ino):
+                    raise RuntimeError('Minecraft log changed while opening; state is unknown')
+                return stream, info
+
+            stream, before = open_log(log.lstat())
+            stream.seek(0, os.SEEK_END)
+            identity = (before.st_dev, before.st_ino)
+            readers = [[stream, b'']]
+            sent_at = time.time()
+            subprocess.run(['screen', '-S', owner['session'], '-p', '0', '-X', 'stuff', command + '\r'],
+                           check=True, capture_output=True, text=True, timeout=5)
+            # Pin the original tail before writing. Daily rollover can be triggered
+            # by this very command, so retain that descriptor as well as the new one.
+            until = time.monotonic() + timeout
+            rotations = 0
+            while time.monotonic() < until:
+                try:
+                    latest = log.lstat()
+                except FileNotFoundError:
+                    latest = None  # bounded rename/create gap during rollover
+                if latest is not None:
+                    if not stat.S_ISREG(latest.st_mode):
+                        raise RuntimeError('Minecraft log is not a regular file; state is unknown')
+                    if (latest.st_dev, latest.st_ino) != identity:
+                        if rotations:
+                            raise RuntimeError('Minecraft log rotated repeatedly; state is unknown')
+                        if self.running_info() != owner:
+                            raise RuntimeError('Minecraft process identity changed during checkpoint')
+                        replacement, after = open_log(latest)
+                        # macOS birth time proves this is a new file, not an old
+                        # archive renamed into place. Missing evidence fails closed.
+                        created = getattr(after, 'st_birthtime', None)
+                        if created is None or created < sent_at:
+                            raise RuntimeError('Minecraft replacement log is not newly created; state is unknown')
+                        identity = (after.st_dev, after.st_ino)
+                        readers.append([replacement, b''])
+                        rotations += 1
+                    for reader in readers:
+                        f, pending = reader
+                        if os.fstat(f.fileno()).st_size < f.tell():
+                            raise RuntimeError('Minecraft log truncated during checkpoint; state is unknown')
+                        lines = (pending + f.read(65536)).split(b'\n')
+                        reader[1] = lines.pop()
+                        if len(reader[1]) > 65536:
+                            raise RuntimeError('Minecraft log line exceeds checkpoint limit; state is unknown')
+                        for line in lines:
+                            # Only complete, exact server replies; never player chat
+                            # or a partial line joined across different log files.
+                            for marker, pattern in patterns:
+                                if pattern.fullmatch(line.decode('utf-8', errors='replace')):
+                                    if self.running_info() != owner:
+                                        raise RuntimeError('Minecraft process identity changed during checkpoint')
+                                    return marker
+                time.sleep(0.1)
         raise RuntimeError(f'Minecraft did not acknowledge {command}; no command replay performed')
 
     @contextmanager

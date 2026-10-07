@@ -105,6 +105,14 @@ Ordinary failures and SIGTERM/SIGINT restore saving in `finally`; an interrupted
 or unacknowledged restoration leaves `minecraft-autosave-pending.json` and blocks
 future checkpoints for owner review. SIGKILL/power loss cannot run cleanup;
 check saving state before clearing that marker. Unknown writes are not replayed.
+Acknowledgement reads pin the original log tail before each command. A normal
+daily rollover may be triggered by the command itself; the reader follows one
+newly created regular `latest.log` (proven by macOS birth time) while retaining
+the original descriptor. Both require complete, exact server reply lines and
+unchanged listener/process ownership. Pre-existing replacement logs, symlinks,
+truncation, repeated rollover and missing creation evidence fail closed. A short
+rename/create gap is tolerated only within the existing acknowledgement timeout;
+no unknown command is replayed. Partial lines are never joined across log files.
 World checkpoints and separate SQLite transactions are not one atomic
 transaction across every plugin/application. Other ordinary files remain live.
 
@@ -222,6 +230,22 @@ snapshot `b1b49dee`, 10 database copies, 2 source samples and 13 Minecraft sampl
 verified. Remote readback confirmed the archived policy and server endpoint/security
 settings agree; health passed, autosave was restored and no pending marker remained.
 The next scheduled run remains October 7 at 3 AM EDT. Weekly maintenance was not due.
+
+The October 7 overnight failure hit daily log rollover: the 3 AM `save-off`
+acknowledgement was the first log event after midnight, replacing `latest.log`
+and tripping the old inode-change guard before copying or upload. Cleanup's
+`save-on` was acknowledged at 03:00:47 and left no pending marker. The reader now
+handles one proven-new log while retaining the pre-command original tail and
+all ownership/exact-reply/no-replay protections. All 54 tests passed, including
+rollover during each checkpoint command, stale archives/chat/partial lines,
+truncation, symlinks, changed ownership and unknown restoration safeguards.
+The approved manual scheduler rerun completed October 7 at 06:53:28 EDT in
+2m31s: snapshot `ba363b81`, repository structure, all 10 database copies,
+2 source samples and 13 Minecraft samples verified. Independent cloud readback
+matched the tested checkpoint source and regression tests exactly; health passed,
+the server identity was unchanged, autosave was restored and no marker remained.
+Rollover was exercised in isolated tests, not forced on the production server.
+The next scheduled run remains October 8 at 3 AM EDT. Weekly maintenance was not due.
 
 ## Commands
 

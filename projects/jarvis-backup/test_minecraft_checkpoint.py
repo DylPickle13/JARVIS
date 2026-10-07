@@ -177,6 +177,220 @@ class MinecraftTests(unittest.TestCase):
                 self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.2)
         run.assert_called_once()
 
+    def log_fixture(self, text=''):
+        log = self.root / 'server/logs/latest.log'
+        log.parent.mkdir(exist_ok=True)
+        log.write_text(text)
+        return log
+
+    def ack_line(self, marker):
+        return f'[12:00:00] [Server thread/INFO]: {marker}\n'
+
+    def test_daily_rollover_reads_fresh_ack_without_command_replay(self):
+        log = self.log_fixture('previous day\n')
+        def rotate(*args, **kwargs):
+            log.rename(log.with_name('previous.log'))
+            log.write_text(self.ack_line(self.off))
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=rotate) as run:
+            self.assertEqual(self.checkpoint.command(self.owner, 'save-off', [self.off]), self.off)
+        run.assert_called_once()
+
+    def test_ack_in_original_log_survives_rollover(self):
+        log = self.log_fixture('previous day\n')
+        def rotate(*args, **kwargs):
+            with log.open('a') as f:
+                f.write(self.ack_line(self.off))
+            log.rename(log.with_name('previous.log'))
+            log.write_text('new day\n')
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=rotate) as run:
+            self.assertEqual(self.checkpoint.command(self.owner, 'save-off', [self.off]), self.off)
+        run.assert_called_once()
+
+    def test_stale_ack_before_command_is_not_accepted(self):
+        self.log_fixture(self.ack_line(self.off))
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run') as run:
+            with self.assertRaisesRegex(RuntimeError, 'did not acknowledge'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_rollover_to_preexisting_log_rejects_stale_ack(self):
+        log = self.log_fixture('previous day\n')
+        stale = log.with_name('stale.log')
+        stale.write_text(self.ack_line(self.off))
+        def replace(*args, **kwargs):
+            log.rename(log.with_name('previous.log'))
+            stale.rename(log)
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=replace) as run:
+            with self.assertRaisesRegex(RuntimeError, 'not newly created'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_rollover_does_not_accept_player_chat_or_replay(self):
+        log = self.log_fixture('previous day\n')
+        def rotate(*args, **kwargs):
+            log.rename(log.with_name('previous.log'))
+            log.write_text(f'[12:00:00] [Server thread/INFO]: <player> {self.off}\n')
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=rotate) as run:
+            with self.assertRaisesRegex(RuntimeError, 'did not acknowledge'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_rollover_tolerates_brief_missing_latest_log(self):
+        log = self.log_fixture('previous day\n')
+        def rotate(*args, **kwargs):
+            log.rename(log.with_name('previous.log'))
+        def finish_rotation(*args):
+            log.write_text(self.ack_line(self.off))
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=rotate) as run, \
+             patch('minecraft_checkpoint.time.sleep', side_effect=finish_rotation):
+            self.assertEqual(self.checkpoint.command(self.owner, 'save-off', [self.off]), self.off)
+        run.assert_called_once()
+
+    def test_partial_ack_requires_complete_line(self):
+        log = self.log_fixture()
+        line = self.ack_line(self.off)
+        def partial(*args, **kwargs):
+            log.write_text(line.rstrip('\n'))
+        def finish(*args):
+            with log.open('a') as f:
+                f.write('\n')
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=partial) as run, \
+             patch('minecraft_checkpoint.time.sleep', side_effect=finish) as sleep:
+            self.assertEqual(self.checkpoint.command(self.owner, 'save-off', [self.off]), self.off)
+        self.assertTrue(sleep.called)
+        run.assert_called_once()
+
+    def test_partial_lines_are_not_joined_across_rotated_logs(self):
+        log = self.log_fixture()
+        def rotate(*args, **kwargs):
+            log.write_text('[12:00:00] [Server thread/INFO]: Automatic saving ')
+            log.rename(log.with_name('previous.log'))
+            log.write_text('is now disabled\n')
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=rotate) as run:
+            with self.assertRaisesRegex(RuntimeError, 'did not acknowledge'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_truncation_fails_closed_without_replay(self):
+        log = self.log_fixture('old log ' * 100)
+        def truncate(*args, **kwargs):
+            log.write_text(self.ack_line(self.off))
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=truncate) as run:
+            with self.assertRaisesRegex(RuntimeError, 'truncated'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_changed_owner_cannot_supply_ack_after_console_write(self):
+        log = self.log_fixture()
+        def reply(*args, **kwargs):
+            log.write_text(self.ack_line(self.off))
+        with patch.object(self.checkpoint, 'running_info', side_effect=[self.owner, {'pid': 'other'}]), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=reply) as run:
+            with self.assertRaisesRegex(RuntimeError, 'process identity changed'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_rollover_requires_unchanged_server_owner(self):
+        log = self.log_fixture('previous day\n')
+        def rotate(*args, **kwargs):
+            log.rename(log.with_name('previous.log'))
+            log.write_text(self.ack_line(self.off))
+        with patch.object(self.checkpoint, 'running_info', side_effect=[self.owner, {'pid': 'other'}]), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=rotate) as run:
+            with self.assertRaisesRegex(RuntimeError, 'process identity changed'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_rollover_rejects_symlinked_log(self):
+        log = self.log_fixture('previous day\n')
+        target = self.base / 'other.log'
+        target.write_text(self.ack_line(self.off))
+        def replace(*args, **kwargs):
+            log.rename(log.with_name('previous.log'))
+            log.symlink_to(target)
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=replace) as run:
+            with self.assertRaisesRegex(RuntimeError, 'not a regular file'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_repeated_rollover_fails_closed_without_replay(self):
+        log = self.log_fixture('previous day\n')
+        def rotate(*args, **kwargs):
+            log.rename(log.with_name('previous.log'))
+            log.write_text('new day\n')
+        def second_rotation(*args):
+            log.rename(log.with_name('second.log'))
+            log.write_text(self.ack_line(self.off))
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=rotate) as run, \
+             patch('minecraft_checkpoint.time.sleep', side_effect=second_rotation):
+            with self.assertRaisesRegex(RuntimeError, 'rotated repeatedly'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off])
+        run.assert_called_once()
+
+    def test_rollover_without_creation_evidence_fails_closed(self):
+        from types import SimpleNamespace
+        log = self.log_fixture('previous day\n')
+        original_fstat = os.fstat
+        def metadata(fd):
+            info = original_fstat(fd)
+            return SimpleNamespace(st_dev=info.st_dev, st_ino=info.st_ino, st_size=info.st_size)
+        def rotate(*args, **kwargs):
+            log.rename(log.with_name('previous.log'))
+            log.write_text(self.ack_line(self.off))
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=rotate) as run, \
+             patch('minecraft_checkpoint.os.fstat', side_effect=metadata):
+            with self.assertRaisesRegex(RuntimeError, 'not newly created'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_oversized_partial_log_line_fails_closed_without_replay(self):
+        log = self.log_fixture()
+        def reply(*args, **kwargs):
+            log.write_bytes(b'x' * 65537)
+        with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+             patch('minecraft_checkpoint.subprocess.run', side_effect=reply) as run, \
+             patch('minecraft_checkpoint.time.sleep'):
+            with self.assertRaisesRegex(RuntimeError, 'exceeds checkpoint limit'):
+                self.checkpoint.command(self.owner, 'save-off', [self.off], timeout=0.02)
+        run.assert_called_once()
+
+    def test_live_checkpoint_restores_autosave_with_rollover_at_each_command(self):
+        import shutil
+        replies = {'save-off': self.off, 'save-all flush': 'Saved the game', 'save-on': self.on}
+        for rotate_at in replies:
+            with self.subTest(rotate_at=rotate_at):
+                log = self.log_fixture('previous day\n')
+                def console(args, **kwargs):
+                    command = args[-1].rstrip('\r')
+                    if command == rotate_at:
+                        log.rename(log.with_name('previous.log'))
+                    with log.open('a') as f:
+                        f.write(self.ack_line(replies[command]))
+                def clone():
+                    destination = self.checkpoint.stage / self.checkpoint.world_relative
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(self.world, destination)
+                with patch.object(self.checkpoint, 'running_info', return_value=self.owner), \
+                     patch('minecraft_checkpoint.subprocess.run', side_effect=console) as run, \
+                     patch.object(self.checkpoint, 'clone_world', side_effect=clone):
+                    manifest = self.checkpoint.create()
+                self.assertEqual([call.args[0][-1] for call in run.call_args_list],
+                                 ['save-off\r', 'save-all flush\r', 'save-on\r'])
+                self.assertEqual(manifest['mode'], 'save-paused-apfs-clone')
+                self.assertFalse(self.checkpoint.marker.exists())
+
     def test_ambiguous_listener_receives_no_console_write(self):
         with patch('minecraft_checkpoint.subprocess.run', side_effect=[
                 subprocess.CompletedProcess([], 0, '456.minecraft (Detached)', ''),
