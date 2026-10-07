@@ -11,6 +11,7 @@ Start with architecture to understand the app, or operations to build and run it
 | [Architecture](architecture.md) | How the components connect, security rules, and source links. |
 | [Operations](operations.md) | Builds, tests, signing, installation, and recovery. |
 | [Terminal recovery and notification taps](terminal-recovery-and-notification-taps.md) | Installed build 239, TLS-handshake isolation, repeat-tap handling, verification and rollback. |
+| [iPhone terminal links](iphone-terminal-links.md) | Installed build 260: tap-to-open, formatted-link destinations, Open Link / Copy Link and tmux forwarding; Watch launch/physical acceptance caveats. |
 | [Home automation cards](home-automations.md) | Source-only unsolicited-voice and Barn Door Protocol controls, safety boundaries, activation and rollout. |
 | [Navigation and Home](navigation-and-home.md) | JARVIS/Home/Terminal grouping, iPhone tab swipes, Watch Crown navigation and refresh ownership. |
 | [System dashboard](system-dashboard.md) | Compact Home-style iPhone/Watch health dashboards, navigation, cached-data rules, and validation. |

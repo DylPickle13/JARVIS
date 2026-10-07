@@ -300,6 +300,12 @@ Captured in Apple simulators with sample data. The video shows the UI animations
 
 Feature availability depends on the client build and host configuration. The [status notes](docs/planned-work.md) track the build and deployment details that still need checking.
 
+**Installed build 260:** [iPhone terminal links](docs/iphone-terminal-links.md)
+add tap-to-open and long-press Open Link / Copy Link for Pi's formatted links and
+plain web URLs, retaining ordinary text selection and fixed-step scrolling.
+Both device versions are verified; iPhone is running. Watch launch and physical
+gesture acceptance remain owner review.
+
 ## How it fits together
 
 - **iPhone terminal:** SwiftTerm and SwiftNIO SSH connect to fixed, persistent Mac-side Pi sessions.

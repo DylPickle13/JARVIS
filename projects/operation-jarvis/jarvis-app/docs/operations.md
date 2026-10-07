@@ -1,5 +1,36 @@
 # Native app build and operations
 
+## iPhone terminal links — installed build 260
+
+Owner approved installation on 2026-10-07 and supplied fresh readiness after two
+read-only Watch developer-service failures. A new check passed both allowlisted
+devices' identities, compatible DDI, unlock state and installed-259 baselines;
+the installer repeated all immediate gates. **260 installed once per device**
+from the exact audited archive, with both versions independently verified at
+**11:30 EDT**. iPhone launch/current process is verified. The Watch launch returned
+a PID, but that process was absent at the follow-up and independent read-only
+check. Watch launch/physical acceptance remains owner review; no install or launch
+was replayed. The original stopped installer receipt is retained.
+
+Frozen 269-input validation passed **202 iPhone tests**, **347 shared cases**
+(three expected live skips), **39 terminal cases**, both simulator builds, and
+eight candidate/rollback signature checks with byte-identical profiles and
+unchanged entitlements/dependency locks. The existing plain Paste pixel exclusion
+remains. An offline builder stopped after passing native tests because Xcode had
+already shut down the dedicated simulator; a new continuation retained that stop
+and completed the remaining checks/archive without altering tested sources.
+
+Read-only post-verification preserved all **18 service records** (17 continuous),
+existing Pi/Minecraft/gateway identities, current verified network-only frame
+backend, configuration/authentication and ten-second history cadence. The
+preservation helper was updated to verify that backend release's explicitly
+retained preceding registry against its exact declared path/hash and immutable
+configuration receipt; no protection gate was removed. No service restart, Pi
+input, manual live tmux reload, credential/profile/dependency change, portal
+update, reinstall, relaunch retry, physical output test or pruning occurred.
+Exact signed installed **259** remains rollback. Private evidence:
+`20261007T150514Z-build260-terminal-links`. See [interaction and limits](iphone-terminal-links.md).
+
 ## Token rollout reversal — installed build 259
 
 Owner requested undo on 2026-10-06. Pre-enrollment API/client/Watch behavior is

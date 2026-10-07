@@ -797,6 +797,7 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     var outboundBytesObserver: (([UInt8]) -> Void)?
     var clipboardTextReader: () -> String? = { UIPasteboard.general.string }
     var clipboardWriter: (String) -> Void = { UIPasteboard.general.string = $0 }
+    var linkOpener: (URL) -> Void = { UIApplication.shared.open($0) }
     var pasteReviewChanged: ((PiTerminalPasteReview?) -> Void)?
     var pasteErrorChanged: ((String?) -> Void)?
     private var pasteRequestID = UUID()
@@ -806,6 +807,8 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     private lazy var selectionMenu = UIEditMenuInteraction(delegate: self)
     private var selectionBoundsSize = CGSize.zero
     private var inlineSelectionSurface: TerminalView?
+    private var inlineSelectionLink: URL?
+    private var inlineSelectionID = UUID()
 
 
     override init(frame: CGRect) {
@@ -904,14 +907,13 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
         isDirectionalLockEnabled = true
         panGestureRecognizer.isEnabled = false
 
-        // Replace selection gestures selectively below; keep native scroll and
-        // its selection-pan fallback (which may send cursor keys) disabled.
+        // Replace selection and tap gestures selectively below. SwiftTerm's
+        // single tap requires the terminal itself to be first responder and a
+        // hovered link; our keyboard proxy and touch-only iPhone supply neither.
+        // Keep its selection-pan fallback (which may send cursor keys) disabled.
         for recognizer in gestureRecognizers ?? [] {
-            if recognizer is UILongPressGestureRecognizer {
+            if recognizer is UILongPressGestureRecognizer || recognizer is UITapGestureRecognizer {
                 recognizer.isEnabled = false
-            } else if let tap = recognizer as? UITapGestureRecognizer,
-                      tap.numberOfTapsRequired > 1 {
-                tap.isEnabled = false
             }
         }
 
@@ -1299,8 +1301,8 @@ final class PiTerminalHostView: TerminalView, @MainActor TerminalViewDelegate, U
     func bell(source: TerminalView) { UINotificationFeedbackGenerator().notificationOccurred(.success) }
 
     func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
-        guard let url = URL(string: link), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
-        UIApplication.shared.open(url)
+        guard let url = Self.webLinkURL(link) else { return }
+        linkOpener(url)
     }
 }
 
@@ -1331,6 +1333,7 @@ extension PiTerminalHostView: UIEditMenuInteractionDelegate {
         surface.isScrollEnabled = false
         let frozen = surface.getTerminal()
         frozen.resize(cols: source.cols, rows: source.rows)
+        var linkPayloads: [String: TinyAtom] = [:]
         for row in 0..<source.rows {
             guard let original = source.bufferLine(atRow: source.buffer.yDisp + row),
                   let target = frozen.bufferLine(atRow: row) else { continue }
@@ -1339,8 +1342,15 @@ extension PiTerminalHostView: UIEditMenuInteractionDelegate {
             // and combining sequences instead of copying foreign character IDs.
             for col in 0..<min(source.cols, original.count) {
                 let cell = original[col]
-                target[col] = frozen.makeCharData(attribute: cell.attribute,
+                var heldCell = frozen.makeCharData(attribute: cell.attribute,
                                                    char: source.getCharacter(for: cell), size: cell.width)
+                // OSC 8 destinations need their own terminal-managed atoms too:
+                // a live redraw/reset must not invalidate the held link metadata.
+                if let payload = cell.getPayload() as? String {
+                    if linkPayloads[payload] == nil { linkPayloads[payload] = frozen.makePayload(value: payload) }
+                    if let atom = linkPayloads[payload] { heldCell.setPayload(atom: atom) }
+                }
+                target[col] = heldCell
             }
         }
         frozen.hideCursor()
@@ -1365,10 +1375,14 @@ extension PiTerminalHostView: UIEditMenuInteractionDelegate {
         let dismiss = UITapGestureRecognizer(target: self, action: #selector(dismissSelectionTap(_:)))
         dismiss.delegate = self
         inlineSelectionDismiss = dismiss
-        for tap in (gestureRecognizers ?? []).compactMap({ $0 as? UITapGestureRecognizer }) {
-            if tap.numberOfTapsRequired == 1 { tap.require(toFail: dismiss) }
-        }
+        dismiss.name = "jarvis.inline-selection.dismiss"
         addGestureRecognizer(dismiss)
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTerminalTap(_:)))
+        tap.name = "jarvis.terminal.tap"
+        tap.delegate = self
+        tap.require(toFail: dismiss)
+        tap.require(toFail: hold)
+        addGestureRecognizer(tap)
         accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Select terminal text", target: self, selector: #selector(selectAccessibleText))]
     }
 
@@ -1379,7 +1393,7 @@ extension PiTerminalHostView: UIEditMenuInteractionDelegate {
         let col = Int(max(0, point.x) / max(1, size.width))
         let row = Int(max(0, point.y) / max(1, size.height))
         return Position(col: min(max(0, col), max(0, terminal.cols - 1)),
-                        row: min(max(terminal.buffer.yDisp, row), terminal.buffer.yDisp + max(0, terminal.rows - 1)))
+                        row: terminal.buffer.yDisp + min(max(0, row), max(0, terminal.rows - 1)))
     }
 
     @objc private func selectInlineWord(_ gesture: UILongPressGestureRecognizer) {
@@ -1388,11 +1402,16 @@ extension PiTerminalHostView: UIEditMenuInteractionDelegate {
     }
 
     func selectInlineWord(at point: CGPoint) {
+        // Resolve before cropping to visible rows: a plain URL can start above
+        // the viewport and continue into the cell being pressed.
+        let link = terminalLink(at: point, on: inlineSelectionSurface ?? self)
         guard let surface = holdInlinePresentation() else { return }
         let terminal = surface.getTerminal()
         let selection = surface.selection!
         selection.selectWordOrExpression(at: selectionPosition(at: point), in: terminal.buffer)
         selection.selectionMode = .character
+        inlineSelectionID = UUID()
+        inlineSelectionLink = link
         showInlineSelectionMenu(at: point)
     }
 
@@ -1415,6 +1434,10 @@ extension PiTerminalHostView: UIEditMenuInteractionDelegate {
     func extendInlineSelection(to point: CGPoint, startsDrag: Bool) {
         guard hasSelection, let selection = inlineSelectionSurface?.selection else { return }
         let hit = selectionPosition(at: point)
+        // Handle editing changes this to a text selection, not a link action
+        // anchored to the original press. Invalidate already-presented actions.
+        inlineSelectionLink = nil
+        inlineSelectionID = UUID()
         if startsDrag {
             selectionMenu.dismissMenu()
             let start = selection.start, end = selection.end
@@ -1431,6 +1454,8 @@ extension PiTerminalHostView: UIEditMenuInteractionDelegate {
     }
 
     func dismissInlineSelection() {
+        inlineSelectionID = UUID()
+        inlineSelectionLink = nil
         clearSelection()
         inlineSelectionSurface?.updateUiClosed()
         inlineSelectionSurface?.removeFromSuperview()
@@ -1446,15 +1471,75 @@ extension PiTerminalHostView: UIEditMenuInteractionDelegate {
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
                              suggestedActions: [UIMenuElement]) -> UIMenu? {
         guard hasSelection else { return UIMenu(children: []) }
-        return UIMenu(children: [UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in
-            self?.copyInlineSelection()
-        }])
+        let selectionID = inlineSelectionID
+        var actions = [UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in
+            guard let self, self.inlineSelectionID == selectionID else { return }
+            self.copyInlineSelection()
+        }]
+        if inlineSelectionLink != nil {
+            actions.append(UIAction(title: "Open Link", image: UIImage(systemName: "safari")) { [weak self] _ in
+                guard let self, self.inlineSelectionID == selectionID else { return }
+                self.openInlineSelectionLink()
+            })
+            actions.append(UIAction(title: "Copy Link", image: UIImage(systemName: "link")) { [weak self] _ in
+                guard let self, self.inlineSelectionID == selectionID else { return }
+                self.copyInlineSelectionLink()
+            })
+        }
+        return UIMenu(children: actions)
     }
 
     func copyInlineSelection() {
         guard hasSelection else { return }
         if let text = selectedInlineText { clipboardWriter(text) }
         dismissInlineSelection()
+    }
+
+    func openInlineSelectionLink() {
+        guard hasSelection, let url = inlineSelectionLink else { return }
+        dismissInlineSelection()
+        linkOpener(url)
+    }
+
+    func copyInlineSelectionLink() {
+        guard hasSelection, let url = inlineSelectionLink else { return }
+        clipboardWriter(url.absoluteString)
+        dismissInlineSelection()
+    }
+
+    // Use the public cell-aware lookup: OSC 8 first, then plain URL detection,
+    // including logical wraps and wide graphemes. Never infer a destination from
+    // a formatted label, or activate a clamped cell outside the actual viewport.
+    func terminalLink(at point: CGPoint, on surface: TerminalView? = nil) -> URL? {
+        let surface = surface ?? self
+        let terminal = surface.getTerminal()
+        let cell = surface.caretFrame.size
+        guard !terminal.synchronizedOutputActive,
+              point.x.isFinite, point.y.isFinite, surface.bounds.contains(point),
+              cell.width.isFinite, cell.height.isFinite, cell.width >= 1, cell.height >= 1 else { return nil }
+        let col = Int((point.x - surface.bounds.minX) / cell.width)
+        let row = Int((point.y - surface.bounds.minY) / cell.height)
+        guard col >= 0, col < terminal.cols, row >= 0, row < terminal.rows,
+              let link = terminal.link(at: .screen(Position(col: col, row: row)), mode: .explicitAndImplicit) else { return nil }
+        return Self.webLinkURL(link)
+    }
+
+    private static func webLinkURL(_ link: String) -> URL? {
+        guard !link.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0) }),
+              let url = URL(string: link), ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              let host = url.host, !host.isEmpty else { return nil }
+        return url
+    }
+
+    @objc private func handleTerminalTap(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        handleTerminalTap(at: gesture.location(in: self))
+    }
+
+    func handleTerminalTap(at point: CGPoint) {
+        if hasSelection { dismissInlineSelection(); return }
+        if let url = terminalLink(at: point) { linkOpener(url) }
+        else { _ = becomeFirstResponder() }
     }
 
     func receiveTerminalOutput(_ bytes: [UInt8]) {

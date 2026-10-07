@@ -542,6 +542,280 @@ final class PiTerminalClipboardTests: XCTestCase {
         XCTAssertFalse(proxy.canPerformAction(#selector(UIResponderStandardEditActions.copy(_:)), withSender: nil))
     }
 
+    private func linkPoint(_ view: PiTerminalHostView, column: Int = 0, row: Int = 0) -> CGPoint {
+        CGPoint(x: (CGFloat(column) + 0.5) * view.caretFrame.width,
+                y: (CGFloat(row) + 0.5) * view.caretFrame.height)
+    }
+
+    private func formattedLink(_ label: String = "Docs", url: String = "https://example.com/docs") -> String {
+        "\u{1b}]8;id=fixture;\(url)\u{1b}\\\(label)\u{1b}]8;;\u{1b}\\"
+    }
+
+    private func linkMenu(_ view: PiTerminalHostView) throws -> [UIAction] {
+        let interaction = try XCTUnwrap(view.interactions.compactMap { $0 as? UIEditMenuInteraction }.first)
+        let menu = try XCTUnwrap(view.editMenuInteraction(interaction,
+            menuFor: UIEditMenuConfiguration(identifier: nil, sourcePoint: .zero), suggestedActions: []))
+        return menu.children.compactMap { $0 as? UIAction }
+    }
+
+    private func performMenuAction(_ action: UIAction) {
+        let button = UIButton(type: .system)
+        button.addAction(action, for: .touchUpInside)
+        button.sendActions(for: .touchUpInside)
+    }
+
+    func testTerminalFormattedLinkUsesHiddenDestinationIncludingURLSemicolons() {
+        let view = terminal()
+        defer { view.updateUiClosed() }
+        let url = "https://example.com/a;b?query=one%20two#details"
+        view.receiveTerminalOutput(Array(formattedLink("Read docs", url: url).utf8))
+        XCTAssertEqual(view.terminalLink(at: linkPoint(view, column: 6))?.absoluteString, url)
+        XCTAssertNil(view.terminalLink(at: linkPoint(view, column: 15)))
+    }
+
+    func testTerminalPlainURLDetectionHandlesPunctuationAndLogicalWraps() {
+        let view = terminal()
+        defer { view.updateUiClosed() }
+        let url = "https://example.com/" + String(repeating: "a", count: view.getTerminal().cols)
+        view.receiveTerminalOutput(Array("(\(url)) more".utf8))
+        XCTAssertEqual(view.terminalLink(at: linkPoint(view, column: 4))?.absoluteString, url)
+        XCTAssertEqual(view.terminalLink(at: linkPoint(view, column: 2, row: 1))?.absoluteString, url)
+        XCTAssertNil(view.terminalLink(at: linkPoint(view)))
+    }
+
+    func testTerminalLongPressResolvesWrappedURLStartingAboveVisibleViewport() throws {
+        let view = terminal()
+        defer { view.dismissInlineSelection(); view.updateUiClosed() }
+        let url = "https://example.com/" + String(repeating: "a", count: view.getTerminal().cols)
+        view.receiveTerminalOutput(Array((url + String(repeating: "\r\n", count: view.getTerminal().rows - 1)).utf8))
+        XCTAssertEqual(view.getTerminal().buffer.yDisp, 1)
+        XCTAssertEqual(view.terminalLink(at: linkPoint(view, column: 2))?.absoluteString, url)
+        var copied: [String] = []
+        view.clipboardWriter = { copied.append($0) }
+        view.selectInlineWord(at: linkPoint(view, column: 2))
+        performMenuAction(try XCTUnwrap(try linkMenu(view).first { $0.title == "Copy Link" }))
+        XCTAssertEqual(copied, [url])
+    }
+
+    func testTerminalIncompleteSynchronizedFrameCannotActivateLink() {
+        let view = terminal()
+        defer { view.updateUiClosed() }
+        var opened: [URL] = []
+        view.linkOpener = { opened.append($0) }
+        view.receiveTerminalOutput(Array(("\u{1b}[?2026h" + formattedLink()).utf8))
+        XCTAssertTrue(view.getTerminal().synchronizedOutputActive)
+        XCTAssertNil(view.terminalLink(at: linkPoint(view)))
+        view.handleTerminalTap(at: linkPoint(view))
+        XCTAssertTrue(opened.isEmpty)
+        view.receiveTerminalOutput(Array("\u{1b}[?2026l".utf8))
+        view.handleTerminalTap(at: linkPoint(view))
+        XCTAssertEqual(opened.map(\.absoluteString), ["https://example.com/docs"])
+    }
+
+    func testMobileTerminalProfileAdvertisesFormattedLinkForwardingForIPhonePTY() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let profile = try String(contentsOf: root.appendingPathComponent("config/jarvis-mobile.tmux.conf"), encoding: .utf8)
+        XCTAssertTrue(profile.contains("xterm-256color:RGB:extkeys:hyperlinks"),
+                      "tmux must preserve OSC 8 for SwiftTerm's xterm-256color SSH PTY")
+    }
+
+    func testTerminalFormattedLinkRecognizesBothHalvesOfWideGrapheme() {
+        let view = terminal()
+        defer { view.updateUiClosed() }
+        view.receiveTerminalOutput(Array(formattedLink("😀 cafe\u{301}").utf8))
+        for column in [0, 1, 3, 6] {
+            XCTAssertEqual(view.terminalLink(at: linkPoint(view, column: column))?.absoluteString, "https://example.com/docs")
+        }
+    }
+
+    func testTerminalLinkTapOpensWithoutKeyboardClipboardReadOrRemoteInput() {
+        let view = terminal()
+        defer { view.updateUiClosed() }
+        var opened: [URL] = [], sent: [[UInt8]] = []
+        var reads = 0
+        view.linkOpener = { opened.append($0) }
+        view.outboundBytesObserver = { sent.append($0) }
+        view.clipboardTextReader = { reads += 1; return "not needed" }
+        view.receiveTerminalOutput(Array(("\u{1b}[?1002h" + formattedLink()).utf8))
+        XCTAssertTrue(opened.isEmpty, "Output alone cannot activate links")
+        view.handleTerminalTap(at: linkPoint(view))
+        XCTAssertEqual(opened.map(\.absoluteString), ["https://example.com/docs"])
+        XCTAssertFalse(view.isTerminalKeyboardFocused)
+        XCTAssertTrue(sent.isEmpty)
+        XCTAssertEqual(reads, 0)
+    }
+
+    func testTerminalLinkMenuCopiesDestinationWhileOrdinaryCopyKeepsLabel() throws {
+        let view = terminal()
+        defer { view.dismissInlineSelection(); view.updateUiClosed() }
+        var copied: [String] = [], opened: [URL] = []
+        view.clipboardWriter = { copied.append($0) }
+        view.linkOpener = { opened.append($0) }
+        view.receiveTerminalOutput(Array(formattedLink().utf8))
+        view.selectInlineWord(at: linkPoint(view))
+        let actions = try linkMenu(view)
+        XCTAssertEqual(actions.map(\.title), ["Copy", "Open Link", "Copy Link"])
+        XCTAssertTrue(copied.isEmpty)
+        performMenuAction(try XCTUnwrap(actions.first { $0.title == "Copy Link" }))
+        XCTAssertEqual(copied, ["https://example.com/docs"])
+        XCTAssertNil(view.selectedInlineText)
+        view.selectInlineWord(at: linkPoint(view))
+        performMenuAction(try XCTUnwrap(try linkMenu(view).first { $0.title == "Copy" }))
+        XCTAssertEqual(copied, ["https://example.com/docs", "Docs"])
+        XCTAssertTrue(opened.isEmpty)
+    }
+
+    func testTerminalLinkMenuOpensHeldDestinationDuringLiveRedraw() throws {
+        let view = terminal()
+        defer { view.dismissInlineSelection(); view.updateUiClosed() }
+        var opened: [URL] = [], sent: [[UInt8]] = []
+        view.linkOpener = { opened.append($0) }
+        view.outboundBytesObserver = { sent.append($0) }
+        view.receiveTerminalOutput(Array(formattedLink().utf8))
+        view.selectInlineWord(at: linkPoint(view))
+        let held = try XCTUnwrap(view.subviews.compactMap { $0 as? TerminalView }.first)
+        // A terminal reset releases the original payload atoms. Held cells own
+        // their metadata independently and must still point to the old URL.
+        view.receiveTerminalOutput(Array(("\u{1b}c" + formattedLink("New", url: "https://example.com/new")).utf8))
+        XCTAssertEqual(view.terminalLink(at: linkPoint(view))?.absoluteString, "https://example.com/new")
+        XCTAssertEqual(view.terminalLink(at: linkPoint(view), on: held)?.absoluteString, "https://example.com/docs")
+        XCTAssertEqual(view.selectedInlineText, "Docs")
+        performMenuAction(try XCTUnwrap(try linkMenu(view).first { $0.title == "Open Link" }))
+        XCTAssertEqual(opened.map(\.absoluteString), ["https://example.com/docs"])
+        XCTAssertNil(view.selectedInlineText)
+        XCTAssertTrue(sent.isEmpty)
+        XCTAssertFalse(view.isTerminalKeyboardFocused)
+    }
+
+    func testTerminalPlainURLHasOpenAndCopyLinkMenu() throws {
+        let view = terminal()
+        defer { view.dismissInlineSelection(); view.updateUiClosed() }
+        var copied: [String] = []
+        view.clipboardWriter = { copied.append($0) }
+        view.receiveTerminalOutput(Array("https://example.com/docs".utf8))
+        view.selectInlineWord(at: linkPoint(view, column: 12))
+        let actions = try linkMenu(view)
+        XCTAssertEqual(actions.map(\.title), ["Copy", "Open Link", "Copy Link"])
+        performMenuAction(try XCTUnwrap(actions.first { $0.title == "Copy Link" }))
+        XCTAssertEqual(copied, ["https://example.com/docs"])
+    }
+
+    func testTerminalNonLinkSelectionRetainsCopyOnly() throws {
+        let view = terminal()
+        defer { view.dismissInlineSelection(); view.updateUiClosed() }
+        view.receiveTerminalOutput(Array("hello world".utf8))
+        view.selectInlineWord(at: linkPoint(view))
+        XCTAssertEqual(try linkMenu(view).map(\.title), ["Copy"])
+    }
+
+    func testTerminalOldMenuActionsCannotCrossDismissTransitionResizeOrNewSelection() throws {
+        for invalidation in ["dismiss", "transition", "resize", "reselect", "drag"] {
+            let view = terminal()
+            defer { view.dismissInlineSelection(); view.updateUiClosed() }
+            var opened: [URL] = [], copied: [String] = []
+            view.linkOpener = { opened.append($0) }
+            view.clipboardWriter = { copied.append($0) }
+            view.receiveTerminalOutput(Array(formattedLink().utf8))
+            view.selectInlineWord(at: linkPoint(view))
+            let oldActions = try linkMenu(view)
+            switch invalidation {
+            case "transition": view.beginTerminalInputTransition(generation: 1, restoreKeyboard: false)
+            case "resize": view.frame.size.width = 320; view.layoutIfNeeded()
+            case "reselect": view.selectInlineWord(at: linkPoint(view))
+            case "drag": view.extendInlineSelection(to: linkPoint(view, column: 6), startsDrag: true)
+            default: view.dismissInlineSelection()
+            }
+            for action in oldActions { performMenuAction(action) }
+            XCTAssertTrue(opened.isEmpty, invalidation)
+            XCTAssertTrue(copied.isEmpty, invalidation)
+        }
+    }
+
+    func testTerminalSelectionHandleEditingRemovesLinkActions() throws {
+        let view = terminal()
+        defer { view.dismissInlineSelection(); view.updateUiClosed() }
+        view.receiveTerminalOutput(Array((formattedLink() + " ordinary text").utf8))
+        view.selectInlineWord(at: linkPoint(view))
+        view.extendInlineSelection(to: linkPoint(view, column: 4), startsDrag: true)
+        view.extendInlineSelection(to: linkPoint(view, column: 12), startsDrag: false)
+        XCTAssertEqual(try linkMenu(view).map(\.title), ["Copy"])
+    }
+
+    func testTerminalTapDismissesSelectionRatherThanOpeningUnderlyingLink() {
+        let view = terminal()
+        defer { view.dismissInlineSelection(); view.updateUiClosed() }
+        var opened: [URL] = []
+        view.linkOpener = { opened.append($0) }
+        view.receiveTerminalOutput(Array(formattedLink().utf8))
+        view.selectInlineWord(at: linkPoint(view))
+        view.handleTerminalTap(at: linkPoint(view))
+        XCTAssertNil(view.selectedInlineText)
+        XCTAssertTrue(opened.isEmpty)
+        XCTAssertFalse(view.isTerminalKeyboardFocused)
+        view.handleTerminalTap(at: linkPoint(view))
+        XCTAssertEqual(opened.count, 1)
+    }
+
+    func testTerminalLinkLookupRejectsOutsideViewportAndUnsupportedDestinations() throws {
+        let view = terminal()
+        defer { view.dismissInlineSelection(); view.updateUiClosed() }
+        var opened: [URL] = []
+        view.linkOpener = { opened.append($0) }
+        for link in ["javascript:alert(1)", "file:///tmp/file", "mailto:test@example.com", "jarvis://terminal",
+                     "https:///", "https://example.com/has space"] {
+            view.receiveTerminalOutput(Array(("\u{1b}c" + formattedLink(url: link)).utf8))
+            XCTAssertNil(view.terminalLink(at: linkPoint(view)), link)
+            view.selectInlineWord(at: linkPoint(view))
+            XCTAssertEqual(try linkMenu(view).map(\.title), ["Copy"], link)
+            view.dismissInlineSelection()
+            view.requestOpenLink(source: view, link: link, params: [:])
+        }
+        XCTAssertTrue(opened.isEmpty)
+        view.receiveTerminalOutput(Array(("\u{1b}c" + formattedLink()).utf8))
+        for point in [CGPoint(x: -1, y: 2), CGPoint(x: 2, y: -1), CGPoint(x: view.bounds.maxX, y: 2),
+                      CGPoint(x: 2, y: view.bounds.maxY), CGPoint(x: CGFloat.infinity, y: 2)] {
+            XCTAssertNil(view.terminalLink(at: point))
+        }
+    }
+
+    func testTerminalCustomTapReplacesFocusDependentLibraryTapAndPreservesSelectionArbitration() throws {
+        let view = terminal()
+        defer { view.dismissInlineSelection(); view.updateUiClosed() }
+        let taps = (view.gestureRecognizers ?? []).compactMap { $0 as? UITapGestureRecognizer }
+        XCTAssertEqual(Set(taps.filter(\.isEnabled).compactMap(\.name)),
+                       Set(["jarvis.terminal.tap", "jarvis.inline-selection.dismiss"]))
+        let tap = try XCTUnwrap(taps.first { $0.name == "jarvis.terminal.tap" })
+        let dismiss = try XCTUnwrap(taps.first { $0.name == "jarvis.inline-selection.dismiss" })
+        XCTAssertTrue(tap.delegate === view)
+        XCTAssertTrue(view.gestureRecognizerShouldBegin(tap))
+        XCTAssertFalse(view.gestureRecognizerShouldBegin(dismiss))
+        view.receiveTerminalOutput(Array(formattedLink().utf8))
+        view.selectInlineWord(at: linkPoint(view))
+        XCTAssertFalse(view.gestureRecognizerShouldBegin(tap))
+        XCTAssertTrue(view.gestureRecognizerShouldBegin(dismiss))
+        XCTAssertFalse(view.gestureRecognizer(tap, shouldRecognizeSimultaneouslyWith: view.panGestureRecognizer))
+    }
+
+    func testTerminalLinkTapWorksWithKeyboardProxyAlreadyFocused() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let view = terminal()
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        window.rootViewController = host; host.view.addSubview(view); window.makeKeyAndVisible()
+        defer { window.endEditing(true); window.isHidden = true; view.updateUiClosed() }
+        let proxy = try XCTUnwrap(view.subviews.compactMap { $0 as? PiTerminalKeyboardResponder }.first)
+        proxy.inputView = UIView(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        XCTAssertTrue(view.becomeFirstResponder())
+        XCTAssertTrue(view.isTerminalKeyboardFocused)
+        XCTAssertFalse(view.isFirstResponder, "The keyboard proxy, not SwiftTerm, owns focus")
+        var opened: [URL] = []
+        view.linkOpener = { opened.append($0) }
+        view.receiveTerminalOutput(Array(formattedLink().utf8))
+        view.handleTerminalTap(at: linkPoint(view))
+        XCTAssertEqual(opened.count, 1)
+        XCTAssertTrue(view.isTerminalKeyboardFocused, "Opening a link must not steal or reopen keyboard focus")
+    }
+
     func testHeldInlinePresentationMatchesOriginalPixels() async throws {
         let view = terminal()
         defer { view.dismissInlineSelection(); view.updateUiClosed() }
