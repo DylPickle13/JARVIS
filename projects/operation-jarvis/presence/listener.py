@@ -32,7 +32,7 @@ def load_devices(path):
     return devices
 
 
-def pooled_corebluetooth_backend(base, pool):
+def pooled_corebluetooth_backend(base, pool, *, allowed_addresses=None):
     """Drain Cocoa temporaries on the asyncio thread, once per BLE event.
 
     Bleak 2.1.1 dispatches did_discover_peripheral onto asyncio, outside the
@@ -40,17 +40,30 @@ def pooled_corebluetooth_backend(base, pool):
     dispatch, not just observed(): advertisement conversion precedes it.
     No pool spans an await. This private backend seam is covered by an
     installed-dependency regression test; review it when upgrading Bleak.
+    Filter enrolled identities before conversion/cache insertion in production;
+    None deliberately preserves full discovery for the explicit 30-second mode.
     """
+    allowed = (None if allowed_addresses is None
+               else frozenset(address.upper() for address in allowed_addresses))
+
     class PooledCoreBluetoothScanner(base):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             dispatch = self._manager.did_discover_peripheral
-            if not callable(dispatch) or inspect.iscoroutinefunction(dispatch):
+            if (not callable(dispatch) or inspect.iscoroutinefunction(dispatch)
+                    or (allowed is not None
+                        and 'peripheral' not in inspect.signature(dispatch).parameters)):
                 raise RuntimeError('Unsupported CoreBluetooth dispatch API')
 
             @wraps(dispatch)
             def pooled_dispatch(*args, **kwargs):
                 with pool():
+                    if allowed is not None:
+                        peripheral = args[1] if len(args) > 1 else kwargs.get('peripheral')
+                        if peripheral is None:
+                            raise RuntimeError('Unsupported CoreBluetooth callback arguments')
+                        if str(peripheral.identifier().UUIDString()).upper() not in allowed:
+                            return None
                     return dispatch(*args, **kwargs)
 
             # Installed before start() can begin scanning. The native delegate
@@ -75,7 +88,10 @@ async def run(discover=False):
             candidates[device.address] = {"name": device.name, "rssi": advertisement.rssi}
 
     try:
-        backend = pooled_corebluetooth_backend(BleakScannerCoreBluetooth, autorelease_pool)
+        backend = pooled_corebluetooth_backend(
+            BleakScannerCoreBluetooth, autorelease_pool,
+            allowed_addresses=None if discover else (config['uuid'] for config in devices.values()),
+        )
         async with BleakScanner(detection_callback=observed, backend=backend):
             if discover:
                 await asyncio.sleep(30)

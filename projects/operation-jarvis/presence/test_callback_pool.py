@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import sys
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from listener import pooled_corebluetooth_backend
 
@@ -53,6 +54,54 @@ class PoolTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             pooled_corebluetooth_backend(Backend, None)()
 
+    def test_filter_runs_inside_pool_before_dispatch(self):
+        depth = [0]
+        calls = []
+
+        @contextmanager
+        def pool():
+            depth[0] += 1
+            try:
+                yield
+            finally:
+                depth[0] -= 1
+
+        class Peripheral:
+            def __init__(self, address):
+                self.address = address
+
+            def identifier(inner):
+                self.assertEqual(depth[0], 1)
+                return SimpleNamespace(UUIDString=lambda: inner.address)
+
+        class Manager:
+            def did_discover_peripheral(self, central, peripheral, **kwargs):
+                calls.append(peripheral.address)
+
+        class Backend:
+            def __init__(self):
+                self._manager = Manager()
+
+        scanner = pooled_corebluetooth_backend(
+            Backend, pool, allowed_addresses=['ABCDEF'])()
+        callback = scanner._manager.did_discover_peripheral
+        callback(None, Peripheral('other'))
+        callback(None, peripheral=Peripheral('abcdef'))
+        self.assertEqual(calls, ['abcdef'])
+        self.assertEqual(depth[0], 0)
+
+    def test_filter_rejects_changed_private_signature_before_start(self):
+        class Manager:
+            def did_discover_peripheral(self, changed_argument):
+                pass
+
+        class Backend:
+            def __init__(self):
+                self._manager = Manager()
+
+        with self.assertRaises(RuntimeError):
+            pooled_corebluetooth_backend(Backend, None, allowed_addresses=[])()
+
     def test_installed_bleak_dispatch_and_retained_values(self):
         if sys.platform != 'darwin':
             self.skipTest('CoreBluetooth dependency test requires macOS')
@@ -83,8 +132,11 @@ class PoolTests(unittest.TestCase):
                 self.started = False
 
         class Peripheral:
+            def __init__(self, number=1):
+                self.number = number
+
             def identifier(self):
-                return NSUUID.alloc().initWithUUIDString_('00000000-0000-0000-0000-000000000001')
+                return NSUUID.alloc().initWithUUIDString_(f'00000000-0000-0000-0000-{self.number:012x}')
 
             def name(self):
                 return 'Synthetic test'
@@ -129,6 +181,35 @@ class PoolTests(unittest.TestCase):
             self.assertEqual(len(adv.platform_data[1]['kCBAdvDataManufacturerData']), 6)
             await scanner.stop()
             self.assertFalse(scanner._manager.callbacks)
+
+            # Production retains only enrolled devices; empty enrollment keeps
+            # none. Explicit discovery must still collect every synthetic ID.
+            known = ['00000000-0000-0000-0000-000000000001',
+                     '00000000-0000-0000-0000-000000000002']
+            for allowed, expected in [(known, 2), ([], 0), (None, 1000)]:
+                with patch.object(module, 'CentralManagerDelegate', FakeManager):
+                    backend = pooled_corebluetooth_backend(
+                        module.BleakScannerCoreBluetooth, pool,
+                        allowed_addresses=allowed)
+                    scanner = backend(observer, None, 'active', cb={})
+                await scanner.start()
+                before = len(observed)
+                for number in range(1, 1001):
+                    scanner._manager.did_discover_peripheral(
+                        None, Peripheral(number), data, NSNumber.numberWithInt_(-60))
+                self.assertEqual(len(scanner.seen_devices), expected)
+                self.assertEqual(len(observed) - before, expected)
+                if allowed:
+                    for key, (device, adv) in scanner.seen_devices.items():
+                        self.assertIn(str(key).upper(), known)
+                        self.assertEqual(str(adv.platform_data[0].identifier().UUIDString()), device.address)
+                        self.assertEqual(adv.manufacturer_data[76], b'test')
+                    scanner._manager.did_discover_peripheral(
+                        None, Peripheral(), data, NSNumber.numberWithInt_(-75))
+                    self.assertEqual(len(scanner.seen_devices), 2)
+                    self.assertEqual(scanner.seen_devices[known[0]][1].rssi, -75)
+                await scanner.stop()
+                self.assertFalse(scanner._manager.callbacks)
 
         asyncio.run(check())
 

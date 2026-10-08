@@ -56,6 +56,37 @@ independent server verification are both retained. These Python changes require
 an explicitly authorized restart of affected endpoint clients and room servers to
 activate; they do not require replacing or resetting Session 10.
 
+## Completed-response cache lifecycle
+
+The HTTP server's existing `serve_forever` housekeeping lane expires completed
+response/audio payloads even with no incoming requests (default polling interval
+0.5 seconds). It adds no timer thread, agent request, audio capture or playback.
+Pending turns are never removed by this sweep. The existing
+`JARVIS_ROOM_AUDIO_ASYNC_JOB_TTL_SECONDS` remains **900 seconds by default**;
+completed results retain that full retry/polling window after completion, with
+safe timestamp fallbacks for cancelled/older entries. Hot Piper/wake models and
+approved announcement banks are not unloaded or altered.
+
+`test_room_audio_cache.py` covers genuine idle-server expiry, active-turn safety,
+completion-based retention, cancellation, old-entry compatibility and no
+session/control side effects. This is an expiry fix, not a new count/byte cap
+that could discard a valid response before a client receives it. Restart only
+the affected idle audio servers to activate; preserve clients, shared Session 10
+and its history. Never replay a lost voice request during reconnect.
+
+Owner-approved activation on October 8, 2026 replaced only the two audio server
+processes. Both clients recovered with fresh idle heartbeats; metadata health
+confirmed Session 10 routing, installed ASR assets, unchanged 60-clip announcement
+banks and TTS pre-rendering. All ten hosted agents, wake and capture clients kept
+their process identities. The primary server measured 62 MiB immediately afterward;
+that is a **cold post-restart measurement**, not a guaranteed floor: the legitimate
+Piper model/work buffers will warm again on use. No voice playback test was issued.
+
+Verification ran 256 tests across presence, audio and voice: 253 passed. Three
+arrival-notice tests failed identically against the retained original server
+under the existing host voice policy; that policy was not changed to force a pass.
+All eight new response-cache tests passed, including real idle HTTP housekeeping.
+
 ## Shared core prompt, voice-only presentation
 
 Session 10 uses the same Pi prompt discovery, tools, permissions, and local

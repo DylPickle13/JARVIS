@@ -36,15 +36,33 @@ jarvisd restarted; protected audio/terminal services were unchanged.
 an `objc.autorelease_pool()`, on the asyncio thread. The pool covers native
 advertisement conversion and callback dispatch, not just the presence observer,
 and never spans an `await`. This prevents Cocoa temporaries from accumulating in
-the long-lived import-time pool. Presence thresholds, three-second heartbeats,
-and the ten-second nearby hold are unchanged. No additional scanning is added.
+the long-lived import-time pool. Production also filters enrolled CoreBluetooth
+UUIDs **before** Bleak converts or caches advertisements: `seen_devices` can retain
+only the enrolled devices, rather than every transient nearby identity. The
+explicit 30-second `--discover` mode deliberately remains unfiltered for enrollment.
+Empty enrollment retains no discoveries. The pinned dispatch signature is checked
+before scanning; an incompatible backend fails instead of silently losing readings.
+Presence thresholds, three-second heartbeats and the ten-second nearby hold are
+unchanged. No additional scanning is added.
 
 The adapter uses the pinned Bleak 2.1.1 private
 `_manager.did_discover_peripheral` seam. Review this when upgrading Bleak. Run
 `presence/.venv/bin/python -m unittest discover -s presence` from the
 `operation-jarvis` directory: the installed-dependency test exercises real Bleak
 conversion with a fake manager and synthetic data, without accessing Bluetooth.
-It also checks that retained advertisement objects survive pool drainage.
+It also checks that retained advertisement objects survive pool drainage, rejected
+identities never reach observers/cache insertion, enrolled RSSI updates remain
+intact, empty enrollment retains none and explicit discovery remains complete.
+Activating this source change requires the owner's approved listener restart;
+no enrollment, thresholds, downstream policy or other services should be changed.
+
+The owner-approved October 8, 2026 activation verified a fresh collector heartbeat
+and a **29.5 MiB footprint**, versus **528.3 MiB** before replacement. A synthetic
+30,000-unregistered-identity stress probe retained zero discoveries and stayed
+near 31 MiB; all 16 presence regressions passed. These are bounded observations,
+not a day-long soak or controlled physical proximity acceptance. Enrollment and
+threshold configuration was unchanged; protected wake/capture/backend/agent
+process identities were preserved.
 
 ## Enrollment — maintenance reference (both devices already enrolled)
 

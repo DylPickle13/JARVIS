@@ -602,8 +602,19 @@ class RoomAudioBridge:
     def _prune_jobs_locked(self) -> None:
         cutoff = time.monotonic() - ASYNC_JOB_TTL_SECONDS
         for turn_id, job in list(self._jobs.items()):
-            if float(job.get("createdMonotonic", 0.0)) < cutoff:
+            # Keep active turns, and allow the full polling TTL after completion.
+            # Older/cancelled entries retain a safe timestamp fallback.
+            if job.get("pending", False):
+                continue
+            finished = job.get("completedMonotonic",
+                               job.get("cancelledMonotonic", job.get("createdMonotonic", 0.0)))
+            if float(finished) < cutoff:
                 self._jobs.pop(turn_id, None)
+
+    def prune_completed_jobs(self) -> None:
+        """Release expired response/audio payloads without touching active turns."""
+        with self._jobs_lock:
+            self._prune_jobs_locked()
 
     @staticmethod
     def _cancelled_turn_response(
@@ -1006,6 +1017,14 @@ class RoomAudioHTTPServer(ThreadingHTTPServer):
     bridge: RoomAudioBridge
     token: str
     max_request_bytes: int
+
+    def service_actions(self) -> None:
+        # serve_forever runs this even with no HTTP requests (default 0.5 s).
+        # Reuse its housekeeping lane rather than adding a timer/worker thread.
+        super().service_actions()
+        prune = getattr(getattr(self, "bridge", None), "prune_completed_jobs", None)
+        if prune is not None:
+            prune()
 
 
 class RoomAudioHandler(BaseHTTPRequestHandler):
