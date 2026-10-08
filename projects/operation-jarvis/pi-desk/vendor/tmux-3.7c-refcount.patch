@@ -1,0 +1,87 @@
+--- a/arguments.c
++++ b/arguments.c
+@@ -762,8 +762,6 @@ args_make_commands_now(struct cmd *self, struct cmdq_item *item, u_int idx,
+ 		cmdq_error(item, "%s", error);
+ 		free(error);
+ 	}
+-	else
+-		cmdlist->references++;
+ 	args_make_commands_free(state);
+ 	return (cmdlist);
+ }
+@@ -827,8 +825,10 @@ args_make_commands(struct args_command_state *state, int argc, char **argv,
+ 	int			 i;
+ 
+ 	if (state->cmdlist != NULL) {
+-		if (argc == 0)
++		if (argc == 0) {
++			state->cmdlist->references++;
+ 			return (state->cmdlist);
++		}
+ 		return (cmd_list_copy(state->cmdlist, argc, argv));
+ 	}
+ 
+--- a/cmd-command-prompt.c
++++ b/cmd-command-prompt.c
+@@ -242,9 +242,11 @@ cmd_command_prompt_callback(struct client *c, void *data, const char *s,
+ 	} else if (item == NULL) {
+ 		new_item = cmdq_get_command(cmdlist, NULL);
+ 		cmdq_append(c, new_item);
++		cmd_list_free(cmdlist);
+ 	} else {
+ 		new_item = cmdq_get_command(cmdlist, cmdq_get_state(item));
+ 		cmdq_insert_after(item, new_item);
++		cmd_list_free(cmdlist);
+ 	}
+ 	cmd_free_argv(argc, argv);
+ 
+--- a/cmd-if-shell.c
++++ b/cmd-if-shell.c
+@@ -98,6 +98,7 @@ cmd_if_shell_exec(struct cmd *self, struct cmdq_item *item)
+ 			return (CMD_RETURN_ERROR);
+ 		new_item = cmdq_get_command(cmdlist, cmdq_get_state(item));
+ 		cmdq_insert_after(item, new_item);
++		cmd_list_free(cmdlist);
+ 		return (CMD_RETURN_NORMAL);
+ 	}
+ 
+@@ -164,9 +165,11 @@ cmd_if_shell_callback(struct job *job)
+ 	} else if (item == NULL) {
+ 		new_item = cmdq_get_command(cmdlist, NULL);
+ 		cmdq_append(c, new_item);
++		cmd_list_free(cmdlist);
+ 	} else {
+ 		new_item = cmdq_get_command(cmdlist, cmdq_get_state(item));
+ 		cmdq_insert_after(item, new_item);
++		cmd_list_free(cmdlist);
+ 	}
+ 
+ out:
+--- a/cmd-run-shell.c
++++ b/cmd-run-shell.c
+@@ -233,9 +233,11 @@ cmd_run_shell_timer(__unused int fd, __unused short events, void* arg)
+ 	} else if (item == NULL) {
+ 		new_item = cmdq_get_command(cmdlist, NULL);
+ 		cmdq_append(c, new_item);
++		cmd_list_free(cmdlist);
+ 	} else {
+ 		new_item = cmdq_get_command(cmdlist, cmdq_get_state(item));
+ 		cmdq_insert_after(item, new_item);
++		cmd_list_free(cmdlist);
+ 	}
+ 
+ 	if (cdata->item != NULL)
+--- a/cmd-display-panes.c
++++ b/cmd-display-panes.c
+@@ -286,9 +286,11 @@ cmd_display_panes_key(struct client *c, void *data, struct key_event *event)
+ 	} else if (item == NULL) {
+ 		new_item = cmdq_get_command(cmdlist, NULL);
+ 		cmdq_append(c, new_item);
++		cmd_list_free(cmdlist);
+ 	} else {
+ 		new_item = cmdq_get_command(cmdlist, cmdq_get_state(item));
+ 		cmdq_insert_after(item, new_item);
++		cmd_list_free(cmdlist);
+ 	}
+ 
+ 	free(expanded);

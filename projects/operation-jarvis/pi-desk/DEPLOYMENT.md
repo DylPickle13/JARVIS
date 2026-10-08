@@ -1,3 +1,55 @@
+# Viewer tmux memory-leak backport — 2026-10-08, active and verified
+
+Owner approved the investigated fix and a local viewer-only restart. Built pinned
+**tmux 3.7c** with the complete upstream reference-counting fix
+[`1459c90`](https://github.com/tmux/tmux/commit/1459c90a7fa6a70afd1e8438fa9985141e4002be).
+The release's `cmd-display-panes.c` receives the corresponding caller fix because
+upstream's newer `window-panes.c` does not exist in 3.7c. No development-version
+features, display guards, styling, input behavior or animation cadence changed.
+
+The private build is `~/.local/share/pi-desk/bin/tmux`. A small runtime selector
+routes only Pi Desk workspace/attachment/navigation commands to it. **Homebrew
+and hosted-agent tmux remain unchanged**, and agent attachments still use
+`/opt/homebrew/bin/tmux -L jarvis-mobile` explicitly. Other platforms without a
+private build retain their own tmux; an invalid private build fails closed.
+
+**212 source tests, 212 staged-runtime tests and 5 VS Code bridge tests passed.**
+The stage used the actual installed backend/restart files, preserving their known
+unrelated drift. Across **12,000 guarded updates**, patched memory plateaued at
+**8.58 MiB attached / 7.16 MiB detached**; post-warm-up maximum growth was only
+**64 KiB / no positive growth**, rather than the original ~5.6 KiB per update.
+This is bounded stress-test verification, not a day-long live measurement.
+
+At **15:36 EDT**, atomically installed only `core.py`, `desktop.py`, `navigate.py`,
+`install.py`, the runtime selector, private binary and its license/provenance/patch,
+plus their manifest entries. All unrelated installed hashes and manifest entries,
+including backend/restart drift, launcher, configuration and system tmux hash were
+preserved. The full installer was **not** run against the real installation.
+
+At **15:38 EDT**, one PID/parent/socket/client-checked normal detach released the
+old display viewer. Its server, CLI wrapper and attach client all exited, removing
+a **3334 MiB physical footprint**. The existing VS Code terminal returned to its
+original shell; **all ten hosted pane/process identities and the hosted server PID
+were unchanged**. No agent signals, remote changes, GUI focus/Space switches or
+service/model restarts occurred.
+
+**Activation verified at 15:42 EDT:** the owner reopened Pi Desk in the original
+`/dev/ttys002` terminal. New server **95382** runs the private verified binary.
+Four bounded live samples over 30 seconds stayed at **9.48–9.64 MiB**, without
+monotonic growth, and no warning row was present. All ten hosted pane/process
+identities and their server PID still matched the baseline. This is short live
+verification backed by the longer accelerated stress test, not a day-long soak.
+No automatic terminal input injection or new window was used. Visual acceptance
+was not independently observed; current styling/configuration remain unchanged.
+
+Backup/results:
+`~/.local/state/pi-desk/backups/tmux-refcount-20261008T193622575729Z/`
+contains prior scoped files/manifest, original hashes and deployment/release/activation results.
+One-shot helpers/build/test logs are in `/tmp/pi-desk-tmux-refcount-20261008/`;
+**never replay the completed deployment or detach helper**. See
+[`vendor/README.md`](vendor/README.md) for pinned rebuild/rollback instructions and
+[`docs/MEMORY_AUDIT_2026-10-08.md`](docs/MEMORY_AUDIT_2026-10-08.md) for diagnosis.
+
 # Token rollout reversal — 2026-10-06, restored and verified
 
 Owner requested undo. Source and installed `status_stream.py` exactly match the

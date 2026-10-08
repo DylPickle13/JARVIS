@@ -5,6 +5,8 @@ import os
 import subprocess
 import sys
 
+from tmux_runtime import command as tmux_command
+
 
 def step(direction, client_pid, socket='pi-desk', state=None):
     if direction not in (-1, 1) or type(client_pid) is not int:
@@ -17,7 +19,7 @@ def step(direction, client_pid, socket='pi-desk', state=None):
     env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:' + env.get('PATH', '/usr/bin:/bin')
 
     def tmux(*args):
-        return subprocess.run(['tmux', '-L', socket, *args], env=env,
+        return subprocess.run(tmux_command(socket) + list(args), env=env,
                               capture_output=True, text=True, check=True, timeout=3).stdout
 
     fallback = False

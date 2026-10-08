@@ -401,7 +401,7 @@ class DesktopTests(unittest.TestCase):
 
     def test_vscode_viewer_advertises_hyperlinks(self):
         self.assertEqual(desktop.viewer_attach_command('viewer-test', {'TERM_PROGRAM': 'vscode'}),
-                         ['tmux', '-L', desktop.SOCKET, '-T', 'hyperlinks',
+                         desktop.tmux_command(desktop.SOCKET) + ['-T', 'hyperlinks',
                           'attach-session', '-t', '=viewer-test'])
 
     def test_other_viewers_keep_terminal_auto_detection(self):

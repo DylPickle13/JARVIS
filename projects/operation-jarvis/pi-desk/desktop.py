@@ -16,6 +16,7 @@ import workspace
 from layout import RESIZE_DELAY, capacity, group as session_members, shape
 from health import HealthMonitor
 from backend import clean_environment
+from tmux_runtime import command as tmux_command
 import codex_quota
 from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, prepare_workspace
 
@@ -89,7 +90,7 @@ def ready_focus(number, details):
 def viewer_attach_command(group, environ=None):
     """Advertise OSC 8 per viewer, not for every xterm-256color terminal."""
     environ = os.environ if environ is None else environ
-    command = ['tmux', '-L', SOCKET]
+    command = tmux_command(SOCKET)
     if environ.get('TERM_PROGRAM') == 'vscode':
         command += ['-T', 'hyperlinks']
     return command + ['attach-session', '-t', '=' + group]

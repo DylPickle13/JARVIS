@@ -11,6 +11,7 @@ import re
 import termios
 
 from backend import clean_environment, load
+from tmux_runtime import command as tmux_command
 from codex_quota import normalize as normalize_quota, UNAVAILABLE
 
 ROOT = Path(__file__).resolve().parent
@@ -232,7 +233,7 @@ def recover_blocked_display_output():
                         for fd in descriptors:
                             termios.tcflush(fd, termios.TCOFLUSH)
                         try:
-                            subprocess.run(['tmux', '-L', SOCKET, 'list-sessions'],
+                            subprocess.run(tmux_command(SOCKET) + ['list-sessions'],
                                            capture_output=True, text=True, timeout=.1)
                             return
                         except subprocess.TimeoutExpired:
@@ -252,7 +253,7 @@ def prepare_workspace():
     if sys.platform != 'darwin':
         return
     try:
-        subprocess.run(['tmux', '-L', SOCKET, 'list-sessions'],
+        subprocess.run(tmux_command(SOCKET) + ['list-sessions'],
                        capture_output=True, text=True, timeout=2)
     except subprocess.TimeoutExpired:
         recover_blocked_display_output()
@@ -263,7 +264,7 @@ def prepare_workspace():
 
 def tmux(*args, check=True):
     try:
-        result = subprocess.run(['tmux', '-L', SOCKET, '-f', str(ROOT / 'config/tmux.conf'),
+        result = subprocess.run(tmux_command(SOCKET) + ['-f', str(ROOT / 'config/tmux.conf'),
                                  *args], capture_output=True, text=True, timeout=8)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(

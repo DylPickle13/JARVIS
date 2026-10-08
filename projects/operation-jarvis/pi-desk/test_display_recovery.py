@@ -28,7 +28,7 @@ class StartupRecoveryTests(unittest.TestCase):
                 core.prepare_workspace()
                 closed.assert_called_once()
                 blocked.assert_not_called()
-                self.assertEqual(run.call_args.args[0], ['tmux', '-L', core.SOCKET, 'list-sessions'])
+                self.assertEqual(run.call_args.args[0], core.tmux_command(core.SOCKET) + ['list-sessions'])
 
     def test_only_read_only_probe_is_retried_after_timeout(self):
         with mock.patch.object(core.sys, 'platform', 'darwin'), \
