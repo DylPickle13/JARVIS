@@ -5,6 +5,19 @@ import { join } from "node:path";
 
 type BrowserLaunchMode = "managed" | "cdp" | "extension";
 
+export type BrowserRecovery = {
+  mode: "manual-only" | "observe-only" | "verified-only";
+  state: "healthy" | "draining" | "verifying" | "blocked-needs-supervision";
+  requiresSupervision: boolean;
+  operations?: Array<{ operationId: string; action: string; outcome: "pending" | "completed" | "failed"; state: string; valueVerified: boolean }>;
+};
+
+export class BrowserRecoveryError extends Error {
+  constructor(message: string, readonly recovery?: BrowserRecovery) {
+    super(message);this.name = "BrowserRecoveryError";
+  }
+}
+
 export type BrowserStatus = {
   protocolVersion: number;
   launchMode: BrowserLaunchMode;
@@ -37,6 +50,7 @@ export type BrowserStatus = {
     quarantined?: boolean;
     quarantine?: { at: string; reason: string } | null;
     inventoryStale?: boolean;
+    recovery?: BrowserRecovery;
   };
   activeIndex: number;
   selectedTabId?: number | null;
@@ -159,7 +173,7 @@ export class DaemonBrowserManager {
     });
 
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload?.ok === false) throw new Error(payload?.error || `Chrome bridge request failed: HTTP ${response.status}`);
+    if (!response.ok || payload?.ok === false) throw new BrowserRecoveryError(payload?.error || `Chrome bridge request failed: HTTP ${response.status}`, payload?.recovery);
     return payload.result as T;
   }
 

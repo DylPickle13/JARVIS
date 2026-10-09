@@ -2,6 +2,7 @@
 // All tab creation/selection uses Chrome extension APIs, NOT foreground APIs.
 import { createRequire } from 'node:module';
 import { syncWindowTabs } from './window-tab-sync.mjs';
+import { patchObservedExecution } from './execution-patch.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 const require=createRequire(import.meta.url);
 const file=require.resolve('playwright-core/lib/coreBundle');
@@ -127,5 +128,6 @@ for (const [oldText,newText] of diagnosticPatches) {
   if (source.split(oldText).length !== 2) throw new Error('Relay diagnostic patch anchor changed');
   source=source.replace(oldText,newText);
 }
+source=patchObservedExecution(source);
 writeFileSync(file,source);
-console.log('Pinned background creation/selection patches verified.');
+console.log('Pinned background creation/selection and execution observer patches verified.');

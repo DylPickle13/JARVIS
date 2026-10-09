@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // Shared resolver supports managed/npm installs and strips npm prefix overrides.
 const { jiti } = await import('../../tests/helpers/pi-import.mjs');
-const { DaemonBrowserManager } = await jiti.import(new URL('./daemon-browser-manager.ts', import.meta.url).pathname);
+const { DaemonBrowserManager, BrowserRecoveryError } = await jiti.import(new URL('./daemon-browser-manager.ts', import.meta.url).pathname);
 const { default: registerBrowser } = await jiti.import(new URL('./index.ts', import.meta.url).pathname);
 
 test('client adds unique identities, preflights protocol, and serializes its calls', async t => {
@@ -48,4 +48,18 @@ test('tool registration scopes managers to Pi sessions and lifecycle releases ha
   await hooks.session_shutdown({},ctx('A'));
   assert.equal(released.length,3);
   assert.ok(tools.browser_tabs.parameters.properties.tabId);
+});
+
+test('client preserves typed recovery metadata without retrying a failed mutation', async t => {
+  const dir=await mkdtemp(join(tmpdir(),'browser-client-recovery-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));await writeFile(join(dir,'token'),'test-token');
+  const calls=[];const recovery={mode:'verified-only',state:'draining',requiresSupervision:false};
+  t.mock.method(globalThis,'fetch',async url=>{
+    const path=new URL(url).pathname;calls.push(path);
+    return path==='/status' ? {ok:true,json:async()=>({ok:true,result:{protocolVersion:2,pages:[]}})}
+      : {ok:false,json:async()=>({ok:false,error:'Automatic recovery pending; do not repeat the action.',recovery})};
+  });
+  const client=new DaemonBrowserManager('http://127.0.0.1:1',join(dir,'token'));
+  await assert.rejects(client.click({x:1,y:2}),error=>error instanceof BrowserRecoveryError&&error.recovery.state==='draining'&&!error.recovery.requiresSupervision);
+  assert.deepEqual(calls,['/status','/click']);
 });

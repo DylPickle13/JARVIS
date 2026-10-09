@@ -1,5 +1,16 @@
 # JARVIS browser bridge
 
+## Verified recovery candidate — offline only, not deployed
+
+This branch contains independent runner/relay receipts, a crash-safe locked journal,
+and proof-gated background recovery. **It is not the installed production bridge.**
+See [VERIFIED-RECOVERY-CANDIDATE.md](VERIFIED-RECOVERY-CANDIDATE.md) for scope, offline
+results, journal behavior, and the remaining supervised acceptance/deployment gate.
+Candidate daemon configuration defaults to `observe-only`; automatic fence release
+requires explicit `verified-only` configuration after acceptance. Existing public
+browser tool declarations, defaults, native extension/helper and stock fallback
+policy are unchanged. Do not deploy or run disruptive live checks while sir works.
+
 ## Reliability update (deployed; supervised live checks passed)
 
 The backend reliability update was deployed with sir's approval on 2026-10-03

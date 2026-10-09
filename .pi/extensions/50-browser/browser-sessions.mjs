@@ -51,7 +51,7 @@ export class BrowserSessions {
     }
   }
 
-  async handle(path, body, id, run, inventory, { reconcile = true } = {}) {
+  async handle(path, body, id, run, inventory, { reconcile = true, allowInspection = false } = {}) {
     const session = this.session(id);
     // Releasing a session never needs a functioning browser connection.
     if (path === '/close' && body.all !== false) {
@@ -96,7 +96,7 @@ export class BrowserSessions {
       const tabId = session.tabId;
       if (tabId === null) throw new Error('No tab selected for this Pi session. Open a URL or explicitly switch to a listed tab.');
       if (!exists(tabId)) throw new Error(`Selected tab ${tabId} was closed or moved out of the automation window. No action performed; explicitly select another tab.`);
-      if (session.uncertain) throw new Error('Previous browser action had an uncertain outcome. Inspect/list tabs and explicitly switch before continuing; do not replay a mutation blindly.');
+      if (session.uncertain && !(allowInspection && ['/screenshot','/extract'].includes(path))) throw new Error('Previous browser action had an uncertain outcome. Inspect/list tabs and explicitly switch before continuing; do not replay a mutation blindly.');
       if (this.lease(tabId)?.owner !== id) throw new Error(`Control of tab ${tabId} was released or expired. Explicitly switch to reacquire it before continuing.`);
       this.claim(id, tabId);
       return tabId;
