@@ -1,13 +1,15 @@
 # Verified browser auto-recovery — implementation plan
 
-**Status (2026-10-09): deployed in observation mode; supervised live checks passed;
-final visual acknowledgment and scoped restoration approval pending.** See
-[VERIFIED-RECOVERY-LIVE.md](VERIFIED-RECOVERY-LIVE.md) for the 122 offline checks,
-800 unchanged focus/Space samples, private SDK fault results, and current state.
-The bridge is deliberately unloaded after the negative fixture; its completed
-synthetic wait record remains fenced. Production `verified-only` recovery is not
-yet enabled. Chrome, its profile, installed extension/helper, public tool defaults
-and stock fallback policy were preserved. No uncertain action was replayed.
+**Status (2026-10-09): supervised acceptance complete; production `verified-only`
+recovery enabled; bridge healthy.** Sir confirmed visual acceptance and authorized
+scoped resolution/restoration. Only the completed synthetic wait was resolved;
+fixture tabs were cleaned up and original window/work-tab IDs retained. See
+[VERIFIED-RECOVERY-LIVE.md](VERIFIED-RECOVERY-LIVE.md) for 122 offline checks,
+996 unchanged focus/Space samples, private SDK fault results and activation evidence.
+Chrome, its profile, installed extension/helper, public tool defaults and stock
+fallback policy were preserved. No failed action was replayed or journal cleared.
+Routine positively verified recovery requires no per-occurrence approval; unknown
+execution and disruptive maintenance still require supervision.
 
 The isolated `browser/verified-recovery-offline` branch preserves implementation
 provenance. See [VERIFIED-RECOVERY-CANDIDATE.md](VERIFIED-RECOVERY-CANDIDATE.md) for

@@ -1,20 +1,19 @@
 # JARVIS browser bridge
 
-## Verified recovery rollout — live checks passed; final acknowledgment pending
+## Verified recovery — enabled; supervised acceptance complete
 
-The recovery implementation was deployed in observation mode with sir's approval
-on 2026-10-09. 122 offline checks and the supervised reliability, full-interaction,
-two native reconnects, and private SDK fault checks passed. Foreground/personal
-window-tab/per-display Space telemetry was unchanged across 800 samples. This is
+Production runs `verified-only` recovery, enabled on 2026-10-09 after sir confirmed
+visual acceptance and authorized exact synthetic-record resolution, fixture cleanup
+and bridge restoration. The bridge is connected/healthy, with no quarantine or
+unresolved evidence. The original automation window/work-tab ID was retained; both
+fault-fixture tabs and the restored-service smoke fixture were cleaned up.
+
+122 offline checks, reliability/full-interaction fixtures, two native reconnects,
+private SDK fault checks and the activated-service interaction smoke passed.
+Foreground/personal window-tab/per-display Space telemetry was unchanged across
+996 samples (800 acceptance + 196 activation). These are sampled observations,
 not an absolute no-switch guarantee or proof of the original wheel-stall cause.
-
-**Current maintenance state:** the bridge is deliberately unloaded. The final
-negative fixture exhausted a short test-only drain budget on a pure wait; its
-controller execution subsequently finished with positive proof, but the fence
-correctly remained. That exact synthetic record and two retained fixture tabs await
-sir's visual confirmation and scoped resolution/restoration approval. No journal
-clear, stock fallback, or automatic service restart was used to make the test pass.
-Production configuration has not enabled `verified-only` recovery yet.
+No failed action was replayed, no journal was cleared and no stock fallback used.
 
 See [VERIFIED-RECOVERY-LIVE.md](VERIFIED-RECOVERY-LIVE.md) and
 [VERIFIED-RECOVERY-CANDIDATE.md](VERIFIED-RECOVERY-CANDIDATE.md). Public tool declarations,
@@ -53,16 +52,19 @@ use Chrome's remote-debugging toggle or a second user-data directory.
 
 Local configuration (outside the repository):
 
-- `~/.jarvis/browser-backend.json`: `{"backend":"extension"}`
+- `~/.jarvis/browser-backend.json`: `{"backend":"extension","recoveryMode":"verified-only"}`
 - `~/.jarvis/playwright-extension.token`: user-provided extension token, mode 0600
 - `~/.jarvis/extension-window.json`: current native window/connection-tab IDs and
   prior foreground information; no authentication token
 - Existing `com.jarvis.browser-bridge` LaunchAgent starts at login and retains the
   local bearer-authenticated endpoint configured in `.env`.
 
-`PI_BROWSER_BACKEND=cdp` overrides the file for rollback. Alternatively change
-`browser-backend.json` to `{"backend":"cdp"}` and restart the LaunchAgent. CDP
-fallback still requires Chrome's remote-debugging setting and connection approval.
+Recovery rollback keeps the extension backend and sets `recoveryMode` to
+`manual-only` during approved maintenance. It retains journal startup fences.
+Never switch backend/profile, install a journal-unaware artifact or delete evidence
+to bypass unresolved execution. Legacy CDP selection (`PI_BROWSER_BACKEND=cdp`)
+is a separate owner-approved backend change, not a recovery/rollback shortcut;
+it still requires Chrome's remote-debugging setting and connection approval.
 
 ## Multiple Pi sessions (protocol v2)
 
@@ -140,13 +142,34 @@ alive on the work tabs. Recovery now:
 4. Allows at most two retries of **connection/read-only preflight only**, preserving
    valid selected IDs and leases. Explicit missing/moved-window failures are not
    automatically retried. Once an action is dispatched—including tab creation—an
-   uncertain outcome is never replayed and requires explicit reselection.
+   uncertain outcome is never replayed. Proof-gated recovery may retain a valid
+   selection as described below; reselection cannot bypass unresolved execution.
 
 `daemon.recoveryCount` reports preflight recovery attempts. Minimal relay diagnostics
 in `.pi/runtime/browser-bridge.launchd.err.log` contain only fixed event names,
 numeric tab IDs and allowlisted reasons—not CDP payloads, page URLs or tokens.
 `User disconnected` can mean the bridge intentionally retired its own stale group;
 it does not necessarily mean the user clicked anything.
+
+### Proof-gated execution recovery (`verified-only`)
+
+A missing RPC reply is not cancellation proof. Recovery waits for independent
+actual-snippet/request termination and positive downstream command acknowledgments,
+then verifies the same native window/tab generation and the owner's valid lease.
+Known completed observation/scrolling or fully verified replacement typing can
+resume automatically without per-occurrence approval. No input is replayed.
+Clicks and partial input still fence that owner for inspection; unaffected clients
+may resume once control is proven safe. Control recovery never establishes a
+website's business/submission outcome or grants private/account/action permission.
+
+After `Browser recovery pending`, do not repeat the failed action. Check status;
+`draining`/`verifying` keeps dispatch fenced, and old queued actions are refused.
+Issue fresh work only when healthy and with a valid explicitly selected tab.
+`blocked-needs-supervision`, expired drain grace, unknown native launch/handshake,
+unbound creation, or unresolved startup evidence require supervision. Cached
+inventory/lease release is not permission to inspect or mutate a still-running
+controller. There is no HTTP/model force-clear API. Restart, empty callback maps
+and process exit cannot substitute for completion proof; never delete the journal.
 
 ## Window and focus isolation
 

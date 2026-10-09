@@ -1,10 +1,11 @@
 # Verified browser recovery — implementation record
 
-**Current status (2026-10-09): deployed in observation mode; supervised live checks
-passed; final visual acknowledgment and scoped restoration approval pending.**
-The bridge is deliberately unloaded after the negative fixture. Production
-`verified-only` recovery is not yet enabled. See
-[VERIFIED-RECOVERY-LIVE.md](VERIFIED-RECOVERY-LIVE.md) for current evidence/state.
+**Current status (2026-10-09): supervised acceptance complete; production
+`verified-only` recovery enabled; bridge connected/healthy.** Sir confirmed visual
+acceptance and scoped resolution/restoration. The completed synthetic record was
+resolved, fixtures removed and original window/work-tab retained. See
+[VERIFIED-RECOVERY-LIVE.md](VERIFIED-RECOVERY-LIVE.md) for 122 offline checks,
+996 unchanged focus/Space samples, safeguards and activation evidence.
 
 ## Offline implementation provenance (historical)
 
@@ -52,14 +53,15 @@ No account/application tab was opened, read, filled, navigated or submitted.
 
 ## Modes and journal
 
-The staged daemon defaults to `observe-only` when its owner backend configuration
-has no `recoveryMode` entry. That gathers proof but **does not release quarantine**.
-The candidate also supports `manual-only` and `verified-only`. The latter must not
-be enabled until the separate supervised live acceptance gate is complete.
+The daemon defaults to `observe-only` when its owner backend configuration has no
+`recoveryMode` entry. That gathers proof but **does not release quarantine**.
+It also supports `manual-only` and `verified-only`. Production now explicitly uses
+`verified-only`, after supervised acceptance and owner confirmation on 2026-10-09.
 
-The production journal destination, if deployed, is
-`~/.jarvis/browser-recovery/operations.json`, in a private 0700 directory with a
-0600 journal and kernel-lock file. Tests used temporary directories only.
+The production journal is `~/.jarvis/browser-recovery/operations.json`, in a private
+0700 directory with a 0600 journal and kernel-lock file. Offline tests use temporary
+directories; the supervised private fixture used exclusive production-journal
+ownership and preserved its deliberately fenced evidence until owner acknowledgment.
 No values, URLs, selectors, uploaded bytes, screenshots, credentials or raw
 exceptions are journaled. The writer replies with fixed acknowledgement keywords
 and sequence numbers, never its payload.
@@ -110,8 +112,9 @@ New tests cover:
 These are not live Chrome/focus/Space checks. They do not establish why the original
 wheel stalled, actual renderer behavior under that stall, or an absolute no-switch
 guarantee. Backend verification fixtures mock preflight inventory; existing native
-identity regressions remain in the suite, but live transaction acceptance is still
-required.
+identity regressions remain in the suite. Separate supervised live acceptance and
+activation results are recorded in [VERIFIED-RECOVERY-LIVE.md](VERIFIED-RECOVERY-LIVE.md);
+offline checks do not substitute for those observations.
 
 ## Explicit v1 limits
 
@@ -126,7 +129,11 @@ required.
 - Missing automation window/manual Desktop 2 placement, stock reconnect, disruptive
   maintenance and unresolved execution still require the owner.
 
-## Deployment / acceptance gate (not yet performed)
+## Deployment / acceptance procedure
+
+Completed on 2026-10-09, including sir's visual confirmation and the activated-service
+smoke check. Retained below for future rollouts; new disruptive maintenance/tests
+still require a fresh idle window and approval.
 
 1. Obtain a fresh idle maintenance window and confirmation all browser clients are
    paused. Do not infer idleness, contact peers, or deploy automatically.
@@ -149,8 +156,9 @@ required.
    journal fenced even after positive completion proof. That exact completed test
    record and retained fixture tabs require owner acknowledgment before supervised
    resolution/service restoration. The fixture never clears it or restarts the
-   bridge itself. Acceptance remains pending; injection is not a wheel-stall cause
-   claim.
+   bridge itself. This rollout's owner acknowledgment and scoped resolution are
+   recorded in the live report; future occurrences require their own supervision.
+   Injection is not a wheel-stall cause claim.
 6. Enable verified-only recovery only after these checks and owner acceptance.
    Routine positively verified recovery then requires no new per-occurrence approval.
 
