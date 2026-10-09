@@ -32,6 +32,15 @@ for(const [mode,title] of Object.entries(cases)) test(title,async()=>{
   if(result.executions!==undefined) assert.equal(result.executions,1);
 });
 
+for(const [program,args] of [
+  [process.execPath,[new URL('./test-verified-recovery-live.mjs',import.meta.url).pathname]],
+  ['/usr/bin/python3',[new URL('./test-verified-recovery-live.py',import.meta.url).pathname]],
+  ['/usr/bin/python3',[new URL('./test-extension-focus.py',import.meta.url).pathname,'--script','test-verified-recovery-live.py']],
+]) test(`live maintenance guard refuses before credentials/Chrome (${args[0].split('/').pop()})`,async()=>{
+  const env={...process.env};delete env.JARVIS_TEST_VERIFIED_RECOVERY_MAINTENANCE;
+  await assert.rejects(exec(program,args,{env,timeout:3000}),error=>/Not authorized|require explicit/.test(error.stderr)&&error.code!==0);
+});
+
 test('pinned observer patch is exact/idempotent and refuses changed upstream anchors',()=>{
   const source=readFileSync(require.resolve('playwright-core/lib/coreBundle'),'utf8');
   assert.equal(patchObservedExecution(source),source);

@@ -24,12 +24,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--fixture-window', action='store_true', help='Use a disposable blank window instead of a personal window')
     parser.add_argument('--spaces', action='store_true', help='Also sample every display\'s active Space using a read-only private macOS API')
-    parser.add_argument('--script', choices=['test-extension-live.py','test-multi-session-live.py','test-window-tab-recovery.py','test-action-reliability-live.py'], default='test-extension-live.py')
+    parser.add_argument('--script', choices=['test-extension-live.py','test-multi-session-live.py','test-window-tab-recovery.py','test-action-reliability-live.py','test-verified-recovery-live.py'], default='test-extension-live.py')
     args = parser.parse_args()
     if args.spaces and args.script == 'test-window-tab-recovery.py' and os.environ.get('JARVIS_TEST_BACKGROUND_RECOVERY') != '1':
         parser.error('Space tests require JARVIS_TEST_BACKGROUND_RECOVERY=1; external-tab setup itself may show Chrome')
     if args.script == 'test-action-reliability-live.py' and os.environ.get('JARVIS_TEST_RELIABILITY_MAINTENANCE') != '1':
         parser.error('Reliability live tests require explicit JARVIS_TEST_RELIABILITY_MAINTENANCE=1')
+    if args.script == 'test-verified-recovery-live.py' and os.environ.get('JARVIS_TEST_VERIFIED_RECOVERY_MAINTENANCE') != '1':
+        parser.error('Verified recovery checks require explicit JARVIS_TEST_VERIFIED_RECOVERY_MAINTENANCE=1')
     original = foreground().split(':')
     sentinel, temporary, space_binary = None, None, None
     def snapshot():

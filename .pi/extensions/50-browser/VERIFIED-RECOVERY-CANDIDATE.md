@@ -63,7 +63,7 @@ approval after that investigation; do not remove the journal as a shortcut.
 
 ## Offline verification
 
-**119 checks passed:** 100 Node + 19 Python (12 launcher, 7 native-helper checks).
+**122 checks passed:** 103 Node + 19 Python (12 launcher, 7 native-helper checks).
 Command, from the isolated worktree:
 
 ```sh
@@ -95,6 +95,8 @@ New tests cover:
 - Competing writers, writer loss and no per-command full-journal fsync behavior.
 - Client typed recovery errors with no failed-mutation retry.
 - All 78 pre-existing offline regressions.
+- Three guards refuse the private live fixture/monitor before credentials or
+  Chrome access unless the explicit maintenance flag is present.
 
 These are not live Chrome/focus/Space checks. They do not establish why the original
 wheel stalled, actual renderer behavior under that stall, or an absolute no-switch
@@ -127,13 +129,19 @@ required.
    fixtures under foreground/personal-tab/per-display Space telemetry. Require
    unchanged telemetry plus sir's visual confirmation; neither is a universal
    focus guarantee.
-5. Before enabling verified-only mode, also prepare/run a supervised, private
-   fault-injection fixture against real Chrome for delayed handler completion,
-   positive downstream acknowledgements and an unresolved outcome that stays
-   blocked. It must remain synthetic/localhost, expose no HTTP fault/force-clear
-   argument, and distinguish injection results from a real wheel-stall reproduction.
-   This live fault-injection fixture/acceptance is a remaining delivery item, not a
-   completed test claim.
+5. Before enabling verified-only mode, run the guarded private SDK fixture:
+   `JARVIS_TEST_VERIFIED_RECOVERY_MAINTENANCE=1 python3 test-extension-focus.py
+   --spaces --script test-verified-recovery-live.py`. The bridge must be unloaded
+   by the supervising operator first; the fixture acquires the same production
+   journal's exclusive lock before accessing Chrome. It uses only new localhost
+   fixture tabs and private one-shot SDK reply deadlines, never HTTP fault flags.
+   A late verified replacement must execute once and preserve the peer draft.
+   A deliberately short test-only drain budget on a pure wait must leave the
+   journal fenced even after positive completion proof. That exact completed test
+   record and retained fixture tabs require owner acknowledgment before supervised
+   resolution/service restoration. The fixture never clears it or restarts the
+   bridge itself. Acceptance remains pending; injection is not a wheel-stall cause
+   claim.
 6. Enable verified-only recovery only after these checks and owner acceptance.
    Routine positively verified recovery then requires no new per-occurrence approval.
 
