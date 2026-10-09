@@ -1,12 +1,21 @@
-# Verified browser recovery — offline candidate
+# Verified browser recovery — implementation record
 
-**Status: implemented and tested offline; NOT DEPLOYED.**
+**Current status (2026-10-09): deployed in observation mode; supervised live checks
+passed; final visual acknowledgment and scoped restoration approval pending.**
+The bridge is deliberately unloaded after the negative fixture. Production
+`verified-only` recovery is not yet enabled. See
+[VERIFIED-RECOVERY-LIVE.md](VERIFIED-RECOVERY-LIVE.md) for current evidence/state.
+
+## Offline implementation provenance (historical)
+
+The following describes the initial offline phase, before approved deployment.
 Branch: `browser/verified-recovery-offline`.
 Worktree: `.pi/runtime/browser-verified-recovery-offline/`.
 Base commit: `37ee776`.
 
 The worktree has its own APFS-cloned dependency directory, not a symlink or hard
-link to the installed bundle. The dependency patch was run only in that copy.
+link to the installed bundle. During the offline phase, the dependency patch was
+run only in that copy.
 The main checkout, installed extension/native helper, live dependency bundle,
 owner configuration, automation window and bridge service were not changed.
 No account/application tab was opened, read, filled, navigated or submitted.

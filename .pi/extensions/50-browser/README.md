@@ -1,15 +1,24 @@
 # JARVIS browser bridge
 
-## Verified recovery candidate — offline only, not deployed
+## Verified recovery rollout — live checks passed; final acknowledgment pending
 
-This branch contains independent runner/relay receipts, a crash-safe locked journal,
-and proof-gated background recovery. **It is not the installed production bridge.**
-See [VERIFIED-RECOVERY-CANDIDATE.md](VERIFIED-RECOVERY-CANDIDATE.md) for scope, offline
-results, journal behavior, and the remaining supervised acceptance/deployment gate.
-Candidate daemon configuration defaults to `observe-only`; automatic fence release
-requires explicit `verified-only` configuration after acceptance. Existing public
-browser tool declarations, defaults, native extension/helper and stock fallback
-policy are unchanged. Do not deploy or run disruptive live checks while sir works.
+The recovery implementation was deployed in observation mode with sir's approval
+on 2026-10-09. 122 offline checks and the supervised reliability, full-interaction,
+two native reconnects, and private SDK fault checks passed. Foreground/personal
+window-tab/per-display Space telemetry was unchanged across 800 samples. This is
+not an absolute no-switch guarantee or proof of the original wheel-stall cause.
+
+**Current maintenance state:** the bridge is deliberately unloaded. The final
+negative fixture exhausted a short test-only drain budget on a pure wait; its
+controller execution subsequently finished with positive proof, but the fence
+correctly remained. That exact synthetic record and two retained fixture tabs await
+sir's visual confirmation and scoped resolution/restoration approval. No journal
+clear, stock fallback, or automatic service restart was used to make the test pass.
+Production configuration has not enabled `verified-only` recovery yet.
+
+See [VERIFIED-RECOVERY-LIVE.md](VERIFIED-RECOVERY-LIVE.md) and
+[VERIFIED-RECOVERY-CANDIDATE.md](VERIFIED-RECOVERY-CANDIDATE.md). Public tool declarations,
+defaults, installed extension/native helper and stock focus policy are unchanged.
 
 ## Reliability update (deployed; supervised live checks passed)
 

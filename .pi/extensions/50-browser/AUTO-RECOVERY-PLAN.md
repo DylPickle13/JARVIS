@@ -1,12 +1,17 @@
 # Verified browser auto-recovery — implementation plan
 
-**Status: offline candidate implemented; not deployed.** The isolated
-`browser/verified-recovery-offline` branch implements the execution-proof gate,
-journal, observation mode, and gated automatic recovery. See
-[VERIFIED-RECOVERY-CANDIDATE.md](VERIFIED-RECOVERY-CANDIDATE.md) for results and limits.
-The live source/dependencies, installed extension/helper, configuration, Chrome
-window, and service have not been changed. Existing production guards remain
-in effect until approved deployment and supervised acceptance.
+**Status (2026-10-09): deployed in observation mode; supervised live checks passed;
+final visual acknowledgment and scoped restoration approval pending.** See
+[VERIFIED-RECOVERY-LIVE.md](VERIFIED-RECOVERY-LIVE.md) for the 122 offline checks,
+800 unchanged focus/Space samples, private SDK fault results, and current state.
+The bridge is deliberately unloaded after the negative fixture; its completed
+synthetic wait record remains fenced. Production `verified-only` recovery is not
+yet enabled. Chrome, its profile, installed extension/helper, public tool defaults
+and stock fallback policy were preserved. No uncertain action was replayed.
+
+The isolated `browser/verified-recovery-offline` branch preserves implementation
+provenance. See [VERIFIED-RECOVERY-CANDIDATE.md](VERIFIED-RECOVERY-CANDIDATE.md) for
+execution-proof, journal, recovery scope, and rollout/rollback constraints.
 
 ## Goal
 
