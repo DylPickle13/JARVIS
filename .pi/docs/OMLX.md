@@ -36,6 +36,23 @@ Every model receives Pi's compatibility flags for non-developer roles and the ex
 
 Streaming delegates directly to Pi's concrete OpenAI implementation, retaining request/response/stream instrumentation, tool conversion, image conversion, usage accounting and cancellation. There is no extension-imposed first-output deadline: model loading and prefill can finish without a watchdog abort. The former `OMLX_STREAM_FIRST_DELTA_TIMEOUT_MS` and `OMLX_64_STREAM_FIRST_DELTA_TIMEOUT_MS` settings are no longer used. Pi's normal error retry policy remains Pi-owned.
 
+## Clef decision model
+
+Both Macs were upgraded to the official app-managed oMLX **0.7.1.dev1** on 2026-10-10. See [migration results](CLEF_MIGRATION_RESULT.md).
+
+- `mac-mini-64` hosts `mlx-community/clef-4bit` at `~/.omlx/models/mlx-community/clef-4bit`, with API alias **`clef`**, a 16,384-token limit, no pinning and a 300-second idle TTL. It loads on demand.
+- Call the existing authenticated **`POST /v1/systemone`** endpoint, not chat completions. Always send **`"truncate": false`**; use full base64 image data URIs. Unknown extra JSON fields can be ignored by oMLX; clients must reject unsupported video inputs themselves.
+- The model is intentionally excluded from Pi's chat-model picker. This migration adds no automatic classification/tool integration.
+- `mac-mini-16` retains its existing models; 27B Clef is too large for its memory/disk budget. Do not load it there or weaken memory guards.
+- The standalone `projects/clef-server` folder and old HF cache/weights were removed. Synthetic fixtures remain under `.pi/tests/fixtures/clef/`.
+
+Explicit live verification (loads Clef; synthetic inputs only; reads local oMLX credentials privately):
+
+```sh
+python3 .pi/scripts/smoke-clef-omlx.py --quick --report .pi/runtime/clef-check.json
+python3 -m unittest discover -s .pi/scripts/tests -p 'test_smoke_clef_omlx.py'
+```
+
 ## Diagnostics
 
 - `/omlx-status`: immediate UI-only summary of endpoints, catalog origin, limits, loaded counts, reported model memory, current thinking selection, forced template keys and recovery state.

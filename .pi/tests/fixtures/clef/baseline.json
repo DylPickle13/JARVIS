@@ -1,0 +1,147 @@
+{
+  "source": "Standalone pinned Clef verification; synthetic inputs only",
+  "checks": [
+    {
+      "name": "typed decisions #1",
+      "client_latency_ms": 2593.3,
+      "usage": {
+        "input_tokens": 307,
+        "output_tokens": 0,
+        "latency_ms": 2592.5
+      },
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "technical",
+          "confidence": 0.8868,
+          "probabilities": {
+            "billing": 0.1132,
+            "technical": 0.8868
+          }
+        },
+        "urgency": {
+          "type": "score",
+          "score": 1.5823,
+          "confidence": 0.7095,
+          "legend": {
+            "0": "Can wait",
+            "1": "This week",
+            "2": "Today"
+          },
+          "probabilities": {
+            "0": 0.1272,
+            "1": 0.1633,
+            "2": 0.7095
+          }
+        },
+        "outage": {
+          "type": "noul",
+          "noul": 0.9527
+        }
+      }
+    },
+    {
+      "name": "typed decisions #2",
+      "client_latency_ms": 2484.3,
+      "usage": {
+        "input_tokens": 307,
+        "output_tokens": 0,
+        "latency_ms": 2483.3
+      },
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "technical",
+          "confidence": 0.8868,
+          "probabilities": {
+            "billing": 0.1132,
+            "technical": 0.8868
+          }
+        },
+        "urgency": {
+          "type": "score",
+          "score": 1.5823,
+          "confidence": 0.7095,
+          "legend": {
+            "0": "Can wait",
+            "1": "This week",
+            "2": "Today"
+          },
+          "probabilities": {
+            "0": 0.1272,
+            "1": 0.1633,
+            "2": 0.7095
+          }
+        },
+        "outage": {
+          "type": "noul",
+          "noul": 0.9527
+        }
+      }
+    },
+    {
+      "name": "typed decisions #3",
+      "client_latency_ms": 2505.7,
+      "usage": {
+        "input_tokens": 307,
+        "output_tokens": 0,
+        "latency_ms": 2504.5
+      },
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "technical",
+          "confidence": 0.8868,
+          "probabilities": {
+            "billing": 0.1132,
+            "technical": 0.8868
+          }
+        },
+        "urgency": {
+          "type": "score",
+          "score": 1.5823,
+          "confidence": 0.7095,
+          "legend": {
+            "0": "Can wait",
+            "1": "This week",
+            "2": "Today"
+          },
+          "probabilities": {
+            "0": 0.1272,
+            "1": 0.1633,
+            "2": 0.7095
+          }
+        },
+        "outage": {
+          "type": "noul",
+          "noul": 0.9527
+        }
+      }
+    },
+    {
+      "name": "base64 image inference",
+      "client_latency_ms": 2707.2,
+      "usage": {
+        "input_tokens": 204,
+        "output_tokens": 0,
+        "latency_ms": 2702.4
+      },
+      "answers": {
+        "color": {
+          "type": "choice",
+          "choice": "red",
+          "confidence": 0.9968,
+          "probabilities": {
+            "red": 0.9968,
+            "blue": 0.0032
+          }
+        }
+      }
+    }
+  ],
+  "text_latency_ms": {
+    "median": 2505.7,
+    "min": 2484.3,
+    "max": 2593.3
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "repo_id": "mlx-community/clef-4bit",
+  "revision": "d004817dc77fc70916d21be82d951d8028ae3a5c",
+  "served_name": "clef",
+  "loader": "clef_mlx.py",
+  "loader_sha256": "852223c944819a32fad5cf798d9d1dff30419820eaf5ad1f10cb9698afec97d5",
+  "files": [
+    "LICENSE",
+    "README.md",
+    "chat_template.jinja",
+    "clef_mlx.py",
+    "config.json",
+    "generation_config.json",
+    "joint_head.safetensors",
+    "joint_head_config.json",
+    "model-00001-of-00003.safetensors",
+    "model-00002-of-00003.safetensors",
+    "model-00003-of-00003.safetensors",
+    "model.safetensors.index.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ]
+}

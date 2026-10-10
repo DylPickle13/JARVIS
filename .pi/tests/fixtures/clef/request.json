@@ -1,0 +1,27 @@
+{
+  "model": "clef",
+  "truncate": false,
+  "state": "Our checkout has been failing for every customer for the last hour. Orders are blocked.",
+  "questions": {
+    "department": {
+      "type": "choice",
+      "instructions": "Which team should handle this incident?",
+      "criteria": {
+        "billing": "Payments or invoices",
+        "technical": "Bugs or outages"
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "criteria": [
+        "Can wait",
+        "This week",
+        "Today"
+      ]
+    },
+    "outage": {
+      "type": "noul",
+      "instructions": "Is a service down?"
+    }
+  }
+}
