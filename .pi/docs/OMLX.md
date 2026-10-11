@@ -38,7 +38,7 @@ Streaming delegates directly to Pi's concrete OpenAI implementation, retaining r
 
 ## Clef decision model
 
-Both Macs were upgraded to the official app-managed oMLX **0.7.1.dev1** on 2026-10-10. See [migration results](CLEF_MIGRATION_RESULT.md).
+Both Macs were upgraded to the official app-managed oMLX **0.7.1.dev1** on 2026-10-10.
 
 - `mac-mini-64` hosts `mlx-community/clef-4bit` at `~/.omlx/models/mlx-community/clef-4bit`, with API alias **`clef`**, a 16,384-token limit, no pinning and a 300-second idle TTL. It loads on demand.
 - Call the existing authenticated **`POST /v1/systemone`** endpoint, not chat completions. Always send **`"truncate": false`**; use full base64 image data URIs. Unknown extra JSON fields can be ignored by oMLX; clients must reject unsupported video inputs themselves.
