@@ -4,6 +4,15 @@ export const OBSERVER_KEY = Symbol.for('jarvis.browser.execution-observer.v1');
 const registrations = new Map();
 let active = null;
 const commands = new Map();
+// Private diagnostics only: never retain expressions, selectors, input or URLs.
+const COMMAND_NAMES = new Set(['Runtime.callFunctionOn','Runtime.evaluate',
+  'Input.dispatchMouseEvent','Input.dispatchKeyEvent','Input.insertText',
+  'DOM.scrollIntoViewIfNeeded','DOM.getContentQuads','Page.getLayoutMetrics',
+  'chrome.tabs.update','chrome.tabs.get','chrome.tabs.query']);
+function commandName(method, params) {
+  const name = method === 'chrome.debugger.sendCommand' && Array.isArray(params) ? params[1] : method;
+  return COMMAND_NAMES.has(name) ? name : 'other';
+}
 
 function changed(record) {
   record.revision++;
@@ -41,23 +50,24 @@ const hooks = Object.freeze({
     } catch (error) { r.outcome = 'failed'; throw error; }
     finally { r.snippetTerminal = true; changed(r); }
   },
-  command(connection) {
+  command(connection, method, params) {
     if (!active) return null;
     const r = active;
     // A changed relay while this execution is alive is never silent proof.
     if (r.connection && r.connection !== connection) r.unknown = true;
     r.connection = connection;
     const token = Object.freeze({});
-    commands.set(token, r); r.pending++; changed(r);
+    commands.set(token, {record:r, name:commandName(method, params), started:performance.now()});
+    r.pending++; changed(r);
     return token;
   },
   acknowledge(token) {
-    const r = commands.get(token);
+    const r = commands.get(token)?.record;
     if (!r) return; // Duplicate/foreign acknowledgement cannot alter proof.
     commands.delete(token); r.pending--; changed(r);
   },
   unknown(token) {
-    const r = commands.get(token);
+    const r = commands.get(token)?.record;
     if (!r) return;
     commands.delete(token); r.pending--; r.unknown = true; changed(r);
   },
@@ -79,6 +89,15 @@ export function registerExecution(code, {id, onChange} = {}) {
   active = record; registrations.set(code, record);
   return Object.freeze({
     snapshot:() => snapshot(record),
+    diagnostics() {
+      const now = performance.now(), pendingCommands = [];
+      for (const command of commands.values()) {
+        if (command.record === record && pendingCommands.length < 32)
+          pendingCommands.push({name:command.name, ageMs:Math.max(0, Math.floor(now-command.started))});
+      }
+      return {requestTerminal:record.requestTerminal, snippetTerminal:record.snippetTerminal,
+        pending:record.pending, unknown:record.unknown, pendingCommands};
+    },
     // No force-reset API: a running/ambiguous operation cannot be forgotten.
     retire() {
       if (!snapshot(record).quiescent) throw new Error('Execution proof missing; cannot retire observer');

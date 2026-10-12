@@ -420,6 +420,7 @@ export class ExtensionBrowserBackend {
           error.outcomeUnknown=true;
           this.recoveryOperation={record,observed,path,sessionId:record.sessionId,windowId:record.windowId,
             tabId:record.tabId,generation:record.generation,native:this.window?.connectionMode==='jarvis-background-native-v1',scheduled:false};
+          this.diagnostic('execution-pending',{...fields,...observed.diagnostics()});
           this.recoveryState=this.recoveryMode==='verified-only' ? 'draining' : 'blocked-needs-supervision';
           await this.ledger.state(record,this.recoveryMode==='verified-only' ? 'draining' : 'blocked').catch(()=>{});
         } else {observed.retire();await this.ledger.state(record,'resolved');}
@@ -438,6 +439,8 @@ export class ExtensionBrowserBackend {
   }
   async blockRecovery(reason) {
     this.recoveryState='blocked-needs-supervision';
+    if (reason==='drain-budget-exhausted' && this.recoveryOperation)
+      this.diagnostic('execution-drain-exhausted',this.recoveryOperation.observed.diagnostics());
     this.quarantine={...(this.quarantine || {}),reason};
     if (this.recoveryOperation) await this.ledger.state(this.recoveryOperation.record,'blocked').catch(()=>{});
   }

@@ -14,7 +14,7 @@ export function patchObservedExecution(source) {
     ['const result = await __fn__(page);', 'const result = await __jarvisRunSnippet__();'],
     [
       'const id = ++this._lastId;\n        this._ws.send(JSON.stringify({ id, method, params: params2 }));\n        const error = new Error(`Protocol error: ${method}`);\n        return new Promise((resolve, reject) => {\n          this._callbacks.set(id, { resolve, reject, error });\n        });',
-      `// JARVIS_EXECUTION_RELAY_V1\n        const id = ++this._lastId;\n        const jarvisReceipt = ${key}?.command(this);\n        try { this._ws.send(JSON.stringify({ id, method, params: params2 })); }\n        catch (error) { ${key}?.unknown(jarvisReceipt); throw error; }\n        const error = new Error(\`Protocol error: \${method}\`);\n        return new Promise((resolve, reject) => {\n          this._callbacks.set(id, { resolve, reject, error, jarvisReceipt });\n        });`,
+      `// JARVIS_EXECUTION_RELAY_V1\n        const id = ++this._lastId;\n        const jarvisReceipt = ${key}?.command(this, method, params2);\n        try { this._ws.send(JSON.stringify({ id, method, params: params2 })); }\n        catch (error) { ${key}?.unknown(jarvisReceipt); throw error; }\n        const error = new Error(\`Protocol error: \${method}\`);\n        return new Promise((resolve, reject) => {\n          this._callbacks.set(id, { resolve, reject, error, jarvisReceipt });\n        });`,
     ],
     [
       'const callback = this._callbacks.get(object.id);\n          this._callbacks.delete(object.id);\n          if (object.error) {\n            const error = callback.error;',
@@ -25,6 +25,9 @@ export function patchObservedExecution(source) {
       `// JARVIS_EXECUTION_LOSS_V1\n        for (const callback of this._callbacks.values()) {\n          ${key}?.unknown(callback.jarvisReceipt);\n          callback.reject(new Error("WebSocket closed"));\n        }\n        this._callbacks.clear();`,
     ],
   ];
+  // Exact migration of our previous pinned relay hook; no upstream fuzzy edits.
+  const priorRelay = replacements[3][1].replace('?.command(this, method, params2);', '?.command(this);');
+  if (source.split(priorRelay).length === 2) source = source.replace(priorRelay, replacements[3][1]);
   for (const [index, [before, after]] of replacements.entries()) {
     const count=source.split(after).length-1;
     if (count===1) continue;

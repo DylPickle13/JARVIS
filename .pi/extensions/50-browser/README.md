@@ -1,5 +1,22 @@
 # JARVIS browser bridge
 
+## Recurring stall investigation — 2026-10-11
+
+A read-only Workday element screenshot reproduced the stability-wait stall;
+pending execution cleared after the owner brought the automation window into view.
+A separately approved trial of `--disable-backgrounding-occluded-windows` allowed
+the same heading screenshot to pass twice out of view. This did not prove the
+original workflow fixed: Chrome restarted and Workday restored signed out.
+The owner subsequently requested rollback. Chrome has been relaunched without
+that flag; no persistent launcher was ever changed. Both windows restored with
+prior tab counts. After owner confirmation of the restored automation window on
+Desktop 2, identity rebinding and native reconnection completed. The bridge is
+healthy, verified-only, with all 11 work tabs and no unresolved operations. The
+shared-profile backend, recovery safeguards and deadlines are unchanged. The
+original stall remains possible; this rollback is not a stall fix.
+See [BACKGROUND-STALL-VERIFICATION.md](BACKGROUND-STALL-VERIFICATION.md) and
+[durable deployment/architecture options](PERMANENT-BACKGROUND-OPTIONS.md).
+
 ## Verified recovery — enabled; supervised acceptance complete
 
 Production runs `verified-only` recovery, enabled on 2026-10-09 after sir confirmed

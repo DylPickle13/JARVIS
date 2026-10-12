@@ -33,11 +33,12 @@ for(const [mode,title] of Object.entries(cases)) test(title,async()=>{
 });
 
 for(const [program,args] of [
+  [process.execPath,[new URL('./test-background-stall-live.mjs',import.meta.url).pathname]],
   [process.execPath,[new URL('./test-verified-recovery-live.mjs',import.meta.url).pathname]],
   ['/usr/bin/python3',[new URL('./test-verified-recovery-live.py',import.meta.url).pathname]],
   ['/usr/bin/python3',[new URL('./test-extension-focus.py',import.meta.url).pathname,'--script','test-verified-recovery-live.py']],
 ]) test(`live maintenance guard refuses before credentials/Chrome (${args[0].split('/').pop()})`,async()=>{
-  const env={...process.env};delete env.JARVIS_TEST_VERIFIED_RECOVERY_MAINTENANCE;
+  const env={...process.env};delete env.JARVIS_TEST_VERIFIED_RECOVERY_MAINTENANCE;delete env.JARVIS_TEST_BACKGROUND_STALL_MAINTENANCE;
   await assert.rejects(exec(program,args,{env,timeout:3000}),error=>/Not authorized|require explicit/.test(error.stderr)&&error.code!==0);
 });
 
