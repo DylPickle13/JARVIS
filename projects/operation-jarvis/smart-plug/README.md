@@ -54,6 +54,15 @@ limited to that pre-write phase; write or verification failures never cause a
 second wrapper mutation attempt. Toggle reads and writes on one connection.
 Unconfirmed state is reported as uncertain, not successful.
 
+When a plug has a recorded `mac`, fresh status reads, pre-write preparation and
+post-write verification require that exact device MAC (separator/case insensitive).
+A reused DHCP address answering as another device is a failed read, never another
+plug's power state; on/off/toggle fail before mutation. Configured aliases and direct
+IPs for configured hosts retain this check. Environment IP overrides preserve the
+recorded MAC, and save-discovery retains discovered MACs. Invalid recorded MACs fail
+closed. Legacy entries without a MAC and unknown direct hosts remain unbound; this
+is LAN identity matching, not cryptographic attestation.
+
 Daemon writes also carry a private expected-host check. Direct CLI/tools remain
 outside daemon admission and have no admitted cache identity. Mutations now use
 reviewed, connection-local SDK query/send/HTTP single-attempt guards, zero protocol
@@ -178,7 +187,8 @@ KASA_DISCOVERY_TARGET=<private-lan-ip> plugctl discover
 
 The backend's existing `status-all` collector automatically recovers changed IPs
 without a daemon restart. After **three consecutive failed batch reads** for a
-configured plug, it may broadcast discovery on that plug's private IPv4 `/24` LAN.
+configured plug (including MAC-identity mismatches at a reassigned IP), it may
+broadcast discovery on that plug's private IPv4 `/24` LAN.
 There is at most **one discovery attempt per config every five minutes**, including
 failed/cancelled attempts; persistent counters and a nonblocking process lock keep
 short-lived workers and simultaneous callers from bypassing that limit. Healthy

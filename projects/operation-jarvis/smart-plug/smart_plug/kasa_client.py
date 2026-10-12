@@ -7,7 +7,7 @@ from typing import Any
 
 from kasa import Discover
 
-from .config import PlugConfig, Settings, normalize_name, write_plug_config
+from .config import PlugConfig, Settings, normalize_mac, normalize_name, write_plug_config
 from .ip_recovery import recover_failed_hosts
 
 
@@ -92,7 +92,7 @@ class SmartPlugController:
     async def save_discovery(self) -> dict[str, PlugStatus]:
         statuses = await self.discover()
         plugs = {
-            name: PlugConfig(name=name, host=status.host)
+            name: PlugConfig(name=name, host=status.host, mac=status.mac)
             for name, status in statuses.items()
         }
         write_plug_config(plugs, self.settings.config_path)
@@ -100,12 +100,14 @@ class SmartPlugController:
 
     async def status(self, name_or_host: str) -> PlugStatus:
         name, host = self._resolve(name_or_host)
+        expected_mac = self._expected_mac(name, host)
         last_auth_error: Exception | None = None
         auth_kwargs = self._auth_kwargs_list()
         for index, kwargs in enumerate(auth_kwargs):
             dev = await self._connect(host, kwargs)
             try:
                 await dev.update()
+                self._check_observed_mac(dev, expected_mac)
                 return _status_from_device(name, host, dev)
             except Exception as exc:
                 if _is_auth_error(exc) and index < len(auth_kwargs) - 1:
@@ -118,7 +120,8 @@ class SmartPlugController:
             raise last_auth_error
         raise RuntimeError(f"No Kasa device found at {host}")
 
-    async def _prepare_write(self, host: str, expected_host: str | None):
+    async def _prepare_write(self, host: str, expected_host: str | None,
+                             expected_mac: str | None = None):
         """Credential fallback is allowed ONLY while performing pre-write reads."""
         auth_kwargs = self._auth_kwargs_list()
         for index, kwargs in enumerate(auth_kwargs):
@@ -128,6 +131,7 @@ class SmartPlugController:
                 if await dev.update() is False:
                     raise RuntimeError("Plug pre-write refresh was not confirmed")
                 self._check_observed_host(dev, expected_host)
+                self._check_observed_mac(dev, expected_mac)
                 return dev
             except BaseException as exc:
                 if dev is not None:
@@ -153,8 +157,30 @@ class SmartPlugController:
         if not isinstance(observed, str) or observed.strip().lower() != expected_host.strip().lower():
             raise RuntimeError("Observed plug identity does not match the admitted target")
 
+    def _expected_mac(self, name: str, host: str) -> str | None:
+        # Bind aliases and direct-IP access to any recorded identity for this host.
+        expected = set()
+        for key, plug in self.settings.plugs.items():
+            if key != name and plug.host != host:
+                continue
+            raw = getattr(plug, "mac", None)
+            if raw is not None:
+                mac = normalize_mac(raw)
+                if mac is None:
+                    raise RuntimeError("Invalid configured plug MAC; no device access attempted")
+                expected.add(mac)
+        if len(expected) > 1:
+            raise RuntimeError("Conflicting configured plug identities; no device access attempted")
+        return next(iter(expected), None)
+
+    @staticmethod
+    def _check_observed_mac(dev: Any, expected_mac: str | None) -> None:
+        if expected_mac is not None and normalize_mac(_safe_get(dev, "mac")) != expected_mac:
+            raise RuntimeError("Plug MAC identity mismatch; configured IP belongs to another or unknown device")
+
     async def _write_connected(self, dev: Any, name: str, host: str, on: bool,
-                               expected_host: str | None) -> PlugStatus:
+                               expected_host: str | None,
+                               expected_mac: str | None = None) -> PlugStatus:
         # Never catch an error here to retry credentials or the mutation. Even
         # an auth-classified failure after this point may follow delivery.
         with _single_attempt_write(dev, on):
@@ -165,6 +191,7 @@ class SmartPlugController:
         if await dev.update() is False:
             raise RuntimeError("Plug write verification was not confirmed; outcome is uncertain")
         self._check_observed_host(dev, expected_host)
+        self._check_observed_mac(dev, expected_mac)
         result = _status_from_device(name, host, dev)
         if result.is_on is not on:
             raise RuntimeError("Plug did not report the requested state; outcome is uncertain")
@@ -172,9 +199,10 @@ class SmartPlugController:
 
     async def set_power(self, name_or_host: str, on: bool, *, expected_host: str | None = None) -> PlugStatus:
         name, host = self._write_target(name_or_host, expected_host)
-        dev = await self._prepare_write(host, expected_host)
+        expected_mac = self._expected_mac(name, host)
+        dev = await self._prepare_write(host, expected_host, expected_mac)
         try:
-            return await self._write_connected(dev, name, host, on, expected_host)
+            return await self._write_connected(dev, name, host, on, expected_host, expected_mac)
         finally:
             await _close_device(dev)
 
@@ -182,12 +210,13 @@ class SmartPlugController:
         # Resolve, observe and mutate the same connection, not status() followed
         # by a second resolution/connection. Other controllers can still race us.
         name, host = self._write_target(name_or_host, expected_host)
-        dev = await self._prepare_write(host, expected_host)
+        expected_mac = self._expected_mac(name, host)
+        dev = await self._prepare_write(host, expected_host, expected_mac)
         try:
             current = _safe_get(dev, "is_on")
             if not isinstance(current, bool):
                 raise RuntimeError("Could not read a definite plug state before toggle")
-            return await self._write_connected(dev, name, host, not current, expected_host)
+            return await self._write_connected(dev, name, host, not current, expected_host, expected_mac)
         finally:
             await _close_device(dev)
 

@@ -95,10 +95,13 @@ paths, **not** a complete dependency audit or physical write certification:
   Installed SDK files are untouched. Real-SDK loopback tests reproduce four
   unguarded attempts and verify one guarded submission after response loss.
   See [scope, operational limits and mandatory SDK gate](kasa-write-safety.md).
-- Host/CID binding is not cryptographic device identity, DHCP replacement
-  detection, immutable catalogue generation, or global locking. Direct legacy
-  writes do not have a daemon-admitted identity. Concurrent catalogue edits
-  remain maintenance-only.
+- Host/CID binding alone is not cryptographic device identity, DHCP replacement
+  detection, immutable catalogue generation, or global locking. The plug controller
+  additionally checks recorded MACs on reads, before mutation and at verification;
+  DHCP reuse by a different MAC fails closed. Configs without a recorded MAC remain
+  unbound. MAC matching is not cryptographic attestation. Direct legacy writes do
+  not have a daemon-admitted identity. Concurrent catalogue edits remain
+  maintenance-only.
 - **VeSync SDK mutation guard implemented:** a device-local manager view blocks
   token reauthentication/replay during mutation; independent API/HTTP budgets and
   redirect/retry suppression bound the reviewed setting request. CID and payload

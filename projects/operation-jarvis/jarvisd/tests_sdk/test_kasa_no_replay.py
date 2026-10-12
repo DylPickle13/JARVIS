@@ -420,6 +420,30 @@ class NoReplayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.received), 1)
         self.assert_restored(dev)
 
+    async def test_controller_rejects_wrong_real_sdk_mac_before_submission(self):
+        from smart_plug.config import Settings, PlugConfig
+        settings = Settings(username=None, password=None, credentials=[],
+            discovery_target="192.0.2.255", timeout=1, config_path=Path("/synthetic/config.json"),
+            plugs={"lamp": PlugConfig("lamp", "127.0.0.1", mac="AA-BB-CC-DD-EE-01")})
+        controller = wrapper.SmartPlugController(settings)
+        for action in ("on", "off", "toggle"):
+            with self.subTest(action=action):
+                dev = await self.http_device()
+                info = {"relay_state": 0, "mac": "AA:BB:CC:DD:EE:02"}
+                dev._last_update = {"system": {"get_sysinfo": info}}
+                dev._sys_info = info
+                dev.update = mock.AsyncMock()
+                controller._connect = mock.AsyncMock(return_value=dev)
+                with mock.patch.object(dev, "disconnect", wraps=dev.disconnect) as close:
+                    with self.assertRaisesRegex(RuntimeError, "MAC identity mismatch"):
+                        if action == "toggle":
+                            await controller.toggle("lamp", expected_host="127.0.0.1")
+                        else:
+                            await controller.set_power("lamp", action == "on", expected_host="127.0.0.1")
+                    close.assert_awaited_once()
+                controller._connect.assert_awaited_once()
+                self.assertEqual(self.received, [])
+
     async def test_controller_and_real_sdk_use_guard_and_close_on_response_loss(self):
         from smart_plug.config import Settings, PlugConfig, KasaCredential
         settings = Settings(username=None, password=None,
@@ -453,10 +477,11 @@ class NoReplayTests(unittest.IsolatedAsyncioTestCase):
         from smart_plug.config import Settings, PlugConfig
         settings = Settings(username=None, password=None, credentials=[],
             discovery_target="192.0.2.255", timeout=1, config_path=Path("/synthetic/config.json"),
-            plugs={"lamp": PlugConfig("lamp", "127.0.0.1")})
+            plugs={"lamp": PlugConfig("lamp", "127.0.0.1", mac="AA-BB-CC-DD-EE-01")})
         dev = await self.http_device()
-        dev._last_update = {"system": {"get_sysinfo": {"relay_state": 0}}}
-        dev._sys_info = {"relay_state": 0}
+        info = {"relay_state": 0, "mac": "AA:BB:CC:DD:EE:01"}
+        dev._last_update = {"system": {"get_sysinfo": info}}
+        dev._sys_info = info
         reads = 0
         async def update():
             nonlocal reads

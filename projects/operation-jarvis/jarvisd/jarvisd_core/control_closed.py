@@ -17,10 +17,11 @@ from . import vendor_fence
 # Retained from the independently tested delegation-stage artifact. An arbitrary
 # manifest may NOT bless the old unfenced wrappers merely by adding helper files.
 FENCED_MUTATORS = {
-    # Re-reviewed DHCP candidate with recovery suppressed in fenced batch reads;
-    # mandatory SDK checkpoints passed against synthetic peers. Retained artifact
-    # hash, never recomputed/accepted automatically at runtime.
-    'smart-plug/smart_plug/kasa_client.py': '12c1b4c0624eb0269f026b9ef9c8009060380b377325eacdd85bc6dbfb688c0a',
+    # Re-reviewed MAC-identity candidate, with catalogue recovery still suppressed.
+    # Mandatory delegation SDK gates and staged real-SDK MAC rejection passed
+    # against synthetic peers. Exact retained build artifact only; never recomputed
+    # or accepted automatically at runtime. No installed profile/pins are changed.
+    'smart-plug/smart_plug/kasa_client.py': '0d22742b981413e9793e814d61ad35f2944edb24a3d2714645fcbd0790586ed9',
     'air-purifier/air_purifier/write_safety.py': '69ea80798bc7e6d0055c59edc358b380dd9271d3e70fc5732989a1ed622b3a7b',
 }
 REQUIRED = frozenset({

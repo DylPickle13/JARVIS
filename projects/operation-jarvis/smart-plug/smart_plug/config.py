@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ class PlugConfig:
     name: str
     host: str
     aliases: tuple[str, ...] = ()
+    mac: str | None = None
 
 
 @dataclass(frozen=True)
@@ -106,7 +108,8 @@ def _parse_json_plugs(path: Path) -> dict[str, PlugConfig]:
                     for alias in raw_aliases
                     if str(alias).strip()
                 )
-                plugs[clean_name] = PlugConfig(name=clean_name, host=str(host), aliases=aliases)
+                mac = _configured_mac(value.get("mac") if isinstance(value, dict) else None)
+                plugs[clean_name] = PlugConfig(name=clean_name, host=str(host), aliases=aliases, mac=mac)
     elif isinstance(raw_plugs, list):
         for item in raw_plugs:
             if not isinstance(item, dict):
@@ -121,8 +124,27 @@ def _parse_json_plugs(path: Path) -> dict[str, PlugConfig]:
                     for alias in raw_aliases
                     if str(alias).strip()
                 )
-                plugs[clean_name] = PlugConfig(name=clean_name, host=str(host), aliases=aliases)
+                plugs[clean_name] = PlugConfig(
+                    name=clean_name, host=str(host), aliases=aliases,
+                    mac=_configured_mac(item.get("mac")),
+                )
     return plugs
+
+
+def normalize_mac(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = value.replace(':', '').replace('-', '').lower()
+    return value if re.fullmatch(r'[0-9a-f]{12}', value) and value != '0' * 12 else None
+
+
+def _configured_mac(value: Any) -> str | None:
+    if value is None:
+        return None  # Legacy configs without an identity remain supported.
+    mac = normalize_mac(value)
+    if mac is None:
+        raise ValueError("Invalid configured plug MAC; refusing unbound device access")
+    return mac
 
 
 def normalize_name(value: str) -> str:
@@ -171,7 +193,9 @@ def load_settings(config_path: Path | None = None) -> Settings:
     load_dotenv(REPO_ENV_PATH)
     path = config_path or Path(os.environ.get("SMART_PLUG_CONFIG", DEFAULT_CONFIG_PATH))
     plugs = _parse_json_plugs(path)
-    plugs.update(_parse_env_plugs(os.environ.get("SMART_PLUGS")))
+    for name, override in _parse_env_plugs(os.environ.get("SMART_PLUGS")).items():
+        # An IP override must not erase the recorded identity or aliases.
+        plugs[name] = replace(plugs[name], host=override.host) if name in plugs else override
 
     username = os.environ.get("KASA_USERNAME") or None
     password = os.environ.get("KASA_PASSWORD") or None
@@ -191,7 +215,7 @@ def load_settings(config_path: Path | None = None) -> Settings:
 def write_plug_config(plugs: dict[str, PlugConfig], path: Path = DEFAULT_CONFIG_PATH) -> None:
     payload = {
         "plugs": {
-            name: {"host": plug.host}
+            name: {"host": plug.host, **({"mac": plug.mac} if plug.mac is not None else {})}
             for name, plug in sorted(plugs.items())
         }
     }

@@ -11,14 +11,13 @@ import ipaddress
 import json
 import os
 from pathlib import Path
-import re
 import stat
 import tempfile
 import time
 
 from kasa import Discover
 
-from .config import normalize_name
+from .config import normalize_mac as _mac, normalize_name
 
 FAILURE_THRESHOLD = 3
 COOLDOWN_SECONDS = 300
@@ -26,13 +25,6 @@ COOLDOWN_SECONDS = 300
 # backend worker deadline, including interpreter startup and cleanup.
 DISCOVERY_BUDGET_SECONDS = 3
 MAX_FILE_BYTES = 65536
-
-
-def _mac(value):
-    if not isinstance(value, str):
-        return None
-    value = value.replace(':', '').replace('-', '').lower()
-    return value if re.fullmatch(r'[0-9a-f]{12}', value) and value != '0' * 12 else None
 
 
 def _lan(host):

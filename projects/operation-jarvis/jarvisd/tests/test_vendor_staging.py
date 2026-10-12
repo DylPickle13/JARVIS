@@ -1,4 +1,5 @@
 """Build-only SDK fence patches; never edits/imports live vendor packages."""
+import ast
 import importlib.util
 import os
 from pathlib import Path
@@ -34,6 +35,31 @@ class StagingTests(unittest.TestCase):
             self.assertEqual((self.source / name).read_bytes(), raw)
             self.assertNotEqual((output / name).read_bytes(), raw)
         self.assertFalse(any(p.name in ('.env', '.venv', 'plugs.json') for p in output.rglob('*')))
+
+    def test_staged_mac_checks_and_pinned_identity_survive_intent_fencing(self):
+        output = self.root / 'stage'
+        staging.stage(self.source, output)
+        tree = ast.parse((output / 'smart-plug/smart_plug/kasa_client.py').read_text())
+        cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'SmartPlugController')
+        methods = {node.name: node for node in cls.body if isinstance(node, ast.AsyncFunctionDef)}
+        for name in ('_prepare_write', '_write_connected'):
+            self.assertIn('expected_mac', [arg.arg for arg in methods[name].args.args])
+            checks = [node for node in ast.walk(methods[name]) if isinstance(node, ast.Call)
+                      and isinstance(node.func, ast.Attribute) and node.func.attr == '_check_observed_mac']
+            self.assertEqual(len(checks), 1)
+            self.assertEqual(ast.unparse(checks[0].args[-1]), 'expected_mac')
+        for name in ('set_power', 'toggle'):
+            calls = [node for node in ast.walk(methods[name]) if isinstance(node, ast.Call)
+                     and isinstance(node.func, ast.Attribute) and node.func.attr == '_write_connected']
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(ast.unparse(calls[0].args[-1]), 'expected_mac')
+        toggle = calls[0]
+        self.assertEqual([(kw.arg, ast.literal_eval(kw.value)) for kw in toggle.keywords], [('intent', 'plug-toggle')])
+        guarded = [node for node in ast.walk(methods['_write_connected']) if isinstance(node, ast.With)
+                   and any('_single_attempt_write' in ast.unparse(item.context_expr) for item in node.items)]
+        self.assertEqual(len(guarded), 1)
+        self.assertEqual(len(guarded[0].items), 2)
+        self.assertIn('_ownership.permission', ast.unparse(guarded[0].items[0].context_expr))
 
     def test_existing_or_live_tree_destinations_are_refused(self):
         output = self.root / 'existing'; output.mkdir()

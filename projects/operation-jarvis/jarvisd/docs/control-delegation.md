@@ -65,6 +65,12 @@ No new device capability is added.
 - Kasa checks the actual observed host, distinct intent and effective boolean
   before the existing single-attempt SDK guard. Save-discovery is closed before
   discovery/config writing, pending owner-maintenance implementation.
+- The Kasa wrapper's recorded-MAC guard was deliberately re-reviewed alongside
+  its staging patch: pre-write mismatches cannot enter the mutation guard, the
+  expected MAC remains pinned through the distinct-intent hook, and verification
+  failure cannot replay. The retained wrapper input hash was updated for this exact
+  reviewed source; SDK acceptance hashes, runtime certificates and live services
+  were not changed. Fenced catalogue recovery remains disabled.
 - VeSync enters its checkpoint with actual CID/method/args/kwargs before the
   existing guarded mutation. Existing no-replay, identity and response guards
   remain in place; exception/cancellation restoration is preserved.

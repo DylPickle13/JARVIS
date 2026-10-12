@@ -12,10 +12,11 @@ import shutil
 import sys
 
 BASELINES = {
-    # Re-reviewed DHCP recovery addition: power mutation methods are unchanged.
-    # Fenced stages suppress automatic catalogue recovery below; reads cannot
-    # rewrite an ownership-bound target. Subsequent source drift still fails closed.
-    'smart-plug/smart_plug/kasa_client.py': '4e4d29e1a84ef36f8a9aa5ffb0a12e8439dd32556eaa3749388b09bb2c8ef292',
+    # Deliberately re-reviewed MAC identity guard: mismatch fails before the
+    # existing guarded mutation, verification cannot replay, and expected_mac
+    # remains pinned through the staged intent hook. SDK acceptance is unchanged.
+    # Fenced reads still cannot rewrite the ownership-bound catalogue.
+    'smart-plug/smart_plug/kasa_client.py': 'f99939d4100bcb9a4f62af3fb551f2cd0196a075d961cb6fd78988792ed40698',
     'air-purifier/air_purifier/write_safety.py': '50c2254b557aa0116d2489e5e01b8447e0b2e4abb4491a2edc49ce72e36d1e4f',
 }
 PATCHES = {
@@ -25,8 +26,8 @@ PATCHES = {
          '        return results  # Fenced catalogue is immutable; no automatic DHCP recovery.\n'),
         ('    async def save_discovery(self) -> dict[str, PlugStatus]:\n        statuses = await self.discover()\n',
          '    async def save_discovery(self) -> dict[str, PlugStatus]:\n        _ownership.reject_catalogue_change()\n        statuses = await self.discover()\n'),
-        ('                               expected_host: str | None) -> PlugStatus:\n',
-         '                               expected_host: str | None, *, intent: str | None = None) -> PlugStatus:\n'),
+        ('                               expected_mac: str | None = None) -> PlugStatus:\n',
+         '                               expected_mac: str | None = None, *, intent: str | None = None) -> PlugStatus:\n'),
         ('        with _single_attempt_write(dev, on):\n',
          '''        intent = intent or ('plug-on' if on else 'plug-off')
         if (type(on) is not bool or intent not in ('plug-on', 'plug-off', 'plug-toggle')
@@ -39,8 +40,8 @@ PATCHES = {
                 'args': [], 'kwargs': {}}
         with _ownership.permission(call, desired={'isOn': on}), _single_attempt_write(dev, on):
 '''),
-        ('            return await self._write_connected(dev, name, host, not current, expected_host)\n',
-         '            return await self._write_connected(dev, name, host, not current, expected_host, intent="plug-toggle")\n'),
+        ('            return await self._write_connected(dev, name, host, not current, expected_host, expected_mac)\n',
+         '            return await self._write_connected(dev, name, host, not current, expected_host, expected_mac, intent="plug-toggle")\n'),
     ],
     'air-purifier/air_purifier/write_safety.py': [
         ('from typing import Any\n', 'from typing import Any\nfrom . import vendor_fence as _ownership\n'),
