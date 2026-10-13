@@ -83,7 +83,7 @@ links remain valid. This implementation lives in
 `projects/jarvis-backup/` without an old-folder symlink. Stored scheduler command
 paths were migrated in place; IDs, names, schedules and history were preserved.
 
-The policy pins the approved Java endpoint to `192.168.21.198:25565` and checks
+The policy pins the approved Java endpoint to `192.168.21.165:25565` and checks
 `server.properties` against it, including whitelist/security settings. A future
 LAN address migration must explicitly update `minecraft.java_host` in this
 policy (or an existing local Minecraft config override) after reviewing the
@@ -246,6 +246,19 @@ matched the tested checkpoint source and regression tests exactly; health passed
 the server identity was unchanged, autosave was restored and no marker remained.
 Rollover was exercised in isolated tests, not forced on the production server.
 The next scheduled run remains October 8 at 3 AM EDT. Weekly maintenance was not due.
+
+The October 13 overnight failure was another explicit LAN-address mismatch:
+`server.properties` and the actual local Paper listener had moved from
+`192.168.21.198` to `192.168.21.165`, while the backup policy retained the old
+address. After owner approval and executable/working-directory/session checks,
+the policy pin was updated without relaxing endpoint/security or autosave guards.
+All 54 tests passed, including both address migrations. The manual scheduler rerun
+completed October 13 at 10:34:17 EDT in 2m46s: snapshot `aa92a353`, repository
+structure, all 10 database copies, 2 source samples and 13 Minecraft samples
+verified. Independent cloud readback confirmed matching policy and server
+endpoint/security settings; health passed, autosave was restored, no pending
+marker remained and the server identity was unchanged. The next scheduled run
+remains October 14 at 3 AM EDT. Weekly maintenance was not due.
 
 ## Commands
 
