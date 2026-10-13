@@ -28,15 +28,15 @@ import workspace
 
 class LayoutTests(unittest.TestCase):
     def test_thresholds(self):
-        for width, count in ((1, 1), (80, 1), (100, 1), (101, 2), (110, 2),
-                             (151, 2), (152, 3), (156, 3), (184, 3), (1000, 3)):
+        for width, count in ((1, 1), (80, 1), (96, 1), (97, 2), (110, 2),
+                             (145, 2), (146, 3), (150, 3), (184, 3), (1000, 3)):
             self.assertEqual(layout.capacity(width, minimum=layout.DEFAULT_MIN_COLUMNS), count)
 
     def test_hysteresis(self):
-        for width, previous, expected in ((100, 2, 1), (101, 1, 1), (104, 1, 1),
-                                          (105, 1, 2), (110, 1, 2), (151, 3, 2),
-                                          (152, 2, 2), (155, 2, 2), (156, 2, 3),
-                                          (152, 3, 3), (184, 1, 3)):
+        for width, previous, expected in ((96, 2, 1), (97, 1, 1), (100, 1, 1),
+                                          (101, 1, 2), (110, 1, 2), (145, 3, 2),
+                                          (146, 2, 2), (149, 2, 2), (150, 2, 3),
+                                          (146, 3, 3), (184, 1, 3)):
             self.assertEqual(layout.capacity(width, previous, layout.DEFAULT_MIN_COLUMNS), expected)
 
     def test_custom_thresholds(self):
@@ -46,7 +46,7 @@ class LayoutTests(unittest.TestCase):
             self.assertEqual(layout.capacity(182), 3)
         for value in ('oops', '1', '999'):
             with mock.patch.dict(os.environ, PI_DESK_MIN_COLUMNS=value):
-                self.assertEqual(layout.minimum_columns(), 50)
+                self.assertEqual(layout.minimum_columns(), 48)
 
     def test_resize_waits_for_tmux_to_observe_terminal_dimensions(self):
         with tempfile.TemporaryDirectory() as directory, \
@@ -241,7 +241,7 @@ class WorkspaceTests(unittest.TestCase):
     def test_all_sessions_all_modes_and_identity_preservation(self):
         name = workspace.create(5, 184, 45)
         client, slave = self.attach(name)
-        for width, count in ((184, 3), (150, 2), (80, 1), (190, 3)):
+        for width, count in ((184, 3), (140, 2), (150, 3), (80, 1), (190, 3)):
             before = self.identities(name)
             self.resize(client, slave, width)
             self.assertEqual(self.focus(name), 5)
@@ -585,6 +585,25 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(self.visible(name), layout.group(number, 3))
             self.assertEqual(self.focus(name), number)
 
+    def test_150_columns_supports_three_panes_after_live_threshold_change(self):
+        with mock.patch.dict(os.environ, PI_DESK_MIN_COLUMNS='50'):
+            name = workspace.create(2, 150, 45)
+        client, _ = self.attach(name, 150)
+        self.assertEqual(self.visible(name), (1, 2))
+        before = self.identities(name)
+        core.tmux('set-option', '-t', name, '@pi-desk-min-columns',
+                  str(layout.DEFAULT_MIN_COLUMNS))
+        self.assertTrue(desktop.resize_viewer(client.pid))
+        self.assertEqual(self.visible(name), (1, 2, 3))
+        self.assertEqual(self.focus(name), 2)
+        after = self.identities(name)
+        for number, identity in before.items():
+            self.assertEqual(after[number], identity)
+        widths = core.tmux('list-panes', '-t', name + ':0', '-F', '#{pane_width}').stdout.splitlines()
+        self.assertGreaterEqual(min(map(int, widths)), 48)
+        self.assertEqual(core.tmux('display-message', '-p', '-t', name + ':0',
+                                  '#{window_width}').stdout.strip(), '150')
+
     def test_110_columns_supports_two_panes_after_live_threshold_change(self):
         with mock.patch.dict(os.environ, PI_DESK_MIN_COLUMNS='60'):
             name = workspace.create(2, 110, 45)
@@ -758,7 +777,7 @@ class WorkspaceTests(unittest.TestCase):
         wide_client, wide_tty = self.attach(wide)
         small_client, small_tty = self.attach(small, 80, 35)
         before = self.identities(wide)
-        self.resize(small_client, small_tty, 150)
+        self.resize(small_client, small_tty, 140)
         desktop.choose(8, small_client.pid)
         self.assertEqual(self.visible(wide), (1, 2, 3))
         self.assertEqual(self.focus(wide), 2)
@@ -934,7 +953,7 @@ class WorkspaceTests(unittest.TestCase):
         client, slave = self.attach(name)
         self.install_test_navigation()
         client_name = core.tmux('list-clients', '-F', '#{client_name}').stdout.strip()
-        for width in (184, 150, 80):
+        for width in (184, 140, 80):
             self.resize(client, slave, width)
             expected = 1
             for direction in [1] * 11 + [-1] * 11:
@@ -1006,7 +1025,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(rows)
         pid, name = rows.split('\t')
         before = self.identities(name)
-        for width, count in ((150, 2), (80, 1), (190, 3)):
+        for width, count in ((140, 2), (150, 3), (80, 1), (190, 3)):
             fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 45, width, 0, 0))
             os.kill(int(pid), signal.SIGWINCH)
             for _ in range(200):
