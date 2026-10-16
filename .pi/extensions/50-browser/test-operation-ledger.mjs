@@ -91,22 +91,23 @@ test('unsafe directory fails before journal creation',async t=>{
   const {dir}=await fixture(t);const unsafe=join(dir,'unsafe');await mkdir(unsafe,{mode:0o755});await chmod(unsafe,0o755);
   await assert.rejects(new OperationLedger({path:join(unsafe,'journal.json')}).load(),/Unsafe/);
 });
-test('write failure prevents a client call or silent recovery',async t=>{
+test('journal failure no longer blocks dispatch or quarantines (recovery removed)',async t=>{
   const {ledger}=await fixture(t);ledger.save=async()=>{ledger.error=true;throw new Error('Synthetic journal failure');};
-  const b=new ExtensionBrowserBackend({recoveryMode:'verified-only',recoveryLedger:ledger});
-  b.diagnostic=()=>{};b.prepare=async()=>{b.connected=true;return {pages:[{tabId:7}]};};
-  b.client={callTool:()=>assert.fail('journal failure must prevent MCP dispatch')};
-  await assert.rejects(b.handle('/tabs',{action:'switch',tabId:7},'A'),/journal failure/);
-  assert(b.quarantine);assert.equal(b.recoveryState,'blocked-needs-supervision');
+  const b=new ExtensionBrowserBackend({recoveryLedger:ledger});
+  b.diagnostic=()=>{};b.prepare=async()=>{b.connected=true;return {activeIndex:-1,pages:[{tabId:7}]};};
+  b.client={callTool:async()=>({content:[{type:'text',text:'### Ran\nok\n### Result\n{"ok":true}'}]})};
+  await b.handle('/tabs',{action:'switch',tabId:7},'A');
+  assert.equal(b.quarantine,null);assert.equal(b.recoveryState,'healthy');
 });
-test('startup fence and metadata release never initiate a browser connection',async t=>{
+test('startup no longer fences on an unresolved journal (recovery removed)',async t=>{
   const {path,ledger}=await fixture(t);await ledger.begin(meta);
-  const b=new ExtensionBrowserBackend({recoveryMode:'manual-only',recoveryLedger:new OperationLedger({path})});
-  b.prepare=b.init=async()=>assert.fail('unresolved boot evidence must not contact Chrome');
+  const b=new ExtensionBrowserBackend({recoveryLedger:new OperationLedger({path})});
+  b.prepare=b.init=async()=>{b.connected=true;return {activeIndex:-1,pages:[]};};
+  b.callAction=async()=>({tabId:7,index:0});
   const status=await b.handle('/status',{},'B');
-  assert(status.daemon.quarantined);assert(status.daemon.inventoryStale);assert.equal(status.daemon.recovery.operations.length,0);
-  await assert.rejects(b.handle('/open',{url:'about:blank'},'B'),/quarantined/);
-  await b.handle('/close',{all:true},'B');assert(b.quarantine);
+  assert.equal(status.daemon.quarantined,false);assert.equal(status.daemon.inventoryStale,false);
+  assert.equal(status.daemon.recovery.requiresSupervision,false);
+  await b.handle('/open',{url:'about:blank'},'B');
 });
 
 test('kernel writer lock excludes competing daemons and releases without deleting evidence',async t=>{

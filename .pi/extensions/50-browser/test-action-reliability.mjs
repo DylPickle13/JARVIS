@@ -88,7 +88,7 @@ test('settled local action timeout fences only its owner; queued other session p
   assert.equal(b.sessions.session('A').uncertain,true);assert.equal(b.sessions.session('B').uncertain,false);
   assert.equal(b.lastFailure.kind,'action-timeout');
 });
-test('unacknowledged deadline blocks queued session, reselection and reset even if old work finishes late',async()=>{
+test('unacknowledged deadline resets the connection; queued work requires reselection',async()=>{
   const {b}=await backendFixture();
   let reject,started,completeLate;
   const lateTargets=[];
@@ -102,17 +102,17 @@ test('unacknowledged deadline blocks queued session, reselection and reset even 
   const second=b.handle('/type',{text:'B'},'B');
   const secondObserved=second.catch(e=>e);
   reject(Object.assign(new Error('MCP error -32001: Request timed out'),{code:-32001}));
-  assert.match((await observed).message,/Request timed out/);assert.match((await secondObserved).message,/quarantined/);
+  assert.match((await observed).message,/Request timed out/);assert.match((await secondObserved).message,/uncertain/);
   completeLate(); // Underlying work is independent of the rejected client request.
   await stillRunning;
   assert.deepEqual(lateTargets,[7]);
-  await assert.rejects(b.handle('/tabs',{action:'switch',tabId:8},'B'),/quarantined/);
-  await assert.rejects(b.reset(),/quarantined/);
-  assert.deepEqual(calls,[['/scroll',7]]);assert.equal(b.resetCount,0);
+  assert.equal(b.resetCount,1);assert.equal(b.quarantine,null);
+  await b.reset();
+  assert.deepEqual(calls,[['/scroll',7]]);
   assert.equal(b.sessions.session('A').uncertain,true);assert.equal(b.sessions.session('B').uncertain,true);
   const status=await b.handle('/status',{},'B');
-  assert.equal(status.connected,false);assert.equal(status.daemon.quarantined,true);assert.equal(status.daemon.inventoryStale,true);
-  assert.equal(status.daemon.lastFailure.kind,'unacknowledged-deadline');
+  assert.equal(status.daemon.quarantined,false);assert.equal(status.daemon.inventoryStale,false);
+  assert.equal(status.daemon.lastFailure.kind,'action-or-preflight-error');
   await b.handle('/tabs',{action:'release',tabId:8},'B');
   await b.handle('/close',{all:true},'A');
   assert.deepEqual(calls,[['/scroll',7]]);
@@ -129,11 +129,11 @@ test('stale quarantine inventory cannot prune leases created after its snapshot'
   await assert.rejects(b.sessions.handle('/click',{},'A',()=>assert.fail('no Chrome'),{pages:[]},{reconcile:false}),/Stale inventory/);
 });
 
-test('preflight request timeout quarantines without retrying an unresolved operation',async()=>{
+test('preflight request timeout resets and retries preflight only, with no quarantine',async()=>{
   const {b}=await backendFixture();let calls=0;
   b.prepare=async()=>{calls++;throw Object.assign(new Error('Request timed out'),{code:-32001});};
   await assert.rejects(b.handle('/status',{},'A'),/Request timed out/);
-  assert.equal(calls,1);assert.equal(b.resetCount,0);assert.ok(b.quarantine);
+  assert.equal(calls,3);assert.equal(b.resetCount,3);assert.equal(b.quarantine,null);
 });
 test('all actual resets remain visible after a successful status request',async()=>{
   const {b,inventory}=await backendFixture();

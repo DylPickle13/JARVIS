@@ -1,6 +1,6 @@
-// Deadlines bound the client's wait, NOT execution cancellation. A deadline
-// expiry must quarantine the shared bridge until supervised recovery; it must
-// never release the queue to another tab while an old action may still execute.
+// Deadlines bound the client's wait, NOT execution cancellation. The recovery
+// quarantine was removed at the owner's request (2026-10-15); a deadline now
+// resets the connection like any other transport failure.
 export function actionDeadlineMs(path, body = {}) {
   if (path === '/scroll') return 15000;
   if (path === '/type' && body.clear && body.delayMs === 0) return 30000;

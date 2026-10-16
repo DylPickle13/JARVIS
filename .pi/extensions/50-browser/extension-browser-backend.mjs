@@ -12,8 +12,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { BrowserSessions, validateTabInventory } from './browser-sessions.mjs';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { verifiedType } from './verified-input.mjs';
-import { actionDeadlineMs, isRequestDeadline, isLocalActionFailure, failureKind } from './action-policy.mjs';
-import { registerExecution } from './execution-observer.mjs';
+import { actionDeadlineMs, isLocalActionFailure, failureKind } from './action-policy.mjs';
 
 // Fixed implementation only: callers cannot submit code to the MCP server.
 // Never adopt the seed page (which may be the extension's connection tab).
@@ -264,42 +263,28 @@ export function parseToolResult(result) {
 }
 
 export class ExtensionBrowserBackend {
-  constructor({profileDir,profileDirectory,chromePath,tokenPath=join(homedir(),'.jarvis','playwright-extension.token'),windowPath=join(homedir(),'.jarvis','extension-window.json'),recoveryMode='manual-only',recoveryLedger=null,drainGraceMs=30000}) {
+  constructor({profileDir,profileDirectory,chromePath,tokenPath=join(homedir(),'.jarvis','playwright-extension.token'),windowPath=join(homedir(),'.jarvis','extension-window.json')}) {
     Object.assign(this,{profileDir,profileDirectory,chromePath,tokenPath,windowPath});
     this.queue=Promise.resolve(); this.connected=false; this.lastError='';
     this.sessions = new BrowserSessions();
     this.resetCount=0; this.connectionGeneration=0; this.operationSequence=0;
     this.lastFailure=null; this.lastReset=null; this.quarantine=null;
     this.lastInventory={activeIndex:-1,pages:[]};
-    if (!['manual-only','observe-only','verified-only'].includes(recoveryMode)) throw new Error('Invalid browser recovery mode');
-    if (recoveryMode !== 'manual-only' && !recoveryLedger) throw new Error('Recovery journal required');
-    this.recoveryMode=recoveryMode;this.ledger=recoveryLedger;this.drainGraceMs=drainGraceMs;
-    this.recoveryState='healthy';this.recoveryOperation=null;this.failureEpoch=0;this.requestSession=null;
-    this.recoveryBoot=null;
+    // Recovery journal, execution proof gate and quarantine were removed at the
+    // owner's request (2026-10-15). Status keeps the fields, always healthy.
+    this.ledger=null;
+    this.recoveryState='healthy';this.recoveryOperation=null;this.requestSession=null;
   }
   async loadRecovery() {
-    if (!this.ledger) return;
-    this.recoveryBoot ||= this.ledger.load().then(() => {
-      if (this.ledger.unresolved().length) {
-        this.quarantine={reason:'unresolved-journal'};this.recoveryState='blocked-needs-supervision';
-        this.connected=false;
-      }
-    }).catch(() => {
-      this.quarantine={reason:'journal-unavailable'};this.recoveryState='blocked-needs-supervision';
-      this.connected=false;
-    });
-    await this.recoveryBoot;
+    // Recovery journal removed; no startup fence.
   }
   recoveryInfo(sessionId) {
-    return {mode:this.recoveryMode,state:this.recoveryState,
-      requiresSupervision:!!this.quarantine && this.recoveryState!=='draining' && this.recoveryState!=='verifying',
-      ...(this.ledger ? {operations:this.ledger.summaries(sessionId)} : {})};
+    return {mode:'manual-only',state:this.recoveryState,requiresSupervision:false};
   }
   async init() {
     if (this.client) return;
     const relaySource=readFileSync(require.resolve('playwright-core/lib/coreBundle'),'utf8');
     if (!['JARVIS_BACKGROUND_TABS_V2','JARVIS_BACKGROUND_SELECTION_V2','JARVIS_WINDOW_TAB_SYNC_V1','JARVIS_LAUNCHER_ACK_V1'].every(marker=>relaySource.includes(marker))) throw new Error('Background-tab patch missing; run npm install in .pi/extensions/50-browser before using extension mode');
-    if (this.ledger && !['JARVIS_EXECUTION_REQUEST_V1','JARVIS_EXECUTION_SNIPPET_V1','JARVIS_EXECUTION_RELAY_V1','JARVIS_EXECUTION_ACK_V1','JARVIS_EXECUTION_LOSS_V1'].every(marker=>relaySource.includes(marker))) throw new Error('Reviewed execution observer patch missing');
     const token=(await readFile(this.tokenPath,'utf8')).trim();
     if (!token) throw new Error('Playwright extension token is empty');
     this.secret=token;
@@ -381,7 +366,6 @@ export class ExtensionBrowserBackend {
     await execFileAsync('/usr/bin/osascript',['-e',script,'--',String(w.windowId),String(w.previousFrontWindowId),w.previousFrontApp || ''],{timeout:10000}).catch(()=>{});
   }
   async reset(reason = 'explicit-reset') {
-    if (this.quarantine) throw new Error('Browser bridge quarantined: unacknowledged action may still be running. Supervised recovery required.');
     this.resetCount++;
     this.lastReset={at:new Date().toISOString(),reason};
     this.diagnostic('reset',{reason,resetCount:this.resetCount});
@@ -396,82 +380,13 @@ export class ExtensionBrowserBackend {
     const fields={operationId,action:timed ? path : 'preflight',tabId:Number.isSafeInteger(body.targetTabId) ? body.targetTabId : null};
     if (timed) this.diagnostic('action-start',{...fields,deadlineMs:actionDeadlineMs(path,body)});
     const code=`async (page) => await (${extensionAction.toString()})(page, ${JSON.stringify(path)}, ${JSON.stringify(body)}, (${verifiedType.toString()}))`;
-    let record, observed;
-    if (this.ledger) {
-      record=await this.ledger.begin({action:path,sessionId:this.requestSession,
-        tabId:body.targetTabId ?? null,windowId:this.window?.windowId ?? null,generation:this.connectionGeneration});
-      observed=registerExecution(code,{id:record.id,onChange:async snapshot=>{
-        await this.ledger.receipt(record,snapshot);
-        this.scheduleVerifiedRecovery();
-      }});
-    }
-    const proven=()=>!this.ledger || (this.ledger.proven(record) && observed.snapshot().quiescent);
     try {
       const result=parseToolResult(await this.client.callTool({name:this.runTool,arguments:{code}},undefined,{timeout:actionDeadlineMs(path, body)}));
-      await this.ledger?.flush();
-      if (!proven()) throw Object.assign(new Error('Browser execution completion not established'),{outcomeUnknown:true});
-      if (record) {observed.retire();await this.ledger.state(record,'resolved');}
       if (timed) this.diagnostic('action-end',{...fields,durationMs:Date.now()-started,outcome:'completed'});
       return result;
     } catch (error) {
-      if (record) {
-        await this.ledger.flush().catch(()=>{});
-        if (isRequestDeadline(error) || !proven()) {
-          error.outcomeUnknown=true;
-          this.recoveryOperation={record,observed,path,sessionId:record.sessionId,windowId:record.windowId,
-            tabId:record.tabId,generation:record.generation,native:this.window?.connectionMode==='jarvis-background-native-v1',scheduled:false};
-          this.diagnostic('execution-pending',{...fields,...observed.diagnostics()});
-          this.recoveryState=this.recoveryMode==='verified-only' ? 'draining' : 'blocked-needs-supervision';
-          await this.ledger.state(record,this.recoveryMode==='verified-only' ? 'draining' : 'blocked').catch(()=>{});
-        } else {observed.retire();await this.ledger.state(record,'resolved');}
-      }
       this.diagnostic('action-end',{...fields,durationMs:Date.now()-started,outcome:failureKind(error)});
       throw error;
-    }
-  }
-  scheduleVerifiedRecovery() {
-    const op=this.recoveryOperation;
-    if (!op || !this.quarantine || this.recoveryMode!=='verified-only' ||
-        this.recoveryState!=='draining' || op.scheduled || !this.ledger.proven(op.record) || !op.observed.snapshot().quiescent) return;
-    op.scheduled=true;
-    const recover=()=>this.recoverVerified(op);
-    const result=this.queue.then(recover,recover);this.queue=result.catch(()=>{});
-  }
-  async blockRecovery(reason) {
-    this.recoveryState='blocked-needs-supervision';
-    if (reason==='drain-budget-exhausted' && this.recoveryOperation)
-      this.diagnostic('execution-drain-exhausted',this.recoveryOperation.observed.diagnostics());
-    this.quarantine={...(this.quarantine || {}),reason};
-    if (this.recoveryOperation) await this.ledger.state(this.recoveryOperation.record,'blocked').catch(()=>{});
-  }
-  async recoverVerified(op) {
-    if (this.recoveryOperation!==op || this.recoveryState!=='draining') return;
-    // v1 cannot certify native-launch side effects or unbound tab creation.
-    // It recovers only positively acknowledged work in a recorded native window.
-    if (!op.native || !Number.isSafeInteger(op.tabId) || !Number.isSafeInteger(op.windowId) ||
-        op.generation!==this.connectionGeneration ||
-        (op.record.resultTabId!==null && op.record.resultTabId!==op.tabId) ||
-        ['/connect','/prepare-anchor','/new-tab'].includes(op.path) || !this.ledger.proven(op.record) ||
-        !op.observed.snapshot().quiescent) return this.blockRecovery('proof-or-identity-unavailable');
-    this.recoveryState='verifying';clearTimeout(op.graceTimer);
-    try {
-      op.observed.retire();await this.ledger.state(op.record,'resolved');
-      // The fence remains raised throughout preflight. No reset, action replay,
-      // stock allowance, or service/Chrome restart is used by this transaction.
-      const inventory=await this.prepare();
-      if (this.window?.windowId!==op.windowId || this.window?.connectionMode!=='jarvis-background-native-v1') throw new Error('Recovery window identity changed');
-      if (!inventory.pages.some(p=>p.tabId===op.tabId)) throw new Error('Recovery tab closed or moved');
-      this.lastInventory=inventory;this.connected=true;this.quarantine=null;this.lastError='';
-      const session=this.sessions.sessions.get(op.sessionId);
-      const safeOutcome=op.record.outcome==='completed' &&
-        (['/scroll','/wait','/extract','/screenshot'].includes(op.path) || (op.path==='/type'&&op.record.valueVerified));
-      if (safeOutcome && session?.tabId===op.tabId && this.sessions.lease(op.tabId)?.owner===op.sessionId) session.uncertain=false;
-      this.recoveryOperation=null;this.recoveryState='healthy';
-      this.diagnostic('verified-recovery',{tabId:op.tabId,outcome:safeOutcome?'completed':'owner-needs-inspection'});
-    } catch {
-      // A new unresolved verification operation has its own journal evidence.
-      // The original execution's proof never certifies subsequent preflight.
-      await this.blockRecovery('verification-failed');
     }
   }
   isTransportFailure(message) {
@@ -501,14 +416,14 @@ export class ExtensionBrowserBackend {
   async prepareWithRecovery() {
     // Only connection establishment and read-only discovery may retry. Once
     // session routing dispatches ANY action (including new-tab), never replay.
-    if (this.quarantine) throw new Error('Browser bridge quarantined; supervised recovery required.');
     for (let attempt=0; ; attempt++) {
       try { return await this.prepare(); }
       catch (error) {
         const message=this.sanitize(error.message || error);
-        // A request timeout is NOT a cancellation acknowledgement. Even an
-        // inventory call can have pending relay work; do not start a new context.
-        if (isRequestDeadline(error) || attempt >= 2 || !this.isTransportFailure(message) || message.startsWith('Automation window or connection moved/closed')) throw error;
+        // A request timeout is not a cancellation acknowledgement, but the
+        // recovery fence is gone: preflight is read-only, so retry like any
+        // other transport failure.
+        if (attempt >= 2 || !this.isTransportFailure(message) || message.startsWith('Automation window or connection moved/closed')) throw error;
         this.lastFailure={at:new Date().toISOString(),kind:'preflight-transport-error',action:'preflight',sessionId:null,tabId:null};
         await this.reset('preflight-transport-error');
         this.recoveryCount=(this.recoveryCount || 0)+1;
@@ -520,28 +435,11 @@ export class ExtensionBrowserBackend {
   handle(path,body={},sessionId='__bridge__') {
     // Serialize tab selection + actions; never replay a failed mutating action.
     const metadataOnly=path==='/status' || (path==='/tabs'&&['list','release'].includes(body.action));
-    const epoch=this.failureEpoch;
-    const cached=async()=>this.status(await this.sessions.handle(path,body,sessionId,
-      ()=>{throw new Error('Cached recovery lane must not access Chrome');},this.lastInventory,{reconcile:false}));
-    if (this.quarantine && metadataOnly) return cached();
-    if (this.quarantine && path==='/close' && body.all!==false) return this.sessions.handle(path,body,sessionId,()=>{throw new Error('Release must not access Chrome');});
     const run=async () => {
       await this.loadRecovery();
       if (path === '/close' && body.all !== false) {
         return this.sessions.handle(path, body, sessionId, () => { throw new Error('Release must not access Chrome'); });
       }
-      if (this.quarantine) {
-        // Cached status/release only. NEVER activate, inspect through Playwright,
-        // reconnect, or allow explicit reselection to override this fence.
-        if (path === '/status' || (path === '/tabs' && ['list','release'].includes(body.action))) {
-          const result=await this.sessions.handle(path,body,sessionId,()=>{throw new Error('Quarantine must not access Chrome');},this.lastInventory,{reconcile:false});
-          return this.status(result);
-        }
-        throw new Error(this.recoveryState==='draining' || this.recoveryState==='verifying'
-          ? 'Browser recovery pending; do not repeat the action. No action performed.'
-          : 'Browser bridge quarantined: an earlier action has no cancellation acknowledgement. Supervised recovery required; no action performed.');
-      }
-      if (!metadataOnly && epoch!==this.failureEpoch) throw new Error('Stale queued browser action refused after recovery; inspect before issuing fresh work.');
       this.requestSession=sessionId;
       this.connecting=!this.connected;
       let dispatched=false;
@@ -572,23 +470,7 @@ export class ExtensionBrowserBackend {
       } catch(error) {
         this.lastError=this.sanitize(error.message || error);
         this.lastFailure={at:new Date().toISOString(),kind:failureKind(error),action:path,sessionId,tabId:this.sessions.session(sessionId).tabId};
-        if (isRequestDeadline(error) || (this.ledger && (this.ledger.error || this.ledger.unresolved().length))) {
-          // Promise rejection does not stop CDP input. Keep dispatch fenced;
-          // only independently persisted execution proof can recover it.
-          this.quarantine={...this.lastFailure,reason:'execution-not-acknowledged'};
-          this.failureEpoch++;
-          this.diagnostic('quarantine',{reason:'execution-not-acknowledged',tabId:this.lastFailure.tabId});
-          this.sessions.invalidate(this.recoveryOperation ? sessionId : undefined);
-          this.connected=false;
-          const op=this.recoveryOperation;
-          if (op && this.recoveryState==='draining') {
-            op.graceTimer=setTimeout(()=>{
-              if(this.recoveryOperation===op&&this.recoveryState==='draining') void this.blockRecovery('drain-budget-exhausted');
-            },this.drainGraceMs);
-            op.graceTimer.unref?.();
-            this.scheduleVerifiedRecovery();
-          } else this.recoveryState='blocked-needs-supervision';
-        } else if (!this.connected || this.isTransportFailure(this.lastError)) {
+        if (!this.connected || this.isTransportFailure(this.lastError)) {
           this.sessions.invalidate();
           await this.reset(dispatched ? 'action-transport-error' : 'preflight-transport-error');
         } else if (dispatched && isLocalActionFailure(path,this.lastError)) {
@@ -597,8 +479,7 @@ export class ExtensionBrowserBackend {
           this.sessions.invalidate(sessionId);
           this.diagnostic('session-fenced',{reason:this.lastFailure.kind,tabId:this.lastFailure.tabId});
         }
-        throw new Error(this.lastError + (this.quarantine
-          ? (this.recoveryState==='draining' ? ' Automatic recovery pending; do not repeat the action.' : ' Browser bridge quarantined; supervised recovery required.') : ''));
+        throw new Error(this.lastError);
       } finally {this.connecting=false;this.requestSession=null;}
     };
     const result=this.queue.then(run,run);this.queue=result.catch(()=>{});return result;

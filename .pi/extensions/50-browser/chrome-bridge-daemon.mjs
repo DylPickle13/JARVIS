@@ -11,7 +11,6 @@ import { fileURLToPath } from 'node:url';
 
 import puppeteer from 'puppeteer-core';
 import { ExtensionBrowserBackend } from './extension-browser-backend.mjs';
-import { OperationLedger } from './operation-ledger.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = process.env.JARVIS_PROJECT_DIR || resolve(__dirname, '../../..');
@@ -98,10 +97,6 @@ if (!['cdp', 'extension'].includes(backendMode)) throw new Error('Invalid browse
 const extensionBackend = backendMode === 'extension' ? new ExtensionBrowserBackend({
   profileDir, profileDirectory: backendConfig.extensionProfileDirectory,
   chromePath: join(__dirname, 'launch-extension-in-automation-window.py'),
-  // Candidate deployment starts in observation mode; enabling proof-based fence
-  // release is an owner-operated configuration change after live acceptance.
-  recoveryMode: backendConfig.recoveryMode || 'observe-only',
-  recoveryLedger: new OperationLedger({path:join(homedir(),'.jarvis','browser-recovery','operations.json')}),
 }) : null;
 
 let authToken = '';
@@ -1064,14 +1059,10 @@ server.listen(port, host, () => {
 process.on('SIGINT', async () => {
   await browser?.disconnect?.().catch(() => undefined);
   await extensionBackend?.reset().catch(() => undefined);
-  await extensionBackend?.ledger?.flush().catch(() => undefined);
-  await extensionBackend?.ledger?.close().catch(() => undefined);
   process.exit(0);
 });
 process.on('SIGTERM', async () => {
   await browser?.disconnect?.().catch(() => undefined);
   await extensionBackend?.reset().catch(() => undefined);
-  await extensionBackend?.ledger?.flush().catch(() => undefined);
-  await extensionBackend?.ledger?.close().catch(() => undefined);
   process.exit(0);
 });

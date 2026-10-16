@@ -69,7 +69,7 @@ use Chrome's remote-debugging toggle or a second user-data directory.
 
 Local configuration (outside the repository):
 
-- `~/.jarvis/browser-backend.json`: `{"backend":"extension","recoveryMode":"verified-only"}`
+- `~/.jarvis/browser-backend.json`: `{"backend":"extension"}`
 - `~/.jarvis/playwright-extension.token`: user-provided extension token, mode 0600
 - `~/.jarvis/extension-window.json`: current native window/connection-tab IDs and
   prior foreground information; no authentication token
@@ -78,6 +78,9 @@ Local configuration (outside the repository):
 
 Recovery rollback keeps the extension backend and sets `recoveryMode` to
 `manual-only` during approved maintenance. It retains journal startup fences.
+(2026-10-15: the recovery journal, execution proof gate and quarantine were
+removed entirely at the owner's request; no `recoveryMode` is read anymore and
+no startup fence exists. The historical journal file is retained as evidence.)
 Never switch backend/profile, install a journal-unaware artifact or delete evidence
 to bypass unresolved execution. Legacy CDP selection (`PI_BROWSER_BACKEND=cdp`)
 is a separate owner-approved backend change, not a recovery/rollback shortcut;
@@ -168,7 +171,13 @@ numeric tab IDs and allowlisted reasons—not CDP payloads, page URLs or tokens.
 `User disconnected` can mean the bridge intentionally retired its own stale group;
 it does not necessarily mean the user clicked anything.
 
-### Proof-gated execution recovery (`verified-only`)
+### Proof-gated execution recovery (`verified-only`) — removed 2026-10-15
+
+The recovery journal, execution proof gate, drain budget and quarantine were
+removed entirely at the owner's request. A request deadline or transport
+failure now resets the connection as before; no fence, journal or supervised
+recovery remains. The historical journal file `~/.jarvis/browser-recovery/`
+is retained as evidence but no longer read. The text below is historical.
 
 A missing RPC reply is not cancellation proof. Recovery waits for independent
 actual-snippet/request termination and positive downstream command acknowledgments,
