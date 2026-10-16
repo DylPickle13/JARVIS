@@ -8,7 +8,8 @@ administration capability is introduced.
 
 ## Layout
 
-- `runner.py`: existing scheduling engine and CLI, retained intact for relocation.
+- `runner.py`: scheduling engine, deterministic executors, and CLI.
+- `health_watchdog.py`: bounded local jarvisd liveness probe and incident transitions.
 - `apns_provider.py`, `apns_registration.py`, `session_completion.py`: notification
   implementation, moved with its existing safety gates and no-replay behavior.
 - `migrate_storage.py`: explicit offline SQLite backup/relocation with integrity
@@ -94,6 +95,56 @@ Before applying assignments, create a private SQLite online backup (including WA
 contents) and verify its integrity. Keep job-specific assignments out of schema
 migrations. Roll back code without restoring an old database over newer executions;
 the additive column is safe for old code to ignore.
+
+## jarvisd liveness watchdog
+
+The owner-authorized `jarvisd-health` job belongs to **Maintenance** and runs at a
+`1m` interval. Its reserved model value, `__jarvisd_health__`, selects a built-in
+Python executor, not a Pi/LLM model. The required prompt is descriptive only;
+the executor always probes `http://127.0.0.1:8790/health`. No daemon restart,
+LaunchAgent replacement, app rebuild, device operation, or auto-restart is needed.
+Fresh scheduler workers load the implementation on their next tick.
+
+A healthy observation requires HTTP 200, bounded valid JSON, and boolean
+`ok: true`. Proxies and redirects are not used. A five-second total socket
+shutdown deadline bounds connection, headers and body, including trickling
+responses. Failure reasons are fixed/short; raw responses and exception text
+are never notification previews.
+
+An outage result is emitted on the first failed observation at least **300
+monotonic seconds after the first failure** in a continuous observed streak.
+It is not a five-poll counter. Healthy checks and shorter interruptions produce
+no Jobs result or push. Expected probe failures still count as successful
+*checker executions*; the private state records the backend failure. A genuine
+checker/state fault is instead retained as a scheduler error.
+
+Checks tolerate gaps up to 150 seconds. A larger gap, backward clock movement,
+monotonic reset, or wall/monotonic drift over five seconds resets an unalerted
+streak rather than assuming the missing time was unhealthy. An existing outage
+latch survives those interruptions to avoid duplicate alerts. The first healthy
+observation after a latched outage emits one recovery result and re-arms the next
+incident; recovery from a short, unalerted interruption is silent.
+
+State lives in the existing private SQLite `config` table under
+`jarvisd-health:<job-id>`. `jarvisd-health.lock` beside the database serializes
+checks across scheduled/manual workers; the OS releases this private file lock
+on process exit. State, job bookkeeping, result and notification-outbox entries
+commit together, so an interrupted commit cannot lose an incident or create a
+second event. Corrupt/unknown state fails closed rather than clearing its latch.
+This does not alter the existing APNs transport/retry semantics.
+
+Outage/recovery results use the normal scheduled-job notification pipeline and
+Jobs tap routing, independently of the HTTP process. Existing provider and
+opt-in gates, expiry, device registration, and partial/ambiguous-send handling
+remain unchanged. A disabled notification gate is not activated; past events
+are not replayed when it is enabled. Apple acceptance is not delivery/readership.
+
+The one-minute schedule is best effort: other jobs, sleep and scheduler delays
+can defer checks/dispatch. `/health` is liveness only, not dependency readiness;
+a local watchdog cannot report a failed Mac or scheduler. Manage this job with
+normal `jarvis_cron` list/disable/enable/remove operations. Disable it before
+rolling back to a runner without `__jarvisd_health__` support. Do not restore an
+old SQLite snapshot over newer incident/notification state.
 
 ## Computer presence lifecycle
 

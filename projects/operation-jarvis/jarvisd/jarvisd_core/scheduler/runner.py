@@ -48,6 +48,7 @@ LAUNCHD_LABEL = "com.jarvis.pi-scheduler"
 LAUNCHD_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCHD_LABEL}.plist"
 DEFAULT_PATH = config.DEFAULT_SCHEDULER_PATH
 DIRECT_STDOUT_MODEL = "__direct_stdout__"
+JARVISD_HEALTH_MODEL = "__jarvisd_health__"
 COMPUTER_PRESENCE_JOB_ID = "job_2cce9751d483"
 PI_FIRST_ENABLED_MODEL = "__pi_first_enabled__"
 PRIVATE_FILE_MODE = 0o600
@@ -1043,6 +1044,7 @@ def persist_completion(
     exit_code: int | None,
     output: str,
     error: str | None,
+    config_update: tuple[str, str] | None = None,
 ) -> dict[str, Any] | None:
     safe_output = sanitize_text(output)
     safe_error = sanitize_text(error)
@@ -1050,6 +1052,8 @@ def persist_completion(
     duration = max(0.0, (finished - started).total_seconds())
     result: dict[str, Any] | None = None
     with conn:
+        if config_update is not None:
+            _set_config_value(conn, *config_update)
         if status == "error":
             conn.execute(
                 """
@@ -1548,7 +1552,47 @@ def run_direct_stdout_for_job(conn: sqlite3.Connection, job: sqlite3.Row) -> dic
     return {"run_id": run_id, "status": status, "exit_code": exit_code, "result": result, "silent": result is None}
 
 
+def run_jarvisd_health_for_job(conn: sqlite3.Connection, job: sqlite3.Row) -> dict[str, Any]:
+    if __package__:
+        from . import health_watchdog as watchdog
+    else:
+        import health_watchdog as watchdog
+
+    # Hold a process-owned lock through the state/result/outbox commit. A
+    # concurrent scheduled/manual check cannot read the same pre-alert state.
+    with watchdog.exclusive_check(DB_PATH.parent / "jarvisd-health.lock") as acquired:
+        if not acquired:
+            return {"run_id": None, "status": "success", "exit_code": 0,
+                    "result": None, "silent": True, "skipped": True}
+        started = utcnow()
+        run_id = f"run_{started.strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
+        key = f"jarvisd-health:{job['id']}"
+        status, output, error, config_update = "success", "", None, None
+        try:
+            previous = watchdog.State.decode(_config_value(conn, key))
+            probe_error = watchdog.probe()
+            state, output = watchdog.observe(previous, probe_error,
+                wall=watchdog.time.time(), monotonic=watchdog.time.monotonic())
+            config_update = (key, state.encode())
+        except Exception as exc:  # noqa: BLE001
+            # An actual checker fault is distinct from an expected probe failure.
+            # Never expose raw HTTP bodies, exception text or private state.
+            status, error = "error", "jarvisd health monitor failed; check its local state or probe."
+            LOGGER.error("jarvisd health monitor fault: %s", type(exc).__name__)
+        finished = utcnow()
+        result = persist_completion(conn, job=job, run_id=run_id, output_kind="direct",
+            started=started, finished=finished, status=status,
+            exit_code=0 if status == "success" else 1, output=output, error=error,
+            config_update=config_update)
+        LOGGER.info("Finished jarvisd health check run_id=%s status=%s silent=%s",
+                    run_id, status, result is None)
+        return {"run_id": run_id, "status": status, "exit_code": 0 if status == "success" else 1,
+                "result": result, "silent": result is None}
+
+
 def run_pi_for_job(conn: sqlite3.Connection, job: sqlite3.Row, *, forced: bool = False) -> dict[str, Any]:
+    if job["model"] == JARVISD_HEALTH_MODEL:
+        return run_jarvisd_health_for_job(conn, job)
     if job["model"] == DIRECT_STDOUT_MODEL:
         return run_direct_stdout_for_job(conn, job)
     run_id = f"run_{utcnow().strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
