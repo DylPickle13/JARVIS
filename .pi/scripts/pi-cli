@@ -2,6 +2,8 @@
 # Stable JARVIS entrypoint. Prefer the official managed launcher; retain npm
 # compatibility before migration. exec preserves signals and all arguments.
 set -eu
+# Keep original Anthropic extension path rewriting safe across normal restarts.
+export PI_ANTHROPIC_OAUTH_REWRITE_MODE=technical-safe
 agent_dir=${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}
 if [ -e "$agent_dir/install/managed-install.json" ]; then
   if [ ! -x "$agent_dir/bin/pi" ]; then
