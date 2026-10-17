@@ -68,6 +68,7 @@ public protocol JarvisAPI: Sendable {
     func stateRefreshingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
     func stateRetryingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
     func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
+    func stateRefreshingProviderQuotas(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot
     func command(_ endpoint: JarvisEndpoint, action: String, params: [String: JSONValue]?) async throws -> CommandResult
     func setHomeAutomation(_ endpoint: JarvisEndpoint, command: HomeAutomationCommand) async throws -> CommandResult
     func events(_ endpoint: JarvisEndpoint, since: Int?, limit: Int) async throws -> EventsResponse
@@ -138,6 +139,10 @@ public extension JarvisAPI {
 
     func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         try await state(endpoint)
+    }
+
+    func stateRefreshingProviderQuotas(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        try await stateRefreshingCodexQuota(endpoint)
     }
 }
 
@@ -254,7 +259,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
 
     /// Database/cache-only chart read: no discovery, hardware refresh or retry.
     public func systemHistory(_ endpoint: JarvisEndpoint, window: SystemHistoryWindow, component: String? = nil) async throws -> SystemHistoryResponse {
-        let fixed = ["services", "pi", "network", "plugs", "purifier", "codexQuota", "security", "devices", "overall"]
+        let fixed = ["services", "pi", "network", "plugs", "purifier", "codexQuota", "claudeQuota", "security", "devices", "overall"]
         if let component, !fixed.contains(component),
            component.range(of: #"^service:[A-Za-z0-9_-]{1,48}\z"#, options: .regularExpression) == nil {
             throw JarvisError.badURL("Invalid history component")
@@ -377,6 +382,10 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
 
     public func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         try await perform(endpoint, "/api/v1/state?refresh=codexQuota", as: StateSnapshot.self)
+    }
+
+    public func stateRefreshingProviderQuotas(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        try await perform(endpoint, "/api/v1/state?refresh=codexQuota&refresh=claudeQuota", as: StateSnapshot.self)
     }
 
     public func command(

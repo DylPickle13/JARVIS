@@ -178,6 +178,12 @@ MAX_CODEX_QUOTA_OUTPUT_BYTES = min(
     2 * 1024 * 1024,
     max(4096, int(os.environ.get("JARVISD_MAX_CODEX_QUOTA_OUTPUT_BYTES", str(1024 * 1024)))),
 )
+CLAUDE_QUOTAS_SCRIPT = Path(os.environ.get(
+    "JARVISD_CLAUDE_QUOTAS_SCRIPT",
+    str(JARVIS_ROOT / "projects" / "operation-jarvis" / "quotas" / "quotas.py"),
+)).expanduser().resolve()
+CLAUDE_QUOTA_TIMEOUT = min(60.0, max(5.0, float(os.environ.get("JARVISD_CLAUDE_QUOTA_TIMEOUT", "45"))))
+MAX_CLAUDE_QUOTA_OUTPUT_BYTES = 64 * 1024
 TAILSCALE_IP_FALLBACK = os.environ.get("JARVISD_TAILSCALE_IP", "")
 TAILSCALE_SOCKET = Path(os.environ.get("TAILSCALE_SOCKET", str(Path.home() / ".local/share/tailscale/tailscaled.socket")))
 TAILSCALE_APP_CLI = Path(
@@ -1500,6 +1506,55 @@ def _codex_quota() -> dict:
         return _codex_quota_unavailable()
 
 
+def _claude_quota_unavailable() -> dict:
+    return {"ok": False, "available": False, "error": "Claude quota unavailable"}
+
+
+def _public_claude_quota(payload: Any) -> dict:
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return _claude_quota_unavailable()
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return _claude_quota_unavailable()
+    weekly = _codex_quota_window(usage.get("weekly"))
+    five_hour = _codex_quota_window(usage.get("five_hour"))
+    windows = (weekly, five_hour)
+    if not any(w and w.get("remainingPercent") is not None for w in windows):
+        return _claude_quota_unavailable()
+    checked = payload.get("checked_at")
+    # Timestamps and percentages only. Never forward provider/account/error bodies.
+    try:
+        date = dt.datetime.fromisoformat(checked.replace("Z", "+00:00"))
+        if date.tzinfo is None or not 1970 <= date.year <= 2100:
+            raise ValueError("Invalid timestamp")
+        checked = date.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        checked = None
+    return {"ok": True, "available": True, "checkedAt": checked,
+            "weekly": weekly, "fiveHour": five_hour,
+            "fiveHourEnforced": True, "fiveHourStatus": "active",
+            "limitReached": any(w and w.get("remainingPercent") == 0 for w in windows),
+            "error": None}
+
+
+def _claude_quota() -> dict:
+    if not CLAUDE_QUOTAS_SCRIPT.is_file():
+        return _claude_quota_unavailable()
+    try:
+        # Fixed usage-only command: no prompts, probes, or extra-usage changes.
+        proc = subprocess.run(
+            [sys.executable, str(CLAUDE_QUOTAS_SCRIPT), "claude", "--json"],
+            cwd=str(JARVIS_ROOT), capture_output=True, text=True,
+            timeout=CLAUDE_QUOTA_TIMEOUT,
+        )
+        stdout = proc.stdout or ""
+        if proc.returncode != 0 or len(stdout.encode("utf-8")) > MAX_CLAUDE_QUOTA_OUTPUT_BYTES:
+            return _claude_quota_unavailable()
+        return _public_claude_quota(json.loads(stdout))
+    except Exception:  # noqa: BLE001
+        return _claude_quota_unavailable()
+
+
 class StateCoordinator(CoreStateCoordinator):
     """Compatibility constructor; collector wiring belongs to this host, not core."""
 
@@ -1511,6 +1566,7 @@ class StateCoordinator(CoreStateCoordinator):
             "services": lambda: {"ok": True, "services": _services_state(_load_services())},
             "network": _collect_network,
             "codexQuota": _codex_quota,
+            "claudeQuota": _claude_quota,
         }
         retry = {"purifier": lambda recovery: _purifier(retry=recovery)} if collectors.get("purifier") is _purifier else {}
         super().__init__(collectors, version=VERSION, started_at=START_TIME,
@@ -2466,11 +2522,11 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                 self._send(200, snapshot)
                 return
             # Authenticated hosts may request an immediate refresh of the
-            # read-only Codex usage collector. The response remains the fast
+            # read-only provider usage collectors. The response remains the fast
             # current snapshot; clients can observe `refreshing` and poll the
             # ordinary state endpoint for completion.
             for subsystem in query.get("refresh", []):
-                if subsystem in {"codexQuota", "purifier"}:
+                if subsystem in {"codexQuota", "claudeQuota", "purifier"}:
                     if subsystem == "purifier":
                         STATE_COORDINATOR.request_refresh(subsystem, retry_cooldown=query.get("retryCooldown") == ["true"])
                     else:
@@ -2774,7 +2830,7 @@ def main(*, control_factory=None, local_control=False) -> int:
     integrations = tuple(filter(None, (value.strip() for value in
         os.environ.get('JARVISD_MONITOR_INTEGRATIONS', 'plugs').split(','))))
     if (len(set(integrations)) != len(integrations) or
-            any(name not in {'plugs', 'pi', 'services', 'network', 'codexQuota'} for name in integrations)):
+            any(name not in {'plugs', 'pi', 'services', 'network', 'codexQuota', 'claudeQuota'} for name in integrations)):
         raise ValueError('Invalid monitor integrations')
     if local_control and control_factory is not None:
         raise ValueError("Select one control mode")

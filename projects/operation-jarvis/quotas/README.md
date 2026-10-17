@@ -1,6 +1,6 @@
 # Operation JARVIS Provider Quotas
 
-Check the remaining quota and available models for Pi's OpenAI Codex and GitHub Copilot accounts.
+Check remaining subscription quota for Pi's Codex, Claude and Copilot accounts, plus Codex/Copilot model availability.
 
 The checker uses Pi's saved OAuth credentials and refreshes tokens when needed. It queries the providers' quota and model endpoints, then optionally saves a report for Pi and the native apps.
 
@@ -37,6 +37,20 @@ Read-only checks:
 The checker was adjusted for OpenAI's July 12, 2026 removal of five-hour enforcement on Plus, Pro, and Business plans. In that configuration, `primary_limit.enforced=false`. It identifies windows by duration because the seven-day window can appear in `primary_window`; use the stable `five_hour` and `weekly` fields rather than relying on upstream slot names. Set `QUOTAS_CODEX_5H_LIMIT_STATUS=active` if five-hour enforcement returns.
 
 Optional probes send a real Pi prompt and may consume quota.
+
+### Claude subscription
+
+Uses Pi's `anthropic` OAuth login (not an Anthropic API billing key).
+
+- `GET https://api.anthropic.com/api/oauth/usage`
+- Overall `seven_day` and `five_hour` utilization become stable `weekly` /
+  `five_hour` windows with remaining percentages and absolute reset times.
+- Per-model windows, extra-usage billing and account details are deliberately excluded.
+- No model calls or extra-usage changes. Expired OAuth tokens may refresh under Pi's
+  existing auth-file lock; unrelated credentials are preserved. `--no-refresh`
+  prevents token refresh/writes.
+- Combined reports use provider key `anthropic`; `claude --json` is usage-only,
+  with no catalog/probe dependency. Errors are sanitized.
 
 ### GitHub Copilot
 
@@ -97,7 +111,7 @@ If no subcommand is provided, `check` is used by default.
 ### Common commands
 
 ```bash
-# Check both providers and print a human-readable summary
+# Check all three providers and print a human-readable summary
 python3 projects/operation-jarvis/quotas/quotas.py check
 
 # Print JSON
@@ -108,6 +122,9 @@ python3 projects/operation-jarvis/quotas/quotas.py check --json --save
 
 # Check only OpenAI Codex
 python3 projects/operation-jarvis/quotas/quotas.py codex
+
+# Check only Claude subscription usage
+python3 projects/operation-jarvis/quotas/quotas.py claude
 
 # Check only GitHub Copilot
 python3 projects/operation-jarvis/quotas/quotas.py copilot
@@ -209,6 +226,13 @@ Notes:
       "required_models": {},
       "probes": []
     },
+    "anthropic": {
+      "provider": "anthropic",
+      "ok": true,
+      "checked_at": "...",
+      "usage": {"weekly": {}, "five_hour": {}},
+      "usage_error": null
+    },
     "github-copilot": {
       "provider": "github-copilot",
       "ok": true,
@@ -241,7 +265,7 @@ Some fields follow the provider's response and can change. Code that reads the r
 
 ## Local consumers
 
-Pi and jarvisd read the bounded saved snapshot at:
+An explicit `--save` writes the report for offline consumers at:
 
 ```text
 projects/operation-jarvis/quotas/data/latest.json
@@ -253,7 +277,10 @@ Refresh it explicitly with:
 python3 projects/operation-jarvis/quotas/quotas.py check --json --save
 ```
 
-The native apps receive a sanitized, read-only subset through `jarvisd`.
+`jarvisd` runs the fixed `codex --json` and `claude --json` commands independently;
+it does **not** depend on `latest.json` being refreshed. Apps and Pi-desk read its
+sanitized `codexQuota` / `claudeQuota` caches (60s active / 300s idle / 900s freshness).
+See [provider quota integration](../docs/provider-quotas.md).
 
 ## Security notes
 

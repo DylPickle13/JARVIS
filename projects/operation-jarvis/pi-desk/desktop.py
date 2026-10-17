@@ -18,6 +18,7 @@ from health import HealthMonitor
 from backend import clean_environment
 from tmux_runtime import command as tmux_command
 import codex_quota
+import provider_quotas
 from core import ROOT, SOCKET, StatusFeed, GROUPS, ensure_group, session_group, tmux, prepare_workspace
 
 STATE = Path.home() / '.local/state/pi-desk'
@@ -40,7 +41,8 @@ QUOTA_OPTION = '@pi-desk-codex-quota'
 
 def footer_candidates(quota):
     # Quota outranks hints, but never consumes space belonging to session tabs.
-    choices = codex_quota.label_segments(quota) if quota is not None else ()
+    choices = provider_quotas.label_segments(quota) if quota is not None else ()
+    click = 'quotas' if provider_quotas.is_bundle(quota) else 'codex'
     for segments in (*choices, ()):
         label = ''.join(text for text, _ in segments)
         for hints in HINTS:
@@ -50,7 +52,7 @@ def footer_candidates(quota):
                 # status-format passes through strftime: literal % must be %%.
                 escaped = ''.join(f'#[fg={foreground}]' + text.replace('%', '%%')
                                   for text, foreground in segments)
-                sections.append(f'#[range=user|codex,fg={codex_quota.GREY}]{escaped}'
+                sections.append(f'#[range=user|{click},fg={codex_quota.GREY}]{escaped}'
                                 + HINT_STYLE)
             sections.extend(HINT_STYLE + hint for hint in hints)
             divider = DIVIDER_STYLE + ' ┃ '
@@ -301,7 +303,7 @@ def render_viewers(states, frame, previous, warning=None, *, session_rows=None,
                    global_rows=None, previous_global_rows=None, quota=None, quota_payload=None):
     # A local tmux array shadows the entire global array, not just index 0.
     if warning is None:
-        warning = (global_rows[1] if global_rows is not None else
+        warning = (global_rows[-1] if global_rows is not None else
                    tmux('show-options', '-gv', 'status-format[1]').stdout.rstrip('\n'))
     if session_rows is None:
         session_rows = tmux('list-sessions', '-F', VIEWER_STATUS_FORMAT).stdout
@@ -310,10 +312,13 @@ def render_viewers(states, frame, previous, warning=None, *, session_rows=None,
         commands.append(['set-option', '-g', QUOTA_OPTION, quota_payload])
     if global_rows is not None:
         for index, value in enumerate(global_rows):
-            if previous_global_rows is None or previous_global_rows[index] != value:
+            if previous_global_rows is None or index >= len(previous_global_rows) or previous_global_rows[index] != value:
                 commands.append(['set-option', '-g', f'status-format[{index}]', value])
-        if previous_global_rows is None or previous_global_rows[1] != global_rows[1]:
-            commands.append(['set-option', '-g', 'status', '2' if global_rows[1] else 'on'])
+        row_count = len(global_rows) - (1 if not global_rows[-1] else 0)
+        previous_count = (len(previous_global_rows) - (1 if not previous_global_rows[-1] else 0)
+                          if previous_global_rows is not None else None)
+        if row_count != previous_count:
+            commands.append(['set-option', '-g', 'status', str(row_count) if row_count > 1 else 'on'])
     current = {}
     for row in session_rows.splitlines():
         fields = row.split('\t')
@@ -324,12 +329,21 @@ def render_viewers(states, frame, previous, warning=None, *, session_rows=None,
                 or int(count) not in (1, 2, 3) or int(selected) not in range(1, 11)):
             continue
         bar = responsive_selector(states, int(width), int(count), int(selected), frame=frame, quota=quota)
-        current[name] = (bar, warning)
+        if provider_quotas.is_bundle(quota):
+            extra = () if 'range=user|quotas' in bar else provider_quotas.status_rows(quota, int(width))
+            current[name] = (bar, *extra, *((warning,) if warning else ()))
+        else:
+            current[name] = (bar, warning)
         cached = previous.get(name)
         if cached != current[name]:
             writes = [['set-option', '-t', name, f'status-format[{index}]', value]
                       for index, value in enumerate(current[name])
-                      if cached is None or cached[index] != value]
+                      if cached is None or index >= len(cached) or cached[index] != value]
+            if provider_quotas.is_bundle(quota):
+                if cached is None or len(cached) != len(current[name]):
+                    writes.append(['set-option', '-t', name, 'status', str(len(current[name])) if len(current[name]) > 1 else 'on'])
+                for index in range(len(current[name]), len(cached or ())):
+                    writes.append(['set-option', '-u', '-t', name, f'status-format[{index}]'])
             # A viewer may close after the snapshot. Guard at execution time so
             # its disappearance cannot abort updates for the surviving viewers.
             exists = '#{S:#{?#{==:#{session_name},' + name + '},1,}}'
@@ -380,7 +394,7 @@ def configuration_version():
     import hashlib
     digest = hashlib.sha256(str(ROOT).encode())
     for name in ('desktop.py', 'native_navigation.py', 'core.py', 'layout.py',
-                 'workspace.py', 'navigate.py', 'codex_quota.py', 'config/tmux.conf'):
+                 'workspace.py', 'navigate.py', 'codex_quota.py', 'provider_quotas.py', 'config/tmux.conf'):
         digest.update((ROOT / name).read_bytes())
     return digest.hexdigest()
 
@@ -422,12 +436,14 @@ def watch_status(stop):
                     # host stream. Intermediate animation frames use this snapshot.
                     session_rows = persist_selection(include_viewers=True)
                     states = feed.poll()
-                    quota = codex_quota.normalize(feed.quota)
+                    quota = provider_quotas.normalize({'codexQuota': feed.quota, 'claudeQuota': feed.claude_quota})
                     encoded = json.dumps(quota, separators=(',', ':'), sort_keys=True)
                     warning = ' '.join(filter(None, (status_line(), health_line(feed.connection, health.poll()))))
                     next_snapshot = now + SNAPSHOT_SECONDS
                 frame = animation_frame(now)
-                rows = (selector(states, frame=frame, quota=quota), warning)
+                # Legacy groups lack viewer widths: dedicate one quota row rather
+                # than silently drop a provider. Modern viewers fit adaptively below.
+                rows = (selector(states, frame=frame), *provider_quotas.status_rows(quota, 100), warning)
                 viewer_rows = render_viewers(states, frame, viewer_rows, warning,
                     session_rows=session_rows, global_rows=rows if rows != previous else None,
                     previous_global_rows=previous, quota=quota,
@@ -592,7 +608,7 @@ def show_quota(client_pid):
         quota = json.loads(raw) if len(raw) <= 4096 else None
     except (ValueError, TypeError):
         quota = None
-    tmux('display-message', '-c', client, '-d', '8000', '-l', codex_quota.details(quota), check=False)
+    tmux('display-message', '-c', client, '-d', '8000', '-l', provider_quotas.details(quota), check=False)
 
 
 def dispatch(args):
@@ -602,7 +618,7 @@ def dispatch(args):
         return 2
     action, value, client = args
     if action == 'click':
-        if value == 'codex':
+        if value in ('codex', 'quotas'):
             try:
                 show_quota(int(client))
             except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired):

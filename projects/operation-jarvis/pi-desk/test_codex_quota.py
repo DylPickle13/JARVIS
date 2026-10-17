@@ -90,7 +90,7 @@ class QuotaTests(unittest.TestCase):
 
     def test_malformed_snapshots_are_bounded(self):
         for broken in (None, [], {}, {'subsystems': None}, {'subsystems': []}):
-            self.assertEqual(status_stream.snapshot(broken, self.now), {'codexQuota': quota.UNAVAILABLE})
+            self.assertEqual(status_stream.snapshot(broken, self.now), {'codexQuota': quota.UNAVAILABLE, 'claudeQuota': quota.UNAVAILABLE})
 
     def test_projection_never_emits_private_or_error_fields(self):
         self.source.update(token='secret', accountID='private', lastError='private failure',
@@ -276,7 +276,7 @@ class QuotaTests(unittest.TestCase):
         request.assert_called_once_with(status_stream.URL, timeout=4)
         self.assertEqual(result['codexQuota']['status'], 'live')
         with mock.patch.object(status_stream.urllib.request, 'urlopen', side_effect=OSError):
-            self.assertEqual(status_stream.collect(), {'codexQuota': quota.UNAVAILABLE})
+            self.assertEqual(status_stream.collect(), {'codexQuota': quota.UNAVAILABLE, 'claudeQuota': quota.UNAVAILABLE})
 
     def test_feed_supports_legacy_and_extended_streams_and_clears_on_disconnect(self):
         read_fd, write_fd = os.pipe()

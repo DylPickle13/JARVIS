@@ -24,7 +24,7 @@ def snapshot(now=BASE, age=0):
     source = health.stamp(now-age)
     return {'ok': True, 'generatedAt': health.stamp(now),
         'subsystemsMeta': {key: {'ok': True, 'stale': False, 'error': None,
-            'ageSeconds': age, 'updatedAt': source} for key in health.COMPONENTS[:6]},
+            'ageSeconds': age, 'updatedAt': source} for key in health.COLLECTOR_COMPONENTS},
         'subsystems': {
             'services': {'services': {
                 'audio': {'ok': True, 'critical': True, 'configured': True,
@@ -109,7 +109,7 @@ class ProjectionTests(unittest.TestCase):
             self.assertEqual(health.project(value, BASE)['pi']['state'], 'unknown')
 
     def test_each_freshness_limit_and_frozen_generation(self):
-        for name in health.COMPONENTS[:6]:
+        for name in health.COLLECTOR_COMPONENTS:
             value = snapshot()
             self.assertEqual(health.project(value, BASE+health.LIMITS[name])[name]['state'], 'healthy')
             self.assertEqual(health.project(value, BASE+health.LIMITS[name]+.001)[name]['state'], 'unknown')

@@ -95,7 +95,7 @@ Existing `JARVIS_API_TOKEN` and absolute `JARVISD_SECURITY_CLI` configuration ar
 required. Never commit credentials or the private registry. Defaults: monitoring
 disabled, notifications disabled, security aliases empty. Aliases are explicit,
 unique, at most eight and validated again by the CLI registry. Interval 30–300s.
-Additional integration names: `pi`, `services`, `network`, `codexQuota`. Both
+Additional integration names: `pi`, `services`, `network`, `codexQuota`, `claudeQuota`. Both
 configured oMLX servers are included when monitoring is enabled.
 
 Purifier background recovery is deliberately excluded. Its existing cloud

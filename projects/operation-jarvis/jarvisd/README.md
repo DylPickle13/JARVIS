@@ -21,6 +21,22 @@ Health UI belongs on System, not Home. Backend checks remain active. See [covera
 
 # jarvisd — shared control backend
 
+## Codex/Claude quota collectors — deployed 2026-10-17 EDT
+
+Active release `20261017T213141Z-provider-quotas` adds independent, noncritical
+Claude weekly/five-hour usage beside Codex. Fresh authenticated readback verified
+both providers and health components at **17:39 EDT**. The 612-input frozen
+installed-baseline candidate passed **867 backend tests, 9 quota/auth tests and
+84 SDK safety tests**; unrelated working-tree changes were not deployed.
+
+Only jarvisd and its watchdog were cycled (**0.378 s** to daemon liveness).
+The verified October 11 address-repair registry, 27-device inventory, Codex and
+monitoring configuration, authentication, unrelated services/Pi/Minecraft,
+SQLite history identities, retained event content and ten-second cadence were
+preserved. No model probe, physical command or native app reinstall occurred.
+Prior source/plists/configuration and consistent history backups remain retained.
+See [full rollout, Pi-desk activation and rollback](../docs/provider-quotas.md).
+
 ## Picture-frame availability — deployed 2026-10-06 EDT
 
 Release `20261006T193632Z-picture-frame-health` activated at **15:52 EDT** from the
@@ -288,6 +304,9 @@ source-only pending separate voice/app rollout. No SDK dependency was upgraded.
 New offline verification and release preparation tools live in `../scripts/`.
 
 ## Native monitoring (deployed 2026-09-22 EDT)
+
+The source now also supports an independent Claude quota collector. This is not
+part of the historical deployments below; see [provider quota integration](../docs/provider-quotas.md).
 
 Baseline release `20260922T143035Z-passive-monitoring` added separate **on-demand**
 read health for purifier, presence and Pi/Mac room audio. No extra device polling,

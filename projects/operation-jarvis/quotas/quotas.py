@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Subscription quota and model availability checks for OpenAI Codex and GitHub Copilot.
+Subscription quota checks for OpenAI Codex, Claude, and GitHub Copilot.
 
 Uses the same OAuth credentials Pi stores in ~/.pi/agent/auth.json. The checks are
 read-only by default: they fetch usage/quota and model catalogs without sending a
@@ -14,12 +14,14 @@ import base64
 import contextlib
 import datetime as dt
 import json
+import math
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -54,6 +56,12 @@ OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token"
 OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api"
 OPENAI_CODEX_RESET_CREDITS_URL = f"{OPENAI_CODEX_BASE_URL}/wham/rate-limit-reset-credits"
 OPENAI_JWT_AUTH_CLAIM = "https://api.openai.com/auth"
+
+ANTHROPIC_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+ANTHROPIC_TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+ANTHROPIC_HEADERS = {"anthropic-beta": "oauth-2025-04-20", "Accept": "application/json"}
+
 
 COPILOT_IDE_HEADERS = {
     "User-Agent": "GitHubCopilotChat/0.35.0",
@@ -278,15 +286,12 @@ def request_form(method: str, url: str, *, headers: Dict[str, str], fields: Dict
 
 @contextlib.contextmanager
 def auth_file_lock(auth_path: Path, timeout: float = 30.0, stale_after: float = 60.0):
-    """Cooperate with Pi/proper-lockfile's auth.json.lock directory."""
-
+    """Cooperate with Pi/proper-lockfile, including its shortest (10s) stale lease."""
     lock_path = Path(str(auth_path) + ".lock")
     deadline = time.monotonic() + timeout
-    acquired = False
     while True:
         try:
             os.mkdir(lock_path)
-            acquired = True
             break
         except FileExistsError:
             try:
@@ -297,12 +302,42 @@ def auth_file_lock(auth_path: Path, timeout: float = 30.0, stale_after: float = 
                 shutil.rmtree(lock_path, ignore_errors=True)
                 continue
             if time.monotonic() >= deadline:
-                raise QuotaError(f"Timed out waiting for auth lock: {lock_path}")
+                raise QuotaError("Timed out waiting for Pi auth lock.")
             time.sleep(0.1)
+    identity = lock_path.stat()
+    stopped = threading.Event()
+    compromised = threading.Event()
+
+    def owns_lock():
+        try:
+            current = lock_path.stat()
+            return (current.st_dev, current.st_ino) == (identity.st_dev, identity.st_ino)
+        except FileNotFoundError:
+            return False
+
+    def check_lock():
+        if compromised.is_set() or not owns_lock():
+            raise QuotaError("Pi auth lock changed; credentials were not saved.")
+
+    def heartbeat():
+        while not stopped.wait(2):
+            try:
+                check_lock()
+                os.utime(lock_path, None)
+            except (OSError, QuotaError):
+                compromised.set()
+                return
+
+    thread = threading.Thread(target=heartbeat, daemon=True)
+    thread.start()
     try:
-        yield
+        yield check_lock
+        check_lock()
     finally:
-        if acquired:
+        stopped.set()
+        thread.join()
+        # Never remove a lock acquired by someone else after a lost lease.
+        if owns_lock():
             shutil.rmtree(lock_path, ignore_errors=True)
 
 
@@ -370,6 +405,26 @@ class AuthStore:
                     self.save_unlocked(data)
             return dict(cred)
 
+    def ensure_anthropic(self, refresh: bool = True) -> Dict[str, Any]:
+        # Re-read inside Pi's lock: rotating refresh tokens must never race Pi.
+        with auth_file_lock(self.path, timeout=10.0) as check_lock:
+            data = self.load_unlocked()
+            cred = data.get("anthropic")
+            if not isinstance(cred, dict) or cred.get("type") != "oauth":
+                raise QuotaError("Claude subscription login unavailable; run Pi /login anthropic.")
+            if not isinstance(cred.get("access"), str) or not cred["access"]:
+                raise QuotaError("Claude access token missing; re-login with Pi.")
+            expires = coerce_float(cred.get("expires")) or 0
+            if refresh and time.time() * 1000 >= expires - 60_000:
+                token = cred.get("refresh")
+                if not isinstance(token, str) or not token:
+                    raise QuotaError("Claude refresh token missing; re-login with Pi.")
+                cred = {**cred, **refresh_anthropic(token)}
+                data["anthropic"] = cred
+                check_lock()
+                self.save_unlocked(data)
+            return dict(cred)
+
     def ensure_copilot(self, refresh: bool = True, force_refresh: bool = False) -> Dict[str, Any]:
         with auth_file_lock(self.path):
             data = self.load_unlocked()
@@ -390,6 +445,63 @@ class AuthStore:
                 data["github-copilot"] = cred
                 self.save_unlocked(data)
             return dict(cred)
+
+
+def refresh_anthropic(refresh_token: str) -> Dict[str, Any]:
+    # Match Pi's installed Anthropic OAuth extension. No inference or billing writes.
+    try:
+        payload, _ = request_json("POST", ANTHROPIC_TOKEN_URL,
+            headers=ANTHROPIC_HEADERS, timeout=15,
+            body={"grant_type": "refresh_token", "client_id": ANTHROPIC_CLIENT_ID,
+                  "refresh_token": refresh_token})
+        access = payload.get("access_token")
+        rotated = payload.get("refresh_token") or refresh_token
+        expires = payload.get("expires_in")
+        if (not isinstance(access, str) or not access or not isinstance(rotated, str)
+                or type(expires) not in (int, float) or not math.isfinite(expires) or expires <= 0):
+            raise ValueError("Invalid token response")
+        return {"access": access, "refresh": rotated,
+                "expires": int(time.time() * 1000 + expires * 1000 - 5 * 60_000)}
+    except Exception:
+        # Never persist or forward raw OAuth responses (which may contain secrets).
+        raise QuotaError("Claude token refresh failed; retry later or re-login with Pi.") from None
+
+
+def normalize_claude_window(raw: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return None
+    used = raw.get("utilization")
+    if type(used) not in (int, float) or not math.isfinite(used) or not 0 <= used <= 100:
+        return None
+    reset = None
+    value = raw.get("resets_at")
+    if isinstance(value, str) and len(value) <= 64:
+        try:
+            date = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if date.tzinfo is not None and 1970 <= date.year <= 2100:
+                reset = date.timestamp()
+        except (ValueError, OverflowError):
+            pass
+    return {"used_percent": used, "remaining_percent": round(100 - used, 2),
+            "reset_at": reset, "reset_at_local": format_epoch(reset),
+            "reset_after_seconds": max(0, int(reset - time.time())) if reset is not None else None}
+
+
+def fetch_claude_usage(auth: AuthStore, refresh: bool = True) -> Dict[str, Any]:
+    cred = auth.ensure_anthropic(refresh=refresh)
+    try:
+        raw, _ = request_json("GET", ANTHROPIC_USAGE_URL, timeout=15,
+            headers={**ANTHROPIC_HEADERS, "Authorization": "Bearer " + cred["access"]})
+        weekly = normalize_claude_window(raw.get("seven_day"))
+        five_hour = normalize_claude_window(raw.get("five_hour"))
+    except Exception:
+        raise QuotaError("Claude usage unavailable; check subscription login or retry later.") from None
+    if weekly is None and five_hour is None:
+        raise QuotaError("Claude usage response has no valid weekly or five-hour window.")
+    # Explicit whitelist: no account data, per-model windows, extra usage or raw errors.
+    return {"weekly": weekly, "five_hour": five_hour,
+            "effective_limit_reached": any(w and w["remaining_percent"] == 0 for w in (weekly, five_hour)),
+            "primary_limit": {"enforced": True, "status": "active"}}
 
 
 def refresh_openai_codex(refresh_token: str) -> Dict[str, Any]:
@@ -1274,6 +1386,12 @@ def build_codex_report(args: argparse.Namespace) -> Dict[str, Any]:
     }
 
 
+def build_claude_report(args: argparse.Namespace) -> Dict[str, Any]:
+    usage, error = provider_result(fetch_claude_usage, AuthStore(Path(args.auth_path)), not args.no_refresh)
+    return {"provider": "anthropic", "ok": error is None, "checked_at": iso_now(),
+            "usage": usage, "usage_error": error}
+
+
 def build_copilot_report(args: argparse.Namespace) -> Dict[str, Any]:
     auth = AuthStore(Path(args.auth_path))
     usage, usage_error = provider_result(fetch_copilot_usage, auth, not args.no_refresh, args)
@@ -1300,12 +1418,14 @@ def build_combined_report(args: argparse.Namespace) -> Dict[str, Any]:
     codex_args.probe = args.probe_codex or []
     codex = build_codex_report(codex_args)
     copilot = build_copilot_report(copilot_args)
+    claude = build_claude_report(args)
     report = {
-        "ok": bool(codex.get("ok") and copilot.get("ok")),
+        "ok": bool(codex.get("ok") and copilot.get("ok") and claude.get("ok")),
         "checked_at": iso_now(),
         "providers": {
             "openai-codex": codex,
             "github-copilot": copilot,
+            "anthropic": claude,
         },
     }
     return report
@@ -1464,15 +1584,27 @@ def print_copilot_human(report: Dict[str, Any], list_models: bool = False) -> No
         print(f"  Required {name}: {'available' if ok else 'MISSING'}")
 
 
+def print_claude_human(report: Dict[str, Any]) -> None:
+    print("Claude: " + ("OK" if report.get("ok") else "unavailable"))
+    usage = report.get("usage") or {}
+    print_window("Weekly", usage.get("weekly"))
+    print_window("5-hour", usage.get("five_hour"))
+    if report.get("usage_error"):
+        print("  " + report["usage_error"])
+
+
 def print_human(report: Dict[str, Any], command: str, list_models: bool = False) -> None:
     if command == "codex":
         print_codex_human(report, list_models=list_models)
+    elif command == "claude":
+        print_claude_human(report)
     elif command == "copilot":
         print_copilot_human(report, list_models=list_models)
     else:
         print(f"Quotas check: {'OK' if report.get('ok') else 'CHECK FAILED'} at {report.get('checked_at')}")
         providers = report.get("providers") or {}
         print_codex_human(providers.get("openai-codex") or {}, list_models=list_models)
+        print_claude_human(providers.get("anthropic") or {})
         print_copilot_human(providers.get("github-copilot") or {}, list_models=list_models)
 
 
@@ -1503,10 +1635,10 @@ def add_copilot_billing_args(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Check OpenAI Codex and GitHub Copilot quotas/model availability.")
+    parser = argparse.ArgumentParser(description="Check Codex, Claude and Copilot subscription quotas.")
     sub = parser.add_subparsers(dest="command")
 
-    check = sub.add_parser("check", help="Check both OpenAI Codex and GitHub Copilot")
+    check = sub.add_parser("check", help="Check Codex, Claude and Copilot")
     add_common_args(check)
     add_copilot_billing_args(check)
     check.add_argument("--codex-client-version", default=DEFAULT_CODEX_CLIENT_VERSION, help=f"Codex model catalog client version (default: {DEFAULT_CODEX_CLIENT_VERSION})")
@@ -1521,6 +1653,9 @@ def build_parser() -> argparse.ArgumentParser:
     codex.add_argument("--require-model", action="append", default=[], help="Require a model to appear in the Codex catalog (repeatable)")
     codex.add_argument("--probe", action="append", default=[], metavar="MODEL", help="Actually prompt a Codex model through Pi (repeatable; consumes quota)")
     codex.add_argument("--probe-timeout", type=int, default=90, help="Seconds before a Codex probe times out")
+
+    claude = sub.add_parser("claude", help="Read Claude weekly and five-hour subscription usage")
+    add_common_args(claude)
 
     copilot = sub.add_parser("copilot", help="Check GitHub Copilot only")
     add_common_args(copilot)
@@ -1540,6 +1675,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if args.command == "codex":
             report = build_codex_report(args)
+        elif args.command == "claude":
+            report = build_claude_report(args)
         elif args.command == "copilot":
             report = build_copilot_report(args)
         else:

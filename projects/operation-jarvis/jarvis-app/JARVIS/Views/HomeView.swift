@@ -140,6 +140,7 @@ struct HomeView: View {
                             piCard(state)
                             roomAudioCard
                             codexQuotaCard(state)
+                            claudeQuotaCard(state)
                             OMLXStatusCard(client: app.client,
                                 endpoint: app.currentEndpoint.map { JarvisEndpoint(baseURL: $0, token: app.store.token ?? "") },
                                 active: scenePhase == .active && app.activeSection == .home)
@@ -339,49 +340,56 @@ struct HomeView: View {
     }
 
     private func codexQuotaCard(_ state: StateSnapshot) -> AnyView {
-        guard let quota = state.subsystems?.codexQuota,
-              quota.available == true,
-              let remaining = quota.weekly?.remainingPercent else {
+        providerQuotaCard(state.subsystems?.codexQuota, title: "Codex")
+    }
+
+    private func claudeQuotaCard(_ state: StateSnapshot) -> AnyView {
+        providerQuotaCard(state.subsystems?.claudeQuota, title: "Claude")
+    }
+
+    private func providerQuotaCard(_ quota: CodexQuotaSubsystem?, title: String) -> AnyView {
+        guard let quota, quota.available == true else {
             return AnyView(
                 unavailableCard(
-                    title: "Codex quota unavailable",
-                    detail: state.subsystems?.codexQuota?.lastError ?? state.subsystems?.codexQuota?.error
+                    title: "\(title) quota unavailable",
+                    detail: quota?.lastError ?? quota?.error
                 )
             )
         }
-        let color = codexQuotaColor(remaining)
+        let remaining = quota.weekly?.remainingPercent
+        let color = remaining.map(codexQuotaColor) ?? .secondary
         let content = MinimalCard(padding: 8) {
             if usesAccessibilityLayout {
                 VStack(alignment: .leading, spacing: 8) {
                     codexQuotaRing(remaining: remaining, color: color)
-                    codexQuotaDetails(quota, remaining: remaining, color: color)
+                    codexQuotaDetails(quota, title: title, color: color)
                 }
             } else {
                 HStack(spacing: 12) {
                     codexQuotaRing(remaining: remaining, color: color)
-                    codexQuotaDetails(quota, remaining: remaining, color: color)
+                    codexQuotaDetails(quota, title: title, color: color)
                 }
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "Codex weekly quota, \(Int(remaining.rounded())) percent remaining, " +
+            "\(title) weekly quota, \(quotaPercent(remaining)) remaining, " +
             "\(codexQuotaResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))"
         )
         if quota.stale == true {
-            return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("Codex quota data is stale.") })
+            return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("\(title) quota data is stale.") })
         }
         return AnyView(content)
     }
 
-    private func codexQuotaRing(remaining: Double, color: Color) -> some View {
+    private func codexQuotaRing(remaining: Double?, color: Color) -> some View {
         ZStack {
             Circle().stroke(color.opacity(0.16), lineWidth: 8)
             Circle()
-                .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0), 1)))
+                .trim(from: 0, to: CGFloat(min(max((remaining ?? 0) / 100, 0), 1)))
                 .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            Text("\(Int(remaining.rounded()))%")
+            Text(quotaPercent(remaining))
                 .font(.headline.weight(.bold))
                 .monospacedDigit()
                 .foregroundStyle(color)
@@ -391,12 +399,12 @@ struct HomeView: View {
 
     private func codexQuotaDetails(
         _ quota: CodexQuotaSubsystem,
-        remaining: Double,
+        title: String,
         color: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
-                Text("Codex")
+                Text(title)
                     .font(.subheadline.weight(.semibold))
                 Spacer(minLength: 2)
                 if let plan = quota.planType, !plan.isEmpty {
@@ -415,6 +423,7 @@ struct HomeView: View {
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 Label(codexFiveHourLabel(quota), systemImage: "clock")
+                    .foregroundStyle(quota.fiveHour?.remainingPercent.map(codexQuotaColor) ?? .secondary)
                 if let credits = codexCreditsLabel(quota.creditBalance) {
                     Label(credits, systemImage: "bolt.circle")
                 }
@@ -439,6 +448,7 @@ struct HomeView: View {
             seconds = window?.resetAfterSeconds
         }
         guard let seconds else { return "Reset time unavailable" }
+        if seconds == 0 { return "Reset due; awaiting update" }
         if seconds < 60 { return "Resets in less than a minute" }
         if seconds < 3_600 { return "Resets in \(seconds / 60)m" }
         if seconds < 86_400 { return "Resets in \(seconds / 3_600)h \((seconds % 3_600) / 60)m" }
@@ -447,7 +457,9 @@ struct HomeView: View {
 
     private func codexFiveHourLabel(_ quota: CodexQuotaSubsystem) -> String {
         if let remaining = quota.fiveHour?.remainingPercent {
-            return "5-hour \(Int(remaining.rounded()))% left"
+            let reset = codexQuotaResetLabel(quota.fiveHour)
+            let paused = quota.fiveHourEnforced == false ? " (paused)" : ""
+            return "5-hour \(quotaPercent(remaining)) · \(reset)\(paused)"
         }
         if quota.fiveHourEnforced == false { return "5-hour paused" }
         return "5-hour unavailable"
@@ -457,6 +469,11 @@ struct HomeView: View {
         guard let balance else { return nil }
         if balance >= 1_000 { return String(format: "%.1fK credits", balance / 1_000) }
         return "\(Int(balance.rounded())) credits"
+    }
+
+    private func quotaPercent(_ remaining: Double?) -> String {
+        guard let remaining, remaining.isFinite, (0...100).contains(remaining) else { return "—" }
+        return "\(Int(remaining.rounded()))%"
     }
 
     // MARK: - Detail helpers

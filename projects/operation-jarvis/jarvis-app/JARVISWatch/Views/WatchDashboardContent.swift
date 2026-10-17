@@ -400,6 +400,7 @@ struct WatchDashboardContent: View {
             pageHeader("JARVIS", symbol: "waveform")
             purifierPanel
             codexQuotaPanel
+            claudeQuotaPanel
             omlxCard
 
             if model.shouldShowRetry {
@@ -490,21 +491,28 @@ struct WatchDashboardContent: View {
         }
     }
 
-    @ViewBuilder
     private var codexQuotaPanel: some View {
-        if let quota = model.lastState?.subsystems?.codexQuota,
-           quota.available == true,
-           let remaining = quota.weekly?.remainingPercent {
-            let color = codexQuotaColor(remaining)
+        providerQuotaPanel(model.lastState?.subsystems?.codexQuota, title: "Codex")
+    }
+
+    private var claudeQuotaPanel: some View {
+        providerQuotaPanel(model.lastState?.subsystems?.claudeQuota, title: "Claude")
+    }
+
+    @ViewBuilder
+    private func providerQuotaPanel(_ quota: CodexQuotaSubsystem?, title: String) -> some View {
+        if let quota, quota.available == true {
+            let remaining = quota.weekly?.remainingPercent
+            let color = remaining.map(codexQuotaColor) ?? .secondary
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
                         .stroke(color.opacity(0.18), lineWidth: 5)
                     Circle()
-                        .trim(from: 0, to: CGFloat(min(max(remaining / 100, 0), 1)))
+                        .trim(from: 0, to: CGFloat(min(max((remaining ?? 0) / 100, 0), 1)))
                         .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                    Text("\(Int(remaining.rounded()))%")
+                    Text(remaining.map { "\(Int($0.rounded()))%" } ?? "—")
                         .font(.system(size: 13, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(color)
@@ -513,7 +521,7 @@ struct WatchDashboardContent: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 4) {
-                        Text("Codex")
+                        Text(title)
                             .font(.system(size: 12, weight: .semibold))
                         Spacer(minLength: 2)
                         if let plan = quota.planType, !plan.isEmpty {
@@ -534,6 +542,7 @@ struct WatchDashboardContent: View {
                         .lineLimit(1)
                     HStack(spacing: 4) {
                         Text(codexFiveHourCompactLabel(quota))
+                            .foregroundStyle(quota.fiveHour?.remainingPercent.map(codexQuotaColor) ?? .secondary)
                         if let credits = codexCreditsLabel(quota.creditBalance) {
                             Text("·")
                             Text(credits)
@@ -562,7 +571,7 @@ struct WatchDashboardContent: View {
                     .stroke(color.opacity(0.10), lineWidth: 0.75)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Codex weekly quota, \(Int(remaining.rounded())) percent remaining, \(codexResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))\(quota.stale == true ? ", stale reading" : "")")
+            .accessibilityLabel("\(title) weekly quota, \(remaining.map { "\(Int($0.rounded())) percent" } ?? "unknown") remaining, \(codexResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))\(quota.stale == true ? ", stale reading" : "")")
         } else {
             HStack(spacing: 9) {
                 Image(systemName: "chart.bar.xaxis")
@@ -571,14 +580,14 @@ struct WatchDashboardContent: View {
                     .frame(width: 34, height: 34)
                     .background(Color.secondary.opacity(0.12), in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Codex quota")
+                    Text("\(title) quota")
                         .font(.caption.weight(.semibold))
-                    Text(model.lastState?.subsystems?.codexQuota?.refreshing == true ? "Checking usage…" : "Usage unavailable")
+                    Text(quota?.refreshing == true ? "Checking usage…" : "Usage unavailable")
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                if model.lastState?.subsystems?.codexQuota?.refreshing == true {
+                if quota?.refreshing == true {
                     ProgressView().controlSize(.small)
                 }
             }
@@ -586,7 +595,7 @@ struct WatchDashboardContent: View {
             .frame(maxWidth: .infinity, minHeight: 60)
             .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Codex quota unavailable")
+            .accessibilityLabel("\(title) quota unavailable")
         }
     }
 
@@ -614,6 +623,7 @@ struct WatchDashboardContent: View {
             pageHeader("JARVIS", symbol: "waveform")
             purifierPanel
             codexQuotaPanel
+            claudeQuotaPanel
             omlxCard
             if model.shouldShowRetry { retryButton }
             if let message = model.errorMessage, !message.isEmpty {
@@ -708,6 +718,7 @@ struct WatchDashboardContent: View {
             seconds = window?.resetAfterSeconds
         }
         guard let seconds else { return "Reset unavailable" }
+        if seconds == 0 { return "Reset due; awaiting update" }
         if seconds < 60 { return "<1m to reset" }
         if seconds < 3_600 { return "\(seconds / 60)m to reset" }
         if seconds < 86_400 { return "\(seconds / 3_600)h \((seconds % 3_600) / 60)m to reset" }
@@ -716,7 +727,8 @@ struct WatchDashboardContent: View {
 
     private func codexFiveHourCompactLabel(_ quota: CodexQuotaSubsystem) -> String {
         if let remaining = quota.fiveHour?.remainingPercent {
-            return "5H \(Int(remaining.rounded()))%"
+            let reset = codexResetLabel(quota.fiveHour).replacingOccurrences(of: " to reset", with: "")
+            return "5H \(Int(remaining.rounded()))% ↻\(reset)\(quota.fiveHourEnforced == false ? " paused" : "")"
         }
         if quota.fiveHourEnforced == false { return "5H PAUSED" }
         return "5H —"
@@ -724,7 +736,7 @@ struct WatchDashboardContent: View {
 
     private func codexFiveHourLabel(_ quota: CodexQuotaSubsystem) -> String {
         if let remaining = quota.fiveHour?.remainingPercent {
-            return "5H \(Int(remaining.rounded()))% left"
+            return "5H \(Int(remaining.rounded()))% left, \(codexResetLabel(quota.fiveHour))"
         }
         if quota.fiveHourEnforced == false { return "5H paused" }
         return "5H unavailable"

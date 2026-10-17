@@ -233,6 +233,8 @@ final class TabNavigationTests: XCTestCase {
             XCTAssertLessThan(try XCTUnwrap(overview.range(of: "purifierPanel")?.lowerBound),
                               try XCTUnwrap(overview.range(of: "codexQuotaPanel")?.lowerBound))
             XCTAssertLessThan(try XCTUnwrap(overview.range(of: "codexQuotaPanel")?.lowerBound),
+                              try XCTUnwrap(overview.range(of: "claudeQuotaPanel")?.lowerBound))
+            XCTAssertLessThan(try XCTUnwrap(overview.range(of: "claudeQuotaPanel")?.lowerBound),
                               try XCTUnwrap(overview.range(of: "omlxCard")?.lowerBound))
         }
         let entry = try XCTUnwrap(watch.components(separatedBy: ".onChange(of: selectedPage)").last)

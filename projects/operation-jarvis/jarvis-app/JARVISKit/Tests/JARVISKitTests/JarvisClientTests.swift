@@ -291,6 +291,22 @@ final class JarvisClientTests: XCTestCase {
         XCTAssertTrue(result.ok)
     }
 
+    func testProviderQuotaRefreshRequestsBothCollectorsOnce() async throws {
+        var calls = 0
+        MockURLProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.query, "refresh=codexQuota&refresh=claudeQuota")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-jarvis-token"), "secret")
+            XCTAssertNil(request.httpBody)
+            return MockURLProtocol.response(request, status: 200, body: #"{"ok":true}"#)
+        }
+        let api: any JarvisAPI = client
+        let result = try await api.stateRefreshingProviderQuotas(endpoint)
+        XCTAssertTrue(result.ok)
+        XCTAssertEqual(calls, 1)
+    }
+
     func testHTTPErrorPreservesStatusAndBoundedBody() async throws {
         MockURLProtocol.handler = { request in
             MockURLProtocol.response(request, status: 400, body: #"{"ok":false,"error":"not allowlisted"}"#)

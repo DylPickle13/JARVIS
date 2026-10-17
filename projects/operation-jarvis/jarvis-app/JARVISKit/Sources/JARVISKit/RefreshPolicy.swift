@@ -13,9 +13,10 @@ public enum JARVISRefreshPolicy {
     /// immediately. Background scenes do not poll.
     public static let alwaysOnInterval: Duration = .seconds(15)
 
-    /// A visible Codex panel may request one immediate read per minute rather
+    /// Visible provider panels may request one immediate read per minute rather
     /// than waiting for the host's idle quota cadence.
-    public static let visibleCodexRefreshInterval: TimeInterval = 60
+    public static let visibleProviderQuotaRefreshInterval: TimeInterval = 60
+    public static let visibleCodexRefreshInterval = visibleProviderQuotaRefreshInterval
 
     /// jarvisd may return a safe last-good snapshot as `stale + refreshing`
     /// when an idle control collector exceeds its bounded activation wait.

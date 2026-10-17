@@ -36,7 +36,7 @@ an older committed API:
 - Health uses `subsystemsMeta`: `ok`, `stale`, `refreshing`, `error`, `ageSeconds`.
   Top-level `ok` only confirms a response; it does not imply all services work.
 - Freshness ceilings match `StateCoordinator.DEFAULT_STALE_AFTER`: plugs 30s,
-  purifier 90s, Pi 180s, services 660s, Codex 900s, network 1260s. Explicit backend
+  purifier 90s, Pi 180s, services 660s, Codex/Claude 900s, network 1260s. Explicit backend
   stale/errors always win. The app adds elapsed time since the state request began,
   so old-host healthy flags and frozen snapshots cannot remain healthy forever.
   These ceilings must be reviewed if backend freshness policy changes.

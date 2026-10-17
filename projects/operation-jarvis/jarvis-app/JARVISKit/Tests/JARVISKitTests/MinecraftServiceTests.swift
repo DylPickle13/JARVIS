@@ -23,7 +23,7 @@ final class MinecraftServiceTests: XCTestCase {
         var inventory = background
         if !omitting.contains("minecraft-server") { inventory["minecraft-server"] = server ?? self.server }
         if !omitting.contains("minecraft-jarvis-bot") { inventory["minecraft-jarvis-bot"] = bot ?? self.bot }
-        var metadata = Dictionary(uniqueKeysWithValues: ["services", "pi", "plugs", "purifier", "network", "codexQuota"].map {
+        var metadata = Dictionary(uniqueKeysWithValues: ["services", "pi", "plugs", "purifier", "network", "codexQuota", "claudeQuota"].map {
             ($0, ["ok": true, "stale": false, "ageSeconds": 0] as [String: Any])
         })
         metadata["services"] = ["ok": !collectorFailed, "stale": stale, "ageSeconds": 0]

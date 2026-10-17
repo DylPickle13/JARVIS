@@ -103,7 +103,7 @@ reject_match 'fixed 250-millisecond jarvisd scheduler polling was restored' -Fq 
 
 printf '%s\n' '== responsive scoped foreground state =='
 grep -q 'controlActiveInterval: Duration = .seconds(3)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
-grep -q 'visibleCodexRefreshInterval: TimeInterval = 60' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
+grep -q 'visibleProviderQuotaRefreshInterval: TimeInterval = 60' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'staleConvergenceInterval: Duration = .milliseconds(500)' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'staleConvergenceAttempts = 8' JARVISKit/Sources/JARVISKit/RefreshPolicy.swift
 grep -q 'attempts < staleConvergenceAttempts' JARVIS/AppState.swift
@@ -181,7 +181,7 @@ watch = Path('JARVISWatch/Views/WatchDashboardContent.swift').read_text()
 for name, end in [('private var overviewPage:', 'private var purifierPanel:'),
                   ('private var accessibilityOverviewPage:', 'private func accessiblePlugButton')]:
     block = watch.split(name,1)[1].split(end,1)[0]
-    assert block.index('purifierPanel') < block.index('codexQuotaPanel') < block.index('omlxCard')
+    assert block.index('purifierPanel') < block.index('codexQuotaPanel') < block.index('claudeQuotaPanel') < block.index('omlxCard')
     assert 'ScrollView' not in block
 assert 'including: overlayOwnsInput ? .none' in watch
 assert 'guard selectedPage == page, page != .terminal, !overlayOwnsInput' in watch
@@ -768,6 +768,21 @@ grep -q 'foreground.opacity(span.style.dim ? 0.82 : 1)' JARVISWatch/Views/WatchT
 grep -q 'public static let minimumForegroundLuminance = 188' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'private var codexQuotaPanel' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'private func codexQuotaCard' JARVIS/Views/HomeView.swift
+grep -q 'private func claudeQuotaCard' JARVIS/Views/HomeView.swift
+grep -q 'private var claudeQuotaPanel' JARVISWatch/Views/WatchDashboardContent.swift
+grep -Fq 'refresh=codexQuota&refresh=claudeQuota' JARVISKit/Sources/JARVISKit/JarvisClient.swift
+grep -q 'client.stateRefreshingProviderQuotas(endpoint)' JARVIS/AppState.swift
+grep -q 'client.stateRefreshingProviderQuotas(endpoint)' JARVISWatch/Views/WatchConnectView.swift
+reject_match 'Neural Core must retain its pre-Claude artwork and telemetry' -Eq \
+  'JARVISProviderQuota(Readout|Telemetry)|claudeQuota|claudeRemainingPercent|claudeIsCritical|drawProviderQuotaRing' \
+  WidgetShared/NeuralCoreArtwork.swift WidgetShared/NeuralCoreContinuousAnimation.swift \
+  JARVISKit/Sources/JARVISKit/NeuralCoreTelemetry.swift
+reject_match 'Provider-only changes must not introduce new widget reload triggers' -Fq \
+  'WidgetQuotaValue' JARVIS/AppState.swift
+grep -q '"claudeQuota": 60.0' ../jarvisd/jarvisd_core/state.py
+grep -q '"claudeQuota": 300.0' ../jarvisd/jarvisd_core/state.py
+grep -q '"claudeQuota": 900.0' ../jarvisd/jarvisd_core/state.py
+python3 -m unittest discover -s ../quotas -p 'test_*.py'
 grep -q 'public static let criticalRemainingPercent = 30.0' JARVISKit/Sources/JARVISKit/Models.swift
 grep -q 'CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)' JARVIS/Views/HomeView.swift
 grep -q 'CodexQuotaPresentationPolicy.isCritical(remainingPercent: remaining)' JARVISWatch/Views/WatchDashboardContent.swift
@@ -782,11 +797,11 @@ grep -q 'JARVIS_ROOT / "projects" / "operation-jarvis" / "quotas" / "quotas.py"'
 grep -q '\[sys.executable, str(CODEX_QUOTAS_SCRIPT), "codex", "--json"\]' ../jarvisd/jarvisd.py
 grep -q '"codexQuota": 60.0' ../jarvisd/jarvisd_core/state.py
 grep -Fq 'for subsystem in query.get("refresh", []):' ../jarvisd/jarvisd.py
-grep -Fq 'if subsystem in {"codexQuota", "purifier"}:' ../jarvisd/jarvisd.py
+grep -Fq 'if subsystem in {"codexQuota", "claudeQuota", "purifier"}:' ../jarvisd/jarvisd.py
 grep -q 'stateRefreshingCodexQuota' JARVISKit/Sources/JARVISKit/JarvisClient.swift
 grep -q 'model.refreshCodexQuotaWhenVisible()' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'page == .jarvis' JARVISWatch/Views/WatchDashboardContent.swift
-grep -q 'NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})' ../jarvisd/jarvisd_core/state.py
+grep -q 'NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota", "claudeQuota"})' ../jarvisd/jarvisd_core/state.py
 reject_match 'Watch System page must not restore the removed Direct to Mac panel' -Fq 'Direct to Mac' JARVISWatch/Views/WatchDashboardContent.swift
 grep -q 'configuration.candidateBaseURLs' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'dylans-mac-mini-2.tailcba1e5.ts.net' JARVISKit/Sources/JARVISKit/Endpoints.swift

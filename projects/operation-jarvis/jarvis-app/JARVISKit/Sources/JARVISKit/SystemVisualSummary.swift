@@ -30,7 +30,7 @@ public extension SystemDashboardPresentation {
             groups.append(.init(id: "minecraft", title: "Minecraft", rows: minecraftServices.map(\.row)))
         }
         groups += [
-            .init(id: "pi", title: "Pi", rows: rows.filter { ["pi", "codexQuota"].contains($0.id) }),
+            .init(id: "pi", title: "Pi", rows: rows.filter { ["pi", "codexQuota", "claudeQuota"].contains($0.id) }),
             .init(id: "network", title: "Network", rows: rows.filter { $0.id == "network" })
         ]
         guard includesDeviceCoverage else {

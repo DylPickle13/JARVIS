@@ -36,6 +36,7 @@ class StatusFeed:
         self.buffer = b''
         self.states = {}
         self.quota = dict(UNAVAILABLE)
+        self.claude_quota = dict(UNAVAILABLE)
         self.received = 0
         self.retry_at = 0
         self.started = 0
@@ -55,6 +56,7 @@ class StatusFeed:
         self.buffer = b''
         self.states = {}
         self.quota = dict(UNAVAILABLE)
+        self.claude_quota = dict(UNAVAILABLE)
         self.received = 0
 
     def fail(self):
@@ -94,6 +96,7 @@ class StatusFeed:
                                     raise ValueError('Expected status object')
                                 self.states = valid_states(payload)
                                 self.quota = normalize_quota(payload.get('codexQuota'))
+                                self.claude_quota = normalize_quota(payload.get('claudeQuota'))
                                 self.received = now
                                 self.failed = False
                                 available = any(state != 'unknown' for state in self.states.values())
@@ -102,10 +105,12 @@ class StatusFeed:
                             except (ValueError, TypeError):
                                 self.states = {}
                                 self.quota = dict(UNAVAILABLE)
+                                self.claude_quota = dict(UNAVAILABLE)
                                 self.connection = 'Mac connected · Invalid status data'
         if self.process and now - (self.received or self.started) > STALE_AFTER:
             self.fail()
         self.quota = normalize_quota(self.quota)
+        self.claude_quota = normalize_quota(self.claude_quota)
         return self.states if now - self.received < STALE_AFTER else {}
 
 

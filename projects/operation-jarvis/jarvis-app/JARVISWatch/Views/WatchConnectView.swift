@@ -516,9 +516,10 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         guard !Task.isCancelled, appIsForeground, let url = store.endpointURL else { return }
         let endpoint = JarvisEndpoint(baseURL: url, token: authenticationToken)
         let previousUpdatedAt = lastState?.subsystems?.codexQuota?.updatedAt
+        let previousClaudeUpdatedAt = lastState?.subsystems?.claudeQuota?.updatedAt
 
         do {
-            let triggered = try await client.stateRefreshingCodexQuota(endpoint)
+            let triggered = try await client.stateRefreshingProviderQuotas(endpoint)
             guard !Task.isCancelled else { return }
             acceptDirectState(triggered)
 
@@ -531,12 +532,12 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
                 let state = try await client.state(endpoint)
                 guard !Task.isCancelled else { return }
                 acceptDirectState(state)
-                let quota = state.subsystems?.codexQuota
-                if quota?.refreshing != true,
-                   let updatedAt = quota?.updatedAt,
-                   updatedAt != previousUpdatedAt {
-                    return
-                }
+                let quotas = [(state.subsystems?.codexQuota, previousUpdatedAt),
+                              (state.subsystems?.claudeQuota, previousClaudeUpdatedAt)]
+                if quotas.allSatisfy({ quota, previous in
+                    quota == nil || (quota?.refreshing != true
+                        && (quota?.updatedAt != previous || quota?.lastError != nil || quota?.ok == false))
+                }) { return }
             }
         } catch is CancellationError {
             return

@@ -159,7 +159,7 @@ public struct CachedSystemHealthSummary: Codable, Equatable, Sendable {
         let rawScope = try? values?.decode(String.self, forKey: .scope)
         scope = rawScope == "cached_status_health" ? rawScope : nil
         let rows = try? values?.decode([String: CachedSystemHealthComponent].self, forKey: .components)
-        let fixed = ["services", "pi", "network", "plugs", "purifier", "codexQuota", "security", "devices", "overall"]
+        let fixed = ["services", "pi", "network", "plugs", "purifier", "codexQuota", "claudeQuota", "security", "devices", "overall"]
         components = rows.flatMap { values in
             guard values.count <= 32 else { return nil }
             return values.filter { fixed.contains($0.key)
@@ -243,6 +243,7 @@ public struct Subsystems: Codable, Equatable, Sendable {
     public let services: ServicesSubsystem?
     public let network: NetworkSubsystem?
     public let codexQuota: CodexQuotaSubsystem?
+    public let claudeQuota: ClaudeQuotaSubsystem?
 }
 
 public struct PlugsSubsystem: Codable, Equatable, Sendable {
@@ -303,7 +304,8 @@ public extension StateSnapshot {
             pi: subsystems.pi,
             services: subsystems.services,
             network: subsystems.network,
-            codexQuota: subsystems.codexQuota
+            codexQuota: subsystems.codexQuota,
+            claudeQuota: subsystems.claudeQuota
         )
         let updatedSummary = summary.map {
             Summary(
@@ -452,6 +454,9 @@ public struct PiSubsystem: Codable, Equatable, Sendable {
     public let error: String?
     public let lastError: String?
 }
+
+/// Claude uses the same bounded weekly/five-hour wire envelope; no account data.
+public typealias ClaudeQuotaSubsystem = CodexQuotaSubsystem
 
 public struct CodexQuotaSubsystem: Codable, Equatable, Sendable {
     public let ok: Bool?

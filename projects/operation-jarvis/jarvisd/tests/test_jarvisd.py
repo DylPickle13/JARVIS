@@ -1424,6 +1424,18 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status, 401)
         unauthenticated.assert_not_called()
 
+    def test_both_provider_refreshes_are_authenticated_and_independent(self):
+        path = "/api/v1/state?refresh=codexQuota&refresh=claudeQuota&refresh=unknown"
+        with mock.patch.object(jarvisd.STATE_COORDINATOR, "request_refresh") as refresh, \
+             mock.patch.object(jarvisd, "collect_state", return_value={"ok": True}):
+            status, _, _ = self.request("GET", path, token="api-secret")
+        self.assertEqual(status, 200)
+        self.assertEqual(refresh.call_args_list, [mock.call("codexQuota"), mock.call("claudeQuota")])
+        with mock.patch.object(jarvisd.STATE_COORDINATOR, "request_refresh") as refresh:
+            status, _, _ = self.request("GET", path)
+        self.assertEqual(status, 401)
+        refresh.assert_not_called()
+
     def test_signing_endpoints_require_auth_and_expose_only_fixed_action(self):
         public_status = {
             "ok": True,

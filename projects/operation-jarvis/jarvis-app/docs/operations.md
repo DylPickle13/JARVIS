@@ -1,5 +1,118 @@
 # Native app build and operations
 
+## Neural Core restoration — build 262 installed on iPhone
+
+The owner requested removal of the Neural Core changes after seeing build 261.
+Only shared widget artwork/telemetry/accessibility and widget-specific reload
+changes are reversed; Claude app cards, backend and Pi-desk remain. Core artwork,
+animation wrapper, telemetry and render fixture match retained build 260 exactly.
+Candidate 262 layers nine source/test/version changes onto installed 261's frozen
+270-input source. At **18:53 EDT**, 202 iPhone tests, 353 shared cases (3 expected
+skips), 39 terminal cases, 2,316 artwork assertions, both simulator builds and all
+eight candidate/rollback signatures passed. Profiles, entitlements and dependency
+lock are unchanged; source/payload seals passed. Exact signed 261 is rollback,
+with 260 also retained.
+
+Owner **“you can deploy to it wirelessly now”** authorized a new one-shot
+iPhone-only attempt. Fresh and immediate wireless identity/DDI/unlock/inventory
+gates passed. **262 installed once over `localNetwork`, launched once, and was
+independently version/process verified at 19:13 EDT**, with final version readback.
+All 18 protected service records (17 continuous) had no protected PID changes;
+Pi/Minecraft identities, backend/registry/authentication and ten-second history
+cadence were preserved. Final source/payload seals and eight bundle signatures
+passed. No protected service restart, terminal input or write retry occurred.
+No direct Watch action; automatic companion delivery was not queried.
+Physical widget appearance remains owner review. Receipt:
+`20261017T224820Z-build262-neural-core-restore/deployment-20261017T231050Z/result.json`.
+Do not rebuild or replay the completed installer.
+
+The active backend baseline is now `20261017T213141Z-provider-quotas`, retaining
+the verified October 11 address-repair registry. Any new native preservation guard
+must verify that current release, not replay the historical build-261 guard.
+See [current reversal status](../../docs/provider-quotas.md#neural-core-reversal--build-262-installed-on-iphone).
+
+## Codex/Claude tracking — installed build 261
+
+**Build-261 history:** installed/version/process verified on both devices at
+**17:27 EDT, 2026-10-17**. The separately authorized backend activated at
+**17:39 EDT**, and Pi-desk files were installed on all three hosts at **17:44 EDT**.
+Both provider caches are live. Existing main-Mac Pi-desk viewers still need
+closing/reopening; physical native/widget acceptance remains separate.
+See [complete rollout](../../docs/provider-quotas.md#backend-and-pi-desk--deployed-2026-10-17).
+Validation and the retained native attempt history follow.
+
+Owner authorized Xcode repair and proceeding with connected devices on
+2026-10-17. Metal and the matching CoreSimulator service are now operational.
+Frozen 270-input native validation passed **202 iPhone tests**, **353 shared cases**
+(three expected live skips), **39 terminal cases**, both simulator builds and the
+signed Release archive. The existing plain-Paste pixel exclusion is unchanged.
+All eight candidate/rollback signatures, byte-identical profiles, unchanged
+entitlements/dependency lock and source/payload seals passed. Exact signed
+**260** remains rollback; no portal/provisioning changes were requested.
+
+The iPhone passed allowlist/identity, DDI, unlock and installed-260 checks. Watch
+identity/DDI passed, but its unlock-state read stopped on RSD allocation error
+`-402653181`, before app inventory or either installation. This does not establish
+that the Watch was locked. No app install/launch, connection reset, live JARVIS
+service restart, Pi input or failed-gate retry followed. Fresh owner readiness and
+all immediate gates remain required. Backend/Pi-desk activation is not included in
+this native-only candidate. Keep the original stop and do not rerun its helper.
+
+A fresh owner **ready** response authorized a separate zero-write preflight at
+**17:06–17:07 EDT**. The iPhone again passed all checks at build 260. Watch
+identity passed, but its DDI read failed before unlock/inventory on a Bluetooth
+tunnel invalidation (`RemotePairingError 1007`, L2CAP channel-open failure).
+No installer or launch was invoked, and neither failed helper was replayed.
+Both original stops are retained.
+
+Owner then requested **“try watch again now”**. A new read-only preflight at
+**17:10 EDT** passed both devices' identity/DDI/unlock/inventory gates at **260**.
+The first one-shot installer stopped before device writes because its historical
+backend baseline predated the verified **2026-10-11 address repair**. Read-only
+reconciliation verified that only the registry path and three device hosts differ;
+the daemon source, registry structure/policies and repair receipts remain intact.
+A new helper pinned the exact existing launcher/registry hashes without changing
+the backend or replaying the stopped helper.
+
+That helper passed backend preservation and iPhone readiness, but Watch's repeated
+unlock-state query failed at **17:16 EDT** with RSD allocation error **-402653181**.
+This is a developer-connection failure, not proof of a locked Watch. **Neither
+installer reached an app-install or launch boundary.** Both devices' last verified
+build was 260; 261 was still uninstalled. Post-stop read-only checks preserved backend
+source/configuration/authentication, registry, Minecraft identities and ten-second
+history cadence. No service restart, reset, Pi input or failed-device-gate replay
+occurred. Retain all stops and require new owner scope/readiness before another
+device attempt; backend/Pi-desk activation remains separate.
+
+A further owner **“try again now”** authorized a new integrated guarded attempt
+at **17:19–17:20 EDT**. Watch identity, compatible DDI and **unlocked** state passed,
+but installed-app inventory failed when the Bluetooth developer tunnel dropped
+(`RemotePairingError 1007`, transport Read EOF `-6753`). The attempt stopped
+before the iPhone checks and before any app install/launch. Post-stop backend
+preservation checks passed. No failed helper/check was replayed, no connection
+was reset and no service was restarted. A fresh owner decision remains required.
+
+After the owner restarted the Watch and said **“ready, try now”**, a new
+one-shot attempt at **17:24–17:27 EDT** passed both-device readiness and every
+immediate per-target gate. **Build 261 was installed once on each iPhone and
+Watch**, with independent installed-version and running-process verification
+on both, including final version readbacks. Candidate/rollback seals, 270 frozen
+inputs and all eight bundle signatures passed again.
+
+All **18 protected service records** (17 continuous), existing Pi panes,
+Minecraft/gateway identities, backend source/configuration/authentication,
+the verified address-repair registry and ten-second history cadence were
+preserved. No service restart, terminal input, credential/profile/dependency
+change, failed-write replay or cleanup occurred. Exact signed **260** remains
+rollback and every earlier failure receipt is retained. Physical quota layout,
+widgets and VoiceOver acceptance remain owner review. Backend/Pi-desk deployment
+was performed separately afterward under new owner authorization; see the current
+status above. The native installer itself restarted no service.
+
+Private evidence: `20261017T205400Z-build261-provider-quotas`, with final receipt
+`deployment-20261017T212425Z/result.json`.
+See [provider quotas](../../docs/provider-quotas.md) for implementation and status.
+
 ## iPhone terminal links — installed build 260
 
 Owner approved installation on 2026-10-07 and supplied fresh readiness after two

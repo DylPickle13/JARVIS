@@ -13,7 +13,7 @@ superseded it in **build 243**, independently version/launch/process verified at
 
 Tabs remain in their existing positions: **JARVIS → Home → Terminal → Jobs → Settings**.
 
-- **JARVIS** contains Pi session cards, Room Audio, Codex quota and oMLX telemetry.
+- **JARVIS** contains Pi session cards, Room Audio, separate Codex/Claude quota cards and oMLX telemetry.
 - **Home** contains the unchanged health/history card, followed by smart plugs and
   purifier cards. Purifier details, command confirmation, explicit recovery,
   stale-state handling and errors move with the controls.
@@ -146,7 +146,7 @@ restores the former card grouping without reverting the iPhone layout or fixes.
 
 - **Home** contains only the health card.
 - **Plugs** has its own two-column grid; large text uses single-column Crown scrolling.
-- **JARVIS** contains purifier above Codex and oMLX, in its Crown viewport.
+- **JARVIS** contains purifier above separate Codex/Claude cards and oMLX, in its Crown viewport.
 - Home uses Crown overflow only for accessibility text sizes.
 - From Terminal, swipe down to Home and up to Plugs. Jobs returns to JARVIS.
   Horizontal session gestures are unchanged. Purifier detail sheets suspend
@@ -179,12 +179,12 @@ Tab taps retain their native behavior; this effect belongs to page swipes.
 
 ## Refresh ownership and compatibility
 
-- JARVIS owns the existing Pi/Room Audio and visible Codex/oMLX refresh policies.
+- JARVIS owns Pi/Room Audio, visible provider-quota and oMLX refresh policies. One authenticated state query requests both quota collectors.
 - Home owns foreground device-state refresh and visible health-history reads.
 - iPhone Home foreground entry or explicit device refresh requests purifier cloud
   readings; recurring polling does not. Watch requests purifier readings on JARVIS
   entry, alongside its purifier card, not on Home or Plugs entry.
-- Home does not request Codex quota refresh. Passive tabs remain cache readers.
+- Home does not request provider-quota refresh. Passive tabs remain cache readers.
 - History pauses when purifier controls cover iPhone Home; Watch history remains Home-only. Existing command locks,
   freshness checks, cooldowns, unknown-outcome handling and no-write-retry rules
   are unchanged.

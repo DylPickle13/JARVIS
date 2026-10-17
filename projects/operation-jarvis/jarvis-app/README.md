@@ -2,6 +2,45 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
+## Neural Core restoration — build 262 installed on iPhone
+
+Owner requested removal of all widget changes. Original build-260 Neural Core
+artwork, animation, telemetry and accessibility are restored exactly, including
+the original widget reload comparison. Added provider labels/countdowns and the
+extra quota ring are removed. Claude tracking in app cards/backend/Pi-desk remains.
+
+Candidate 262 is built, audited and sealed: 202 iPhone tests, 353 shared cases
+(3 expected skips), 39 terminal cases, 2,316 artwork assertions, both simulator
+builds and all candidate/rollback signatures passed. **262 installed wirelessly
+once on iPhone and independently version/process verified at 19:13 EDT,
+2026-10-17**. Backend, repaired registry, authentication, protected services and
+Pi/Minecraft identities were preserved. No direct Watch deployment occurred;
+automatic companion delivery was not queried. Exact signed 261 remains rollback.
+Physical widget appearance remains owner review.
+See [reversal status](../docs/provider-quotas.md#neural-core-reversal--build-262-installed-on-iphone).
+
+## Claude tracker — installed build 261
+
+[Separate Claude subscription tracking](../docs/provider-quotas.md) originally
+accompanied Codex on iPhone, Watch and both Neural Core widgets in 261. The widget
+changes were subsequently reversed in 262 above; app cards remain. Weekly is
+primary; five-hour is underneath. **261 installed once per device and independently version/process
+verified at 17:27 EDT, 2026-10-17**, after the owner restarted the Watch and supplied
+fresh readiness. All earlier stopped attempts remain retained.
+
+Frozen validation passed 202 iPhone tests, 353 shared cases (three expected skips),
+39 terminal cases, both simulator builds and signed archive/profile/entitlement
+audits. Final source/payload seals and all eight candidate/rollback signatures
+passed. Exact signed **260** remains rollback. The current verified address-repair
+configuration, all 18 protected service records, existing Pi/Minecraft identities,
+authentication and history cadence were preserved. No service restart or cleanup
+occurred during native installation. The separately authorized backend is now
+**live with fresh Codex/Claude data** (17:39 EDT), and Pi-desk updates are installed
+on all three hosts (17:44 EDT). Existing main-Mac Pi-desk viewers need reopening;
+their agents remain running. Physical UI/widget/VoiceOver acceptance remains
+owner review. See
+[deployment evidence](docs/operations.md#codexclaude-tracking--installed-build-261).
+
 ## Token rollout reversal — installed build 259
 
 Owner requested undo on 2026-10-06. Pre-enrollment connection/client/Watch behavior
@@ -289,7 +328,7 @@ Captured in Apple simulators with sample data. The video shows the UI animations
 
 | Surface | Purpose |
 |---|---|
-| iPhone JARVIS | Pi session status, room-audio state, Codex quota and read-only model-server telemetry. |
+| iPhone JARVIS | Pi session status, room-audio state, separate Codex/Claude quotas and read-only model-server telemetry. |
 | iPhone Home | Health/history, smart plugs and purifier controls. |
 | iPhone terminal | SSH-backed access to persistent Pi sessions, with native keyboard controls. Photos/Files staging is gated by the signed build's attachment configuration. |
 | Apple Watch | JARVIS, Home, Terminal and Jobs pages, with bounded foreground refresh and explicit stale/unavailable states. [Wide-pane wrapping fix](docs/watch-terminal-wrapping.md) is installed and independently verified as build 249 on both devices; the owner confirmed Session 10 wrapping works. |

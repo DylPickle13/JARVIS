@@ -1,3 +1,32 @@
+# Codex/Claude quotas — 2026-10-17, installed; existing viewer reopen pending
+
+Quota-only updates are installed and hash-verified on **mac-mini-64, mac-mini-16
+and raspberrypi** at **17:44 EDT**. The backend collector activated separately at
+17:39 EDT and both providers are fresh. Weekly/five-hour percentages and reset
+countdowns are visible without clicking; narrow widths use extra quota rows.
+
+The exact per-host baseline received only `core.py`, `desktop.py`, `status_stream.py`,
+`provider_quotas.py`, `install.py` and their manifest entries. Older remote versions
+received the same quota delta without unrelated newer features. Private patched
+tmux, transport/restart behavior, launchers/configuration and all unrelated files/
+manifest entries were preserved. No full installer, service/agent restart, viewer
+signal, terminal input or GUI focus/Space switch occurred. **220 local staged tests
+and 44 tests on each actual remote host passed**. Missing test-only fixture errors
+and initial transfer-decoding failures are retained; neither affected live files.
+
+The installed host feed verifies ten fresh sessions and both live providers.
+**Close/detach all existing main-Mac Pi Desk viewers, then reopen `pi-desk`** to
+activate the renderer. Its 13 existing viewer/attachment/feed processes were left
+untouched. No remote viewer was active; those installations load on next opening.
+Physical header acceptance remains owner review; file installation is not a claim
+that a previously running monitor has reloaded.
+
+Per-host rollback: `~/.local/state/pi-desk/backups/provider-quotas-20261017T213141Z/`.
+Private orchestration evidence: JARVIS Application Support
+`jarvisd/deployments/20261017T213141Z-provider-quotas/pi-desk/`; remote one-shot
+helpers/test receipts remain under each host's `.local/state/pi-desk/staging/`.
+Never replay completed installers. See [full rollout](../docs/provider-quotas.md).
+
 # Viewer tmux memory-leak backport — 2026-10-08, active and verified
 
 Owner approved the investigated fix and a local viewer-only restart. Built pinned

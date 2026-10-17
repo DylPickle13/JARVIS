@@ -2,7 +2,7 @@
 
 **Navigation update:** the health card lives at the top of iPhone **Home**, above
 plugs and purifier. The restored Watch **Home** contains health only; Plugs has
-a dedicated page, while purifier returns above Codex/oMLX on JARVIS.
+a dedicated page, while purifier returns above Codex/Claude/oMLX on JARVIS.
 Build 252 keeps **Minecraft** as its own health-card check and read-only server/bot
 detail. **Services** now excludes those two rows; neither list duplicates the other.
 Watch Home supports Crown overflow for large text.
@@ -134,7 +134,7 @@ reports false. Backend access, history window/cadence, and lifecycle gates are u
 
 Grouping preserves the worst evidence: failure precedes unknown/checking, then
 healthy/inactive. Services includes backend/collector evidence; Pi includes cached
-Codex usage; Devices includes plugs/purifier. Missing sensor evidence is unknown,
+Codex and Claude usage; Devices includes plugs/purifier. Missing sensor evidence is unknown,
 not green. Symbols distinguish states independently of colour; gaps remain hatched.
 VoiceOver retains row descriptions/ages, service requirements/technical evidence,
 and history bucket times, states, reasons and observed/missing coverage. The visible

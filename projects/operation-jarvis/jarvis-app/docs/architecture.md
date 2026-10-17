@@ -26,7 +26,7 @@ Source entry points: [app root](../JARVIS/JARVISApp.swift), [shared package](../
 iPhone: **JARVIS → Home → Terminal → Jobs → Settings**. Watch: **Home → Terminal →
 Plugs → JARVIS → Jobs**. iPhone Home groups health/history, plugs and purifier;
 JARVIS keeps AI and room-session telemetry. Watch Home is health-only, Plugs has
-a dedicated grid, and JARVIS contains purifier above Codex/oMLX. iPhone tab swipes
+a dedicated grid, and JARVIS contains purifier above Codex/Claude/oMLX. iPhone tab swipes
 never attach to Terminal. Watch uses Crown overflow and vertical pager gestures.
 
 Legacy route IDs and bridge formats remain stable. Device refreshes and AI-dashboard

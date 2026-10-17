@@ -47,7 +47,8 @@ def snapshot(data, now=None):
     # Additive field: old viewers keep reading numeric session keys unchanged.
     subsystems = data.get('subsystems') if isinstance(data, dict) else None
     quota = project(subsystems.get('codexQuota'), now) if isinstance(subsystems, dict) else dict(UNAVAILABLE)
-    return {**extract(data, now), 'codexQuota': quota}
+    claude = project(subsystems.get('claudeQuota'), now) if isinstance(subsystems, dict) else dict(UNAVAILABLE)
+    return {**extract(data, now), 'codexQuota': quota, 'claudeQuota': claude}
 
 
 def collect():

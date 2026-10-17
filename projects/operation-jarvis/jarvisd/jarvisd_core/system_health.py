@@ -2,7 +2,7 @@
 
 Chart colours describe observation/service health, never physical connectivity.
 Expired evidence is unknown, not a prolonged healthy or physical-offline claim.
-Overall health includes the six dashboard collectors and configured sensor-read
+Overall health includes the seven dashboard collectors and configured sensor-read
 health when supplied. Optional stopped services are inactive; successful periodic
 services may be idle. Sensor state and radio freshness are never inferred.
 """
@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 
 from .state import StateCoordinator
 
-COMPONENTS = ('services', 'pi', 'network', 'plugs', 'purifier', 'codexQuota', 'security', 'devices', 'overall')
+COLLECTOR_COMPONENTS = ('services', 'pi', 'network', 'plugs', 'purifier', 'codexQuota', 'claudeQuota')
+COMPONENTS = (*COLLECTOR_COMPONENTS, 'security', 'devices', 'overall')
 MAX_COMPONENTS = 32
 SERVICE_ID = re.compile(r'service:[A-Za-z0-9_-]{1,48}\Z')
 STATES = ('inactive', 'healthy', 'unknown', 'degraded', 'unavailable')
@@ -174,7 +175,7 @@ def project(snapshot, now, *, security=None):
     snapshot = {**snapshot,
                 'subsystems': snapshot.get('subsystems') if isinstance(snapshot.get('subsystems'), dict) else {},
                 'subsystemsMeta': snapshot.get('subsystemsMeta') if isinstance(snapshot.get('subsystemsMeta'), dict) else {}}
-    rows = {name: _collector(snapshot, name, now) for name in COMPONENTS[:6]}
+    rows = {name: _collector(snapshot, name, now) for name in COLLECTOR_COMPONENTS}
     if security is not None:
         rows['security'] = security
     service_slots = MAX_COMPONENTS-len(rows)-2  # Reserve devices and overall.
@@ -223,7 +224,7 @@ def project(snapshot, now, *, security=None):
         rows[name] = {**rows[name], 'state': state, 'reason': reason}
     sensor_rows = [rows['security']] if 'security' in rows else []
     rows['devices'] = aggregate([rows['plugs'], rows['purifier'], *sensor_rows])
-    rows['overall'] = aggregate([rows[name] for name in COMPONENTS[:6]] + sensor_rows)
+    rows['overall'] = aggregate([rows[name] for name in COLLECTOR_COMPONENTS] + sensor_rows)
     if snapshot.get('ok') is False:
         rows['overall'] = observation('unavailable', 'snapshot_failed')
     return rows

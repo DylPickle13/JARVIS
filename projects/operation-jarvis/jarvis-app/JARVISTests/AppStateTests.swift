@@ -287,6 +287,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(app.lastHealth?.version, "test")
         XCTAssertEqual(app.lastState?.summary?.plugsOn, 1)
         XCTAssertEqual(api.codexRefreshCalls, 1)
+        XCTAssertEqual(api.providerQuotaRefreshCalls, 1, "JARVIS requests both provider quotas")
         XCTAssertFalse(app.isStateLoading)
     }
 
@@ -1413,6 +1414,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var cachedStateCalls = 0
     var purifierRefreshCalls = 0
     var codexRefreshCalls = 0
+    var providerQuotaRefreshCalls = 0
     var healthCalls = 0
     var historyCalls = 0
     var historyEndpointTokens: [String] = []
@@ -1495,6 +1497,11 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     func stateRefreshingPurifier(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         purifierRefreshCalls += 1
         return state
+    }
+
+    func stateRefreshingProviderQuotas(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
+        providerQuotaRefreshCalls += 1
+        return try await stateRefreshingCodexQuota(endpoint)
     }
 
     func stateRefreshingCodexQuota(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {

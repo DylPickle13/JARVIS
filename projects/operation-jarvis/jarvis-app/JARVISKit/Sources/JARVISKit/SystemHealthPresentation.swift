@@ -29,7 +29,7 @@ public struct SystemHealthRow: Identifiable, Equatable, Sendable {
 public struct SystemHealthPresentation: Equatable, Sendable {
     public static let freshnessLimits: [String: Double] = [
         "services": 660, "pi": 180, "plugs": 30, "purifier": 90,
-        "network": 1260, "codexQuota": 900,
+        "network": 1260, "codexQuota": 900, "claudeQuota": 900,
     ]
     public let rows: [SystemHealthRow]
     public var issueCount: Int { rows.filter { $0.state == .issue }.count }
@@ -61,6 +61,7 @@ public struct SystemHealthPresentation: Equatable, Sendable {
             ("services", "Background services"), ("pi", "Pi session data"),
             ("plugs", "Plugs"), ("purifier", "Air purifiers"),
             ("network", "Network data"), ("codexQuota", "Codex usage"),
+            ("claudeQuota", "Claude usage"),
         ]
         var result: [SystemHealthRow] = []
         if snapshot?.ok == false {

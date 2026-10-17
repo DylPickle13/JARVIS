@@ -19,7 +19,7 @@ final class SensorSystemHealthTests: XCTestCase {
          "components": ["security": sensor, "overall": overall ?? evidence()]]
     }
     private func snapshot(health: Any? = nil) throws -> StateSnapshot {
-        let keys = ["services", "pi", "plugs", "purifier", "network", "codexQuota"]
+        let keys = ["services", "pi", "plugs", "purifier", "network", "codexQuota", "claudeQuota"]
         var object: [String: Any] = ["ok": true, "generatedAt": stamp(now),
             "subsystemsMeta": Dictionary(uniqueKeysWithValues: keys.map {
                 ($0, ["ok": true, "stale": false, "ageSeconds": 0] as [String: Any])
@@ -68,12 +68,12 @@ final class SensorSystemHealthTests: XCTestCase {
         XCTAssertEqual(SystemVisualGroup(id: "test", title: "Test", rows: [row(.inactive)]).state, .inactive)
     }
 
-    func testNewSummaryIncludesSeventhCheckAndRetainsSixWatchChips() throws {
+    func testNewSummaryIncludesEighthCheckAndSevenWatchChips() throws {
         let dashboard = presentation(try snapshot(health: summary(sensor: evidence())))
         XCTAssertEqual(dashboard.state, .healthy)
-        XCTAssertEqual(dashboard.health.rows.count, 7)
-        XCTAssertEqual(dashboard.subsystemRows.count, 7)
-        XCTAssertEqual(dashboard.compactSubsystemRows.count, 6)
+        XCTAssertEqual(dashboard.health.rows.count, 8)
+        XCTAssertEqual(dashboard.subsystemRows.count, 8)
+        XCTAssertEqual(dashboard.compactSubsystemRows.count, 7)
         XCTAssertTrue(dashboard.compactSubsystemRows.contains { $0.id == "security" })
         XCTAssertFalse(dashboard.compactSubsystemRows.contains { $0.id == "services" })
         XCTAssertEqual(dashboard.services.first?.row.detail, "Scheduled · idle between checks")
@@ -167,7 +167,7 @@ final class SensorSystemHealthTests: XCTestCase {
             let dashboard = presentation(value)
             XCTAssertNil(value.health)
             XCTAssertEqual(dashboard.state, .healthy)
-            XCTAssertEqual(dashboard.health.rows.count, 6)
+            XCTAssertEqual(dashboard.health.rows.count, 7)
             XCTAssertFalse(dashboard.health.rows.contains { $0.id == "security" })
         }
     }
@@ -177,7 +177,7 @@ final class SensorSystemHealthTests: XCTestCase {
             let dashboard = presentation(try snapshot(health: summary(sensor: evidence(), overall: evidence(state: state, reason: "collector_failed", expiry: nil))))
             XCTAssertEqual(dashboard.state, ["unavailable", "degraded"].contains(state) ? .issue : .unknown)
             XCTAssertTrue(dashboard.health.rows.contains { $0.id == "backendHealth" })
-            XCTAssertEqual(dashboard.compactSubsystemRows.count, 6)
+            XCTAssertEqual(dashboard.compactSubsystemRows.count, 7)
         }
         let stale = presentation(try snapshot(health: summary(sensor: evidence(), overall: evidence(expiry: 999))))
         XCTAssertEqual(stale.state, .unknown)

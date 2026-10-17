@@ -7,7 +7,7 @@ import JARVISKit
 final class SystemDashboardViewTests: XCTestCase {
     private func presentation(offline: Bool = false, includeExtraService: Bool = true, sensorState: String? = nil, deviceCoverage: Bool = false, includeMinecraft: Bool = false) throws -> SystemDashboardPresentation {
         let meta: [String: Any] = Dictionary(uniqueKeysWithValues:
-            ["services", "pi", "plugs", "purifier", "network", "codexQuota"].map {
+            ["services", "pi", "plugs", "purifier", "network", "codexQuota", "claudeQuota"].map {
                 ($0, ["ok": true, "stale": false, "ageSeconds": 10] as [String: Any])
             })
         var services: [String: Any] = [
@@ -274,7 +274,7 @@ final class SystemDashboardViewTests: XCTestCase {
         for sensorState in ["healthy", "unavailable", "unknown", "inactive"] {
             for offline in [false, true] {
                 let dashboard = try presentation(offline: offline, includeExtraService: false, sensorState: sensorState)
-                XCTAssertEqual(dashboard.compactSubsystemRows.count, 6)
+                XCTAssertEqual(dashboard.compactSubsystemRows.count, 7)
                 XCTAssertTrue(dashboard.compactSubsystemRows.contains { $0.id == "security" })
                 if !offline && sensorState == "unavailable" { XCTAssertEqual(dashboard.state, .issue) }
                 if !offline && sensorState == "unknown" { XCTAssertEqual(dashboard.state, .unknown) }

@@ -87,7 +87,7 @@ once with `xcodebuild -downloadComponent MetalToolchain` if needed.
   native keyboard Input, removed prompt rail, centered/safe-inset header and dock,
   brightened Watch foregrounds, compact equal `/`/DEL/Return-symbol keys,
   spinner-free repeatable Backspace, Always On foreground lifecycle, on-view
-  Codex refresh, shared sub-30% critical quota threshold, atomic Siri Return,
+  Codex/Claude refresh, separate provider indicators, shared sub-30% critical quota threshold, atomic Siri Return,
   and final-text-only authenticated Watch speech playback.
   It also audits the sole host-only bare “Hey JARVIS” two-turn prompt shortcut,
   iPhone's success-only hidden `OpenIntent` handoff, Watch foreground behavior,

@@ -555,7 +555,7 @@ public final class AppState: ObservableObject {
         // Passive tabs never converge by promoting a cached read to active.
         if cachedOnly { return try await client.cachedState(endpoint) }
         var snapshot = refreshingCodexQuota
-            ? try await client.stateRefreshingCodexQuota(endpoint)
+            ? try await client.stateRefreshingProviderQuotas(endpoint)
             : try await client.state(endpoint)
         var attempts = 0
         while snapshot.stale == true,

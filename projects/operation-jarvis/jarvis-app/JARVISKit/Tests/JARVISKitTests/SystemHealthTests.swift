@@ -15,7 +15,7 @@ final class SystemHealthTests: XCTestCase {
     func snapshot(overrides: [String: [String: Any]] = [:], services: [String: Any]? = nil,
                   omitMetadata: Bool = false, omitServiceMap: Bool = false,
                   plugs: [String: Any] = [:]) throws -> StateSnapshot {
-        let keys = ["services", "pi", "plugs", "purifier", "network", "codexQuota"]
+        let keys = ["services", "pi", "plugs", "purifier", "network", "codexQuota", "claudeQuota"]
         var meta: [String: Any] = [:]
         for key in keys {
             var value: [String: Any] = ["ok": true, "stale": false, "refreshing": false, "ageSeconds": 0]
@@ -87,7 +87,7 @@ final class SystemHealthTests: XCTestCase {
         XCTAssertEqual(value.subsystems?.services?.services?["scheduler"]?.running, true)
         XCTAssertEqual(try JSONDecoder().decode(StateSnapshot.self, from: JSONEncoder().encode(value)), value)
         XCTAssertEqual(health(value).summary, "Healthy")
-        XCTAssertEqual(health(value).rows.count, 6)
+        XCTAssertEqual(health(value).rows.count, 7)
         XCTAssertEqual(health(value).issueCount, 0, "Idle Pi sessions are not service failures")
     }
 
@@ -228,7 +228,7 @@ final class SystemHealthTests: XCTestCase {
 
     func testNewBackendExpiryCapsAndLocalElapsedTimeOverrideOldHealthyFlags() throws {
         for (key, cap) in [("pi", 180.0), ("services", 660), ("network", 1260),
-                           ("plugs", 30), ("purifier", 90), ("codexQuota", 900)] {
+                           ("plugs", 30), ("purifier", 90), ("codexQuota", 900), ("claudeQuota", 900)] {
             let value = try snapshot(overrides: [key: ["ageSeconds": cap]])
             XCTAssertEqual(health(value).issueCount, 0)
             let expired = health(value, elapsed: 1)

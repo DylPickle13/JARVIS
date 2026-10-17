@@ -4,6 +4,15 @@ One lightweight terminal workspace for the same ten Mac-hosted Pi Coding Agent
 sessions, on **mac-mini-64, mac-mini-16 and Raspberry Pi**. No browser, desktop
 streaming, or VS Code dependency. The agents always run on mac-mini-64.
 
+## Provider quotas rollout — 2026-10-17
+
+Codex/Claude quota-only files are installed on all three hosts. The backend is live;
+220 local staged tests and 44 tests on each remote host passed. Existing main-Mac
+viewers were deliberately left running: **close/detach all Pi Desk viewers, then
+reopen `pi-desk`** to load the new renderer. Hosted agents/conversations continue.
+No remote viewer was active. Current private tmux, settings, transport and unrelated
+files are preserved. See [deployment evidence and rollback](DEPLOYMENT.md).
+
 ## Token rollout reversal — 2026-10-06
 
 At owner request, source and installed status helper/tests are restored to exact
@@ -51,7 +60,7 @@ the title badge and selected number identify focus even in one- and two-pane
 layouts. No extra rows or columns are used. The top row contains
 ten clickable session numbers and lifecycle icons, with shortcut hints aligned at
 the right. A matching grey `┃` separates `PI-DESK` from the session tabs, and
-separates Codex quota, Restart and Switch on the right. Control dividers appear
+separates provider quotas, Restart and Switch on the right. Control dividers appear
 only between visible sections; their cell widths count toward hint shortening.
 The title divider is omitted if it would hide a session tab, including sliding-tab
 layouts. Hints shorten or disappear as space runs out; below 100 columns the
@@ -84,42 +93,38 @@ Coding workspaces adapt automatically to the terminal width, keeping the selecte
 session visible and focused. No extra menu pane. Last selected session is restored
 independently on each machine.
 
-### Codex quota in the header
+### Codex and Claude quota in the header
 
-The right-hand header shows **remaining** account-wide Codex quota, using the
-same sanitized jarvisd cache as the JARVIS app:
+The header shows **remaining** account-wide quota for both subscriptions, using
+jarvisd's sanitized cache. Example values:
 
 ```text
-Codex W:68% · 5h:91%
+Codex W:68%↻2d 5h:91%↻48m · Claude W:98%↻2d 5h:20%↻48m
 ```
 
-`W` means weekly, `5h` means the five-hour window. Percentages still mean quota
-remaining, without a trailing word in the header. Click the block to show available
-reset countdowns in an eight-second, client-only status message; this never opens
-a pane or changes focus. Only actual percentages (including `%`) are coloured,
-independently for each window: JARVIS iPhone's dark accent purple (`#D183E8`) at
-30% or more remaining, and its critical red (`#FF3847`) below 30%. There is no
-amber band. All other quota text, punctuation and placeholders use neutral grey
-(`#8A8A8A`). A five-hour window is shown only when a valid percentage is available
-and the window is not explicitly unenforced. Otherwise its entire section,
-separator and click-detail line are omitted; the header becomes `Codex W:68%`.
-There is no `5h:n/a` placeholder. Missing weekly values remain grey `n/a`, not 0%;
-hiding an unavailable 5h reading does not imply there is no limit. Only real
-exhaustion displays 0%.
+`W` means weekly; `5h` is the five-hour window; `↻` precedes a compact reset
+countdown. `p` after a Codex five-hour countdown means enforcement is paused
+(the number is tracking only). Missing windows/reset times show `n/a` / `?`.
+Claude has only the overall weekly and five-hour windows, not model-specific limits.
 
-Shortcut hints shorten/disappear before quota does. When necessary the block
-shrinks to `Codex W:68%`, then disappears if there is no room. Quota never
-hides a session tab or takes a second row. A missing weekly value uses the
-five-hour value in the compact form instead.
+All values and resets are visible **without clicking**. Shortcut hints yield first;
+provider names can shorten to `Cx` / `Cl`. If both complete labels cannot fit
+beside the session tabs, the viewer adds a compact quota row, or one row per
+provider on narrower displays. Warnings retain their own row. Session tabs and
+pane identities are untouched. At least 40 columns are recommended to retain all
+fields; physically smaller terminals clip safely instead of overwriting controls.
+The optional inline click still opens only a client-scoped detail message.
 
-Unavailable and stale readings show muted `Codex unavailable` / `Codex stale`,
-without old percentages. Quota freshness is independent of session status: the
-sample retains its original checked timestamp and expires after 15 minutes,
-matching jarvisd's quota cache. Reset countdowns use the absolute reset timestamp;
-a passed reset never invents a replenished quota. No credentials, account details,
-provider errors, or conversation contents leave the host. The existing three-second
-state stream carries one extra allowlisted field; there are no additional provider
-requests or model probes. Older viewers ignore that field and retain session status.
+Each actual percentage uses purple (`#D183E8`) at 30% or more, red (`#FF3847`)
+below 30%; labels, punctuation, countdowns and unknown/stale states stay grey.
+Each provider expires independently after 15 minutes using its original checked
+timestamp. A passed reset shows `due`, never invented replenishment. One failed
+provider does not hide the other or Pi session status.
+
+The same three-second host state stream now carries `codexQuota` and
+`claudeQuota`; there are no client-side provider calls or model probes.
+No credentials, account details, raw errors or conversation contents leave the host.
+Older viewers ignore the additive field; older hosts show Claude unavailable.
 
 After updating Python files, detach **all viewers on the updated machine** with
 Ctrl+A then d, and reopen `pi-desk` so the elected monitor loads the new renderer.
@@ -393,7 +398,8 @@ owns only its compositor/display and does not control presence/audio/Bluetooth/S
   the display through Python, as do missing/dead-pane repairs.
 - `navigate.py`: fallback for adaptive and legacy workspaces.
 - `health.py`, `status_stream.py`: bounded diagnostics and host lifecycle/quota projection.
-- `codex_quota.py`: sanitized quota wire contract, independent freshness, colours,
+- `provider_quotas.py`: compact dual-provider labels, visible reset countdowns and narrow-viewer rows.
+- `codex_quota.py`: shared sanitized quota wire contract, independent freshness, colours,
   responsive labels and reset-countdown details.
 - `install.py`: common deployment, manifest and allowlisted rollback copies.
 - `launch.sh`, `config/`: optional Pi fullscreen adapter, shared tmux configuration,

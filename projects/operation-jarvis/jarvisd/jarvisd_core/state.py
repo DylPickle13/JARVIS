@@ -36,7 +36,7 @@ class ControlReadFence:
 class StateCoordinator:
     """Background, single-flight subsystem cache for the state endpoint."""
 
-    NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota"})
+    NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota", "claudeQuota"})
     DEFAULT_INTERVALS = {
         # Foreground clients read this shared single-flight cache, never fan
         # out to hardware per request. Cloud purifier reads remain bounded.
@@ -46,6 +46,7 @@ class StateCoordinator:
         "purifier": float("inf"),  # Foreground requests schedule bounded reads below.
         "network": 60.0,
         "codexQuota": 60.0,
+        "claudeQuota": 60.0,
     }
     DEFAULT_IDLE_INTERVALS = {
         "pi": 60.0,
@@ -56,6 +57,7 @@ class StateCoordinator:
         "purifier": float("inf"),
         "network": 600.0,
         "codexQuota": 300.0,
+        "claudeQuota": 300.0,
     }
     # A recent last-good control value remains usable while its next collection
     # is in flight. Sustained age, missing data, pending write verification, or
@@ -64,6 +66,7 @@ class StateCoordinator:
         "plugs": 30.0,
         "purifier": 90.0,
         "codexQuota": 900.0,
+        "claudeQuota": 900.0,
         "pi": 180.0,
         "services": 660.0,
         "network": 1260.0,
