@@ -109,16 +109,42 @@ owner request. The current one-minute scheduler job is named **Computer presence
   A durable pending marker is saved before dispatch. Timeouts, crashes, malformed
   replies and other unverified results block future strip writes until owner review;
   they do not block the other controllers. No automatic uncertainty acknowledgement.
+- A confirmed CLI `device_busy` rejection (exit 2, `result: error`,
+  `stage: preflight`, only the expected diagnostic/metadata fields) means the
+  invocation never acquired its device lock and sent no power command. Only that
+  known no-write result releases its own pending reservation. The watcher waits at
+  least **60 seconds** before a new attempt, uses a fresh presence sample/deadline,
+  and never retries inside the CLI. The cooldown survives restart and presence flips.
+  An already-matching last verified mode needs no command; manual overrides still
+  persist. Ambiguous busy replies and all existing uncertain pending markers remain
+  blocked for owner review. A busy fault is distinct from an uncertain-command fault.
 - Private runtime files: `led-config.json` (`{"enabled": true}` opt-in; default off),
-  `led-state.json` (last verified mode/pending), `led-alerts.json` (fault latch).
+  `led-state.json` version 2 (last verified mode/pending and `last_busy` cooldown;
+  version 1 migration preserves pending/mode), `led-alerts.json` (fault latch).
   All are under the existing runtime directory and cycle lock. Existing minute
   notifications now include LED faults, with the same 60-second delay.
 - Disable by saving `{"enabled": false}` to `led-config.json` under `cycle.lock`;
   disabling leaves physical power unchanged. Do not delete a pending marker as
   automatic recovery. Re-enable retains transition and uncertainty state.
 
+Busy-lock regression coverage includes strict rejection classification, full-minute
+cooldown across restarts/flips, fresh presence after cooldown, safe schema migration,
+alert recovery, and persistent blocking after any later uncertain command. All tests
+use temporary state and mocked device commands.
+
+2026-10-17 activation: **225 offline keyboard/watcher tests pass under the installed
+Python 3.13 runtime, including 24 LED tests**. With explicit owner approval, the
+existing watcher was stopped through the scheduler lifecycle, private source/state
+backups retained, and only the reviewed preflight-busy pending marker cleared under
+both watcher/cycle locks. All other controller state was preserved; no lock file was
+deleted and no unrelated pending marker was acknowledged. Re-enabling the same job
+loaded the fix. The watcher verified an on transition with no pending/fault; an
+independent security status read reported power on. This is device readback, not
+physical visual confirmation. Only power was requested; no colour/brightness/effect
+setter, new service, scanner, or schedule change was used.
+
 Validation: 161 keyboard/watcher tests, 146 security CLI tests, and 27 chat-tool
-tests pass offline. The initial unverified command correctly latched; recovery
+tests passed at the initial LED deployment. The initial unverified command correctly latched; recovery
 required explicit owner approval. After the runtime fix below, the watcher verified
 power on and the owner confirmed live automation worked. No colour/brightness
 writes, new BLE scanner, scheduler job, service, or presence policy were introduced.

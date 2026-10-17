@@ -126,7 +126,7 @@ def controller_status(store):
             continue
         if type(latch) is not list or any(type(f) is not str or f not in faults for f in latch):
             raise cycle.CycleError('state')
-        fault = next((f for f in ('state', 'presence', component, 'preferences') if f in latch), None)
+        fault = next((f for f in ('state', 'presence', component, 'busy', 'preferences') if f in latch), None)
         result[component] = (
             'ERROR: ' + descriptions[fault] if fault else None,
             f'RECOVERED: {"LED strip" if component == "led" else component.capitalize()} automation checks are working again.',

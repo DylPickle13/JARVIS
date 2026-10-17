@@ -1,6 +1,6 @@
 """Opt-in L930-5 power transitions using the watcher's shared basement snapshot.
 
-No colour/brightness changes, new scanner, scheduler, or automatic write retries.
+No colour/brightness changes, new scanner/scheduler, or replay of uncertain writes.
 Run under cycle.lock. A persisted pending marker requires explicit owner review.
 """
 import json
@@ -9,23 +9,30 @@ import time
 
 import cycle
 
-FAULTS = {'presence', 'led', 'state'}
+BUSY_COOLDOWN = 60
+FAULTS = {'presence', 'led', 'busy', 'state'}
 MESSAGES = {
     'presence': 'LED strip presence unavailable or stale; power unchanged.',
     'led': 'LED strip automation blocked after an unverified command; owner review required.',
+    'busy': 'LED strip control busy; waiting at least 60 seconds before another fresh-presence attempt.',
     'state': 'LED strip automation state unavailable or invalid; power unchanged.',
 }
 
 
 def initial():
-    return dict(version=1, last_tick=None, last_mode=None, pending=False)
+    return dict(version=2, last_tick=None, last_mode=None, pending=False, last_busy=None)
 
 
 def validate_state(s):
+    if (type(s) is dict and type(s.get('version')) is int and s['version'] == 1
+            and set(s) == set(initial()) - {'last_busy'}):
+        # Schema migration is not an uncertainty acknowledgement.
+        s = s | {'version': 2, 'last_busy': None}
     if (type(s) is not dict or set(s) != set(initial()) or type(s['version']) is not int
-            or s['version'] != 1 or type(s['pending']) is not bool
+            or s['version'] != 2 or type(s['pending']) is not bool
             or s['last_mode'] not in (None, 'on', 'off')
-            or (s['last_tick'] is not None and not cycle.finite(s['last_tick']))):
+            or any(s[k] is not None and not cycle.finite(s[k])
+                   for k in ('last_tick', 'last_busy'))):
         raise cycle.CycleError('state')
     return s
 
@@ -34,6 +41,10 @@ class LightingError(RuntimeError):
     def __init__(self, details):
         super().__init__('Unverified lighting response')
         self.details = details
+
+
+class DeviceBusy(LightingError):
+    """The CLI positively rejected this invocation before acquiring its device lock."""
 
 
 def response_diagnostic(result):
@@ -107,6 +118,10 @@ def send(mode, deadline):
             raise ValueError()
     except (ValueError, TypeError, UnicodeError):
         raise LightingError(details) from None
+    if (result.returncode == 2 and payload.get('result') == 'error'
+            and payload.get('reason') == 'device_busy' and payload.get('stage') == 'preflight'
+            and not (set(payload) - {'result', 'reason', 'stage', 'security_assessment', 'observed_at'})):
+        raise DeviceBusy(details)  # No connection or power write was attempted.
     if (result.returncode == 2 and payload.get('reason') == 'presence_deadline_expired'):
         return False  # Explicitly rejected before writing, safe to await fresh presence.
     if (result.returncode != 0 or payload.get('result') != 'verified'
@@ -117,8 +132,9 @@ def send(mode, deadline):
 
 
 def tick(state, faults, *, now, get_presence, apply, save, monotonic=time.monotonic):
-    validate_state(state)
-    if not cycle.finite(now) or (state['last_tick'] is not None and now < state['last_tick']):
+    state.update(validate_state(state))
+    if (not cycle.finite(now)
+            or any(state[k] is not None and now < state[k] for k in ('last_tick', 'last_busy'))):
         raise cycle.CycleError('state')
     if state['last_tick'] is not None and now - state['last_tick'] < 3:
         return
@@ -142,7 +158,12 @@ def tick(state, faults, *, now, get_presence, apply, save, monotonic=time.monoto
         return
     target = 'on' if location == 'nearby' else 'off'
     if state['last_mode'] == target:
+        faults.discard('busy')  # No transition is needed; retain the cooldown across flips.
         return
+    if state['last_busy'] is not None and now - state['last_busy'] < BUSY_COOLDOWN:
+        faults.add('busy')
+        return
+    faults.discard('busy')
     state['pending'] = True
     save(state)
     if monotonic() >= deadline:
@@ -156,10 +177,13 @@ def tick(state, faults, *, now, get_presence, apply, save, monotonic=time.monoto
             state['pending'] = False
             faults.add('presence')
         elif verified is True:
-            state.update(last_mode=target, pending=False)
+            state.update(last_mode=target, pending=False, last_busy=None)
             faults.discard('led')
         else:
             faults.add('led')
+    except DeviceBusy:
+        state.update(pending=False, last_busy=now)
+        faults.add('busy')
     except Exception:
         faults.add('led')  # Pending stays durable: never automatically replay.
     save(state)
@@ -194,8 +218,10 @@ def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=No
     except (cycle.CycleError, OSError, ValueError, TypeError, KeyError):
         faults.add('state')
     store.save('led-alerts.json', sorted(faults))
-    if faults and not old:
-        kind = next(k for k in ('state', 'presence', 'led') if k in faults)
+    order = ('state', 'presence', 'led', 'busy')
+    kind = next((k for k in order if k in faults), None)
+    old_kind = next((k for k in order if k in old), None)
+    if kind is not None and kind != old_kind:
         return 'ERROR: ' + MESSAGES[kind], 1
     if old and not faults:
         return 'RECOVERED: LED strip automation checks are working again.', 0

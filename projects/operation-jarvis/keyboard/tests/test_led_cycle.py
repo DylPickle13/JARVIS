@@ -142,6 +142,159 @@ class LEDTests(unittest.TestCase):
             details = led.response_diagnostic(Mock(returncode=2, stdout=output, stderr=b'private-secret'))
             self.assertNotIn('private-secret', json.dumps(details))
 
+    def test_v1_migration_preserves_uncertainty_and_last_mode(self):
+        for pending in (False, True):
+            legacy = dict(version=1, last_tick=100, last_mode='off', pending=pending)
+            migrated = led.validate_state(legacy)
+            self.assertEqual(migrated, dict(version=2, last_tick=100, last_mode='off',
+                                            pending=pending, last_busy=None))
+            self.assertNotIn('last_busy', legacy)
+        self.state = dict(version=1, last_tick=100, last_mode='off', pending=True)
+        self.tick(200)
+        self.apply.assert_not_called()
+        self.assertTrue(self.state['pending'])
+
+    def test_invalid_migration_and_busy_timestamps_fail_closed(self):
+        bad_states = [
+            dict(version=1, last_tick=100, last_mode='off', pending=True, extra=False),
+            {**led.initial(), 'version': 3},
+            {**led.initial(), 'last_busy': True},
+            {**led.initial(), 'last_busy': -1},
+            {**led.initial(), 'last_busy': float('nan')},
+            {**led.initial(), 'last_busy': '100'},
+        ]
+        for state in bad_states:
+            with self.subTest(state=state), self.assertRaises(cycle.CycleError):
+                led.validate_state(state)
+        self.state['last_busy'] = 200
+        with self.assertRaises(cycle.CycleError):
+            self.tick(100)
+        self.apply.assert_not_called()
+
+    def test_confirmed_preflight_busy_is_the_only_new_safe_rejection(self):
+        payload = dict(result='error', reason='device_busy', stage='preflight',
+                       security_assessment='not_assessed', observed_at='2026-10-17T14:51:15Z')
+        result = Mock(returncode=2, stdout=json.dumps(payload).encode())
+        with patch.object(led.subprocess, 'run', return_value=result) as run:
+            with self.assertRaises(led.DeviceBusy):
+                led.send('on', 123)
+            run.assert_called_once()
+
+    def test_ambiguous_busy_responses_remain_uncertain(self):
+        payload = dict(result='error', reason='device_busy', stage='preflight')
+        cases = [(code, payload) for code in (0, 1, 3)] + [
+            (2, {**payload, 'stage': 'connection'}),
+            (2, {**payload, 'stage': 'state_read'}),
+            (2, {**payload, 'stage': 'unknown'}),
+            (2, {k: v for k, v in payload.items() if k != 'stage'}),
+            (2, {**payload, 'result': 'readback_mismatch'}),
+            (2, {**payload, 'reason': 'write_outcome_unknown'}),
+            (2, {**payload, 'outcome': 'unknown'}),
+            (2, {**payload, 'write_started': True}),
+        ]
+        for code, response in cases:
+            with self.subTest(code=code, response=response):
+                result = Mock(returncode=code, stdout=json.dumps(response).encode())
+                with patch.object(led.subprocess, 'run', return_value=result):
+                    with self.assertRaises(led.LightingError) as raised:
+                        led.send('on', 123)
+                    self.assertNotIsInstance(raised.exception, led.DeviceBusy)
+
+    def test_busy_waits_full_minute_across_restart_and_presence_flips(self):
+        self.state['last_mode'] = 'off'
+        self.apply.side_effect = led.DeviceBusy({'reason': 'device_busy'})
+        self.tick(100)
+        self.assertFalse(self.state['pending'])
+        self.assertEqual(self.state['last_busy'], 100)
+        self.assertEqual(self.state['last_mode'], 'off')
+        self.assertEqual(self.faults, {'busy'})
+        self.state = led.validate_state(json.loads(json.dumps(self.state)))
+        self.tick(103, 'away')
+        self.assertNotIn('busy', self.faults)
+        self.tick(106)
+        self.tick(159)
+        self.apply.assert_called_once()
+        self.assertIn('busy', self.faults)
+        self.apply.side_effect = None
+        self.tick(162)
+        self.assertEqual(self.apply.call_count, 2)
+        self.assertEqual(self.state['last_mode'], 'on')
+        self.assertIsNone(self.state['last_busy'])
+        self.assertFalse(self.state['pending'])
+        self.assertFalse(self.faults)
+
+    def test_repeated_busy_attempts_each_wait_a_minute(self):
+        self.apply.side_effect = led.DeviceBusy({'reason': 'device_busy'})
+        for now in (100, 103, 157, 160, 163, 217):
+            self.tick(now)
+        self.assertEqual(self.apply.call_count, 2)
+        self.assertEqual(self.state['last_busy'], 160)
+        self.tick(220)
+        self.assertEqual(self.apply.call_count, 3)
+        self.assertFalse(self.state['pending'])
+
+    def test_busy_cooldown_expiry_does_not_bypass_fresh_presence(self):
+        self.apply.side_effect = led.DeviceBusy({'reason': 'device_busy'})
+        self.tick(100)
+        self.tick(160, stale=True)
+        self.tick(163, ageSeconds=16)
+        self.tick(166, 'unknown')
+        self.apply.assert_called_once()
+        self.apply.side_effect = None
+        self.tick(169, 'away')
+        self.assertEqual(self.apply.call_args.args[0], 'off')
+        self.assertFalse(self.state['pending'])
+
+    def test_busy_then_uncertain_attempt_still_blocks_across_restart(self):
+        self.apply.side_effect = led.DeviceBusy({'reason': 'device_busy'})
+        self.tick(100)
+        self.apply.side_effect = TimeoutError()
+        self.tick(160)
+        self.state = led.validate_state(json.loads(json.dumps(self.state)))
+        self.tick(300, 'away')
+        self.tick(400)
+        self.assertEqual(self.apply.call_count, 2)
+        self.assertTrue(self.state['pending'])
+        self.assertIn('led', self.faults)
+
+    def test_busy_diagnostic_and_relay_recover_only_when_resolved(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = cycle.Store(Path(d))
+            store.save('led-config.json', {'enabled': True})
+            apply = Mock(side_effect=led.DeviceBusy(
+                {'exit_code': 2, 'reason': 'device_busy', 'stage': 'preflight', 'result': 'error'}))
+            output, code = led.run_once(store, now=lambda: 100,
+                                       get_presence=lambda: presence('nearby'), apply=apply)
+            self.assertEqual((output, code), ('ERROR: ' + led.MESSAGES['busy'], 1))
+            self.assertFalse(store.load('led-state.json', {})['pending'])
+            self.assertEqual(store.load('led-alerts.json', []), ['busy'])
+            self.assertEqual(store.load('led-failure.json', {})['reason'], 'device_busy')
+            self.assertEqual(watch.controller_status(store)['led'][0], output)
+            apply.side_effect = None
+            apply.return_value = True
+            self.assertEqual(led.run_once(store, now=lambda: 159,
+                get_presence=lambda: presence('nearby'), apply=apply), ('', 0))
+            apply.assert_called_once()
+            output, code = led.run_once(store, now=lambda: 162,
+                                       get_presence=lambda: presence('nearby'), apply=apply)
+            self.assertTrue(output.startswith('RECOVERED:'))
+            self.assertEqual(code, 0)
+            self.assertFalse(store.load('led-alerts.json', ['busy']))
+            self.assertIsNone(watch.controller_status(store)['led'][0])
+
+    def test_uncertainty_replaces_busy_alert_without_automatic_acknowledgement(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = cycle.Store(Path(d))
+            store.save('led-config.json', {'enabled': True})
+            apply = Mock(side_effect=led.DeviceBusy({'reason': 'device_busy'}))
+            led.run_once(store, now=lambda: 100, get_presence=lambda: presence('nearby'), apply=apply)
+            apply.side_effect = TimeoutError()
+            output, code = led.run_once(store, now=lambda: 160,
+                                       get_presence=lambda: presence('nearby'), apply=apply)
+            self.assertEqual((output, code), ('ERROR: ' + led.MESSAGES['led'], 1))
+            self.assertTrue(store.load('led-state.json', {})['pending'])
+            self.assertEqual(watch.controller_status(store)['led'][0], output)
+
     def test_alert_relay_recognizes_led(self):
         self.assertEqual(watch.alert_component('ERROR: ' + led.MESSAGES['led']), 'led')
         with tempfile.TemporaryDirectory() as d:
