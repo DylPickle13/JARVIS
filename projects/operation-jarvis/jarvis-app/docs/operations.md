@@ -1,5 +1,91 @@
 # Native app build and operations
 
+## Watch health corrections — build 264 installed on both devices
+
+The owner approved deployment of the [Watch history/menu/theme correction](telemetry-health.md).
+**264 installed once and launched once on each iPhone/Watch, independently
+version/process verified with final version readbacks at 22:22 EDT, October 17,
+2026.** Actual connections were USB iPhone and wireless Watch. Both read-only
+preflights confirmed 263; exact signed **263** remains rollback for both.
+
+Frozen 274-input validation passed **205 selected iPhone tests**, **371 shared
+cases (3 expected skips)**, **39 terminal tests**, **2,316 original Neural Core
+render assertions**, both simulator builds and the signed Release archive.
+The existing baseline-reproduced plain Paste pixel exclusion is unchanged; no
+additional exclusions or release-test reruns were needed. All eight candidate/
+rollback bundle signatures, byte-identical profiles, unchanged entitlements/
+dependency lock and source/payload seals passed.
+
+The candidate layers only fourteen runtime/test/documentation/version changes
+over sealed 263. Direct history availability is endpoint-bound and independent
+of incoming phone state provenance, so relay snapshots no longer cancel/restart
+a healthy history loop. Real direct failures, background/endpoint changes,
+stale data, covered views and Always-On remain gated. No polling/freshness limits
+are loosened. The separate three-dot chooser is removed; direct exception-row
+sheets remain. The background uses the same themed glass helper as other cards.
+
+Fresh owner authorization was bound to exact payload/helper hashes. Both-device
+identity, pairing, compatible DDI, unlock and baseline gates passed before either
+write, then again immediately per target. The existing observed transport was
+pinned and rechecked; no connection switch/reset, uncertain-write retry, cleanup,
+service restart, backend deployment or terminal input occurred.
+
+All **18 protected service records** (17 continuous), existing Pi/Minecraft
+identities, current cooldown backend, repaired registry, configuration/authentication
+and ten-second history cadence were preserved. Original Neural Core is unchanged.
+The owner subsequently reported “it works” and approved publication and stale
+native-artifact cleanup. That confirms owner acceptance of the follow-up, not
+exhaustive gesture/Crown/VoiceOver testing.
+
+Private receipt:
+`20261018T021200Z-build264-watch-health-followup/deployment/result.json`.
+Final independent seal/evidence verification is retained beside it. Never replay
+completed installers; future rollback/deployment needs fresh authorization,
+current-baseline checks and all preservation gates.
+
+
+## Telemetry health — build 263 installed on iPhone and Watch
+
+The owner-selected [Telemetry redesign](telemetry-health.md) is **installed and
+independently version/process verified on both devices at 21:56 EDT, October 17,
+2026**. Installation and launch were each attempted once per device, followed by
+independent final version readbacks. iPhone used owner-approved USB; Watch used
+wireless. Both initial installed baselines were verified as **262**, so exact
+signed **262** is retained as rollback for both. Signed 261/260 and earlier
+failure evidence remain retained.
+
+Frozen 274-input validation passed **204 selected iPhone tests**, **369 shared
+cases (3 expected skips)**, **39 terminal tests**, **2,316 original Neural Core
+render assertions**, both simulator builds and the signed archive. Twelve
+candidate/262/261 bundle signatures, unchanged profiles/entitlements/dependency
+lock and source/payload seals passed. The previously baseline-reproduced plain
+Paste pixel test remains the only native exclusion. The first release test run
+also had one foreground-refresh case fail; its evidence is retained. Ten isolated
+baseline repetitions and three full AppState repetitions on each baseline/candidate
+passed, followed by a fresh complete 204-test pass on unchanged source with no
+additional exclusions. The initial foreground failure's root cause is unconfirmed.
+
+The first device attempt stopped with **zero installs/launches** because its
+wireless-only scope did not match the iPhone's wired connection. Watch readiness
+and inventory had passed at 262. After the owner explicitly approved USB iPhone /
+wireless Watch, a distinct one-shot helper retained that stop and passed all
+fresh both-device and immediate identity/DDI/unlock/inventory gates. No stopped
+helper or uncertain write was replayed.
+
+All **18 protected service records** (17 continuous), existing Pi panes,
+Minecraft identities, current shared-Claude-cooldown backend, repaired registry,
+configuration/authentication and ten-second history cadence were preserved.
+Original Neural Core sources are unchanged. No service restart, backend deployment,
+terminal input, credential/profile/dependency change or cleanup occurred.
+Physical appearance, scrolling/inspection, Crown and VoiceOver acceptance remain
+owner review; installation verification is not visual acceptance.
+
+Private receipt:
+`20261018T013600Z-build263-telemetry-health/deployment-wired-20261018T015319Z/result.json`.
+Do not replay either installer. Future deployment or rollback requires fresh
+authorization, current-baseline reconciliation, exact seals and every guard.
+
+
 ## Neural Core restoration — build 262 installed on iPhone
 
 The owner requested removal of the Neural Core changes after seeing build 261.

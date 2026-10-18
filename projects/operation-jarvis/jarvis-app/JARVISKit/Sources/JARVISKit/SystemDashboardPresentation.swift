@@ -15,6 +15,8 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
     public let health: SystemHealthPresentation
     public let services: [SystemDashboardService]
     public let isConnected: Bool
+    /// Timestamp of the cached state used for this presentation, never the redraw clock.
+    public let observationDate: Date?
     public let includesDeviceCoverage: Bool
     public let backendVersion: String?
     public let uptimeText: String?
@@ -91,6 +93,7 @@ public struct SystemDashboardPresentation: Equatable, Sendable {
         let health = SystemHealthPresentation(snapshot: snapshot, requestStartedAt: requestStartedAt, now: now)
         self.health = health
         self.isConnected = isConnected
+        self.observationDate = Self.snapshotGeneratedAt(snapshot) ?? requestStartedAt
         self.includesDeviceCoverage = snapshot?.deviceHealth != nil
         self.backendVersion = snapshot?.version
         if let uptime = snapshot?.uptimeSeconds, uptime.isFinite, uptime >= 0 {

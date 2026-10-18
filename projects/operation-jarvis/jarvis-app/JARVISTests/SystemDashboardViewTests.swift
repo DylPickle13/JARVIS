@@ -58,6 +58,20 @@ final class SystemDashboardViewTests: XCTestCase {
         return .init(snapshot: state, requestStartedAt: now, isConnected: !offline, now: now)
     }
 
+    /// The graph/exception design uses the existing parent scroll/Crown viewport.
+    /// Bound its natural height per visible row instead of clipping it to the old chip-card height.
+    private func assertTelemetryExtent(_ size: CGSize, width: CGFloat, compact: Bool,
+                                       dashboard: SystemDashboardPresentation, textSize: DynamicTypeSize,
+                                       file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertLessThanOrEqual(size.width, width + 0.5, file: file, line: line)
+        XCTAssertTrue(size.height.isFinite && size.height > 0, file: file, line: line)
+        let scale: CGFloat = textSize.isAccessibilitySize ? 4 : 1
+        let base: CGFloat = compact ? 230 : 480
+        let perRow: CGFloat = compact ? 48 : 66
+        let budget = (base + perRow * CGFloat(dashboard.telemetryExceptions.count)) * scale
+        XCTAssertLessThanOrEqual(size.height, budget, "Natural content must stay bounded and Crown-scrollable", file: file, line: line)
+    }
+
     private func content(_ presentation: SystemDashboardPresentation, compact: Bool) -> some View {
         SystemDashboardContent(presentation: presentation, connectionLabel: "Fixture · no network",
             compact: compact, accent: .purple, warning: .orange, surface: Color(.secondarySystemGroupedBackground),
@@ -66,7 +80,7 @@ final class SystemDashboardViewTests: XCTestCase {
             .padding(8)
     }
 
-    private func historyFixture(compact: Bool) async throws -> SystemHistoryModel {
+    private func historyFixture(compact: Bool, tailIssue: Bool = false) async throws -> SystemHistoryModel {
         let window: SystemHistoryWindow = .hour
         let end = Date()
         let start = end.addingTimeInterval(-window.seconds)
@@ -79,7 +93,7 @@ final class SystemDashboardViewTests: XCTestCase {
             "series": ids.map { id in ["id": id, "buckets": (0..<window.bucketCount).map { index -> [String: Any] in
                 let lo = start.addingTimeInterval(Double(index)*window.resolution)
                 let partial = index % 7 == 0
-                let unavailable = index % 13 == 0 && !partial
+                let unavailable = (index % 13 == 0 || (tailIssue && index >= 55)) && !partial
                 let state = partial ? "unknown" : unavailable ? "unavailable" : "healthy"
                 return ["from": stamp(lo), "to": stamp(lo.addingTimeInterval(window.resolution)),
                     "state": state, "reasonCodes": [unavailable ? "collector_failed" : "current"],
@@ -97,16 +111,58 @@ final class SystemDashboardViewTests: XCTestCase {
         return model
     }
 
+    func testTelemetryFiltersHealthyMarkersButRetainsEveryException() throws {
+        let healthy = try presentation(includeExtraService: false, sensorState: "healthy", deviceCoverage: true, includeMinecraft: true)
+        XCTAssertEqual(healthy.state, .healthy)
+        XCTAssertTrue(healthy.telemetryExceptions.isEmpty)
+        let issue = try presentation(sensorState: "unavailable", deviceCoverage: true, includeMinecraft: true)
+        XCTAssertEqual(issue.state, .issue)
+        XCTAssertEqual(issue.telemetryExceptions.map(\.id), issue.visualGroups.filter { $0.state != .healthy }.map(\.id))
+        XCTAssertFalse(issue.telemetryExceptions.contains { $0.state == .healthy })
+        let offline = try presentation(offline: true, deviceCoverage: true, includeMinecraft: true)
+        XCTAssertEqual(offline.telemetryExceptions.count, offline.visualGroups.count)
+    }
+
+    func testTelemetryRendersSelectedDesignWithRealHistoryOnPhoneAndWatch() async throws {
+        for issue in [false, true] {
+            let dashboard = try presentation(includeExtraService: issue, sensorState: "healthy", deviceCoverage: true, includeMinecraft: true)
+            for compact in [false, true] {
+                let history = try await historyFixture(compact: compact, tailIssue: issue)
+                let width: CGFloat = compact ? 162 : 375
+                for scheme in [ColorScheme.light, .dark] {
+                    let view = SystemDashboardContent(presentation: dashboard, connectionLabel: "Offline fixture; no device reads",
+                        compact: compact, showsHeader: false, accent: .cyan, warning: .orange, surface: .black,
+                        historyModel: history, onServices: {}, onMinecraft: {}, active: false)
+                        .environment(\.colorScheme, scheme)
+                    let host = UIHostingController(rootView: view)
+                    let size = host.sizeThatFits(in: CGSize(width: width, height: 10000))
+                    XCTAssertLessThanOrEqual(size.width, width + 0.5)
+                    XCTAssertGreaterThan(size.height, 100)
+                    XCTAssertLessThan(size.height, compact ? 500 : 900)
+                    if compact && !issue { XCTAssertLessThanOrEqual(size.height, 197, "Normal healthy card fits the smallest Watch viewport") }
+                    let renderer = ImageRenderer(content: view.frame(width: width)
+                        .background(scheme == .dark ? Color.black : Color.white))
+                    renderer.scale = 3
+                    let attachment = XCTAttachment(image: try XCTUnwrap(renderer.uiImage))
+                    attachment.name = "telemetry-\(compact ? "watch" : "phone")-\(issue ? "issue" : "healthy")-\(scheme)"
+                    attachment.lifetime = .keepAlways; add(attachment)
+                }
+                history.configure(.init(endpoint: nil, surface: compact ? .watch : .phone, visible: false, interactive: false, connected: false))
+            }
+        }
+    }
+
     func testVisualCardDelegatesOnlyReadOnlyServicesAndMinecraftAndKeepsPlatformInputOwnership() throws {
         let appRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(contentsOf: appRoot.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift"), encoding: .utf8)
         for forbidden in [".sheet(", "selectedDetail", "ScrollView", ".onTapGesture", ".gesture(", "digitalCrownRotation"] {
             XCTAssertFalse(source.contains(forbidden), forbidden)
         }
-        XCTAssertEqual(source.components(separatedBy: "Button(").count - 1, 3,
-                       "Only read-only Services/Minecraft and the separate iPhone refresh control are actionable")
-        XCTAssertTrue(source.contains("Button(action: onServices)"))
-        XCTAssertTrue(source.contains("Button(action: onMinecraft)"))
+        XCTAssertEqual(source.components(separatedBy: "Button(").count - 1, 2,
+                       "Direct exception route and optional iPhone refresh only; no separate chooser")
+        XCTAssertTrue(source.contains("onServices?()"))
+        XCTAssertTrue(source.contains("onMinecraft?()"))
+        XCTAssertFalse(source.contains("onDetails"))
         XCTAssertTrue(source.contains("system-minecraft-button"))
         let services = try String(contentsOf: appRoot.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemServicesContent.swift"), encoding: .utf8)
         for forbidden in ["Button(", "Task {", "client.", "serviceAction", "Timer("] {
@@ -114,7 +170,44 @@ final class SystemDashboardViewTests: XCTestCase {
         }
         XCTAssertTrue(source.contains("if !compact"))
         XCTAssertTrue(source.contains("group.accessibilityText + serviceEvidence(group)"))
-        XCTAssertTrue(source.contains("bucket.coverageSeconds"))
+        XCTAssertTrue(source.contains("presentation.telemetryExceptions"))
+        XCTAssertFalse(source.contains("system-details-menu"))
+        XCTAssertFalse(source.contains("ellipsis"))
+        XCTAssertTrue(source.contains(".jarvisGlassSurface(surface, in: RoundedRectangle"))
+        XCTAssertFalse(source.contains("Color(red: 0.035, green: 0.085, blue: 0.13)"))
+        XCTAssertFalse(source.contains(".fill(LinearGradient"), "No blue/status wash over the standard themed surface")
+        for path in ["JARVIS/Views/SystemView.swift", "JARVISWatch/Views/WatchSystemHealthView.swift"] {
+            let host = try String(contentsOf: appRoot.appendingPathComponent(path), encoding: .utf8)
+            XCTAssertFalse(host.contains("showsDetailChoices"))
+            XCTAssertFalse(host.contains("confirmationDialog(\"Read-only system details\""))
+            XCTAssertTrue(host.contains(".sheet(item: $serviceScope)"))
+            XCTAssertTrue(host.contains("onServices: { serviceScope = .services }"))
+            XCTAssertTrue(host.contains("onMinecraft: { serviceScope = .minecraft }"))
+        }
+        XCTAssertFalse(source.contains("checkmark"))
+        let chart = try String(contentsOf: appRoot.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemTelemetryChart.swift"), encoding: .utf8)
+        XCTAssertTrue(chart.contains("#if os(iOS)"))
+        XCTAssertTrue(chart.contains("accessibilityAdjustableAction"))
+        XCTAssertTrue(chart.contains("SystemTelemetryWindow.isSolid"))
+    }
+
+    func testWatchHistoryAvailabilityDoesNotFollowRelaySnapshotProvenance() throws {
+        let appRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: appRoot.appendingPathComponent("JARVISWatch/Views/WatchConnectView.swift"), encoding: .utf8)
+        XCTAssertTrue(source.contains("historyDirectConnection.allowsPolling(at: store.endpointURL)"))
+        XCTAssertFalse(source.contains("connected: connectionState == .connected && !isViaPhone"))
+        XCTAssertTrue(source.contains("historyDirectConnection.receivedDirectState(from: endpoint)"))
+        XCTAssertTrue(source.contains("acceptDirectState(resolved.state, from: resolved.endpointURL)"))
+        XCTAssertTrue(source.contains("if self.store.endpointURL != url { self.historyDirectConnection.invalidate() }"))
+        for marker in ["func sceneDidEnterBackground()", "private func useRelayOrCache("] {
+            let body = try XCTUnwrap(source.components(separatedBy: marker).last).components(separatedBy: "\n    func ")[0]
+            XCTAssertTrue(body.contains("historyDirectConnection.invalidate()"))
+        }
+        let relay = try XCTUnwrap(source.components(separatedBy: "nonisolated func watchBridgeDidReceiveState(_").last)
+            .components(separatedBy: "nonisolated func watchBridgeDidReceivePlugCommand")[0]
+        XCTAssertTrue(relay.contains("self.isViaPhone = true"), "Control routing still knows state came from the phone")
+        XCTAssertFalse(relay.contains("historyDirectConnection.invalidate()"))
+        XCTAssertFalse(relay.contains("receivedDirectState"), "Relay cannot establish direct history availability")
     }
 
     func testRecordedHistoryRendersAndFitsPhoneAndWatchWithRealCoverageStates() async throws {
@@ -127,11 +220,10 @@ final class SystemDashboardViewTests: XCTestCase {
             for size: DynamicTypeSize in [.large, .accessibility3] {
                 let host = UIHostingController(rootView: view.dynamicTypeSize(size))
                 let extent = host.sizeThatFits(in: viewport)
-                XCTAssertLessThanOrEqual(extent.width, viewport.width+0.5)
-                XCTAssertLessThanOrEqual(extent.height, viewport.height)
+                assertTelemetryExtent(extent, width: viewport.width, compact: compact, dashboard: dashboard, textSize: size)
             }
             for scheme in [ColorScheme.light, .dark] {
-                let renderer = ImageRenderer(content: view.frame(width: viewport.width, height: viewport.height, alignment: .top)
+                let renderer = ImageRenderer(content: view.frame(width: viewport.width)
                     .background(scheme == .dark ? Color.black : Color(.systemGroupedBackground)).environment(\.colorScheme, scheme))
                 renderer.scale = 3
                 let image = try XCTUnwrap(renderer.uiImage)
@@ -166,7 +258,7 @@ final class SystemDashboardViewTests: XCTestCase {
         }
     }
 
-    func testDedicatedMinecraftCheckFitsClosedPhoneAndWatchOverview() throws {
+    func testDedicatedMinecraftCheckFitsWidthAndAllowsParentOverflow() throws {
         for coverage in [false, true] {
             for offline in [false, true] {
                 let dashboard = try presentation(offline: offline, includeExtraService: false,
@@ -182,15 +274,14 @@ final class SystemDashboardViewTests: XCTestCase {
                         let host = UIHostingController(rootView: view)
                         let measured = host.sizeThatFits(in: viewport)
                         XCTAssertLessThanOrEqual(measured.width, viewport.width + 0.5)
-                        XCTAssertLessThanOrEqual(measured.height, viewport.height + 0.5,
-                            "coverage=\(coverage), offline=\(offline), compact=\(compact), viewport=\(viewport), text=\(textSize)")
+                        assertTelemetryExtent(measured, width: viewport.width, compact: compact, dashboard: dashboard, textSize: textSize)
                         host.view.frame = CGRect(origin: .zero, size: viewport); host.view.layoutIfNeeded()
                         func scrolls(_ view: UIView) -> Int {
                             (view is UIScrollView ? 1 : 0) + view.subviews.reduce(0) { $0 + scrolls($1) }
                         }
                         XCTAssertEqual(scrolls(host.view), 0)
                         if coverage && !offline {
-                            let renderer = ImageRenderer(content: view.frame(width: viewport.width, height: viewport.height, alignment: .top)
+                            let renderer = ImageRenderer(content: view.frame(width: viewport.width)
                                 .background(Color.black).environment(\.colorScheme, .dark))
                             renderer.scale = 3
                             let attachment = XCTAttachment(image: try XCTUnwrap(renderer.uiImage))
@@ -253,8 +344,7 @@ final class SystemDashboardViewTests: XCTestCase {
                 for textSize in [DynamicTypeSize.large, .accessibility3] {
                     let host = UIHostingController(rootView: content(dashboard, compact: compact).dynamicTypeSize(textSize))
                     let measured = host.sizeThatFits(in: viewport)
-                    XCTAssertLessThanOrEqual(measured.width, viewport.width + 0.5)
-                    XCTAssertLessThanOrEqual(measured.height, viewport.height + 0.5)
+                    assertTelemetryExtent(measured, width: viewport.width, compact: compact, dashboard: dashboard, textSize: textSize)
                 }
                 if !offline {
                     let renderer = ImageRenderer(content: content(dashboard, compact: compact)
@@ -289,8 +379,7 @@ final class SystemDashboardViewTests: XCTestCase {
                     let host = UIHostingController(rootView: content(dashboard, compact: compact).dynamicTypeSize(textSize))
                     let measured = host.sizeThatFits(in: viewport)
                     XCTAssertLessThanOrEqual(measured.width, viewport.width + 0.5)
-                    XCTAssertLessThanOrEqual(measured.height, viewport.height + 0.5,
-                        "sensor=\(sensorState), offline=\(offline), viewport=\(viewport), text=\(textSize)")
+                    assertTelemetryExtent(measured, width: viewport.width, compact: compact, dashboard: dashboard, textSize: textSize)
                     host.view.frame = CGRect(origin: .zero, size: viewport); host.view.layoutIfNeeded()
                     func countScrolls(_ view: UIView) -> Int {
                         (view is UIScrollView ? 1 : 0) + view.subviews.reduce(0) { $0 + countScrolls($1) }
@@ -323,11 +412,11 @@ final class SystemDashboardViewTests: XCTestCase {
             let measured = host.sizeThatFits(in: CGSize(width: 162, height: 197))
             XCTAssertLessThanOrEqual(measured.width, 162.5)
             XCTAssertGreaterThan(measured.height, 100)
-            XCTAssertLessThanOrEqual(measured.height, 197, "All overview content must fit the 40mm canvas without scrolling or clipping")
+            assertTelemetryExtent(measured, width: 162, compact: true, dashboard: dashboard, textSize: size)
         }
     }
 
-    func testPhoneDashboardFitsPortraitLandscapeAndLargeTextWithoutScrolling() throws {
+    func testPhoneDashboardFitsPortraitLandscapeWidthsAndPreservesLargeText() throws {
         for offline in [false, true] {
             let dashboard = try presentation(offline: offline)
             for (viewport, textSize) in [
@@ -340,13 +429,12 @@ final class SystemDashboardViewTests: XCTestCase {
                 let host = UIHostingController(rootView: content(dashboard, compact: false).dynamicTypeSize(textSize))
                 let measured = host.sizeThatFits(in: viewport)
                 XCTAssertLessThanOrEqual(measured.width, viewport.width + 0.5)
-                XCTAssertLessThanOrEqual(measured.height, viewport.height + 0.5,
-                    "Entire overview must fit \(viewport) at \(textSize), offline=\(offline)")
+                assertTelemetryExtent(measured, width: viewport.width, compact: false, dashboard: dashboard, textSize: textSize)
             }
         }
     }
 
-    func testPhoneGlassHighContrastFitsWithoutScrolling() throws {
+    func testPhoneHighContrastFitsWidthWithoutOwningParentScrolling() throws {
         let dashboard = try presentation(sensorState: "unavailable")
         for scheme in [ColorScheme.light, .dark] {
             for contrast in [UIAccessibilityContrast.normal, .high] {
@@ -358,7 +446,7 @@ final class SystemDashboardViewTests: XCTestCase {
                 host.traitOverrides.accessibilityContrast = contrast
                 let extent = host.sizeThatFits(in: viewport)
                 XCTAssertLessThanOrEqual(extent.width, viewport.width + 0.5)
-                XCTAssertLessThanOrEqual(extent.height, viewport.height + 0.5)
+                assertTelemetryExtent(extent, width: viewport.width, compact: false, dashboard: dashboard, textSize: .accessibility3)
                 host.view.frame = CGRect(origin: .zero, size: viewport)
                 host.view.layoutIfNeeded()
                 func scrollCount(_ view: UIView) -> Int {

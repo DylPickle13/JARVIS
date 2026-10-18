@@ -1,6 +1,19 @@
 import Foundation
 import SwiftUI
 
+/// Direct history availability is independent of the origin of the latest state
+/// snapshot. Unsolicited phone snapshots neither prove nor revoke a direct read.
+public struct SystemHistoryDirectConnection: Equatable, Sendable {
+    private var endpoint: URL?
+    public init() {}
+    public mutating func receivedDirectState(from endpoint: URL) { self.endpoint = endpoint }
+    public mutating func invalidate() { endpoint = nil }
+    public func allowsPolling(at candidate: URL?) -> Bool {
+        guard let endpoint, let candidate else { return false }
+        return endpoint == candidate
+    }
+}
+
 public struct SystemHistoryConfiguration: Equatable, Sendable {
     public enum Surface: Equatable, Sendable { case phone, watch }
     public let endpoint: JarvisEndpoint?
@@ -25,6 +38,7 @@ public final class SystemHistoryModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var isPolling = false
     @Published public private(set) var notice: String?
+    @Published public private(set) var telemetrySession = SystemTelemetrySession()
     private var configuration: SystemHistoryConfiguration?
     private var generation = 0
     private var task: Task<Void, Never>?
@@ -44,7 +58,7 @@ public final class SystemHistoryModel: ObservableObject {
         generation += 1
         task?.cancel(); task = nil
         isLoading = false; isPolling = false
-        if identityChanged { snapshot = nil; notice = nil }
+        if identityChanged { snapshot = nil; notice = nil; telemetrySession = .init() }
         guard next.shouldPoll, let endpoint = next.endpoint else { return }
         start(endpoint: endpoint, configuration: next)
     }
@@ -85,6 +99,22 @@ public final class SystemHistoryModel: ObservableObject {
                 do { try await self.sleep(60) } catch { return }
             }
         }
+    }
+
+    public func telemetryWindow(current: SystemHealthState, currentTrusted: Bool, now: Date = Date()) -> SystemTelemetryWindow {
+        .init(response: snapshot, current: current,
+              trusted: currentTrusted && isPolling && notice == nil && !isStale(now: now),
+              floor: telemetrySession.recoveryFloor, now: now)
+    }
+
+    public func observeTelemetry(current: SystemHealthState, observedAt: Date?, currentTrusted: Bool, now: Date = Date()) {
+        var next = telemetrySession
+        next.observe(state: current, observedAt: observedAt, trusted: currentTrusted, now: now)
+        let window = SystemTelemetryWindow(response: snapshot, current: current,
+            trusted: currentTrusted && isPolling && notice == nil && !isStale(now: now),
+            floor: next.recoveryFloor, now: now)
+        if let candidate = window.recoveryCandidate { next.advance(to: candidate) }
+        if next != telemetrySession { telemetrySession = next }
     }
 
     public func isStale(now: Date = Date()) -> Bool {

@@ -26,7 +26,9 @@ struct SystemView: View {
                             refreshing: app.isStateLoading || app.isRefreshing,
                             historyModel: app.systemHistory,
                             onServices: { serviceScope = .services },
-                            onMinecraft: { serviceScope = .minecraft })
+                            onMinecraft: { serviceScope = .minecraft },
+                            active: scenePhase == .active && app.activeSection == .system
+                                && !showsDetails && !showsServices && !showsHomeConfirmation)
                     }
                     HomeAutomationCards { covered in
                         showsHomeConfirmation = covered

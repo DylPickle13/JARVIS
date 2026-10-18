@@ -176,7 +176,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             do {
                 let state = retry ? try await client.stateRetryingPurifier(endpoint) : try await client.stateRefreshingPurifier(endpoint)
                 guard !Task.isCancelled, appIsForeground else { return }
-                acceptDirectState(state)
+                acceptDirectState(state, from: endpoint.baseURL)
             } catch { errorMessage = error.localizedDescription }
         }
     }
@@ -208,6 +208,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     let jobs: WatchJobsModel
     let omlx: OMLXStatusModel
     let systemHistory: SystemHistoryModel
+    private var historyDirectConnection = SystemHistoryDirectConnection()
     private var historyVisible = false
     private var historyCovered = false
     private var omlxSystemVisible = false
@@ -326,6 +327,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     func sceneDidEnterBackground() {
+        historyDirectConnection.invalidate()
         appIsInteractive = false
         appIsForeground = false
         updateOMLXPolling()
@@ -351,7 +353,8 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         let endpoint = store.endpointURL.map { JarvisEndpoint(baseURL: $0, token: authenticationToken) }
         systemHistory.configure(.init(endpoint: endpoint, surface: .watch, visible: historyVisible,
             interactive: appIsForeground && appIsInteractive && !historyCovered,
-            connected: connectionState == .connected && !isViaPhone))
+            connected: connectionState == .connected
+                && historyDirectConnection.allowsPolling(at: store.endpointURL)))
     }
 
     func setOMLXPresentation(systemVisible: Bool, covered: Bool) {
@@ -499,7 +502,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             )
             guard !Task.isCancelled else { return }
             store.endpointURLString = resolved.endpointURL.absoluteString
-            acceptDirectState(resolved.state)
+            acceptDirectState(resolved.state, from: resolved.endpointURL)
         } catch is CancellationError {
             return
         } catch let error as JarvisError {
@@ -521,7 +524,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         do {
             let triggered = try await client.stateRefreshingProviderQuotas(endpoint)
             guard !Task.isCancelled else { return }
-            acceptDirectState(triggered)
+            acceptDirectState(triggered, from: endpoint.baseURL)
 
             // jarvisd starts the single-flight collector asynchronously. Poll
             // only while this page-entry refresh is active; ordinary 15-second
@@ -531,7 +534,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
                 guard !Task.isCancelled, appIsForeground else { return }
                 let state = try await client.state(endpoint)
                 guard !Task.isCancelled else { return }
-                acceptDirectState(state)
+                acceptDirectState(state, from: endpoint.baseURL)
                 let quotas = [(state.subsystems?.codexQuota, previousUpdatedAt),
                               (state.subsystems?.claudeQuota, previousClaudeUpdatedAt)]
                 if quotas.allSatisfy({ quota, previous in
@@ -548,7 +551,8 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         }
     }
 
-    private func acceptDirectState(_ state: StateSnapshot) {
+    private func acceptDirectState(_ state: StateSnapshot, from endpoint: URL) {
+        historyDirectConnection.receivedDirectState(from: endpoint)
         updateOMLXPolling()
         lastState = state
         snapshotStore.save(state)
@@ -559,6 +563,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     }
 
     private func useRelayOrCache(directError: String? = nil) {
+        historyDirectConnection.invalidate()
         if WatchBridge.shared.isPhoneReachable {
             isViaPhone = true
             connectionState = lastState == nil ? .connecting : .connected
@@ -776,7 +781,9 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         Task { @MainActor [weak self] in
             guard let self, !self.forceEndpointForTesting,
                   let url = JarvisEndpointURLPolicy.parse(endpoint) else { return }
+            if self.store.endpointURL != url { self.historyDirectConnection.invalidate() }
             self.store.endpointURLString = url.absoluteString
+            self.updateHistoryPolling()
             self.updateOMLXPolling()
         }
     }
@@ -798,6 +805,8 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             self.lastState = state
             self.snapshotStore.save(state)
             self.cachedAt = Date()
+            // State provenance may change every few seconds. It must not cancel
+            // independent history reads after a successful direct connection.
             self.isViaPhone = true
             self.connectionState = .connected
             self.errorMessage = nil

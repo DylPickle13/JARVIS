@@ -1,5 +1,12 @@
 # System dashboard — iPhone and Watch
 
+**Installed update — build 264:** the [Telemetry redesign](telemetry-health.md)
+is version/process verified on iPhone and Watch and supersedes this document's
+historical ring/chip layout and one-screen height constraints. Physical acceptance
+remains owner review. The graph resets its visible range after verified recovery;
+only current exceptions are listed. Read-only Services/Minecraft detail routes,
+parent scrolling/Crown ownership, stored evidence and polling remain intact.
+
 **Navigation update:** the health card lives at the top of iPhone **Home**, above
 plugs and purifier. The restored Watch **Home** contains health only; Plugs has
 a dedicated page, while purifier returns above Codex/Claude/oMLX on JARVIS.

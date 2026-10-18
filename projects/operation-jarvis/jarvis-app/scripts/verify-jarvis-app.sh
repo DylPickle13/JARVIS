@@ -824,21 +824,22 @@ assert root.index('HomeView(') < root.index('SystemView()') < root.index('PiTerm
 assert 'case "system": selection = .system' in root
 assert 'SystemHealthCard' not in Path('JARVIS/Views/HomeView.swift').read_text()
 health = Path('JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift').read_text()
-# The overview stays bounded; Services/Minecraft delegate read-only platform detail routes.
+# Telemetry keeps all exceptions; parent scrolling/Crown owns overflow and detail routes.
 for forbidden in ['DisclosureGroup', 'ScrollView', '.sheet(', 'onTapGesture',
                   'statTile(', 'expandedServices', 'Task {', 'client.']:
     assert forbidden not in health
-for marker in ['LazyVGrid', 'presentation.visualGroups', 'SystemCurrentHealthRing',
-               'SystemHistoryBand', 'historyModel.snapshot', 'serviceEvidence(group)',
+for marker in ['presentation.telemetryExceptions', 'SystemTelemetryChart', '.jarvisGlassSurface(surface,',
+               'historyModel.snapshot', 'serviceEvidence(group)',
                'Current cached checks, not live connectivity or home security']:
     assert marker in health
 assert 'ScrollView' in Path('JARVIS/Views/SystemView.swift').read_text()
 assert '.refreshable' in Path('JARVIS/Views/SystemView.swift').read_text()
 assert 'onDetailVisibilityChanged(false)' in health
 watch_health = Path('JARVISWatch/Views/WatchSystemHealthView.swift').read_text()
-assert 'WatchSystemCrownViewport' in watch_health  # Only the service sheet; overview stays one screen.
+assert 'WatchSystemCrownViewport' in watch_health  # Detail sheet; parent also owns overview overflow.
 assert '.sheet(item: $serviceScope)' in watch_health
 assert 'onDetailVisibilityChanged(scope != nil)' in watch_health
+assert 'showsDetailChoices' not in watch_health
 assert 'scenePhase == .active && !dimmed && showsServices' in watch_health
 assert 'onServices: { serviceScope = .services }' in watch_health
 assert 'onMinecraft: { serviceScope = .minecraft }' in watch_health
@@ -847,12 +848,18 @@ assert '.sheet(item: $serviceScope)' in phone_services
 assert 'onServices: { serviceScope = .services }' in phone_services
 assert 'onMinecraft: { serviceScope = .minecraft }' in phone_services
 assert 'app.setSystemDetailsCovered(scope != nil || showsDetails || showsHomeConfirmation)' in phone_services
+assert 'showsDetailChoices' not in phone_services
 for platform in [phone_services, watch_health]:
     assert 'SystemServicesContent(' in platform
     assert 'scope: scope' in platform and '.navigationTitle(scope.title)' in platform
     assert 'serviceAction' not in platform
-assert 'Button(action: onServices)' in health and 'system-services-button' in health
-assert 'Button(action: onMinecraft)' in health and 'system-minecraft-button' in health
+assert 'onServices?()' in health and 'system-services-button' in health
+assert 'onMinecraft?()' in health and 'system-minecraft-button' in health
+for forbidden in ['onDetails', 'system-details-menu', 'ellipsis', '.fill(LinearGradient',
+                  'Color(red: 0.035, green: 0.085, blue: 0.13)']:
+    assert forbidden not in health
+for platform in [phone_services, watch_health]:
+    assert '.confirmationDialog("Read-only system details"' not in platform
 services_content = Path('JARVISKit/Sources/JARVISKit/SystemServicesContent.swift').read_text()
 assert 'ForEach(scope.services(in: presentation))' in services_content
 assert 'case services, minecraft' in services_content
@@ -871,10 +878,24 @@ assert 'await self.sleep(60)' in history_model and 'generation == owner' in hist
 assert 'snapshot = nil; notice = nil' in history_model
 for forbidden in ['cachedState(', 'state(', 'command(', 'discover(', 'WatchBridge', 'UserDefaults', 'SnapshotStore']:
     assert forbidden not in history_model
-assert 'SystemCurrentHealthRing' in health and 'SystemHistoryBand' in health
+assert 'SystemCurrentHealthRing' not in health and 'SystemHistoryBand' not in health
+assert 'checkmark' not in health
+telemetry_chart = Path('JARVISKit/Sources/JARVISKit/SystemTelemetryChart.swift').read_text()
+assert '#if os(iOS)' in telemetry_chart and 'LongPressGesture' in telemetry_chart
+assert 'accessibilityAdjustableAction' in telemetry_chart
+assert 'SystemTelemetryWindow.isSolid' in telemetry_chart
+assert 'motionAllowed' in telemetry_chart and 'beacon.receive' in telemetry_chart
+assert 'recoveryFloor' in Path('JARVISKit/Sources/JARVISKit/SystemTelemetry.swift').read_text()
 assert '.sheet(' not in health and 'selectedDetail' not in health
 watch_model = Path('JARVISWatch/Views/WatchConnectView.swift').read_text()
-assert 'connected: connectionState == .connected && !isViaPhone' in watch_model
+assert 'connected: connectionState == .connected && !isViaPhone' not in watch_model
+assert 'historyDirectConnection.allowsPolling(at: store.endpointURL)' in watch_model
+assert 'historyDirectConnection.receivedDirectState(from: endpoint)' in watch_model
+assert 'historyDirectConnection.invalidate()' in watch_model
+assert 'acceptDirectState(resolved.state, from: resolved.endpointURL)' in watch_model
+relay = watch_model.split('nonisolated func watchBridgeDidReceiveState(_', 1)[1].split('nonisolated func watchBridgeDidReceivePlugCommand', 1)[0]
+assert 'self.isViaPhone = true' in relay
+assert 'historyDirectConnection.invalidate()' not in relay and 'receivedDirectState' not in relay
 assert 'appIsForeground && appIsInteractive && !historyCovered' in watch_model
 app_model = Path('JARVIS/AppState.swift').read_text()
 assert 'activeSection == .system && systemViewVisible' in app_model

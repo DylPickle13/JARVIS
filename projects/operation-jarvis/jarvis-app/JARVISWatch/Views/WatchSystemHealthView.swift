@@ -21,7 +21,8 @@ struct WatchSystemHealthView: View {
                 surface: WatchJarvisStyle.surface, connectionError: model.errorMessage,
                 historyModel: model.systemHistory,
                 onServices: { serviceScope = .services },
-                onMinecraft: { serviceScope = .minecraft })
+                onMinecraft: { serviceScope = .minecraft },
+                active: active && scenePhase == .active && !dimmed && !showsServices)
 
         }
         .frame(maxWidth: .infinity, alignment: .top)

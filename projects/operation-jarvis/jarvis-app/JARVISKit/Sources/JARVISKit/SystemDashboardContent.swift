@@ -1,12 +1,15 @@
 import SwiftUI
 
-/// Cached visual health summary. Services/Minecraft delegate read-only detail routes;
-/// platforms retain sheet, scrolling, gesture and refresh ownership.
-/// Platforms retain visibility, refresh policy, networking and Watch gestures.
+/// Cached Telemetry overview. Platforms retain detail sheets, scrolling, Crown,
+/// lifecycle and refresh ownership; this view never requests or changes device state.
 @MainActor
 public struct SystemDashboardContent: View {
     @ObservedObject private var historyModel: SystemHistoryModel
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isLuminanceReduced) private var dimmed
     public let presentation: SystemDashboardPresentation
     public let connectionLabel: String
     public let compact: Bool
@@ -16,6 +19,7 @@ public struct SystemDashboardContent: View {
     public let surface: Color
     public let connectionError: String?
     public let refreshing: Bool
+    public let active: Bool
     public let onRefresh: (() -> Void)?
     public let onServices: (() -> Void)?
     public let onMinecraft: (() -> Void)?
@@ -25,199 +29,178 @@ public struct SystemDashboardContent: View {
                 compact: Bool = false, showsHeader: Bool = true, accent: Color, warning: Color, surface: Color,
                 connectionError: String? = nil, refreshing: Bool = false,
                 onRefresh: (() -> Void)? = nil, historyModel: SystemHistoryModel? = nil,
-                onServices: (() -> Void)? = nil,
-                onMinecraft: (() -> Void)? = nil,
+                onServices: (() -> Void)? = nil, onMinecraft: (() -> Void)? = nil,
+                active: Bool = true,
                 onDetailVisibilityChanged: @escaping (Bool) -> Void = { _ in }) {
         self.historyModel = historyModel ?? SystemHistoryModel()
-        self.presentation = presentation
-        self.connectionLabel = connectionLabel
-        self.compact = compact
-        self.showsHeader = showsHeader
-        self.accent = accent
-        self.warning = warning
-        self.surface = surface
-        self.connectionError = connectionError
-        self.refreshing = refreshing
-        self.onRefresh = onRefresh
-        self.onServices = onServices
-        self.onMinecraft = onMinecraft
-        self.onDetailVisibilityChanged = onDetailVisibilityChanged
+        self.presentation = presentation; self.connectionLabel = connectionLabel
+        self.compact = compact; self.showsHeader = showsHeader
+        self.accent = accent; self.warning = warning; self.surface = surface
+        self.connectionError = connectionError; self.refreshing = refreshing
+        self.onRefresh = onRefresh; self.onServices = onServices; self.onMinecraft = onMinecraft
+        self.active = active; self.onDetailVisibilityChanged = onDetailVisibilityChanged
     }
 
+    private var current: SystemHealthState {
+        if !presentation.isConnected { return .unknown }
+        if connectionError != nil { return .issue }
+        return presentation.state
+    }
     private var status: String {
         if !presentation.isConnected { return "Offline" }
-        if connectionError != nil || presentation.state == .issue { return "Issue" }
-        if presentation.state != .healthy { return "Unknown" }
-        return "Healthy"
+        switch current { case .healthy: return "Healthy"; case .issue: return "Issue"
+        case .checking: return "Checking"; case .inactive: return "Inactive"; case .unknown: return "Unknown" }
     }
-    private var exception: String? {
+    private var currentTrusted: Bool {
+        presentation.isConnected && connectionError == nil
+            && presentation.observationDate.map { $0 <= Date() } == true
+    }
+    private var telemetry: SystemTelemetryWindow {
+        historyModel.telemetryWindow(current: current,
+            currentTrusted: currentTrusted && (current == .healthy || current == .issue))
+    }
+    private var exceptions: [SystemVisualGroup] { presentation.telemetryExceptions }
+    private var tint: Color {
+        if !presentation.isConnected || (current != .healthy && current != .issue) { return .secondary }
+        if current == .issue { return scheme == .dark ? warning : Color(red: 0.62, green: 0.28, blue: 0.02) }
+        return scheme == .dark ? Color(red: 0.43, green: 0.89, blue: 0.93) : Color(red: 0.02, green: 0.39, blue: 0.46)
+    }
+    private var motionAllowed: Bool { active && scenePhase == .active && !reduceMotion && !dimmed }
+    private var notice: String? {
         if !presentation.isConnected { return "Offline · cached evidence" }
         if connectionError != nil { return "State request failed" }
-        if let problem = presentation.visualException { return problem }
-        if historyModel.notice != nil || historyModel.snapshot == nil { return "History unavailable" }
-        if historyModel.isStale() || !historyModel.isPolling { return "History cached" }
-        return nil
+        // Overall-only failures must not vanish simply because all visible groups are healthy.
+        if let exception = presentation.visualException, exception.hasPrefix("Backend summary") { return exception }
+        if let notice = historyModel.notice { return notice }
+        if historyModel.isStale() || !historyModel.isPolling, historyModel.snapshot != nil { return "History cached or paused" }
+        return telemetry.notice
+    }
+    private struct Input: Equatable {
+        let current: SystemHealthState
+        let observedAt: Date?
+        let historyEnd: Date?
+        let trusted: Bool
+        let polling: Bool
+        let notice: String?
+    }
+    private var input: Input {
+        .init(current: current, observedAt: presentation.observationDate, historyEnd: historyModel.snapshot?.end,
+              trusted: currentTrusted, polling: historyModel.isPolling, notice: historyModel.notice)
+    }
+    private func observe() {
+        historyModel.observeTelemetry(current: current, observedAt: presentation.observationDate,
+                                      currentTrusted: currentTrusted)
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: compact ? 0 : 10) {
             if !compact && showsHeader {
                 HStack {
-                    Label("System", systemImage: "server.rack")
-                        .font(.title2.weight(.semibold)).foregroundStyle(accent)
+                    Label("System", systemImage: "server.rack").font(.title2.weight(.semibold)).foregroundStyle(accent)
                     Spacer(minLength: 0)
                     if let onRefresh {
                         Button(action: onRefresh) {
-                            Image(systemName: "arrow.clockwise").frame(width: 44, height: 36)
-                        }
-                        .buttonStyle(.plain).foregroundStyle(accent)
-                        .jarvisGlassSurface(surface, in: Capsule(), glass: true)
-                        .disabled(refreshing)
-                        .accessibilityLabel(refreshing ? "Refreshing cached state" : "Refresh cached state")
+                            Image(systemName: "arrow.clockwise").frame(width: 44, height: 44)
+                        }.buttonStyle(.plain).foregroundStyle(accent)
+                            .disabled(refreshing).accessibilityLabel("Refresh cached state")
                     }
                 }
             }
             visualCard
         }
-        .frame(maxWidth: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .accessibilityIdentifier("system-dashboard")
-        // Compatibility with platform lifecycle gates; this view never covers itself.
-        .onAppear { onDetailVisibilityChanged(false) }
+        .onAppear { onDetailVisibilityChanged(false); observe() }
+        .onChange(of: input) { _ in observe() }
         .onDisappear { onDetailVisibilityChanged(false) }
     }
 
-    private var usesDenseOverview: Bool {
-        presentation.includesDeviceCoverage || presentation.hasMinecraftServices
-    }
-
     private var visualCard: some View {
-        VStack(alignment: .leading, spacing: compact ? 5 : (usesDenseOverview ? 8 : 12)) {
-            HStack(spacing: compact ? 7 : 12) {
-                SystemCurrentHealthRing(presentation: presentation, diameter: compact ? 28 : 48)
-                    .accessibilityHidden(true)
-                Text(status).font(.system(size: compact ? 14 : 22, weight: .semibold))
-                    .lineLimit(1).minimumScaleFactor(0.85)
+        VStack(alignment: .leading, spacing: compact ? 5 : 12) {
+            if !compact {
+                HStack {
+                    Text("SYSTEM / HEALTH").font(.caption2.monospaced()).foregroundStyle(tint)
+                    Spacer(minLength: 4)
+                    Text("CACHED").font(.caption2.monospaced()).foregroundStyle(.secondary)
+                }
+            }
+            HStack(alignment: .center, spacing: 6) {
+                Text(status).font(compact ? .headline : .largeTitle.weight(.light))
+                    .foregroundStyle(current == .issue ? tint : .primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("\(status). Current cached checks, not live connectivity or home security. \(connectionLabel). \(connectionError ?? "")")
                 Spacer(minLength: 0)
-                if !compact {
-                    Text("Cached").font(.system(size: 10)).foregroundStyle(.secondary)
-                }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(status). Current cached checks, not live connectivity or home security. \(connectionLabel). \(connectionError ?? "")")
-
-            timeline
-
-            LazyVGrid(columns: presentation.visualGroups.count > 5
-                      ? [GridItem(.adaptive(minimum: compact ? 40 : 62), spacing: compact ? 3 : 8)]
-                      : Array(repeating: GridItem(.flexible(), spacing: compact ? 3 : 8), count: compact ? 3 : 5),
-                      spacing: compact ? 4 : 8) {
-                ForEach(presentation.visualGroups) { group in
-                    if group.id == "services", let onServices {
-                        Button(action: onServices) { groupChip(group) }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Shows read-only service status")
-                            .accessibilityIdentifier("system-services-button")
-                    } else if group.id == "minecraft", let onMinecraft {
-                        Button(action: onMinecraft) { groupChip(group) }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Shows read-only Minecraft server and bot status")
-                            .accessibilityIdentifier("system-minecraft-button")
-                    } else {
-                        groupChip(group)
-                    }
-                }
+            if !compact { Divider().overlay(tint.opacity(0.1)) }
+            Text(telemetry.title.uppercased() + (compact ? " · CACHED" : ""))
+                .font(compact ? .system(size: 8, design: .monospaced) : .caption2.monospaced())
+                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            SystemTelemetryChart(window: telemetry, compact: compact,
+                                 active: active && scenePhase == .active && !dimmed,
+                                 height: compact ? (exceptions.isEmpty ? 72 : 52) : (exceptions.isEmpty ? 170 : 122))
+            if let notice {
+                Text(notice).font(compact ? .caption2 : .footnote).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            if let exception {
-                Text(exception).font(.system(size: compact ? 9 : 11, weight: .medium))
-                    .foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
-                    .accessibilityLabel(exception + ". " + (historyModel.notice ?? ""))
+            if !exceptions.isEmpty {
+                if !compact { Divider() }
+                VStack(spacing: compact ? 3 : 5) {
+                    ForEach(exceptions) { group in exceptionRow(group).transition(.opacity) }
+                }
+                // Animate confirmed removals only; no morphing of historical evidence.
+                .animation(motionAllowed ? .easeOut(duration: 0.2) : nil, value: exceptions.map(\.id))
             }
         }
-        // Reserve detail hit targets without enlarging the one-screen overview.
-        .padding(.horizontal, compact ? 6 : (usesDenseOverview ? 12 : 14))
-        .padding(.vertical, compact ? 3 : (usesDenseOverview ? 10 : 12))
+        .padding(compact ? 7 : 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .jarvisGlassSurface(surface,
-            in: RoundedRectangle(cornerRadius: compact ? 10 : 14, style: .continuous), glass: true)
+        .jarvisGlassSurface(surface, in: RoundedRectangle(cornerRadius: compact ? 14 : 23, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: compact ? 14 : 23).stroke(tint.opacity(dimmed ? 0.12 : 0.32), lineWidth: 0.8))
         .accessibilityIdentifier("system-visual-card")
     }
 
-    private func groupChip(_ group: SystemVisualGroup) -> some View {
-        VStack(spacing: compact ? 1 : 4) {
+    @ViewBuilder private func exceptionRow(_ group: SystemVisualGroup) -> some View {
+        if (group.id == "services" && onServices != nil) || (group.id == "minecraft" && onMinecraft != nil) {
+            Button(action: { if group.id == "services" { onServices?() } else { onMinecraft?() } }) {
+                exceptionContent(group, actionable: true)
+            }.buttonStyle(.plain)
+                .accessibilityIdentifier(group.id == "services" ? "system-services-button" : "system-minecraft-button")
+                .accessibilityHint("Shows read-only status")
+        } else { exceptionContent(group, actionable: false) }
+    }
+
+    private func exceptionContent(_ group: SystemVisualGroup, actionable: Bool) -> some View {
+        let color: Color = group.state == .issue ? tintForIssue : .secondary
+        return HStack(spacing: compact ? 5 : 8) {
             Image(systemName: symbol(group.state))
-                .font(.system(size: compact ? 12 : 20, weight: .medium))
-                .foregroundStyle(color(group.state))
-            HStack(spacing: 2) {
-                Text(compact && group.id == "cast" ? "Cast" : group.title)
-                    .font(.system(size: compact ? 8 : 11))
-                    .lineLimit(1).minimumScaleFactor(0.8)
-                if hasDetailAction(group) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: compact ? 6 : 8, weight: .semibold))
-                        .accessibilityHidden(true)
-                }
+                .font(.system(size: compact ? 12 : 16, weight: .medium)).foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.title).font(compact ? .caption2.weight(.medium) : .subheadline.weight(.medium))
+                if dynamicTypeSize.isAccessibilitySize { Text(label(group.state)).font(.caption2).foregroundStyle(color) }
+            }.fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 2)
+            if !dynamicTypeSize.isAccessibilitySize {
+                Text(label(group.state)).font(.caption2).foregroundStyle(color)
             }
-            .foregroundStyle(.secondary)
+            if actionable { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary) }
         }
-        .frame(maxWidth: .infinity, minHeight: hasDetailAction(group) ? (compact ? 32 : 44) : nil)
+        .padding(.horizontal, compact ? 5 : 9).padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: actionable ? (compact ? 32 : 44) : nil, alignment: .leading)
+        .background(color.opacity(0.055), in: RoundedRectangle(cornerRadius: compact ? 6 : 9))
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(group.accessibilityText + serviceEvidence(group))
     }
-
-    private var timeline: some View {
-        let series = historyModel.snapshot?.series.first { $0.id == "overall" }
-        return VStack(spacing: compact ? 2 : 4) {
-            SystemHistoryBand(series: series, height: compact ? 10 : 22)
-            HStack {
-                Text("−1h")
-                Spacer(minLength: 0)
-                Text(historyModel.isStale() || !historyModel.isPolling ? "Cached" : compact ? "Cached · 1h" : "Past hour")
-                Spacer(minLength: 0)
-                Text(historyModel.snapshot?.end?.formatted(date: .omitted, time: .shortened) ?? "—")
-            }.font(.system(size: compact ? 7 : 9)).foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Past hour of cached observations. One-minute buckets. Hatching means gaps; caps mean partial evidence. "
-            + (historyModel.isStale() || !historyModel.isPolling ? "History stale or paused. " : "")
-            + (historyModel.notice ?? "") + ". " + (series?.inlineSummary ?? "No recorded history.")
-            + ". " + (series?.buckets.map { bucket in
-                "\(bucket.start?.formatted(date: .omitted, time: .shortened) ?? "?") to \(bucket.end?.formatted(date: .omitted, time: .shortened) ?? "?"): \(bucket.state.title), \(Int(bucket.coverageSeconds)) seconds observed, \(Int(bucket.missingSeconds)) seconds missing. "
-                + bucket.reasonCodes.joined(separator: ", ")
-            }.joined(separator: ". ") ?? ""))
-        .accessibilityIdentifier("system-health-history")
-    }
-
-    private func hasDetailAction(_ group: SystemVisualGroup) -> Bool {
-        (group.id == "services" && onServices != nil) || (group.id == "minecraft" && onMinecraft != nil)
-    }
-
-    private func serviceEvidence(_ group: SystemVisualGroup) -> String {
-        let services: [SystemDashboardService]
-        switch group.id {
-        case "services": services = presentation.backgroundServices
-        case "minecraft": services = presentation.minecraftServices
-        default: return ""
-        }
-        return ". " + services.map {
-            "\($0.row.title). \($0.requirement), \($0.executionMode). \($0.description ?? ""). \($0.technicalDetails.joined(separator: ". "))"
-        }.joined(separator: ". ")
-    }
-
-    private func color(_ state: SystemHealthState) -> Color {
-        switch state {
-        case .healthy: return SystemHistoryPalette.color(.healthy, dark: scheme == .dark)
-        case .issue: return warning
-        default: return .secondary
-        }
+    private var tintForIssue: Color { scheme == .dark ? warning : Color(red: 0.62, green: 0.28, blue: 0.02) }
+    private func label(_ state: SystemHealthState) -> String {
+        switch state { case .issue: return "Issue"; case .unknown: return "Unverified"
+        case .checking: return "Checking"; case .inactive: return "Inactive"; case .healthy: return "Healthy" }
     }
     private func symbol(_ state: SystemHealthState) -> String {
-        switch state {
-        case .healthy: return "checkmark.circle.fill"
-        case .issue: return "exclamationmark.triangle.fill"
-        case .unknown: return "questionmark.circle"
-        case .checking: return "clock"
-        case .inactive: return "pause.circle"
-        }
+        switch state { case .issue: return "exclamationmark.triangle"; case .unknown: return "questionmark.circle"
+        case .checking: return "clock"; case .inactive: return "pause.circle"; case .healthy: return "circle" }
+    }
+    private func serviceEvidence(_ group: SystemVisualGroup) -> String {
+        let services = group.id == "services" ? presentation.backgroundServices : group.id == "minecraft" ? presentation.minecraftServices : []
+        return ". " + services.map { "\($0.row.title). \($0.requirement), \($0.executionMode). \($0.description ?? ""). \($0.technicalDetails.joined(separator: ". "))" }.joined(separator: ". ")
     }
 }

@@ -2,6 +2,30 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
+## Watch health corrections — build 264 installed on both devices
+
+**264 installed once per device and independently version/process verified at
+22:22 EDT, October 17, 2026** (USB iPhone, wireless Watch). Direct Watch history
+availability no longer follows incoming phone snapshots, removing that source of
+polling/status oscillation. The three-dot chooser is removed; issue rows retain
+direct detail access. Health cards now share the other cards' themed glass surface.
+Neural Core, backend, stored history and freshness limits are unchanged.
+Exact signed 263 is retained for both. The owner reports the update works;
+broader gesture and accessibility acceptance remains separate. See [validation and deployment](docs/operations.md#watch-health-corrections--build-264-installed-on-both-devices).
+
+## Telemetry health redesign — build 263 installed on iPhone and Watch
+
+The Home health card now uses the selected [Telemetry design](docs/telemetry-health.md)
+for iPhone and Watch: graph-first, exception-only indicators, no group counts,
+and a fresh visible range after verified recovery. Source-reading beacons,
+subtle status borders and accessible graph inspection add restrained visual polish.
+Stored history, backend polling and Neural Core remain unchanged. **263 installed
+once on each device and independently version/process verified at 21:56 EDT,
+2026-10-17**—USB iPhone, wireless Watch. Exact signed 262 remains rollback for both;
+protected services and Pi/Minecraft identities were preserved. Physical layout,
+gestures and VoiceOver acceptance remain owner review.
+See [validation and deployment evidence](docs/operations.md#telemetry-health--build-263-installed-on-iphone-and-watch).
+
 ## Neural Core restoration — build 262 installed on iPhone
 
 Owner requested removal of all widget changes. Original build-260 Neural Core

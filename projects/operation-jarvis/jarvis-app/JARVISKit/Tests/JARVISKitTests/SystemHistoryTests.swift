@@ -298,6 +298,67 @@ final class SystemHistoryTests: XCTestCase {
         XCTAssertNotNil(m.snapshot, "Pausing preserves absolute-time historical evidence")
     }
 
+    func testDirectHistoryEvidenceIsEndpointBoundAndRevocable() {
+        var connection = SystemHistoryDirectConnection()
+        let other = URL(string: "http://other.invalid:8790")!
+        XCTAssertFalse(connection.allowsPolling(at: endpoint.baseURL), "Relay-only state cannot authorize direct history")
+        connection.receivedDirectState(from: endpoint.baseURL)
+        XCTAssertTrue(connection.allowsPolling(at: endpoint.baseURL))
+        XCTAssertFalse(connection.allowsPolling(at: other))
+        XCTAssertFalse(connection.allowsPolling(at: nil))
+        connection.invalidate()
+        XCTAssertFalse(connection.allowsPolling(at: endpoint.baseURL), "Failure/background/endpoint replacement revokes direct evidence")
+        connection.receivedDirectState(from: other)
+        XCTAssertTrue(connection.allowsPolling(at: other))
+        XCTAssertFalse(connection.allowsPolling(at: endpoint.baseURL))
+    }
+
+    func testAlternatingStateOriginsDoNotPauseOrRefetchWatchHistory() async throws {
+        let response = try HistoryFixture.response(window: .hour, component: "overall")
+        let driver = HistoryDriver(response: response)
+        let m = model(driver)
+        var connection = SystemHistoryDirectConnection()
+        connection.receivedDirectState(from: endpoint.baseURL)
+        func configure() {
+            m.configure(configuration(connected: connection.allowsPolling(at: endpoint.baseURL), surface: .watch))
+        }
+        configure()
+        await wait { m.snapshot != nil && !m.isLoading }
+        let now = Date()
+        m.observeTelemetry(current: .issue, observedAt: now.addingTimeInterval(-30), currentTrusted: true, now: now)
+        m.observeTelemetry(current: .healthy, observedAt: now.addingTimeInterval(-20), currentTrusted: true, now: now)
+        let floor = m.telemetrySession.recoveryFloor
+        for isViaPhone in [true, false, true, false, true, false] {
+            if !isViaPhone { connection.receivedDirectState(from: endpoint.baseURL) }
+            // A newer unsolicited phone snapshot changes state provenance only.
+            configure()
+            await Task.yield()
+            XCTAssertTrue(m.isPolling)
+            XCTAssertFalse(m.telemetryWindow(current: .healthy, currentTrusted: true).muted)
+            XCTAssertEqual(m.telemetrySession.recoveryFloor, floor)
+            XCTAssertEqual(m.snapshot, response)
+        }
+        let calls = await driver.calls
+        XCTAssertEqual(calls, 1, "State publication must not restart the 60-second history loop")
+        let intervals = await driver.sleepValues
+        XCTAssertEqual(intervals, [60])
+        XCTAssertTrue(m.telemetryWindow(current: .healthy, currentTrusted: true, now: now.addingTimeInterval(181)).muted,
+                      "Relay activity must not rejuvenate stale history")
+        connection.invalidate()
+        configure()
+        XCTAssertFalse(m.isPolling, "A real direct failure still pauses history")
+        XCTAssertTrue(m.telemetryWindow(current: .healthy, currentTrusted: true).muted)
+        configure() // More relay-only state cannot restart it.
+        await Task.yield()
+        let pausedCalls = await driver.calls
+        XCTAssertEqual(pausedCalls, 1)
+        connection.receivedDirectState(from: endpoint.baseURL)
+        configure()
+        await wait { await driver.calls == 2 }
+        m.configure(configuration(interactive: false, surface: .watch))
+        XCTAssertFalse(m.isPolling, "Always-On and covered states still pause immediately")
+    }
+
     func testFailurePreservesHistoryAndDoesNotExposeRawErrorsOrChangeCadence() async throws {
         let driver = HistoryDriver(response: try HistoryFixture.response(window: .hour))
         let m = model(driver);m.configure(configuration());await wait { m.snapshot != nil }
