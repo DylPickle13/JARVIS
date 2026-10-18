@@ -4,13 +4,13 @@
 
 ## Selection and review rules
 
-- Reduced the original 175 candidates to **84**: 24 wake, 24 processing, 12 arrival, and 24 departure. Rounded down slightly so every bank has an exact **50% straight / 50% dry-humour** split: 42 of each overall.
+- **84** lines: 24 wake, 24 processing, 12 arrival, and 24 departure. Arrival v2 is entirely dry humour; the other banks retain their **50% straight / 50% dry-humour** split: 36 straight and 48 dry overall.
 - Kept the strongest straight lines rather than adjective swaps and repeated response/reply templates. Added distinct, understated humour instead of merely making the same sentences more formal.
 - Humour is intentional persona/metaphor, not a factual status report. No line reports a completed action, a ready response, an actual tool consultation, household security, or a fault. Keep delivery deadpan rather than adding laughs, sound effects, or comic pauses.
 - Wake lines invite a request without claiming it has already been understood. Processing lines also work for steering; they do not depend on an existing answer or promise a successful result.
 - Arrival remains a room/computer-presence return, not confirmed arrival home. No absence-length remarks, time-of-day remarks, or questions requiring a response.
 - Farewells are general good wishes and playful parting advice. No vehicle, destination, weather, security, or monitoring claims.
-- All candidates are 2–6 whitespace-separated words. Offline WAV durations are now measured: all are below 2.8 seconds before protective padding. The owner approved the 38 provisional duration exceptions without changing wording or playback speed; see the implementation report for exact ranges.
+- Arrival v2 uses longer owner-approved lines with a **3.379-second** raw audio ceiling. Other recordings retain their original approved durations below 2.8 seconds. Playback speed and padding are unchanged; see the implementation report for exact ranges.
 - Startup, reconnect, quick-return, and time-of-day announcements remain removed. The two failure messages stay exact and outside all banks.
 - The protected legacy departure phrase/WAV/hash validation stays unchanged by default. The implemented opt-in bank requires its own reviewed recordings and pinned metadata; it does not bypass attempt, identity, timing or playback validation.
 - This is the prewritten wording source, not live model generation. The implemented opt-in path selects approved pre-rendered recordings without live generation or synthesis.

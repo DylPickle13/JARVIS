@@ -1,9 +1,9 @@
 {
   "version": 1,
   "event": "arrival",
-  "status": "wording-approved-pending-render-and-deployment",
+  "status": "wording-and-3.379-second-limit-approved-deployed",
   "style": "dry",
-  "notes": "Owner approved all twelve replacements. This is a staged proposal, not the active catalogue. Activation requires rendering and duration review, support for an all-dry arrival bank, reviewed catalogue/selector-state migration preserving claims and other banks, and coordinated pinned-bundle deployment. Do not replace the active catalogue in isolation.",
+  "notes": "Owner approved all twelve replacements and the 3.379-second raw arrival limit. Deployed with all-dry arrival validation, preserved selector progress and claims, and coordinated bundle pins. Other 72 recordings remain unchanged. This file records approval; phrase_catalogue.json is the active wording source.",
   "phrases": [
     "Ah, my favourite source of technical difficulties.",
     "Welcome back, sir. The chair missed your leadership.",
