@@ -27,7 +27,7 @@ import {
 } from "./lib/attach/transport.ts";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const ATTACHMENTS_ROOT = join(PROJECT_ROOT, "attachments");
+const ATTACHMENTS_ROOT = join(PROJECT_ROOT, ".pi", "attachments");
 const RUNTIME_ROOT = join(PROJECT_ROOT, ".pi", "runtime");
 const NATIVE_PICKER = join(PROJECT_ROOT, ".pi", "scripts", "pi-attach-picker");
 const WIDGET_KEY = "pi-attach";

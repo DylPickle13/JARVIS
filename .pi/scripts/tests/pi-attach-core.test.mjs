@@ -14,7 +14,8 @@ const core = await jiti.import(join(projectRoot, ".pi", "extensions", "lib", "at
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "pi-attach-core-test-"));
   const sourceDirectory = join(directory, "sources");
-  const attachmentsRoot = join(directory, "attachments");
+  const attachmentsRoot = join(directory, ".pi", "attachments");
+  await mkdir(dirname(attachmentsRoot));
   await mkdir(sourceDirectory);
   const first = join(sourceDirectory, "first & report.txt");
   const second = join(sourceDirectory, "second.bin");
@@ -248,7 +249,11 @@ test("the project extension registers one parameterless command and no persisten
   assert.match(source, /if \(args\.trim\(\)\)/);
   assert.doesNotMatch(source, /ctx\.ui\.(?:select|confirm)\(/, "attachment management must stay inside the native picker");
   assert.match(source, /Reconnect using: jarvis-pi-ssh mac-mini-64/);
-  assert.match(source, /join\(PROJECT_ROOT, "attachments"\)/);
+  assert.match(source, /join\(PROJECT_ROOT, "\.pi", "attachments"\)/);
+  const permissionsSource = await readFile(join(projectRoot, ".pi", "extensions", "00-private-permissions.ts"), "utf8");
+  assert.match(permissionsSource, /join\(PROJECT_ROOT, "\.pi", "attachments"\)/);
+  const ignoreSource = await readFile(join(projectRoot, ".gitignore"), "utf8");
+  assert.ok(ignoreSource.split("\n").includes("/.pi/attachments/"));
   assert.doesNotMatch(coreSource, /staged\.json|AttachmentManifest|sessionDirectory|filesDirectory/);
   for (const forbidden of ["attach list", "attach remove", "attach clear", 'registerCommand("attachments"']) {
     assert.equal(source.includes(forbidden), false, `forbidden command surface found: ${forbidden}`);

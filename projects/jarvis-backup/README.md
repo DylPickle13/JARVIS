@@ -37,7 +37,7 @@ the original Restic encryption password cannot be recreated.
 
 `policy.json` is the reviewable policy used by both inventory and Restic.
 Included: project files/data, custom models, `.env`, root files, Git history,
-attachments, `.pi` configuration/extensions/memory/scheduler, and custom runtime
+`.pi/attachments/`, `.pi` configuration/extensions/memory/scheduler, and custom runtime
 source. `.gitignore` is deliberately NOT the backup policy.
 
 Excluded: named virtual environments, node_modules, Python caches, Swift `.build`

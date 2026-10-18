@@ -62,6 +62,7 @@ JARVIS/
 │   ├── scripts/         # launchers, attachment helpers, and verification utilities
 │   ├── tests/           # extension regression tests
 │   ├── docs/            # Pi integration, setup, and rebuild documentation
+│   ├── attachments/     # private Pi attachment copies; ignored by Git
 │   ├── memory/          # durable-memory backend and private local database
 │   └── runtime/         # private generated state, sockets, caches, and logs
 ├── projects/            # applications, integrations, and local personal work
@@ -70,8 +71,7 @@ JARVIS/
 ├── requirements.txt     # dependencies for the root Python runtime
 ├── .env.example         # tracked shared-configuration template
 ├── .env                 # private local configuration; ignored by Git
-├── .venv/               # root Python environment; ignored by Git
-└── attachments/         # private Pi attachment copies; ignored by Git
+└── .venv/               # root Python environment; ignored by Git
 ```
 
 **Why `.pi/` is outside `projects/`:** Pi launched from `JARVIS/` discovers its project configuration and extensions here. This directory is separate from the default user-level `~/.pi/agent/`, which holds Pi's installed runtime, user configuration, and sessions.

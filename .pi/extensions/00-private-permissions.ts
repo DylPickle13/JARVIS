@@ -7,7 +7,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const PRIVATE_FILE_MODE = 0o600;
 const PRIVATE_DIR_MODE = 0o700;
-const ATTACHMENTS_DIR = join(PROJECT_ROOT, "attachments");
+const ATTACHMENTS_DIR = join(PROJECT_ROOT, ".pi", "attachments");
 
 const PRIVATE_FILES = [
 	join(PROJECT_ROOT, ".env"),

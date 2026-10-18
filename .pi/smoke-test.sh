@@ -197,7 +197,7 @@ require_mode "project secrets" ".env" "600"
 require_mode "Pi settings" ".pi/settings.json" "600"
 require_mode "local system context" ".pi/APPEND_SYSTEM.md" "600"
 require_mode "SSH host allowlist" ".pi/ssh-hosts.json" "600"
-for directory in .pi/runtime .pi/memory projects/operation-jarvis/data/scheduler attachments; do
+for directory in .pi/runtime .pi/memory projects/operation-jarvis/data/scheduler .pi/attachments; do
   require_mode "private directory" "$directory" "700"
 done
 while IFS= read -r path; do
@@ -207,7 +207,7 @@ done < <(find .pi .pi/memory projects/operation-jarvis/data/scheduler -maxdepth 
      -o -name '*.sqlite.lock' -o -name 'deleted-sessions-*.json' \) -print 2>/dev/null)
 while IFS= read -r path; do
   require_mode "loose attachment file" "$path" "600"
-done < <(find attachments -mindepth 1 -maxdepth 1 -type f -print 2>/dev/null)
+done < <(find .pi/attachments -mindepth 1 -maxdepth 1 -type f -print 2>/dev/null)
 if [[ -d .pi/runtime/pi-web-access ]]; then
   require_mode "scoped web-access directory" ".pi/runtime/pi-web-access" "700"
 fi

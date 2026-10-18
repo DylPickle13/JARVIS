@@ -2,7 +2,9 @@
 /.vscode
 **/__pycache__/
 /memory
-/attachments
+/.pi/attachments/
+# Keep the legacy location private for Pi sessions awaiting reload.
+/attachments/
 /generated_audio/
 /logs/
 /projects/*

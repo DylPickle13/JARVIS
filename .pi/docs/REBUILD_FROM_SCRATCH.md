@@ -24,7 +24,7 @@ Back up or be prepared to recreate:
 | Browser profile | `~/.pi/agent/browser-profile` or `PI_BROWSER_PROFILE_DIR` | Optional | Preserves visible-browser cookies/session state. Do not commit. |
 | Google Workspace OAuth | external `gws` token/config store | If Workspace tools are used | Run `gws auth ...` if not restored. |
 | Operation data artifacts | `projects/operation-jarvis/data/*` | Optional | Runtime state (greeting history, logs); ignored by git. |
-| Pi attachment copies | `attachments/*` | Optional but needed for old attachment paths | Private files selected through `/attach`; ignored by git. The live staged queue is intentionally not persisted. |
+| Pi attachment copies | `.pi/attachments/*` | Optional but needed for old attachment paths | Private files selected through `/attach`; ignored by git. The live staged queue is intentionally not persisted. |
 
 ## 1. Install system prerequisites
 
@@ -94,7 +94,7 @@ Customize these ignored local files before starting Pi:
 
 If you have private backups, restore those instead of copying templates. Set the four local files to `chmod 600` and the private directories to `chmod 700`. Keep them out of Git. The templates contain placeholders; fill in your own host addresses, usernames, key locations, device aliases, and preferences.
 
-`.pi/extensions/00-private-permissions.ts` reapplies these owner-only modes whenever Pi starts, including mode `0700` on `attachments/` and mode `0600` on loose attachment files. The memory and scheduler runners also enforce mode `0600` on their SQLite databases and sidecars, with mode `0700` on their default data directories.
+`.pi/extensions/00-private-permissions.ts` reapplies these owner-only modes whenever Pi starts, including mode `0700` on `.pi/attachments/` and mode `0600` on loose attachment files. The memory and scheduler runners also enforce mode `0600` on their SQLite databases and sidecars, with mode `0700` on their default data directories.
 
 Minimum root `.env` for basic local Pi operation:
 
@@ -319,7 +319,7 @@ The project also exposes exactly one parameterless attachment command:
 
 On the local Mac, `/attach` opens the native file picker. From another Mac, connect with `.pi/scripts/jarvis-pi-ssh <host>` from a JARVIS checkout before starting Pi. Plain SSH cannot open a picker on the client computer.
 
-Selected files go into ignored `attachments/` with owner-only permissions. The unsent queue stays in memory and clears when Pi exits. To test without opening a picker:
+Selected files go into ignored `.pi/attachments/` with owner-only permissions. The unsent queue stays in memory and clears when Pi exits. To test without opening a picker:
 
 ```bash
 node --test .pi/scripts/tests/pi-attach-*.test.mjs .pi/scripts/tests/jarvis-pi-ssh.test.mjs
