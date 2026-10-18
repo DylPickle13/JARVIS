@@ -44,6 +44,19 @@ source, logs, xcresult, artwork and deployment evidence remain. Signed 267/266
 payload/source seals and all eight signatures were independently rechecked afterward.
 Cleanup receipt: the same artifact's `temporary-cleanup.json`.
 
+After owner acceptance and verified publication (`478df94`), a separate one-shot
+cleanup pruned the superseded **265** signed archive only: **118.88 MiB net allocated
+artifacts** removed, with an observed **92.83 MiB** increase in volume free space.
+Current signed **267** and exact signed **266 rollback** are the only remaining
+primary archives; both source/payload seals and all eight signatures passed again.
+All 3,616 retained evidence entries and the 18 protected service records were
+preserved, along with existing Pi/Minecraft identities, configuration/authentication
+and history cadence. Signing metadata and an explicit `primary-archive-pruned.json`
+marker remain beside 265's source/test/deployment records. Unrelated backups were
+untouched. Historical 265 rollback references below no longer describe retention.
+Receipt: `owner-stale-cleanup-20261018T040504Z/cleanup.json` in the 267 artifact.
+Do not replay this completed cleanup.
+
 ## State-error scoping and card-header removal — build 266 installed on both devices
 
 The owner reported **Issue / State request failed** after build 265 and requested
