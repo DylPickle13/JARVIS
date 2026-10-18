@@ -3,6 +3,24 @@
 Extends the existing jarvisd monitoring worker, incident store and authenticated
 health APIs. No parallel daemon, dashboard server or notification service.
 
+## Cast is diagnostic-only — owner policy, 2026-10-17 EDT
+
+`family-room-tv` and `family-room-speaker` no longer determine the scheduler's
+System health verdict. Playback controls and truthful cached TCP observations
+remain unchanged. The backend aggregate already excludes these checks; registry,
+probe worker and retained device incident history were not rewritten or restarted.
+A powered-off/unreachable Cast target is not reported healthy or available.
+
+Matching shared app code excludes both IDs from required health evidence and
+removes the **Cast playback** health group. Native **265** was installed once and
+independently version/process verified on iPhone and Watch at 23:06 EDT on October
+17, following an initial zero-write Watch readiness stop and fresh owner approval.
+The scheduler exclusion is active. 116 scheduler tests, 205 native tests and 372
+shared cases (3 expected skips) passed, including failed/missing Cast and preserved
+sensor failure coverage. See [native rollout evidence](../../jarvis-app/docs/operations.md).
+Historical coverage/deployment counts below remain unchanged: these are still
+27 diagnostic entries, not 27 prerequisites for overall health.
+
 ## Picture-frame availability — deployed 2026-10-06 EDT
 
 One status-only frame entry remains in the existing worker: **27 entries**, with

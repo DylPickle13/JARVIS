@@ -147,6 +147,8 @@ struct WatchConnectView: View {
 final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     @Published var connectionState: ConnectionState = .idle { didSet { updateHistoryPolling() } }
     @Published var errorMessage: String?
+    // Health describes state reads, not control-command or relay-write errors.
+    @Published private(set) var stateErrorMessage: String?
     @Published var lastState: StateSnapshot?
     @Published var isViaPhone = false { didSet { updateHistoryPolling() } }
     @Published var cachedAt: Date?
@@ -560,6 +562,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
         isViaPhone = false
         connectionState = .connected
         errorMessage = nil
+        stateErrorMessage = nil
     }
 
     private func useRelayOrCache(directError: String? = nil) {
@@ -578,6 +581,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             connectionState = .failed
             errorMessage = directError ?? "JARVIS is unreachable."
         }
+        stateErrorMessage = errorMessage
     }
 
     func isHomeAutomationBusy(_ control: HomeAutomationControl) -> Bool {
@@ -810,6 +814,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             self.isViaPhone = true
             self.connectionState = .connected
             self.errorMessage = nil
+            self.stateErrorMessage = nil
         }
     }
 

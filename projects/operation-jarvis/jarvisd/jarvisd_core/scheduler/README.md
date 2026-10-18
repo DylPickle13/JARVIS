@@ -119,15 +119,19 @@ requires current healthy component evidence and available, unexpired device
 checks. Missing/malformed/unsupported/unknown/checking/stale evidence is nonhealthy
 and enters the same debounce; it is not described as a physical outage. Optional
 inactive services and disabled sensor monitoring remain neutral. The app's required
-device inventory, excluded iPhone/Watch/Master Chief IDs, timestamp fallback,
+device inventory, excluded iPhone/Watch/Master Chief/Cast IDs, timestamp fallback,
 freshness expiry and incomplete Minecraft-pair rule are retained. Optional device
-unknowns still affect the card. In particular, an unreachable TV remains alertable
-when the app reports it; no new powered-off-device exemption is invented.
+unknowns still affect the card, except for the explicitly excluded Cast devices.
+Owner policy now excludes both `family-room-tv` and `family-room-speaker` whether
+available, unavailable, stale, unknown or absent. Cast playback is not a JARVIS
+health prerequisite. Controls, TCP diagnostics and retained incident evidence are
+unchanged; no device is falsely reported available and no powered-off inference
+or automatic power control is introduced.
 
 This reads cached evidence only: no foreground collector refresh, hardware query,
 LLM invocation, device control, or repair. The top-level on-demand `observations`
-map is deliberately ignored. A green backend aggregate cannot hide a failed TV
-or shared sensor-reader check. Failure descriptions use bounded fixed labels,
+map is deliberately ignored. A green backend aggregate cannot hide a failed
+shared sensor-reader or other included device check. Failure descriptions use bounded fixed labels,
 never raw responses, backend names, reasons or exception messages.
 
 An outage result is emitted on the first failed observation at least **300
@@ -175,7 +179,22 @@ preserved. The live authenticated probe and real scheduler execution detected th
 TV Cast failure despite a healthy aggregate summary. Its five-minute incident
 window began on activation, not retroactively. APNs alert/recovery queuing and
 deduplication were tested offline; no synthetic live outage or push was injected.
-Backend/watchdog and unrelated services were not restarted. Rollback requires
+Backend/watchdog and unrelated services were not restarted.
+
+**Cast exclusion follow-up (2026-10-17 EDT):** 116 scheduler tests and 372 shared
+native tests (3 expected skips) passed. The live policy reports healthy while
+retaining the real TV `unavailable/connection_timeout` diagnostic. The existing job
+was re-enabled without deleting/resetting its incident state; any prior alert
+closes through the normal overall-health recovery transition, not a claim that
+Cast connectivity recovered. Matching app source removes Cast from required
+health rows and the Cast playback group. Native build **265** is installed and
+independently version/process verified on both iPhone and Watch (23:06 EDT,
+October 17), after a retained zero-write Watch readiness stop and fresh approval.
+The final frozen candidate passed 205 native tests as well as the shared suite. No backend restart or registry edit is needed
+because the backend aggregate already excludes Cast; its raw diagnostic coverage
+is intentionally preserved.
+
+Rollback requires
 pausing this job and restoring the previous watchdog implementation/description,
 not rewinding the database or clearing an existing incident latch.
 

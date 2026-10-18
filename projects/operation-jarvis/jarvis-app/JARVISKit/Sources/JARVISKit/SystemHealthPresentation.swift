@@ -31,6 +31,11 @@ public struct SystemHealthPresentation: Equatable, Sendable {
         "services": 660, "pi": 180, "plugs": 30, "purifier": 90,
         "network": 1260, "codexQuota": 900, "claudeQuota": 900,
     ]
+    // Cast availability is diagnostic/control-only, not a JARVIS health requirement.
+    // Keep aligned with the scheduler's health_card.EXCLUDED_DEVICES policy.
+    public static let excludedHealthDeviceIDs: Set<String> = [
+        "iphone-usb", "watch", "master-chief", "family-room-tv", "family-room-speaker",
+    ]
     public let rows: [SystemHealthRow]
     public var issueCount: Int { rows.filter { $0.state == .issue }.count }
     public var unknownCount: Int { rows.filter { [.unknown, .checking].contains($0.state) }.count }
@@ -205,13 +210,13 @@ public struct SystemHealthPresentation: Equatable, Sendable {
             if coverage.supported {
                 let required = ["keyboard-watcher", "keyboard", "mouse", "led-strip", "room-audio-mac",
                                 "hub", "door-sensor", "motion-sensor", "sensor-reader", "front-doorbell",
-                                "indoor-camera", "room-audio-pi", "family-room-tv", "family-room-speaker"]
+                                "indoor-camera", "room-audio-pi"]
                 let present = Set(coverage.devices.map(\.id))
                 for id in required where !present.contains(id) {
                     result.append(.init(id: "device:\(id)", title: id, state: .unknown,
                                         detail: "No configured check evidence", ageSeconds: nil))
                 }
-                for device in coverage.devices where !["iphone-usb", "watch", "master-chief"].contains(device.id) {
+                for device in coverage.devices where !Self.excludedHealthDeviceIDs.contains(device.id) {
                     let state: SystemHealthState
                     switch validElapsed == nil ? "unknown" : device.effectiveState(now: now) {
                     case "available": state = .healthy

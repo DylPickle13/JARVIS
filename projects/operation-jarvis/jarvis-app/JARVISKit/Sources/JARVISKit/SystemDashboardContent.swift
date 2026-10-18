@@ -117,13 +117,6 @@ public struct SystemDashboardContent: View {
 
     private var visualCard: some View {
         VStack(alignment: .leading, spacing: compact ? 5 : 12) {
-            if !compact {
-                HStack {
-                    Text("SYSTEM / HEALTH").font(.caption2.monospaced()).foregroundStyle(tint)
-                    Spacer(minLength: 4)
-                    Text("CACHED").font(.caption2.monospaced()).foregroundStyle(.secondary)
-                }
-            }
             HStack(alignment: .center, spacing: 6) {
                 Text(status).font(compact ? .headline : .largeTitle.weight(.light))
                     .foregroundStyle(current == .issue ? tint : .primary)

@@ -42,7 +42,6 @@ public extension SystemDashboardPresentation {
         }
         let computer = ["keyboard-watcher", "keyboard", "mouse", "led-strip", "room-audio-mac"]
         let security = ["hub", "door-sensor", "motion-sensor", "sensor-reader", "front-doorbell", "indoor-camera", "room-audio-pi"]
-        let cast = ["family-room-tv", "family-room-speaker"]
         func checks(_ ids: [String]) -> [SystemHealthRow] {
             ids.map { id in
                 rows.first { $0.id == "device:\(id)" } ?? .init(
@@ -50,11 +49,10 @@ public extension SystemDashboardPresentation {
                     detail: "No configured check evidence", ageSeconds: nil)
             }
         }
-        let grouped = Set((computer + security + cast).map { "device:\($0)" })
+        let grouped = Set((computer + security).map { "device:\($0)" })
         groups += [
             .init(id: "computer", title: "Computer", rows: checks(computer)),
             .init(id: "security", title: "Security", rows: checks(security)),
-            .init(id: "cast", title: "Cast playback", rows: checks(cast)),
             .init(id: "devices", title: "Devices", rows: rows.filter {
                 ["plugs", "purifier", "deviceCoverage"].contains($0.id)
                     || ($0.id.hasPrefix("device:") && !grouped.contains($0.id))

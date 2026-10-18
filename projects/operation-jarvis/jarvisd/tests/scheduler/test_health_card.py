@@ -40,11 +40,22 @@ class HealthCardTests(unittest.TestCase):
         self.assertIn("sensor reads", card.evaluate(value, now=NOW))
         self.assertIsNotNone(card.evaluate({"ok": True}, now=NOW))
 
-    def test_healthy_aggregate_does_not_hide_failed_tv_or_reader(self):
-        for key in ("family-room-tv", "sensor-reader", "motion-sensor"):
+    def test_healthy_aggregate_does_not_hide_failed_reader_or_sensor(self):
+        for key in ("sensor-reader", "motion-sensor"):
             value = healthy()
             next(row for row in value["deviceHealth"]["devices"] if row["id"] == key)["state"] = "unavailable"
             self.assertIsNotNone(card.evaluate(value, now=NOW))
+
+    def test_cast_is_diagnostic_only_even_failed_expired_unmonitored_or_absent(self):
+        for key in ("family-room-tv", "family-room-speaker"):
+            self.assertNotIn(key, card.REQUIRED_DEVICES)
+            for state in ("unavailable", "unknown", "available"):
+                value = healthy()
+                value["deviceHealth"]["devices"].append({
+                    "id": key, "state": state, "coverage": "unmonitored",
+                    "lastAttemptAt": stamp(NOW-9999), "freshnessLimitSeconds": 150})
+                self.assertIsNone(card.evaluate(value, now=NOW))
+        self.assertIsNone(card.evaluate(healthy(), now=NOW))
 
     def test_each_component_can_make_card_nonhealthy(self):
         for key in card.REQUIRED_COMPONENTS:

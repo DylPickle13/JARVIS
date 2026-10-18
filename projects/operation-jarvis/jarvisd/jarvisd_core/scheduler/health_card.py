@@ -18,9 +18,12 @@ REQUIRED_COMPONENTS = (
 REQUIRED_DEVICES = frozenset((
     "keyboard-watcher", "keyboard", "mouse", "led-strip", "room-audio-mac",
     "hub", "door-sensor", "motion-sensor", "sensor-reader", "front-doorbell",
-    "indoor-camera", "room-audio-pi", "family-room-tv", "family-room-speaker",
+    "indoor-camera", "room-audio-pi",
 ))
-EXCLUDED_DEVICES = frozenset(("iphone-usb", "watch", "master-chief"))
+# Owner policy: Cast stays diagnostic/control-only, never a health requirement.
+EXCLUDED_DEVICES = frozenset((
+    "iphone-usb", "watch", "master-chief", "family-room-tv", "family-room-speaker",
+))
 LABELS = {
     "services": "services", "pi": "Pi data", "network": "network data",
     "plugs": "plugs", "purifier": "purifiers", "codexQuota": "Codex usage",

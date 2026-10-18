@@ -508,6 +508,7 @@ public final class AppState: ObservableObject {
         do {
             let snapshot = try await convergedState(endpoint, refreshingCodexQuota: refreshingCodexQuota,
                 cachedOnly: !activeSection.showsForegroundDashboard && !refreshingCodexQuota)
+            guard !Task.isCancelled else { return }
             let previousState = lastState
             let widgetsChanged = widgetReloadValue(previousState) != widgetReloadValue(snapshot)
             lastState = snapshot
@@ -520,10 +521,14 @@ public final class AppState: ObservableObject {
                 WatchBridge.shared.updateApplicationContext(stateJSON: data, endpoint: currentEndpoint?.absoluteString)
             }
             stateErrorMessage = nil
+            // A successful authenticated state read supersedes old connection errors.
+            // Command/operation errors have their own storage and remain untouched.
+            errorMessage = nil
             connectionState = .connected
         } catch is CancellationError {
             return
         } catch let error as JarvisError {
+            guard !Task.isCancelled else { return }
             stateErrorMessage = error.errorDescription
             if lastState == nil { errorMessage = error.errorDescription }
             if error.isRetryable {
@@ -534,6 +539,7 @@ public final class AppState: ObservableObject {
                 retryAllowed = false
             }
         } catch {
+            guard !Task.isCancelled else { return }
             stateErrorMessage = error.localizedDescription
             if lastState == nil { errorMessage = error.localizedDescription }
             connectionState = .failed
@@ -1093,10 +1099,18 @@ public final class AppState: ObservableObject {
     public func fetchHealth() async {
         guard let endpoint = activeEndpoint else { return }
         do {
-            lastHealth = try await client.health(endpoint)
+            let health = try await client.health(endpoint)
+            guard !Task.isCancelled else { return }
+            lastHealth = health
+            errorMessage = nil
+            // Liveness success must not clear a real authenticated state-read error.
+        } catch is CancellationError {
+            return
         } catch let error as JarvisError {
+            guard !Task.isCancelled else { return }
             errorMessage = error.errorDescription
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
         }
     }

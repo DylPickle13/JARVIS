@@ -2,6 +2,33 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
+## Health error/header correction — build 266 installed on both devices
+
+**266 installed once per device and independently version/process verified at
+23:31 EDT, October 17, 2026** (wired iPhone, wireless Watch), after two retained
+zero-write Watch readiness stops and fresh owner approval. Health cards now use
+state-read errors only; old liveness/control errors and cancelled reads no longer
+masquerade as state-request failures. Genuine failures and uncertain-write guards
+remain. The redundant **SYSTEM / HEALTH — CACHED** line is removed. Cast exclusion,
+controls and Neural Core are unchanged. Frozen validation passed 211 native,
+374 shared (3 expected skips), 39 terminal and 2,316 artwork checks, both simulator
+builds and all signature/profile/entitlement/source/payload gates. Signed 265 is
+rollback; protected services, Pi/Minecraft, backend/auth and history cadence were
+preserved. See [deployment and retained stops](docs/operations.md).
+
+## Cast health exclusion — build 265 installed on both devices
+
+**265 installed once per device and independently version/process verified at
+23:06 EDT, October 17, 2026** (wired iPhone, wireless Watch), following a retained
+zero-write Watch readiness stop and fresh owner approval. Cast playback no longer
+appears as a System health group or affects the health verdict. Playback controls,
+truthful diagnostics, other health checks and Neural Core are unchanged. The
+matching scheduler exclusion is active. Frozen validation passed 205 native,
+372 shared (3 expected skips), 39 terminal and 2,316 artwork checks, both simulator
+builds and all signature/profile/entitlement/source/payload gates. Exact signed
+264 is rollback; backend/services/Pi/Minecraft identities and history cadence
+were preserved. See [deployment and retained stop](docs/operations.md).
+
 ## Watch health corrections — build 264 installed on both devices
 
 **264 installed once per device and independently version/process verified at

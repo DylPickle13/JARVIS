@@ -1,5 +1,139 @@
 # Native app build and operations
 
+## State-error scoping and card-header removal — build 266 installed on both devices
+
+The owner reported **Issue / State request failed** after build 265 and requested
+removal of the top **SYSTEM / HEALTH — CACHED** line. Live authenticated backend
+health and cached-state checks were healthy/HTTP 200 during diagnosis; this does
+not prove every phone request succeeded. Two false-error paths were identified:
+
+- iPhone health used `stateErrorMessage ?? errorMessage`; the general field could
+  retain an older liveness failure after fresh state success. Both health views
+  now consume state-read errors only. Watch command/relay-write errors no longer
+  masquerade as state-read failures. Successful direct/accepted-relay state clears
+  its dedicated error; genuine state failures remain visible.
+- URLSession `URLError.cancelled` on GET requests was wrapped as a transport
+  failure. Read cancellation now stays cancellation; superseded iPhone fetches
+  cannot publish failures/state, and cancelled liveness reads remain silent.
+  Uncertain device-write semantics and no-retry rules are unchanged. Liveness
+  success cannot clear an actual authenticated state-read error.
+
+The redundant noncompact card header is removed; actual issue notices, freshness,
+chart context and cached-evidence accessibility explanations remain. The isolated
+274-input candidate changes only nine runtime/test files over installed 265.
+**211 native tests, 374 shared cases (3 expected skips), 39 terminal tests and both
+simulator builds passed**; no new exclusions. Evidence:
+`design-implementation/20261018T031300Z-health-error-header/completion.json`.
+No device actions, backend/health-job change or service restart occurred during
+that validation.
+
+The owner subsequently approved both-device deployment. Sealed **266** freezes
+13 scoped runtime/test/documentation/version changes over installed **265**, with
+all nine validated fix files byte-matched to the earlier candidate. Full release
+validation passed **211 native tests, 374 shared cases (3 expected skips), 39
+terminal tests, 2,316 Neural Core render assertions, both simulator builds and the
+signed archive**. All eight candidate/265-rollback signatures, byte-identical
+profiles, unchanged entitlements/dependency lock and source/payload seals passed.
+No new test exclusion or provisioning change was introduced; Cast exclusion and
+original Neural Core remain unchanged.
+
+Fresh owner **“it's ready”** authorized a distinct attempt after the two retained
+zero-write stops below. Both-device and immediate identity/DDI/unlock/baseline
+checks passed. **266 installed once and launched once on each device, independently
+version/process verified, with final version readbacks on both at 23:31 EDT,
+October 17, 2026.** Existing transport was wired iPhone and wireless Watch; no
+connection reset/switch or uncertain-write retry occurred. All 18 protected service
+records (17 continuous), existing Pi/Minecraft identities, backend/source/registry/
+authentication, scheduler health policy and ten-second history cadence were preserved.
+The final receipt/source/payload seals were independently rechecked. Physical UI
+acceptance remains owner review; the stale-error regression is tested, not a promise
+that every future network request succeeds. Exact signed **265** remains rollback.
+
+Successful receipt:
+`20261018T031900Z-build266-state-health-header/deployment-retry2/result.json`.
+The owner subsequently confirmed healthy history returned and approved publication
+and stale-artifact cleanup. The brief “Waiting for verified healthy history” period
+followed a recorded ~10-second plug-collector failure around 23:32; the backend
+then supplied complete healthy one-minute buckets. This is acceptance of the
+reported health/history behavior, not exhaustive physical UI testing.
+
+At **23:26 EDT, October 17**, the guarded installation stopped during the initial
+Watch DDI-services query: CoreDevice **4000**, RemotePairing **1001**, timed out
+establishing the negotiated network tunnel. Watch identity/pairing/transport had
+passed; compatible DDI, unlock and installed-baseline checks were not completed.
+**Neither app was installed or launched.** No connection reset, automatic retry,
+service restart or device-control operation occurred. Post-stop checks preserved
+all 18 protected service records (17 continuous), existing Pi/Minecraft identities,
+backend/source/configuration/authentication, scheduler health policy and ten-second
+history cadence. At that stop, the last verified installed versions remained 265.
+
+Retained receipt:
+`20261018T031900Z-build266-state-health-header/deployment/result.json`.
+Exact signed 265 remains rollback. This stopped attempt was not replayed. Future
+deployment/rollback needs fresh authorization, current-baseline reconciliation and
+all both-device/immediate checks; never replay completed/stopped helpers.
+
+Owner **“try again”** authorized a separate attempt at **23:27 EDT**. Its Watch
+identity read succeeded, reporting paired, booted and Developer Mode enabled,
+but `tunnelState: disconnected`. The required connected-tunnel gate stopped the
+attempt before DDI/unlock/version queries or either device write. No reset or
+retry followed; all protected-service/Pi/Minecraft/backend/history checks remained
+preserved. Receipt: the same artifact's `deployment-retry1/result.json`, with the
+exact read-only connection evidence in `watch-initial-identity.json`. Zero installs
+and launches across those first two attempts; installed 265 was still the verified
+baseline before the successful fresh attempt above.
+
+## Cast health exclusion — build 265 installed on iPhone and Watch
+
+Owner policy on 2026-10-17 removes Cast playback as a health requirement without
+removing media controls or changing power. `SystemHealthPresentation` excludes
+`family-room-tv` and `family-room-speaker` from required inventory and health rows;
+`SystemVisualSummary` no longer builds the Cast playback group. Sensor, room-audio,
+service and other device health rules remain intact. The scheduler exclusion is
+active and retains truthful raw Cast diagnostics.
+
+The owner authorized both-device deployment and readiness. Candidate **265** layers
+seven scoped source/test/documentation/version changes over sealed installed **264**.
+The initial frozen run exposed two native tests with obsolete Cast-inclusive group
+counts (four failed assertions). That evidence is retained. Revision 2 replaces the
+counts with exact Cast-free group-ID assertions, without any new exclusions, then
+passes **205 native tests, 372 shared cases (3 expected skips), 39 terminal tests,
+2,316 Neural Core render assertions, both simulator builds and the signed archive**.
+All eight candidate/264-rollback bundle signatures, unchanged profiles/entitlements/
+dependency lock and source/payload seals passed. Original Neural Core is unchanged.
+
+After the initial readiness stop below, fresh owner **“try again now”** authorized
+a distinct guarded attempt with the same sealed candidate. Both-device preflight
+and immediate identity/DDI/unlock/baseline gates passed. **265 installed once and
+launched once on each device, with independent version/process verification and
+final version readbacks on both at 23:06 EDT, October 17.** Existing connections
+were wired iPhone and wireless Watch; no transport reset/switch occurred. All 18
+protected service records (17 continuous), existing Pi/Minecraft identities,
+backend/configuration/authentication, scheduler health policy and ten-second
+history cadence were preserved. No backend restart, physical device control,
+credential change or uncertain-write retry occurred. Physical UI acceptance
+remains owner review. Exact signed **264** remains rollback for both devices.
+
+Successful receipt:
+`20261018T025600Z-build265-cast-health-exclusion-r2/deployment-retry1/result.json`.
+
+At **23:02 EDT, October 17**, the one-shot deployment stopped during the initial
+Watch unlock-state query: `Failed to allocate RSD device`, mobiledevice error
+`-402653181`. Watch identity/pairing/transport and compatible DDI checks had passed;
+this is a developer-connection failure, not evidence that the Watch was locked.
+No installed-app inventory or either app installation/launch was reached. **Zero
+installs and zero launches on both devices**; no reset, failed-gate replay or
+uncertain-write retry. The last independently verified installed baseline remains
+264 at that stop; no installation had occurred. Post-stop checks preserved all 18 protected service
+records (17 continuous), existing Pi/Minecraft identities, backend source/registry/
+authentication, scheduler health policy and ten-second history cadence.
+
+Retained evidence: `20261018T025600Z-build265-cast-health-exclusion-r2/deployment/result.json`.
+The original failed-test candidate is `20261018T025200Z-build265-cast-health-exclusion`.
+Both the initial stop and successful fresh attempt are retained. Do not replay
+any completed/stopped helper. Future deployment/rollback needs fresh authorization,
+current-baseline checks and all preservation gates.
+
 ## Watch health corrections — build 264 installed on both devices
 
 The owner approved deployment of the [Watch history/menu/theme correction](telemetry-health.md).

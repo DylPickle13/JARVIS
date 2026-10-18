@@ -234,6 +234,9 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as URLError {
+            // URLSession normally uses URLError.cancelled, not CancellationError.
+            // Retired reads are not outages. Do not weaken uncertain-write handling.
+            if method == "GET", !deviceWrite, error.code == .cancelled { throw CancellationError() }
             throw JarvisError.transport(deviceWrite ? "Device command delivery may be unknown. Refresh state; do not retry automatically. \(error.localizedDescription)" : error.localizedDescription)
         } catch {
             throw JarvisError.transport(deviceWrite ? "Device command delivery may be unknown. Refresh state; do not retry automatically. \(error.localizedDescription)" : error.localizedDescription)

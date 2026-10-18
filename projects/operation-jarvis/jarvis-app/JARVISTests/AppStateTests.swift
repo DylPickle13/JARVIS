@@ -5,6 +5,73 @@ import JARVISKit
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    private func healthErrorFixture(_ api: FakeAPI) -> AppState {
+        let defaults = UserDefaults(suiteName: "jarvis.health-errors.\(UUID().uuidString)")!
+        let store = EndpointStore(defaults: defaults)
+        store.endpointURLString = "http://fake.jarvis:8790"
+        let app = AppState(store: store, client: api)
+        app.connectionState = .connected
+        return app
+    }
+
+    func testFreshStateClearsOldLivenessErrorWithoutClearingCommandWarning() async {
+        let api = FakeAPI()
+        let app = healthErrorFixture(api)
+        api.healthError = JarvisError.transport("previous liveness timeout")
+        await app.fetchHealth()
+        XCTAssertNotNil(app.errorMessage)
+        app.operationErrorMessage = "command outcome is unconfirmed"
+        await app.fetchState()
+        XCTAssertEqual(app.connectionState, .connected)
+        XCTAssertNotNil(app.lastState)
+        XCTAssertNil(app.stateErrorMessage)
+        XCTAssertNil(app.errorMessage, "An old liveness timeout must not survive authenticated state success")
+        XCTAssertEqual(app.operationErrorMessage, "command outcome is unconfirmed")
+    }
+
+    func testSuccessfulLivenessClearsGeneralErrorButNeverARealStateReadFailure() async {
+        let api = FakeAPI()
+        let app = healthErrorFixture(api)
+        api.healthError = JarvisError.transport("previous timeout")
+        await app.fetchHealth()
+        api.stateError = JarvisError.http(status: 403, body: "state forbidden")
+        await app.fetchState()
+        XCTAssertNotNil(app.stateErrorMessage)
+        api.healthError = nil
+        await app.fetchHealth()
+        XCTAssertNil(app.errorMessage)
+        XCTAssertNotNil(app.stateErrorMessage, "A green liveness check is not authenticated state recovery")
+        api.stateError = nil
+        await app.fetchState()
+        XCTAssertNil(app.stateErrorMessage)
+    }
+
+    func testCancelledLivenessReadDoesNotCreateAnErrorOrClearPriorEvidence() async {
+        let api = FakeAPI()
+        let app = healthErrorFixture(api)
+        app.errorMessage = "prior real connection error"
+        api.healthError = CancellationError()
+        await app.fetchHealth()
+        XCTAssertEqual(app.errorMessage, "prior real connection error")
+        XCTAssertNil(app.stateErrorMessage)
+        app.errorMessage = nil
+        await app.fetchHealth()
+        XCTAssertNil(app.errorMessage)
+    }
+
+    func testCancelledStateReadDoesNotTurnConnectedCachedStateIntoFailure() async {
+        let api = FakeAPI()
+        let app = healthErrorFixture(api)
+        await app.fetchState()
+        let observedAt = app.lastStateRequestStartedAt
+        api.stateError = CancellationError()
+        await app.fetchState()
+        XCTAssertEqual(app.connectionState, .connected)
+        XCTAssertEqual(app.lastStateRequestStartedAt, observedAt)
+        XCTAssertNil(app.stateErrorMessage)
+        XCTAssertNil(app.errorMessage)
+    }
+
     func testHomeControlPendingReceiptDoesNotOptimisticallyChangeObservedState() async throws {
         let now = Date()
         let revision = String(repeating: "a", count: 32)
@@ -1407,6 +1474,8 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var scheduledJobsDelay: Duration?
     var scheduledJobResultSequence: Int?
     var stateResponses: [StateSnapshot]
+    var stateError: Error?
+    var healthError: Error?
     var commands: [String] = []
     var homeCommands: [HomeAutomationCommand] = []
     var commandParams: [[String: JSONValue]] = []
@@ -1479,11 +1548,13 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
 
     func health(_ endpoint: JarvisEndpoint) async throws -> HealthResponse {
         healthCalls += 1
+        if let healthError { throw healthError }
         return HealthResponse(ok: true, version: "test", uptimeSeconds: 2)
     }
 
     func state(_ endpoint: JarvisEndpoint) async throws -> StateSnapshot {
         stateCalls += 1
+        if let stateError { throw stateError }
         if let stateDelay { try await Task.sleep(for: stateDelay) }
         if !stateResponses.isEmpty { return stateResponses.removeFirst() }
         return state

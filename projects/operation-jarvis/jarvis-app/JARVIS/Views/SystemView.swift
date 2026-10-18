@@ -22,7 +22,7 @@ struct SystemView: View {
                             isConnected: app.connectionState == .connected),
                             connectionLabel: connectionLabel, showsHeader: false, accent: JarvisPalette.accent,
                             warning: JarvisPalette.warning, surface: JarvisPalette.surface,
-                            connectionError: app.stateErrorMessage ?? app.errorMessage,
+                            connectionError: app.stateErrorMessage,
                             refreshing: app.isStateLoading || app.isRefreshing,
                             historyModel: app.systemHistory,
                             onServices: { serviceScope = .services },

@@ -17,15 +17,22 @@ final class SystemDeviceGroupingTests: XCTestCase {
              "lastAttemptAt": timestamp, "lastSuccessAt": timestamp, "freshnessLimitSeconds": 150,
              "dependsOn": [], "blockedBy": [], "incidentOpen": false]
         }
-        let object: [String: Any] = ["ok": true, "deviceHealth": [
-            "version": 1, "scope": "device_check_coverage", "devices": devices]]
+        let keys = ["services", "pi", "plugs", "purifier", "network", "codexQuota", "claudeQuota"]
+        let object: [String: Any] = ["ok": true, "generatedAt": timestamp,
+            "subsystemsMeta": Dictionary(uniqueKeysWithValues: keys.map {
+                ($0, ["ok": true, "stale": false, "ageSeconds": 0] as [String: Any])
+            }), "subsystems": [
+                "services": ["ok": true, "services": [:]],
+                "plugs": ["ok": true, "stale": false, "plugs": [:]],
+                "purifier": ["ok": true, "stale": false]],
+            "deviceHealth": ["version": 1, "scope": "device_check_coverage", "devices": devices]]
         let snapshot = try JSONDecoder().decode(StateSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
         return .init(snapshot: snapshot, requestStartedAt: now, isConnected: connected,
                      now: now.addingTimeInterval(elapsed))
     }
-    func testOwnerCategoriesAndSpeakerMembership() throws {
+    func testOwnerCategoriesExcludeCast() throws {
         let groups = try presentation().visualGroups
-        XCTAssertEqual(groups.map(\.title), ["Services", "Pi", "Network", "Computer", "Security", "Cast playback", "Devices"])
+        XCTAssertEqual(groups.map(\.title), ["Services", "Pi", "Network", "Computer", "Security", "Devices"])
         let computer = try XCTUnwrap(groups.first { $0.id == "computer" })
         XCTAssertTrue(computer.rows.contains { $0.id == "device:led-strip" })
         XCTAssertTrue(computer.rows.contains { $0.id == "device:room-audio-mac" })
@@ -38,8 +45,7 @@ final class SystemDeviceGroupingTests: XCTestCase {
     }
     func testFailuresReachCorrectGroupAndOverall() throws {
         for (device, group) in [("led-strip", "computer"), ("room-audio-mac", "computer"),
-                                ("room-audio-pi", "security"), ("front-doorbell", "security"),
-                                ("family-room-speaker", "cast")] {
+                                ("room-audio-pi", "security"), ("front-doorbell", "security")] {
             let p = try presentation(failed: device)
             XCTAssertEqual(p.visualGroups.first { $0.id == group }?.state, .issue)
             XCTAssertEqual(p.state, .issue)
@@ -49,7 +55,7 @@ final class SystemDeviceGroupingTests: XCTestCase {
     func testMissingStaleAndOfflineNeverGreen() throws {
         XCTAssertEqual(try presentation(omit: "room-audio-mac").visualGroups.first { $0.id == "computer" }?.state, .unknown)
         for p in [try presentation(elapsed: 151), try presentation(connected: false)] {
-            for id in ["computer", "security", "cast"] {
+            for id in ["computer", "security"] {
                 XCTAssertEqual(p.visualGroups.first { $0.id == id }?.state, .unknown)
             }
         }
@@ -59,8 +65,21 @@ final class SystemDeviceGroupingTests: XCTestCase {
         let rows = p.visualGroups.flatMap(\.rows).map(\.id)
         XCTAssertTrue(rows.contains("device:webcam"))
         XCTAssertTrue(rows.contains("device:headset"))
-        for id in ["iphone-usb", "watch", "master-chief"] { XCTAssertFalse(rows.contains("device:\(id)")) }
+        for id in SystemHealthPresentation.excludedHealthDeviceIDs { XCTAssertFalse(rows.contains("device:\(id)")) }
         XCTAssertFalse(p.health.rows.contains { $0.state == .issue })
+    }
+    func testCastFailuresAndMissingCastDoNotAffectHealthyCardOrExceptions() throws {
+        for id in ["family-room-tv", "family-room-speaker"] {
+            for p in [try presentation(failed: id), try presentation(omit: id)] {
+                XCTAssertEqual(p.state, .healthy)
+                XCTAssertNil(p.visualException)
+                XCTAssertFalse(p.visualGroups.contains { $0.id == "cast" })
+                XCTAssertFalse(p.health.rows.contains { $0.id == "device:\(id)" })
+                XCTAssertFalse(p.telemetryExceptions.contains { $0.id == "cast" })
+            }
+        }
+        // Still fail for a real sensor-reader error; Cast exclusion is not global.
+        XCTAssertEqual(try presentation(failed: "sensor-reader").state, .issue)
     }
     func testLegacyHostRetainsAggregateFallback() {
         let p = SystemDashboardPresentation(snapshot: nil, requestStartedAt: nil)

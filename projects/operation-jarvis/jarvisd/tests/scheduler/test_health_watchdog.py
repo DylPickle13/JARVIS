@@ -80,9 +80,9 @@ class ProbeTests(unittest.TestCase):
         self.response.read.return_value = json.dumps(value).encode()
         self.assertIn("sensor reads", self.watchdog.probe())
         value = healthy()
-        next(row for row in value["deviceHealth"]["devices"] if row["id"] == "family-room-tv")["state"] = "unavailable"
+        next(row for row in value["deviceHealth"]["devices"] if row["id"] == "sensor-reader")["state"] = "unavailable"
         self.response.read.return_value = json.dumps(value).encode()
-        self.assertIn("TV Cast", self.watchdog.probe())
+        self.assertIn("sensor reader", self.watchdog.probe())
 
     def test_http_failures_and_redirects_are_not_followed(self):
         for status in (301, 401, 404, 500, 503):
@@ -318,7 +318,7 @@ class SchedulerHealthTests(unittest.TestCase):
         self.assertFalse(self.run_check(300, reason)["silent"])
         self.assertEqual(self.counts(), (1, 1, 2))
         # A different failure must not cause a duplicate overall incident alert.
-        self.assertTrue(self.run_check(360, "health not healthy/current: TV Cast")["silent"])
+        self.assertTrue(self.run_check(360, "health not healthy/current: sensor reader")["silent"])
         self.assertFalse(self.run_check(420, self.watchdog.evaluate(healthy(), now=NOW))["silent"])
         self.assertEqual(self.counts(), (2, 2, 4))
         self.assertTrue(self.run_check(480, None)["silent"])

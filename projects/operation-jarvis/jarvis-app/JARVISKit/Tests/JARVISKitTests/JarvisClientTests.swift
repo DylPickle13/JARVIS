@@ -24,6 +24,40 @@ final class JarvisClientTests: XCTestCase {
         super.tearDown()
     }
 
+    func testCancelledReadIsCancellationNotAnOutage() async {
+        for read in ["state", "health", "history"] {
+            var calls = 0
+            MockURLProtocol.handler = { _ in calls += 1; throw URLError(.cancelled) }
+            do {
+                switch read {
+                case "state": _ = try await client.state(endpoint)
+                case "health": _ = try await client.health(endpoint)
+                default: _ = try await client.systemHistory(endpoint, window: .hour)
+                }
+                XCTFail("Expected cancellation")
+            } catch is CancellationError {
+                // A retired GET must not publish a connection failure or retry.
+            } catch { XCTFail("Read cancellation became an outage: \(error)") }
+            XCTAssertEqual(calls, 1)
+        }
+    }
+
+    func testCancelledDeviceWriteStillReportsUncertainDeliveryWithoutRetry() async {
+        var calls = 0
+        MockURLProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.httpMethod, "POST")
+            throw URLError(.cancelled)
+        }
+        do {
+            _ = try await client.command(endpoint, action: "plug-off", params: ["plug": .string("lamp")])
+            XCTFail("Expected uncertain delivery")
+        } catch let error as JarvisError {
+            XCTAssertTrue(error.localizedDescription.contains("delivery may be unknown"))
+        } catch { XCTFail("Write uncertainty must not become a harmless cancelled read") }
+        XCTAssertEqual(calls, 1)
+    }
+
     func testHistoryUsesOneAuthenticatedBoundedReadWithoutStateRefresh() async throws {
         let object = HistoryFixture.object(window: .hour, component: "overall")
         let body = String(data: try JSONSerialization.data(withJSONObject: object), encoding: .utf8)!

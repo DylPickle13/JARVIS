@@ -111,6 +111,28 @@ final class SystemDashboardViewTests: XCTestCase {
         return model
     }
 
+    func testHealthViewsUseOnlyStateReadErrorsNotGeneralOperationErrors() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let phone = try String(contentsOf: root.appendingPathComponent("JARVIS/Views/SystemView.swift"), encoding: .utf8)
+        let watch = try String(contentsOf: root.appendingPathComponent("JARVISWatch/Views/WatchSystemHealthView.swift"), encoding: .utf8)
+        XCTAssertTrue(phone.contains("connectionError: app.stateErrorMessage,"))
+        XCTAssertFalse(phone.contains("app.stateErrorMessage ?? app.errorMessage"))
+        XCTAssertTrue(watch.contains("connectionError: model.stateErrorMessage,"))
+        XCTAssertFalse(watch.contains("connectionError: model.errorMessage,"))
+        let model = try String(contentsOf: root.appendingPathComponent("JARVISWatch/Views/WatchConnectView.swift"), encoding: .utf8)
+        XCTAssertTrue(model.contains("stateErrorMessage = errorMessage"), "Real direct/relay state failures remain represented")
+        XCTAssertTrue(model.contains("self.stateErrorMessage = nil"), "Accepted phone snapshots clear the state failure")
+    }
+
+    func testHealthCardOmitsRedundantTopHeaderButRetainsRealFailureNotice() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift"), encoding: .utf8)
+        XCTAssertFalse(source.contains("Text(\"SYSTEM / HEALTH\")"))
+        XCTAssertFalse(source.contains("Text(\"CACHED\")"))
+        XCTAssertTrue(source.contains("State request failed"), "Do not conceal real read errors to make the card green")
+        XCTAssertTrue(source.contains("not live connectivity or home security"), "Cached-evidence accessibility explanation remains")
+    }
+
     func testTelemetryFiltersHealthyMarkersButRetainsEveryException() throws {
         let healthy = try presentation(includeExtraService: false, sensorState: "healthy", deviceCoverage: true, includeMinecraft: true)
         XCTAssertEqual(healthy.state, .healthy)
@@ -263,7 +285,9 @@ final class SystemDashboardViewTests: XCTestCase {
             for offline in [false, true] {
                 let dashboard = try presentation(offline: offline, includeExtraService: false,
                     sensorState: "healthy", deviceCoverage: coverage, includeMinecraft: true)
-                XCTAssertEqual(dashboard.visualGroups.count, coverage ? 8 : 6)
+                XCTAssertEqual(dashboard.visualGroups.map(\.id), coverage
+                    ? ["services", "minecraft", "pi", "network", "computer", "security", "devices"]
+                    : ["services", "minecraft", "pi", "network", "devices", "security"])
                 XCTAssertTrue(dashboard.visualGroups.contains { $0.id == "minecraft" })
                 for (compact, viewport) in [(true, CGSize(width: 162, height: 197)),
                                            (true, CGSize(width: 184, height: 224)),
@@ -337,7 +361,8 @@ final class SystemDashboardViewTests: XCTestCase {
     func testOwnerDeviceGroupsFitPhoneAndWatch() throws {
         for offline in [false, true] {
             let dashboard = try presentation(offline: offline, includeExtraService: false, sensorState: "healthy", deviceCoverage: true)
-            XCTAssertEqual(dashboard.visualGroups.count, 7)
+            XCTAssertEqual(dashboard.visualGroups.map(\.id),
+                ["services", "pi", "network", "computer", "security", "devices"])
             for (compact, viewport) in [(true, CGSize(width: 162, height: 197)),
                                         (false, CGSize(width: 320, height: 450)),
                                         (false, CGSize(width: 750, height: 270))] {

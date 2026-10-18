@@ -18,7 +18,7 @@ struct WatchSystemHealthView: View {
                 isConnected: model.connectionState == .connected),
                 connectionLabel: model.statusText, compact: true,
                 accent: WatchJarvisStyle.accent, warning: WatchJarvisStyle.warning,
-                surface: WatchJarvisStyle.surface, connectionError: model.errorMessage,
+                surface: WatchJarvisStyle.surface, connectionError: model.stateErrorMessage,
                 historyModel: model.systemHistory,
                 onServices: { serviceScope = .services },
                 onMinecraft: { serviceScope = .minecraft },
