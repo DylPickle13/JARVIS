@@ -2,6 +2,18 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
+## Health-card typography — build 267 installed on both devices
+
+**267 installed once per device and independently version/process verified at
+00:02 EDT, October 18, 2026.** The iPhone status is smaller and semibold; both
+platforms use sentence-case semantic captions, reserving monospace for chart
+readings. Graph geometry, health/freshness behavior, cached-evidence qualifiers,
+controls and Neural Core are unchanged. Full frozen validation passed 212 native,
+374 shared (3 expected skips), 39 terminal and 2,316 artwork checks, both simulator
+builds and all signing/source/payload gates. Exact signed **266** remains rollback;
+all protected services, Pi/Minecraft identities, backend/auth and history cadence
+were preserved. Physical UI acceptance remains owner review. See [operations](docs/operations.md).
+
 ## Health error/header correction — build 266 installed on both devices
 
 **266 installed once per device and independently version/process verified at

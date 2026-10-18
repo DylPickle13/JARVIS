@@ -133,6 +133,19 @@ final class SystemDashboardViewTests: XCTestCase {
         XCTAssertTrue(source.contains("not live connectivity or home security"), "Cached-evidence accessibility explanation remains")
     }
 
+    func testHealthCardUsesStandardStatusAndCaptionTypography() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("JARVISKit/Sources/JARVISKit/SystemDashboardContent.swift"), encoding: .utf8)
+        XCTAssertTrue(source.contains("Text(status).font(compact ? .headline : .title.weight(.semibold))"))
+        XCTAssertTrue(source.contains("Text(telemetry.title + (compact ? \" · Cached\" : \"\"))"),
+                      "Use sentence case while retaining the Watch's cached-evidence qualifier")
+        XCTAssertTrue(source.contains(".font(compact ? .caption2 : .caption)"),
+                      "Semantic caption sizes should follow Dynamic Type on both platforms")
+        XCTAssertFalse(source.contains(".largeTitle.weight(.light)"))
+        XCTAssertFalse(source.contains(".uppercased()"))
+        XCTAssertFalse(source.contains(".monospaced"), "Reserve monospaced text for chart readings, not card headings")
+    }
+
     func testTelemetryFiltersHealthyMarkersButRetainsEveryException() throws {
         let healthy = try presentation(includeExtraService: false, sensorState: "healthy", deviceCoverage: true, includeMinecraft: true)
         XCTAssertEqual(healthy.state, .healthy)

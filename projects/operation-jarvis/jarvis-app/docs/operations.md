@@ -1,5 +1,49 @@
 # Native app build and operations
 
+## Health-card typography — build 267 installed on both devices
+
+Owner requested implementation and then **“please deploy now”** for the health-card
+typography follow-up. The iPhone status uses `.title.weight(.semibold)` instead of
+`.largeTitle.weight(.light)`; the Watch retains `.headline`. The chart heading uses
+sentence case and semantic `.caption`/`.caption2` with medium weight, retaining the
+Watch's cached-evidence qualifier. Numerical chart labels are unchanged. No graph
+geometry, health logic, freshness, polling, history, controls or Neural Core changes.
+
+Isolated frozen-source validation passed **20 dashboard tests, 374 shared cases
+(3 expected skips), both simulator builds**, and healthy/issue phone/compact renders
+in light/dark modes, including existing accessibility-size layout checks. Evidence:
+`design-implementation/20261018T034859Z-health-typography/completion.json`.
+Its disposable simulator and generated caches were removed; source, logs, xcresult
+and rendered evidence remain. No physical device or service action occurred.
+
+Sealed **267** freezes 274 inputs with six scoped source/test/documentation/version
+changes over installed 266; both typography files byte-match the isolated candidate.
+Full release validation passed **212 native tests, 374 shared cases (3 expected
+skips), 39 terminal tests, 2,316 Neural Core render assertions, both simulator builds
+and the signed archive**. All eight candidate/rollback signatures, byte-identical
+profiles, unchanged entitlements/dependency lock, and source/payload seals passed.
+The inherited baseline Clipboard pixel-test exclusion is unchanged; no new exclusion.
+
+Fresh owner deployment approval and both-device/immediate identity, pairing, DDI,
+unlock, installed-266 and pinned-transport checks passed. **267 installed once and
+launched once on each device**, with independent version/process verification and
+final version readbacks at **00:02 EDT, October 18, 2026**. All 18 protected service
+records (17 continuous), existing Pi/Minecraft identities, backend/source/registry/
+authentication, scheduler health policy and ten-second history cadence were preserved.
+No reset, transport switch, uncertain-write retry or service restart occurred.
+Exact signed **266** is retained for both-device rollback. The owner subsequently
+confirmed the app was back and approved publication and stale-artifact cleanup;
+this does not replace exhaustive physical UI testing. Never replay the completed installer.
+
+Private artifact and successful receipt:
+`20261018T035314Z-build267-health-typography/deployment/result.json`.
+The frozen candidate source is immutable; this post-deployment documentation update
+does not change the validated/signed runtime inputs. After verification, only this
+run's generated build caches and disposable validation simulator were removed;
+source, logs, xcresult, artwork and deployment evidence remain. Signed 267/266
+payload/source seals and all eight signatures were independently rechecked afterward.
+Cleanup receipt: the same artifact's `temporary-cleanup.json`.
+
 ## State-error scoping and card-header removal — build 266 installed on both devices
 
 The owner reported **Issue / State request failed** after build 265 and requested

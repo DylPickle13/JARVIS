@@ -118,15 +118,16 @@ public struct SystemDashboardContent: View {
     private var visualCard: some View {
         VStack(alignment: .leading, spacing: compact ? 5 : 12) {
             HStack(alignment: .center, spacing: 6) {
-                Text(status).font(compact ? .headline : .largeTitle.weight(.light))
+                Text(status).font(compact ? .headline : .title.weight(.semibold))
                     .foregroundStyle(current == .issue ? tint : .primary)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("\(status). Current cached checks, not live connectivity or home security. \(connectionLabel). \(connectionError ?? "")")
                 Spacer(minLength: 0)
             }
             if !compact { Divider().overlay(tint.opacity(0.1)) }
-            Text(telemetry.title.uppercased() + (compact ? " · CACHED" : ""))
-                .font(compact ? .system(size: 8, design: .monospaced) : .caption2.monospaced())
+            Text(telemetry.title + (compact ? " · Cached" : ""))
+                .font(compact ? .caption2 : .caption)
+                .fontWeight(.medium)
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             SystemTelemetryChart(window: telemetry, compact: compact,
                                  active: active && scenePhase == .active && !dimmed,
