@@ -37,6 +37,11 @@ It preserves all claims and all other event progress. Original state is backed u
 `migrate_departure_v2.py` is explicit offline maintenance, never an automatic retry.
 All catalogue consumers must be paused during migration and pin replacement.
 
+Deployment verified: 37 offline bank/integration/migration tests passed; both room
+listeners returned online with the new manifest, Session 10 remained intact, and
+the farewell watcher returned to observing without a pending attempt or fault.
+All 83 existing claims were preserved. No household audio was played for testing.
+
 ## Assets and selection
 
 - `render_phrase_banks.py` uses the existing voice configuration and locally cached

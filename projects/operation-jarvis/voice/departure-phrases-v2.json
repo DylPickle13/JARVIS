@@ -1,7 +1,7 @@
 {
   "version": 1,
   "event": "departure",
-  "status": "approved-for-render-and-deployment-with-4.5-second-limit",
+  "status": "deployed-verified-with-3.367-second-bundle-limit-and-4.5-second-hard-cap",
   "style": "dry",
   "phrases": [
     "Off you go, sir. Try not to become a documentary.",
