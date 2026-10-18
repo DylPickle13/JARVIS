@@ -159,6 +159,16 @@ class HttpRequestError(QuotaError):
         self.retry_after = retry_after
 
 
+class ClaudeRequestError(QuotaError):
+    """Only locally defined classifications cross the quota/daemon boundary."""
+
+    def __init__(self, stage: str, code: str, status: Optional[int] = None):
+        super().__init__(f"Claude {stage} failed ({code}).")
+        self.diagnostic = {"stage": stage, "code": code}
+        if type(status) is int and 400 <= status <= 599:
+            self.diagnostic["http_status"] = status
+
+
 class ClaudeRateLimitError(QuotaError):
     """Sanitized usage-only rate limit; never carries provider bodies/headers."""
 
@@ -478,23 +488,41 @@ class AuthStore:
 
 
 def refresh_anthropic(refresh_token: str) -> Dict[str, Any]:
-    # Match Pi's installed Anthropic OAuth extension. No inference or billing writes.
+    # Called under the existing heartbeat/ownership-checked Pi auth lock.
+    # Do not import Pi's mutable module/retry policy or pass secrets via argv/env.
+    node = shutil.which("node")
+    if not node:
+        raise ClaudeRequestError("refresh", "runtime_unavailable")
     try:
-        payload, _ = request_json("POST", ANTHROPIC_TOKEN_URL,
-            headers=ANTHROPIC_HEADERS, timeout=15,
-            body={"grant_type": "refresh_token", "client_id": ANTHROPIC_CLIENT_ID,
-                  "refresh_token": refresh_token})
-        access = payload.get("access_token")
-        rotated = payload.get("refresh_token") or refresh_token
-        expires = payload.get("expires_in")
-        if (not isinstance(access, str) or not access or not isinstance(rotated, str)
-                or type(expires) not in (int, float) or not math.isfinite(expires) or expires <= 0):
-            raise ValueError("Invalid token response")
-        return {"access": access, "refresh": rotated,
-                "expires": int(time.time() * 1000 + expires * 1000 - 5 * 60_000)}
+        proc = subprocess.run(
+            [node, str(PROJECT_DIR / "anthropic-refresh.mjs")],
+            input=json.dumps({"refresh": refresh_token}), capture_output=True,
+            text=True, timeout=18,
+        )
+        if proc.returncode not in (0, 2) or len(proc.stdout) > 131072:
+            raise ClaudeRequestError("refresh", "helper_failed")
+        payload = json.loads(proc.stdout)
+        if not isinstance(payload, dict):
+            raise ValueError("invalid helper response")
+        if payload.get("ok") is not True:
+            code = payload.get("code")
+            if code not in {"http_error", "timeout", "transport_error", "invalid_response", "invalid_input"}:
+                code = "helper_failed"
+            raise ClaudeRequestError("refresh", code, payload.get("status"))
+        access, rotated, expires = (payload.get(key) for key in ("access", "refresh", "expires"))
+        if (proc.returncode != 0 or not isinstance(access, str) or not access
+                or not isinstance(rotated, str) or not rotated
+                or type(expires) not in (int, float) or not math.isfinite(expires)
+                or expires <= time.time() * 1000):
+            raise ValueError("invalid token response")
+        return {"access": access, "refresh": rotated, "expires": int(expires)}
+    except ClaudeRequestError:
+        raise
+    except subprocess.TimeoutExpired:
+        # Unknown remote outcome: no automatic retry or credential write.
+        raise ClaudeRequestError("refresh", "timeout") from None
     except Exception:
-        # Never persist or forward raw OAuth responses (which may contain secrets).
-        raise QuotaError("Claude token refresh failed; retry later or re-login with Pi.") from None
+        raise ClaudeRequestError("refresh", "helper_failed") from None
 
 
 def normalize_claude_window(raw: Any) -> Optional[Dict[str, Any]]:
@@ -527,9 +555,9 @@ def fetch_claude_usage(auth: AuthStore, refresh: bool = True) -> Dict[str, Any]:
     except HttpRequestError as exc:
         if exc.status == 429:
             raise ClaudeRateLimitError(exc.retry_after) from None
-        raise QuotaError("Claude usage unavailable; check subscription login or retry later.") from None
+        raise ClaudeRequestError("usage", "http_error", exc.status) from None
     except Exception:
-        raise QuotaError("Claude usage unavailable; check subscription login or retry later.") from None
+        raise ClaudeRequestError("usage", "request_failed") from None
     if weekly is None and five_hour is None:
         raise QuotaError("Claude usage response has no valid weekly or five-hour window.")
     # Explicit whitelist: no account data, per-model windows, extra usage or raw errors.
@@ -1425,6 +1453,9 @@ def build_claude_report(args: argparse.Namespace) -> Dict[str, Any]:
         usage = fetch_claude_usage(AuthStore(Path(args.auth_path)), not args.no_refresh)
         return {"provider": "anthropic", "ok": True, "checked_at": iso_now(),
                 "usage": usage, "usage_error": None}
+    except ClaudeRequestError as exc:
+        return {"provider": "anthropic", "ok": False, "checked_at": iso_now(),
+                "usage": None, "usage_error": str(exc), "diagnostic": exc.diagnostic}
     except ClaudeRateLimitError as exc:
         return {"provider": "anthropic", "ok": False, "checked_at": iso_now(),
                 "usage": None, "usage_error": str(exc), "rate_limited": True,

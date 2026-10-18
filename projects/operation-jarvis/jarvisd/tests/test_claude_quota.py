@@ -27,6 +27,19 @@ class ClaudeQuotaTests(unittest.TestCase):
         self.assertNotIn('planType', result)
         self.assertEqual(result['checkedAt'], '2026-10-17T20:00:00Z')
 
+    def test_sanitized_failure_stage_survives_projection(self):
+        payload = {'ok': False, 'usage_error': 'secret', 'diagnostic': {
+            'stage': 'refresh', 'code': 'http_error', 'http_status': 403, 'body': 'secret'}}
+        result = jarvisd._public_claude_quota(payload)
+        self.assertEqual(result['diagnostic'], {'stage': 'refresh', 'code': 'http_error', 'http_status': 403})
+        self.assertNotIn('secret', json.dumps(result))
+        for field in ('stage', 'code'):
+            bad = {**payload, 'diagnostic': {**payload['diagnostic'], field: 'secret'}}
+            self.assertNotIn('diagnostic', jarvisd._public_claude_quota(bad))
+        for status in (True, 399, 600, 'secret'):
+            bad = {**payload, 'diagnostic': {**payload['diagnostic'], 'http_status': status}}
+            self.assertNotIn('http_status', jarvisd._public_claude_quota(bad)['diagnostic'])
+
     def test_invalid_and_partial_payloads(self):
         for value in (None, [], {}, {'ok': False}, {'ok': True, 'usage': {}},
                       {'ok': True, 'usage': {'weekly': {'remaining_percent': float('nan')}}}):

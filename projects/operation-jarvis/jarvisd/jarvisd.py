@@ -1518,7 +1518,19 @@ def _public_claude_quota(payload: Any) -> dict:
                 "rateLimited": True,
                 "retryAfterSeconds": retry if type(retry) is int and 0 <= retry <= 86400 else None}
     if not isinstance(payload, dict) or payload.get("ok") is not True:
-        return _claude_quota_unavailable()
+        result = _claude_quota_unavailable()
+        diagnostic = payload.get("diagnostic") if isinstance(payload, dict) else None
+        if isinstance(diagnostic, dict):
+            stage, code = diagnostic.get("stage"), diagnostic.get("code")
+            if (stage in ("refresh", "usage") and code in (
+                    "http_error", "timeout", "transport_error", "invalid_response",
+                    "invalid_input", "helper_failed", "runtime_unavailable", "request_failed")):
+                result["diagnostic"] = {"stage": stage, "code": code}
+                status = diagnostic.get("http_status")
+                if type(status) is int and 400 <= status <= 599:
+                    result["diagnostic"]["http_status"] = status
+                result["error"] = f"Claude {stage} failed ({code})"
+        return result
     usage = payload.get("usage")
     if not isinstance(usage, dict):
         return _claude_quota_unavailable()

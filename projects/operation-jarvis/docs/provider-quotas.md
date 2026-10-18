@@ -24,6 +24,40 @@ still owner review.
 Building/testing source does **not** deploy it or authorize service restarts.
 Earlier deployment-history entries describe earlier releases.
 
+## Claude OAuth refresh repair — deployed 2026-10-18 EDT
+
+Release `20261018T214000Z-claude-node-refresh` was installed and verified at
+**17:43 EDT**. The Python refresh transport reproduced HTTP 403 / Cloudflare
+1010 (`browser_signature_banned`); Pi's normal Node request reached OAuth.
+The original incident response was not retained, so the historical cause remains
+strongly supported rather than proven.
+
+`quotas/anthropic-refresh.mjs` now uses Pi's Node fetch request shape, without
+importing Pi's mutable extension or its retry policy. One request, no redirects,
+15-second network timeout and 18-second parent deadline; no fallback/retry within
+an attempt. Tokens travel through private subprocess pipes, never command-line
+arguments. Node must be available on the service PATH (verified on this host).
+The existing Python heartbeat lock, locked reread, ownership check and atomic
+credential save remain unchanged. The helper validates token responses and
+retains the original refresh token when the provider omits a replacement.
+Only allowlisted failure stage/code/HTTP status reaches the daemon; provider
+bodies and arbitrary errors are discarded. Usage-429 backoff is unchanged.
+
+The installed-baseline candidate passed **881 backend, 13 quota/auth, 4 Node
+helper and 84 SDK safety tests**. The larger checkout passed 1,013 backend tests.
+An initial preflight stopped without service changes because the copied baseline
+guard named an older release; the exact baseline assertion was corrected before
+a separately recorded deployment attempt. Backend liveness returned in **0.330 s**;
+Codex and Claude were fresh, all 27 device identities were preserved, and no
+unrelated service/Pi/Minecraft identity changed. History, configuration and the
+shared auth file remained unchanged. No forced live OAuth renewal was performed:
+successful real-token renewal remains to be observed at its normal deadline.
+
+The preceding `20261018T003031Z-claude-shared-cooldown-r2` source and daemon/watchdog
+plists are retained. A separately authorized rollback must use the same quiet-state,
+configuration/history preservation and authenticated readiness checks; do not
+replay either one-use deployment helper. No app or household-device writes occurred.
+
 ## Data flow and contracts
 
 ```text
@@ -46,7 +80,8 @@ has a heartbeat shorter than Pi's stale-lock threshold. Claude rechecks lock
 ownership before atomically saving refreshed credentials, preserves unrelated
 providers, and sanitizes OAuth/provider errors. `--no-refresh` performs no
 credential write. Provider requests have 15-second timeouts; Claude's lock wait
-is bounded to 10 seconds, within the default 45-second daemon subprocess deadline.
+is bounded to 10 seconds, and the Node refresh subprocess to 18 seconds, within
+the default 45-second daemon subprocess deadline.
 
 The daemon invokes fixed local commands, not the saved `latest.json` report.
 `claudeQuota` and `codexQuota` are independently non-critical and cached at:

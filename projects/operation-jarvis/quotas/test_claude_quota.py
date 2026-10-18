@@ -74,12 +74,11 @@ class ClaudeQuotaTests(unittest.TestCase):
     def test_refresh_rotates_under_pi_lock_preserving_other_credentials(self):
         self.creds['expires'] = 1
         self.path.write_text(json.dumps({'anthropic': self.creds, 'other': {'untouched': True}}))
-        def refresh(method, url, **kwargs):
+        def refresh(token):
             self.assertTrue(Path(str(self.path) + '.lock').is_dir())
-            self.assertEqual((method, url), ('POST', quotas.ANTHROPIC_TOKEN_URL))
-            self.assertEqual(kwargs['body']['refresh_token'], 'fake-refresh')
-            return {'access_token': 'new', 'refresh_token': 'rotated', 'expires_in': 3600}, {}
-        with mock.patch.object(quotas, 'request_json', side_effect=refresh) as request:
+            self.assertEqual(token, 'fake-refresh')
+            return {'access': 'new', 'refresh': 'rotated', 'expires': time.time() * 1000 + 3600_000}
+        with mock.patch.object(quotas, 'refresh_anthropic', side_effect=refresh) as request:
             first = self.auth.ensure_anthropic()
             second = self.auth.ensure_anthropic()
         self.assertEqual(request.call_count, 1)
@@ -95,7 +94,7 @@ class ClaudeQuotaTests(unittest.TestCase):
         self.creds['expires'] = 1
         self.path.write_text(json.dumps({'anthropic': self.creds}))
         before = self.path.read_bytes()
-        with mock.patch.object(quotas, 'request_json', side_effect=RuntimeError('fake-access secret')):
+        with mock.patch.object(quotas, 'refresh_anthropic', side_effect=RuntimeError('fake-access secret')):
             report = quotas.build_claude_report(argparse.Namespace(auth_path=str(self.path), no_refresh=False))
         self.assertFalse(report['ok'])
         self.assertNotIn('fake-access', json.dumps(report))
@@ -121,9 +120,50 @@ class ClaudeQuotaTests(unittest.TestCase):
                 check()
         self.assertTrue(lock.exists())
 
-    def test_refresh_without_rotated_token_keeps_previous(self):
-        with mock.patch.object(quotas, 'request_json', return_value=({'access_token': 'new', 'expires_in': 3600}, {})):
-            self.assertEqual(quotas.refresh_anthropic('old')['refresh'], 'old')
+    def test_node_refresh_private_pipe_and_response_validation(self):
+        payload = {'ok': True, 'access': 'new', 'refresh': 'rotated',
+                   'expires': int(time.time() * 1000 + 3600_000)}
+        proc = mock.Mock(returncode=0, stdout=json.dumps(payload), stderr='secret')
+        with mock.patch.object(quotas.shutil, 'which', return_value='/trusted/node'), \
+             mock.patch.object(quotas.subprocess, 'run', return_value=proc) as run:
+            self.assertEqual(quotas.refresh_anthropic('fake-refresh')['refresh'], 'rotated')
+            self.assertNotIn('fake-refresh', str(run.call_args.args))
+            self.assertEqual(json.loads(run.call_args.kwargs['input']), {'refresh': 'fake-refresh'})
+            self.assertEqual(run.call_count, 1)
+            for malformed in ({**payload, 'expires': True}, {**payload, 'access': ''},
+                              {**payload, 'expires': 1}, []):
+                proc.stdout = json.dumps(malformed)
+                with self.assertRaises(quotas.ClaudeRequestError):
+                    quotas.refresh_anthropic('fake-refresh')
+
+    def test_refresh_failures_preserve_credentials_and_stage(self):
+        self.creds['expires'] = 1
+        self.path.write_text(json.dumps({'anthropic': self.creds}))
+        before = self.path.read_bytes()
+        cases = [(2, json.dumps({'ok': False, 'code': 'http_error', 'status': 403}), 'http_error'),
+                 (2, json.dumps({'ok': False, 'code': 'secret'}), 'helper_failed'),
+                 (1, 'secret', 'helper_failed'), (0, 'not JSON secret', 'helper_failed')]
+        for returncode, stdout, code in cases:
+            proc = mock.Mock(returncode=returncode, stdout=stdout, stderr='secret')
+            with mock.patch.object(quotas.shutil, 'which', return_value='/trusted/node'), \
+                 mock.patch.object(quotas.subprocess, 'run', return_value=proc) as run:
+                report = quotas.build_claude_report(argparse.Namespace(auth_path=str(self.path), no_refresh=False))
+            self.assertEqual(report['diagnostic']['stage'], 'refresh')
+            self.assertEqual(report['diagnostic']['code'], code)
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(self.path.read_bytes(), before)
+            self.assertNotIn('secret', json.dumps(report))
+        for failure in (quotas.subprocess.TimeoutExpired('secret', 18), OSError('secret')):
+            with mock.patch.object(quotas.shutil, 'which', return_value='/trusted/node'), \
+                 mock.patch.object(quotas.subprocess, 'run', side_effect=failure) as run:
+                with self.assertRaises(quotas.ClaudeRequestError) as caught:
+                    quotas.refresh_anthropic('fake-refresh')
+            self.assertNotIn('secret', str(caught.exception))
+            self.assertEqual(run.call_count, 1)
+        with mock.patch.object(quotas.shutil, 'which', return_value=None):
+            with self.assertRaises(quotas.ClaudeRequestError) as caught:
+                quotas.refresh_anthropic('fake-refresh')
+        self.assertEqual(caught.exception.diagnostic['code'], 'runtime_unavailable')
 
     def test_usage_errors_are_generic(self):
         with mock.patch.object(quotas, 'request_json', side_effect=RuntimeError('fake-access secret')):
