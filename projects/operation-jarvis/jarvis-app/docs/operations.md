@@ -83,6 +83,31 @@ exact read-only connection evidence in `watch-initial-identity.json`. Zero insta
 and launches across those first two attempts; installed 265 was still the verified
 baseline before the successful fresh attempt above.
 
+## Owner-approved stale artifact cleanup — 2026-10-17 EDT
+
+After owner acceptance and verified publication of the health fixes (`2c0c467`),
+a one-shot exact-target cleanup removed **11 roots**: obsolete signed archives
+263/264, generated archive/simulator/shared-build caches for 265/266, the retained
+failed-265 candidate's simulator cache, and the isolated state-error/header
+validation caches. **9.58 GiB net allocated artifacts** were removed; observed
+volume free space increased **8.27 GiB**. The difference is filesystem accounting,
+not a promise of identical APFS physical-space recovery.
+
+Current signed **266** and exact signed **265 rollback for both devices** remain,
+with eight bundle signatures and source/payload seals verified after cleanup.
+All frozen source, 9,846 retained evidence files, xcresults, render evidence,
+deployment/failure receipts and signing metadata were hash-verified. Superseded
+archives have explicit `primary-archive-pruned.json` markers. Historical rollback
+references to 263/264 below describe their deployments, not current retention.
+Unrelated backups, backend releases, credentials, runtime state and simulators
+were not removed. All 18 protected service records, existing Pi/Minecraft
+identities and history cadence remained intact; no device action or restart.
+
+Private receipt:
+`20261018T031900Z-build266-state-health-header/owner-stale-cleanup-20261018T033800Z/cleanup.json`.
+Do not replay this completed cleanup. Any future pruning needs a fresh exact plan
+and preservation checks against the then-current installed/rollback releases.
+
 ## Cast health exclusion — build 265 installed on iPhone and Watch
 
 Owner policy on 2026-10-17 removes Cast playback as a health requirement without
