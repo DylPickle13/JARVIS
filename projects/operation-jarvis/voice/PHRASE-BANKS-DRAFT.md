@@ -1,16 +1,16 @@
 # JARVIS announcement phrase banks — compact review draft
 
-**Owner-approved wording and recording durations.** These 84 lines are mirrored in `phrase_catalogue.json`, with opt-in integration and offline recordings implemented. The owner approved keeping all recordings, including the initially flagged lengths, and proceeding with staged deployment. No review audio was played. See [PHRASE-BANKS.md](PHRASE-BANKS.md) for validation and deployment safeguards.
+**Owner-approved wording and recording durations.** These 72 lines are mirrored in `phrase_catalogue.json`, with opt-in integration and offline recordings implemented. The owner approved keeping all recordings, including the initially flagged lengths, and proceeding with staged deployment. No review audio was played. See [PHRASE-BANKS.md](PHRASE-BANKS.md) for validation and deployment safeguards.
 
 ## Selection and review rules
 
-- **84** lines: 24 wake, 24 processing, 12 arrival, and 24 departure. Arrival v2 is entirely dry humour; the other banks retain their **50% straight / 50% dry-humour** split: 36 straight and 48 dry overall.
+- **72** lines: 24 wake, 24 processing, 12 arrival, and 12 departure. Arrival and departure v2 are entirely dry humour; wake and processing retain their **50% straight / 50% dry-humour** split: 24 straight and 48 dry overall.
 - Kept the strongest straight lines rather than adjective swaps and repeated response/reply templates. Added distinct, understated humour instead of merely making the same sentences more formal.
 - Humour is intentional persona/metaphor, not a factual status report. No line reports a completed action, a ready response, an actual tool consultation, household security, or a fault. Keep delivery deadpan rather than adding laughs, sound effects, or comic pauses.
 - Wake lines invite a request without claiming it has already been understood. Processing lines also work for steering; they do not depend on an existing answer or promise a successful result.
 - Arrival remains a room/computer-presence return, not confirmed arrival home. No absence-length remarks, time-of-day remarks, or questions requiring a response.
 - Farewells are general good wishes and playful parting advice. No vehicle, destination, weather, security, or monitoring claims.
-- Arrival v2 uses longer owner-approved lines with a **3.379-second** raw audio ceiling. Other recordings retain their original approved durations below 2.8 seconds. Playback speed and padding are unchanged; see the implementation report for exact ranges.
+- Arrival v2 uses longer owner-approved lines with a **3.379-second** raw audio ceiling. Departure v2 spans 2.171–3.367 seconds under the approved 4.5-second hard cap. Wake and processing retain their original approved durations below 2.8 seconds. Playback speed and padding are unchanged; see the implementation report for exact ranges.
 - Startup, reconnect, quick-return, and time-of-day announcements remain removed. The two failure messages stay exact and outside all banks.
 - The protected legacy departure phrase/WAV/hash validation stays unchanged by default. The implemented opt-in bank requires its own reviewed recordings and pinned metadata; it does not bypass attempt, identity, timing or playback validation.
 - This is the prewritten wording source, not live model generation. The implemented opt-in path selects approved pre-rendered recordings without live generation or synthesis.
@@ -100,41 +100,19 @@ Room/computer return, not a claim that the owner has just entered the house.
 11. Welcome back, sir. Let's call this research.
 12. Systems ready. Sensible decisions sold separately.
 
-## 4. Departure farewells — 24
+## 4. Departure farewells — 12
 
-General good wishes and playful parting advice; no transport or security assertions.
+### Dry humour — 12 (owner-approved replacement)
 
-### Straight — 12
-
-1. Have a good day, sir
-2. All the best, sir.
-3. Until next time, sir.
-4. See you later, sir.
-5. Take care, sir.
-6. Stay safe, sir.
-7. Take it easy, sir.
-8. Good luck out there, sir.
-9. Safe travels, sir.
-10. Enjoy yourself, sir.
-11. Hope it goes well, sir.
-12. Make the most of it, sir.
-
-### Dry humour — 12
-
-1. Do behave, sir.
-2. No unnecessary heroics, sir.
-3. Stay out of trouble, sir.
-4. Leave civilisation mostly intact, sir.
-5. Return with your dignity, sir.
-6. Mind the laws of physics, sir.
-7. Enjoy the unscripted portion, sir.
-8. Keep the headlines boring, sir.
-9. Have a pleasantly unremarkable adventure, sir.
-10. Try not to become folklore, sir.
-11. Keep the theatrics optional, sir.
-12. Make good choices. Occasionally, sir.
-
-## Fixed errors — not variation banks
-
-- Request failure: I couldn't complete that request, sir.
-- Speech failure after a completed reply: Your response is ready, sir, but I couldn't speak it.
+1. Off you go, sir. Try not to become a documentary.
+2. Do behave, sir. Or at least avoid witnesses.
+3. The outside world has not been briefed. Good luck.
+4. Safe travels, sir. Your tabs will remain unsupervised.
+5. Try not to acquire another expensive hobby, sir.
+6. Goodbye, sir. I shall supervise absolutely nothing.
+7. Remember, sir. Confidence is not a navigation system.
+8. The adventure begins. Receipts may be required.
+9. Off to test society’s patience, sir?
+10. Keep the headlines boring and the legal fees low.
+11. Enjoy yourself, sir. Within warranty conditions.
+12. Farewell, sir. Your chair has assumed command.

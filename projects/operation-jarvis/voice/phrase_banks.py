@@ -22,7 +22,7 @@ import wave
 
 ROOT = Path.home() / 'Library/Application Support/JARVIS/phrase-banks'
 CATALOGUE = Path(__file__).with_name('phrase_catalogue.json')
-COUNTS = {'wake': 24, 'processing': 24, 'arrival': 12, 'departure': 24}
+COUNTS = {'wake': 24, 'processing': 24, 'arrival': 12, 'departure': 12}
 SETTINGS = ('tts_backend', 'tts_speed', 'tts_piper_repo_id', 'tts_piper_quality',
             'tts_piper_length_scale', 'tts_piper_volume', 'tts_piper_noise_scale',
             'tts_piper_noise_w_scale')
@@ -47,14 +47,14 @@ def voice_settings(config):
 def catalogue():
     value = json.loads(CATALOGUE.read_bytes())
     rows = value['phrases']
-    if value['version'] != 1 or len({row['id'] for row in rows}) != 84:
+    if value['version'] != 1 or len({row['id'] for row in rows}) != sum(COUNTS.values()):
         raise BankError('invalid_catalogue')
     for event, count in COUNTS.items():
         bank = [row for row in rows if row['event'] == event]
         if (len(bank) != count or len({row['text'] for row in bank}) != count
                 or any(sum(row['style'] == style for row in bank) != expected
-                       for style, expected in (('straight', 0 if event == 'arrival' else count // 2),
-                                               ('dry', count if event == 'arrival' else count // 2)))):
+                       for style, expected in (('straight', 0 if event in ('arrival', 'departure') else count // 2),
+                                               ('dry', count if event in ('arrival', 'departure') else count // 2)))):
             raise BankError('invalid_bank_balance')
     return rows
 

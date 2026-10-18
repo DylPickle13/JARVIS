@@ -2,11 +2,11 @@
 
 Implementation is **opt-in**. The owner approved all 84 texts and the measured
 recording lengths, including the 38 initially flagged clips, for staged deployment.
-The 84 texts in
+The current 72 texts in
 `phrase_catalogue.json` match the owner-approved `PHRASE-BANKS-DRAFT.md`:
-24 wake, 24 processing (including steering), 12 arrival, 24 departure.
-Arrival cycles are entirely dry humour; other events remain half straight and
-half dry humour. Arrival v2 retains stable IDs (including historical `straight`
+24 wake, 24 processing (including steering), 12 arrival, 12 departure.
+Arrival and departure cycles are entirely dry humour; other events remain half
+straight and half dry humour. Arrival v2 retains stable IDs (including historical `straight`
 IDs) to preserve shuffle progress. This is not
 live model-generated wording. Fixed errors and ordinary responses are excluded.
 
@@ -20,6 +20,22 @@ transactionally migrate existing bag catalogue hashes after validating both
 catalogues have identical event/ID membership. Never reset selection history.
 The shared farewell pin also moves to the new bundle without changing its audio.
 Legacy non-bank arrival text remains the original rollback greeting.
+
+## Departure v2 approval
+
+The owner approved twelve humorous farewells replacing the previous 24, within
+its unchanged **4.5-second hard raw-audio cap**. The rendered clips span
+**2.171–3.367 seconds**; the reviewed bundle ceiling is **3.367 seconds**.
+Other 60 recordings, settings, volume, padding, admission gates, identity checks,
+attempt journals, expiry and unknown-outcome latches are unchanged. No test audio.
+The original legacy farewell WAV remains untouched.
+
+The reviewed migration retires `departure-dry-01` through `departure-dry-12`,
+filters only those IDs from the remaining bag, and maps a retired last ID to its
+retained `departure-straight` ordinal for conservative boundary-repeat suppression.
+It preserves all claims and all other event progress. Original state is backed up.
+`migrate_departure_v2.py` is explicit offline maintenance, never an automatic retry.
+All catalogue consumers must be paused during migration and pin replacement.
 
 ## Assets and selection
 
@@ -155,7 +171,7 @@ room switches, matching text/audio, disposable copies, steering cancellation,
 arrival deduplication and protected farewell proof/deadline/unknown outcomes.
 All inference, sessions and household playback in integration tests are mocked.
 
-## Implementation validation result
+## Original 84-clip implementation validation result (historical)
 
 - **331 offline tests passed:** 56 voice, 163 room-audio, 112 departure (39 new
   regressions above the prior 292). `git diff --check` passed.

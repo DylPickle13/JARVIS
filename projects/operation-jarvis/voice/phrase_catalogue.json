@@ -364,146 +364,74 @@
     {
       "id": "departure-straight-01",
       "event": "departure",
-      "style": "straight",
-      "text": "Have a good day, sir"
+      "style": "dry",
+      "text": "Off you go, sir. Try not to become a documentary."
     },
     {
       "id": "departure-straight-02",
       "event": "departure",
-      "style": "straight",
-      "text": "All the best, sir."
+      "style": "dry",
+      "text": "Do behave, sir. Or at least avoid witnesses."
     },
     {
       "id": "departure-straight-03",
       "event": "departure",
-      "style": "straight",
-      "text": "Until next time, sir."
+      "style": "dry",
+      "text": "The outside world has not been briefed. Good luck."
     },
     {
       "id": "departure-straight-04",
       "event": "departure",
-      "style": "straight",
-      "text": "See you later, sir."
+      "style": "dry",
+      "text": "Safe travels, sir. Your tabs will remain unsupervised."
     },
     {
       "id": "departure-straight-05",
       "event": "departure",
-      "style": "straight",
-      "text": "Take care, sir."
+      "style": "dry",
+      "text": "Try not to acquire another expensive hobby, sir."
     },
     {
       "id": "departure-straight-06",
       "event": "departure",
-      "style": "straight",
-      "text": "Stay safe, sir."
+      "style": "dry",
+      "text": "Goodbye, sir. I shall supervise absolutely nothing."
     },
     {
       "id": "departure-straight-07",
       "event": "departure",
-      "style": "straight",
-      "text": "Take it easy, sir."
+      "style": "dry",
+      "text": "Remember, sir. Confidence is not a navigation system."
     },
     {
       "id": "departure-straight-08",
       "event": "departure",
-      "style": "straight",
-      "text": "Good luck out there, sir."
+      "style": "dry",
+      "text": "The adventure begins. Receipts may be required."
     },
     {
       "id": "departure-straight-09",
       "event": "departure",
-      "style": "straight",
-      "text": "Safe travels, sir."
+      "style": "dry",
+      "text": "Off to test society\u2019s patience, sir?"
     },
     {
       "id": "departure-straight-10",
       "event": "departure",
-      "style": "straight",
-      "text": "Enjoy yourself, sir."
+      "style": "dry",
+      "text": "Keep the headlines boring and the legal fees low."
     },
     {
       "id": "departure-straight-11",
       "event": "departure",
-      "style": "straight",
-      "text": "Hope it goes well, sir."
+      "style": "dry",
+      "text": "Enjoy yourself, sir. Within warranty conditions."
     },
     {
       "id": "departure-straight-12",
       "event": "departure",
-      "style": "straight",
-      "text": "Make the most of it, sir."
-    },
-    {
-      "id": "departure-dry-01",
-      "event": "departure",
       "style": "dry",
-      "text": "Do behave, sir."
-    },
-    {
-      "id": "departure-dry-02",
-      "event": "departure",
-      "style": "dry",
-      "text": "No unnecessary heroics, sir."
-    },
-    {
-      "id": "departure-dry-03",
-      "event": "departure",
-      "style": "dry",
-      "text": "Stay out of trouble, sir."
-    },
-    {
-      "id": "departure-dry-04",
-      "event": "departure",
-      "style": "dry",
-      "text": "Leave civilisation mostly intact, sir."
-    },
-    {
-      "id": "departure-dry-05",
-      "event": "departure",
-      "style": "dry",
-      "text": "Return with your dignity, sir."
-    },
-    {
-      "id": "departure-dry-06",
-      "event": "departure",
-      "style": "dry",
-      "text": "Mind the laws of physics, sir."
-    },
-    {
-      "id": "departure-dry-07",
-      "event": "departure",
-      "style": "dry",
-      "text": "Enjoy the unscripted portion, sir."
-    },
-    {
-      "id": "departure-dry-08",
-      "event": "departure",
-      "style": "dry",
-      "text": "Keep the headlines boring, sir."
-    },
-    {
-      "id": "departure-dry-09",
-      "event": "departure",
-      "style": "dry",
-      "text": "Have a pleasantly unremarkable adventure, sir."
-    },
-    {
-      "id": "departure-dry-10",
-      "event": "departure",
-      "style": "dry",
-      "text": "Try not to become folklore, sir."
-    },
-    {
-      "id": "departure-dry-11",
-      "event": "departure",
-      "style": "dry",
-      "text": "Keep the theatrics optional, sir."
-    },
-    {
-      "id": "departure-dry-12",
-      "event": "departure",
-      "style": "dry",
-      "text": "Make good choices. Occasionally, sir."
+      "text": "Farewell, sir. Your chair has assumed command."
     }
   ]
 }

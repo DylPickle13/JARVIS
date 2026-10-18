@@ -99,7 +99,7 @@ class RoomBankTests(unittest.TestCase):
         path = self.bridge._processing_ack_path('steering-fixture')
         self.assertAlmostEqual(wav_info(path.read_bytes())['seconds'], 0.1)
         path.unlink()
-        self.assertEqual(len(list(self.bundle.root.glob('*.wav'))), 84)
+        self.assertEqual(len(list(self.bundle.root.glob('*.wav'))), 72)
         self.assertIsNone(self.bridge._processing_ack_path('steering-fixture'))
         self.bridge._pipeline.synthesize_notice.assert_not_called()
 

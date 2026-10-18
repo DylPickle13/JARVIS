@@ -113,7 +113,9 @@ class DepartureBankTests(unittest.TestCase):
                     self.assertEqual(duration, 8)
                     session.play(file)
                     return 'completed', 1
-                with mock.patch.object(speaker.person_gate, 'valid_proof', return_value=True), \
+                with mock.patch.object(speaker.automatic_voice, 'current', return_value=SimpleNamespace(revision='legacy')), \
+                     mock.patch.object(speaker.automatic_voice, 'admitted', return_value=True), \
+                     mock.patch.object(speaker.person_gate, 'valid_proof', return_value=True), \
                      mock.patch.object(departure.cli, 'registry', return_value=self.devices), \
                      mock.patch.object(departure.cli, 'device_lock', side_effect=lambda *_: nullcontext()) as locks, \
                      mock.patch.object(departure.cli, 'load_settings', return_value=SimpleNamespace(password='fixture')), \

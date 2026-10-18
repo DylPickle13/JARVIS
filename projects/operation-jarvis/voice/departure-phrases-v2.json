@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "event": "departure",
+  "status": "approved-for-render-and-deployment-with-4.5-second-limit",
+  "style": "dry",
+  "phrases": [
+    "Off you go, sir. Try not to become a documentary.",
+    "Do behave, sir. Or at least avoid witnesses.",
+    "The outside world has not been briefed. Good luck.",
+    "Safe travels, sir. Your tabs will remain unsupervised.",
+    "Try not to acquire another expensive hobby, sir.",
+    "Goodbye, sir. I shall supervise absolutely nothing.",
+    "Remember, sir. Confidence is not a navigation system.",
+    "The adventure begins. Receipts may be required.",
+    "Off to test society’s patience, sir?",
+    "Keep the headlines boring and the legal fees low.",
+    "Enjoy yourself, sir. Within warranty conditions.",
+    "Farewell, sir. Your chair has assumed command."
+  ]
+}

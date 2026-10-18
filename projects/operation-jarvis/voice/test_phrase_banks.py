@@ -67,10 +67,10 @@ class BankTests(unittest.TestCase):
         draft = banks.CATALOGUE.with_name('PHRASE-BANKS-DRAFT.md').read_text()
         for row in rows:
             self.assertIn(row['text'], draft)
-        self.assertEqual(len(rows), 84)
+        self.assertEqual(len(rows), 72)
         import voice_lines
         for event, text in [('wake', voice_lines.WAKE_ACK), ('processing', voice_lines.PROCESSING_ACK),
-                            ('arrival', 'Ah, my favourite source of technical difficulties.'), ('departure', 'Have a good day, sir')]:
+                            ('arrival', 'Ah, my favourite source of technical difficulties.'), ('departure', 'Off you go, sir. Try not to become a documentary.')]:
             self.assertEqual(self.bundle.default(event).text, text)
         self.assertFalse(any(row['text'] in (voice_lines.REQUEST_FAILURE, voice_lines.RENDER_FAILURE) for row in rows))
 
@@ -82,7 +82,7 @@ class BankTests(unittest.TestCase):
                 ids = [self.selector.reserve(self.bundle, event, f'{cycle}:{n}').id for n in range(count)]
                 self.assertEqual(len(set(ids)), count)
                 self.assertEqual(sum(styles[item] == 'dry' for item in ids),
-                                 count if event == 'arrival' else count // 2)
+                                 count if event in ('arrival', 'departure') else count // 2)
                 self.assertNotEqual(ids[0], previous)
                 previous = ids[-1]
 

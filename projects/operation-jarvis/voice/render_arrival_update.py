@@ -1,4 +1,4 @@
-"""Stage approved arrival replacements without changing live code, pins or state.
+"""Stage approved arrival or departure replacements without changing live code, pins or state.
 
 Copies validated existing recordings for other events. Output is unreviewed;
 activation still requires catalogue policy/state migration and duration approval.
@@ -22,10 +22,11 @@ def build(source: Path, output: Path, proposal: Path):
     bundle = Bundle(source, digest(old_raw))
     replacement = json.loads(proposal.read_text())
     texts = replacement['phrases']
-    if (replacement['event'] != 'arrival' or replacement['style'] != 'dry'
+    event = replacement['event']
+    if (event not in ('arrival', 'departure') or replacement['style'] != 'dry'
             or len(texts) != 12 or len(set(texts)) != 12
             or any(not isinstance(text, str) or not text.strip() for text in texts)):
-        raise ValueError('invalid_arrival_proposal')
+        raise ValueError('invalid_announcement_proposal')
     from huggingface_hub import hf_hub_download
     from piper import PiperVoice, SynthesisConfig
     settings = old['settings']
@@ -43,13 +44,16 @@ def build(source: Path, output: Path, proposal: Path):
         noise_w_scale=settings['tts_piper_noise_w_scale'])
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     rows = catalogue()
-    arrivals = iter(texts)
+    # Departure v2 retires the twelve old dry IDs, keeping twelve stable IDs.
+    if event == 'departure':
+        rows = [row for row in rows if row['event'] != event or '-straight-' in row['id']]
+    replacements = iter(texts)
     recordings = {}
     report = []
     for row in rows:
         path = output / (row['id'] + '.wav')
-        if row['event'] == 'arrival':
-            row['text'] = next(arrivals)
+        if row['event'] == event:
+            row['text'] = next(replacements)
             # Preserve stable IDs for an explicit, separately reviewed migration.
             row['style'] = 'dry'
             with wave.open(str(path), 'wb') as wav:
@@ -62,15 +66,16 @@ def build(source: Path, output: Path, proposal: Path):
         quality_result = sample_quality(data)
         recordings[row['id']] = dict(text=row['text'], file=path.name,
             sha256=digest(data), audio=info, quality=quality_result)
-        if row['event'] == 'arrival':
+        if row['event'] == event:
             report.append(dict(id=row['id'], text=row['text'], seconds=info['seconds'],
-                exceeds_existing_limit=info['seconds'] > old['limits_seconds']['arrival'],
+                exceeds_existing_limit=info['seconds'] > old['limits_seconds'][event],
+                exceeds_hard_limit=event == 'departure' and info['seconds'] > 4.5,
                 **quality_result))
     manifest = dict(old, reviewed=False, catalogue_sha256=digest(encoded(rows)), recordings=recordings)
     result = dict(reviewed=False, playback_performed=False,
-        existing_arrival_limit_seconds=old['limits_seconds']['arrival'], recordings=report,
+        event=event, existing_limit_seconds=old['limits_seconds'][event], recordings=report,
         unchanged_other_recordings=True,
-        requires=['duration approval', 'all-dry catalogue policy',
+        requires=['duration approval within hard caps', 'all-dry catalogue policy',
                   'reviewed selector-state migration', 'coordinated pinned deployment'])
     for name, value in [('manifest.json', manifest), ('catalogue.json', {'version': 1, 'phrases': rows}),
                         ('duration-report.json', result)]:

@@ -1,7 +1,7 @@
 """Explicit offline build. Cached Piper only; no playback, downloads or activation.
 
 Run with the Operation JARVIS voice Python environment. Output is a new private
-staging directory. A manifest is published only after all 84 renders validate.
+staging directory. A manifest is published only after all catalogue renders validate.
 Duration/quality exceptions are reported, never auto-approved or time-stretched.
 """
 from __future__ import annotations
