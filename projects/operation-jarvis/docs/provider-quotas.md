@@ -51,11 +51,64 @@ is bounded to 10 seconds, within the default 45-second daemon subprocess deadlin
 The daemon invokes fixed local commands, not the saved `latest.json` report.
 `claudeQuota` and `codexQuota` are independently non-critical and cached at:
 
-| Policy | Seconds |
-| --- | ---: |
-| Active collection | 60 |
-| Idle collection | 300 |
-| Freshness limit | 900 |
+| Policy | Codex seconds | Claude seconds |
+| --- | ---: | ---: |
+| Active collection | 60 | 120 |
+| Idle collection | 300 | 300 |
+| Freshness limit | 900 | 900 |
+
+Claude's active polling is two minutes (owner-requested reduction from one minute),
+deployed at **20:21 EDT on 2026-10-17** as
+`20261018T001936Z-claude-two-minute-polling`. The installed-baseline release changed
+only the interval and its regression tests; **868 backend, 9 quota/auth and 84 SDK
+tests passed**. Backend/watchdog cutover reached liveness in **0.365 s**, preserving
+configuration, repaired registry, history and unrelated service/session identities.
+The first Claude collection was unavailable; the owner subsequently confirmed the
+Pi-desk reading returned. This does not establish that future rate limits are
+eliminated. Exact prior release/plists remain retained.
+That first interval-only rollout did not gate explicit refreshes; the owner later
+reported intermittent staleness again. It is superseded by the shared cooldown below.
+
+### Shared Claude cooldown — deployed 2026-10-17 EDT
+
+Release `20261018T003031Z-claude-shared-cooldown-r2` activated at **20:33 EDT**.
+All Claude collections within the shared backend now obey a **120-second minimum
+after completion**, including explicit iPhone/Watch refreshes, active wakeups,
+failed attempts and superseded results. Requests during collection coalesce;
+the scheduler checks the same monotonic cooldown immediately before dispatch.
+
+HTTP 429 is passed from the usage CLI as sanitized structured metadata, not a
+provider body, account detail or credential. The CLI's structured failure exit
+code is **2**; the collector preserves only the rate-limit flag and bounded delay.
+429 waits increase **300 → 600 → 1,200 → 1,800 seconds** until a successful check
+resets the backoff. A longer valid `Retry-After` (seconds or HTTP date) takes
+precedence, bounded to 86,400 seconds. Zero, missing or malformed hints cannot
+shorten the local backoff. Other failures retain the two-minute minimum.
+
+Codex, Claude's five-minute idle cadence and 15-minute freshness limit are unchanged.
+Last-good timestamps and failure/stale indicators remain honest; cooldown does not
+make old data fresh. Pi-desk only reads the shared cache. The cooldown is in-memory
+and resets on backend restart; standalone CLI checks and other applications are
+outside this backend's request budget.
+
+The 613-input installed-baseline candidate passed **880 backend, 12 quota/auth and
+84 SDK tests**, including a synthetic HTTP-429 → CLI → collector → scheduler
+contract. Only Claude-scoped files were layered over the installed baseline.
+The first candidate was not deployed: a layout test caught an unrelated checkout
+scheduler-default difference; r2 preserved the installed default with a scoped
+patch. Both records remain retained.
+
+Backend/watchdog cutover reached liveness in **0.336 s**; authentication, repaired
+27-device registry, history/events, unrelated services, Pi panes and Minecraft
+identities were preserved. The initial live Claude response was rate-limited and
+correctly entered cooldown; deployment does not establish provider recovery.
+Two authenticated cached diagnostic reads, **125 seconds apart**, verified that
+Claude's attempt count stayed at one and the daemon PID was unchanged. The current
+checkout also passed **997 backend tests**; its larger suite includes unrelated
+previously committed work not layered into the installed baseline.
+No forced quota refresh, model probe, physical command, app reinstall or Pi
+session restart was performed. Exact prior release/plists remain available for
+a separately authorized guarded rollback.
 
 A failed collection preserves its last-good data with stale/error metadata; it
 must not mark household controls stale. Public Claude data is whitelisted to

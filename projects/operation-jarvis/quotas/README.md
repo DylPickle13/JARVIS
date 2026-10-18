@@ -50,7 +50,10 @@ Uses Pi's `anthropic` OAuth login (not an Anthropic API billing key).
   existing auth-file lock; unrelated credentials are preserved. `--no-refresh`
   prevents token refresh/writes.
 - Combined reports use provider key `anthropic`; `claude --json` is usage-only,
-  with no catalog/probe dependency. Errors are sanitized.
+  with no catalog/probe dependency. Errors are sanitized. HTTP 429 adds only
+  `rate_limited: true` and a bounded `retry_after_seconds` (or null) to the failed
+  report (exit 2). Retry-After seconds/HTTP-date values are capped at one day;
+  raw response bodies and headers are not included. The CLI itself makes no retry.
 
 ### GitHub Copilot
 
@@ -279,7 +282,11 @@ python3 projects/operation-jarvis/quotas/quotas.py check --json --save
 
 `jarvisd` runs the fixed `codex --json` and `claude --json` commands independently;
 it does **not** depend on `latest.json` being refreshed. Apps and Pi-desk read its
-sanitized `codexQuota` / `claudeQuota` caches (60s active / 300s idle / 900s freshness).
+sanitized `codexQuota` / `claudeQuota` caches (Codex 60s active; Claude 120s active;
+both 300s idle / 900s freshness). The backend shares a 120-second minimum across
+Claude refresh requests and backs off 5/10/20/30 minutes on 429, honoring longer
+valid Retry-After hints up to one day. Standalone CLI checks do not share that
+in-memory backend budget.
 See [provider quota integration](../docs/provider-quotas.md).
 
 ## Security notes

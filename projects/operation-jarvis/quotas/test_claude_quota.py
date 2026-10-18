@@ -1,6 +1,8 @@
 """Offline subscription usage/auth contracts; never touch real credentials."""
 import argparse
 import contextlib
+import datetime as dt
+import urllib.error
 import io
 import json
 import os
@@ -128,6 +130,45 @@ class ClaudeQuotaTests(unittest.TestCase):
             report = quotas.build_claude_report(argparse.Namespace(auth_path=str(self.path), no_refresh=True))
         self.assertFalse(report['ok'])
         self.assertNotIn('fake-access', json.dumps(report))
+
+    def test_retry_after_seconds_and_http_dates_are_bounded(self):
+        now = dt.datetime(2026, 10, 18, tzinfo=dt.timezone.utc)
+        cases = [('0', 0), ('600', 600), ('999999999', 86400),
+                 ('Sun, 18 Oct 2026 00:10:00 GMT', 600),
+                 ('Sat, 17 Oct 2026 23:00:00 GMT', 0),
+                 (None, None), ('secret', None), ('-1', None),
+                 ('NaN', None), ('Infinity', None), ('1.5', None),
+                 ('9' * 129, None)]
+        with mock.patch.object(quotas, 'now_utc', return_value=now):
+            for raw, expected in cases:
+                with self.subTest(raw=raw):
+                    self.assertEqual(quotas.claude_retry_after_seconds(raw), expected)
+
+    def test_429_cli_is_sanitized_structured_and_never_retried(self):
+        error = urllib.error.HTTPError(quotas.ANTHROPIC_USAGE_URL, 429, 'private',
+            {'Retry-After': '900', 'private': 'secret'}, io.BytesIO(b'fake-access secret'))
+        before = self.path.read_bytes()
+        with mock.patch.object(quotas.urllib.request, 'urlopen', side_effect=error) as request:
+            stream = io.StringIO()
+            with contextlib.redirect_stdout(stream):
+                code = quotas.main(['claude', '--auth-path', str(self.path), '--no-refresh', '--json'])
+        self.assertEqual(code, 2)
+        self.assertEqual(request.call_count, 1)
+        report = json.loads(stream.getvalue())
+        self.assertTrue(report['rate_limited'])
+        self.assertEqual(report['retry_after_seconds'], 900)
+        for secret in ('fake-access', 'secret', 'private', 'headers'):
+            self.assertNotIn(secret, stream.getvalue())
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_other_http_failures_do_not_claim_rate_limit(self):
+        for status in (401, 403, 500, 503):
+            error = quotas.HttpRequestError('GET', quotas.ANTHROPIC_USAGE_URL, status, 'secret')
+            with mock.patch.object(quotas, 'request_json', side_effect=error):
+                report = quotas.build_claude_report(argparse.Namespace(auth_path=str(self.path), no_refresh=True))
+            self.assertFalse(report['ok'])
+            self.assertNotIn('rate_limited', report)
+            self.assertNotIn('secret', json.dumps(report))
 
     def test_cli_and_combined_report(self):
         with mock.patch.object(quotas, 'request_json', return_value=(self.raw, {})):

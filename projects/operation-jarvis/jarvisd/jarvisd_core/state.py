@@ -37,6 +37,9 @@ class StateCoordinator:
     """Background, single-flight subsystem cache for the state endpoint."""
 
     NONCRITICAL_SUBSYSTEMS = frozenset({"codexQuota", "claudeQuota"})
+    CLAUDE_MIN_REQUEST_SECONDS = 120.0
+    CLAUDE_BACKOFF_BASE_SECONDS = 300.0
+    CLAUDE_BACKOFF_MAX_SECONDS = 1800.0
     DEFAULT_INTERVALS = {
         # Foreground clients read this shared single-flight cache, never fan
         # out to hardware per request. Cloud purifier reads remain bounded.
@@ -46,7 +49,7 @@ class StateCoordinator:
         "purifier": float("inf"),  # Foreground requests schedule bounded reads below.
         "network": 60.0,
         "codexQuota": 60.0,
-        "claudeQuota": 60.0,
+        "claudeQuota": 120.0,
     }
     DEFAULT_IDLE_INTERVALS = {
         "pi": 60.0,
@@ -88,6 +91,7 @@ class StateCoordinator:
         version: str,
         started_at: float,
         retry_collectors: dict[str, Callable[[bool], dict]] | None = None,
+        quota_now: Callable[[], float] = time.monotonic,
     ):
         from .work_metrics import WorkMetrics
         self.collectors = collectors
@@ -101,6 +105,7 @@ class StateCoordinator:
         self.active_lease_seconds = max(1.0, float(active_lease_seconds))
         self.activation_wait_seconds = max(0.0, float(activation_wait_seconds))
         self._now = now
+        self._quota_now = quota_now
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
         self._records: dict[str, dict[str, Any]] = {
@@ -167,6 +172,34 @@ class StateCoordinator:
         source = self.intervals if self._is_active_locked(now) else self.idle_intervals
         fallback = self.intervals.get(name, 30.0)
         return max(0.5, float(source.get(name, fallback)))
+
+    def _claude_remaining_locked(self, record: dict) -> float:
+        return max(0.0, record.get("quotaNotBefore", 0.0) - self._quota_now())
+
+    def _request_collection_locked(self, name: str, record: dict) -> None:
+        if name == "claudeQuota":
+            # All backend clients share one slot; requests during flight are
+            # coalesced, never queued as a second usage request.
+            if record["refreshing"]:
+                return
+            record["nextDue"] = self._now() + self._claude_remaining_locked(record)
+        else:
+            record["nextDue"] = 0.0
+
+    def _complete_claude_cooldown_locked(self, record: dict, result: Any, now: float) -> None:
+        delay = self.CLAUDE_MIN_REQUEST_SECONDS
+        if isinstance(result, dict) and result.get("ok") is True:
+            record["quotaRateLimits"] = 0
+        elif isinstance(result, dict) and result.get("rateLimited") is True:
+            failures = min(record.get("quotaRateLimits", 0) + 1, 4)
+            record["quotaRateLimits"] = failures
+            delay = min(self.CLAUDE_BACKOFF_BASE_SECONDS * 2 ** (failures - 1),
+                        self.CLAUDE_BACKOFF_MAX_SECONDS)
+            retry = result.get("retryAfterSeconds")
+            if type(retry) is int and 0 <= retry <= 86400:
+                delay = max(delay, retry)
+        record["quotaNotBefore"] = self._quota_now() + delay
+        record["nextDue"] = max(record["nextDue"], now + delay)
 
     def _freshness_limit(self, name: str) -> float | None:
         raw = self.freshness_limits.get(name)
@@ -476,7 +509,7 @@ class StateCoordinator:
             if not was_active:
                 for name, record in self._records.items():
                     if name != "purifier":
-                        record["nextDue"] = 0.0
+                        self._request_collection_locked(name, record)
                     if name == "plugs" and self._record_is_stale(name, record, now):
                         targets[name] = int(record.get("completionCount", 0))
             self._condition.notify_all()
@@ -513,7 +546,7 @@ class StateCoordinator:
                     record["retryCooldown"] = bool(retry_cooldown)
                     if retry_cooldown:
                         record["lastRecoveryRequestedAt"] = now
-                record["nextDue"] = 0.0
+                self._request_collection_locked(name, record)
             self._active_until = max(self._active_until, now + self.active_lease_seconds)
             self._condition.notify_all()
         self.start()
@@ -635,6 +668,12 @@ class StateCoordinator:
                 if executor is None:
                     return
                 for name, record in self._records.items():
+                    if name == "claudeQuota":
+                        # Final dispatch gate also covers other wake/revision paths
+                        # and wall-clock jumps. The cooldown clock is monotonic.
+                        remaining = self._claude_remaining_locked(record)
+                        if remaining:
+                            record["nextDue"] = max(record["nextDue"], now + remaining)
                     if not record["refreshing"] and now >= record["nextDue"]:
                         record["refreshing"] = True
                         revision = record["revision"]
@@ -777,6 +816,9 @@ class StateCoordinator:
             record = self._records[name]
             record["refreshing"] = False
             record["completionCount"] += 1
+            if name == "claudeQuota":
+                # Even a superseded result consumed a provider request.
+                self._complete_claude_cooldown_locked(record, result, now)
             if revision != record["revision"]:
                 # A command supplied newer authoritative data while this
                 # collection was in flight. Discard the old read and collect
@@ -830,6 +872,8 @@ class StateCoordinator:
                     self._condition.notify_all()
                     return
             record["nextDue"] = now + self._interval_locked(name, now)
+            if name == "claudeQuota":
+                record["nextDue"] = max(record["nextDue"], now + self._claude_remaining_locked(record))
             if isinstance(result, dict) and result.get("ok") is True:
                 record["data"] = copy.deepcopy(result)
                 record["updatedAt"] = _iso_now()

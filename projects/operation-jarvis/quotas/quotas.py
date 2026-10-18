@@ -149,13 +149,40 @@ class QuotaError(RuntimeError):
 
 
 class HttpRequestError(QuotaError):
-    def __init__(self, method: str, url: str, status: int, body: str):
+    def __init__(self, method: str, url: str, status: int, body: str, retry_after: Optional[str] = None):
         clean_body = body.strip().replace("\n", " ")[:1000]
         super().__init__(f"HTTP {status} from {method} {url}: {clean_body}")
         self.method = method
         self.url = url
         self.status = status
         self.body = body
+        self.retry_after = retry_after
+
+
+class ClaudeRateLimitError(QuotaError):
+    """Sanitized usage-only rate limit; never carries provider bodies/headers."""
+
+    def __init__(self, retry_after: Optional[str]):
+        super().__init__("Claude usage rate limited; waiting before another check.")
+        self.retry_after_seconds = claude_retry_after_seconds(retry_after)
+
+
+def claude_retry_after_seconds(value: Optional[str]) -> Optional[int]:
+    """Bound Retry-After seconds/HTTP-date to one day; invalid values use backoff."""
+    from email.utils import parsedate_to_datetime
+    if not isinstance(value, str) or len(value) > 128:
+        return None
+    value = value.strip()
+    if value.isascii() and value.isdecimal():
+        return min(int(value), 86400)
+    try:
+        date = parsedate_to_datetime(value)
+        if date.tzinfo is None:
+            return None
+        seconds = math.ceil((date - now_utc()).total_seconds())
+        return min(max(0, seconds), 86400)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def now_utc() -> dt.datetime:
@@ -269,8 +296,11 @@ def request_json(
             payload = json.loads(raw) if raw.strip() else {}
             return payload, dict(response.headers.items())
     except urllib.error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", "replace")
-        raise HttpRequestError(method.upper(), url, exc.code, raw) from exc
+        try:
+            raw = exc.read().decode("utf-8", "replace")
+        finally:
+            exc.close()
+        raise HttpRequestError(method.upper(), url, exc.code, raw, exc.headers.get("Retry-After") if exc.headers else None) from exc
     except urllib.error.URLError as exc:
         raise QuotaError(f"Network error from {method.upper()} {url}: {exc}") from exc
     except json.JSONDecodeError as exc:
@@ -494,6 +524,10 @@ def fetch_claude_usage(auth: AuthStore, refresh: bool = True) -> Dict[str, Any]:
             headers={**ANTHROPIC_HEADERS, "Authorization": "Bearer " + cred["access"]})
         weekly = normalize_claude_window(raw.get("seven_day"))
         five_hour = normalize_claude_window(raw.get("five_hour"))
+    except HttpRequestError as exc:
+        if exc.status == 429:
+            raise ClaudeRateLimitError(exc.retry_after) from None
+        raise QuotaError("Claude usage unavailable; check subscription login or retry later.") from None
     except Exception:
         raise QuotaError("Claude usage unavailable; check subscription login or retry later.") from None
     if weekly is None and five_hour is None:
@@ -1387,9 +1421,17 @@ def build_codex_report(args: argparse.Namespace) -> Dict[str, Any]:
 
 
 def build_claude_report(args: argparse.Namespace) -> Dict[str, Any]:
-    usage, error = provider_result(fetch_claude_usage, AuthStore(Path(args.auth_path)), not args.no_refresh)
-    return {"provider": "anthropic", "ok": error is None, "checked_at": iso_now(),
-            "usage": usage, "usage_error": error}
+    try:
+        usage = fetch_claude_usage(AuthStore(Path(args.auth_path)), not args.no_refresh)
+        return {"provider": "anthropic", "ok": True, "checked_at": iso_now(),
+                "usage": usage, "usage_error": None}
+    except ClaudeRateLimitError as exc:
+        return {"provider": "anthropic", "ok": False, "checked_at": iso_now(),
+                "usage": None, "usage_error": str(exc), "rate_limited": True,
+                "retry_after_seconds": exc.retry_after_seconds}
+    except Exception:
+        return {"provider": "anthropic", "ok": False, "checked_at": iso_now(),
+                "usage": None, "usage_error": "Claude usage unavailable; check subscription login or retry later."}
 
 
 def build_copilot_report(args: argparse.Namespace) -> Dict[str, Any]:

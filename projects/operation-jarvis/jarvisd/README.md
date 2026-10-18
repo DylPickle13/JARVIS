@@ -21,9 +21,36 @@ Health UI belongs on System, not Home. Backend checks remain active. See [covera
 
 # jarvisd — shared control backend
 
+## Shared Claude cooldown — deployed 2026-10-17 EDT
+
+Active release `20261018T003031Z-claude-shared-cooldown-r2` enforces a shared
+**120-second minimum** after each Claude check, including explicit app/Watch
+refreshes and foreground wakeups. HTTP 429 triggers **5/10/20/30-minute backoff**,
+honoring longer valid Retry-After values up to one day. Success resets backoff.
+Codex, idle cadence and freshness behavior are unchanged. The cooldown is
+in-memory; direct CLI checks and other apps are outside its budget.
+
+Verified at **20:33 EDT** after **880 backend, 12 quota/auth and 84 SDK tests**.
+Only backend/watchdog cycled (0.336 s to liveness); configuration, repaired
+registry, history, unrelated services/Pi/Minecraft were preserved. Initial Claude
+usage remained rate-limited and entered cooldown; recovery is not claimed.
+See [policy, deployment and rollback](../docs/provider-quotas.md#shared-claude-cooldown--deployed-2026-10-17-edt).
+
+## Claude polling interval — deployed 2026-10-17 EDT
+
+Release `20261018T001936Z-claude-two-minute-polling` changes only Claude's
+active periodic interval from 60 to **120 seconds**. Idle remains 300 seconds;
+Codex, explicit refreshes and freshness limits are unchanged. No rate-limit
+backoff was added. Verified at **20:21 EDT** after 868 backend, 9 quota/auth and
+84 SDK tests; unrelated services/sessions, repaired registry, authentication and
+history were preserved. Claude's first collection was unavailable; the owner
+subsequently confirmed the Pi-desk reading returned. Future rate limits remain
+possible.
+The prior provider-quota release is retained for rollback.
+
 ## Codex/Claude quota collectors — deployed 2026-10-17 EDT
 
-Active release `20261017T213141Z-provider-quotas` adds independent, noncritical
+Release `20261017T213141Z-provider-quotas` adds independent, noncritical
 Claude weekly/five-hour usage beside Codex. Fresh authenticated readback verified
 both providers and health components at **17:39 EDT**. The 612-input frozen
 installed-baseline candidate passed **867 backend tests, 9 quota/auth tests and

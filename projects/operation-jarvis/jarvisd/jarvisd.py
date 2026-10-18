@@ -1511,6 +1511,12 @@ def _claude_quota_unavailable() -> dict:
 
 
 def _public_claude_quota(payload: Any) -> dict:
+    if isinstance(payload, dict) and payload.get("ok") is False and payload.get("rate_limited") is True:
+        retry = payload.get("retry_after_seconds")
+        return {"ok": False, "available": False,
+                "error": "Claude usage rate limited; waiting before another check.",
+                "rateLimited": True,
+                "retryAfterSeconds": retry if type(retry) is int and 0 <= retry <= 86400 else None}
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         return _claude_quota_unavailable()
     usage = payload.get("usage")
@@ -1548,9 +1554,13 @@ def _claude_quota() -> dict:
             timeout=CLAUDE_QUOTA_TIMEOUT,
         )
         stdout = proc.stdout or ""
-        if proc.returncode != 0 or len(stdout.encode("utf-8")) > MAX_CLAUDE_QUOTA_OUTPUT_BYTES:
+        # Exit 2 is a structured failed report, including a sanitized HTTP 429.
+        if proc.returncode not in (0, 2) or len(stdout.encode("utf-8")) > MAX_CLAUDE_QUOTA_OUTPUT_BYTES:
             return _claude_quota_unavailable()
-        return _public_claude_quota(json.loads(stdout))
+        payload = json.loads(stdout)
+        if proc.returncode == 2 and (not isinstance(payload, dict) or payload.get("ok") is not False):
+            return _claude_quota_unavailable()
+        return _public_claude_quota(payload)
     except Exception:  # noqa: BLE001
         return _claude_quota_unavailable()
 
