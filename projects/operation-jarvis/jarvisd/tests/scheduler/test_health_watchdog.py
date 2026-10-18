@@ -1,4 +1,4 @@
-"""Offline liveness, incident and scheduler tests; no live backend/APNs calls."""
+"""Offline health-card, incident and scheduler tests; no live backend/APNs calls."""
 from __future__ import annotations
 
 import argparse
@@ -17,8 +17,10 @@ import uuid
 
 if __package__:
     from .test_runner import load_runner
+    from .test_health_card import healthy, NOW
 else:
     from test_runner import load_runner
+    from test_health_card import healthy, NOW
 
 BACKEND = Path(__file__).resolve().parents[2] / "jarvisd_core/scheduler"
 
@@ -28,7 +30,8 @@ def load_watchdog():
     spec = importlib.util.spec_from_file_location(name, BACKEND / "health_watchdog.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
-    spec.loader.exec_module(module)
+    with patch.object(sys, "path", [str(BACKEND), *sys.path]):
+        spec.loader.exec_module(module)
     return module
 
 
@@ -39,7 +42,13 @@ class ProbeTests(unittest.TestCase):
         self.response = self.connection.getresponse.return_value
         self.response.status = 200
         self.response.length = 0
-        self.response.read.return_value = b'{"ok": true, "version": "test", "uptimeSeconds": 1}'
+        self.response.read.return_value = json.dumps(healthy()).encode()
+        env = patch.dict(self.watchdog.os.environ, {"JARVIS_API_TOKEN": "test-token"}, clear=True)
+        env.start()
+        self.addCleanup(env.stop)
+        clock = patch.object(self.watchdog.time, "time", return_value=NOW)
+        clock.start()
+        self.addCleanup(clock.stop)
         self.factory = patch.object(self.watchdog.http.client, "HTTPConnection", return_value=self.connection)
         self.http = self.factory.start()
         self.addCleanup(self.factory.stop)
@@ -47,10 +56,33 @@ class ProbeTests(unittest.TestCase):
     def test_healthy_request_is_fixed_local_bounded_and_does_not_use_proxies(self):
         self.assertIsNone(self.watchdog.probe())
         self.http.assert_called_once_with("127.0.0.1", 8790, timeout=5.0)
-        self.connection.request.assert_called_once_with("GET", "/health",
-            headers={"Accept": "application/json", "Connection": "close"})
-        self.response.read.assert_called_once_with(4097)
+        self.connection.request.assert_called_once_with("GET", "/api/v1/health",
+            headers={"Accept": "application/json", "Connection": "close", "x-jarvis-token": "test-token"})
+        self.response.read.assert_called_once_with(128 * 1024 + 1)
         self.connection.close.assert_called_once()
+
+    def test_auth_is_required_without_secret_echo_and_trusted_mode_is_explicit(self):
+        for token in ("", "PRIVATE\r\nInjected: header", "x" * 4097, "\u2603"):
+            with self.subTest(token_length=len(token)), patch.dict(self.watchdog.os.environ,
+                    {"JARVIS_API_TOKEN": token}, clear=True):
+                result = self.watchdog.probe()
+                self.assertIn("authentication", result)
+                self.assertNotIn("PRIVATE", result)
+        self.http.assert_not_called()
+        with patch.dict(self.watchdog.os.environ, {"JARVISD_AUTH_MODE": "trusted-network"}, clear=True):
+            self.assertIsNone(self.watchdog.probe())
+        self.connection.request.assert_called_once_with("GET", "/api/v1/health",
+            headers={"Accept": "application/json", "Connection": "close"})
+
+    def test_http_200_sensor_failure_and_device_only_failure_are_not_healthy(self):
+        value = healthy()
+        value["health"]["components"]["security"]["state"] = "unavailable"
+        self.response.read.return_value = json.dumps(value).encode()
+        self.assertIn("sensor reads", self.watchdog.probe())
+        value = healthy()
+        next(row for row in value["deviceHealth"]["devices"] if row["id"] == "family-room-tv")["state"] = "unavailable"
+        self.response.read.return_value = json.dumps(value).encode()
+        self.assertIn("TV Cast", self.watchdog.probe())
 
     def test_http_failures_and_redirects_are_not_followed(self):
         for status in (301, 401, 404, 500, 503):
@@ -63,10 +95,11 @@ class ProbeTests(unittest.TestCase):
     def test_invalid_and_oversized_responses_never_include_response_text(self):
         for body, reason in [(b'not JSON: PRIVATE', "invalid JSON"),
                              (b'\xff', "invalid JSON"),
-                             (b'{}', "ok not true"), (b'[]', "ok not true"),
-                             (b'{"ok": 1}', "ok not true"),
-                             (b'{"ok": false, "error": "PRIVATE"}', "ok not true"),
-                             (b'x' * 4097, "response too large")]:
+                             (b'{}', "health request not successful"), (b'[]', "health request not successful"),
+                             (b'{"ok": 1}', "health request not successful"),
+                             (b'{"ok": false, "error": "PRIVATE"}', "health request not successful"),
+                             (b'{"ok": true}', "health summary unavailable"),
+                             (b'x' * (128 * 1024 + 1), "response too large")]:
             with self.subTest(reason=reason, body=body[:40]):
                 self.response.read.return_value = body
                 self.assertEqual(self.watchdog.probe(), reason)
@@ -99,6 +132,9 @@ class DeadlineTests(unittest.TestCase):
     def test_slow_trickling_headers_and_body_have_total_deadline(self):
         # Isolated ephemeral loopback fixture, never the live service port.
         watchdog = load_watchdog()
+        env = patch.dict(watchdog.os.environ, {"JARVIS_API_TOKEN": "test-token"}, clear=True)
+        env.start()
+        self.addCleanup(env.stop)
         for prefix in (b"", b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n"):
             with self.subTest(body=bool(prefix)), closing(socket.socket()) as server:
                 server.bind(("127.0.0.1", 0))
@@ -174,7 +210,7 @@ class StateTests(unittest.TestCase):
         self.assertTrue(state.alerted)
         self.assertEqual(output, "")
         state, output = self.watchdog.observe(state, None, wall=1000660, monotonic=70)
-        self.assertIn("normally again", output)
+        self.assertIn("healthy again", output)
         self.assertFalse(state.alerted)
 
     def test_state_roundtrip_and_invalid_state_never_silently_clear_alert_latch(self):
@@ -273,6 +309,20 @@ class SchedulerHealthTests(unittest.TestCase):
         self.assertEqual(job["consecutive_errors"], 0)
         self.assertIsNotNone(job["last_silent_success_at"])
 
+    def test_http_success_unhealthy_card_commits_one_alert_and_one_recovery(self):
+        value = healthy()
+        value["health"]["components"]["security"]["state"] = "unavailable"
+        reason = self.watchdog.evaluate(value, now=NOW)
+        for seconds in (0, 60, 120, 180, 240):
+            self.assertTrue(self.run_check(seconds, reason)["silent"])
+        self.assertFalse(self.run_check(300, reason)["silent"])
+        self.assertEqual(self.counts(), (1, 1, 2))
+        # A different failure must not cause a duplicate overall incident alert.
+        self.assertTrue(self.run_check(360, "health not healthy/current: TV Cast")["silent"])
+        self.assertFalse(self.run_check(420, self.watchdog.evaluate(healthy(), now=NOW))["silent"])
+        self.assertEqual(self.counts(), (2, 2, 4))
+        self.assertTrue(self.run_check(480, None)["silent"])
+
     def test_outage_alerts_once_then_recovery_once_and_rearms(self):
         for seconds in (0, 60, 120, 180, 240, 299):
             self.assertTrue(self.run_check(seconds)["silent"])
@@ -289,7 +339,7 @@ class SchedulerHealthTests(unittest.TestCase):
         with closing(self.runner.connect()) as conn:
             output = [row[0] for row in conn.execute("SELECT output FROM results ORDER BY sequence")]
         self.assertIn("at least 5 minutes", output[0])
-        self.assertEqual(output[1], "jarvisd is responding normally again.")
+        self.assertEqual(output[1], "jarvisd System health is healthy again.")
 
     def test_fresh_runner_keeps_incident_and_does_not_repeat_alert(self):
         for seconds in (0, 100, 200, 300):

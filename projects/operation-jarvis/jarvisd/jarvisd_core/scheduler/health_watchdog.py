@@ -1,4 +1,4 @@
-"""Deterministic local jarvisd liveness probe and persisted incident state.
+"""Deterministic local jarvisd health-card probe and persisted incident state.
 
 No daemon imports, device reads, notification sends, or service actions. The
 scheduler commits each state transition with its result/notification outbox.
@@ -18,11 +18,16 @@ import threading
 import time
 from typing import Iterator
 
+if __package__:
+    from .health_card import evaluate
+else:
+    from health_card import evaluate
+
 HOST = "127.0.0.1"
 PORT = 8790
-HEALTH_PATH = "/health"
+HEALTH_PATH = "/api/v1/health"
 PROBE_TIMEOUT_SECONDS = 5.0
-MAX_RESPONSE_BYTES = 4096
+MAX_RESPONSE_BYTES = 128 * 1024
 FAILURE_THRESHOLD_SECONDS = 300.0
 MAX_OBSERVATION_GAP_SECONDS = 150.0
 MAX_CLOCK_DRIFT_SECONDS = 5.0
@@ -30,12 +35,23 @@ STATE_VERSION = 1
 
 
 def probe() -> str | None:
-    """Return a bounded failure reason, or None for HTTP 200 / {ok: true}.
+    """Return a safe reason, or None for a current healthy System health card.
 
     Explicit loopback HTTP bypasses proxies and never follows redirects. A
     socket-shutdown deadline also bounds slow/trickling headers and bodies,
     unlike a socket's per-read timeout alone.
     """
+    # The scheduler loads the existing project environment; never read/copy secrets
+    # into job prompts, SQLite, error strings or result previews. Tokenless access
+    # is allowed only when explicitly configured like the backend's trusted mode.
+    token = os.environ.get("JARVIS_API_TOKEN", "")
+    if not token and os.environ.get("JARVISD_AUTH_MODE") != "trusted-network":
+        return "health authentication unavailable"
+    if len(token) > 4096 or any(ord(c) < 33 or ord(c) > 126 for c in token):
+        return "health authentication invalid"
+    headers = {"Accept": "application/json", "Connection": "close"}
+    if token:
+        headers["x-jarvis-token"] = token
     connection = http.client.HTTPConnection(HOST, PORT, timeout=PROBE_TIMEOUT_SECONDS)
     deadline = time.monotonic() + PROBE_TIMEOUT_SECONDS
     expired = threading.Event()
@@ -59,7 +75,7 @@ def probe() -> str | None:
         timer = threading.Timer(remaining, expire)
         timer.daemon = True
         timer.start()
-        connection.request("GET", HEALTH_PATH, headers={"Accept": "application/json", "Connection": "close"})
+        connection.request("GET", HEALTH_PATH, headers=headers)
         response = connection.getresponse()
         if response.status != 200:
             return f"HTTP {response.status}"
@@ -74,7 +90,7 @@ def probe() -> str | None:
             payload = json.loads(body)
         except (ValueError, UnicodeError, RecursionError):
             return "invalid JSON"
-        return None if isinstance(payload, dict) and payload.get("ok") is True else "ok not true"
+        return evaluate(payload, now=time.time())
     except TimeoutError:
         return "timeout"
     except ConnectionRefusedError:
@@ -146,7 +162,7 @@ class State:
 def observe(previous: State, error: str | None, *, wall: float, monotonic: float) -> tuple[State, str]:
     """Advance one observation; emit output only for an outage or recovery."""
     if error is None:
-        recovered = "jarvisd is responding normally again." if previous.alerted else ""
+        recovered = "jarvisd System health is healthy again." if previous.alerted else ""
         return State(last_wall=wall, last_monotonic=monotonic), recovered
 
     continuous = False
@@ -162,7 +178,7 @@ def observe(previous: State, error: str | None, *, wall: float, monotonic: float
         first_monotonic = previous.first_failure_monotonic
     state = State(wall, monotonic, first_wall, first_monotonic, previous.alerted, error)
     if not state.alerted and monotonic - first_monotonic >= FAILURE_THRESHOLD_SECONDS:
-        return replace(state, alerted=True), f"jarvisd has failed health checks for at least 5 minutes ({error})."
+        return replace(state, alerted=True), f"jarvisd System health has not been healthy for at least 5 minutes ({error})."
     # Even after sleep/reboot/clock changes, retain an existing incident latch
     # until a healthy observation; uncertain time never creates a second alert.
     return state, ""

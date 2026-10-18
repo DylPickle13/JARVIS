@@ -9,7 +9,7 @@ administration capability is introduced.
 ## Layout
 
 - `runner.py`: scheduling engine, deterministic executors, and CLI.
-- `health_watchdog.py`: bounded local jarvisd liveness probe and incident transitions.
+- `health_watchdog.py` / `health_card.py`: authenticated cached System health-card probe and incident transitions.
 - `apns_provider.py`, `apns_registration.py`, `session_completion.py`: notification
   implementation, moved with its existing safety gates and no-replay behavior.
 - `migrate_storage.py`: explicit offline SQLite backup/relocation with integrity
@@ -96,20 +96,39 @@ contents) and verify its integrity. Keep job-specific assignments out of schema
 migrations. Roll back code without restoring an old database over newer executions;
 the additive column is safe for old code to ignore.
 
-## jarvisd liveness watchdog
+## jarvisd System health watchdog
 
 The owner-authorized `jarvisd-health` job belongs to **Maintenance** and runs at a
 `1m` interval. Its reserved model value, `__jarvisd_health__`, selects a built-in
 Python executor, not a Pi/LLM model. The required prompt is descriptive only;
-the executor always probes `http://127.0.0.1:8790/health`. No daemon restart,
+the executor always probes `http://127.0.0.1:8790/api/v1/health`. No daemon restart,
 LaunchAgent replacement, app rebuild, device operation, or auto-restart is needed.
 Fresh scheduler workers load the implementation on their next tick.
 
-A healthy observation requires HTTP 200, bounded valid JSON, and boolean
-`ok: true`. Proxies and redirects are not used. A five-second total socket
-shutdown deadline bounds connection, headers and body, including trickling
-responses. Failure reasons are fixed/short; raw responses and exception text
-are never notification previews.
+The health-card upgrade (2026-10-17 EDT) uses the existing `JARVIS_API_TOKEN`
+loaded by the scheduler; tokenless requests are permitted only with explicit
+`JARVISD_AUTH_MODE=trusted-network`. Credentials never enter job metadata, saved
+incident state or previews. Proxies and redirects are not used. A five-second
+total socket shutdown deadline bounds connection, headers and body, including
+trickling responses; JSON is capped at 128 KiB.
+
+HTTP 200 / `ok: true` means request success, **not healthy**. The probe checks
+`health` (`cached_status_health`) and `deviceHealth` (`device_check_coverage`),
+matching the native System card's component and device scope. A healthy result
+requires current healthy component evidence and available, unexpired device
+checks. Missing/malformed/unsupported/unknown/checking/stale evidence is nonhealthy
+and enters the same debounce; it is not described as a physical outage. Optional
+inactive services and disabled sensor monitoring remain neutral. The app's required
+device inventory, excluded iPhone/Watch/Master Chief IDs, timestamp fallback,
+freshness expiry and incomplete Minecraft-pair rule are retained. Optional device
+unknowns still affect the card. In particular, an unreachable TV remains alertable
+when the app reports it; no new powered-off-device exemption is invented.
+
+This reads cached evidence only: no foreground collector refresh, hardware query,
+LLM invocation, device control, or repair. The top-level on-demand `observations`
+map is deliberately ignored. A green backend aggregate cannot hide a failed TV
+or shared sensor-reader check. Failure descriptions use bounded fixed labels,
+never raw responses, backend names, reasons or exception messages.
 
 An outage result is emitted on the first failed observation at least **300
 monotonic seconds after the first failure** in a continuous observed streak.
@@ -140,11 +159,25 @@ remain unchanged. A disabled notification gate is not activated; past events
 are not replayed when it is enabled. Apple acceptance is not delivery/readership.
 
 The one-minute schedule is best effort: other jobs, sleep and scheduler delays
-can defer checks/dispatch. `/health` is liveness only, not dependency readiness;
+can defer checks/dispatch. Connection/HTTP/auth failures remain alertable alongside
+nonhealthy card evidence. One **overall** incident is latched until the entire card
+is healthy again; changing failing components does not spam a second alert. This
+is status-observation health, not a claim of physical sensor freshness or safety;
 a local watchdog cannot report a failed Mac or scheduler. Manage this job with
 normal `jarvis_cron` list/disable/enable/remove operations. Disable it before
 rolling back to a runner without `__jarvisd_health__` support. Do not restore an
 old SQLite snapshot over newer incident/notification state.
+
+Activation verified on 2026-10-17 EDT after **1,011 backend tests** (including
+115 scheduler tests). Only this job was paused during the change, then re-enabled;
+its ID, cadence, counters, version-1 incident state and notification gates were
+preserved. The live authenticated probe and real scheduler execution detected the
+TV Cast failure despite a healthy aggregate summary. Its five-minute incident
+window began on activation, not retroactively. APNs alert/recovery queuing and
+deduplication were tested offline; no synthetic live outage or push was injected.
+Backend/watchdog and unrelated services were not restarted. Rollback requires
+pausing this job and restoring the previous watchdog implementation/description,
+not rewinding the database or clearing an existing incident latch.
 
 ## Computer presence lifecycle
 
