@@ -85,23 +85,20 @@ Shared with steering; no completed-answer or completed-action claims.
 
 Room/computer return, not a claim that the owner has just entered the house.
 
-### Straight — 6
+### Dry humour — 12 (owner-approved replacement)
 
-1. Welcome back, sir
-2. Hello again, sir.
-3. Good to see you, sir.
-4. Glad you're back, sir.
-5. There you are, sir.
-6. Always a pleasure, sir.
-
-### Dry humour — 6
-
-1. The plot resumes, sir.
-2. Ah, management has arrived, sir.
-3. Welcome back. Imaginary applause, sir.
-4. Civilisation makes a comeback, sir.
-5. And now, the human element, sir.
-6. Welcome back to organised chaos, sir.
+1. Ah, my favourite source of technical difficulties.
+2. Welcome back, sir. The chair missed your leadership.
+3. Management has returned. Look busy, everyone.
+4. The plot thickens. You've sat down.
+5. Welcome back, sir. Shall we open another forty tabs?
+6. Ah, the organic peripheral has reconnected.
+7. Your throne awaits. Ergonomically questionable as ever.
+8. Welcome back. Productivity remains entirely optional.
+9. There you are, sir. I was enjoying the lack of requests.
+10. The human element returns. So much for stability.
+11. Welcome back, sir. Let's call this research.
+12. Systems ready. Sensible decisions sold separately.
 
 ## 4. Departure farewells — 24
 

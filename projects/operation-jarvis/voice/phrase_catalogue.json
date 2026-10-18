@@ -292,74 +292,74 @@
     {
       "id": "arrival-straight-01",
       "event": "arrival",
-      "style": "straight",
-      "text": "Welcome back, sir"
+      "style": "dry",
+      "text": "Ah, my favourite source of technical difficulties."
     },
     {
       "id": "arrival-straight-02",
       "event": "arrival",
-      "style": "straight",
-      "text": "Hello again, sir."
+      "style": "dry",
+      "text": "Welcome back, sir. The chair missed your leadership."
     },
     {
       "id": "arrival-straight-03",
       "event": "arrival",
-      "style": "straight",
-      "text": "Good to see you, sir."
+      "style": "dry",
+      "text": "Management has returned. Look busy, everyone."
     },
     {
       "id": "arrival-straight-04",
       "event": "arrival",
-      "style": "straight",
-      "text": "Glad you're back, sir."
+      "style": "dry",
+      "text": "The plot thickens. You've sat down."
     },
     {
       "id": "arrival-straight-05",
       "event": "arrival",
-      "style": "straight",
-      "text": "There you are, sir."
+      "style": "dry",
+      "text": "Welcome back, sir. Shall we open another forty tabs?"
     },
     {
       "id": "arrival-straight-06",
       "event": "arrival",
-      "style": "straight",
-      "text": "Always a pleasure, sir."
+      "style": "dry",
+      "text": "Ah, the organic peripheral has reconnected."
     },
     {
       "id": "arrival-dry-01",
       "event": "arrival",
       "style": "dry",
-      "text": "The plot resumes, sir."
+      "text": "Your throne awaits. Ergonomically questionable as ever."
     },
     {
       "id": "arrival-dry-02",
       "event": "arrival",
       "style": "dry",
-      "text": "Ah, management has arrived, sir."
+      "text": "Welcome back. Productivity remains entirely optional."
     },
     {
       "id": "arrival-dry-03",
       "event": "arrival",
       "style": "dry",
-      "text": "Welcome back. Imaginary applause, sir."
+      "text": "There you are, sir. I was enjoying the lack of requests."
     },
     {
       "id": "arrival-dry-04",
       "event": "arrival",
       "style": "dry",
-      "text": "Civilisation makes a comeback, sir."
+      "text": "The human element returns. So much for stability."
     },
     {
       "id": "arrival-dry-05",
       "event": "arrival",
       "style": "dry",
-      "text": "And now, the human element, sir."
+      "text": "Welcome back, sir. Let's call this research."
     },
     {
       "id": "arrival-dry-06",
       "event": "arrival",
       "style": "dry",
-      "text": "Welcome back to organised chaos, sir."
+      "text": "Systems ready. Sensible decisions sold separately."
     },
     {
       "id": "departure-straight-01",

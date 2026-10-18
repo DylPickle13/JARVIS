@@ -5,8 +5,21 @@ recording lengths, including the 38 initially flagged clips, for staged deployme
 The 84 texts in
 `phrase_catalogue.json` match the owner-approved `PHRASE-BANKS-DRAFT.md`:
 24 wake, 24 processing (including steering), 12 arrival, 24 departure.
-Each complete selection cycle is half straight and half dry humour. This is not
+Arrival cycles are entirely dry humour; other events remain half straight and
+half dry humour. Arrival v2 retains stable IDs (including historical `straight`
+IDs) to preserve shuffle progress. This is not
 live model-generated wording. Fixed errors and ordinary responses are excluded.
+
+## Arrival v2 approval
+
+The owner approved twelve all-humour arrival replacements and a **3.379-second**
+raw arrival ceiling. The other 72 recordings, voice settings, padding, and other
+limits remain unchanged. No audition or physical playback is claimed. Deployment
+must pause all catalogue consumers, preserve claims and remaining/last IDs, and
+transactionally migrate existing bag catalogue hashes after validating both
+catalogues have identical event/ID membership. Never reset selection history.
+The shared farewell pin also moves to the new bundle without changing its audio.
+Legacy non-bank arrival text remains the original rollback greeting.
 
 ## Assets and selection
 

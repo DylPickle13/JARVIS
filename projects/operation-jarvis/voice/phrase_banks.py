@@ -52,8 +52,9 @@ def catalogue():
     for event, count in COUNTS.items():
         bank = [row for row in rows if row['event'] == event]
         if (len(bank) != count or len({row['text'] for row in bank}) != count
-                or any(sum(row['style'] == style for row in bank) != count // 2
-                       for style in ('straight', 'dry'))):
+                or any(sum(row['style'] == style for row in bank) != expected
+                       for style, expected in (('straight', 0 if event == 'arrival' else count // 2),
+                                               ('dry', count if event == 'arrival' else count // 2)))):
             raise BankError('invalid_bank_balance')
     return rows
 

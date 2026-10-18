@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "event": "arrival",
+  "status": "wording-approved-pending-render-and-deployment",
+  "style": "dry",
+  "notes": "Owner approved all twelve replacements. This is a staged proposal, not the active catalogue. Activation requires rendering and duration review, support for an all-dry arrival bank, reviewed catalogue/selector-state migration preserving claims and other banks, and coordinated pinned-bundle deployment. Do not replace the active catalogue in isolation.",
+  "phrases": [
+    "Ah, my favourite source of technical difficulties.",
+    "Welcome back, sir. The chair missed your leadership.",
+    "Management has returned. Look busy, everyone.",
+    "The plot thickens. You've sat down.",
+    "Welcome back, sir. Shall we open another forty tabs?",
+    "Ah, the organic peripheral has reconnected.",
+    "Your throne awaits. Ergonomically questionable as ever.",
+    "Welcome back. Productivity remains entirely optional.",
+    "There you are, sir. I was enjoying the lack of requests.",
+    "The human element returns. So much for stability.",
+    "Welcome back, sir. Let's call this research.",
+    "Systems ready. Sensible decisions sold separately."
+  ]
+}
