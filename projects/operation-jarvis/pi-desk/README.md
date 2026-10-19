@@ -135,16 +135,16 @@ same source update separately.
 
 | Terminal columns (initial open) | Maximum visible sessions | Groups |
 | --- | --- | --- |
-| 1–96 | 1 | Selected session only |
-| 97–145 | 2 | 1/2, 3/4, 5/6, 7/8, 9/10 |
-| 146+ | 3 | 1/2/3, 4/5/6, 7/8/9, 10 alone |
+| 1–88 | 1 | Selected session only |
+| 89–133 | 2 | 1/2, 3/4, 5/6, 7/8, 9/10 |
+| 134+ | 3 | 1/2/3, 4/5/6, 7/8/9, 10 alone |
 
-The default target is 48 columns per pane plus one column per divider. A 110×45
+The default target is 44 columns per pane plus one column per divider. A 110×45
 terminal shows two panes; a 184×45 terminal retains three panes. Panes remain horizontal; terminal height
 controls content height, not the group size. Resizing or changing terminal font
 size automatically regroups after approximately 180 ms without further size
 changes. Shrinking uses the table boundaries; growing requires four extra columns
-(101 for two, 150 for three) to avoid oscillation at a boundary.
+(93 for two, 138 for three) to avoid oscillation at a boundary.
 
 Focus is preserved: session 5 stays selected through `4/5/6` → `5/6` → `5`.
 The session-group separators follow the group size and disappear in one-session
@@ -184,7 +184,7 @@ To tune the target pane width, set `PI_DESK_MIN_COLUMNS` before opening a viewer
 PI_DESK_MIN_COLUMNS=60 pi-desk  # prefer wider panes (the original thresholds)
 ```
 
-Accepted values are 20–300; invalid values use 48. Each viewer retains its own
+Accepted values are 20–300; invalid values use 44. Each viewer retains its own
 setting until it closes.
 
 | Control | Action |

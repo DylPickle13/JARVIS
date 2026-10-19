@@ -28,15 +28,15 @@ import workspace
 
 class LayoutTests(unittest.TestCase):
     def test_thresholds(self):
-        for width, count in ((1, 1), (80, 1), (96, 1), (97, 2), (110, 2),
-                             (145, 2), (146, 3), (150, 3), (184, 3), (1000, 3)):
+        for width, count in ((1, 1), (80, 1), (88, 1), (89, 2), (110, 2),
+                             (133, 2), (134, 3), (140, 3), (184, 3), (1000, 3)):
             self.assertEqual(layout.capacity(width, minimum=layout.DEFAULT_MIN_COLUMNS), count)
 
     def test_hysteresis(self):
-        for width, previous, expected in ((96, 2, 1), (97, 1, 1), (100, 1, 1),
-                                          (101, 1, 2), (110, 1, 2), (145, 3, 2),
-                                          (146, 2, 2), (149, 2, 2), (150, 2, 3),
-                                          (146, 3, 3), (184, 1, 3)):
+        for width, previous, expected in ((88, 2, 1), (89, 1, 1), (92, 1, 1),
+                                          (93, 1, 2), (110, 1, 2), (133, 3, 2),
+                                          (134, 2, 2), (137, 2, 2), (138, 2, 3),
+                                          (140, 2, 3), (134, 3, 3), (184, 1, 3)):
             self.assertEqual(layout.capacity(width, previous, layout.DEFAULT_MIN_COLUMNS), expected)
 
     def test_custom_thresholds(self):
@@ -46,7 +46,7 @@ class LayoutTests(unittest.TestCase):
             self.assertEqual(layout.capacity(182), 3)
         for value in ('oops', '1', '999'):
             with mock.patch.dict(os.environ, PI_DESK_MIN_COLUMNS=value):
-                self.assertEqual(layout.minimum_columns(), 48)
+                self.assertEqual(layout.minimum_columns(), 44)
 
     def test_resize_waits_for_tmux_to_observe_terminal_dimensions(self):
         with tempfile.TemporaryDirectory() as directory, \
