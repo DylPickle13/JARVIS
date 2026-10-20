@@ -107,6 +107,24 @@ public struct HomeAutomationState: Codable, Equatable, Sendable {
     }
 }
 
+/// Only outstanding receipts gate controls. A settled local operation must never
+/// become pending again merely because another client subsequently acts.
+public enum HomeAutomationReceiptPolicy {
+    public static func reconciled(
+        _ receipts: [HomeAutomationControl: HomeAutomationReceipt],
+        with snapshot: HomeAutomationsSnapshot?, now: Date = Date()
+    ) -> [HomeAutomationControl: HomeAutomationReceipt] {
+        receipts.filter { control, receipt in
+            guard let state = snapshot?[control], state.isFresh(now: now),
+                  let observed = state.operation,
+                  observed.requestID == receipt.requestID,
+                  observed.control == control, observed.enabled == receipt.enabled,
+                  ["verified", "unknown", "rejected"].contains(observed.status) else { return true }
+            return false
+        }
+    }
+}
+
 public struct HomeAutomationsSnapshot: Codable, Equatable, Sendable {
     public let automaticVoice: HomeAutomationState?
     public let barnDoor: HomeAutomationState?

@@ -146,7 +146,12 @@ public final class AppState: ObservableObject {
     }
     @Published public var errorMessage: String?
     @Published public var operationErrorMessage: String?
-    @Published public var lastState: StateSnapshot?
+    @Published public var lastState: StateSnapshot? {
+        didSet {
+            homeAutomationReceipts = HomeAutomationReceiptPolicy.reconciled(
+                homeAutomationReceipts, with: lastState?.homeAutomations)
+        }
+    }
     @Published public private(set) var lastStateRequestStartedAt: Date?
     @Published public var lastHealth: HealthResponse?
     @Published public var isRefreshing = false
@@ -190,6 +195,9 @@ public final class AppState: ObservableObject {
     private let lastReadResultKey = "jarvis.jobs.last-read-sequence.v1"
     private let resultHistoryCursorKey = "jarvis.jobs.result-history-cursor.v1"
     private var scheduledJobHistoryCursor: Int?
+    private var refreshGeneration = 0
+    private var stateGeneration = 0
+    private var connectionLoopGeneration = 0
     private var refreshTask: Task<Void, Never>?
     private var connectionLoopTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
@@ -341,10 +349,9 @@ public final class AppState: ObservableObject {
         updateSystemHistoryPresentation()
         pollingTask?.cancel()
         pollingTask = nil
-        refreshTask?.cancel()
-        refreshTask = nil
-        stateTask?.cancel()
-        stateTask = nil
+        cancelRefresh()
+        cancelStateFetch()
+        connectionLoopGeneration += 1
         connectionLoopTask?.cancel()
         connectionLoopTask = nil
     }
@@ -396,7 +403,12 @@ public final class AppState: ObservableObject {
             return
         }
         connectionLoopTask?.cancel()
+        connectionLoopGeneration += 1
+        let owner = connectionLoopGeneration
         connectionLoopTask = Task { @MainActor [weak self] in
+            defer {
+                if self?.connectionLoopGeneration == owner { self?.connectionLoopTask = nil }
+            }
             var delay: Duration = .milliseconds(250)
             while let self, self.appIsActive, !Task.isCancelled {
                 await self.refresh()
@@ -410,22 +422,40 @@ public final class AppState: ObservableObject {
 
     // MARK: - Connection
 
-    public func refresh() async {
+    private func cancelRefresh() {
+        refreshGeneration += 1
         refreshTask?.cancel()
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.performRefresh()
-        }
-        refreshTask = task
-        await task.value
+        refreshTask = nil
+        isRefreshing = false
     }
 
-    private func performRefresh() async {
+    private func cancelStateFetch() {
+        stateGeneration += 1
+        stateTask?.cancel()
+        stateTask = nil
+        isStateLoading = false
+    }
+
+    public func refresh() async {
+        guard !Task.isCancelled else { return }
+        cancelRefresh()
+        cancelStateFetch()
+        let owner = refreshGeneration
+        let task = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled, self.refreshGeneration == owner else { return }
+            await self.performRefresh(owner: owner)
+        }
+        refreshTask = task
+        await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+        if refreshGeneration == owner { refreshTask = nil }
+    }
+
+    private func performRefresh(owner: Int) async {
         connectionState = .connecting
         errorMessage = nil
         retryAllowed = true
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer { if refreshGeneration == owner { isRefreshing = false } }
 
         let override: URL?
         if endpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -440,7 +470,9 @@ public final class AppState: ObservableObject {
         }
 
         let candidates = JarvisEndpoints.candidates(override: override)
-        guard let discovered = await client.discover(candidates, timeout: 3.0) else {
+        let discovery = await client.discover(candidates, timeout: 3.0)
+        guard !Task.isCancelled, refreshGeneration == owner else { return }
+        guard let discovered = discovery else {
             connectionState = .failed
             errorMessage = "Could not reach jarvisd at any known endpoint (tried \(candidates.count))."
             return
@@ -449,7 +481,9 @@ public final class AppState: ObservableObject {
         store.endpointURLString = discovered.absoluteString
         let endpoint = JarvisEndpoint(baseURL: discovered, token: store.token ?? "")
         do {
-            lastHealth = try await client.health(endpoint)
+            let health = try await client.health(endpoint)
+            guard !Task.isCancelled, refreshGeneration == owner, activeEndpoint == endpoint else { return }
+            lastHealth = health
             connectionState = .connected
             errorMessage = nil
             if activeSection == .home {
@@ -459,14 +493,17 @@ public final class AppState: ObservableObject {
             } else {
                 await refreshJobs()
             }
+            guard !Task.isCancelled, refreshGeneration == owner else { return }
             restartPolling(refreshImmediately: false)
         } catch let error as JarvisError {
+            guard !Task.isCancelled, refreshGeneration == owner else { return }
             connectionState = .failed
             retryAllowed = error.isRetryable
             errorMessage = error.errorDescription ?? "Could not connect to jarvisd."
         } catch is CancellationError {
             return
         } catch {
+            guard !Task.isCancelled, refreshGeneration == owner else { return }
             connectionState = .failed
             errorMessage = error.localizedDescription
         }
@@ -490,25 +527,27 @@ public final class AppState: ObservableObject {
     }
 
     private func fetchState(refreshingCodexQuota: Bool) async {
-        guard activeEndpoint != nil else { return }
-        stateTask?.cancel()
+        guard !Task.isCancelled, activeEndpoint != nil else { return }
+        cancelStateFetch()
+        let owner = stateGeneration
         let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.performFetchState(refreshingCodexQuota: refreshingCodexQuota)
+            guard let self, !Task.isCancelled, self.stateGeneration == owner else { return }
+            await self.performFetchState(refreshingCodexQuota: refreshingCodexQuota, owner: owner)
         }
         stateTask = task
-        await task.value
+        await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+        if stateGeneration == owner { stateTask = nil }
     }
 
-    private func performFetchState(refreshingCodexQuota: Bool) async {
+    private func performFetchState(refreshingCodexQuota: Bool, owner: Int) async {
         guard let endpoint = activeEndpoint else { return }
         let requestStartedAt = Date()
         isStateLoading = true
-        defer { isStateLoading = false }
+        defer { if stateGeneration == owner { isStateLoading = false } }
         do {
             let snapshot = try await convergedState(endpoint, refreshingCodexQuota: refreshingCodexQuota,
                 cachedOnly: !activeSection.showsForegroundDashboard && !refreshingCodexQuota)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, stateGeneration == owner, activeEndpoint == endpoint else { return }
             let previousState = lastState
             let widgetsChanged = widgetReloadValue(previousState) != widgetReloadValue(snapshot)
             lastState = snapshot
@@ -528,7 +567,7 @@ public final class AppState: ObservableObject {
         } catch is CancellationError {
             return
         } catch let error as JarvisError {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, stateGeneration == owner, activeEndpoint == endpoint else { return }
             stateErrorMessage = error.errorDescription
             if lastState == nil { errorMessage = error.errorDescription }
             if error.isRetryable {
@@ -539,7 +578,7 @@ public final class AppState: ObservableObject {
                 retryAllowed = false
             }
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, stateGeneration == owner, activeEndpoint == endpoint else { return }
             stateErrorMessage = error.localizedDescription
             if lastState == nil { errorMessage = error.localizedDescription }
             connectionState = .failed
@@ -626,6 +665,7 @@ public final class AppState: ObservableObject {
             operationErrorMessage = "Not connected."
             return nil
         }
+        let commandStartedAt = Date()
         do {
             let result = try await client.command(endpoint, action: action, params: params)
             if !result.ok {
@@ -634,6 +674,15 @@ public final class AppState: ObservableObject {
             return result
         } catch let error as JarvisError {
             operationErrorMessage = error.errorDescription
+            if error.mayHaveDeliveredCommand,
+               let observed = await DeviceCommandRecovery.observe(client: client, endpoint: endpoint, action: action, params: params, notBefore: commandStartedAt),
+               !Task.isCancelled, activeEndpoint == endpoint {
+                lastState = observed.state
+                if let confirmed = observed.confirmation {
+                    operationErrorMessage = nil
+                    return confirmed
+                }
+            }
             return nil
         } catch is CancellationError {
             return nil
@@ -1258,11 +1307,16 @@ public final class AppState: ObservableObject {
     // MARK: - Reset
 
     public func clearConnection() {
-        refreshTask?.cancel()
+        guard store.clear() else {
+            operationErrorMessage = store.keychainError
+            return
+        }
+        cancelRefresh()
+        cancelStateFetch()
+        connectionLoopGeneration += 1
         connectionLoopTask?.cancel()
-        stateTask?.cancel()
+        connectionLoopTask = nil
         pollingTask?.cancel()
-        store.clear()
         lastState = nil
         lastStateRequestStartedAt = nil
         lastHealth = nil

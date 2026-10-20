@@ -149,7 +149,12 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
     @Published var errorMessage: String?
     // Health describes state reads, not control-command or relay-write errors.
     @Published private(set) var stateErrorMessage: String?
-    @Published var lastState: StateSnapshot?
+    @Published var lastState: StateSnapshot? {
+        didSet {
+            homeAutomationReceipts = HomeAutomationReceiptPolicy.reconciled(
+                homeAutomationReceipts, with: lastState?.homeAutomations)
+        }
+    }
     @Published var isViaPhone = false { didSet { updateHistoryPolling() } }
     @Published var cachedAt: Date?
     @Published var busyPlug: String?
@@ -654,6 +659,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             errorMessage = "No endpoint available."
             return
         }
+        let commandStartedAt = Date()
         do {
             let result = try await client.command(endpoint, action: isOn ? "plug-on" : "plug-off", params: ["plug": .string(name)])
             guard result.ok else {
@@ -663,6 +669,9 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             await refresh()
         } catch let error as JarvisError {
             errorMessage = error.errorDescription
+            if error.mayHaveDeliveredCommand {
+                await reconcileDeviceCommand(endpoint: endpoint, action: isOn ? "plug-on" : "plug-off", params: ["plug": .string(name)], notBefore: commandStartedAt)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -726,6 +735,7 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             errorMessage = "No endpoint available."
             return
         }
+        let commandStartedAt = Date()
         do {
             let result = try await client.command(endpoint, action: "purifier-set", params: command.parameters)
             guard result.ok else {
@@ -746,11 +756,22 @@ final class WatchConnectModel: ObservableObject, WatchBridgeDelegate {
             errorMessage = nil
         } catch let error as JarvisError {
             errorMessage = error.errorDescription
+            if error.mayHaveDeliveredCommand {
+                await reconcileDeviceCommand(endpoint: endpoint, action: "purifier-set", params: command.parameters, notBefore: commandStartedAt)
+            }
         } catch is CancellationError {
             return
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func reconcileDeviceCommand(endpoint: JarvisEndpoint, action: String, params: [String: JSONValue], notBefore: Date) async {
+        guard let observed = await DeviceCommandRecovery.observe(client: client, endpoint: endpoint, action: action, params: params, notBefore: notBefore),
+              !Task.isCancelled, store.endpoint == endpoint else { return }
+        let warning = errorMessage
+        acceptDirectState(observed.state, from: endpoint.baseURL)
+        if observed.confirmation == nil { errorMessage = warning }
     }
 
     private func acceptRelayResult(

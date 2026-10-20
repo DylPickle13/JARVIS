@@ -11,6 +11,32 @@ final class HomeAutomationTests: XCTestCase {
               validUntil: now.addingTimeInterval(expires).formatted(.iso8601), operation: operation)
     }
 
+    func testSettledReceiptsRetireAndNeverReappearAfterPeerOperation() throws {
+        func receipt(_ id: String, _ status: String, enabled: Bool = false) throws -> HomeAutomationReceipt {
+            try JSONDecoder().decode(HomeAutomationReceipt.self, from: JSONSerialization.data(withJSONObject: [
+                "requestID": id, "control": "automatic-voice", "enabled": enabled, "status": status]))
+        }
+        let id = String(repeating: "a", count: 32)
+        let pending = try receipt(id, "pending")
+        let outstanding: [HomeAutomationControl: HomeAutomationReceipt] = [.automaticVoice: pending]
+        func reconcile(_ operation: HomeAutomationReceipt?, expires: TimeInterval = 30) -> [HomeAutomationControl: HomeAutomationReceipt] {
+            HomeAutomationReceiptPolicy.reconciled(outstanding, with: .init(
+                automaticVoice: state(expires: expires, operation: operation)), now: now)
+        }
+        XCTAssertEqual(reconcile(pending), outstanding)
+        XCTAssertEqual(reconcile(nil), outstanding, "Missing/restarted/other endpoint evidence cannot refund an uncertain request")
+        XCTAssertEqual(reconcile(try receipt(String(repeating: "b", count: 32), "verified")), outstanding)
+        XCTAssertEqual(reconcile(try receipt(id, "verified", enabled: true)), outstanding)
+        XCTAssertEqual(reconcile(try receipt(id, "verified"), expires: -1), outstanding)
+        for status in ["verified", "unknown", "rejected"] {
+            XCTAssertTrue(reconcile(try receipt(id, status)).isEmpty)
+        }
+        let retired = reconcile(try receipt(id, "verified"))
+        XCTAssertTrue(HomeAutomationReceiptPolicy.reconciled(retired, with: .init(
+            automaticVoice: state(operation: try receipt(String(repeating: "b", count: 32), "pending"))), now: now).isEmpty)
+        XCTAssertFalse(state(operation: try receipt(id, "pending")).canChange(.automaticVoice, connected: true, now: now))
+    }
+
     func testCompactPresentationRenamesVoiceWithoutChangingCommandIdentity() {
         XCTAssertEqual(HomeAutomationControl.automaticVoice.title, "Voice")
         XCTAssertEqual(HomeAutomationControl.automaticVoice.rawValue, "automatic-voice")

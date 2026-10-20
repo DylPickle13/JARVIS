@@ -2,6 +2,19 @@
 
 **Native clients for a Mac-hosted AI workspace and connected-device controls.**
 
+## Audit remediation — build 268 installed on both devices
+
+**268 is installed and independently verified on iPhone and Watch**, with final
+both-device version readbacks at **16:24 EDT, October 20, 2026**. Each app was
+installed and launched once. After the earlier partial attempt, fresh Watch-only
+approval completed deployment without reinstalling or relaunching the iPhone.
+All service/Pi/Minecraft/configuration preservation checks and eight candidate/
+rollback signatures passed. No service restart, connection reset or terminal input
+occurred; terminald activation still requires separate approval. Exact signed
+267 remains rollback. Physical UI acceptance remains owner review. See
+[operations](docs/operations.md) and the
+[audit fixes and verification](docs/audit-remediation-2026-10-20.md).
+
 ## Health-card typography — build 267 installed on both devices
 
 **267 installed once per device and independently version/process verified at

@@ -1,5 +1,134 @@
 # Native app build and operations
 
+## Audit remediation — build 268 installed on both devices
+
+Fresh owner **“ok try again now”** authorized the Watch-only completion. Both
+read-only preflights passed at iPhone 268 / Watch 267, followed by the full immediate
+Watch gates. **268 installed once and launched once on Watch**, independently
+version/process verified. Final inventory readbacks confirmed **268 on both devices
+at 16:24 EDT, October 20, 2026**. The previously updated iPhone was neither
+reinstalled nor relaunched. Across all attempts, each device was installed and
+launched exactly once; stopped attempts are retained below and were never replayed.
+
+All 18 protected service records (17 continuous), Pi/Minecraft identities, current
+backend source/configuration/authentication and ten-second history cadence were
+preserved. Eight candidate/267-rollback signatures and both source/payload seals
+were independently reverified. No connection reset, transport switch, uncertain-write
+retry, household command, terminal input, provisioning change or service restart
+occurred. **terminald hardening still requires separate activation approval**;
+it was not activated by this app deployment. Physical UI acceptance remains owner
+review, not a claim established by version/process checks.
+
+Private artifact: `20261020T155300Z-build268-audit-remediation`.
+Completion receipts: `deployment-watch-retry3/result.json` and
+`final-deployment-verification.json`; iPhone installation evidence remains under
+`deployment-retry2/`. Exact signed 267 remains rollback. All authorizations are
+consumed; never replay a completed or stopped installer. Future changes/rollback
+require fresh scope, current installed-baseline checks and all preservation gates.
+
+The owner acknowledged completion and approved commit/push and scoped stale-artifact
+cleanup. That approval does not establish exhaustive physical UI testing or
+authorize further device/service actions. Retain signed 268 and exact 267 rollback,
+along with audit/deployment evidence; unrelated backups remain out of scope.
+
+### Earlier partial deployment — iPhone 268; Watch 267
+
+Fresh owner **“just try again”** authorized a distinct third attempt. At **16:16
+EDT, October 20**, both devices passed identity/pairing, DDI, unlock and installed-
+267 checks; observed transports were wired iPhone and wireless Watch. The exact
+signed **268 installed once and launched once on iPhone**, with independent version
+and process verification. The Watch then lost its developer tunnel at the immediate
+identity gate, so **no Watch installation or launch was attempted**.
+
+One separately recorded **read-only** Watch inventory query confirmed **267 at
+16:18 EDT**; it did not retry installation or reset the connection. That attempt
+left the release partially deployed. The subsequent Watch-only completion above
+preserved the updated iPhone and rechecked the mixed versions and all device gates.
+Do not replay any previous installer/authorization.
+
+All 18 protected service records (17 continuous), existing Pi/Minecraft identities,
+backend source/configuration/authentication and ten-second history cadence were
+preserved. Both candidate/267-rollback source/payload seals passed again. No service
+restart, physical household control, terminal input, connection reset or automatic
+write retry occurred. Exact signed 267 remains rollback; physical UI acceptance is
+still owner review. The terminal-server hardening was not activated by this work.
+
+Private artifact: `20261020T155300Z-build268-audit-remediation`.
+Partial-attempt receipts: `deployment-retry2/result.json`,
+`deployment-retry2/watch-independent-version-summary.json` and
+`deployment-retry2/partial-deployment-review.json`.
+
+### Earlier zero-write deployment stops
+
+Fresh owner **“my devices are connected now, proceed”** authorized a guarded
+attempt on October 20. At **16:09 EDT**, the initial Watch identity query reported
+`pairingState: paired` but `tunnelState: disconnected`. CoreDevice warned that it
+could not establish a connection and returned best-available/cached details; these
+do not establish current boot/unlock readiness. The guard stopped before Watch
+DDI/unlock/version queries or iPhone preflight. **Zero installs and zero launches
+on both devices.** No connection reset, automatic retry, terminal input or service
+restart occurred. The attempt is closed and requires fresh owner readiness.
+
+Before this attempt, the preservation baseline was reconciled read-only against
+the active autonomous-recovery backend: 615 source files and 25 configuration
+fingerprints, including two reviewed existing-device host-address updates. No
+backend/configuration write was made. Authenticated loopback readiness, service
+freshness and ten-second history cadence passed. After the stop, all 18 protected
+service records (17 continuous), existing Pi/Minecraft identities and source/config/
+authentication fingerprints remained intact. Signed 268/267 payload seals passed
+again. Neither installed version was freshly queried at that stop; 267 was then
+the last recorded successful deployment, not a new version readback.
+
+Evidence in the artifact below: `deployment/result.json`,
+`deployment/watch-initial-identity.json` and `deployment/stop-review.json`.
+Do not replay this stopped installer or its consumed authorization.
+
+Owner **“ready”** authorized a distinct attempt at **16:13 EDT**. The same initial
+Watch gate again reported a paired but disconnected developer tunnel, with the
+same warning that only cached/best-available details were available. Neither DDI/
+unlock/version queries nor iPhone preflight were reached. Again **zero installs
+and zero launches**, no reset or automatic retry. All 18 protected service records,
+existing Pi/Minecraft identities and configuration/source/authentication checks
+passed after the stop; both signed payload seals remained intact. This attempt is
+also closed. Its separate evidence is `deployment-retry1/result.json` and
+`deployment-retry1/stop-review.json`. Diagnose the developer connection rather than
+replaying either consumed installer; disruptive connection recovery requires approval.
+
+### Preparation and retained candidate
+
+The owner initially approved deployment, then changed scope to **“ok just prep for
+deployment, i have to head out now”** before any physical installation or launch.
+Signed **268** was prepared without installation. That preparation created no
+installation authorization or installer attempt; the later zero-write attempt is
+recorded above. The plan again denies deployment until fresh owner readiness.
+A terminal-server restart remains a separate approval.
+
+The frozen 277-input release passed **220 selected native tests, 382 shared cases
+(3 expected live skips), 46 terminal tests, six real-network tests, 2,316 render
+assertions, both simulator builds and the signed archive**. The existing clipboard
+pixel exclusion is unchanged. All eight 268/267 bundle signatures, unchanged
+profiles/entitlements/dependency lock and source/payload seals passed. Existing
+paid-team signing was reused without portal/provisioning updates. Exact signed
+**267** remains rollback; the 268 archive must not be rebuilt before installation.
+
+Private artifact: `20261020T155300Z-build268-audit-remediation`, including
+`audit.json`, `payload-manifest.json`, `source-input-manifest-268.json`,
+`PREPARATION_ONLY.txt` and final `preparation-completed.json`. The original
+source-remediation evidence is durably copied under `prior-validation/`. Only this
+run's generated caches and disposable simulator were removed; both signed payloads,
+source seals and all 1,942 retained evidence files were reverified. No commit, physical-device write or service restart was
+performed during preparation. At that stage the last successful app deployment
+was 267 below. The later partial deployment is recorded above; current installed
+versions must always be read afresh before a future installation.
+
+The active backend had advanced beyond 267's historical preservation reference.
+Preparation did not modify it. The subsequent read-only reconciliation is recorded
+above; every future attempt must still verify the current baseline and preserve
+all guards. Do not bypass or replay stale preservation gates. Normal both-device/immediate identity, pairing,
+DDI, unlock, transport, installed-baseline and uncertain-write safeguards still
+apply. terminald hardening is source-only, not activated by this preparation.
+See [remediation details and limitations](audit-remediation-2026-10-20.md).
+
 ## Health-card typography — build 267 installed on both devices
 
 Owner requested implementation and then **“please deploy now”** for the health-card

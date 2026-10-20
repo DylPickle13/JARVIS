@@ -23,10 +23,12 @@ public enum JarvisError: LocalizedError, Equatable, Sendable {
         }
     }
 
+    /// Read/reconnect policy only; never authorizes resubmission of a write.
     public var isRetryable: Bool {
         switch self {
         case .transport: return true
-        case .http(let status, _): return status == 408 || status == 425 || status == 429 || status >= 500
+        // Read owners may recover via approved endpoint discovery, never the redirect target.
+        case .http(let status, _): return (300..<400).contains(status) || status == 408 || status == 425 || status == 429 || status >= 500
         case .notConfigured, .badURL, .decoding: return false
         }
     }
@@ -146,14 +148,14 @@ public extension JarvisAPI {
     }
 }
 
-private final class DeviceCommandDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    static let shared = DeviceCommandDelegate()
+private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    static let shared = NoRedirectDelegate()
 
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest,
                     completionHandler: @escaping (URLRequest?) -> Void) {
-        completionHandler(nil) // A device write must never follow a redirect.
+        completionHandler(nil) // No API request may forward credentials or replay a write through a redirect.
     }
 }
 
@@ -214,7 +216,6 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         requestTimeout: TimeInterval? = nil,
         deviceWrite: Bool = false,
         writeRequestID: String? = nil,
-        refuseRedirect: Bool = false,
         responseByteLimit: Int? = nil,
         as type: T.Type
     ) async throws -> T {
@@ -230,7 +231,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request, delegate: (deviceWrite || refuseRedirect) ? DeviceCommandDelegate.shared : nil)
+            (data, response) = try await session.data(for: request, delegate: NoRedirectDelegate.shared)
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as URLError {
@@ -270,7 +271,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         var path = "/api/v1/system/history?window=\(window.rawValue)"
         if let component { path += "&component=\(component)" }
         let response = try await perform(endpoint, path, requestTimeout: 10,
-            refuseRedirect: true, responseByteLimit: 2 * 1024 * 1024, as: SystemHistoryResponse.self)
+            responseByteLimit: 2 * 1024 * 1024, as: SystemHistoryResponse.self)
         return try response.validated(window: window, component: component)
     }
 
@@ -468,7 +469,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
         }
         let result = try await perform(endpoint, "/api/v1/room-audio/\(speaker.rawValue)/stop", method: "POST",
                                       body: JSONEncoder().encode(["turnID": turnID]), requestTimeout: 4,
-                                      refuseRedirect: true, as: RoomAudioStatus.self)
+                                      as: RoomAudioStatus.self)
         guard result.speakerID == speaker.rawValue else { throw JarvisError.transport("Room speaker identity mismatch.") }
         return result
     }
@@ -481,7 +482,7 @@ public final class JarvisClient: @unchecked Sendable, JarvisAPI {
             throw JarvisError.transport("Invalid room turn.")
         }
         return try await perform(endpoint, "/api/v1/room-audio/stop", method: "POST",
-            body: JSONEncoder().encode(["turnID": turnID]), requestTimeout: 4, refuseRedirect: true, as: RoomAudioStatus.self)
+            body: JSONEncoder().encode(["turnID": turnID]), requestTimeout: 4, as: RoomAudioStatus.self)
     }
 
     public func notificationStatus(_ endpoint: JarvisEndpoint) async throws -> JARVISNotificationStatus {
@@ -603,7 +604,7 @@ private extension JarvisClient {
         var request = URLRequest(url: base.appendingPathComponent("health"))
         request.timeoutInterval = timeout
         do {
-            let (_, response) = try await session.data(for: request)
+            let (_, response) = try await session.data(for: request, delegate: NoRedirectDelegate.shared)
             return (response as? HTTPURLResponse)?.statusCode == 200
         } catch {
             return false

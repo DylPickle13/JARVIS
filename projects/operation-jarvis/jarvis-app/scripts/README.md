@@ -80,6 +80,8 @@ once with `xcodebuild -downloadComponent MetalToolchain` if needed.
   retransmission is required. Never commit or post the code's output.
 ## Verification
 
+- `python3 scripts/tests/test-network-redirects.py`: isolated real URLSession HTTP/HTTPS tests for redirect refusal, certificate pins, and read-only recovery through approved candidates. Generates temporary certificates and uses synthetic credentials; never contacts the installed backend. Included in `verify-jarvis-app.sh`.
+
 - `verify-jarvis-app.sh`: runs the local daemon and package tests,
   plist/shell checks, opaque icon validation, combined iOS/embedded-Watch
   simulator verification, and the standalone watchOS simulator build. Its Watch

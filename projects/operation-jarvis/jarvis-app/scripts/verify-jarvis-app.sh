@@ -533,7 +533,10 @@ grep -q 'case nine = 9' JARVISKit/Sources/JARVISKit/TerminalSessionSlot.swift
 grep -Fq 'session \(terminal.selectedSlot.displayName) of \(JARVISTerminalSlot.allCases.count)' JARVIS/Terminal/PiTerminalView.swift
 grep -Fq 'session \(controller.selectedSlot.displayName) of \(JARVISTerminalSlot.allCases.count)' JARVISWatch/Views/WatchTerminalView.swift
 grep -q 'PiAttachmentProtocol.receiverCommand(for: slot)' JARVIS/Terminal/PiSSHTransport.swift
-grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVIS/Terminal/PiTerminalSettings.swift
+grep -q 'JARVISCredentialPersistence.write' JARVIS/Terminal/PiTerminalSettings.swift
+grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' JARVISKit/Sources/JARVISKit/CredentialPersistence.swift
+grep -q 'SecItemUpdate' JARVISKit/Sources/JARVISKit/CredentialPersistence.swift
+grep -q 'testUpdateFailurePreservesExistingSecretWithoutDeleteOrInsert' JARVISKit/Tests/JARVISKitTests/CredentialPersistenceTests.swift
 grep -q 'String(openSSHPublicKey: hostKey)' JARVIS/Terminal/PiSSHTransport.swift
 grep -q 'extended-keys-format csi-u' config/jarvis-mobile.tmux.conf
 grep -q 'window-size latest' config/jarvis-mobile.tmux.conf
@@ -600,7 +603,7 @@ grep -q 'processed_request_ids' terminald/jarvis_terminald.py
 grep -q 'refresh-client' terminald/jarvis_terminald.py
 grep -q 'Record successful delivery before the best-effort client redraw' terminald/jarvis_terminald.py
 grep -q 'terminalConfiguration' JARVISKit/Sources/JARVISKit/WatchBridge.swift
-grep -q 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' HostAppIntents/JARVISTerminalConfigurationStore.swift
+grep -q 'JARVISCredentialPersistence.write' HostAppIntents/JARVISTerminalConfigurationStore.swift
 grep -q 'SecTrustCopyCertificateChain' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'final class WatchTerminalClient' JARVISKit/Sources/JARVISKit/WatchTerminal.swift
 grep -q 'private var sceneIsActive = false' JARVISWatch/Views/WatchTerminalView.swift
@@ -779,7 +782,9 @@ reject_match 'Neural Core must retain its pre-Claude artwork and telemetry' -Eq 
   JARVISKit/Sources/JARVISKit/NeuralCoreTelemetry.swift
 reject_match 'Provider-only changes must not introduce new widget reload triggers' -Fq \
   'WidgetQuotaValue' JARVIS/AppState.swift
-grep -q '"claudeQuota": 60.0' ../jarvisd/jarvisd_core/state.py
+# Match the existing backend's two-minute Claude rate floor (not Codex's 60s).
+grep -q 'CLAUDE_MIN_REQUEST_SECONDS = 120.0' ../jarvisd/jarvisd_core/state.py
+grep -q '"claudeQuota": 120.0' ../jarvisd/jarvisd_core/state.py
 grep -q '"claudeQuota": 300.0' ../jarvisd/jarvisd_core/state.py
 grep -q '"claudeQuota": 900.0' ../jarvisd/jarvisd_core/state.py
 python3 -m unittest discover -s ../quotas -p 'test_*.py'
@@ -1510,6 +1515,9 @@ assert 'let visibleRows = homeRowsOnly ? home.visibleRows : rows' in shared
 assert 'homeRowsOnly' not in watch, 'Watch must retain its existing full-row default'
 assert 'activeRowsOnly' not in phone + shared + watch
 PYOMLXHOME
+
+printf '%s\n' '== Real loopback redirect, pin and read-recovery tests =='
+python3 scripts/tests/test-network-redirects.py
 
 printf '%s\n' '== JARVISKit tests (live tests opt-in) =='
 if [[ "${JARVIS_LIVE_TESTS:-0}" == "1" ]]; then

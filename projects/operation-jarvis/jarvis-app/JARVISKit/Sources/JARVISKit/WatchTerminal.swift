@@ -278,7 +278,7 @@ public final class WatchTerminalSpeechFileStore {
     }
 }
 
-private final class WatchTerminalPinnedSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+private final class WatchTerminalPinnedSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let expectedFingerprint: String
     private let lock = NSLock()
     private var certificateWasRejected = false
@@ -291,6 +291,13 @@ private final class WatchTerminalPinnedSessionDelegate: NSObject, URLSessionDele
         lock.lock()
         defer { lock.unlock() }
         return certificateWasRejected
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil) // Pinning does not authorize a second destination or POST.
     }
 
     func clearRejectedCertificate() {
@@ -791,6 +798,9 @@ public final class WatchTerminalClient: @unchecked Sendable {
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw WatchTerminalClientError.invalidResponse
+        }
+        if (300..<400).contains(http.statusCode) {
+            throw WatchTerminalClientError.submissionUnconfirmed
         }
         guard (200..<300).contains(http.statusCode) else {
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]

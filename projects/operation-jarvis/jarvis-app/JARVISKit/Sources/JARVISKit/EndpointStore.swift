@@ -7,6 +7,7 @@ import Security
 // Works on both iOS and watchOS (Security framework is available on watchOS).
 public final class EndpointStore: @unchecked Sendable {
     private let defaults: UserDefaults
+    private let keychain: JARVISKeychainOperations
     private let urlKey = "jarvis.endpoint.url"
     private let service = "com.operation-jarvis.app"
     private let tokenAccount = "jarvis.api.token"
@@ -17,8 +18,9 @@ public final class EndpointStore: @unchecked Sendable {
     /// of being silently discarded.
     public private(set) var keychainError: String?
 
-    public init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard, keychain: JARVISKeychainOperations = .live) {
         self.defaults = defaults
+        self.keychain = keychain
     }
 
     // MARK: - Endpoint URL (non-secret)
@@ -52,17 +54,21 @@ public final class EndpointStore: @unchecked Sendable {
     // MARK: - Token (secret, Keychain)
 
     public var token: String? {
-        get { Keychain.read(service: service, account: tokenAccount) }
+        get {
+            let result = JARVISCredentialPersistence.read(service: service, account: tokenAccount, operations: keychain)
+            guard result.status == errSecSuccess, let data = result.data else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
         set {
             if let newValue, !newValue.isEmpty {
-                if Keychain.write(service: service, account: tokenAccount, value: newValue) {
+                if JARVISCredentialPersistence.write(service: service, account: tokenAccount, value: newValue, operations: keychain) {
                     keychainError = nil
                 } else {
                     keychainError = "Could not save the API token in Keychain."
                 }
             } else {
-                Keychain.delete(service: service, account: tokenAccount)
-                keychainError = nil
+                keychainError = JARVISCredentialPersistence.delete(service: service, account: tokenAccount, operations: keychain)
+                    ? nil : "Could not remove the API token from Keychain."
             }
         }
     }
@@ -78,49 +84,11 @@ public final class EndpointStore: @unchecked Sendable {
         endpointURL != nil
     }
 
-    public func clear() {
-        endpointURLString = nil
+    @discardableResult
+    public func clear() -> Bool {
         token = nil
-    }
-}
-
-// MARK: - Minimal Keychain wrapper
-
-enum Keychain {
-    static func write(service: String, account: String, value: String) -> Bool {
-        guard let data = value.data(using: .utf8) else { return false }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
-        var add = query
-        add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
-    }
-
-    static func read(service: String, account: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    static func delete(service: String, account: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
+        guard keychainError == nil else { return false }
+        endpointURLString = nil
+        return true
     }
 }

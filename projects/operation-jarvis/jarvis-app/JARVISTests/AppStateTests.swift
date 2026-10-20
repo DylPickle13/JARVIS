@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import Security
 @testable import JARVIS
 import JARVISKit
 
@@ -7,11 +8,161 @@ import JARVISKit
 final class AppStateTests: XCTestCase {
     private func healthErrorFixture(_ api: FakeAPI) -> AppState {
         let defaults = UserDefaults(suiteName: "jarvis.health-errors.\(UUID().uuidString)")!
-        let store = EndpointStore(defaults: defaults)
+        let keychain = JARVISKeychainOperations(update: { _, _ in errSecItemNotFound },
+            add: { _ in errSecSuccess }, delete: { _ in errSecItemNotFound },
+            read: { _ in (errSecItemNotFound, nil) })
+        let store = EndpointStore(defaults: defaults, keychain: keychain)
         store.endpointURLString = "http://fake.jarvis:8790"
         let app = AppState(store: store, client: api)
         app.connectionState = .connected
         return app
+    }
+
+    func testAuditSettledHomeReceiptMustNotBlockLaterPeerOperation() async throws {
+        let now = Date()
+        let revision = String(repeating: "a", count: 32)
+        func state(_ receipt: HomeAutomationReceipt? = nil) -> StateSnapshot {
+            StateSnapshot(ok: true, homeAutomations: .init(automaticVoice: .init(
+                available: true, enabled: true, revision: revision,
+                observedAt: now.formatted(.iso8601), validUntil: now.addingTimeInterval(30).formatted(.iso8601), operation: receipt)))
+        }
+        func receipt(_ id: String) throws -> HomeAutomationReceipt {
+            try JSONDecoder().decode(HomeAutomationReceipt.self, from: JSONSerialization.data(withJSONObject: [
+                "requestID": id, "control": "automatic-voice", "enabled": false, "status": "verified"
+            ]))
+        }
+        let api = FakeAPI(stateResponses: [state(), state()])
+        let app = healthErrorFixture(api)
+        let command = HomeAutomationCommand(control: .automaticVoice, enabled: false, revision: revision)
+        _ = await app.setHomeAutomation(command)
+        app.lastState = state(try receipt(command.requestID))
+        XCTAssertFalse(app.isHomeAutomationBusy(.automaticVoice), "Own settled operation is not busy")
+        app.lastState = state(try receipt(String(repeating: "b", count: 32)))
+        XCTAssertFalse(app.isHomeAutomationBusy(.automaticVoice), "A later verified peer operation must not resurrect our old busy state")
+    }
+
+    func testOlderDiscoveryCompletionCannotReplaceNewerConnection() async {
+        for lateSuccess in [false, true] {
+            let api = FakeAPI()
+            var first: CheckedContinuation<URL?, Never>?
+            var calls = 0
+            api.discoveryHook = { candidates in
+                calls += 1
+                if calls == 1 { return await withCheckedContinuation { first = $0 } }
+                return candidates.first
+            }
+            let app = healthErrorFixture(api)
+            app.endpointDraft = "http://old.invalid:8790"
+            let retired = Task { await app.refresh() }
+            while first == nil { await Task.yield() }
+            app.endpointDraft = "http://new.invalid:8790"
+            await app.refresh()
+            first?.resume(returning: lateSuccess ? URL(string: "http://old.invalid:8790") : nil)
+            await retired.value
+            XCTAssertEqual(app.currentEndpoint?.host, "new.invalid")
+            XCTAssertEqual(app.connectionState, .connected)
+            XCTAssertNil(app.errorMessage)
+            XCTAssertFalse(app.isRefreshing)
+        }
+    }
+
+    func testOlderHealthFailureCannotReplaceNewerConnection() async {
+        let api = FakeAPI()
+        var first: CheckedContinuation<Void, Never>?
+        var calls = 0
+        api.healthHook = {
+            calls += 1
+            if calls == 1 {
+                await withCheckedContinuation { first = $0 }
+                throw JarvisError.transport("retired read")
+            }
+            return HealthResponse(ok: true, version: "new", uptimeSeconds: 1)
+        }
+        let app = healthErrorFixture(api)
+        let retired = Task { await app.refresh() }
+        while first == nil { await Task.yield() }
+        await app.refresh()
+        first?.resume()
+        await retired.value
+        XCTAssertEqual(app.connectionState, .connected)
+        XCTAssertEqual(app.lastHealth?.version, "new")
+        XCTAssertNil(app.errorMessage)
+        XCTAssertFalse(app.isRefreshing)
+    }
+
+    func testFailedSSHCredentialSavePreservesRoutingAndPassword() {
+        let defaults = UserDefaults(suiteName: "jarvis.ssh-save." + UUID().uuidString)!
+        defaults.set("old.invalid", forKey: "jarvis.pi-terminal.host")
+        defaults.set(22, forKey: "jarvis.pi-terminal.port")
+        defaults.set("old-user", forKey: "jarvis.pi-terminal.username")
+        var added = false
+        let keychain = JARVISKeychainOperations(update: { _, _ in errSecInteractionNotAllowed },
+            add: { _ in added = true; return errSecSuccess },
+            delete: { _ in errSecNotAvailable },
+            read: { _ in (errSecSuccess, Data("previous".utf8)) })
+        let settings = PiTerminalSettings(defaults: defaults, keychain: keychain)
+        for password in ["replacement", ""] {
+            XCTAssertFalse(settings.save(host: "new.invalid", portText: "2222", username: "new-user", password: password))
+            XCTAssertEqual(settings.host, "old.invalid")
+            XCTAssertEqual(defaults.string(forKey: "jarvis.pi-terminal.host"), "old.invalid")
+            XCTAssertEqual(settings.port, 22)
+            XCTAssertEqual(settings.username, "old-user")
+            XCTAssertEqual(settings.passwordForEditing(), "previous")
+            XCTAssertTrue(settings.hasPassword)
+            XCTAssertNotNil(settings.credentialError)
+        }
+        XCTAssertFalse(added)
+    }
+
+    func testAuditCancelledHealthDoesNotOverwriteResetOrKeepLoading() async {
+        let api = FakeAPI()
+        api.auditHealthDelay = .seconds(30)
+        let app = healthErrorFixture(api)
+        let task = Task { await app.refresh() }
+        while api.healthCalls == 0 { await Task.yield() }
+        app.clearConnection()
+        await task.value
+        XCTAssertEqual(app.connectionState, .idle)
+        XCTAssertNil(app.lastHealth)
+        XCTAssertNil(app.currentEndpoint)
+        XCTAssertFalse(app.isRefreshing)
+    }
+
+    func testUncertainPlugDeliveryChecksStateOnceAndNeverResends() async {
+        for confirmed in [true, false] {
+            let snapshot = try! JSONDecoder().decode(StateSnapshot.self, from: Data(
+                "{\"ok\":true,\"subsystems\":{\"plugs\":{\"updatedAt\":\"\(Date().addingTimeInterval(1).formatted(.iso8601))\",\"ok\":true,\"stale\":false,\"plugs\":{\"lamp\":{\"ok\":true,\"stale\":false,\"isOn\":\(confirmed)}}}}}".utf8))
+            let api = FakeAPI(stateResponses: [snapshot])
+            api.commandError = JarvisError.transport("uncertain fixture")
+            let app = healthErrorFixture(api)
+            let result = await app.send("plug-on", ["plug": .string("lamp")])
+            XCTAssertEqual(result?.ok == true, confirmed)
+            XCTAssertEqual(api.commands, ["plug-on"])
+            XCTAssertEqual(api.cachedStateCalls, 1)
+            XCTAssertEqual(app.operationErrorMessage == nil, confirmed)
+        }
+    }
+
+    func testDefiniteCommandDenialDoesNotBecomeSuccessFromCachedState() async {
+        let api = FakeAPI()
+        api.commandError = JarvisError.http(status: 403, body: "denied")
+        let app = healthErrorFixture(api)
+        let result = await app.send("plug-off", ["plug": .string("lamp")])
+        XCTAssertNil(result)
+        XCTAssertEqual(api.commands.count, 1)
+        XCTAssertEqual(api.cachedStateCalls, 0)
+    }
+
+    func testAuditCancelledDiscoveryMustNotOverwriteClearConnection() async {
+        let api = FakeAPI()
+        api.auditDiscoveryDelay = .seconds(30)
+        let app = healthErrorFixture(api)
+        let task = Task { await app.refresh() }
+        while !api.auditDiscoveryStarted { await Task.yield() }
+        app.clearConnection()
+        await task.value
+        XCTAssertEqual(app.connectionState, .idle, "Cancelled discovery must not overwrite explicit reset")
+        XCTAssertNil(app.errorMessage)
     }
 
     func testFreshStateClearsOldLivenessErrorWithoutClearingCommandWarning() async {
@@ -1476,6 +1627,12 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
     var stateResponses: [StateSnapshot]
     var stateError: Error?
     var healthError: Error?
+    var discoveryHook: (@MainActor ([URL]) async -> URL?)?
+    var healthHook: (@MainActor () async throws -> HealthResponse)?
+    var auditDiscoveryDelay: Duration?
+    var auditDiscoveryStarted = false
+    var auditHealthDelay: Duration?
+    var commandError: Error?
     var commands: [String] = []
     var homeCommands: [HomeAutomationCommand] = []
     var commandParams: [[String: JSONValue]] = []
@@ -1548,6 +1705,8 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
 
     func health(_ endpoint: JarvisEndpoint) async throws -> HealthResponse {
         healthCalls += 1
+        if let healthHook { return try await healthHook() }
+        if let auditHealthDelay { try await Task.sleep(for: auditHealthDelay) }
         if let healthError { throw healthError }
         return HealthResponse(ok: true, version: "test", uptimeSeconds: 2)
     }
@@ -1592,6 +1751,7 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         if let commandDelay { try await Task.sleep(for: commandDelay) }
         commands.append(action)
         commandParams.append(params ?? [:])
+        if let commandError { throw commandError }
         if commandSucceeds, action == "purifier-set", case .string(let setting)? = params?["setting"] {
             switch setting {
             case "power":
@@ -1677,5 +1837,13 @@ private final class FakeAPI: JarvisAPI, @unchecked Sendable {
         return SigningRenewalStatus(ok: true, available: true, phase: "queued", running: true)
     }
 
-    func discover(_ candidates: [URL], timeout: TimeInterval) async -> URL? { candidates.first }
+    func discover(_ candidates: [URL], timeout: TimeInterval) async -> URL? {
+        auditDiscoveryStarted = true
+        if let discoveryHook { return await discoveryHook(candidates) }
+        if let auditDiscoveryDelay {
+            do { try await Task.sleep(for: auditDiscoveryDelay) }
+            catch { return nil }
+        }
+        return candidates.first
+    }
 }

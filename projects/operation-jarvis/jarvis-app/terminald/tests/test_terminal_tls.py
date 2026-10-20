@@ -120,7 +120,114 @@ subjectAltName = DNS:localhost,IP:127.0.0.1
             pass
         self.assertEqual(self.health()[0], 200)
 
-    def test_handshake_timeout_does_not_change_established_request_semantics(self):
+    def tls_connection(self):
+        context = ssl.create_default_context(cafile=str(self.cert))
+        connection = context.wrap_socket(socket.create_connection(self.server.server_address, timeout=1),
+                                         server_hostname="localhost")
+        connection.settimeout(1)
+        self.addCleanup(connection.close)
+        return connection
+
+    def assert_closed(self, connection):
+        try:
+            # A timeout response is permitted, but the connection must reach EOF.
+            while connection.recv(4096):
+                pass
+        except (ConnectionResetError, ssl.SSLEOFError):
+            pass
+
+    def test_incomplete_unauthenticated_headers_expire(self):
+        with mock.patch.object(terminald, "HTTP_READ_DEADLINE_SECONDS", 0.15):
+            connection = self.tls_connection()
+            connection.sendall(b"GET /health HTTP/1.1\r\nHost: localhost\r\n")
+            self.assert_closed(connection)
+            self.assertEqual(self.health()[0], 200)
+        self.service.send_input.assert_not_called()
+
+    def test_header_deadline_is_total_not_reset_by_trickle_bytes(self):
+        with mock.patch.object(terminald, "HTTP_READ_DEADLINE_SECONDS", 0.2):
+            connection = self.tls_connection()
+            connection.sendall(b"GET /health HTTP/1.1\r\nX-Slow: ")
+            started = time.monotonic()
+            for _ in range(10):
+                try:
+                    connection.sendall(b"x")
+                except OSError:
+                    break
+                time.sleep(0.04)
+            self.assert_closed(connection)
+            self.assertLess(time.monotonic() - started, 0.8)
+        self.service.send_input.assert_not_called()
+
+    def test_authenticated_partial_body_expires_without_dispatch(self):
+        with mock.patch.object(terminald, "HTTP_READ_DEADLINE_SECONDS", 0.15):
+            connection = self.tls_connection()
+            connection.sendall(
+                b"POST /v2/terminal/input HTTP/1.1\r\nHost: localhost\r\n"
+                b"Authorization: Bearer fixture-only-token\r\nContent-Length: 100\r\n\r\n{")
+            self.assert_closed(connection)
+        self.service.send_input.assert_not_called()
+
+    def test_keep_alive_idle_connection_expires(self):
+        with mock.patch.object(terminald, "HTTP_READ_DEADLINE_SECONDS", 0.15):
+            connection = self.tls_connection()
+            connection.sendall(b"GET /health HTTP/1.1\r\nHost: localhost\r\n"
+                               b"Authorization: Bearer fixture-only-token\r\n\r\n")
+            response = http.client.HTTPResponse(connection)
+            response.begin()
+            self.assertEqual(response.status, 200)
+            response.read()
+            self.assert_closed(connection)
+
+    def test_slow_frame_and_speech_processing_are_not_header_body_timeouts(self):
+        def frame(_):
+            time.sleep(0.25)
+            return {"ok": True, "sessionID": 1}
+        def speech(_):
+            time.sleep(0.25)
+            return b"RIFFfixtureWAVE"
+        self.service.frame_after.side_effect = frame
+        self.service.synthesize_speech.side_effect = speech
+        with mock.patch.object(terminald, "HTTP_READ_DEADLINE_SECONDS", 0.1):
+            context = ssl.create_default_context(cafile=str(self.cert))
+            connection = http.client.HTTPSConnection("127.0.0.1", self.server.server_port,
+                                                    context=context, timeout=2)
+            try:
+                headers = {"Authorization": "Bearer fixture-only-token"}
+                connection.request("GET", "/v2/terminal/frame?sessionID=1", headers=headers)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                response.read()
+                connection.request("POST", "/v2/terminal/speech",
+                    body='{"sessionID":1,"responseID":"' + "a"*64 + '"}', headers=headers)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.read(), b"RIFFfixtureWAVE")
+            finally:
+                connection.close()
+
+    def test_connection_admission_is_bounded_and_released(self):
+        entered, release = threading.Event(), threading.Event()
+        self.server.connection_slots = threading.BoundedSemaphore(1)
+        def worker(*_):
+            entered.set()
+            release.wait(2)
+        with mock.patch.object(self.server, "process_request_thread", side_effect=worker), \
+             mock.patch.object(self.server, "shutdown_request") as close:
+            first, second = mock.Mock(), mock.Mock()
+            self.server.process_request(first, ("127.0.0.1", 1))
+            self.assertTrue(entered.wait(1))
+            self.server.process_request(second, ("127.0.0.1", 2))
+            close.assert_called_once_with(second)
+            release.set()
+            self.assertTrue(self.server.connection_slots.acquire(timeout=1))
+            self.server.connection_slots.release()
+
+    def test_disallowed_source_is_rejected_before_tls(self):
+        self.assertFalse(self.server.verify_request(mock.Mock(), ("203.0.113.1", 1)))
+        self.assertTrue(self.server.verify_request(mock.Mock(), ("127.0.0.1", 1)))
+
+    def test_handshake_sets_separate_bounded_response_timeout(self):
         raw = mock.Mock()
         secure = mock.Mock()
         context = mock.Mock()
@@ -131,5 +238,5 @@ subjectAltName = DNS:localhost,IP:127.0.0.1
         context.wrap_socket.assert_called_once_with(raw, server_side=True, do_handshake_on_connect=False)
         secure.do_handshake.assert_called_once_with()
         self.assertEqual(secure.settimeout.call_args_list,
-                         [mock.call(terminald.TLS_HANDSHAKE_TIMEOUT_SECONDS), mock.call(None)])
+                         [mock.call(terminald.TLS_HANDSHAKE_TIMEOUT_SECONDS), mock.call(terminald.HTTP_WRITE_TIMEOUT_SECONDS)])
         handle.assert_called_once_with(secure, ("127.0.0.1", 12345))

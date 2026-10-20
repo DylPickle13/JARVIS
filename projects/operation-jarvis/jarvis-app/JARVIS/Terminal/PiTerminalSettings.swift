@@ -27,6 +27,7 @@ final class PiTerminalSettings: ObservableObject {
     @Published private(set) var credentialError: String?
 
     private let defaults: UserDefaults
+    private let keychain: JARVISKeychainOperations
     private let hostKey = "jarvis.pi-terminal.host"
     private let portKey = "jarvis.pi-terminal.port"
     private let usernameKey = "jarvis.pi-terminal.username"
@@ -37,13 +38,14 @@ final class PiTerminalSettings: ObservableObject {
     private var simulatorSeededPassword: String?
 #endif
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, keychain: JARVISKeychainOperations = .live) {
         self.defaults = defaults
+        self.keychain = keychain
         self.host = defaults.string(forKey: hostKey) ?? ""
         let savedPort = defaults.integer(forKey: portKey)
         self.port = savedPort > 0 ? savedPort : PiTerminalConfiguration.defaultPort
         self.username = defaults.string(forKey: usernameKey) ?? PiTerminalConfiguration.defaultUsername
-        self.hasPassword = Self.readKeychain(service: keychainService, account: passwordAccount) != nil
+        self.hasPassword = JARVISCredentialPersistence.read(service: keychainService, account: passwordAccount, operations: keychain).status == errSecSuccess
 #if DEBUG && targetEnvironment(simulator)
         applySimulatorLaunchSeedIfPresent()
 #endif
@@ -53,7 +55,7 @@ final class PiTerminalSettings: ObservableObject {
 #if DEBUG && targetEnvironment(simulator)
         if let simulatorSeededPassword { return simulatorSeededPassword }
 #endif
-        return Self.readKeychain(service: keychainService, account: passwordAccount) ?? ""
+        return savedPassword ?? ""
     }
 
     @discardableResult
@@ -65,16 +67,16 @@ final class PiTerminalSettings: ObservableObject {
             return false
         }
 
+        let saved = password.isEmpty
+            ? JARVISCredentialPersistence.delete(service: keychainService, account: passwordAccount, operations: keychain)
+            : JARVISCredentialPersistence.write(service: keychainService, account: passwordAccount, value: password, operations: keychain)
+        guard saved else {
+            credentialError = "Could not update the SSH password in Keychain. Previous settings were preserved."
+            return false
+        }
         defaults.set(cleanHost, forKey: hostKey)
         defaults.set(parsedPort, forKey: portKey)
         defaults.set(cleanUsername, forKey: usernameKey)
-
-        if password.isEmpty {
-            Self.deleteKeychain(service: keychainService, account: passwordAccount)
-        } else if !Self.writeKeychain(service: keychainService, account: passwordAccount, value: password) {
-            credentialError = "Could not save the SSH password in Keychain."
-            return false
-        }
 
         self.host = cleanHost
         self.port = parsedPort
@@ -94,7 +96,7 @@ final class PiTerminalSettings: ObservableObject {
             return PiTerminalConfiguration(host: resolvedHost, port: port, username: username, password: simulatorSeededPassword)
         }
 #endif
-        guard let password = Self.readKeychain(service: keychainService, account: passwordAccount), !password.isEmpty else {
+        guard let password = savedPassword, !password.isEmpty else {
             return nil
         }
         return PiTerminalConfiguration(host: resolvedHost, port: port, username: username, password: password)
@@ -145,40 +147,9 @@ final class PiTerminalSettings: ObservableObject {
     }
 #endif
 
-    private static func writeKeychain(service: String, account: String, value: String) -> Bool {
-        guard let data = value.data(using: .utf8) else { return false }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
-        var add = query
-        add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
-    }
-
-    private static func readKeychain(service: String, account: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
+    private var savedPassword: String? {
+        let result = JARVISCredentialPersistence.read(service: keychainService, account: passwordAccount, operations: keychain)
+        guard result.status == errSecSuccess, let data = result.data else { return nil }
         return String(data: data, encoding: .utf8)
-    }
-
-    private static func deleteKeychain(service: String, account: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
     }
 }

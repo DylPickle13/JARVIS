@@ -20,6 +20,11 @@ Start with architecture to understand the app, or operations to build and run it
 | [Talk to JARVIS complication](watch-talk-complication.md) | Native Watch prompt entry, Siri retirement, and pending physical acceptance. |
 | [Pending work and status](planned-work.md) | Build and deployment details to check, plus the media review checklist. |
 
+## Reviews
+
+- [2026-10-20 code audit](code-audit-2026-10-20.md): findings, baseline evidence and limits.
+- [Audit remediation](audit-remediation-2026-10-20.md): source-only fixes, safe automatic recovery, verification and deployment boundary.
+
 ## Archives
 
 | Document | What it preserves |

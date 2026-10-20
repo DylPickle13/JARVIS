@@ -1,8 +1,30 @@
 import Foundation
 import XCTest
+import Security
 import JARVISKit
 
 final class PromptRuntimeChecks: XCTestCase {
+    func testFailedTerminalCredentialReplacementPreservesEndpointAndPin() {
+        let defaults = UserDefaults(suiteName: "jarvis.terminal-save." + UUID().uuidString)!
+        defaults.set("https://old.invalid:8792", forKey: JARVISTerminalConfigurationStore.endpointKey)
+        defaults.set(String(repeating: "a", count: 64), forKey: JARVISTerminalConfigurationStore.fingerprintKey)
+        var deleted = false, added = false
+        let operations = JARVISKeychainOperations(update: { _, _ in errSecInteractionNotAllowed },
+            add: { _ in added = true; return errSecSuccess },
+            delete: { _ in deleted = true; return errSecSuccess },
+            read: { _ in (errSecSuccess, Data(String(repeating: "x", count: 32).utf8)) })
+        let next = WatchTerminalConfiguration(endpoint: "https://new.invalid:8792",
+            token: String(repeating: "y", count: 32), certificateSHA256: String(repeating: "b", count: 64))
+        XCTAssertFalse(JARVISTerminalConfigurationStore.save(next, defaults: defaults, keychain: operations))
+        XCTAssertEqual(defaults.string(forKey: JARVISTerminalConfigurationStore.endpointKey), "https://old.invalid:8792")
+        XCTAssertEqual(defaults.string(forKey: JARVISTerminalConfigurationStore.fingerprintKey), String(repeating: "a", count: 64))
+        XCTAssertFalse(deleted); XCTAssertFalse(added)
+        guard case .configured(let previous) = JARVISTerminalConfigurationStore.load(defaults: defaults, keychain: operations) else {
+            XCTFail("Previous configuration remains usable"); return
+        }
+        XCTAssertEqual(previous.token, String(repeating: "x", count: 32))
+    }
+
     func testNativeCompletionAcceptsOnlyOnce() {
         var gate = JARVISTalkInputCompletion()
         XCTAssertEqual(gate.consume(["hello"]), "hello")

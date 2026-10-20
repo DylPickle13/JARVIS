@@ -118,6 +118,7 @@ struct SettingsDetailView: View {
                 .settingsAction()
             }
             if app.connectionState == .failed, let error = app.errorMessage { issue(error) }
+            if let error = app.store.keychainError { issue(error) }
         }
     }
 

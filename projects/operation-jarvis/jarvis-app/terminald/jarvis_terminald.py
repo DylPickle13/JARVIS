@@ -21,6 +21,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import socket
 import ssl
 import stat
 import subprocess
@@ -64,6 +65,9 @@ MAX_SPEECH_AUDIO_BYTES = 20 * 1024 * 1024
 ROOM_SPEECH_URL = "http://127.0.0.1:8791/synthesize"
 SPEECH_RESPONSE_ID_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TLS_HANDSHAKE_TIMEOUT_SECONDS = 5.0
+HTTP_READ_DEADLINE_SECONDS = 15.0
+HTTP_WRITE_TIMEOUT_SECONDS = 180.0  # Preserve the existing speech download budget.
+MAX_HTTP_CONNECTIONS = 32
 LONG_POLL_SECONDS = 1.5
 POLL_INTERVAL_SECONDS = 0.10
 MAX_SCROLLBACK_ROWS = 160
@@ -791,6 +795,33 @@ class TerminalService:
                     self.processed_request_ids.pop(key, None)
 
 
+class RequestReadDeadline:
+    """Absolute header/body deadline, independent of trickle traffic or handler work."""
+
+    def __init__(self, connection, seconds: float) -> None:
+        self.connection = connection
+        self.lock = threading.Lock()
+        self.armed = True
+        self.timer = threading.Timer(seconds, self.expire)
+        self.timer.daemon = True
+        self.timer.start()
+
+    def expire(self) -> None:
+        with self.lock:
+            if not self.armed:
+                return
+            self.armed = False
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    def cancel(self) -> None:
+        with self.lock:
+            self.armed = False
+            self.timer.cancel()
+
+
 class TerminalHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -802,8 +833,12 @@ class TerminalHTTPServer(ThreadingHTTPServer):
         trusted_cidrs: Sequence[ipaddress._BaseNetwork],
         services: Optional[Dict[int, TerminalService]] = None,
         ssl_context: Optional[ssl.SSLContext] = None,
+        max_connections: int = MAX_HTTP_CONNECTIONS,
     ) -> None:
         self.ssl_context = ssl_context
+        if type(max_connections) is not int or max_connections < 1:
+            raise ValueError("Invalid connection limit")
+        self.connection_slots = threading.BoundedSemaphore(max_connections)
         service_map = dict(services or {1: service})
         if service_map.get(1) is not service:
             raise TerminalError("Slot 1 must remain the legacy terminal service.")
@@ -825,6 +860,34 @@ class TerminalHTTPServer(ThreadingHTTPServer):
             self.siri_pane_identities,
         )
 
+    def verify_request(self, request, client_address) -> bool:
+        try:
+            remote = ipaddress.ip_address(client_address[0])
+        except ValueError:
+            return False
+        return any(remote in network for network in self.trusted_cidrs)
+
+    def process_request(self, request, client_address) -> None:
+        # Admit before creating a thread or performing TLS. Read clients recover
+        # from a closed saturated connection through their normal bounded policy.
+        if not self.connection_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            worker = threading.Thread(target=self._serve_admitted_request,
+                args=(request, client_address), daemon=True)
+            worker.start()
+        except BaseException:
+            self.connection_slots.release()
+            self.shutdown_request(request)
+            raise
+
+    def _serve_admitted_request(self, request, client_address) -> None:
+        try:
+            self.process_request_thread(request, client_address)
+        finally:
+            self.connection_slots.release()
+
     def process_request_thread(self, request, client_address) -> None:
         # Keep accept() as plain TCP. A partial TLS hello must never monopolize
         # the listener and prevent healthy Watch connections from being accepted.
@@ -837,9 +900,9 @@ class TerminalHTTPServer(ThreadingHTTPServer):
                 )
                 connection.settimeout(TLS_HANDSHAKE_TIMEOUT_SECONDS)
                 connection.do_handshake()
-                # Only setup is time-bounded here; preserve the existing HTTP
-                # long-poll/input semantics and authentication checks unchanged.
-                connection.settimeout(None)
+                # Separate absolute read deadlines exclude legitimate processing
+                # time, including long polls and speech synthesis.
+                connection.settimeout(HTTP_WRITE_TIMEOUT_SECONDS)
             except (OSError, ssl.SSLError):
                 self.shutdown_request(connection)
                 return
@@ -878,6 +941,32 @@ class TerminalHTTPServer(ThreadingHTTPServer):
 class TerminalRequestHandler(BaseHTTPRequestHandler):
     server_version = "JARVISTerminal/2"
     protocol_version = "HTTP/1.1"
+
+    def handle_one_request(self) -> None:
+        self._header_deadline = RequestReadDeadline(self.connection, HTTP_READ_DEADLINE_SECONDS)
+        try:
+            super().handle_one_request()
+        except (OSError, TimeoutError):
+            self.close_connection = True
+        finally:
+            self._header_deadline.cancel()
+
+    def parse_request(self) -> bool:
+        try:
+            return super().parse_request()
+        finally:
+            self._header_deadline.cancel()
+
+    def _read_body(self, length: int) -> bytes:
+        deadline = RequestReadDeadline(self.connection, HTTP_READ_DEADLINE_SECONDS)
+        try:
+            data = self.rfile.read(length)
+            if len(data) != length:
+                self.close_connection = True
+                raise ValueError("Incomplete request body.")
+            return data
+        finally:
+            deadline.cancel()
 
     @property
     def terminal_server(self) -> TerminalHTTPServer:
@@ -935,6 +1024,7 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
     def _require_authorization(self) -> bool:
         if self._authorized():
             return True
+        self.close_connection = True  # Do not parse an unread body as another request.
         self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "Unauthorized."})
         return False
 
@@ -1016,7 +1106,7 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if length <= 0 or length > MAX_SIRI_BODY_BYTES: raise NewSessionError("invalid_request")
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = json.loads(self._read_body(length).decode("utf-8"))
                 self._write_json(HTTPStatus.OK, self.terminal_server.siri_router.submit(payload))
             except NewSessionError as error:
                 self._write_json(HTTPStatus.CONFLICT, {"ok": False, "code": error.code, "error": "Siri new-session request refused."})
@@ -1042,10 +1132,11 @@ class TerminalRequestHandler(BaseHTTPRequestHandler):
             length = 0
         maximum_length = MAX_SPEECH_REQUEST_BYTES if is_speech else MAX_BODY_BYTES
         if length <= 0 or length > maximum_length:
+            self.close_connection = True
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid request size."})
             return
         try:
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            payload = json.loads(self._read_body(length).decode("utf-8"))
             if not isinstance(payload, dict):
                 raise ValueError("The terminal request was invalid.")
             session_id = self._v2_payload_session(payload.get("sessionID")) if is_v2 else 1
