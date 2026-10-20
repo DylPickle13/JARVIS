@@ -11,8 +11,9 @@ The corrected helper is installed on `mac-mini-64` as
 without a restart during acceptance. The Pi's `jarvis-monitor-arp.service` was
 stopped once, then disabled after the Mac-only checks passed. At the owner's
 subsequent request, its installed source directory, unit and configuration were
-removed from their active locations into a private recovery archive. After a
-systemd daemon reload, the unit reports `LoadState=not-found`, inactive, PID 0.
+removed from their active locations. The recovery archive and older Pi address-
+repair archive were subsequently deleted at the owner's request. After a systemd
+daemon reload, the unit reports `LoadState=not-found`, inactive, PID 0.
 No other Pi service PID changed.
 
 - More than seven minutes with the Pi helper stopped, with repeated successful
@@ -26,13 +27,13 @@ No other Pi service PID changed.
   advanced from 31 to 49 during that span. Reboot, overnight and actual Pi-power-off
   behavior were not physically tested. Independent Pi workloads are not migrated.
 
-Private evidence is under the Android monitor runtime directory's
-`mac-arp-migration-20261020T020858Z/`; remote stop/disable evidence is under
-`/var/backups/jarvis-monitor-arp/mac-migration-20261020T020858Z/`.
-The original install and replacement attempt markers remain intact. The Pi removal
-archive and guarded move/reload evidence are in the remote migration directory's
-`uninstall/` subdirectory; it is inert, not an installed service. All 59 Android
-monitor tests passed after removal, including the native sanitizer regressions.
+Private local evidence is under the Android monitor runtime directory's
+`mac-arp-migration-20261020T020858Z/`, including the cleanup receipt. The retired
+Pi helper's entire `/var/backups/jarvis-monitor-arp/` tree has been deleted, as
+have the temporary Mac compiler/test artifacts. There is no Pi rollback archive.
+The live Mac installation, its original install/replacement safety markers, and
+unrelated backups remain untouched. All 59 Android monitor tests passed after
+service removal, including the native sanitizer regressions.
 
 ## Design and privilege boundary
 
@@ -166,9 +167,10 @@ ps -axo pid,uid,gid,command  # locate the specific helper, do not stop others
 
 Approved rollback: unload only `system/com.jarvis.monitor-arp` with `launchctl
 bootout` and verify it exited. The retired local Pi deployment has now been
-uninstalled: restoring it requires a separately reviewed restoration of its archived
-unit, configuration and source to their original paths, followed by daemon reload
-and explicit enable/start. Do not blindly run `systemctl start` against a removed
-unit, delete attempt evidence, or overwrite installation files as a retry mechanism.
+uninstalled and its rollback archives deleted: restoring it requires a separately
+reviewed fresh Linux deployment from version-controlled source and freshly verified
+peer configuration, followed by daemon reload and explicit enable/start. Do not
+blindly run `systemctl start` against a removed unit, delete the live Mac's attempt
+evidence, or overwrite installation files as a retry mechanism.
 No infinite reconnect guarantee is made: the viewer still has its existing bounded
 retry policy, and genuine doorbell/decoder failures remain separate.

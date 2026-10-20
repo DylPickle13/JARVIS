@@ -604,7 +604,8 @@ The macOS replacement, guarded administrator installation and live acceptance ar
 documented in [MACOS_ARP.md](MACOS_ARP.md). On 2026-10-20 UTC the local deployment
 moved this helper to `mac-mini-64`; the Pi helper was stopped and disabled after
 Mac-only video/audio and a controlled reconnect passed, then uninstalled at the
-owner's request with an inert private recovery archive. The history below describes
+owner's request. Its recovery archives were subsequently deleted on request.
+The history below describes
 the original Pi workaround. Staging or passing offline tests alone does **not**
 retire a helper; verify Mac-only playback before taking its previous host offline.
 
