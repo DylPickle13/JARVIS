@@ -122,7 +122,8 @@ class LEDTests(unittest.TestCase):
             store.save('led-config.json', {'enabled': True})
             apply = Mock(side_effect=led.LightingError({'reason': 'timeout', 'stage': 'connection'}))
             for now in (100, 200):
-                led.run_once(store, now=lambda: now, get_presence=lambda: presence('nearby'), apply=apply)
+                led.run_once(store, now=lambda: now, get_presence=lambda: presence('nearby'), apply=apply,
+                             observe=Mock(side_effect=RuntimeError('read unavailable')))
             apply.assert_called_once()
             self.assertTrue(store.load('led-state.json', {})['pending'])
             self.assertEqual(store.load('led-failure.json', {})['reason'], 'timeout')
@@ -300,4 +301,4 @@ class LEDTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             store = cycle.Store(Path(d))
             store.save('led-alerts.json', ['led'])
-            self.assertIn('owner review', watch.controller_status(store)['led'][0])
+            self.assertIn('retrying observation', watch.controller_status(store)['led'][0])

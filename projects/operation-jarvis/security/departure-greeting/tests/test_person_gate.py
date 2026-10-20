@@ -29,6 +29,9 @@ class GateTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
+        env = patch.dict(os.environ, {'JARVIS_HOME_AUTOMATIONS_ROOT': str(self.root / 'absent-fixture-policy'),
+                                      'JARVIS_AUTOMATIC_VOICE_POLICY_REQUIRED': '0'})
+        env.start(); self.addCleanup(env.stop)  # No live household policy in offline tests.
         runtime.save_json(self.root / 'config.json', {'version': 1, 'enabled': True,
             'motion_device': 'motion-sensor', 'door_device': 'door-sensor',
             'speaker_device': 'front-doorbell', 'volume': 60})

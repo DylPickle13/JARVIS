@@ -42,7 +42,7 @@ and explicitly owner-accepted legacy LAN policies:
 | `connect-tcp --serial IP:PORT` | Strict signed-RSA TCP; this unauthenticated firmware is still rejected |
 | `connect-legacy-lan --serial IP:PORT` | USB-first exact-frame risk acceptance; explicit acknowledgement + apply required |
 | `wifi-disable` | Exact USB listener retirement, verified shutdown and legacy-consent revocation |
-| `pending`, `resolve-pending` | Inspect/acknowledge unknown outcomes locally, without replaying writes |
+| `pending`, `resolve-pending` | Inspect locally / request checked automatic read-only reconciliation |
 
 **Every applying command defaults to dry-run.** Without `--apply`, these commands
 make **no ADB calls**, read no photos, and do not create pairing/runtime state.
@@ -106,8 +106,8 @@ Default runtime (outside the source tree):
 ~/Library/Application Support/JARVIS/picture-frame/
 ├── config.json             # exact ADB serial, package, hardware/build pins (0600)
 ├── controller.lock         # cooperating CLI-process lock
-├── pending.json            # durable pre-dispatch marker, only while outcome needs review
-├── last-resolved.json      # manual acknowledgement, not verification
+├── pending.json            # durable reservation, reconciled after the writer is idle
+├── last-resolved.json      # latest reconciliation; unknown is not verified success
 ├── uploads.json            # content-hash transfer journal, not original filenames/photos
 ├── screenshots/            # explicit captures (0700 directory, 0600 files)
 └── tcp-deps/                # optional hash-pinned source + manifest; owner-only
@@ -131,10 +131,19 @@ live probe and refuses to replace existing pairing/pending state.
   Android property pins are safety checks, **not cryptographic attestation**.
 - Durable markers are saved before writes. Timeout, disconnect, interruption,
   failed/unknown readback or partial brightness changes leave a pending marker.
-  Later writes are blocked. No retry, rollback, catch-up queue or automatic replay.
-- `pending` works without a connected frame. Only after physical inspection use
-  `resolve-pending --apply`; it acknowledges uncertainty and performs no device action.
-  An unknown upload may already have imported: do not blindly send it again.
+  Later requests reconcile through the exclusive controller lock, pinned identity
+  and readback after a 130-second settling interval. A recovery invocation never also
+  dispatches a new requested action. No rollback, catch-up queue or automatic replay.
+- `pending` works without a connected frame. `status` and subsequent control requests
+  reconcile automatically; `resolve-pending --apply` is a compatibility entry to that
+  checked path, not a blind acknowledgment. Actual connectivity, identity or storage
+  problems must be repaired before proceeding.
+- Photo hashes are durably consumed **before** transfer. Unknown imports remain unknown;
+  an absent remote file never permits duplicate upload. Legacy journals without a hash
+  have genuinely missing source metadata: other controls recover, but imports remain
+  withheld rather than guessing. This legacy edge is absent from the current runtime.
+  Network-only health monitoring still never opens ADB; no background frame polling
+  or automatic listener enablement is introduced.
 - No root, app install/uninstall, factory reset, reboot, raw-shell endpoint, photo
   deletion, Frameo database edits, broad LAN scans or assumed import directories.
 - Source allowlist ignores all accidental photos/configs/captures. Runtime never

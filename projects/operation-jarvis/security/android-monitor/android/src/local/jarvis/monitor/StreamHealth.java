@@ -17,7 +17,9 @@ public final class StreamHealth {
     public long retryDelay() {
         long[] delays = {5000, 10000, 20000, 30000, 60000};
         steadySince = 0;
-        return failures < delays.length ? delays[failures++] : -1;
+        int index = Math.min(failures, delays.length - 1);
+        if (failures < delays.length - 1) failures++;
+        return delays[index]; // Keep trying; bounded counter, delay and queue.
     }
     public void reset() { failures = 0; }
 }

@@ -143,7 +143,7 @@ class HomeAutomationTests(unittest.TestCase):
         with self.assertRaises(policy.PolicyError):
             HomeAutomations(self.root, 'relative/launcher')
 
-    def test_interrupted_resource_blocks_new_request_until_owner_review(self):
+    def test_interrupted_resource_waits_for_fresh_read_not_cached_state(self):
         command = self.command('barn-door', enabled=True, confirmed=True)
         ledger = policy.read_json(self.root, 'requests.json')
         ledger['requests'][command['requestID']] = {**command, 'owner': 'prior-daemon', 'at': 1, 'status': 'pending'}
@@ -153,14 +153,75 @@ class HomeAutomationTests(unittest.TestCase):
             self.send(self.command('barn-door', enabled=True, confirmed=True))
         self.runner.assert_not_called()
 
-    def test_receipt_capacity_never_evicts_or_sends_another_change(self):
+    def test_fresh_cloud_read_retires_interrupted_receipt_without_replay(self):
+        command = self.command('barn-door', enabled=True, confirmed=True)
         ledger = policy.read_json(self.root, 'requests.json')
+        ledger['requests'][command['requestID']] = {**command, 'owner': 'prior-daemon', 'at': 1, 'status': 'pending'}
+        policy.save_json(self.root, 'requests.json', ledger)
+        self.runner.return_value = {'result': 'read_succeeded', 'rules': [{'ref': REF,
+            'kind': 'automation', 'name': 'Barn Door Protocol', 'enabled': False, 'revision': REV}]}
+        self.manager._read(REF)
+        self.assertFalse(self.manager.snapshot()['barnDoor']['blocked'])
+        self.assertEqual(self.send(command)['homeAutomation']['status'], 'unknown')
+        self.runner.assert_called_once_with(['list'])
+
+    def test_local_policy_read_retires_old_receipt_without_toggling_voice(self):
+        command = self.command(enabled=False)
+        ledger = policy.read_json(self.root, 'requests.json')
+        ledger['requests'][command['requestID']] = {**command, 'owner': 'prior-daemon', 'at': 1, 'status': 'pending'}
+        policy.save_json(self.root, 'requests.json', ledger)
+        before = (self.root / 'voice.json').read_bytes()
+        self.assertFalse(self.manager.snapshot()['automaticVoice']['blocked'])
+        self.assertEqual(self.send(command)['homeAutomation']['status'], 'unknown')
+        self.assertEqual((self.root / 'voice.json').read_bytes(), before)
+        self.runner.assert_not_called()
+
+    def test_receipt_capacity_archives_without_forgetting_consumed_ids(self):
+        ledger = policy.read_json(self.root, 'requests.json')
+        commands = {}
         for _ in range(512):
             command = self.command()
+            commands[command['requestID']] = command
             ledger['requests'][command['requestID']] = {**command, 'owner': self.manager.boot, 'at': 1, 'status': 'verified'}
         policy.save_json(self.root, 'requests.json', ledger)
+        self.send(self.command())
+        self.assertFalse(policy.current(self.root, legacy=False).enabled)
+        self.assertEqual(len(policy.read_json(self.root, 'requests.json')['requests']), 512)
+        archives = list(self.root.glob('receipt-*.json'))
+        self.assertEqual(len(archives), 1)
+        old_id = next(iter(json.loads(archives[0].read_text())['requests']))
+        restarted = HomeAutomations(self.root, '/fixture/security', runner=self.runner)
+        with patch.object(policy, 'set_enabled') as writer:
+            self.assertEqual(restarted.submit(commands[old_id], old_id)['homeAutomation']['status'], 'verified')
+            writer.assert_not_called()
         with self.assertRaises(policy.PolicyError):
-            self.send(self.command())
+            restarted.submit({**commands[old_id], 'enabled': True}, old_id)
+        self.runner.assert_not_called()
+
+    def test_archive_fsync_precedes_active_ledger_eviction(self):
+        with patch('jarvisd_core.home_automations.MAX_REQUESTS', 1):
+            first = self.command(enabled=True)
+            self.send(first)
+            save = policy.save_json
+            def crash(root, name, value):
+                if name == 'requests.json':
+                    raise OSError('simulated crash before active replacement')
+                return save(root, name, value)
+            with patch.object(policy, 'save_json', side_effect=crash):
+                with self.assertRaises(OSError):
+                    self.send(self.command())
+            self.assertTrue(policy.current(self.root, legacy=False).enabled)
+            self.assertIn(first['requestID'], policy.read_json(self.root, 'requests.json')['requests'])
+            self.assertTrue((self.root / ('receipt-' + first['requestID'] + '.json')).exists())
+            self.send(self.command())  # Duplicate archive after crash is safe.
+            self.assertFalse(policy.current(self.root, legacy=False).enabled)
+            self.assertEqual(self.send(first)['homeAutomation']['status'], 'verified')
+
+    def test_unreadable_archive_is_a_storage_problem_not_permission_to_replay(self):
+        command = self.command()
+        (self.root / ('receipt-' + command['requestID'] + '.json')).symlink_to(self.root / 'voice.json')
+        with self.assertRaises(OSError):
+            self.send(command)
         self.assertTrue(policy.current(self.root, legacy=False).enabled)
         self.runner.assert_not_called()
 

@@ -176,7 +176,7 @@ def send(config):
 
 
 def tick(state, faults, *, now, get_presence, get_preferences, apply, save, choose=random.choice,
-         responsive=False, on_error=lambda exc: None):
+         responsive=False, on_error=lambda exc: None, reconcile=None):
     """Injected dependencies allow tests without HTTP/HID. Mutates state under one lock."""
     state.update(validate_state(state))
     if not finite(now):
@@ -210,7 +210,17 @@ def tick(state, faults, *, now, get_presence, get_preferences, apply, save, choo
         state.update(near_count=0, away_count=0, mode='blocked')
         faults.add('keyboard')
         save(state)
-        return  # Prior attempt outcome uncertain: never replay automatically.
+        if reconcile is not None and (state['last_attempt'] is None or now - state['last_attempt'] >= INTERVAL):
+            state['last_attempt'] = now
+            save(state)  # Pace idle probes; never replay an uncertain report.
+            try:
+                if reconcile() is True:
+                    state.update(pending=False, mode='paused')
+                    faults.discard('keyboard')
+                    save(state)
+            except Exception:
+                pass  # Signed bridge or OS output still unavailable/outstanding.
+        return  # A later fresh-presence tick, not this recovery, may choose a new report.
     going_away = location == 'away'
     effect = None
     if going_away:
@@ -338,7 +348,9 @@ def record_error(store, exc, at):
         store.save('last-command-error.json', entry)
 
 
-def run_once(store, *, now=time.time, get_presence=read_presence, apply=send, responsive=False):
+def run_once(store, *, now=time.time, get_presence=read_presence, apply=send, responsive=False, reconcile=None):
+    if reconcile is None:
+        from bridge_recovery import keyboard as reconcile
     old = store.load('alerts.json', [])
     if type(old) is not list or any(type(f) is not str or f not in FAULTS for f in old):
         raise CycleError('state')
@@ -353,7 +365,7 @@ def run_once(store, *, now=time.time, get_presence=read_presence, apply=send, re
                 raise CycleError('preferences') from None
         tick(state, faults, now=now(), get_presence=get_presence, get_preferences=get_preferences,
              apply=apply, save=lambda s: store.save('state.json', s), responsive=responsive,
-             on_error=lambda exc: record_error(store, exc, now()))
+             on_error=lambda exc: record_error(store, exc, now()), reconcile=reconcile)
     except (CycleError, OSError, ValueError, TypeError, KeyError):
         faults.add('state')
     output, code = alert_transition(old, faults, state.get('mode', 'paused'))

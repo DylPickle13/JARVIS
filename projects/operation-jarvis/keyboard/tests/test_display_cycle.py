@@ -29,11 +29,28 @@ class DisplayTests(unittest.TestCase):
                    'stale': stale, 'ageSeconds': 0, 'state': state}]}
         return display.run_once(self.store, now=lambda: t,
                                 get_presence=lambda: payload,
-                                apply=apply or self.actions.append)
+                                apply=apply or self.actions.append, readback=lambda: None)
 
     def away(self):
         for t in range(0, 121, 10):
             self.tick(t)
+
+    def test_recovery_requires_actual_state_and_never_replays_action(self):
+        for actual, expected_mode, completion in [
+                ({'locked':True,'all_asleep':True,'idle':True},'away',200),
+                ({'locked':False,'all_asleep':False,'idle':True},'nearby',None)]:
+            self.store.data['display-state.json'] = display.initial() | {'mode':'nearby','pending':True,'fault':True,'last_tick':100}
+            display.run_once(self.store,now=lambda:200,readback=lambda:actual,
+                             get_presence=lambda: (_ for _ in ()).throw(AssertionError()),apply=self.actions.append)
+            result=self.store.data['display-state.json']
+            self.assertFalse(result['pending']);self.assertFalse(result['fault'])
+            self.assertEqual(result['mode'],expected_mode);self.assertEqual(result['completed_at'],completion)
+            self.assertEqual(self.actions,[])
+
+    def test_recovery_without_idle_proof_preserves_pending(self):
+        self.store.data['display-state.json'] = display.initial() | {'pending':True,'last_tick':100}
+        display.run_once(self.store,now=lambda:200,readback=lambda:{'locked':True,'all_asleep':True,'idle':False},apply=self.actions.append)
+        self.assertTrue(self.store.data['display-state.json']['pending']);self.assertEqual(self.actions,[])
 
     def test_disabled(self):
         self.store.data.clear()

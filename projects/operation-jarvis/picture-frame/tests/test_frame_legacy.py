@@ -270,9 +270,10 @@ class LegacyTests(unittest.TestCase):
                 factory=lambda *a: self.fail("No TCP factory"))
         save_json(self.config.parent / "pending.json", {"operation": "sleep"})
         self.usb.calls.clear()
-        with self.assertRaises(FrameError):
-            Controller(self.usb, self.config).connect_legacy_lan(TARGET, apply=True, accept_risk=True)
-        self.assertEqual(self.usb.calls, [])
+        result = Controller(self.usb, self.config).connect_legacy_lan(TARGET, apply=True, accept_risk=True,
+            factory=lambda *a: self.fail('No new TCP acceptance during recovery'))
+        self.assertEqual(result['status'], 'recovery_wait')
+        self.assertEqual(read_json(self.config)['serial'], USB)
 
     def test_bad_saved_policy_never_dispatches(self):
         self.select()

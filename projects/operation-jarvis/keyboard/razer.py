@@ -177,8 +177,13 @@ def main():
     if args.action != 'read' and not args.apply:
         print(json.dumps({'dry_run': True, 'backend': 'karabiner', 'settings': settings}, indent=2))
         return
-    if (STATE / 'uncertain.json').exists():
-        raise RuntimeError('Legacy direct-HID uncertainty exists; inspect before bridge use')
+    from bridge_recovery import legacy_mouse_pending, retire_legacy_mouse
+    if legacy_mouse_pending(STATE):
+        retired = retire_legacy_mouse(STATE, razer_bridge.request)
+        print(json.dumps({'status': 'reconciled' if retired else 'recovery_wait',
+                          'hardware_write': False, 'old_outcome': 'unknown',
+                          'note': 'No old or new hardware command dispatched.'}))
+        return
     print(json.dumps(razer_bridge.request('apply', settings), indent=2))
 
 

@@ -28,7 +28,10 @@ class ParallelWatchTests(unittest.TestCase):
     def step(self, at=100, mode='nearby', **kwargs):
         defaults = dict(now=lambda: at, get_presence=lambda: presence(mode),
                         apply=self.keyboard, mouse_apply=self.mouse,
-                        display_apply=self.display, led_apply=self.led)
+                        display_apply=self.display, led_apply=self.led,
+                        keyboard_reconcile=Mock(return_value=False),
+                        mouse_reconcile=Mock(return_value=False), led_observe=Mock(return_value=None),
+                        display_observe=Mock(return_value=None))
         defaults.update(kwargs)
         return watch.step(self.store, **defaults)
 

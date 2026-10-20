@@ -26,6 +26,45 @@ class MultiPurifierStateTests(unittest.TestCase):
     def snapshot(self):
         return self.c.snapshot()['subsystems']['purifier']
 
+    def test_startup_read_is_delayed_and_never_bypasses_cooldown(self):
+        record = self.c._records['purifier']
+        self.c._schedule_purifier_recovery_locked(self.clock)
+        self.assertEqual(record['nextDue'], self.clock + 300)
+        self.assertFalse(record.get('retryCooldown', False))
+        self.c._schedule_purifier_recovery_locked(self.clock + 20)
+        self.assertEqual(record['nextDue'], self.clock + 300)
+
+    def test_uncertain_write_recovery_repeats_reads_until_actual_success(self):
+        self.complete()
+        record = self.c._records['purifier']
+        self.c.finish_device_write('purifier', (self.a,), applied_to=None)
+        self.c._schedule_purifier_recovery_locked(self.clock)
+        self.assertEqual(record['nextDue'], self.clock + 300)
+        self.clock += 300
+        self.complete({'ok': False, 'error': 'offline'})
+        self.c._schedule_purifier_recovery_locked(self.clock)
+        self.assertEqual(record['nextDue'], self.clock + 300)
+        self.assertEqual(record['writeBarriers'][self.a], 'uncertain')
+        self.clock += 300
+        self.complete()
+        self.c._schedule_purifier_recovery_locked(self.clock)
+        self.assertEqual(record['writeBarriers'], {})
+        self.assertEqual(record['nextDue'], float('inf'))
+
+    def test_recovery_does_not_read_while_writer_active(self):
+        self.complete()
+        record = self.c._records['purifier']
+        record['writeBarriers'][self.a] = 'inflight'
+        self.c._schedule_purifier_recovery_locked(self.clock)
+        self.assertEqual(record['nextDue'], float('inf'))
+
+    def test_partial_device_failure_schedules_ordinary_recovery_read(self):
+        self.complete({'ok': True, 'devices': {self.a: {'ok': False, 'error': 'offline'}}})
+        record = self.c._records['purifier']
+        self.c._schedule_purifier_recovery_locked(self.clock)
+        self.assertEqual(record['nextDue'], self.clock + 300)
+        self.assertFalse(record.get('retryCooldown', False))
+
     def test_default_compatibility_and_two_independent_rows(self):
         self.complete()
         state = self.snapshot()

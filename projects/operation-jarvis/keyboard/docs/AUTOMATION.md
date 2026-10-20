@@ -1,5 +1,15 @@
 # Basement presence keyboard/mouse lighting watcher
 
+## Current automatic recovery policy (2026-10-20)
+
+[Recovery policy and verified rollout](../../AUTOMATIC_RECOVERY.md) supersedes the
+manual-clear instructions in the historical sections below. Keyboard/mouse journals
+recover only after writer/callback-idle proof; LED uncertainty requires authenticated
+power readback, and display uncertainty requires actual lock/power observation under
+its helper lock. Later fresh-presence ticks select current intent. No old command is
+replayed, no uncertain result becomes fabricated success, and deliberate Off remains
+Off. Identity, permissions and storage problems require actual repair, not a flag reset.
+
 ## Active components
 
 - Local user LaunchAgent **`com.jarvis.ajazz-keyboard-watch`** runs `watch.py --watch` for both the AK820 and Razer, using one age-adjusted presence snapshot per poll.

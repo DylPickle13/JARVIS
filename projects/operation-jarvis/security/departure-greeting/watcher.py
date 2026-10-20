@@ -16,6 +16,7 @@ from jarvisd_core import automatic_voice
 import departure
 import person_gate
 import runtime
+import recovery
 import identity_preflight
 
 
@@ -145,7 +146,8 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
         return 'suppressed'
     value = runtime.config(root)
     age = now() - sample.observed_at.timestamp()
-    if (not value['enabled'] or journal.blocked or not 0 <= age <= 1
+    if (not value['enabled'] or journal.state['pending'] is not None
+            or journal.state['fault'] not in (None, 'person_event_read_requires_review') or not 0 <= age <= 1
             or sample.read_seconds > 2 or sample.motion is None
             or sample.door_open is not (not require_close)):
         return 'suppressed'
@@ -186,6 +188,10 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
             or not 0 <= now() - sample.observed_at.timestamp() < person_gate.MAX_WORKER_START_AGE):
         journal.finish(attempt, 'expired_before_play')
         return 'expired_before_play'
+    if journal.state['fault'] == 'person_event_read_requires_review':
+        journal.state['fault'] = None  # Fresh evidence, never an acknowledgment or bypass.
+        journal.event('person_evidence_recovered')
+        journal.flush()
     journal.event(evidence.reason)
     identity_preflight.clear(root)
     cached = getattr(reader, 'identity_evidence', None)
@@ -207,9 +213,33 @@ async def deliver(root, journal, sample, *, now=time.time, speaker=run_speaker,
 
 
 def transient(exc):
-    # Retry only read transport failures, never credentials/identity/schema.
-    from kasa.exceptions import _ConnectionError as KasaConnectionError, _RetryableError
-    return isinstance(exc, (TimeoutError, ConnectionError, OSError, KasaConnectionError, _RetryableError))
+    return recovery.transient(exc)
+
+
+def retire_abandoned(root, journal, value, *, now=time.time):
+    """Consume an old uncertain event, never repeat it or claim speech succeeded.
+
+    Exclusive worker + device locks prove no cooperating writer is outstanding.
+    Preserve the durable cooldown; a fresh baseline is required before new events.
+    """
+    pending, attempted = journal.state['pending'], journal.state['last_attempt']
+    if pending is None or attempted is None or now() - attempted < 120:
+        return False
+    try:
+        devices = departure.cli.registry(departure.SECURITY_ROOT / 'devices.json')
+        bell = devices[value['speaker_device']]
+        if bell.get('model') != 'D235' or not bell.get('hub'):
+            return False
+        with runtime.worker_lock(root), departure.cli.device_lock(bell['hub']), departure.cli.device_lock(value['speaker_device']):
+            # Under the singleton, no new reservation can replace this attempt.
+            journal.state.update(pending=None, last_outcome='unknown')
+            if journal.state['fault'] == 'playback_outcome_unknown':
+                journal.state['fault'] = None
+            journal.event('uncertain_event_retired_without_replay')
+            journal.flush()
+        return True
+    except (OSError, ValueError, KeyError, departure.cli.ControlError, runtime.TrialError):
+        return False  # A busy/invalid lock never authorizes recovery.
 
 
 def clear_snapshot(root):
@@ -246,20 +276,25 @@ async def watch(root):
     last_pair = None
     busy_reported = False
     read_failures = 0
+    recovery_reads = 0
+    recovery_tick = None
     voice_revision = None
     try:
         while True:
             value = runtime.config(root)
-            if not value['enabled'] or journal.blocked:
+            if not value['enabled']:
                 clear_snapshot(root)
                 detector.reset()
                 if reader is not None:
                     await reader.close()
                     reader = None
-                journal.state['health'] = 'fault' if journal.blocked else 'disabled'
+                journal.state['health'] = 'disabled'
                 journal.flush()
                 await asyncio.sleep(10)
                 continue
+            if retire_abandoned(root, journal, value):
+                detector.reset()
+                last_pair = None
             reading = True
             try:
                 if reader is None:
@@ -273,6 +308,7 @@ async def watch(root):
                         raise runtime.TrialError('outdoor_doorbell_required')
                     reader = HubSession(args, entries)
                     await reader.connect()
+                    recovery.verify_identity(root, reader)
                     detector.reset()
                     last_pair = None
                     journal.event('connected_baseline_required')
@@ -282,7 +318,26 @@ async def watch(root):
                     await person_gate.bind(reader)
                 sample = await reader.sample()
                 reading = False
+                if journal.state['fault'] in recovery.READ_FAULTS:
+                    if (type(sample.motion) is not bool or type(sample.door_open) is not bool
+                            or not 0 <= sample.read_seconds <= 2
+                            or recovery_tick is not None and sample.tick <= recovery_tick):
+                        raise runtime.TrialError('invalid_recovery_sample')
+                    recovery_tick = sample.tick
+                    recovery_reads += 1
+                    detector.reset()
+                    last_pair = None
+                    if recovery_reads < 3:
+                        journal.state['health'] = 'recovering'
+                        journal.flush()
+                        await asyncio.sleep(2)
+                        continue
+                    journal.state['fault'] = None
+                    journal.event('sensor_reads_recovered_baseline_required')
+                    journal.flush()
                 read_failures = 0
+                recovery_reads = 0
+                recovery_tick = None
                 publish_snapshot(root, value, sample)
                 busy_reported = False
                 voice_policy = automatic_voice.current()
@@ -318,6 +373,8 @@ async def watch(root):
                 clear_snapshot(root)
                 detector.reset()
                 last_pair = None
+                recovery_reads = 0
+                recovery_tick = None
                 busy = isinstance(exc, departure.cli.ControlError) and str(exc) == 'device_busy'
                 # Another hub client can invalidate this session. Reconnect, but
                 # do not add the transport-failure 15 s backoff to lock contention.
@@ -334,18 +391,21 @@ async def watch(root):
                     await asyncio.sleep(0.5)
                     continue
                 phase = reader.phase if reader is not None else 'configuration'
-                # Only retry reads, never configuration, delivery, or uncertain playback.
-                recoverable = (reading and transient(exc) and not journal.blocked and phase in {
+                # Only reconnect/revalidate reads. Never replay delivery or renew
+                # credentials. Nontransport/identity/configuration problems get
+                # slow read-only probes and remain visible until actually fixed.
+                recoverable = (reading and transient(exc) and phase in {
                     'discovery', 'identity', 'initial_state', 'paired_read'})
-                if recoverable:
-                    read_failures += 1
-                retry = recoverable and read_failures < 3
+                read_failures = min(read_failures + 1, 1000)
+                recovery_reads = 0
+                recovery_tick = None
+                retry = recoverable
                 if reader is not None:
                     await reader.close()
                     reader = None
                 journal.state['health'] = 'waiting' if retry else 'fault'
-                if not retry:
-                    journal.state['fault'] = 'sensor_read_requires_review'
+                if journal.state['fault'] in (None, *recovery.READ_FAULTS):
+                    journal.state['fault'] = 'sensor_read_requires_review' if retry else 'sensor_read_problem'
                 error_type = type(exc).__name__
                 allowed = {'TimeoutError', 'ConnectionError', '_ConnectionError', 'AuthenticationError',
                            'OSError', 'ControlError', 'TrialError', 'UnboundLocalError', 'KeyError', 'ValueError', 'AttributeError',
@@ -368,15 +428,15 @@ async def watch(root):
                 code = getattr(exc, 'error_code', None)
                 # Never log exception messages: they may contain decrypted responses.
                 safe_code = code.value if isinstance(code, SmartErrorCode) else None
-                journal.event('read_interrupted' if retry else 'sensor_read_requires_review',
+                journal.event('read_interrupted' if retry else 'sensor_read_problem',
                               read_failure_count=read_failures,
-                              recovery_exhausted=bool(recoverable and not retry),
+                              recovery_exhausted=False,
                               device_error_code=safe_code,
                               phase=phase, error_type=error_type if error_type in allowed else 'other',
                               cause_type=cause_name if cause_name in cause_allowed else 'other',
                               errno=errno if type(errno) is int else None, transport_phase=transport_phase)
                 journal.flush()
-                await asyncio.sleep(2 if retry else 15)
+                await asyncio.sleep(recovery.delay(read_failures, transport=retry))
     finally:
         clear_snapshot(root)
         if reader is not None:

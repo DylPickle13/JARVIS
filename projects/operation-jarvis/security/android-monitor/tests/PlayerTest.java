@@ -25,10 +25,10 @@ public class PlayerTest {
         check(!h.stalled(2,71999)); check(h.stalled(2,72000));
         check(h.retryDelay()==10000); check(h.retryDelay()==20000);
         check(h.retryDelay()==30000); check(h.retryDelay()==60000);
-        check(h.retryDelay()==-1); check(h.retryDelay()==-1);
+        for (int i=0; i<100000; i++) check(h.retryDelay()==60000); // No terminal latch or overflow.
         h.opened(100000);
         for (int i=1;i<=32;i++) check(!h.stalled(i,100000+i*2000));
-        check(h.retryDelay()==5000); // healthy stream renews bounded budget
+        check(h.retryDelay()==5000); // healthy stream resets backoff
         h.reset(); check(h.retryDelay()==5000); // explicit owner/session reset
         System.out.println(checks + " player assertions passed.");
     }

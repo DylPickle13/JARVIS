@@ -28,6 +28,9 @@ class TrialTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name) / 'Application Support'
         self.root.mkdir(mode=0o700)
+        env = patch.dict(os.environ, {'JARVIS_HOME_AUTOMATIONS_ROOT': str(self.root / 'absent-fixture-policy'),
+                                      'JARVIS_AUTOMATIC_VOICE_POLICY_REQUIRED': '0'})
+        env.start(); self.addCleanup(env.stop)  # Never consult the owner's live voice policy.
         self.value = {'version': 1, 'enabled': True, 'motion_device': 'motion-sensor',
                       'door_device': 'door-sensor', 'speaker_device': 'front-doorbell', 'volume': 60}
         runtime.save_json(self.root / 'config.json', self.value)
@@ -367,7 +370,8 @@ class TrialTests(unittest.TestCase):
                         departure.cli.ControlError('device_busy'), sample(5, True, True),
                         asyncio.CancelledError()]))
         sleeps = AsyncMock()
-        with patch.object(watcher, 'HubSession', return_value=reader) as factory, \
+        with patch.object(watcher.recovery, 'verify_identity'), \
+             patch.object(watcher, 'HubSession', return_value=reader) as factory, \
              patch.object(departure, 'validate_devices', return_value=('hub', {}, {}, {})), \
              patch.object(departure.cli, 'registry', return_value={
                  'front-doorbell': {'model': 'D235', 'host': 'fixture', 'hub': 'hub'}}), \
@@ -384,23 +388,27 @@ class TrialTests(unittest.TestCase):
         self.assertEqual(events[-1]['reason'], 'baseline')
         self.assertTrue(events[-1]['door_open'])
 
-    def test_retryable_read_recovers_silently_and_exhaustion_latches(self):
+    def test_retryable_read_recovers_after_three_pairs_without_exhaustion(self):
         from kasa.exceptions import _RetryableError, AuthenticationError
         self.assertTrue(watcher.transient(_RetryableError('private response')))
         self.assertFalse(watcher.transient(AuthenticationError('private response')))
         for exhausted in (False, True):
             runtime.save_json(self.root / 'state.json', runtime.default_state())
             fail = lambda: _RetryableError('private response must not be logged')
-            samples = ([fail(), fail(), fail()] if exhausted else [
+            samples = ([fail()] * 7 + [asyncio.CancelledError()] if exhausted else [
                 departure.Sample(1., START, False, False, 0.1),
                 departure.Sample(3., START + timedelta(seconds=2), True, False, 0.1),
                 fail(), departure.Sample(5., START + timedelta(seconds=4), True, True, 0.1),
+                departure.Sample(7., START + timedelta(seconds=6), True, True, 0.1),
+                departure.Sample(9., START + timedelta(seconds=8), True, True, 0.1),
                 asyncio.CancelledError()])
             reader = NS(device=object(), person_camera=object(), phase='paired_read',
                         connect=AsyncMock(), close=AsyncMock(), sample=AsyncMock(side_effect=samples))
             async def sleep(seconds):
-                if exhausted and seconds == 15: raise asyncio.CancelledError()
-            with patch.object(watcher, 'HubSession', return_value=reader), \
+                self.assertGreater(seconds, 0)
+                self.assertLessEqual(seconds, 60)
+            with patch.object(watcher.recovery, 'verify_identity'), \
+                 patch.object(watcher, 'HubSession', return_value=reader), \
                  patch.object(departure, 'validate_devices', return_value=('hub', {}, {}, {})), \
                  patch.object(departure.cli, 'registry', return_value={
                      'front-doorbell': {'model': 'D235', 'host': 'fixture', 'hub': 'hub'}}), \
@@ -409,13 +417,14 @@ class TrialTests(unittest.TestCase):
                 with self.assertRaises(asyncio.CancelledError): asyncio.run(watcher.watch(self.root))
             state = runtime.Journal(self.root).state
             self.assertEqual(state['fault'], 'sensor_read_requires_review' if exhausted else None)
-            self.assertEqual(reader.connect.await_count, 3 if exhausted else 2)
+            self.assertEqual(reader.connect.await_count, 8 if exhausted else 2)
             deliver.assert_not_awaited()
             self.assertNotIn('private response', json.dumps(state))
             self.assertFalse((self.root / 'sensor-snapshot.json').exists())
             if exhausted:
-                self.assertTrue(state['events'][-1]['recovery_exhausted'])
-                self.assertEqual(state['events'][-1]['read_failure_count'], 3)
+                event = next(e for e in reversed(state['events']) if e['reason'] == 'read_interrupted')
+                self.assertFalse(event['recovery_exhausted'])
+                self.assertEqual(event['read_failure_count'], 7)
             else:
                 self.assertEqual(state['events'][-1]['reason'], 'baseline')
 

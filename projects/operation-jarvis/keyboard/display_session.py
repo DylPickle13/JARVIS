@@ -5,6 +5,10 @@ SACLockScreenImmediate is a private macOS API: verify the resulting session lock
 before display sleep, and fail closed if a macOS update removes it.
 """
 import ctypes as C
+import contextlib
+import fcntl
+import json
+import os
 import subprocess
 import sys
 import time
@@ -33,6 +37,32 @@ def locked():
             cf.CFRelease(key)
         if session:
             cf.CFRelease(session)
+
+
+def observe():
+    """Read actual online-display power and session lock; never wake a display."""
+    cg = C.CDLL('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
+    cg.CGGetOnlineDisplayList.argtypes = [C.c_uint32, C.POINTER(C.c_uint32), C.POINTER(C.c_uint32)]
+    cg.CGGetOnlineDisplayList.restype = C.c_int
+    cg.CGDisplayIsAsleep.argtypes = [C.c_uint32]
+    cg.CGDisplayIsAsleep.restype = C.c_uint32
+    displays = (C.c_uint32 * 32)(); count = C.c_uint32()
+    if cg.CGGetOnlineDisplayList(32, displays, C.byref(count)) or not 0 < count.value < 32:
+        raise RuntimeError('Display observation unavailable')
+    sleeping = all(bool(cg.CGDisplayIsAsleep(displays[i])) for i in range(count.value))
+    return {'locked': locked(), 'all_asleep': sleeping, 'idle': True}
+
+
+@contextlib.contextmanager
+def action_lock():
+    import cycle
+    store = cycle.Store(cycle.RUNTIME)
+    fd = store.open_private('display-action.lock', os.O_CREAT | os.O_RDWR)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+    finally:
+        os.close(fd)
 
 
 def perform(action):
@@ -72,10 +102,13 @@ def perform(action):
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) == 2 and sys.argv[1] == 'status':
-            print('locked' if locked() else 'unlocked')
-        else:
-            perform(sys.argv[1])
+        with action_lock():
+            if len(sys.argv) == 2 and sys.argv[1] == 'status':
+                print('locked' if locked() else 'unlocked')
+            elif len(sys.argv) == 2 and sys.argv[1] == 'observe':
+                print(json.dumps(observe()))
+            else:
+                perform(sys.argv[1])
     except Exception:
-        print('Display session operation failed; no automatic retry.', file=sys.stderr)
+        print('Display session operation unavailable; reconcile actual state before another action.', file=sys.stderr)
         sys.exit(1)

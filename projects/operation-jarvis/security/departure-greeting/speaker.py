@@ -214,7 +214,8 @@ def main():
         request = json.loads(sys.stdin.read(4097))
         if type(request) is not dict or set(request) != {'attempt', 'expires'}:
             raise runtime.TrialError('invalid_worker_request')
-        outcome = play_once(root, request)
+        with runtime.worker_lock(root):
+            outcome = play_once(root, request)
     except Exception:
         pass
     print(json.dumps({'outcome': outcome}))

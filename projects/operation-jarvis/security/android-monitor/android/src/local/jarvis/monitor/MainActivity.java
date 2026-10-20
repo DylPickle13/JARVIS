@@ -15,7 +15,7 @@ public final class MainActivity extends Activity {
         String contact = MonitorService.lastContact == 0 ? "No successful connection yet" :
             "Last authenticated response: " + ((SystemClock.elapsedRealtime() - MonitorService.lastContact) / 1000) + " seconds ago";
         status.setText(enabled + "\n" + MonitorService.status + "\n" + contact +
-            (prefs.getBoolean("pending", false) ? "\nAn interrupted action needs your review." : ""));
+            (prefs.getBoolean("pending", false) ? "\nAn interrupted action is awaiting automatic screen-state reconciliation." : ""));
         handler.postDelayed(this, 1000);
     }};
     @Override public void onCreate(Bundle b) {
@@ -35,13 +35,14 @@ public final class MainActivity extends Activity {
             i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Allow JARVIS to turn off this monitor when basement presence reports away. Only force-lock is requested.");
             startActivity(i);
         }});
-        button(body, "2. Enable / acknowledge reviewed error", new View.OnClickListener() { public void onClick(View v) {
+        button(body, "2. Enable automation", new View.OnClickListener() { public void onClick(View v) {
             DevicePolicyManager d = (DevicePolicyManager)getSystemService(DEVICE_POLICY_SERVICE);
             if (!d.isAdminActive(new ComponentName(MainActivity.this, Admin.class))) {
                 Toast.makeText(MainActivity.this, "Grant screen-lock permission first", Toast.LENGTH_LONG).show(); return;
             }
-            stopService(new Intent(MainActivity.this, MonitorService.class));
-            if (prefs.edit().putBoolean("enabled", true).putBoolean("pending", false).remove("applied").commit())
+            // Enabling is owner intent, not acknowledgment of an unknown action.
+            // Preserve reservations; the service reconciles actual state itself.
+            if (prefs.edit().putBoolean("enabled", true).commit())
                 startService(new Intent(MainActivity.this, MonitorService.class));
         }});
         button(body, "Disable automation", new View.OnClickListener() { public void onClick(View v) {

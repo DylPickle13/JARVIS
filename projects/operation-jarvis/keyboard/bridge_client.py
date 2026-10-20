@@ -12,7 +12,7 @@ CLI = Path('/Library/Application Support/org.pqrs/Karabiner-Elements/bin/karabin
 class BridgeError(RuntimeError):
     def __init__(self, uncertain):
         self.uncertain = uncertain
-        super().__init__('Karabiner bridge outcome uncertain; acknowledgment required' if uncertain
+        super().__init__('Karabiner bridge outcome uncertain; awaiting automatic idle reconciliation' if uncertain
                          else 'Karabiner bridge rejected before write')
 
 

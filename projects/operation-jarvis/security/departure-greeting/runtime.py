@@ -1,4 +1,5 @@
 """Private departure trial journal and configuration; never restore armed motion."""
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import fcntl
 import json
@@ -119,7 +120,9 @@ class Journal:
         self.state['last_reason'] = reason
 
     def reserve(self, attempt, now):
-        if self.blocked:
+        # A person-evidence failure is rechecked for each NEW event. Reservation
+        # is not permission to speak: the worker still requires fresh proof.
+        if self.state['pending'] is not None or self.state['fault'] not in (None, 'person_event_read_requires_review'):
             return False
         last = self.state['last_attempt']
         if last is not None and now - last < 120:
@@ -134,13 +137,28 @@ class Journal:
             raise TrialError('attempt_mismatch')
         if outcome not in ('completed', 'expired_before_play', 'failed_before_play'):
             self.state.update(fault='playback_outcome_unknown', last_outcome='unknown')
-            # Pending remains latched. No restart, config change, or retry clears it.
+            # Never replay this event. The watcher can later retire the spent
+            # reservation after cooldown and exclusive worker/device-idle proof.
         else:
             self.state.update(pending=None, last_outcome=outcome)
             if outcome == 'completed':
                 self.state['completed_count'] += 1
         self.event(self.state['last_outcome'])
         self.flush()
+
+
+@contextmanager
+def worker_lock(root):
+    """Held for the entire speaker worker lifetime, including cleanup."""
+    fd = os.open(root / 'speaker-worker.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise TrialError('private_lock_required')
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+    finally:
+        os.close(fd)
 
 
 def singleton(root):

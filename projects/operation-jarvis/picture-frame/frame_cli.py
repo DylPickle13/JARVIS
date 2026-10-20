@@ -41,7 +41,7 @@ def parser():
                         help="Owner explicitly accepts other reachable LAN clients obtaining debugging access")
     retire = commands.add_parser("wifi-disable", help="Retire wireless ADB over the exact verified USB route")
     retire.add_argument("--usb-serial", help="Explicit original USB serial; never discovers/selects another device")
-    commands.add_parser("resolve-pending", help="After physical inspection, acknowledge uncertainty; never replays")
+    commands.add_parser("resolve-pending", help="Compatibility recovery command: identity-checked readback, never replay/force-clear")
     commands.add_parser("screenshot", help="Explicit private PNG capture to runtime directory")
     commands.add_parser("wake", help="Idempotent Android WAKEUP, not a power toggle")
     commands.add_parser("sleep", help="Android SLEEP, not shutdown/power-off")

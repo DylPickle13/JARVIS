@@ -34,10 +34,13 @@ def validate_state(s):
 def send(mode):
     if mode not in ('steady', 'off'):
         raise ValueError('Mouse automation only permits steady or off')
+    from bridge_recovery import legacy_mouse_pending
+    if legacy_mouse_pending():
+        raise razer_bridge.RazerBridgeError('Legacy mouse operation awaits idle reconciliation', uncertain=True)
     razer_bridge.request('apply', dict(operation='effect', value=1 if mode == 'steady' else 0, y=0))
 
 
-def tick(state, faults, *, now, get_presence, apply, save, monotonic=time.monotonic):
+def tick(state, faults, *, now, get_presence, apply, save, reconcile=None, monotonic=time.monotonic):
     state.update(validate_state(state))
     if not cycle.finite(now) or (state['last_tick'] is not None and now < state['last_tick']):
         raise cycle.CycleError('state')
@@ -60,6 +63,16 @@ def tick(state, faults, *, now, get_presence, apply, save, monotonic=time.monoto
         return
     if state['pending']:
         faults.add('mouse')
+        if reconcile is not None and (state['last_attempt'] is None or now - state['last_attempt'] >= 60):
+            state['last_attempt'] = now
+            save(state)
+            try:
+                if reconcile() is True:
+                    state.update(pending=False, succeeded=False)
+                    faults.discard('mouse')
+                    save(state)
+            except Exception:
+                pass  # No callback-idle proof: keep waiting, never replay.
         return
     target = 'steady' if location == 'nearby' else 'off'
     if state['last_mode'] == target and state['succeeded']:
@@ -91,7 +104,9 @@ def tick(state, faults, *, now, get_presence, apply, save, monotonic=time.monoto
     save(state)
 
 
-def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=None):
+def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=None, reconcile=None):
+    if reconcile is None:
+        from bridge_recovery import mouse as reconcile
     if apply is None:
         apply = send
     old = store.load('mouse-alerts.json', [])
@@ -101,7 +116,7 @@ def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=No
     try:
         state = validate_state(store.load('mouse-state.json', initial()))
         tick(state, faults, now=now(), get_presence=get_presence, apply=apply,
-             save=lambda s: store.save('mouse-state.json', s))
+             save=lambda s: store.save('mouse-state.json', s), reconcile=reconcile)
     except (cycle.CycleError, OSError, ValueError, TypeError, KeyError):
         faults.add('state')
     store.save('mouse-alerts.json', sorted(faults))

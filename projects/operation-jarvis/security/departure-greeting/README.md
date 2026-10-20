@@ -1,5 +1,18 @@
 # Departure greeting — outdoor doorbell only
 
+## Current recovery policy (2026-10-20)
+
+[Automatic recovery](../../AUTOMATIC_RECOVERY.md) supersedes the historical three-read
+retry ceiling and manual latch-clear instructions below. Transport reads keep retrying
+with capped jitter; genuine identity/configuration/permission problems get slower
+probes. Every connection verifies previously reviewed hub/sensor pins. Three fresh,
+increasing-tick paired reads clear the diagnostic fault and establish a new silent
+baseline. Unknown speech is never replayed: cooldown plus exclusive worker/device-idle
+proof retires the old reservation, permitting fresh future events. Repairing actual
+prerequisites needs no second acknowledgment. Deliberate disabled speech stays disabled.
+Existing installations require reviewed private `sensor-identity.json`; fresh installs
+must supply `install.py --identity-pins`. No replacement-device auto-enrollment.
+
 Standalone security subproject, like `android-monitor/`. All departure-task code,
 its tests, and documentation live here. The shared security CLI/audio/Android
 behavior is unchanged; jarvisd changes are limited to the opt-in paired-snapshot

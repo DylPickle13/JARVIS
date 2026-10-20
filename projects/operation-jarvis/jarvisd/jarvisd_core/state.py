@@ -441,7 +441,8 @@ class StateCoordinator:
         """Fence during-write reads and quarantine unconfirmed device state.
 
         No write is retried. Only a successful post-write observation may clear
-        an uncertain barrier. Purifier reads remain foreground/explicit-only.
+        an uncertain barrier. Unresolved purifier state also gets paced ordinary
+        recovery reads; vendor cooldowns are never bypassed.
         """
         with self._condition:
             record = self._records[subsystem]
@@ -658,6 +659,27 @@ class StateCoordinator:
         self.start()
         return True
 
+    def _schedule_purifier_recovery_locked(self, now: float) -> None:
+        """Paced read-only recovery, including persisted uncertainty after restart.
+
+        Healthy cloud state stays foreground-only. A new daemon performs one
+        delayed read; unresolved errors/pending writes keep probing every five
+        minutes. These reads never bypass the vendor's durable cloud cooldown.
+        """
+        record = self._records.get("purifier")
+        if record is None or record["refreshing"] or "inflight" in record["writeBarriers"].values():
+            return
+        data = record.get("data")
+        devices = data.get("devices", {}) if isinstance(data, dict) else {}
+        required = (data is None or bool(record.get("error")) or bool(record.get("pending"))
+                    or bool(record.get("itemPending")) or bool(record["writeBarriers"])
+                    or any(not isinstance(item, dict) or item.get("ok") is not True
+                           for item in devices.values()))
+        if required and record["nextDue"] == float("inf"):
+            record["nextDue"] = now + 300.0
+            # Do not set retryCooldown: this is an ordinary status read, not an
+            # owner-authorized early cooldown probe or a replacement write.
+
     def _run_scheduler(self) -> None:
         while True:
             with self._condition:
@@ -667,6 +689,7 @@ class StateCoordinator:
                 executor = self._executor
                 if executor is None:
                     return
+                self._schedule_purifier_recovery_locked(now)
                 for name, record in self._records.items():
                     if name == "claudeQuota":
                         # Final dispatch gate also covers other wake/revision paths

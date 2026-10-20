@@ -269,11 +269,12 @@ class TcpTests(unittest.TestCase):
         self.assertFalse((self.config.parent / "pending.json").exists())
         self.assertEqual(self.device.pushes, [])
 
-    def test_pending_write_blocks_tcp_acceptance_before_auth(self):
+    def test_pending_write_allows_identity_read_but_not_new_tcp_selection(self):
         save_json(self.config.parent / "pending.json", {"operation": "upload"})
-        with self.assertRaises(FrameError):
-            Controller(self.backend, self.config).connect_tcp(TARGET, apply=True)
-        self.assertEqual(self.factories, [])
+        result = Controller(self.backend, self.config).connect_tcp(TARGET, apply=True)
+        self.assertEqual(result['status'], 'recovery_wait')
+        self.assertEqual(read_json(self.config)['serial'], 'USB_TEST')
+        self.assertEqual(self.device.pushes, [])
 
     def test_cli_tcp_dry_runs_load_no_dependency_key_or_state(self):
         missing = self.root / "never-created/config.json"

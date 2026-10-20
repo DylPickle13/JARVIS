@@ -19,12 +19,20 @@ public final class MonitorService extends Service {
     private PowerManager.WakeLock cpu;
     private WifiManager.WifiLock wifi;
     private boolean destroyed;
+    private volatile long retryAt;
+    private int failures, networkFailures;
     private long testingUntil;
     private String shown = "";
     private final Runnable poll = new Runnable() {
         @Override public void run() {
             if (destroyed) return;
             final long began = SystemClock.elapsedRealtime();
+            if (began < retryAt) {
+                // Back off network/actions, not charger handling. Release locks
+                // promptly on battery rather than holding them for the retry cap.
+                main.post(new Runnable() { @Override public void run() { if (!destroyed) locks(powered()); }});
+                worker.postDelayed(poll, Math.min(1000, retryAt - began)); return;
+            }
             String state = "unknown";
             double age = Double.NaN;
             String text = "Unavailable / stale — unchanged";
@@ -33,6 +41,7 @@ public final class MonitorService extends Service {
                 NetworkInfo n = cm.getActiveNetworkInfo();
                 if (n == null || !n.isConnected() || n.getType() != ConnectivityManager.TYPE_WIFI)
                     throw new Exception("Wi-Fi unavailable");
+                if (client == null) client = new Client(MonitorService.this);
                 JSONObject r = client.poll();
                 if (r.getInt("version") != 2 || !"computer-display".equals(r.getString("source")))
                     throw new Exception("Computer-display protocol required");
@@ -40,6 +49,7 @@ public final class MonitorService extends Service {
                 age = r.isNull("ageSeconds") ? Double.NaN : r.getDouble("ageSeconds");
                 age += (SystemClock.elapsedRealtime() - began) / 1000.0;
                 lastContact = SystemClock.elapsedRealtime();
+                networkFailures = 0;
                 if (age >= 0 && age <= 15 && (state.equals("nearby") || state.equals("away")))
                     text = "Following computer display over Wi-Fi / TLS — " + state;
                 else if ("awaiting-transition".equals(r.optString("reason")))
@@ -50,6 +60,8 @@ public final class MonitorService extends Service {
             } catch (Exception e) {
                 // No raw exception text, tokens, URLs or request headers in logs/notifications.
                 state = "unknown"; age = Double.NaN;
+                retryAt = SystemClock.elapsedRealtime() + DisplayRecovery.delay(networkFailures);
+                if (networkFailures < 4) networkFailures++;
             }
             final String s = state, t = text;
             final double a = age;
@@ -69,19 +81,20 @@ public final class MonitorService extends Service {
         wifi = ((WifiManager)getApplicationContext().getSystemService(WIFI_SERVICE))
             .createWifiLock(WifiManager.WIFI_MODE_FULL, "JarvisMonitor:wifi");
         startForeground(1, notification("Starting"));
-        if (!prefs.getBoolean("enabled", false) || prefs.getBoolean("pending", false)) {
-            update("Disabled / review pending action"); stopSelf(); return;
+        if (!prefs.getBoolean("enabled", false)) {
+            update("Disabled by owner"); stopSelf(); return;
         }
+        if (prefs.getBoolean("pending", false)) retryAt = SystemClock.elapsedRealtime() + 60000;
         policy = new Policy(prefs.getString("applied", ""));
         try { client = new Client(this); }
-        catch (Exception e) { fail(); return; }
+        catch (Exception e) { fail(); }
         thread = new HandlerThread("presence-network"); thread.start();
         worker = new Handler(thread.getLooper());
         worker.post(poll);
     }
     @Override public int onStartCommand(Intent i, int flags, int id) {
         if (i == null || !"local.jarvis.monitor.SELF_TEST".equals(i.getAction())) {
-            if (worker != null && prefs.getBoolean("enabled", false) && !prefs.getBoolean("pending", false)) {
+            if (worker != null && prefs.getBoolean("enabled", false)) {
                 if (powered()) {
                     locks(true);
                     // The existing poll chain resumes with the CPU awake. Do not
@@ -123,20 +136,37 @@ public final class MonitorService extends Service {
         if (!prefs.getBoolean("enabled", false)) { stopSelf(); return; }
         boolean power = powered();
         locks(power);
-        if (prefs.getBoolean("pending", false)) { fail(); return; }
-        if (SystemClock.elapsedRealtime() < testingUntil) return;
+        long now = SystemClock.elapsedRealtime();
+        if (now < testingUntil || now < retryAt) return;
+        if (prefs.getBoolean("pending", false)) {
+            if (!DisplayRecovery.admitted(state, age, power)) { update(text); return; }
+            PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
+            KeyguardManager keyguard = (KeyguardManager)getSystemService(KEYGUARD_SERVICE);
+            boolean matched = DisplayRecovery.observed(state, pm.isInteractive(), keyguard.isKeyguardLocked());
+            SharedPreferences.Editor edit = prefs.edit().putBoolean("pending", false);
+            if (matched) edit.putString("applied", state); else edit.remove("applied");
+            if (!edit.commit()) { fail(); return; }
+            policy = new Policy(matched ? state : "");
+            if (matched) failures = 0;
+            else {
+                retryAt = now + DisplayRecovery.delay(failures);
+                if (failures < 4) failures++;
+            }
+            update(matched ? "Screen state reconciled with computer — " + state : "Screen state observed; awaiting fresh computer decision");
+            return; // Never replay an old action in the reconciliation tick.
+        }
         String action = policy.consider(state, age, SystemClock.elapsedRealtime(), power);
         update(power ? text : "Paused: connect a wall charger");
         if (action.equals("none")) return;
         if (!admin().isAdminActive(new ComponentName(this, Admin.class))) { fail(); return; }
-        // Crash/uncertain action latches instead of automatically replaying writes.
+        // Durable reservation. Recovery observes screen/keyguard state first,
+        // then only a fresh completed Mac decision may authorize another action.
         if (!prefs.edit().putBoolean("pending", true).commit()) { fail(); return; }
         try {
             if (action.equals("sleep")) admin().lockNow(); else wake();
-            if (!prefs.edit().putBoolean("pending", false).putString("applied", state).commit()) {
-                fail(); return;
-            }
-            policy.applied(state);
+            // Dispatch is not readback. A later poll checks actual state. Pace
+            // unresolved operations even across failures and process restarts.
+            retryAt = SystemClock.elapsedRealtime() + 5000;
         } catch (Exception e) { fail(); }
     }
     @Override protected void dump(java.io.FileDescriptor fd, java.io.PrintWriter out, String[] args) {
@@ -172,9 +202,9 @@ public final class MonitorService extends Service {
         }
     }
     private void fail() {
-        prefs.edit().putBoolean("enabled", false).commit();
-        update("Stopped after error — review and re-enable in app");
-        stopSelf();
+        retryAt = SystemClock.elapsedRealtime() + DisplayRecovery.delay(failures);
+        if (failures < 4) failures++;
+        update("Waiting for device permission/state recovery — owner enable setting preserved");
     }
     @Override public void onDestroy() {
         destroyed = true;

@@ -12,6 +12,7 @@ import wave
 import departure
 import person_gate
 import runtime
+import recovery
 import security_audio as audio
 
 LABEL = 'com.jarvis.departure-greeting'
@@ -21,6 +22,8 @@ def install():
     parser = argparse.ArgumentParser(description='Install outdoor departure trial; no immediate speech.')
     parser.add_argument('--enable-trial', action='store_true', required=True)
     parser.add_argument('--confirm', action='store_true', required=True)
+    parser.add_argument('--identity-pins', type=Path, required=True,
+                        help='Owner-reviewed private sensor identity JSON; never auto-enrolled')
     args = parser.parse_args()
     os.umask(0o077)
     root = runtime.private_dir(runtime.ROOT)
@@ -40,6 +43,8 @@ def install():
     if (not bell or bell.get('model') != 'D235' or not bell.get('host')
             or bell.get('hub') != entries[0]):
         raise runtime.TrialError('outdoor_doorbell_required')
+    pins = recovery.validate_pins(runtime.read_json(args.identity_pins))
+    runtime.save_json(root / 'sensor-identity.json', pins)
     # Offline synthesis only: cached model; never contacts/plays on a camera.
     text = root / 'phrase.txt'
     text.write_text(runtime.PHRASE, encoding='utf-8')

@@ -77,8 +77,8 @@ class HomeAutomations:
             raise policy.PolicyError('Barn Door binding unavailable.')
         return value['barnDoorRef']
 
-    def _ledger(self):
-        value = policy.read_json(self.root, 'requests.json')
+    def _ledger(self, name='requests.json'):
+        value = policy.read_json(self.root, name)
         if (set(value) != {'version', 'requests'} or type(value['version']) is not int or value['version'] != 1
                 or type(value['requests']) is not dict or len(value['requests']) > MAX_REQUESTS):
             raise policy.PolicyError('Automation receipts unavailable.')
@@ -96,6 +96,35 @@ class HomeAutomations:
                 raise policy.PolicyError('Automation receipts unavailable.')
         return value
 
+    def _archived(self, request_id):
+        # request_id has already passed the closed hex grammar. Keep consumed
+        # IDs indefinitely without unbounded parsing of the active ledger.
+        try:
+            archive = self._ledger('receipt-' + request_id + '.json')
+        except FileNotFoundError:
+            return None
+        if set(archive['requests']) != {request_id}:
+            raise policy.PolicyError('Archived automation receipt unavailable.')
+        return archive['requests'][request_id]
+
+    def _make_room(self, ledger):
+        if len(ledger['requests']) < MAX_REQUESTS:
+            return
+        settled = [row for row in ledger['requests'].values() if row['status'] != 'pending']
+        if not settled:
+            raise policy.PolicyError('Outstanding controls await recovery readback; no change sent.')
+        row = min(settled, key=lambda item: (item['at'], item['requestID']))
+        key = row['requestID']
+        previous = self._archived(key)
+        if previous is not None and previous != row:
+            raise policy.PolicyError('Archived automation receipt differs; no change sent.')
+        if previous is None:
+            # Archive fsync precedes removing the active entry. A crash between
+            # files leaves duplicates, never a forgotten request or replay gap.
+            policy.save_json(self.root, 'receipt-' + key + '.json',
+                             {'version': 1, 'requests': {key: row}})
+        del ledger['requests'][key]
+
     def _receipt(self, row):
         status = row['status']
         if status == 'pending' and (row['owner'] != self.boot or row['control'] not in self.workers
@@ -107,6 +136,23 @@ class HomeAutomations:
     def _last_operation(self, ledger, control):
         rows = [row for row in ledger['requests'].values() if row['control'] == control]
         return self._receipt(max(rows, key=lambda row: row['at'])) if rows else None
+
+    def _settle_observed(self, ledger, control, enabled):
+        """Caller holds policy + manager locks and has a fresh, verified read.
+
+        Retire interrupted receipts, not their commands. Same request IDs remain
+        consumed forever; mismatches stay 'unknown', never silently resubmitted.
+        """
+        worker = self.workers.get(control)
+        if worker is not None and worker.is_alive():
+            return
+        changed = False
+        for row in ledger['requests'].values():
+            if row['control'] == control and row['status'] == 'pending':
+                row['status'] = 'verified' if row['enabled'] is enabled else 'unknown'
+                changed = True
+        if changed:
+            policy.save_json(self.root, 'requests.json', ledger)
 
     def refresh(self):
         with self.lock:
@@ -140,6 +186,11 @@ class HomeAutomations:
                     or not re.fullmatch(r'[0-9a-f]{64}', matches[0]['revision'])):
                 raise ValueError('Pinned rule missing or changed')
             with self.lock:
+                # The existing Smart Actions reader takes the same cloud-session
+                # lock as writes. A successful identity-pinned read is the recovery
+                # checkpoint; cached UI state alone cannot retire a pending write.
+                with policy.locked(self.root):
+                    self._settle_observed(self._ledger(), 'barn-door', matches[0]['enabled'])
                 self.cloud = {'enabled': matches[0]['enabled'], 'revision': matches[0]['revision']}
                 self.cloud_at = self.now()
                 self.cloud_error = None
@@ -157,7 +208,11 @@ class HomeAutomations:
             at = self.now()
             voice = policy.current(self.root, legacy=False)
             try:
-                ledger = self._ledger()
+                with policy.locked(self.root):
+                    ledger = self._ledger()
+                    observed_voice = policy.current(self.root, legacy=False)
+                    if observed_voice is not None:
+                        self._settle_observed(ledger, 'automatic-voice', observed_voice.enabled)
                 voice_op = self._last_operation(ledger, 'automatic-voice')
                 barn_op = self._last_operation(ledger, 'barn-door')
                 binding = self._binding()
@@ -185,7 +240,10 @@ class HomeAutomations:
             if self.closed:
                 raise policy.PolicyError('Home controls are shutting down; no change sent.')
             ledger = self._ledger()
-            existing = ledger['requests'].get(request_id)
+            observed_voice = policy.current(self.root, legacy=False)
+            if observed_voice is not None:
+                self._settle_observed(ledger, 'automatic-voice', observed_voice.enabled)
+            existing = ledger['requests'].get(request_id) or self._archived(request_id)
             if existing is not None:
                 if any(existing.get(key) != command[key] for key in command):
                     raise policy.PolicyError('Request identity already used for a different command.')
@@ -193,9 +251,7 @@ class HomeAutomations:
             control = command['control']
             if control in self.workers or any(row['control'] == control and row['status'] == 'pending'
                     for row in ledger['requests'].values()):
-                raise policy.PolicyError('This control is changing or interrupted; inspect before another change.')
-            if len(ledger['requests']) >= MAX_REQUESTS:
-                raise policy.PolicyError('Automation receipt capacity reached; no change sent.')
+                raise policy.PolicyError('This control is changing or awaiting fresh recovery readback; no change sent.')
             if control == 'automatic-voice':
                 value = policy.current(self.root, legacy=False)
                 if value is None or value.revision != command['revision']:
@@ -208,6 +264,7 @@ class HomeAutomations:
                         or not 0 <= self.now() - self.cloud_at <= 90
                         or self.cloud['revision'] != command['revision']):
                     raise policy.PolicyError('Fresh Barn Door configuration required; refresh first.')
+            self._make_room(ledger)
             row = {**command, 'owner': self.boot, 'at': self.now(), 'status': 'pending'}
             ledger['requests'][request_id] = row
             policy.save_json(self.root, 'requests.json', ledger)  # Consume before every possible change.

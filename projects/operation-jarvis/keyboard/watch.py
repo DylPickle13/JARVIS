@@ -136,7 +136,7 @@ def controller_status(store):
         if type(display) is not dict or type(display.get('fault')) is not bool:
             raise cycle.CycleError('state')
         result['display'] = (
-            'ERROR: Display automation blocked after an uncertain action; owner review required.'
+            'ERROR: Display automation awaiting actual lock/power observation; recovery reads continue.'
             if display['fault'] else None,
             'RECOVERED: Display automation fault cleared (not device-state verification).',
         )
@@ -171,7 +171,8 @@ def snapshot(store):
 
 
 def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.send,
-         mouse_apply=None, display_apply=None, led_apply=None, executor=None):
+         mouse_apply=None, display_apply=None, led_apply=None, executor=None,
+         keyboard_reconcile=None, mouse_reconcile=None, led_observe=None, display_observe=None):
     """One locked pass; independent controllers run concurrently and all settle.
 
     Keep cycle.lock held until this returns/raises. Workers own distinct controller
@@ -228,13 +229,13 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
 
     runners = (
         lambda: cycle.run_once(store, now=now, get_presence=shared_presence,
-                               apply=apply, responsive=True),
+                               apply=apply, responsive=True, reconcile=keyboard_reconcile),
         lambda: mouse_cycle.run_once(store, now=now, get_presence=shared_presence,
-                                     apply=mouse_apply),
+                                     apply=mouse_apply, reconcile=mouse_reconcile),
         lambda: display_cycle.run_once(store, now=now, get_presence=shared_presence,
-                                       apply=display_apply),
+                                       apply=display_apply, readback=display_observe),
         lambda: led_cycle.run_once(store, now=now, get_presence=shared_presence,
-                                   apply=led_apply),
+                                   apply=led_apply, observe=led_observe),
     )
     context = (contextlib.nullcontext(executor) if executor is not None else
                ThreadPoolExecutor(max_workers=4, thread_name_prefix='presence-controller'))

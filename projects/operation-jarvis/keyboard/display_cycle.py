@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Opt-in basement display locking. Configuration stays disabled until owner setup."""
+import json
 import subprocess
 import sys
 import time
@@ -19,7 +20,15 @@ def send(action):
                    check=True, capture_output=True, timeout=8)
 
 
-def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=None):
+def observe():
+    result = subprocess.run([sys.executable, str(cycle.ROOT / 'display_session.py'), 'observe'],
+                            check=True, capture_output=True, timeout=8)
+    if len(result.stdout) > 2048:
+        raise RuntimeError('Display observation unavailable')
+    return json.loads(result.stdout)
+
+
+def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=None, readback=None):
     config = store.load('display-config.json', {'enabled': False})
     if type(config) is not dict or set(config) != {'enabled'} or type(config['enabled']) is not bool:
         raise cycle.CycleError('state')
@@ -50,12 +59,36 @@ def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=No
 
     if migrated:
         save()  # Persist schema only, including every existing uncertainty marker.
-    if state['pending']:
-        if not state['fault']:
-            state['fault'] = True
-            save()
-            return 'ERROR: Display automation blocked after an uncertain action; owner review required.', 1
-        return '', 0
+    if state['pending'] or state['fault']:
+        first = not state['fault']
+        state['fault'] = True
+        current = now()
+        if not cycle.finite(current):
+            raise cycle.CycleError('state')
+        if state['last_tick'] is None or current - state['last_tick'] >= 60:
+            state['last_tick'] = current
+            save()  # Read-only recovery is paced and requires the helper idle lock.
+            try:
+                actual = (readback or observe)()
+                if (type(actual) is not dict or set(actual) != {'locked', 'all_asleep', 'idle'}
+                        or any(type(actual[k]) is not bool for k in actual) or actual['idle'] is not True):
+                    raise RuntimeError('Display observation unavailable')
+                target = 'nearby' if state['mode'] == 'away' else 'away'
+                matched = (not actual['all_asleep']) if target == 'nearby' else (actual['locked'] and actual['all_asleep'])
+                completed = now()
+                if not cycle.finite(completed) or completed < current:
+                    raise RuntimeError('Clock invalid')
+                if state['pending'] and matched:
+                    state.update(mode=target, completed_at=completed)
+                else:
+                    state['completed_at'] = None
+                state.update(pending=False, fault=False, away_since=None, away_checks=0, last_tick=completed)
+                save()
+                return 'RECOVERED: Display action reconciled from idle, actual lock/power state; no action replayed.', 0
+            except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError):
+                pass
+        save()
+        return ('ERROR: Display state unverified; retrying readback before any further action.', 1) if first else ('', 0)
     current = now()
     if not cycle.finite(current):
         raise cycle.CycleError('state')
@@ -105,14 +138,14 @@ def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=No
     except (OSError, subprocess.SubprocessError, RuntimeError):
         state['fault'] = True
         save()
-        return 'ERROR: Display lock/wake failed or is uncertain; automatic retries blocked pending owner review.', 1
+        return 'ERROR: Display lock/wake unverified; waiting for automatic lock/power readback.', 1
     # Publish only after the helper completed and the durable pending marker can
     # be cleared. The phone relay never treats an initial nearby as a wake.
     completed = now()
     if not cycle.finite(completed) or completed < current:
         state['fault'] = True
         save()
-        return 'ERROR: Display lock/wake failed or is uncertain; automatic retries blocked pending owner review.', 1
+        return 'ERROR: Display lock/wake unverified; waiting for automatic lock/power readback.', 1
     state.update(mode=presence, away_since=None, away_checks=0, pending=False,
                  fault=False, completed_at=completed, last_tick=completed)
     save()

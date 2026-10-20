@@ -211,17 +211,16 @@ class ControllerTests(unittest.TestCase):
         self.fake.shell = checked
         self.controller.control("brightness", 155, apply=True)
 
-    def test_partial_failure_is_durable_and_blocks_later_write_without_device_contact(self):
+    def test_partial_failure_waits_for_read_only_recovery_without_another_write(self):
         self.pair()
         self.fake.fail_action = "screen_brightness"
         with self.assertRaises(AdbError):
             self.controller.control("brightness", 180, apply=True)
         self.assertTrue(self.controller.pending_path.exists())
         self.assertEqual(self.fake.mode, "0")
-        calls = len(self.fake.calls)
-        with self.assertRaises(FrameError):
-            self.controller.control("wake", apply=True)
-        self.assertEqual(len(self.fake.calls), calls)
+        mutations = list(self.fake.mutations)
+        self.assertEqual(self.controller.control("wake", apply=True)['status'], 'recovery_wait')
+        self.assertEqual(self.fake.mutations, mutations)
         self.assertIsNotNone(self.controller.status()["pending"])
 
     def test_readback_mismatch_keeps_pending_marker(self):
@@ -231,15 +230,77 @@ class ControllerTests(unittest.TestCase):
             self.controller.control("brightness", 190, apply=True)
         self.assertTrue(self.controller.pending_path.exists())
 
-    def test_resolve_is_explicit_acknowledgement_without_retry_or_device_contact(self):
+    def test_legacy_resolve_command_uses_the_same_checked_recovery_not_blind_ack(self):
         self.pair()
-        save_json(self.controller.pending_path, {"operation": "wake", "outcome": "unknown"})
+        save_json(self.controller.pending_path, {"operation": "wake", "outcome": "unknown", 'at': 1})
         self.controller.resolve_pending()
         self.assertTrue(self.controller.pending_path.exists())
         result = self.controller.resolve_pending(apply=True)
-        self.assertEqual(result["status"], "pending_acknowledged")
-        self.assertEqual(self.fake.calls, [])
+        self.assertEqual(result["status"], "reconciled")
+        self.assertEqual(result['outcome'], 'observed_target')
+        self.assertEqual(self.fake.mutations, [])
         self.assertTrue((self.controller.runtime / "last-resolved.json").exists())
+
+    def test_status_reconciles_old_failure_and_never_sends_the_new_requested_action(self):
+        self.pair()
+        save_json(self.controller.pending_path, {'operation': 'sleep', 'outcome': 'unknown',
+                  'at': 1, 'identity': IDENTITY, 'intent': {}})
+        result = self.controller.control('wake', apply=True)
+        self.assertEqual(result['status'], 'reconciled')
+        self.assertEqual(result['outcome'], 'unknown_consumed')
+        self.assertFalse(self.controller.pending_path.exists())
+        self.assertEqual(self.fake.mutations, [])
+
+    def test_identity_failure_keeps_reservation_until_actual_identity_is_restored(self):
+        self.pair()
+        save_json(self.controller.pending_path, {'operation': 'wake', 'outcome': 'unknown', 'at': 1})
+        self.fake.identity['model'] = 'replacement'
+        with self.assertRaises(FrameError):
+            self.controller.status()
+        self.assertTrue(self.controller.pending_path.exists())
+        self.fake.identity = copy.deepcopy(IDENTITY)
+        self.assertIsNone(self.controller.status()['pending'])
+        self.assertEqual(self.fake.mutations, [])
+
+    def test_unknown_upload_hash_is_reserved_before_push_and_never_replayed(self):
+        self.pair()
+        self.fake.fail_action = 'push'
+        with self.assertRaises(AdbError):
+            self.controller.upload(self.photo, apply=True, import_ready=True)
+        pending = read_json(self.controller.pending_path)
+        digest = pending['intent']['sha256']
+        self.assertIn(digest, read_json(self.controller.uploads_path))
+        pending['at'] = 1
+        save_json(self.controller.pending_path, pending)
+        self.assertIsNone(self.controller.status()['pending'])
+        with self.assertRaisesRegex(FrameError, 'already submitted'):
+            self.controller.upload(self.photo, apply=True, import_ready=True)
+        self.assertEqual(self.fake.mutations, ['push'])
+
+    def test_legacy_missing_source_repair_is_recognized_without_a_second_reset(self):
+        import hashlib
+        self.pair()
+        save_json(self.controller.pending_path, {'operation': 'upload', 'at': 1})
+        self.assertIsNone(self.controller.status()['pending'])
+        with self.assertRaisesRegex(FrameError, 'original photo metadata'):
+            self.controller.upload(self.photo, apply=True, import_ready=True)
+        record = read_json(self.controller.runtime / 'unidentified-upload.json')
+        record['intent'] = {'sha256': hashlib.sha256(JPEG).hexdigest()}
+        save_json(self.controller.runtime / 'unidentified-upload.json', record)
+        # Restoring genuine source metadata is enough; no guard reset API.
+        with self.assertRaisesRegex(FrameError, 'already submitted'):
+            self.controller.upload(self.photo, apply=True, import_ready=True)
+        self.assertNotIn('legacy_unknown_source', read_json(self.controller.uploads_path))
+        other = self.root / 'other.jpg'; other.write_bytes(JPEG + b'-different')
+        self.controller.upload(other, apply=True, import_ready=True)
+        self.assertEqual(self.fake.mutations.count('push'), 1)
+
+    def test_future_timestamp_does_not_authorize_recovery(self):
+        self.pair()
+        save_json(self.controller.pending_path, {'operation': 'wake', 'at': 99999999999})
+        self.assertEqual(self.controller.status()['recovery']['status'], 'recovery_wait')
+        self.assertTrue(self.controller.pending_path.exists())
+        self.assertEqual(self.fake.mutations, [])
 
     def test_dedicated_wakeup_and_sleep_keys_with_readback(self):
         self.pair()
@@ -353,8 +414,7 @@ class ControllerTests(unittest.TestCase):
         self.fake.fail_action = "rename"
         with self.assertRaises(AdbError):
             self.controller.upload(self.photo, apply=True, import_ready=True)
-        with self.assertRaises(FrameError):
-            self.controller.upload(self.photo, apply=True, import_ready=True)
+        self.assertEqual(self.controller.upload(self.photo, apply=True, import_ready=True)['status'], 'recovery_wait')
         self.assertEqual(self.fake.mutations.count("push"), 1)
         self.assertTrue(self.controller.pending_path.exists())
 
@@ -388,10 +448,10 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(AdbError):
             self.controller.upload(self.photo, apply=True, import_ready=True)
         self.assertTrue(self.controller.pending_path.exists())
-        self.assertFalse(self.controller.uploads_path.exists())
+        self.assertTrue(self.controller.uploads_path.exists())
+        self.assertEqual(len(read_json(self.controller.uploads_path)), 1)
         self.assertFalse(any(self.controller.runtime.glob("photo-*")))
-        with self.assertRaises(FrameError):
-            self.controller.upload(self.photo, apply=True, import_ready=True)
+        self.assertEqual(self.controller.upload(self.photo, apply=True, import_ready=True)['status'], 'recovery_wait')
         self.assertEqual(self.fake.mutations.count("push"), 1)
 
     def test_upload_rejects_unsupported_fake_and_oversized_photos(self):

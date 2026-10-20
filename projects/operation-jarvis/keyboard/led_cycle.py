@@ -1,7 +1,7 @@
 """Opt-in L930-5 power transitions using the watcher's shared basement snapshot.
 
 No colour/brightness changes, new scanner/scheduler, or replay of uncertain writes.
-Run under cycle.lock. A persisted pending marker requires explicit owner review.
+Run under cycle.lock. Pending outcomes recover through fresh authenticated readback.
 """
 import json
 import subprocess
@@ -13,7 +13,7 @@ BUSY_COOLDOWN = 60
 FAULTS = {'presence', 'led', 'busy', 'state'}
 MESSAGES = {
     'presence': 'LED strip presence unavailable or stale; power unchanged.',
-    'led': 'LED strip automation blocked after an unverified command; owner review required.',
+    'led': 'LED strip unavailable or outcome unverified; retrying observation before any new command.',
     'busy': 'LED strip control busy; waiting at least 60 seconds before another fresh-presence attempt.',
     'state': 'LED strip automation state unavailable or invalid; power unchanged.',
 }
@@ -41,6 +41,10 @@ class LightingError(RuntimeError):
     def __init__(self, details):
         super().__init__('Unverified lighting response')
         self.details = details
+
+
+class NotSent(LightingError):
+    """Trusted CLI positively rejected this operation before any power mutation."""
 
 
 class DeviceBusy(LightingError):
@@ -100,6 +104,25 @@ def probe_once(store):
                'elapsed': round(time.monotonic() - started, 3), **details})
 
 
+def read_power():
+    """Read through the existing authenticated identity check and device lock."""
+    result = subprocess.run(
+        [str(cycle.ROOT.parent / 'security' / 'security'), '--json', 'status', 'led-strip'],
+        capture_output=True, timeout=29, check=False)
+    if len(result.stdout) > 16384:
+        raise LightingError({'reason': 'invalid_response'})
+    try:
+        p = json.loads(result.stdout)
+        value = p['features']['state']['value']
+        if (result.returncode != 0 or p.get('result') != 'read_succeeded'
+                or p.get('device') != 'led-strip' or p.get('model') != 'L930-5'
+                or type(value) is not bool):
+            raise ValueError()
+        return 'on' if value else 'off'
+    except (ValueError, TypeError, KeyError):
+        raise LightingError(response_diagnostic(result)) from None
+
+
 def send(mode, deadline):
     if mode not in ('on', 'off') or not cycle.finite(deadline):
         raise ValueError('Invalid lighting request')
@@ -124,6 +147,12 @@ def send(mode, deadline):
         raise DeviceBusy(details)  # No connection or power write was attempted.
     if (result.returncode == 2 and payload.get('reason') == 'presence_deadline_expired'):
         return False  # Explicitly rejected before writing, safe to await fresh presence.
+    if (result.returncode == 2 and payload.get('result') == 'error'
+            and payload.get('stage') in ('preflight', 'connection', 'state_read')
+            and payload.get('reason') in {'authentication_failed', 'timeout', 'dependency_unavailable',
+                'private_credentials_unavailable', 'network_or_local_io_error', 'unreachable',
+                'device_identity_mismatch'}):
+        raise NotSent(details)
     if (result.returncode != 0 or payload.get('result') != 'verified'
             or payload.get('device') != 'led-strip' or payload.get('model') != 'L930-5'
             or payload.get('setting') != 'state' or payload.get('value') is not (mode == 'on')):
@@ -131,7 +160,7 @@ def send(mode, deadline):
     return True
 
 
-def tick(state, faults, *, now, get_presence, apply, save, monotonic=time.monotonic):
+def tick(state, faults, *, now, get_presence, apply, save, observe=None, monotonic=time.monotonic):
     state.update(validate_state(state))
     if (not cycle.finite(now)
             or any(state[k] is not None and now < state[k] for k in ('last_tick', 'last_busy'))):
@@ -155,7 +184,20 @@ def tick(state, faults, *, now, get_presence, apply, save, monotonic=time.monoto
     faults.discard('presence')
     if state['pending']:
         faults.add('led')
-        return
+        if observe is None or (state['last_busy'] is not None and now - state['last_busy'] < BUSY_COOLDOWN):
+            return
+        state['last_busy'] = now
+        save(state)  # Bound failed read probes too; no permanent retry ceiling.
+        try:
+            actual = observe()
+            if actual not in ('on', 'off'):
+                return
+            state.update(pending=False, last_mode=actual)
+            faults.discard('led')
+            save(state)
+        except Exception:
+            pass  # No new write while outcome/identity remain unobserved.
+        return  # A later tick must obtain fresh presence before a new transition.
     target = 'on' if location == 'nearby' else 'off'
     if state['last_mode'] == target:
         faults.discard('busy')  # No transition is needed; retain the cooldown across flips.
@@ -184,12 +226,17 @@ def tick(state, faults, *, now, get_presence, apply, save, monotonic=time.monoto
     except DeviceBusy:
         state.update(pending=False, last_busy=now)
         faults.add('busy')
+    except NotSent:
+        state.update(pending=False, last_busy=now)
+        faults.add('led')
     except Exception:
-        faults.add('led')  # Pending stays durable: never automatically replay.
+        state['last_busy'] = now
+        faults.add('led')  # Read/reconcile next; never blindly replay the old request.
     save(state)
 
 
-def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=None):
+def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=None, observe=None):
+    observe = observe or read_power
     config = store.load('led-config.json', {'enabled': False})
     if type(config) is not dict or set(config) != {'enabled'} or type(config['enabled']) is not bool:
         return 'ERROR: ' + MESSAGES['state'], 1
@@ -214,7 +261,7 @@ def run_once(store, *, now=time.time, get_presence=cycle.read_presence, apply=No
     try:
         state = validate_state(store.load('led-state.json', initial()))
         tick(state, faults, now=now(), get_presence=get_presence, apply=diagnosed_apply,
-             save=lambda s: store.save('led-state.json', s))
+             save=lambda s: store.save('led-state.json', s), observe=observe)
     except (cycle.CycleError, OSError, ValueError, TypeError, KeyError):
         faults.add('state')
     store.save('led-alerts.json', sorted(faults))

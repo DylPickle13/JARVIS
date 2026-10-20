@@ -9,6 +9,7 @@ import fcntl
 import hashlib
 import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -285,6 +286,8 @@ class Controller:
         return config
 
     def checked(self, config):
+        if self.pending_path.exists():
+            read_json(self.pending_path)  # Corrupt journals fail before device contact.
         actual = self.adb.probe(config["serial"], config["package"])
         if any(actual["identity"].get(field) != config["identity"][field] for field in PIN_FIELDS):
             raise FrameError("Pinned device/build identity changed. No write; review firmware/transport manually.")
@@ -313,17 +316,84 @@ class Controller:
             brightness = self.adb.shell(serial, "settings", "get", "system", "screen_brightness")
             mode = self.adb.shell(serial, "settings", "get", "system", "screen_brightness_mode")
             power = self.adb.shell(serial, "dumpsys", "power")
-            return {"status": "read", "identity_matches": True,
+            recovery = self._recover(config)
+            return {"status": "read", "identity_matches": True, "recovery": recovery,
                     "screen_on": display_state(power),
                     "android_brightness_setting": int(brightness) if brightness.isdecimal() else None,
                     "brightness_mode": {"0": "manual", "1": "automatic"}.get(mode, "unknown"),
                     "pending": read_json(self.pending_path) if self.pending_path.exists() else None,
                     "physical_acceptance": "not_verified"}
 
-    def _begin(self, operation):
+    def _begin(self, operation, intent=None):
         if self.pending_path.exists():
-            raise FrameError("An earlier write is pending/unknown. Inspect the frame and resolve-pending; do not retry.")
-        save_json(self.pending_path, {"operation": operation, "outcome": "pending_or_unknown"})
+            raise FrameError("An earlier action awaits automatic read-only reconciliation; no write sent.")
+        save_json(self.pending_path, {"operation": operation, "outcome": "pending_or_unknown",
+                  "at": time.time(), "identity": self.config()['identity'], "intent": intent or {}})
+
+    def _recover(self, config):
+        """Caller holds the exclusive controller lock and verified this device.
+
+        Retire an old operation, never replay it or dispatch a new one in this
+        recovery call. Imported photos/swipes are not observable success. Preserve
+        hash reservations so an unknown photo cannot be submitted twice.
+        """
+        if not self.pending_path.exists():
+            return None
+        previous = read_json(self.pending_path)
+        operation = previous.get('operation')
+        if operation not in {'wake', 'sleep', 'brightness', 'next', 'previous', 'upload',
+                             'wifi-enable', 'wifi-disable'}:
+            raise FrameError('Pending action metadata is invalid; repair the underlying storage.')
+        if 'identity' in previous and previous['identity'] != config['identity']:
+            raise FrameError('Pending action belongs to a different pinned device; no recovery write.')
+        at = previous.get('at', self.pending_path.stat().st_mtime)
+        now = time.time()
+        if type(at) not in (int, float) or not math.isfinite(at):
+            raise FrameError('Pending action timestamp is invalid; repair the underlying storage.')
+        if not 130 <= now - at:
+            return {'status': 'recovery_wait', 'operation': operation, 'hardware_changed': False}
+        intent = previous.get('intent', {})
+        if type(intent) is not dict:
+            raise FrameError('Pending action intent is invalid; repair the underlying storage.')
+        serial = config['serial']
+        matched = False
+        if operation in ('wake', 'sleep'):
+            actual = display_state(self.adb.shell(serial, 'dumpsys', 'power'))
+            if actual is None:
+                raise FrameError('Display observation unavailable; recovery will retry on the next request.')
+            matched = actual is (operation == 'wake')
+        elif operation == 'brightness':
+            actual = self.adb.shell(serial, 'settings', 'get', 'system', 'screen_brightness')
+            mode = self.adb.shell(serial, 'settings', 'get', 'system', 'screen_brightness_mode')
+            if not actual.isdecimal() or not 0 <= int(actual) <= 255 or mode not in ('0', '1'):
+                raise FrameError('Brightness observation unavailable; no action replayed.')
+            matched = type(intent.get('value')) is int and int(actual) == intent['value'] and mode == '0'
+        elif operation == 'upload':
+            digest = intent.get('sha256')
+            uploads = read_json(self.uploads_path) if self.uploads_path.exists() else {}
+            if not isinstance(digest, str) or not re.fullmatch('[0-9a-f]{64}', digest):
+                # Old journals did not identify the photo. This is missing source
+                # metadata, not authorization to guess or repeat a possible import.
+                save_json(self.runtime / 'unidentified-upload.json',
+                          {**previous, 'identity': config['identity']})
+                uploads['legacy_unknown_source'] = {'status': 'source_identity_unavailable'}
+            elif digest not in uploads:
+                uploads[digest] = {'status': 'outcome_unknown_consumed'}
+            save_json(self.uploads_path, uploads)
+        elif operation in ('wifi-enable', 'wifi-disable'):
+            port = self.adb.shell(serial, 'getprop', 'service.adb.tcp.port')
+            if port not in ('', '0', '-1') and (not port.isdecimal() or not 1 <= int(port) <= 65535):
+                raise FrameError('ADB listener observation unavailable; no transport change replayed.')
+            if operation == 'wifi-enable':
+                matched = type(intent.get('value')) is int and port == str(intent['value'])
+            # Listener retirement also needs its original USB/listener acceptance;
+            # an absent property alone is not a verified shutdown.
+        result = {**previous, 'outcome': 'observed_target' if matched else 'unknown_consumed',
+                  'reconciled_at': now, 'hardware_changed': False}
+        save_json(self.runtime / 'last-resolved.json', result)
+        self._finish()
+        return {'status': 'reconciled', 'operation': operation, 'outcome': result['outcome'],
+                'hardware_changed': False, 'note': 'Old action was not replayed; no new action dispatched.'}
 
     def _finish(self):
         self.pending_path.unlink()
@@ -339,19 +409,15 @@ class Controller:
         with self.lock():
             if not self.pending_path.exists():
                 return {"status": "no_pending_write", "device_contacted": False}
-            previous = read_json(self.pending_path)
-            save_json(self.runtime / "last-resolved.json", previous)
-            self._finish()
-            return {"status": "pending_acknowledged", "device_contacted": False,
-                    "note": "Acknowledgement is not verification; no action was replayed."}
+            config = self.config()
+            self.checked(config)
+            return self._recover(config)
 
     def use_transport(self, serial, apply=False):
         validate_serial(serial)
         if not apply:
             return {"status": "dry_run", "operation": "use-transport", "device_contacted": False}
         with self.lock():
-            if self.pending_path.exists():
-                raise FrameError("Resolve the pending write before changing transport.")
             config = self.config()
             candidate = {**config, "serial": serial}
             if config.get("adb_backend") == "legacy_lan" and ":" in serial:
@@ -361,6 +427,9 @@ class Controller:
                 candidate.pop("legacy_lan_approval", None)
                 candidate.pop("usb_serial", None)
             self.checked(candidate)
+            recovery = self._recover(candidate)
+            if recovery is not None:
+                return recovery
             save_json(self.config_path, candidate)
             return {"status": "transport_updated", "hardware_changed": False}
 
@@ -374,11 +443,12 @@ class Controller:
         if getattr(self.adb, "backend", None) != "direct_tcp":
             raise FrameError("Direct TCP acceptance requires the authenticated in-process backend.")
         with self.lock():
-            if self.pending_path.exists():
-                raise FrameError("Resolve the pending write before accepting a TCP backend.")
             config = self.config()
             candidate = {**config, "serial": serial, "adb_backend": "direct_tcp"}
             self.checked(candidate)
+            recovery = self._recover(candidate)
+            if recovery is not None:
+                return recovery
             if self.adb.shell(serial, "getprop", "ro.adb.secure") != "1":
                 raise FrameError("ADB authentication property is not confirmed; no transport selected.")
             save_json(self.config_path, candidate)
@@ -398,12 +468,13 @@ class Controller:
         if getattr(self.adb, "backend", "platform_tools") != "platform_tools":
             raise FrameError("Legacy LAN must be accepted from the verified USB/platform-tools route.")
         with self.lock():
-            if self.pending_path.exists():
-                raise FrameError("Resolve the pending write before accepting legacy LAN.")
             config = self.config()
             if ":" in config["serial"]:
                 raise FrameError("Select the exact verified USB transport before legacy LAN acceptance.")
             self.checked(config)
+            recovery = self._recover(config)
+            if recovery is not None:
+                return recovery
             address = self.adb.shell(config["serial"], "ip", "-4", "addr", "show", "wlan0")
             ips = re.findall(r"\binet\s+(\d+\.\d+\.\d+\.\d+)/", address)
             if len(ips) != 1 or ips[0] != serial.rsplit(":", 1)[0]:
@@ -440,8 +511,6 @@ class Controller:
         if getattr(self.adb, "backend", "platform_tools") != "platform_tools":
             raise FrameError("Retire wireless debugging through USB/platform-tools only.")
         with self.lock():
-            if self.pending_path.exists():
-                raise FrameError("An earlier write is pending; no wireless retirement dispatched.")
             config = self.config()
             serial = validate_serial(usb_serial or config.get("usb_serial") or config["serial"])
             if ":" in serial:
@@ -450,6 +519,9 @@ class Controller:
             for field in ("adb_backend", "legacy_lan_approval", "usb_serial"):
                 candidate.pop(field, None)
             self.checked(candidate)
+            recovery = self._recover(candidate)
+            if recovery is not None:
+                return recovery
             port = self.adb.shell(serial, "getprop", "service.adb.tcp.port")
             if port not in ("", "0", "-1") and (not port.isdecimal() or not 1 <= int(port) <= 65535):
                 raise FrameError("Unexpected TCP port property; no retirement dispatched.")
@@ -515,10 +587,11 @@ class Controller:
         if action in ("next", "previous") and not slideshow_ready:
             raise FrameError("Navigation is experimental: confirm the visible slideshow with --slideshow-ready.")
         with self.lock():
-            if self.pending_path.exists():
-                raise FrameError("An earlier write is pending/unknown. Inspect and resolve-pending first.")
             config = self.config()
             self.checked(config)
+            recovery = self._recover(config)
+            if recovery is not None:
+                return recovery
             serial = config["serial"]
             commands = []
             if action == "wifi-enable":
@@ -540,7 +613,7 @@ class Controller:
                 left, right, y = int(width * .2), int(width * .8), height // 2
                 start, end = (right, left) if action == "next" else (left, right)
                 commands = [("input", "swipe", start, y, end, y, "300")]
-            self._begin(action)
+            self._begin(action, {'value': value})
             # A failure from here onward leaves the durable pending marker intact.
             if action == "wifi-enable":
                 output = self.adb.call(["tcpip", str(value)], serial=serial)
@@ -578,10 +651,11 @@ class Controller:
         if not source.is_file():
             raise FrameError("Photo source must be a regular file.")
         with self.lock():
-            if self.pending_path.exists():
-                raise FrameError("An earlier write is pending/unknown. Inspect and resolve-pending first.")
             config = self.config()
             self.checked(config)
+            recovery = self._recover(config)
+            if recovery is not None:
+                return recovery
             serial = config["serial"]
             with tempfile.TemporaryDirectory(prefix="photo-", dir=self.runtime) as temporary:
                 staged = Path(temporary) / ("photo.png" if suffix == ".png" else "photo.jpg")
@@ -607,8 +681,20 @@ class Controller:
                     raise FrameError("File extension/content mismatch; expected JPEG.")
                 content_hash = digest.hexdigest()
                 uploads = read_json(self.uploads_path) if self.uploads_path.exists() else {}
+                if 'legacy_unknown_source' in uploads:
+                    # A genuine legacy metadata loss needs the original source
+                    # identity restored, not a flag reset. Recognize that repair
+                    # automatically and retain the recovered hash as consumed.
+                    repaired = read_json(self.runtime / 'unidentified-upload.json')
+                    recovered = repaired.get('intent', {}).get('sha256') if type(repaired.get('intent')) is dict else None
+                    if (repaired.get('operation') != 'upload' or repaired.get('identity') != config['identity']
+                            or not isinstance(recovered, str) or not re.fullmatch('[0-9a-f]{64}', recovered)):
+                        raise FrameError('An old upload has no source identity. Restore its original photo metadata in unidentified-upload.json; never guess or clear its guard.')
+                    uploads.setdefault(recovered, {'status': 'outcome_unknown_consumed'})
+                    del uploads['legacy_unknown_source']
+                    save_json(self.uploads_path, uploads)
                 if content_hash in uploads:
-                    raise FrameError("This photo was already transferred; no duplicate dispatched.")
+                    raise FrameError("This photo was already submitted (possibly with an unknown outcome); no duplicate dispatched.")
                 # Do not create guessed Frameo directories or modify its private database.
                 self.adb.shell(serial, "test", "-d", "/sdcard/DCIM")
                 extension = "png" if suffix == ".png" else "jpg"
@@ -620,7 +706,9 @@ class Controller:
                                         " ]; then printf exists; else printf absent; fi")
                 if exists != "absent":
                     raise FrameError("Remote final/staging file exists or cannot be checked; no overwrite dispatched.")
-                self._begin("upload")
+                self._begin("upload", {'sha256': content_hash})
+                uploads[content_hash] = {'status': 'outcome_unknown_consumed'}
+                save_json(self.uploads_path, uploads)  # Reserve identity BEFORE any transfer.
                 self.adb.call(["push", str(staged), partial], serial=serial, timeout=120)
                 count = self.adb.shell(serial, "wc", "-c", partial).split()
                 if not count or count[0] != str(size):

@@ -1,5 +1,15 @@
 # Android doorbell monitor — presence helper
 
+## Current recovery policy (v1.10.1)
+
+Network/video retries continue with capped backoff; there is no tap-to-retry ceiling.
+Unknown display actions are reconciled from actual interactive/keyguard state and
+fresh, completed Mac decisions before any new action. Enable intent survives errors,
+process restarts and temporary administrator-permission loss. Restoring permission
+resumes an already-enabled helper without another enable/reset step. Explicit Disable
+remains authoritative. No secure-keyguard bypass, forced wake, stale-command replay,
+or automatic permission grant is introduced. See [rollout and verification](../../AUTOMATIC_RECOVERY.md).
+
 Security subproject for an Android 6 / API 23 handset. It controls the handset
 display and a private, hardware-decoded RTSP/TCP viewer, **not** the doorbell's
 settings, recordings, alarms, or computer. v1.5 replaced the leaking tinyCam
@@ -47,8 +57,9 @@ alert relay. BLE presence is an estimate, not proof that a person is present.
   releases its CPU/Wi-Fi locks and pauses actions. There is no USB runtime dependency.
   No wireless ADB is enabled. Screen sleep is not full phone shutdown: while plugged
   in, a foreground service keeps a partial CPU and Wi-Fi lock to receive arrival.
-- A persisted pending action blocks restart/replay after an uncertain crash. The
-  owner reviews and explicitly re-enables in the helper. It is not silently retried.
+- A persisted pending action blocks dispatch after an uncertain crash. An enabled
+  helper restarts with paced actual-screen reconciliation; it does not clear the
+  reservation on boot/Enable or replay the old action.
 - A nonsecure swipe keyguard may be dismissed to restore playback. A PIN/password
   keyguard is **never bypassed**. Administrator permission requests only force-lock,
   not wipe, password changes, camera control, accessibility, or device-owner status.
@@ -121,7 +132,7 @@ ignored; private runtime is outside the repository. Do not publish configs or ke
 Open **JARVIS Monitor** on the phone (or tap its persistent notification):
 
 1. Grant screen-lock permission using Android's administrator prompt.
-2. Enable automation after reviewing any pending-action error.
+2. Enable automation. Pending actions recover through readback, not acknowledgment.
 3. **Disable automation** stops the helper and releases locks without waking/sleeping.
 4. **Test: sleep then wake in 8 seconds** tests only this phone, while externally powered.
 5. **Open camera viewer** returns to playback. **Use private camera viewer** selects

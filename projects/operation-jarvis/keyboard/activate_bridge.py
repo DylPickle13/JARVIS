@@ -27,7 +27,7 @@ def main():
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         local = cycle.validate_state(store.load('state.json', cycle.initial()))
         if local['pending']:
-            raise SystemExit('Local uncertain write remains blocked; explicit acknowledgment required')
+            raise SystemExit('Local action awaits current-transport idle reconciliation; backend switch withheld')
         response = bridge_client.request('status')
         if (response.get('pending') is not False or response.get('lighting_readback') is not False
                 or response.get('device_available') is not True):
