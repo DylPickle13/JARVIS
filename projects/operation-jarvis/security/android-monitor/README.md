@@ -600,6 +600,14 @@ monitor can never fail. Prefer supported Android hardware/current Media3 long te
 
 ## Optional Pi directed ARP repair
 
+The macOS replacement, guarded administrator installation and live acceptance are
+documented in [MACOS_ARP.md](MACOS_ARP.md). On 2026-10-20 UTC the local deployment
+moved this helper to `mac-mini-64`; the Pi helper was stopped and disabled after
+Mac-only video/audio and a controlled reconnect passed, then uninstalled at the
+owner's request with an inert private recovery archive. The history below describes
+the original Pi workaround. Staging or passing offline tests alone does **not**
+retire a helper; verify Mac-only playback before taking its previous host offline.
+
 A later 2026-09-30 recurrence isolated an address-resolution failure, not another
 player launch failure. The Nexus still had strong 5 GHz association, one live-view
 activity and the enabled foreground helper, but its doorbell neighbour entry was
@@ -674,8 +682,9 @@ It does not replace or restart the Pi presence service, Mac relay or any other h
 service. It is enabled for boot; actual host reboot acceptance is separate.
 
 **Operational limits:** this is a targeted workaround, not an AP/doorbell firmware
-fix. The Pi must be available, and this service is independent of the handset's
-Enable/Disable button. Stop it too when retiring the monitor. Configured phone and
+fix. The helper host must be available (the Pi for the original deployment;
+`mac-mini-64` for the migrated local deployment). This service is independent of
+the handset's Enable/Disable button. Stop it too when retiring the monitor. Configured phone and
 doorbell addresses must still match their verified MACs; DHCP reservations are
 recommended. It re-reads its own interface address every cycle, but does not implement
 phone/doorbell IP rediscovery. Wrong or changed mappings fail closed. An actual
