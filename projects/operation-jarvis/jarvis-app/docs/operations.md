@@ -31,6 +31,24 @@ cleanup. That approval does not establish exhaustive physical UI testing or
 authorize further device/service actions. Retain signed 268 and exact 267 rollback,
 along with audit/deployment evidence; unrelated backups remain out of scope.
 
+After verified publication of **`d0db9e9`**, the one-shot cleanup removed the obsolete
+**266 signed archive** and compacted both temporary audit/remediation workspaces
+into content/mode-verified private evidence archives before deleting the temporary
+copies. Net allocated artifact usage fell **259.80 MiB**; observed volume free space
+increased **232.63 MiB** (APFS/accounting and other activity can differ). Current
+signed **268** and exact **267 rollback** are now the only retained primary archives.
+All eight signatures, both source/payload seals, 4,517 retained evidence files and
+7,257 compressed evidence entries were verified. The 266 source/tests/deployment
+records and signing metadata remain, with a `primary-archive-pruned.json` marker;
+historical 266 rollback references below do not describe current retention.
+
+All 18 protected service records (17 continuous), Pi/Minecraft identities and backend/
+configuration/authentication remained intact; cleanup performed no device action or
+service restart. Unrelated backups were untouched. Receipt:
+`owner-stale-cleanup-20261020/cleanup.json` in the 268 artifact. That same directory
+retains `jarvis-app-audit.s0cMG3.tar.gz` and `jarvis-app-fixes.In1OWL.tar.gz`, with
+per-entry manifests. Do not replay this completed cleanup.
+
 ### Earlier partial deployment — iPhone 268; Watch 267
 
 Fresh owner **“just try again”** authorized a distinct third attempt. At **16:16

@@ -40,7 +40,7 @@ The final native run used a new isolated iPhone 11/iOS 26.5 simulator, pinned de
 
 The reviewed changes were integrated into the working checkout and byte-compared with the verified candidate. The 46 terminal tests, six real-network tests and artwork renderer also passed from the working checkout. `git diff --check` passed. No commit or deployment was performed at that source-verification stage.
 
-Evidence directory: `/tmp/jarvis-app-fixes.In1OWL/`. Tests use isolated simulators, synthetic credentials, fake device backends and loopback HTTP/TLS fixtures. The real-transport fixture checks 301/302/303/307/308 refusal, no requests to the unapproved origin, no terminal POST replay, approved read recovery and wrong-certificate rejection.
+Original evidence directory: `/tmp/jarvis-app-fixes.In1OWL/`. After owner-approved cleanup it is preserved as the verified private archive `owner-stale-cleanup-20261020/jarvis-app-fixes.In1OWL.tar.gz` in the 268 artifact; the temporary copy was removed. Selected logs and the final native xcresult also remain directly accessible under `prior-validation/`. Tests use isolated simulators, synthetic credentials, fake device backends and loopback HTTP/TLS fixtures. The real-transport fixture checks 301/302/303/307/308 refusal, no requests to the unapproved origin, no terminal POST replay, approved read recovery and wrong-certificate rejection.
 
 Verification maintenance also updates the Keychain source contracts to inspect the shared helper, runs the new real-network tests, and corrects a pre-existing stale Claude interval assertion from 60 to the backend's already-existing 120 seconds. No quota timing changes are made.
 
@@ -81,6 +81,12 @@ Fresh owner **“ok try again now”** authorized Watch-only work. Read-only pre
 Across all attempts, each app was installed and launched exactly once. All 18 protected service records (17 continuous), existing Pi/Minecraft identities, backend source/configuration/authentication and ten-second history cadence were preserved. Eight candidate/267-rollback signatures and both source/payload seals were independently reverified. No connection reset, transport switch, uncertain-write retry, terminal input, household control, portal/provisioning change or service restart occurred.
 
 Receipts: `deployment-watch-retry3/result.json` and `final-deployment-verification.json`; earlier iPhone evidence remains in `deployment-retry2/`. All earlier stops remain retained. Exact signed 267 is retained for rollback; all deployment authorizations are consumed. Physical behavior still awaits owner review. **The terminal-server hardening was not activated by this app deployment; any restart requires separate approval.** The owner subsequently acknowledged completion and approved publication and scoped stale-artifact cleanup, preserving signed 268, exact 267 rollback and audit/deployment evidence. This does not authorize further device/service actions or establish exhaustive physical UI acceptance.
+
+## Publication and retained artifacts
+
+The source changes were committed and pushed as **`d0db9e9`**, with GitHub's `main` ref independently checked before cleanup. Owner-approved cleanup then removed only the obsolete 266 signed archive and the two temporary workspaces after fully archiving/verifying their evidence. Net allocated artifact usage fell **259.80 MiB**; observed volume free space increased **232.63 MiB**. These measurements differ because of filesystem accounting and other activity.
+
+Signed **268** and exact signed **267 rollback** remain, with eight signatures and both source/payload seals verified. All 4,517 retained evidence files and 7,257 compressed evidence entries passed preservation checks. Older 266 source/test/deployment records and signing metadata remain; its archive has an explicit pruning marker. All protected services, Pi/Minecraft identities and backend/configuration/authentication were preserved; no device action or restart occurred. Unrelated backups were not removed. Private receipt: `owner-stale-cleanup-20261020/cleanup.json` in the 268 artifact. Do not replay the completed cleanup.
 
 ## Deployment boundary and remaining limits
 
