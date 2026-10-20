@@ -22,21 +22,23 @@ review, not a claim established by version/process checks.
 Private artifact: `20261020T155300Z-build268-audit-remediation`.
 Completion receipts: `deployment-watch-retry3/result.json` and
 `final-deployment-verification.json`; iPhone installation evidence remains under
-`deployment-retry2/`. Exact signed 267 remains rollback. All authorizations are
+`deployment-retry2/`. Only signed 268 remains after the explicit rollback-removal
+approval recorded below; no older exact signed rollback is retained. All authorizations are
 consumed; never replay a completed or stopped installer. Future changes/rollback
 require fresh scope, current installed-baseline checks and all preservation gates.
 
 The owner acknowledged completion and approved commit/push and scoped stale-artifact
 cleanup. That approval does not establish exhaustive physical UI testing or
-authorize further device/service actions. Retain signed 268 and exact 267 rollback,
-along with audit/deployment evidence; unrelated backups remain out of scope.
+authorize further device/service actions. The initial cleanup retained signed 268
+and exact 267 rollback, along with audit/deployment evidence; the owner subsequently
+explicitly removed the 267 archive as recorded below. Unrelated backups remain out of scope.
 
 After verified publication of **`d0db9e9`**, the one-shot cleanup removed the obsolete
 **266 signed archive** and compacted both temporary audit/remediation workspaces
 into content/mode-verified private evidence archives before deleting the temporary
 copies. Net allocated artifact usage fell **259.80 MiB**; observed volume free space
-increased **232.63 MiB** (APFS/accounting and other activity can differ). Current
-signed **268** and exact **267 rollback** are now the only retained primary archives.
+increased **232.63 MiB** (APFS/accounting and other activity can differ). That first
+cleanup left signed **268** and exact **267 rollback** as the only primary archives.
 All eight signatures, both source/payload seals, 4,517 retained evidence files and
 7,257 compressed evidence entries were verified. The 266 source/tests/deployment
 records and signing metadata remain, with a `primary-archive-pruned.json` marker;
@@ -48,6 +50,21 @@ service restart. Unrelated backups were untouched. Receipt:
 `owner-stale-cleanup-20261020/cleanup.json` in the 268 artifact. That same directory
 retains `jarvis-app-audit.s0cMG3.tar.gz` and `jarvis-app-fixes.In1OWL.tar.gz`, with
 per-entry manifests. Do not replay this completed cleanup.
+
+The owner then explicitly authorized **“you can remove the rollback too”**. At
+**16:41 EDT, October 20**, a separate one-shot cleanup removed **only the signed
+267 archive** after preserving its signing metadata. Net allocated artifact usage
+fell a further **118.88 MiB**; observed free space increased **93.63 MiB**. Current
+signed **268**, its four bundle signatures and source/payload seals, and all 3,280
+retained evidence files passed verification. The 267 source/test/deployment records
+remain with a `primary-archive-pruned.json` marker. **No older exact signed rollback
+remains in the retained release archives.** Historical 267 rollback references below
+record earlier retention, not the current state.
+
+All 18 protected service records (17 continuous), Pi/Minecraft identities and backend/
+configuration/authentication were preserved. No device action or restart occurred.
+Receipt: `owner-rollback-removal-20261020/removal.json` in the 268 artifact. Do not
+replay this completed removal; future recovery must account for the absent older binary.
 
 ### Earlier partial deployment — iPhone 268; Watch 267
 

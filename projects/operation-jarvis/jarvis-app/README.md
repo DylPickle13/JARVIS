@@ -10,8 +10,9 @@ installed and launched once. After the earlier partial attempt, fresh Watch-only
 approval completed deployment without reinstalling or relaunching the iPhone.
 All service/Pi/Minecraft/configuration preservation checks and eight candidate/
 rollback signatures passed. No service restart, connection reset or terminal input
-occurred; terminald activation still requires separate approval. Exact signed
-267 remains rollback. Physical UI acceptance remains owner review. See
+occurred; terminald activation still requires separate approval. The owner later
+removed the signed 267 rollback archive: **only signed 268 remains**, with source,
+audit and deployment evidence preserved. Physical UI acceptance remains owner review. See
 [operations](docs/operations.md) and the
 [audit fixes and verification](docs/audit-remediation-2026-10-20.md).
 
