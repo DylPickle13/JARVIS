@@ -24,6 +24,73 @@ still owner review.
 Building/testing source does **not** deploy it or authorize service restarts.
 Earlier deployment-history entries describe earlier releases.
 
+## Signed out, monthly plans and rate limits — deployed 2026-10-20 EDT
+
+Owner: "that sounds better, please proceed". Follow-up to the release below:
+
+- **Signed out:** an *absent* Pi login is `subscription: "signed_out"` (state, health
+  `inactive/optional_inactive`). Malformed/non-OAuth/expired/revoked logins stay faults.
+  Apps: "Not signed in"; Pi-desk: `Codex signed out`.
+- **Main window:** jarvisd adds `mainWindow`/`mainWindowLabel` — weekly when reported,
+  otherwise the longest non-5h window (Codex free plan: 30-day → `monthly`).
+  `fiveHourStatus: "none"` when a plan reports windows but no 5h limit. Apps show
+  "Monthly remaining" / "No 5-hour limit"; Pi-desk `Codex M:100%↻29d`. Neural
+  Core is deliberately unchanged (weekly only).
+- **Rate limits:** a provider 429 over a still-fresh last-good reading sets
+  `rateLimited` (data + metadata) and is *not* a failure or stale; the 15-minute
+  freshness limit still expires it. Other errors are unchanged.
+
+Backend `20261021T011225Z-quota-states` (~21:13 EDT; 896 run, same single known
+baseline failure; overall health green, Codex free/monthly 100%). Pi-desk
+`codex_quota.py` + `provider_quotas.py` on all three hosts (backups
+`quota-states-*`). Native **build 270** (220 iPhone / 389 JARVISKit / 46 terminal
+tests) installed and version/process verified on iPhone and Watch; rollback 269.
+
+## Inactive subscriptions — deployed 2026-10-20 EDT
+
+Owner: "yes please do all three now". **Backend** release
+`20261021T004551Z-subscription-inactive` activated ~20:47 EDT (0.53 s readable gap;
+protected files unchanged; 27 devices preserved). Codex/Claude quota scripts are now
+pinned to the release instead of the live working copy. Backend suite: 889 run, one
+known baseline failure (`test_home_automations` receipt-capacity test also fails on the
+installed `20261020-autonomous-recovery` source). **Pi-desk** `codex_quota.py` installed
+with manifest update and smoke test on mac-mini-64, mac-mini-16 and raspberrypi
+(backups `~/.local/state/pi-desk/backups/subscription-inactive-*`); running viewers and
+the Oct 17 status feed load it on reopen. **Native build 269** (220 iPhone, 386
+JARVISKit, 46 terminal tests; Watch build; signed archive) installed once and
+version/process-verified on iPhone (wired) and Watch (localNetwork); no protected
+service PID or Pi pane changed. Rollback: signed 268 artifact; backend
+`20261020-autonomous-recovery` plist retained as `prior-daemon.plist`.
+
+A lapsed or absent Codex/Claude plan is **current state, not a fault**. Before
+this change, either provider without a plan produced `collector_failed`, which
+made backend `overall` health `unavailable` and showed "quota unavailable".
+
+- `quotas.py` reports `usage.subscription: "active" | "inactive"` with `ok: true`
+  (exit 0) for inactive. Inactive means: Claude usage answers with explicit
+  `null` `seven_day` **and** `five_hour`; Codex usage answers with no rate-limit
+  windows (free plans that report windows stay *active* with their plan type);
+  or either usage endpoint returns HTTP 402, or 403 whose body explicitly names
+  a subscription/plan/entitlement. 401/expired tokens, generic 403s (WAF,
+  Cloudflare), 5xx, missing keys and malformed windows remain failures.
+  Codex's model catalog no longer gates `ok` unless `--require-model` is given.
+- jarvisd projects inactive as `{ok: true, available: false, subscription:
+  "inactive", weekly/fiveHour: null, error: null}` (plan type kept for Codex);
+  active projections add `subscription: "active"`. `available: false` keeps
+  older app builds/viewers on their no-percentage card.
+- System health maps a *fresh* inactive reading to `inactive / optional_inactive`
+  (existing reason; already non-issue in every client and the scheduler health
+  card), so `overall` stays healthy. Stale/failed readings keep existing rules.
+- iPhone/Watch cards show "Subscription inactive" (no ring); the system health
+  row is inactive. Neural Core is unchanged (no Codex ring when inactive).
+- Pi-desk shows `Codex inactive` / `Claude inactive`; stale/errored inactive
+  readings show unavailable, never a claimed current state.
+
+Tests: `quotas/test_subscription_state.py`, `jarvisd/tests/test_subscription_inactive.py`,
+`JARVISKitTests/SubscriptionInactiveTests.swift`, Pi-desk
+`test_provider_quotas.InactiveSubscriptionTests`. Activation requires a separately
+authorized jarvisd release, Pi-desk file install (3 hosts) and native build.
+
 ## Claude OAuth refresh repair — deployed 2026-10-18 EDT
 
 Release `20261018T214000Z-claude-node-refresh` was installed and verified at

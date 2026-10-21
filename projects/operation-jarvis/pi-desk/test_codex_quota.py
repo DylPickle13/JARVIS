@@ -101,7 +101,7 @@ class QuotaTests(unittest.TestCase):
         self.assertNotIn('private', encoded)
         self.assertNotIn('secret', encoded)
         self.assertEqual(projected['status'], 'stale')
-        self.assertEqual(set(projected), {'status', 'checkedAt', 'weekly', 'fiveHour', 'fiveHourEnforced', 'limitReached'})
+        self.assertEqual(set(projected), {'status', 'checkedAt', 'weekly', 'fiveHour', 'fiveHourEnforced', 'fiveHourNone', 'mainLabel', 'limitReached'})
 
     def test_quota_has_independent_freshness(self):
         for seconds, expected in ((16, 'live'), (60, 'live'), (900, 'live'), (901, 'stale'), (-6, 'stale')):

@@ -34,10 +34,12 @@ def countdown(value, now):
 def provider_segments(key, name, value, now):
     quota = base.normalize(value.get(key), now)
     if quota['status'] != 'live':
-        return ((name + ' ' + quota['status'], base.GREY),)
-    segments = [(name + ' W:', base.GREY)]
+        return ((name + ' ' + base.status_text(quota['status']), base.GREY),)
+    segments = [(name + ' ' + base.main_prefix(quota['mainLabel']) + ':', base.GREY)]
     for index, window in enumerate(('weekly', 'fiveHour')):
         if index:
+            if quota['fiveHourNone']:
+                break  # The plan has no five-hour limit; nothing to show.
             segments.append((' 5h:', base.GREY))
         sample = quota[window]
         remaining = sample['remainingPercent']

@@ -93,7 +93,11 @@ public struct SystemHealthPresentation: Equatable, Sendable {
                 result.append(row(.checking, "Waiting for the first observation"))
                 continue
             }
-            if meta.ok == false || (meta.error?.isEmpty == false && meta.error != "loading") {
+            // A provider rate limit over a still-fresh quota reading is not a failure;
+            // the freshness checks below still expire it.
+            let quotaRateLimited = (id == "codexQuota" || id == "claudeQuota")
+                && meta.rateLimited == true && meta.ok == true
+            if meta.ok == false || (meta.error?.isEmpty == false && meta.error != "loading" && !quotaRateLimited) {
                 result.append(row(.issue, "Latest collector read failed"))
                 continue
             }
@@ -186,6 +190,11 @@ public struct SystemHealthPresentation: Equatable, Sendable {
                 result.append(failed ? row(.issue, "A purifier observation is unavailable or stale")
                               : unknown ? row(.unknown, "Purifier observations are incomplete")
                               : row(.healthy, meta.refreshing == true ? "Current; refreshing" : "Observations current"))
+            } else if (id == "codexQuota" && snapshot?.subsystems?.codexQuota?.isSubscriptionInactive == true)
+                        || (id == "claudeQuota" && snapshot?.subsystems?.claudeQuota?.isSubscriptionInactive == true) {
+                // A lapsed plan or logout is the current state, not a health problem.
+                let quota = id == "codexQuota" ? snapshot?.subsystems?.codexQuota : snapshot?.subsystems?.claudeQuota
+                result.append(row(.inactive, quota?.subscriptionStateText ?? "Subscription inactive"))
             } else {
                 result.append(row(.healthy, meta.refreshing == true ? "Current; refreshing" : "Observation current"))
             }

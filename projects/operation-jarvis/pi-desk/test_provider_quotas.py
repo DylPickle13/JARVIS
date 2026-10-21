@@ -75,6 +75,58 @@ class ProviderQuotaTests(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which('tmux'), 'tmux not installed')
+class InactiveSubscriptionTests(unittest.TestCase):
+    def setUp(self):
+        self.now = dt.datetime.now(dt.timezone.utc)
+        self.checked = self.now.isoformat().replace('+00:00', 'Z')
+
+    def inactive(self, **extra):
+        return {'ok': True, 'available': False, 'subscription': 'inactive', 'stale': False,
+                'checkedAt': self.checked, 'weekly': None, 'fiveHour': None, 'error': None, **extra}
+
+    def test_backend_inactive_is_shown_as_inactive_not_unavailable(self):
+        live = {'ok': True, 'available': True, 'stale': False, 'checkedAt': self.checked,
+                'weekly': {'remainingPercent': 40}, 'fiveHour': {'remainingPercent': 90}}
+        feed = status_stream.snapshot({'subsystems': {'codexQuota': self.inactive(), 'claudeQuota': live}}, self.now)
+        self.assertEqual(feed['codexQuota'], {'status': 'inactive', 'checkedAt': self.checked})
+        bundle = provider_quotas.normalize(feed, self.now)
+        label = ''.join(text for text, _ in provider_quotas.label_segments(bundle, self.now)[0])
+        self.assertIn('Codex inactive', label)
+        self.assertIn('Claude W:40%', label)
+        self.assertIn('Codex subscription inactive', provider_quotas.details(bundle, self.now))
+        # Renormalizing the viewer's own output is idempotent.
+        self.assertEqual(provider_quotas.normalize(bundle, self.now), bundle)
+
+    def test_stale_or_errored_inactive_never_claims_current_state(self):
+        old = (self.now - dt.timedelta(seconds=901)).isoformat()
+        for value in (self.inactive(stale=True), self.inactive(lastError='x'),
+                      self.inactive(checkedAt=old), self.inactive(ok=False)):
+            self.assertEqual(codex_quota.project(value, self.now), codex_quota.UNAVAILABLE)
+
+
+    def test_signed_out_monthly_and_rate_limited(self):
+        signed_out = self.inactive(subscription='signed_out')
+        monthly = {'ok': True, 'available': True, 'stale': False, 'checkedAt': self.checked,
+                   'weekly': None, 'mainWindowLabel': 'monthly', 'fiveHour': None, 'fiveHourStatus': 'none',
+                   'mainWindow': {'remainingPercent': 100, 'resetAt': (self.now + dt.timedelta(days=29, hours=1)).isoformat()}}
+        limited = {'ok': True, 'available': True, 'stale': False, 'checkedAt': self.checked,
+                   'lastError': 'Claude usage rate limited', 'rateLimited': True,
+                   'weekly': {'remainingPercent': 97}, 'fiveHour': {'remainingPercent': 84}}
+        feed = status_stream.snapshot({'subsystems': {'codexQuota': monthly, 'claudeQuota': limited}}, self.now)
+        label = ''.join(t for t, _ in provider_quotas.label_segments(provider_quotas.normalize(feed, self.now), self.now)[0])
+        self.assertIn('Codex M:100%↻29d', label)
+        self.assertNotIn('Codex M:100%↻29d 5h', label)
+        self.assertIn('Claude W:97%', label)
+        self.assertIn('Monthly: 100%', codex_quota.details(feed['codexQuota'], self.now))
+        feed = status_stream.snapshot({'subsystems': {'codexQuota': signed_out, 'claudeQuota': limited}}, self.now)
+        label = ''.join(t for t, _ in provider_quotas.label_segments(provider_quotas.normalize(feed, self.now), self.now)[0])
+        self.assertIn('Codex signed out', label)
+        # A non-rate-limit error still marks the reading stale.
+        failed = {**limited, 'rateLimited': None, 'lastError': 'Claude usage failed'}
+        self.assertEqual(codex_quota.project(failed, self.now)['status'], 'stale')
+        self.assertEqual(codex_quota.project({**monthly, 'mainWindowLabel': '#{evil}'}, self.now)['mainLabel'], 'weekly')
+
+
 class DualQuotaTmuxTests(unittest.TestCase):
     def setUp(self):
         self.socket = 'pi-desk-dual-quota-test-' + uuid.uuid4().hex

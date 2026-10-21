@@ -148,6 +148,14 @@ class QuotaError(RuntimeError):
     """Expected runtime failure for quota checks."""
 
 
+class SignedOutError(QuotaError):
+    """No stored login for the provider: a deliberate state, not a fault.
+
+    Only an absent credential entry qualifies. Malformed, non-OAuth, expired or
+    revoked credentials remain ordinary failures that need owner action.
+    """
+
+
 class HttpRequestError(QuotaError):
     def __init__(self, method: str, url: str, status: int, body: str, retry_after: Optional[str] = None):
         clean_body = body.strip().replace("\n", " ")[:1000]
@@ -175,6 +183,26 @@ class ClaudeRateLimitError(QuotaError):
     def __init__(self, retry_after: Optional[str]):
         super().__init__("Claude usage rate limited; waiting before another check.")
         self.retry_after_seconds = claude_retry_after_seconds(retry_after)
+
+
+# Explicit subscription/entitlement refusals only. Generic 403s (WAF, revoked
+# OAuth scope, Cloudflare) remain failures; an authentication problem must never
+# be presented as a lapsed plan.
+SUBSCRIPTION_INACTIVE_BODY_RE = re.compile(
+    r"subscription|no[_ ]active[_ ]plan|plan[_ ](?:required|inactive|expired|not[_ ]supported)"
+    r"|not[_ ]entitled|entitlement|upgrade[_ ]required|requires? (?:a )?(?:paid|pro|max|plus)",
+    re.IGNORECASE,
+)
+
+
+def http_subscription_inactive(exc: Exception) -> bool:
+    """True only for a provider response that explicitly reports no usable plan."""
+    if not isinstance(exc, HttpRequestError):
+        return False
+    if exc.status == 402:
+        return True
+    body = exc.body if isinstance(exc.body, str) else ""
+    return exc.status == 403 and bool(SUBSCRIPTION_INACTIVE_BODY_RE.search(body[:4096]))
 
 
 def claude_retry_after_seconds(value: Optional[str]) -> Optional[int]:
@@ -421,8 +449,10 @@ class AuthStore:
         with auth_file_lock(self.path):
             data = self.load_unlocked()
             cred = data.get("openai-codex")
+            if cred is None:
+                raise SignedOutError("No `openai-codex` credentials found. Run `pi /login openai-codex` first.")
             if not isinstance(cred, dict):
-                raise QuotaError("No `openai-codex` credentials found. Run `pi /login openai-codex` first.")
+                raise QuotaError("`openai-codex` credential is malformed; re-login with Pi.")
             if cred.get("type") != "oauth":
                 raise QuotaError("`openai-codex` credential is not an OAuth credential.")
             access = cred.get("access")
@@ -450,6 +480,8 @@ class AuthStore:
         with auth_file_lock(self.path, timeout=10.0) as check_lock:
             data = self.load_unlocked()
             cred = data.get("anthropic")
+            if cred is None:
+                raise SignedOutError("Claude subscription login absent; run Pi /login anthropic.")
             if not isinstance(cred, dict) or cred.get("type") != "oauth":
                 raise QuotaError("Claude subscription login unavailable; run Pi /login anthropic.")
             if not isinstance(cred.get("access"), str) or not cred["access"]:
@@ -545,8 +577,18 @@ def normalize_claude_window(raw: Any) -> Optional[Dict[str, Any]]:
             "reset_after_seconds": max(0, int(reset - time.time())) if reset is not None else None}
 
 
+def claude_inactive_usage(state: str = "inactive") -> Dict[str, Any]:
+    # A lapsed/absent plan or deliberate logout is a valid current state.
+    return {"subscription": state, "weekly": None, "five_hour": None,
+            "effective_limit_reached": False,
+            "primary_limit": {"enforced": False, "status": "inactive"}}
+
+
 def fetch_claude_usage(auth: AuthStore, refresh: bool = True) -> Dict[str, Any]:
-    cred = auth.ensure_anthropic(refresh=refresh)
+    try:
+        cred = auth.ensure_anthropic(refresh=refresh)
+    except SignedOutError:
+        return claude_inactive_usage("signed_out")
     try:
         raw, _ = request_json("GET", ANTHROPIC_USAGE_URL, timeout=15,
             headers={**ANTHROPIC_HEADERS, "Authorization": "Bearer " + cred["access"]})
@@ -555,13 +597,20 @@ def fetch_claude_usage(auth: AuthStore, refresh: bool = True) -> Dict[str, Any]:
     except HttpRequestError as exc:
         if exc.status == 429:
             raise ClaudeRateLimitError(exc.retry_after) from None
+        if http_subscription_inactive(exc):
+            return claude_inactive_usage()
         raise ClaudeRequestError("usage", "http_error", exc.status) from None
     except Exception:
         raise ClaudeRequestError("usage", "request_failed") from None
     if weekly is None and five_hour is None:
+        # Without a plan the endpoint still answers, but reports both windows as
+        # explicit nulls. Missing keys or malformed values remain a failure.
+        if (isinstance(raw, dict) and "seven_day" in raw and "five_hour" in raw
+                and raw["seven_day"] is None and raw["five_hour"] is None):
+            return claude_inactive_usage()
         raise QuotaError("Claude usage response has no valid weekly or five-hour window.")
     # Explicit whitelist: no account data, per-model windows, extra usage or raw errors.
-    return {"weekly": weekly, "five_hour": five_hour,
+    return {"subscription": "active", "weekly": weekly, "five_hour": five_hour,
             "effective_limit_reached": any(w and w["remaining_percent"] == 0 for w in (weekly, five_hour)),
             "primary_limit": {"enforced": True, "status": "active"}}
 
@@ -760,9 +809,42 @@ def fetch_codex_reset_credits(cred: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
+def codex_inactive_usage(plan_type: Any = None, state: str = "inactive") -> Dict[str, Any]:
+    # No plan/Codex entitlement or a deliberate logout is a valid current state.
+    return {
+        "subscription": state,
+        "plan_type": plan_type,
+        "allowed": False,
+        "limit_reached": None,
+        "effective_limit_reached": False,
+        "rate_limit_reached_type": None,
+        "primary": None,
+        "secondary": None,
+        "five_hour": None,
+        "weekly": None,
+        "primary_limit": {"status": "inactive", "enforced": False, "temporary": False,
+                          "tracking_continues": False,
+                          "source": "https://chatgpt.com/backend-api/wham/usage"},
+        "code_review": None,
+        "credits": None,
+        "rate_limit_reset_credits": None,
+        "rate_limit_reset_credits_error": None,
+        "additional_rate_limits": None,
+        "source": "https://chatgpt.com/backend-api/wham/usage",
+    }
+
+
 def fetch_codex_usage(auth: AuthStore, refresh: bool = True) -> Dict[str, Any]:
-    cred = auth.ensure_codex(refresh=refresh)
-    payload, _ = request_json("GET", f"{OPENAI_CODEX_BASE_URL}/wham/usage", headers=codex_headers(cred))
+    try:
+        cred = auth.ensure_codex(refresh=refresh)
+    except SignedOutError:
+        return codex_inactive_usage(state="signed_out")
+    try:
+        payload, _ = request_json("GET", f"{OPENAI_CODEX_BASE_URL}/wham/usage", headers=codex_headers(cred))
+    except HttpRequestError as exc:
+        if http_subscription_inactive(exc):
+            return codex_inactive_usage()
+        raise
     if not isinstance(payload, dict):
         raise QuotaError("OpenAI Codex usage response had unexpected shape.")
     rate_limit = payload.get("rate_limit") or {}
@@ -781,9 +863,14 @@ def fetch_codex_usage(auth: AuthStore, refresh: bool = True) -> Dict[str, Any]:
     windows = [window for window in (primary, secondary) if window]
     five_hour = next((window for window in windows if window.get("label") == "5h"), None)
     weekly = next((window for window in windows if window.get("label") == "weekly"), None)
+    if not windows:
+        # The endpoint answered but reports no usage windows: this account has no
+        # active Codex plan (free plans with Codex access still report windows).
+        return codex_inactive_usage(payload.get("plan_type"))
     primary_limit = codex_primary_limit_status(payload.get("plan_type"), five_hour)
     upstream_limit_reached = rate_limit.get("limit_reached") if isinstance(rate_limit, dict) else None
     summary = {
+        "subscription": "active",
         "plan_type": payload.get("plan_type"),
         "allowed": rate_limit.get("allowed") if isinstance(rate_limit, dict) else None,
         "limit_reached": upstream_limit_reached,
@@ -1433,7 +1520,10 @@ def build_codex_report(args: argparse.Namespace) -> Dict[str, Any]:
     models, models_error = provider_result(fetch_codex_models, auth, args.codex_client_version, not args.no_refresh)
     required = check_required_models(models or {"models": []}, args.require_model or []) if models else {m: False for m in (args.require_model or [])}
     probes = [run_codex_probe(model, timeout=args.probe_timeout) for model in (args.probe or [])]
-    ok = usage_error is None and models_error is None and all(required.values()) and all(p.get("ok") for p in probes)
+    # The model catalog is diagnostic unless models are explicitly required: an
+    # unentitled/lapsed account may refuse it while usage still reports state.
+    models_ok = models_error is None or not (args.require_model or [])
+    ok = usage_error is None and models_ok and all(required.values()) and all(p.get("ok") for p in probes)
     return {
         "provider": "openai-codex",
         "ok": ok,
@@ -1535,6 +1625,8 @@ def print_codex_human(report: Dict[str, Any], list_models: bool = False) -> None
     print(f"OpenAI Codex: {status} ({plan})")
     if report.get("usage_error"):
         print(f"  Usage error: {report['usage_error']}")
+    elif usage.get("subscription") in ("inactive", "signed_out"):
+        print("  Subscription: " + ("not signed in" if usage["subscription"] == "signed_out" else "inactive (no usage windows reported)"))
     else:
         primary_limit = usage.get("primary_limit") if isinstance(usage.get("primary_limit"), dict) else {}
         five_hour_window = usage.get("five_hour") if "five_hour" in usage else usage.get("primary")
@@ -1660,6 +1752,9 @@ def print_copilot_human(report: Dict[str, Any], list_models: bool = False) -> No
 def print_claude_human(report: Dict[str, Any]) -> None:
     print("Claude: " + ("OK" if report.get("ok") else "unavailable"))
     usage = report.get("usage") or {}
+    if usage.get("subscription") in ("inactive", "signed_out"):
+        print("  Subscription: " + ("not signed in" if usage["subscription"] == "signed_out" else "inactive (no usage windows reported)"))
+        return
     print_window("Weekly", usage.get("weekly"))
     print_window("5-hour", usage.get("five_hour"))
     if report.get("usage_error"):

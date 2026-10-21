@@ -501,8 +501,30 @@ struct WatchDashboardContent: View {
 
     @ViewBuilder
     private func providerQuotaPanel(_ quota: CodexQuotaSubsystem?, title: String) -> some View {
-        if let quota, quota.available == true {
-            let remaining = quota.weekly?.remainingPercent
+        if let quota, quota.isSubscriptionInactive {
+            // Current state, not a failure: the provider reports no active plan.
+            HStack(spacing: 9) {
+                Image(systemName: "pause.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, height: 34)
+                    .background(Color.secondary.opacity(0.12), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(title) quota")
+                        .font(.caption.weight(.semibold))
+                    Text(quota.subscriptionStateText)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 60)
+            .jarvisGlassSurface(WatchJarvisStyle.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(title) \(quota.subscriptionStateText.lowercased())")
+        } else if let quota, quota.available == true {
+            let remaining = quota.primaryWindow?.remainingPercent
             let color = remaining.map(codexQuotaColor) ?? .secondary
             HStack(spacing: 10) {
                 ZStack {
@@ -533,10 +555,10 @@ struct WatchDashboardContent: View {
                                 .background(color.opacity(0.12), in: Capsule())
                         }
                     }
-                    Text("Weekly remaining")
+                    Text(quota.primaryWindowTitle)
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Text(codexResetLabel(quota.weekly))
+                    Text(codexResetLabel(quota.primaryWindow))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -571,7 +593,7 @@ struct WatchDashboardContent: View {
                     .stroke(color.opacity(0.10), lineWidth: 0.75)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(title) weekly quota, \(remaining.map { "\(Int($0.rounded())) percent" } ?? "unknown") remaining, \(codexResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))\(quota.stale == true ? ", stale reading" : "")")
+            .accessibilityLabel("\(title) \(quota.primaryWindowTitle.lowercased()), \(remaining.map { "\(Int($0.rounded())) percent" } ?? "unknown"), \(codexResetLabel(quota.primaryWindow)), \(codexFiveHourLabel(quota))\(quota.stale == true ? ", stale reading" : "")")
         } else {
             HStack(spacing: 9) {
                 Image(systemName: "chart.bar.xaxis")
@@ -731,6 +753,7 @@ struct WatchDashboardContent: View {
             return "5H \(Int(remaining.rounded()))% ↻\(reset)\(quota.fiveHourEnforced == false ? " paused" : "")"
         }
         if quota.fiveHourEnforced == false { return "5H PAUSED" }
+        if quota.hasNoFiveHourLimit { return "NO 5H LIMIT" }
         return "5H —"
     }
 
@@ -739,6 +762,7 @@ struct WatchDashboardContent: View {
             return "5H \(Int(remaining.rounded()))% left, \(codexResetLabel(quota.fiveHour))"
         }
         if quota.fiveHourEnforced == false { return "5H paused" }
+        if quota.hasNoFiveHourLimit { return "No 5-hour limit" }
         return "5H unavailable"
     }
 

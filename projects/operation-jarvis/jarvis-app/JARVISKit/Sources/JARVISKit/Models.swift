@@ -226,6 +226,8 @@ public struct SubsystemMetadata: Codable, Equatable, Sendable {
     public let stale: Bool?
     public let refreshing: Bool?
     public let error: String?
+    /// Only a provider rate limit refused the latest check; last-good data is retained.
+    public let rateLimited: Bool?
 }
 
 public struct Summary: Codable, Equatable, Sendable {
@@ -475,6 +477,43 @@ public struct CodexQuotaSubsystem: Codable, Equatable, Sendable {
     public let creditBalance: Double?
     public let error: String?
     public let lastError: String?
+    /// "active", "inactive" or "signed_out"; absent on older hosts.
+    public let subscription: String?
+    /// The plan's main gauge: weekly when reported, otherwise e.g. a free monthly window.
+    public let mainWindow: CodexQuotaWindow?
+    /// "weekly", "monthly", or a literal period such as "30d".
+    public let mainWindowLabel: String?
+    /// The latest check was only refused by a provider rate limit; the reading is retained.
+    public let rateLimited: Bool?
+
+    /// A current, successful reading of a lapsed plan or deliberate logout.
+    /// This is a state to display, not a collector failure.
+    public var isSubscriptionInactive: Bool {
+        ok == true && (subscription == "inactive" || subscription == "signed_out") && lastError == nil
+    }
+
+    public var isSignedOut: Bool { isSubscriptionInactive && subscription == "signed_out" }
+
+    public var subscriptionStateText: String {
+        isSignedOut ? "Not signed in" : "Subscription inactive"
+    }
+
+    /// Main gauge, falling back to weekly for older hosts.
+    public var primaryWindow: CodexQuotaWindow? { mainWindow ?? weekly }
+
+    /// Gauge caption, e.g. "Weekly remaining", "Monthly remaining", "30d remaining".
+    public var primaryWindowTitle: String {
+        switch mainWindow == nil ? "weekly" : (mainWindowLabel ?? "weekly") {
+        case "weekly": return "Weekly remaining"
+        case "monthly": return "Monthly remaining"
+        case let label where label.range(of: #"^[1-9][0-9]{0,2}[dh]$"#, options: .regularExpression) != nil:
+            return "\(label) remaining"
+        default: return "Remaining"
+        }
+    }
+
+    /// The plan reports its windows and has no five-hour limit at all.
+    public var hasNoFiveHourLimit: Bool { fiveHour == nil && fiveHourStatus == "none" }
 }
 
 public struct CodexQuotaWindow: Codable, Equatable, Sendable {

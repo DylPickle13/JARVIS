@@ -16,6 +16,7 @@ from .state import StateCoordinator
 
 COLLECTOR_COMPONENTS = ('services', 'pi', 'network', 'plugs', 'purifier', 'codexQuota', 'claudeQuota')
 COMPONENTS = (*COLLECTOR_COMPONENTS, 'security', 'devices', 'overall')
+SUBSCRIPTION_COMPONENTS = frozenset({'codexQuota', 'claudeQuota'})
 MAX_COMPONENTS = 32
 SERVICE_ID = re.compile(r'service:[A-Za-z0-9_-]{1,48}\Z')
 STATES = ('inactive', 'healthy', 'unknown', 'degraded', 'unavailable')
@@ -77,8 +78,12 @@ def _collector(snapshot, name, now):
     age = meta.get('ageSeconds')
     if meta.get('error') == 'loading' or (meta.get('refreshing') is True and age is None):
         return observation('unknown', 'loading')
-    if meta.get('ok') is False or meta.get('error'):
+    rate_limited = (name in SUBSCRIPTION_COMPONENTS and meta.get('rateLimited') is True
+                    and meta.get('ok') is True)
+    if meta.get('ok') is False or (meta.get('error') and not rate_limited):
         # Retain the last-good timestamp, but never retain a green failure.
+        # A provider rate limit over a still-fresh last-good reading is not a
+        # failure; freshness/expiry rules below still apply unchanged.
         return observation('unavailable', 'collector_failed',
                            source=source if source is not None and source <= now else None)
     if (generated is None or generated > now or source is None or source > now
@@ -92,6 +97,14 @@ def _collector(snapshot, name, now):
         return observation('unknown', 'observation_expired', source=source)
     if meta.get('ok') is not True or meta.get('stale') is not False:
         return observation('unknown', 'metadata_missing', source=source)
+    if name in SUBSCRIPTION_COMPONENTS:
+        data = snapshot.get('subsystems', {}).get(name)
+        if isinstance(data, dict) and data.get('subscription') in ('inactive', 'signed_out'):
+            # A current reading of a lapsed plan is a state, not a fault. Reuse
+            # the existing optional-inactive reason so every client/health card
+            # (including older builds) already treats it as non-issue.
+            return observation('inactive', 'optional_inactive', source=source,
+                               valid_until=now + limit - age)
     return observation('healthy', 'current', source=source, valid_until=now + limit - age)
 
 

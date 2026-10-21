@@ -188,6 +188,9 @@ class StateCoordinator:
 
     def _complete_claude_cooldown_locked(self, record: dict, result: Any, now: float) -> None:
         delay = self.CLAUDE_MIN_REQUEST_SECONDS
+        # Only the latest attempt decides whether its failure was a provider
+        # rate limit (a polite "not now"), as opposed to any other fault.
+        record["lastFailureRateLimited"] = isinstance(result, dict) and result.get("rateLimited") is True
         if isinstance(result, dict) and result.get("ok") is True:
             record["quotaRateLimits"] = 0
         elif isinstance(result, dict) and result.get("rateLimited") is True:
@@ -951,6 +954,9 @@ class StateCoordinator:
                 data["updatedAt"] = record["updatedAt"]
             if record["error"]:
                 data["lastError"] = record["error"]
+            rate_limited = bool(record["error"]) and record.get("lastFailureRateLimited") is True
+            if rate_limited:
+                data["rateLimited"] = True
             if name == "purifier" and isinstance(data.get("devices"), dict):
                 for device_id, item in data["devices"].items():
                     item["stale"] = self._purifier_item_is_stale(record, device_id, item, now)
@@ -987,6 +993,8 @@ class StateCoordinator:
                 "refreshing": bool(record["refreshing"]),
                 "error": record["error"],
             }
+            if rate_limited:
+                metadata[name]["rateLimited"] = True
 
         plugs = subsystems.get("plugs", {})
         purifier = subsystems.get("purifier", {})

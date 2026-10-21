@@ -348,6 +348,9 @@ struct HomeView: View {
     }
 
     private func providerQuotaCard(_ quota: CodexQuotaSubsystem?, title: String) -> AnyView {
+        if let quota, quota.isSubscriptionInactive {
+            return AnyView(inactiveSubscriptionCard(quota, title: title))
+        }
         guard let quota, quota.available == true else {
             return AnyView(
                 unavailableCard(
@@ -356,7 +359,7 @@ struct HomeView: View {
                 )
             )
         }
-        let remaining = quota.weekly?.remainingPercent
+        let remaining = quota.primaryWindow?.remainingPercent
         let color = remaining.map(codexQuotaColor) ?? .secondary
         let content = MinimalCard(padding: 8) {
             if usesAccessibilityLayout {
@@ -373,13 +376,50 @@ struct HomeView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(title) weekly quota, \(quotaPercent(remaining)) remaining, " +
-            "\(codexQuotaResetLabel(quota.weekly)), \(codexFiveHourLabel(quota))"
+            "\(title) \(quota.primaryWindowTitle.lowercased()), \(quotaPercent(remaining)), " +
+            "\(codexQuotaResetLabel(quota.primaryWindow)), \(codexFiveHourLabel(quota))"
         )
         if quota.stale == true {
             return AnyView(VStack(alignment: .leading, spacing: 2) { content; staleCaption("\(title) quota data is stale.") })
         }
         return AnyView(content)
+    }
+
+    /// Current state, not a failure: the provider reports no active plan.
+    private func inactiveSubscriptionCard(_ quota: CodexQuotaSubsystem, title: String) -> some View {
+        let content = MinimalCard(padding: 8) {
+            HStack(spacing: 12) {
+                Image(systemName: "pause.circle")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 58, height: 58)
+                    .background(Color.secondary.opacity(0.12), in: Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 2)
+                        if let plan = quota.planType, !plan.isEmpty {
+                            Text(plan.replacingOccurrences(of: "_", with: " ").uppercased())
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.12), in: Capsule())
+                        }
+                    }
+                    Text(quota.subscriptionStateText)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text(quota.isSignedOut ? "Sign in with Pi to track usage" : "No usage limits reported")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title) \(quota.subscriptionStateText.lowercased())")
+        return content
     }
 
     private func codexQuotaRing(remaining: Double?, color: Color) -> some View {
@@ -415,10 +455,10 @@ struct HomeView: View {
                         .background(color.opacity(0.12), in: Capsule())
                 }
             }
-            Text("Weekly remaining")
+            Text(quota.primaryWindowTitle)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
-            Label(codexQuotaResetLabel(quota.weekly), systemImage: "calendar.badge.clock")
+            Label(codexQuotaResetLabel(quota.primaryWindow), systemImage: "calendar.badge.clock")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
@@ -462,6 +502,7 @@ struct HomeView: View {
             return "5-hour \(quotaPercent(remaining)) · \(reset)\(paused)"
         }
         if quota.fiveHourEnforced == false { return "5-hour paused" }
+        if quota.hasNoFiveHourLimit { return "No 5-hour limit" }
         return "5-hour unavailable"
     }
 

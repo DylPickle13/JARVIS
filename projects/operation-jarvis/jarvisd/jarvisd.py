@@ -1449,14 +1449,80 @@ def _codex_quota_unavailable() -> dict:
     return {"ok": False, "available": False, "error": "Codex quota unavailable"}
 
 
+SUBSCRIPTION_STATES = ("inactive", "signed_out")
+
+
+def _window_label(seconds: Any) -> str | None:
+    """Human period for a usage window, classified by duration not slot name."""
+    if type(seconds) is not int or seconds <= 0:
+        return None
+    day = 24 * 60 * 60
+    if 4 * 3600 <= seconds <= 6 * 3600:
+        return "5h"
+    if 6 * day <= seconds <= 8 * day:
+        return "weekly"
+    if 28 * day <= seconds <= 31 * day:
+        return "monthly"
+    if seconds % day == 0:
+        return f"{seconds // day}d"
+    if seconds % 3600 == 0:
+        return f"{seconds // 3600}h"
+    return None
+
+
+def _codex_main_window(usage: dict) -> tuple[dict | None, str | None]:
+    """Weekly when reported; otherwise the plan's longest non-5h window (e.g. free monthly)."""
+    weekly = _codex_quota_window(usage.get("weekly"))
+    if weekly is not None:
+        return weekly, "weekly"
+    best = None
+    for slot in ("primary", "secondary"):
+        raw = usage.get(slot)
+        if not isinstance(raw, dict):
+            continue
+        seconds = raw.get("window_seconds")
+        label = _window_label(seconds)
+        window = _codex_quota_window(raw)
+        if label is None or label == "5h" or window is None or window.get("remainingPercent") is None:
+            continue
+        if best is None or seconds > best[0]:
+            best = (seconds, window, label)
+    return (best[1], best[2]) if best else (None, None)
+
+
+def _inactive_subscription_quota(checked_at: str | None, plan_type: str | None = None,
+                                 state: str = "inactive") -> dict:
+    """A lapsed plan or deliberate logout is a successful observation of current state.
+
+    ``available`` stays False so older clients keep their no-percentage card;
+    newer clients and system health read ``subscription`` instead of an error.
+    """
+    if state not in SUBSCRIPTION_STATES:
+        state = "inactive"
+    return {
+        "ok": True,
+        "available": False,
+        "subscription": state,
+        "checkedAt": checked_at,
+        "planType": plan_type,
+        "allowed": False,
+        "limitReached": None,
+        "weekly": None,
+        "fiveHour": None,
+        "fiveHourEnforced": None,
+        "fiveHourStatus": state,
+        "mainWindow": None,
+        "mainWindowLabel": None,
+        "creditBalance": None,
+        "error": None,
+    }
+
+
 def _public_codex_quota(payload: Any) -> dict:
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         return _codex_quota_unavailable()
     usage = payload.get("usage")
     if not isinstance(usage, dict):
-        return _codex_quota_unavailable()
-    weekly = _codex_quota_window(usage.get("weekly"))
-    if weekly is None:
         return _codex_quota_unavailable()
     plan_type = usage.get("plan_type")
     if not isinstance(plan_type, str) or not re.fullmatch(r"[A-Za-z0-9 _+.-]{1,32}", plan_type):
@@ -1464,20 +1530,33 @@ def _public_codex_quota(payload: Any) -> dict:
     checked_at = payload.get("checked_at")
     if not isinstance(checked_at, str) or len(checked_at) > 64:
         checked_at = None
+    if usage.get("subscription") in SUBSCRIPTION_STATES:
+        return _inactive_subscription_quota(checked_at, plan_type, usage["subscription"])
+    weekly = _codex_quota_window(usage.get("weekly"))
+    main_window, main_label = _codex_main_window(usage)
+    if main_window is None:
+        return _codex_quota_unavailable()
+    five_hour = _codex_quota_window(usage.get("five_hour"))
     credits = usage.get("credits") if isinstance(usage.get("credits"), dict) else {}
     primary_limit = usage.get("primary_limit") if isinstance(usage.get("primary_limit"), dict) else {}
     five_hour_status = primary_limit.get("status")
     if not isinstance(five_hour_status, str) or not re.fullmatch(r"[A-Za-z0-9 _-]{1,32}", five_hour_status):
         five_hour_status = None
+    if five_hour is None and five_hour_status in (None, "unavailable"):
+        # The plan reported its windows and none is five-hour: no such limit.
+        five_hour_status = "none"
     return {
         "ok": True,
         "available": True,
+        "subscription": "active",
         "checkedAt": checked_at,
         "planType": plan_type,
         "allowed": usage.get("allowed") if isinstance(usage.get("allowed"), bool) else None,
         "limitReached": usage.get("effective_limit_reached") if isinstance(usage.get("effective_limit_reached"), bool) else None,
         "weekly": weekly,
-        "fiveHour": _codex_quota_window(usage.get("five_hour")),
+        "mainWindow": main_window,
+        "mainWindowLabel": main_label,
+        "fiveHour": five_hour,
         "fiveHourEnforced": primary_limit.get("enforced") if isinstance(primary_limit.get("enforced"), bool) else None,
         "fiveHourStatus": five_hour_status,
         "creditBalance": _bounded_number(credits.get("balance"), 0, 1_000_000_000),
@@ -1537,7 +1616,8 @@ def _public_claude_quota(payload: Any) -> dict:
     weekly = _codex_quota_window(usage.get("weekly"))
     five_hour = _codex_quota_window(usage.get("five_hour"))
     windows = (weekly, five_hour)
-    if not any(w and w.get("remainingPercent") is not None for w in windows):
+    inactive = usage.get("subscription") in SUBSCRIPTION_STATES
+    if not inactive and not any(w and w.get("remainingPercent") is not None for w in windows):
         return _claude_quota_unavailable()
     checked = payload.get("checked_at")
     # Timestamps and percentages only. Never forward provider/account/error bodies.
@@ -1548,8 +1628,11 @@ def _public_claude_quota(payload: Any) -> dict:
         checked = date.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
     except (AttributeError, TypeError, ValueError, OverflowError):
         checked = None
-    return {"ok": True, "available": True, "checkedAt": checked,
+    if inactive:
+        return _inactive_subscription_quota(checked, None, usage["subscription"])
+    return {"ok": True, "available": True, "subscription": "active", "checkedAt": checked,
             "weekly": weekly, "fiveHour": five_hour,
+            "mainWindow": weekly, "mainWindowLabel": "weekly" if weekly is not None else None,
             "fiveHourEnforced": True, "fiveHourStatus": "active",
             "limitReached": any(w and w.get("remainingPercent") == 0 for w in windows),
             "error": None}
