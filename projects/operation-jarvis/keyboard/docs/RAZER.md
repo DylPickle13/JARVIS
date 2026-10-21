@@ -163,8 +163,8 @@ The owner approved artifact `4c0cbcad…e5995`, which is now installed.
 Prior custom keyboard-capable rollback artifact is preserved at
 `karabiner/build/pre-razer/Karabiner-Elements-16.3.0.dmg`:
 `0ab93e26cf44d1a0ae4c562d8113440429e6f9063d74efa3133eacb6bba3c1b6`.
-Private live config/LaunchAgent/backend backups:
-`~/Library/Application Support/JARVIS/keyboard-deploy/razer-20260925T201309/`.
+The private live config/LaunchAgent/backend backups from this deployment were
+removed in the 2026-10-20 cleanup.
 The earlier official signed rollback is also retained.
 
 ### Acceptance after authorized installation

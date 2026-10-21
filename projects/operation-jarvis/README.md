@@ -94,8 +94,8 @@ only jarvisd and its watchdog reloaded. The sensor reader's PID, cooldown and co
 were preserved, and the hub/sensor health stayed healthy. No volume, mute or media
 write was used as a smoke test. The SDK/dependencies and public tool schema were
 unchanged. Regression tests are in `scripts/test_cast_selection.py`; owner-only
-routing/identity/reload evidence stays outside Git under
-`~/Library/Application Support/JARVIS/cast-recovery/20261005T234535Z/`.
+routing/identity/reload evidence was kept outside Git and removed in the
+2026-10-20 cleanup.
 
 ## Native app
 

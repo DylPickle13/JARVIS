@@ -61,8 +61,8 @@ Do not disable SIP, Gatekeeper, signature verification, or Input Monitoring chec
 
 1. Keep an alternate input method available. The signer change may temporarily stop
    remapping until permissions are re-approved.
-2. Preserve the reviewed live Karabiner configuration and watcher plist. Backup created:
-   `~/Library/Application Support/JARVIS/keyboard-deploy/20260925T044030Z/`.
+2. Preserve the reviewed live Karabiner configuration and watcher plist. The 2026-09-25
+   backup under `keyboard-deploy/` was removed in the 2026-10-20 cleanup.
 3. Official rollback DMG: `karabiner/build/rollback/Karabiner-Elements-16.3.0.dmg`.
    SHA256: `19cce7bed3d48a722242ca683bd1bae406b6a87fed520728d1c91dee175b75e4`.
    Its package signature and Apple notarization were verified locally.

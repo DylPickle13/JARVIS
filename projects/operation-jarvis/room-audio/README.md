@@ -198,12 +198,9 @@ Ports, credentials, state directories, service labels, and conversation history
 were preserved. Human spoken wake/request/reply verification remains required.
 
 The compatibility symlink and empty `raspberry-pi/` directory have been removed.
-Use the canonical Mac installer path. Private pre-cutover agent definitions are
-retained outside Git at
-`~/Library/Application Support/JARVIS/room-audio-path-migration/20260920-122103/`.
-To roll back paths, first recreate `raspberry-pi/room_audio -> ../room-audio`, then
-restore/reload those definitions in an approved idle window. Do not restore the
-saved owner descriptor over a live conversation; it is verification evidence only.
+Use the canonical Mac installer path. The private pre-cutover agent definitions
+were removed in the 2026-10-20 cleanup; this path migration is no longer
+rollback-capable, and the Raspberry Pi endpoint itself is retired.
 
 Keep shared configuration opt-ins when updating agents; do not blindly rerun
 endpoint installers. A future cleanup may rename the historical client module
