@@ -22,7 +22,7 @@ REFRESH = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(REFRESH)
 
 PRODUCER = r'''
-import sys, termios
+import sys, termios, time
 settings = termios.tcgetattr(0)
 settings[3] &= ~(termios.ECHO | termios.ECHONL)
 termios.tcsetattr(0, termios.TCSANOW, settings)
@@ -41,6 +41,17 @@ for line in open(sys.argv[1]):
         sys.stdout.flush()
     elif label == "append":
         print("new-bottom-line", flush=True)
+    elif label == "replay-slow":
+        # Pi's full redraw, stalled past tmux's 1 s synchronized-output timeout.
+        rows = ["replay-%03d" % i for i in range(60)] + ["replay-end"]
+        sys.stdout.write("\x1b[?2026h\x1b[2J\x1b[H\x1b[3J" + "\r\n".join(rows[:3]))
+        sys.stdout.flush()
+        time.sleep(1.6)
+        sys.stdout.write("\r\n" + "\r\n".join(rows[3:]) + "\x1b[?2026l")
+        sys.stdout.flush()
+    elif label == "shrink":
+        sys.stdout.write("\x1b[2J\x1b[H\x1b[3J" + "\r\n".join("short-%02d" % i for i in range(30)))
+        sys.stdout.flush()
     else:
         token(label)
 '''
@@ -242,6 +253,39 @@ class CopyRefreshTests(unittest.TestCase):
         REFRESH.refresh_once(self.socket, self.server_pid, panes, snapshots)
         self.assertIn("stream-token-A", self.capture(mode=True))
         self.assertEqual({}, snapshots)
+
+    def scroll_state(self):
+        return self.tm("display-message", "-p", "-t", self.pane,
+                       "#{pane_mode}|#{scroll_position}|#{history_size}").strip()
+
+    def test_slow_full_redraw_keeps_distance_from_bottom(self):
+        self.tm("copy-mode", "-e", "-t", self.pane)
+        self.tm("send-keys", "-t", self.pane, "-X", "-N", "5", "scroll-up")
+        self.worker()
+        self.send("replay-slow")
+        wait_for(lambda: self.tm("display-message", "-p", "#{synchronized_output_flag}").strip() == "0"
+                 and "replay-002" in self.capture(), timeout=3)
+        time.sleep(0.4)  # The worker samples the half-written replay here.
+        wait_for(lambda: "replay-end" in self.capture(), timeout=3)
+        wait_for(lambda: "replay-0" in self.capture(mode=True), timeout=3)
+        time.sleep(0.4)
+        mode, position, history = self.scroll_state().split("|")
+        self.assertEqual("copy-mode", mode)
+        self.assertEqual("5", position, "copy view jumped instead of staying near the bottom")
+        self.assertGreater(int(history), 20)
+
+    def test_genuine_history_shrink_refreshes_after_settling(self):
+        self.tm("copy-mode", "-e", "-t", self.pane)
+        self.tm("send-keys", "-t", self.pane, "-X", "-N", "5", "scroll-up")
+        self.worker()
+        self.send("shrink")
+        wait_for(lambda: "short-29" in self.capture())
+        time.sleep(0.5)
+        self.assertIn("history-", self.capture(mode=True))  # Held while it may be a replay.
+        wait_for(lambda: "short-" in self.capture(mode=True), timeout=REFRESH.REWRITE_SETTLE + 2)
+        mode, position, history = self.scroll_state().split("|")
+        self.assertEqual("copy-mode", mode)
+        self.assertEqual(str(min(5, int(history))), position)
 
     def test_allowlist_contains_exactly_ten_sessions(self):
         self.assertEqual({"jarvis-ios"} | {f"jarvis-ios-{i}" for i in range(2, 11)}, REFRESH.SESSIONS)

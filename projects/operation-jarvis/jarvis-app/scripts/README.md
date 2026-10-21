@@ -52,6 +52,12 @@ once with `xcodebuild -downloadComponent MetalToolchain` if needed.
   10 Hz, compares the live ANSI grid before cloning history, and refreshes only
   changed panes. Active/present selections and unfinished synchronized-output
   frames are checked both before sampling and inside tmux before execution.
+  tmux ends a synchronized frame after about one second, so a slow full Pi
+  redraw (scrollback cleared, then replayed) could be cloned half-written and
+  strand the view at the oldest line. Live history shorter than the copy view's
+  (`copy_position_limit`) now marks a rewrite: refresh waits for the replay, or
+  3 seconds of stability for a genuine shrink, and restores the reader's distance
+  from the live bottom (rewrite guard expires after 10 seconds).
   Only clients viewing the refreshed session are repainted. Scroll anchors,
   regular Pi layout, one-line wheel bindings, and the Watch's base-pane capture
   are retained; no application keystrokes, resizes, session replacements, or
