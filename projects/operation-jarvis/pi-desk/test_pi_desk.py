@@ -22,7 +22,6 @@ import desktop
 import navigate
 import native_navigation
 import health
-import install_pi
 import status_stream
 
 
@@ -405,7 +404,7 @@ class DesktopTests(unittest.TestCase):
                           'attach-session', '-t', '=viewer-test'])
 
     def test_other_viewers_keep_terminal_auto_detection(self):
-        for program in ('Apple_Terminal', 'foot', ''):
+        for program in ('Apple_Terminal', 'iTerm.app', ''):
             command = desktop.viewer_attach_command('viewer-test', {'TERM_PROGRAM': program})
             self.assertNotIn('-T', command)
             self.assertEqual(command[-3:], ['attach-session', '-t', '=viewer-test'])
@@ -632,13 +631,12 @@ class DesktopTests(unittest.TestCase):
         self.assertIn('##(bad)', desktop.health_line('live', ('unknown #(bad)', 'active')))
 
     def test_only_unhealthy_fields_are_shown(self):
-        for healthy in (('macOS | Sessions: local', 'Load: 1.25'),
-                        ('Wi-Fi -50 dBm | Mac ping 2 ms | Pi 45°C', 'Presence service: active')):
-            self.assertEqual(desktop.health_line('Mac connected · Session status live', healthy), '')
+        healthy = ('macOS | Sessions: SSH to mac-mini-64', 'Load: 1.25')
+        self.assertEqual(desktop.health_line('Mac connected · Session status live', healthy), '')
         row = desktop.health_line('Mac connected · Session status live',
-                                  ('Wi-Fi -50 dBm | Mac ping no reply | Pi 45°C', 'Presence service: active'))
-        self.assertIn('Mac ping no reply', row)
-        for field in ('Wi-Fi', '45°C', 'Presence', 'live'):
+                                  ('macOS | Sessions: SSH to mac-mini-64', 'Load: --'))
+        self.assertIn('Load: --', row)
+        for field in ('macOS', 'Sessions', 'live'):
             self.assertNotIn(field, row)
 
     def test_navigation_boundaries(self):
@@ -669,29 +667,12 @@ class HealthTests(unittest.TestCase):
         system.start()
         self.addCleanup(system.stop)
 
-    def test_health_values(self):
-        with mock.patch.object(health, 'output', side_effect=[
-                'signal: -49 dBm', 'hostname 192.0.2.1\n',
-                '64 bytes time=12.5 ms', 'active\n']) as run, \
-             mock.patch.object(health.Path, 'read_text', return_value='56400'):
-            lines = health.collect('mac-mini-64')
-        self.assertEqual(lines, ('Wi-Fi -49 dBm | Mac ping 12.5 ms | Pi 56°C',
-                                 'Presence service: active'))
-        self.assertEqual(run.call_args_list[2].args[0][-1], '192.0.2.1')
-
-    def test_health_missing_tools_and_temperature(self):
-        with mock.patch.object(health, 'output', return_value=''), \
-             mock.patch.object(health.Path, 'read_text', side_effect=OSError):
+    def test_non_macos_hosts_report_unavailable_without_commands(self):
+        with mock.patch.object(health, 'output') as output:
             self.assertEqual(health.collect('mac-mini-64'), health.UNKNOWN)
-
-    def test_ping_failure_does_not_claim_mac_offline(self):
-        with mock.patch.object(health, 'output', side_effect=[
-                'Not connected.', 'hostname 192.0.2.1\n', '', 'failed']), \
-             mock.patch.object(health.Path, 'read_text', return_value='bad'):
-            lines = health.collect('mac-mini-64')
-        self.assertIn('Wi-Fi disconnected', lines[0])
-        self.assertIn('Mac ping no reply', lines[0])
-        self.assertEqual(lines[1], 'Presence service: failed')
+            self.assertEqual(health.unknown(), health.UNKNOWN)
+            output.assert_not_called()
+        self.assertNotIn('Presence', str(health.UNKNOWN))
 
     def test_command_timeout_is_unknown(self):
         with mock.patch.object(health.subprocess, 'run', side_effect=subprocess.TimeoutExpired('test', 2)):
@@ -729,7 +710,7 @@ class InstallerTests(unittest.TestCase):
             (root/'core.py').write_text('current')
             (root/'__pycache__').mkdir()
             (root/'__pycache__/terminal.pyc').touch()
-            install_pi.remove_retired(root)
+            install.remove_retired(root)
             self.assertFalse((root/'terminal.py').exists())
             self.assertFalse((root/'__pycache__').exists())
             self.assertTrue((root/'core.py').exists())
@@ -852,7 +833,7 @@ class BackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(install.Path, 'home', return_value=Path(directory)), \
              mock.patch.object(install.platform, 'system', return_value='Darwin'), \
-             mock.patch.object(install.subprocess, 'run') as run:
+             mock.patch('subprocess.run') as run:
             home = Path(directory)
             (home/'.zshrc').write_text('# existing profile\n')
             install.install('local')

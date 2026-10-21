@@ -10,14 +10,13 @@ import platform
 import plistlib
 import shlex
 import shutil
-import subprocess
 import sys
 
 from backend import Backend
 
 SOURCE = Path(__file__).resolve().parent
 FILES = ('backend.py', 'cli.py', 'connect.py', 'core.py', 'desktop.py', 'health.py',
-         'connect.sh', 'launch.sh', 'status_stream.py', 'install.py', 'install_pi.py', 'navigate.py', 'native_navigation.py',
+         'connect.sh', 'status_stream.py', 'install.py', 'navigate.py', 'native_navigation.py',
          'layout.py', 'workspace.py', 'restart_status.py', 'codex_quota.py', 'provider_quotas.py', 'tmux_runtime.py')
 PATH_LINE = 'export PATH="$HOME/.local/bin:$PATH" # Pi Desk CLI'
 
@@ -28,7 +27,7 @@ def remove_retired(app):
     shutil.rmtree(app / '__pycache__', ignore_errors=True)
 
 
-def install(mode, project_root='/Users/dylanrapanan/JARVIS', pi_desktop=False):
+def install(mode, project_root='/Users/dylanrapanan/JARVIS'):
     config = Backend(mode=mode, project_root=project_root)
     home = Path.home()
     app = home / '.local/share/pi-desk'
@@ -36,17 +35,10 @@ def install(mode, project_root='/Users/dylanrapanan/JARVIS', pi_desktop=False):
     backup = home / '.local/state/pi-desk/backups' / stamp
     backup.mkdir(parents=True, mode=0o700)
     mac = platform.system() == 'Darwin'
-    if pi_desktop and mac:
-        raise ValueError('The Pi desktop adapter is Linux-only')
     shell_rc = '.zshrc' if mac else '.bashrc'
     # Do not copy shell profiles: they may contain unrelated private credentials.
     # Rollback removes only our exact PATH_LINE, leaving all other contents intact.
     old = ['.local/bin/pi-desk']
-    if pi_desktop:
-        old += ['.local/bin/pi-desk-display', '.local/bin/mac-sessions',
-                '.local/bin/mac-session-connect', '.local/bin/mac-session-grid.py',
-                '.local/bin/mac-terminal-browser', '.config/foot/foot.ini',
-                '.config/mac-sessions/tmux.conf', '.config/labwc/environment', '.config/labwc/rc.xml']
     for name in old:
         path = home / name
         if path.is_file():
@@ -57,9 +49,6 @@ def install(mode, project_root='/Users/dylanrapanan/JARVIS', pi_desktop=False):
                              (home / 'Applications/Pi Desk.app', 'mac-app')):
         if directory.exists():
             shutil.copytree(directory, backup / label, ignore=shutil.ignore_patterns('__pycache__'))
-    unit = Path('/etc/systemd/system/pi-desk.service')
-    if pi_desktop and unit.is_file():
-        shutil.copy2(unit, backup / 'pi-desk.service')
     app.mkdir(parents=True, exist_ok=True)
     for name in FILES:
         shutil.copy2(SOURCE / name, app / name)
@@ -101,21 +90,6 @@ def install(mode, project_root='/Users/dylanrapanan/JARVIS', pi_desktop=False):
         entry = contents / 'MacOS/Pi Desk'
         entry.write_text('#!/bin/sh\nexec /usr/bin/open -a Terminal "$HOME/.local/share/pi-desk/launch.terminal"\n')
         entry.chmod(0o700)
-    if pi_desktop:
-        labwc = config_dir / 'labwc'
-        labwc.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(SOURCE / 'config/labwc.xml', labwc / 'rc.xml')
-        (labwc / 'environment').write_text('XKB_DEFAULT_MODEL=pc105\nXKB_DEFAULT_LAYOUT=us\n')
-        foot = home / '.config/foot/foot.ini'
-        foot.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(SOURCE / 'config/foot.ini', foot)
-        display = bindir / 'pi-desk-display'
-        display.write_text('#!/bin/sh\nsudo systemctl start pi-desk.service && sudo chvt 3\n')
-        display.chmod(0o700)
-        compatibility = bindir / 'mac-sessions'
-        compatibility.write_text('#!/bin/sh\nexec "$HOME/.local/bin/pi-desk-display"\n')
-        compatibility.chmod(0o700)
-        subprocess.run(['sudo', 'install', '-m', '644', str(SOURCE / 'config/pi-desk.service'), str(unit)], check=True)
     manifest = {str(p.relative_to(app)): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in app.rglob('*') if p.is_file() and p.name != 'manifest.json' and '__pycache__' not in p.parts}
     (app / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
@@ -129,6 +103,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--backend', choices=('local', 'ssh'), required=True)
     parser.add_argument('--project-root', default='/Users/dylanrapanan/JARVIS')
-    parser.add_argument('--pi-desktop', action='store_true')
     args = parser.parse_args()
-    install(args.backend, args.project_root, args.pi_desktop)
+    install(args.backend, args.project_root)

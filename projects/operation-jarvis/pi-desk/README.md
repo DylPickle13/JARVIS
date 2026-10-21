@@ -1,8 +1,9 @@
 # Pi Desk
 
 One lightweight terminal workspace for the same ten Mac-hosted Pi Coding Agent
-sessions, on **mac-mini-64, mac-mini-16 and Raspberry Pi**. No browser, desktop
+sessions, on **mac-mini-64 and mac-mini-16**. No browser, desktop
 streaming, or VS Code dependency. The agents always run on mac-mini-64.
+The Raspberry Pi client and its fullscreen adapter were retired on 2026-10-20.
 
 ## Provider quotas rollout — 2026-10-17
 
@@ -36,9 +37,7 @@ its TUI. Open a new terminal after installation for the PATH update, or run
 black Terminal window with 14 pt Menlo. Existing terminal profiles are untouched.
 The app sets its own profile, not Terminal's default profile.
 
-On the Raspberry Pi, the existing Foot/labwc fullscreen service still starts at
-boot. `pi-desk-display` (or legacy `mac-sessions`) switches to that display;
-`pi-desk` itself is now the portable terminal command. Multiple terminal viewers
+`pi-desk` is the portable terminal command. Multiple terminal viewers
 are supported, with one elected status monitor per machine and failover on exit.
 
 ## Interface
@@ -309,7 +308,6 @@ Private machine configuration: `~/.config/pi-desk/client.json`.
 | --- | --- | --- |
 | mac-mini-64 | `local` | Its existing `jarvis-mobile` socket |
 | mac-mini-16 | `ssh` | mac-mini-64's same socket |
-| Raspberry Pi | `ssh` | mac-mini-64's same socket |
 
 There is no hostname guessing. A missing config retains the original SSH default;
 invalid configuration fails closed. SSH uses the existing alias/keys, strict host
@@ -344,16 +342,14 @@ limit. Unchanged headers and saved selections are not rewritten; closed viewers
 are skipped at execution time. Polling intervals and warning-row behaviour are
 unchanged.
 
-Mac diagnostics show local/SSH mode and local load, without Linux-only commands.
-Pi diagnostics retain Wi-Fi association signal, host ping, CPU temperature and
-presence-service state: 10-second sampling, bounded commands, 25-second expiry.
-**Presence active means only that the service is running**, not fresh sensing or
-human presence. No radio scans, new ports, privileged health commands or logs.
+Diagnostics show local/SSH mode and local load on macOS (10-second sampling,
+25-second expiry); other platforms report diagnostics unavailable. No radio scans,
+new ports, privileged health commands or logs.
 
 ## Install/update
 
-Python 3.9+ and tmux 3.3+ are required. Macs can install tmux with Homebrew. Both
-remote clients must already have a working, trusted `mac-mini-64` SSH alias.
+Python 3.9+ and tmux 3.3+ are required. Macs can install tmux with Homebrew. The
+remote client must already have a working, trusted `mac-mini-64` SSH alias.
 From a reviewed source/staging directory:
 
 ```sh
@@ -362,26 +358,17 @@ python3 install.py --backend local
 
 # Secondary Mac:
 python3 install.py --backend ssh
-
-# Pi with its existing fullscreen adapter/account/permissions:
-sudo systemctl stop pi-desk.service
-python3 install.py --backend ssh --pi-desktop
-sudo systemctl daemon-reload
-sudo systemctl enable --now pi-desk.service
 ```
 
-`install_pi.py` remains a compatibility entry point for the last option. The Pi
-adapter alone depends on labwc, Foot, wlr-randr, HDMI-A-1, tty3 and the existing
-pi account/sudo policy. No installer starts/restarts hosted agents. Mac installation
+No installer starts/restarts hosted agents. Mac installation
 does not touch system services, Terminal defaults, VS Code tasks or other apps.
-Only an explicit PATH line is appended to `.zshrc` (Mac) or `.bashrc` (Pi).
+Only an explicit PATH line is appended to `.zshrc`.
 The host repository path for maintenance can be set with `--project-root`.
 
 Close and reopen **all local viewers** after updating Python code so the elected
 status monitor also uses the new renderer. Existing fixed-group viewers are not
 live-migrated or forcibly detached. Remote installations must be updated separately. If resetting display panes is needed,
-stop only the dedicated `pi-desk` socket, **never `jarvis-mobile`**. The Pi service
-owns only its compositor/display and does not control presence/audio/Bluetooth/SSH.
+stop only the dedicated `pi-desk` socket, **never `jarvis-mobile`**.
 
 ## Implementation
 
@@ -402,8 +389,7 @@ owns only its compositor/display and does not control presence/audio/Bluetooth/S
 - `codex_quota.py`: shared sanitized quota wire contract, independent freshness, colours,
   responsive labels and reset-countdown details.
 - `install.py`: common deployment, manifest and allowlisted rollback copies.
-- `launch.sh`, `config/`: optional Pi fullscreen adapter, shared tmux configuration,
-  and Mac Terminal launcher.
+- `config/`: shared tmux configuration and Mac Terminal launcher.
 
 ## Backups, rollback and verification
 
@@ -413,7 +399,7 @@ because they may contain secrets; undo only the exact line marked `# Pi Desk CLI
 if removing the command. No credentials, IRKs, SSH configuration or transcripts
 belong in Git or project backups. Historical source archive: [`backups/`](backups/).
 
-To roll back, close Pi Desk viewers (stop its Pi service when applicable), restore
+To roll back, close Pi Desk viewers, restore
 reviewed app/config/launcher files from that machine's backup or install a known-good
 source revision with the correct backend. Do not blindly extract over `$HOME`.
 An initial Mac install can be removed by deleting its dedicated app, launcher and
@@ -421,7 +407,7 @@ configuration, and removing the exact added PATH line; leave hosted sessions alo
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_pi_desk test_responsive
-sh -n connect.sh && sh -n launch.sh
+sh -n connect.sh
 pi-desk --help
 tmux -L pi-desk list-clients -F '#{session_name} focus=#{@pi-desk-session}'
 ```

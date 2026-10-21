@@ -1,3 +1,14 @@
+# Raspberry Pi client retired — 2026-10-20
+
+The Raspberry Pi viewer was removed: `pi-desk.service`, the labwc/Foot fullscreen
+adapter, its packages and all Pi Desk files were uninstalled from `raspberrypi`,
+and the Pi's SSH key to mac-mini-64 was revoked. Source no longer ships
+`install_pi.py`, `launch.sh`, `config/labwc.xml`, `config/foot.ini`,
+`config/pi-desk.service` or the Linux health collector; `install.py` dropped
+`--pi-desktop`. Pi Desk now targets mac-mini-64 (`local`) and mac-mini-16 (`ssh`).
+Installed Mac copies were not reinstalled; their unused Pi files are inert.
+Entries below are historical.
+
 # Codex/Claude quotas — 2026-10-17, installed; existing viewer reopen pending
 
 Quota-only updates are installed and hash-verified on **mac-mini-64, mac-mini-16
