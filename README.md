@@ -2,7 +2,7 @@
 
 **A personal, local-first AI automation system with native iPhone and Apple Watch clients.**
 
-I built JARVIS to keep a Mac-hosted AI workspace within reach from my iPhone, Apple Watch, or a Raspberry Pi microphone and speaker. It connects persistent terminal sessions to browser tools, scheduled jobs, and household devices.
+I built JARVIS to keep a Mac-hosted AI workspace within reach from my iPhone, Apple Watch, or a room microphone and speaker. It connects persistent terminal sessions to browser tools, scheduled jobs, and household devices.
 
 It runs on the [Pi coding agent](https://github.com/earendil-works/pi-coding-agent), which handles the agent loop and model interaction. My work is in the custom tools, backend services, and native apps that connect it all.
 
@@ -21,7 +21,7 @@ Captured in the iPhone and Watch simulators with sample data. The short clip sho
 - **Pi extensions** for persistent memory, browser automation, web research, and service and device integrations.
 - **SwiftUI apps** for iPhone and Apple Watch, with terminal access, plug and purifier controls, system status, and read-only scheduled-job results.
 - **Python services** for the native control API, Watch terminal access, and room audio.
-- **Room audio integration** with Raspberry Pi microphone/speaker transport and Mac-side transcription, Pi RPC, and speech output.
+- **Room audio integration** with Mac-hosted USB speakerphone and camera transport, Mac-side transcription, Pi RPC, and speech output.
 
 ## A few design decisions
 
@@ -35,7 +35,7 @@ Captured in the iPhone and Watch simulators with sample data. The short clip sho
 
 ```text
 Mac / iPhone / Watch terminal ──────────┐
-Raspberry Pi audio → transcription ─────┤
+Room audio → transcription ─────────────┤
                                        ▼
                               Pi sessions on Mac
                                        │
@@ -90,7 +90,7 @@ JARVIS/
 | Native state and control | [`jarvisd`](projects/operation-jarvis/jarvisd/jarvisd.py) | [API and state tests](projects/operation-jarvis/jarvisd/tests/) |
 | Apple clients and shared models | [SwiftUI app](projects/operation-jarvis/jarvis-app/JARVIS/), [JARVISKit](projects/operation-jarvis/jarvis-app/JARVISKit/) | [shared Swift tests](projects/operation-jarvis/jarvis-app/JARVISKit/Tests/JARVISKitTests/) |
 
-**Stack:** Python, TypeScript/JavaScript, Swift/SwiftUI, SQLite, SSH/tmux, macOS, iOS/watchOS, and Raspberry Pi.
+**Stack:** Python, TypeScript/JavaScript, Swift/SwiftUI, SQLite, SSH/tmux, macOS, and iOS/watchOS.
 
 ## Documentation
 

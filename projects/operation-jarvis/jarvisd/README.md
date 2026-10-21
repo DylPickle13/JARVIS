@@ -274,17 +274,14 @@ fail closed. The static card shows rounded GiB as `38G`; VoiceOver gives one
 decimal and total capacity. Old backends and stale host reads show `—`, with no
 fallback to the existing oMLX-only `memoryUsedBytes` field.
 
-## Basement and living-room presence (2026-09-21)
+## Basement presence
 
 `GET /api/v1/presence` exposes sanitized, read-only basement proximity from the
 local Mac BLE listener. Requires API-token or authenticated loopback access;
 not included in trusted-network aggregate state. Missing/stale data is unknown.
-Deployment `20260921T051732Z-living-room-presence` adds independent basement and
-living-room `zones`, retaining the legacy basement `presence` field. The Mac Watch
-and iPhone are enrolled. The relocated Pi resolves both devices with private IRKs,
-and its authenticated SSH bridge delivers living-room state. Both zones operate;
-initial two-way seated and short idle-device checks passed. Broader physical
-acceptance remains incomplete. See [presence](../presence/README.md).
+`zones` contains only the basement zone, alongside the legacy basement `presence`
+field. The Raspberry Pi living-room zone (added 2026-09-21) was retired on
+2026-10-20. See [presence](../presence/README.md).
 
 ## On-demand network speed diagnostic (source-only)
 

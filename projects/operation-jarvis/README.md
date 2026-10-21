@@ -6,7 +6,7 @@ This directory connects JARVIS to household plugs, air purifiers, speakers, secu
 
 - **[jarvisd](jarvisd/):** shared control backend on port `8790` for health, state, services, job results, and allowlisted device commands. Network allowlisting and token authentication are separate modes.
 - **terminald:** mobile terminal relay on port `8792`, restricted to the protected `jarvis-mobile` tmux sessions.
-- **[Pi Desk](pi-desk/):** lightweight living-room Raspberry Pi workspace: fullscreen session grid, live Pi status, three-pane SSH groups, recovery, and boot startup.
+- **[Pi Desk](pi-desk/):** lightweight terminal workspace for the ten Mac-hosted Pi sessions on mac-mini-64: session grid, live session status, three-pane groups, and recovery.
 - **[Room audio](room-audio/):** Mac USB PowerConf and camera capture/playback with Apple SpeechTranscriber for ordinary turns, DictationTranscriber for busy-only `stop`, Pi RPC, and Piper speech. Servers use ports `8791` and `8793`; Raspberry Pi audio hardware is retired.
 - **Apple apps:** iPhone and Watch; iPhone has Neural Core/Open JARVIS widgets, while Watch also has Talk to JARVIS.
 - **Smart plugs:** local TP-Link Kasa control through a fixed plug catalogue.
@@ -26,9 +26,9 @@ projects/operation-jarvis/
 ├── keyboard/                   # AK820/Razer controls, Karabiner bridge, mappings
 ├── jarvisd/                    # shared control backend, API, tests, LaunchAgents
 ├── jarvis-app/                 # iPhone, Watch, widgets, JARVISKit, terminald
-├── pi-desk/                    # living-room Pi terminal, boot service, backups, tests
+├── pi-desk/                    # Mac terminal workspace for Pi sessions, backups, tests
 ├── picture-frame/              # pinned Frameo controller; partial USB acceptance; no project daemon
-├── presence/                   # independent Mac/Pi BLE proximity collectors
+├── presence/                   # Mac BLE basement proximity collector
 ├── quotas/                     # read-only provider quota collection
 ├── room-audio/                 # Mac-hosted room conversations and audio endpoints
 ├── smart-plug/                 # local Kasa adapter and private catalogue

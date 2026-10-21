@@ -12,10 +12,9 @@ These are documented deployment roles, not a fresh live health check.
 |---|---|---|---|
 | Mac USB PowerConf | Explicit Core Audio microphone/speaker | Loopback 8793 | [Mac endpoint](MACOS.md) |
 | C230 camera | Camera microphone/speaker through local go2rtc | Loopback 8791 | [Camera endpoint](CAMERA.md) |
-| Raspberry Pi | Hardware endpoint retired; Pi-only installers/guides removed | None active | — |
 
-The Raspberry Pi is currently offline per the owner. Its absence is not a room
-conversation failure. Family-room Cast speaker commands are a separate transport;
+The former Raspberry Pi endpoint is retired, and the Pi has been reset to a stock OS.
+Family-room Cast speaker commands are a separate transport;
 this directory owns the documented conversational microphone/speaker endpoints.
 
 ## Components
