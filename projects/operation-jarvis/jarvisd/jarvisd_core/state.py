@@ -960,6 +960,9 @@ class StateCoordinator:
             if name == "purifier" and isinstance(data.get("devices"), dict):
                 for device_id, item in data["devices"].items():
                     item["stale"] = self._purifier_item_is_stale(record, device_id, item, now)
+                    item_last_good = record["itemLastGoodAt"].get(device_id)
+                    item["ageSeconds"] = (None if item_last_good is None
+                                         else round(max(0.0, now - item_last_good), 1))
                     if error := self._write_error(record, device_id):
                         item["lastError"] = error
                     item["refreshing"] = bool(record["refreshing"])

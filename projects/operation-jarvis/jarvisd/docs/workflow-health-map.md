@@ -56,8 +56,8 @@ before choosing a UI placement. The headset remains optional.
 - `room-audio/README.md`, `MACOS.md`, `CAMERA.md`: two Mac-hosted endpoints,
   PowerConf and C230; Cast is separate. The older note that the Pi was offline is
   not a current presence-service assessment.
-- `presence/README.md`, `PI.md`: independent basement/living-room proximity
-  architecture, Pi snapshot transport and private enrollment.
+- `presence/README.md`: basement proximity architecture and private enrollment.
+  The Raspberry Pi living-room zone was retired on 2026-10-20.
 - Existing private device registry: explicit aliases, adapter kinds and current
   scope. No additional network discovery, BLE scanning or physical writes used.
 

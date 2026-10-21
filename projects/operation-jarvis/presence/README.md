@@ -1,12 +1,10 @@
-# Presence: basement and living room
+# Presence: basement
 
-See [Pi living-room integration and calibration](PI.md). Both zones are enrolled
-and operational. The relocated Pi resolves Watch and iPhone identities privately;
-the backend reports independent zone states. Initial seated movement tests passed
-in both directions, and a short locked-phone/idle-Watch test passed. Longer-term
-idle, address rotation, single-device fallback and outage acceptance remain untested.
+The Raspberry Pi living-room zone was retired on 2026-10-20: its collector, Mac
+bridge and jarvisd zone were removed, and the Pi was returned to a stock OS.
+The backend now reports the basement zone only.
 
-First sensor: `mac-mini-64` in the **basement**. Read-only context, not security,
+Sensor: `mac-mini-64` in the **basement**. Read-only context, not security,
 proof of human location, whole-home occupancy, or precise ranging.
 
 ## Running architecture
@@ -16,9 +14,7 @@ Mac CoreBluetooth / Bleak → private atomic snapshot → jarvisd /api/v1/presen
                                                    → operation_jarvis_presence
 ```
 
-The local collector deliberately needs no MQTT broker. The initial Pi adapter
-uses authenticated SSH snapshot requests; a later Theengs/MQTT adapter can produce
-the same normalized state. Do not send every advertisement to apps or the model. The collector remains read-only. The separately authorized [keyboard watcher](../keyboard/docs/AUTOMATION.md) consumes authenticated basement status approximately every three seconds, with minute-spaced white effect rotation nearby and white ripples away. It does not change the collector, the 10-second nearby hold, or add BLE scanning.
+The local collector deliberately needs no MQTT broker. Do not send every advertisement to apps or the model. The collector remains read-only. The separately authorized [keyboard watcher](../keyboard/docs/AUTOMATION.md) consumes authenticated basement status approximately every three seconds, with minute-spaced white effect rotation nearby and white ripples away. It does not change the collector, the 10-second nearby hold, or add BLE scanning.
 
 Installed LaunchAgent: `com.operation-jarvis.presence`. Runtime directory:
 `~/Library/Application Support/JARVIS/presence/` (0700; files 0600).
@@ -66,8 +62,8 @@ process identities were preserved.
 
 ## Enrollment — maintenance reference (both devices already enrolled)
 
-macOS gives Bleak **CoreBluetooth UUIDs**, not Bluetooth MAC addresses. This is
-not the Pi/Theengs IRK resolver. UUID persistence/advertisement behavior must be
+macOS gives Bleak **CoreBluetooth UUIDs**, not Bluetooth MAC addresses; there is
+no IRK resolver. UUID persistence/advertisement behavior must be
 field-tested; do not claim identity based on an Apple manufacturer ID, a device
 name or strongest RSSI. Do not copy IRKs into this listener's config.
 

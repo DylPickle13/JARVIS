@@ -11,7 +11,8 @@ from test_jarvisd import jarvisd as daemon
 
 class PresenceHTTPTests(unittest.TestCase):
     def test_private_read(self):
-        with patch.object(daemon, 'API_TOKEN', 'test-api'), patch.object(daemon, 'AUTH_MODE', 'trusted-network'), patch.object(presence, 'read_status', return_value=presence.unknown()) as read, patch.object(presence, 'read_living_room', return_value=presence.unknown(zone='living room')):
+        self.assertFalse(hasattr(presence, 'read_living_room'))
+        with patch.object(daemon, 'API_TOKEN', 'test-api'), patch.object(daemon, 'AUTH_MODE', 'trusted-network'), patch.object(presence, 'read_status', return_value=presence.unknown()) as read:
             server = ControlHTTPServer(('127.0.0.1', 0), daemon.Handler)
             server.local_control_token = 'test-local'
             thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': .01}, daemon=True)
@@ -26,8 +27,10 @@ class PresenceHTTPTests(unittest.TestCase):
                     reply = conn.getresponse()
                     self.assertEqual(reply.status, expected)
                     self.assertEqual(reply.getheader('Cache-Control'), 'no-store')
-                    reply.read()
+                    body = json.loads(reply.read())
                     conn.close()
+                    if expected == 200:
+                        self.assertEqual([z['zone'] for z in body['zones']], ['basement'])
                 self.assertEqual(read.call_count, 2)
             finally:
                 server.shutdown()

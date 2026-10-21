@@ -41,7 +41,3 @@ def read_status(path=None, now=None, zone="basement"):
                 "sources": sources, "reason": reason}
     except (OSError, ValueError, KeyError, TypeError):
         return unknown(zone=zone)
-
-
-def read_living_room():
-    return read_status(runtime_dir() / "living-room.json", zone="living room")

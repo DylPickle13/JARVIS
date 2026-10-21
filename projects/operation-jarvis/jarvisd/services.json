@@ -5,7 +5,7 @@
       "plist": "~/Library/LaunchAgents/com.operation-jarvis.room-audio-server.plist",
       "displayName": "Room Audio Server",
       "executionMode": "continuous",
-      "description": "Raspberry Pi voice endpoint on port 8791",
+      "description": "Local room voice endpoint on port 8791",
       "sortOrder": 20,
       "critical": false,
       "allowedActions": ["start", "stop", "restart"]

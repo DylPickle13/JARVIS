@@ -64,7 +64,7 @@ class ProjectionTests(unittest.TestCase):
             entry('camera', 'unmonitored'))
         self.state = {'subsystems': {
             'plugs': {'plugs': {'lamp': {'ok': True, 'stale': False, 'isOn': False}}},
-            'purifier': {'devices': {'opaque': {'ok': True, 'stale': False}}}},
+            'purifier': {'devices': {'opaque': {'ok': True, 'stale': False, 'ageSeconds': 5}}}},
             'subsystemsMeta': {k: {'ok': True, 'ageSeconds': 5, 'stale': False,
                                   'updatedAt': '2026-10-01T00:00:00Z'} for k in ('plugs', 'purifier')}}
         self.security = {'door-sensor': {'availability': 'available', 'ageSeconds': 10,
@@ -99,6 +99,26 @@ class ProjectionTests(unittest.TestCase):
         self.state['subsystemsMeta']['plugs']['ageSeconds'] = 5
         self.state['subsystems']['plugs']['plugs'] = {}
         self.assertEqual(self.project()['devices'][0]['state'], 'unknown')
+
+    def test_purifier_judged_per_device_not_by_default_mirror(self):
+        # Meta mirrors the default purifier; its failure must not fail a healthy peer.
+        reg = registry(entry('a', 'purifier', selector='a'), entry('b', 'purifier', selector='b'))
+        self.state['subsystems']['purifier']['devices'] = {
+            'a': {'ok': False, 'stale': True, 'ageSeconds': 130, 'error': 'Device refresh unavailable'},
+            'b': {'ok': True, 'stale': False, 'ageSeconds': 4}}
+        self.state['subsystemsMeta']['purifier'].update(ok=False, stale=True, ageSeconds=130, error=None)
+        a, b = health.project(reg, self.state, {}, {}, {})['devices']
+        self.assertEqual((a['state'], a['reason']), ('unavailable', 'integration_read_failed'))
+        self.assertEqual((b['state'], b['reason'], b['ageSeconds']), ('available', 'current', 4))
+        # A collector-wide error still fails every purifier.
+        self.state['subsystemsMeta']['purifier']['error'] = 'Purifier refresh unavailable'
+        b = health.project(reg, self.state, {}, {}, {})['devices'][1]
+        self.assertEqual((b['state'], b['reason']), ('unavailable', 'collector_read_failed'))
+        # Per-device staleness/age still expire a purifier.
+        self.state['subsystemsMeta']['purifier']['error'] = None
+        self.state['subsystems']['purifier']['devices']['b'].update(stale=True, ageSeconds=95)
+        b = health.project(reg, self.state, {}, {}, {})['devices'][1]
+        self.assertEqual(b['state'], 'unknown')
 
     def test_purifier_pending_not_green_no_retry(self):
         self.state['subsystems']['purifier']['devices']['opaque']['verificationPending'] = True

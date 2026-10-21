@@ -73,7 +73,7 @@ export function preparePlugArguments(args: unknown): unknown {
 export default function registerOperationJarvis(pi: ExtensionAPI) {
   pi.registerTool({
     name: "operation_jarvis_presence", label: "Operation JARVIS · Presence",
-    description: "Read Dylan's estimated basement (Mac) and living room (Pi) proximity from the authenticated backend. Zones are independent and may overlap; do not infer a unique room. Unknown/stale is not away; BLE device presence is not proof of human location. No scanning, enrollment or household actions.",
+    description: "Read Dylan's estimated basement (Mac) proximity from the authenticated backend. Only the basement zone is reported; there is no living-room or other room coverage. Unknown/stale is not away; BLE device presence is not proof of human location. No scanning, enrollment or household actions.",
     parameters: Type.Object({}, { additionalProperties: false }),
     async execute(_id, _p, signal, _update, ctx) {
       const dir = operationDir(ctx.cwd);

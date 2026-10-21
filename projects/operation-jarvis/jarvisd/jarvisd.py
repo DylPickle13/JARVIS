@@ -2582,8 +2582,8 @@ class Handler(ControlHTTPMixin, BaseHTTPRequestHandler):
                 self._send(401, {"ok": False, "error": "unauthorized"})
                 return
             basement = presence.read_status()
-            self._send(200, {"ok": True, "presence": basement,
-                             "zones": [basement, presence.read_living_room()]})
+            # Raspberry Pi (living room) presence is retired from jarvisd.
+            self._send(200, {"ok": True, "presence": basement, "zones": [basement]})
             return
         if path == "/api/v1/security/status":
             if self._reject_origin():

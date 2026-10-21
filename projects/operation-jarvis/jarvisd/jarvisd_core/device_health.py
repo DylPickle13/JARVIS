@@ -296,6 +296,12 @@ def project(registry, state, security, omlx, probes, *, enabled=True, security_a
             row.update(ageSeconds=meta.get('ageSeconds'), lastSuccessAt=meta.get('updatedAt'))
             if kind == 'purifier' and item.get('updatedAt'):
                 row['lastSuccessAt'] = item['updatedAt']
+            if kind == 'purifier':
+                # Purifier meta ok/stale/age mirror only the DEFAULT device; judge
+                # each purifier by its own read. Collector-wide errors still apply.
+                row['ageSeconds'] = item.get('ageSeconds')
+                meta = {**meta, 'ok': None if meta.get('error') in (None, '') else False,
+                        'stale': item.get('stale')}
             # Retained cache timestamps describe last-good data, NOT last attempts.
             if meta.get('ok') is False or meta.get('error') not in (None, '', 'loading'):
                 row.update(state='unavailable', reason='collector_read_failed')
@@ -303,7 +309,7 @@ def project(registry, state, security, omlx, probes, *, enabled=True, security_a
                 row.update(state='unavailable', reason='integration_read_failed')
             elif finite(row['ageSeconds']) and (row['ageSeconds'] > limit or (kind != 'omlx' and (meta.get('stale') is True or item.get('stale') is True))):
                 row.update(reason='observation_expired')
-            elif item.get('ok') is True and meta.get('ok') is True and finite(row['ageSeconds']) and (kind == 'omlx' or (meta.get('stale') is False and item.get('stale') is False)):
+            elif item.get('ok') is True and (meta.get('ok') is True or kind == 'purifier') and finite(row['ageSeconds']) and (kind == 'omlx' or (meta.get('stale') is False and item.get('stale') is False)):
                 row.update(state='available', reason='current')
         else:
             if kind == 'security':
