@@ -165,6 +165,49 @@ class HomeAutomationTests(unittest.TestCase):
         self.assertEqual(self.send(command)['homeAutomation']['status'], 'unknown')
         self.runner.assert_called_once_with(['list'])
 
+    def listing(self, enabled, revision=REV):
+        return {'result': 'read_succeeded', 'rules': [{'ref': REF, 'kind': 'automation',
+                'name': 'Barn door Protocol', 'enabled': enabled, 'revision': revision}]}
+
+    def settled(self, status, enabled, at):
+        command = self.command('barn-door', enabled=enabled, confirmed=True)
+        ledger = policy.read_json(self.root, 'requests.json')
+        ledger['requests'][command['requestID']] = {**command, 'owner': 'old', 'at': at, 'status': status}
+        policy.save_json(self.root, 'requests.json', ledger)
+        return command
+
+    def test_pre_write_cli_rejection_is_rejected_not_unknown(self):
+        self.runner.return_value = {'result': 'error', 'reason': 'smart_revision_conflict', 'writes_attempted': 0}
+        command = self.command('barn-door', enabled=True, confirmed=True)
+        self.send(command)
+        self.wait()
+        self.assertEqual(self.send(command)['homeAutomation']['status'], 'rejected')
+        self.runner.assert_called_once()
+
+    def test_later_read_matching_request_clears_stale_unknown_and_rejected(self):
+        for status, at in (('unknown', 50), ('rejected', 60)):
+            with self.subTest(status=status):
+                command = self.settled(status, enabled=False, at=at)
+                self.runner.reset_mock()
+                self.runner.return_value = self.listing(False, 'c' * 64)
+                self.manager._read(REF)
+                op = self.manager.snapshot()['barnDoor']['operation']
+                self.assertEqual((op['requestID'], op['status']), (command['requestID'], 'verified'))
+                self.runner.assert_called_once_with(['list'])  # status only; never re-sent
+
+    def test_later_read_mismatch_keeps_warning(self):
+        command = self.settled('unknown', enabled=False, at=50)
+        self.runner.return_value = self.listing(True)
+        self.manager._read(REF)
+        self.assertEqual(self.send(command)['homeAutomation']['status'], 'unknown')
+        self.runner.assert_called_once_with(['list'])
+
+    def test_read_not_strictly_after_receipt_does_not_clear_it(self):
+        command = self.settled('unknown', enabled=False, at=100)  # now() is 100
+        self.runner.return_value = self.listing(False)
+        self.manager._read(REF)
+        self.assertEqual(self.send(command)['homeAutomation']['status'], 'unknown')
+
     def test_local_policy_read_retires_old_receipt_without_toggling_voice(self):
         command = self.command(enabled=False)
         ledger = policy.read_json(self.root, 'requests.json')

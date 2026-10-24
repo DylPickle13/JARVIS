@@ -555,10 +555,12 @@ def worker():
         cloud = Cloud()
         cloud.session(req.pop('username'), req.pop('password'), req.get('reauthenticate', False))
         result = run(req, cloud)
+    # run() converts every failure after a delivered write into
+    # write_outcome_unknown, so anything escaping here is strictly pre-write.
     except SmartError as exc:
-        result = {'result': 'error', 'reason': str(exc)}
+        result = {'result': 'error', 'reason': str(exc), 'writes_attempted': 0}
     except BaseException:
-        result = {'result': 'error', 'reason': 'smart_cloud_request_failed'}
+        result = {'result': 'error', 'reason': 'smart_cloud_request_failed', 'writes_attempted': 0}
     finally:
         if cloud:
             cloud.close()

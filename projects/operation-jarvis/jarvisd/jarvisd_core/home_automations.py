@@ -137,19 +137,30 @@ class HomeAutomations:
         rows = [row for row in ledger['requests'].values() if row['control'] == control]
         return self._receipt(max(rows, key=lambda row: row['at'])) if rows else None
 
-    def _settle_observed(self, ledger, control, enabled):
+    def _settle_observed(self, ledger, control, enabled, observed_after=None):
         """Caller holds policy + manager locks and has a fresh, verified read.
 
         Retire interrupted receipts, not their commands. Same request IDs remain
         consumed forever; mismatches stay 'unknown', never silently resubmitted.
+
+        observed_after: start time of a read that began strictly after a settled
+        'unknown'/'rejected' receipt. If that read shows the requested state is in
+        effect, the outcome is confirmed and the receipt becomes 'verified' so a
+        stale warning cannot persist. Status only; nothing is ever re-sent.
         """
         worker = self.workers.get(control)
         if worker is not None and worker.is_alive():
             return
         changed = False
         for row in ledger['requests'].values():
-            if row['control'] == control and row['status'] == 'pending':
+            if row['control'] != control:
+                continue
+            if row['status'] == 'pending':
                 row['status'] = 'verified' if row['enabled'] is enabled else 'unknown'
+                changed = True
+            elif (observed_after is not None and row['status'] in {'unknown', 'rejected'}
+                    and row['at'] < observed_after and row['enabled'] is enabled):
+                row['status'] = 'verified'
                 changed = True
         if changed:
             policy.save_json(self.root, 'requests.json', ledger)
@@ -173,6 +184,7 @@ class HomeAutomations:
                 self.cloud_error = 'Cloud read unavailable.'
 
     def _read(self, ref):
+        started = self.now()
         try:
             value = self.runner(['list'])
             rows = value.get('rules')
@@ -190,7 +202,8 @@ class HomeAutomations:
                 # lock as writes. A successful identity-pinned read is the recovery
                 # checkpoint; cached UI state alone cannot retire a pending write.
                 with policy.locked(self.root):
-                    self._settle_observed(self._ledger(), 'barn-door', matches[0]['enabled'])
+                    self._settle_observed(self._ledger(), 'barn-door', matches[0]['enabled'],
+                                          observed_after=started)
                 self.cloud = {'enabled': matches[0]['enabled'], 'revision': matches[0]['revision']}
                 self.cloud_at = self.now()
                 self.cloud_error = None
