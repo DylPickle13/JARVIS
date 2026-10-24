@@ -1,3 +1,9 @@
+> **Single active release (2026-10-24 EDT):** `20261024T125911Z-barn-receipt-settle`
+> is the only installed jarvisd deployment. Daemon, watchdog (`resurrector.sh`),
+> frame health worker and the bundled read-only security reader (`security-reader/`)
+> all run from it; earlier releases were removed. It adds settlement of stale Barn
+> Door receipts (status only, never re-sent). Older release names below are history.
+>
 > **Deployment checkpoint (2026-09-19):** `20260919T215836Z-room-session10`.
 > CLI/Pi device writes use authenticated loopback `/api/v1/local-control`;
 > current native clients use `/api/v1/device-command` with existing app auth.
