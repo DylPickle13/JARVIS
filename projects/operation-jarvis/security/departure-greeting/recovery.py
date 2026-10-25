@@ -32,7 +32,14 @@ READ_FAULTS = frozenset({'sensor_read_requires_review', 'sensor_read_problem'})
 
 
 def transient(exc):
-    from kasa.exceptions import AuthenticationError, KasaException, _ConnectionError, _RetryableError
+    from kasa.exceptions import (AuthenticationError, KasaException, SmartErrorCode,
+                                 _ConnectionError, _RetryableError)
+    # The H200 routinely expires its secure-passthrough session (~hourly). That is
+    # a session lifetime event, not a device fault: reconnect promptly with a new
+    # handshake rather than taking the 300 s fault backoff. Exact type/code only.
+    if (type(exc) is _RetryableError and not isinstance(exc, AuthenticationError)
+            and getattr(exc, 'error_code', None) is SmartErrorCode.SESSION_EXPIRED):
+        return True
     # Authentication and explicit device errors are real problems even when a
     # wrapper happens to carry a transport cause. Do not classify by message text.
     if isinstance(exc, AuthenticationError) or getattr(exc, 'error_code', None) is not None:

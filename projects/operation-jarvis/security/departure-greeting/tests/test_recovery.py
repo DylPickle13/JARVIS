@@ -32,6 +32,18 @@ class RecoveryTests(unittest.TestCase):
         self.assertFalse(recovery.transient(ValueError('bad schema')))
         self.assertFalse(recovery.transient(KasaException('unclassified')))
 
+    def test_hub_session_expiry_reconnects_fast_but_other_device_codes_do_not(self):
+        from kasa.exceptions import (AuthenticationError, DeviceError, SmartErrorCode,
+                                     _RetryableError)
+        expired=_RetryableError('secret',error_code=SmartErrorCode.SESSION_EXPIRED)
+        self.assertTrue(recovery.transient(expired))
+        self.assertLess(recovery.delay(1,transport=recovery.transient(expired)),3)
+        # Same code on a non-retryable/auth class, or other retryable codes, stay slow faults.
+        self.assertFalse(recovery.transient(DeviceError('secret',error_code=SmartErrorCode.SESSION_EXPIRED)))
+        self.assertFalse(recovery.transient(AuthenticationError('secret',error_code=SmartErrorCode.SESSION_EXPIRED)))
+        self.assertFalse(recovery.transient(_RetryableError('secret',error_code=SmartErrorCode.UNSPECIFIC_ERROR)))
+        self.assertFalse(recovery.transient(_RetryableError('secret',error_code=SmartErrorCode.SESSION_TIMEOUT_ERROR)))
+
     def test_recovery_never_learns_changed_hub_or_sensor_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
