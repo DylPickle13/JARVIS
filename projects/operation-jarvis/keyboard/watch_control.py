@@ -20,6 +20,12 @@ import cycle
 ROOT = Path(__file__).resolve().parent
 LABEL = 'com.jarvis.ajazz-keyboard-watch'
 PLIST = Path.home() / 'Library/LaunchAgents' / f'{LABEL}.plist'
+# Read by jarvisd's heartbeat check: a deliberate stop is "paused", not a failure.
+PAUSE_MARKER = 'paused.json'
+
+
+def mark_paused(store, paused):
+    store.save(PAUSE_MARKER, {'version': 1, 'paused': paused})
 
 
 class ControlError(RuntimeError):
@@ -104,7 +110,11 @@ def control(enabled):
                 time.sleep(0.1)
             if disabled(domain):
                 raise ControlError('Controller enable not verified; inspect before retrying.')
+            # Clear only after a verified start; a failed enable stays paused/disabled.
+            mark_paused(store, False)
             return 'running'
+        # Mark before stopping so the expiring heartbeat is never reported as a failure.
+        mark_paused(store, True)
         # Prevent restart at login before unloading. Never wake/unlock or alter outputs.
         checked('disable', service)
         if current is not None:

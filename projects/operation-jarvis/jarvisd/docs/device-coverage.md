@@ -109,7 +109,7 @@ Check kinds:
 | `omlx` | Existing server cache; 120s health expiry, not the six-second activity UI expiry |
 | `tcp` | One connect/close to a configured numeric private/Tailscale IPv4 address and port; 2s timeout; no DNS/discovery/retry |
 | `usb` | One bounded local IORegistry enumeration per cycle; exact `vendorID`/`productID`; never opens HID control handles |
-| `heartbeat` | Owner-only bounded JSON file, `path`, `timestampKey`, `maxAge` (30–300s), `faultKey`; current process heartbeat only |
+| `heartbeat` | Owner-only bounded JSON file, `path`, `timestampKey`, `maxAge` (30–300s), `faultKey`; current process heartbeat only; optional `pauseMarker` (absolute owner-only JSON `{"version":1,"paused":true}`) reports a stale/missing heartbeat as `unmonitored`/`unknown`/`paused` — neutral, no incident. A fresh heartbeat always wins; an unsafe/malformed marker fails toward alerting |
 | `frame` | Opt-in commissioned-address LAN reachability through a bounded worker; no ADB, controls or photo reads. [Deployed status-only scope and address limitations](picture-frame-health.md) |
 | `unmonitored` | Explicit coverage gap; never healthy by omission |
 

@@ -205,6 +205,58 @@ class WorkerTests(unittest.TestCase):
             path.chmod(0o644)
             with self.assertRaises(ValueError): health.probe_heartbeat(row, 110)
 
+    def test_owner_pause_marker_makes_stopped_heartbeat_neutral(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path, marker = Path(tmp) / 'state.json', Path(tmp) / 'paused.json'
+            row = entry('keyboard-watcher', 'heartbeat', path=str(path), timestampKey='heartbeat',
+                        faultKey='fault', maxAge=30, pauseMarker=str(marker))
+            reg = registry(row)
+            def save(target, value, mode=0o600):
+                target.write_text(json.dumps(value)); target.chmod(mode)
+            save(path, {'heartbeat': 100, 'fault': None})
+            # No marker / unpaused / unsafe or malformed marker: normal alerting.
+            self.assertEqual(health.probe_heartbeat(row, 131), (False, 'heartbeat_expired'))
+            save(marker, {'version': 1, 'paused': False})
+            self.assertEqual(health.probe_heartbeat(row, 131), (False, 'heartbeat_expired'))
+            save(marker, {'version': 1, 'paused': True}, 0o644)
+            self.assertEqual(health.probe_heartbeat(row, 131), (False, 'heartbeat_expired'))
+            save(marker, {'version': 2, 'paused': True})
+            self.assertEqual(health.probe_heartbeat(row, 131), (False, 'heartbeat_expired'))
+            # Valid pause: expired, faulted or missing heartbeat reports paused.
+            save(marker, {'version': 1, 'paused': True})
+            self.assertEqual(health.probe_heartbeat(row, 131), (False, 'paused'))
+            save(path, {'heartbeat': 100, 'fault': 'stale'})
+            self.assertEqual(health.probe_heartbeat(row, 110), (False, 'paused'))
+            path.unlink()
+            self.assertEqual(health.probe_heartbeat(row, 110), (False, 'paused'))
+            # A fresh heartbeat always wins over a leftover marker.
+            save(path, {'heartbeat': 100, 'fault': None})
+            self.assertEqual(health.probe_heartbeat(row, 110), (True, None))
+            # Projection: neutral, no incident, failures not accumulated.
+            clock = [131.0]
+            worker = health.ProbeWorker(reg, wall=lambda: clock[0])
+            worker.tick(); worker.tick()
+            snap = worker.snapshot()['keyboard-watcher']
+            self.assertEqual((snap['reason'], snap['consecutiveFailures']), ('paused', 0))
+            d = health.project(reg, {}, {}, {}, worker.snapshot())
+            device = d['devices'][0]
+            self.assertEqual((device['coverage'], device['state'], device['reason']),
+                             ('unmonitored', 'unknown', 'paused'))
+            self.assertEqual(health.incident_observations(d), {})
+            # Resume: marker cleared and heartbeat expired again is a real failure.
+            save(marker, {'version': 1, 'paused': False})
+            worker.tick()
+            d = health.project(reg, {}, {}, {}, worker.snapshot())
+            self.assertEqual(d['devices'][0]['reason'], 'heartbeat_expired')
+            self.assertEqual(health.incident_observations(d), {'devices/keyboard-watcher': False})
+
+    def test_pause_marker_only_valid_for_heartbeat(self):
+        with self.assertRaises(ValueError):
+            registry(entry(host='192.168.1.2', port=443, pauseMarker='/tmp/paused.json'))
+        with self.assertRaises(ValueError):
+            registry(entry('w', 'heartbeat', path='/tmp/s.json', timestampKey='heartbeat',
+                           faultKey='fault', maxAge=30, pauseMarker='relative.json'))
+
     def test_probe_failure_sanitized(self):
         reg = registry(entry(host='192.168.1.2', port=443))
         def explode(row): raise ValueError('private secret')

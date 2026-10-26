@@ -95,6 +95,31 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(self.actions().count('bootstrap'), 1)
         self.assertNotIn('kickstart', self.actions())
 
+    def pause_marker(self):
+        return json.loads((self.runtime / control.PAUSE_MARKER).read_text())
+
+    def test_disable_marks_paused_before_stop_and_enable_clears_after_start(self):
+        seen = []
+        original = self.launchd.run
+        def run(argv, **kwargs):
+            if argv[1] == 'bootout':
+                seen.append(self.pause_marker()['paused'])
+            return original(argv, **kwargs)
+        with patch.object(control.subprocess, 'run', side_effect=run):
+            control.control(False)
+        self.assertEqual(seen, [True])
+        self.assertEqual(self.pause_marker(), {'version': 1, 'paused': True})
+        self.assertEqual((self.runtime / control.PAUSE_MARKER).stat().st_mode & 0o777, 0o600)
+        control.control(True)
+        self.assertEqual(self.pause_marker(), {'version': 1, 'paused': False})
+
+    def test_failed_enable_stays_paused(self):
+        control.control(False)
+        self.launchd.fail = 'bootstrap'
+        with self.assertRaises(control.ControlError):
+            control.control(True)
+        self.assertTrue(self.pause_marker()['paused'])
+
     def test_legacy_boolean_disable_flags(self):
         self.launchd.legacy_flags = True
         self.assertEqual(control.control(False), 'stopped')

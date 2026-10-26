@@ -108,7 +108,11 @@ def evaluate(payload, *, now: float) -> str | None:
                 source = timestamp(row.get("lastAttemptAt") if row.get("lastAttemptAt") is not None
                                    else row.get("lastSuccessAt"))
                 limit = row.get("freshnessLimitSeconds")
-                if (row.get("coverage") == "unmonitored" or row.get("state") != "available"
+                # Owner-paused process (e.g. Computer presence disabled): neutral,
+                # but its pause evidence must still be current.
+                paused = (row.get("coverage") == "unmonitored" and row.get("state") == "unknown"
+                          and row.get("reason") == "paused" and row.get("scope") == "process_heartbeat")
+                if (((row.get("coverage") == "unmonitored" or row.get("state") != "available") and not paused)
                         or source is None or not number(limit) or limit <= 0
                         or not 0 <= now - source <= limit):
                     bad.append(LABELS.get(key, "device check"))

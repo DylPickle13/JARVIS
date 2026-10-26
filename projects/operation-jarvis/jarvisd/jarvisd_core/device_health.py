@@ -44,7 +44,7 @@ def validate(value):
         raise ValueError('Invalid device monitoring inventory')
     seen = set()
     for row in devices:
-        if type(row) is not dict or not {'id', 'name', 'kind', 'expectation'} <= set(row) or set(row) - {'id', 'name', 'kind', 'expectation', 'selector', 'host', 'port', 'vendorID', 'productID', 'dependsOn', 'path', 'timestampKey', 'maxAge', 'faultKey'}:
+        if type(row) is not dict or not {'id', 'name', 'kind', 'expectation'} <= set(row) or set(row) - {'id', 'name', 'kind', 'expectation', 'selector', 'host', 'port', 'vendorID', 'productID', 'dependsOn', 'path', 'timestampKey', 'maxAge', 'faultKey', 'pauseMarker'}:
             raise ValueError('Invalid device entry')
         key = row['id']
         if type(key) is not str or not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', key) or key in seen:
@@ -56,6 +56,11 @@ def validate(value):
         if type(kind) is not str or kind not in KINDS or row['expectation'] not in ('always', 'optional'):
             raise ValueError('Invalid device check')
         fields = set(row) - {'id', 'name', 'kind', 'expectation', 'dependsOn'}
+        if 'pauseMarker' in row:
+            # Owner lifecycle marker: a deliberately stopped process is paused, not failed.
+            if kind != 'heartbeat' or type(row['pauseMarker']) is not str or not Path(row['pauseMarker']).is_absolute():
+                raise ValueError('Invalid pause marker')
+            fields.discard('pauseMarker')
         expected = {'host', 'port'} if kind == 'tcp' else {'vendorID', 'productID'} if kind == 'usb' else {'path', 'timestampKey', 'maxAge', 'faultKey'} if kind == 'heartbeat' else set() if kind in ('unmonitored', 'frame') else {'selector'}
         if fields != expected:
             raise ValueError('Invalid check configuration')
@@ -177,7 +182,42 @@ def usb_inventory():
     return found
 
 
+def heartbeat_paused(row):
+    """True only for a valid owner-only marker saying the owner paused the process.
+
+    Any missing, malformed or unsafe marker fails toward normal alerting.
+    """
+    if 'pauseMarker' not in row:
+        return False
+    try:
+        fd = os.open(row['pauseMarker'], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd) as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+                return False
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            return False
+        value = json.loads(raw)
+    except Exception:
+        return False
+    return type(value) is dict and value.get('version') == 1 and value.get('paused') is True
+
+
 def probe_heartbeat(row, now):
+    """A fresh heartbeat always wins; otherwise an owner pause reports paused."""
+    try:
+        result = _probe_heartbeat(row, now)
+    except Exception:
+        if heartbeat_paused(row):
+            return False, 'paused'
+        raise
+    if result != (True, None) and heartbeat_paused(row):
+        return False, 'paused'
+    return result
+
+
+def _probe_heartbeat(row, now):
     fd = os.open(row['path'], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd) as stream:
         info = os.fstat(stream.fileno())
@@ -244,7 +284,8 @@ class ProbeWorker:
                     'reason': reason, 'tick': tick, 'lastAttemptAt': stamp(now),
                     'lastSuccessAt': stamp(now) if ok is True else old.get('lastSuccessAt'),
                     'consecutiveFailures': (0 if ok is True else old.get('consecutiveFailures', 0)
-                        if kind == 'frame' and ok is None else old.get('consecutiveFailures', 0) + 1)}
+                        if (kind == 'frame' and ok is None) or reason == 'paused'
+                        else old.get('consecutiveFailures', 0) + 1)}
 
     def snapshot(self):
         with self._lock:
@@ -326,6 +367,9 @@ def project(registry, state, security, omlx, probes, *, enabled=True, security_a
                     row.update(reason='observation_expired')
                 elif item.get('ok') is True or item.get('availability') == 'available':
                     row.update(state='available', reason='current')
+                elif kind == 'heartbeat' and item.get('reason') == 'paused':
+                    # Deliberate owner pause: neutral, no incident, never "available".
+                    row.update(coverage='unmonitored', state='unknown', reason='paused')
                 elif kind == 'frame' and item.get('ok') is None:
                     from .frame_health import UNKNOWN_REASONS
                     reason = item.get('reason')

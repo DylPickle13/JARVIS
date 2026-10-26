@@ -105,6 +105,19 @@ class HealthCardTests(unittest.TestCase):
         value["deviceHealth"]["devices"].append({"id": "headset", "state": "unknown", "expectation": "optional"})
         self.assertIsNotNone(card.evaluate(value, now=NOW))
 
+    def test_owner_paused_heartbeat_is_neutral_only_while_current(self):
+        value = healthy()
+        row = next(r for r in value["deviceHealth"]["devices"] if r["id"] == "keyboard-watcher")
+        row.update(state="unknown", coverage="unmonitored", reason="paused", scope="process_heartbeat")
+        self.assertIsNone(card.evaluate(value, now=NOW))
+        row["lastAttemptAt"] = stamp(NOW - 500)
+        self.assertIsNotNone(card.evaluate(value, now=NOW))
+        row["lastAttemptAt"] = stamp(NOW - 2)
+        for field, bad in (("reason", "heartbeat_expired"), ("scope", "usb_attachment"), ("state", "unavailable")):
+            broken = deepcopy(value)
+            next(r for r in broken["deviceHealth"]["devices"] if r["id"] == "keyboard-watcher")[field] = bad
+            self.assertIsNotNone(card.evaluate(broken, now=NOW))
+
     def test_incomplete_malformed_unsupported_coverage_never_green(self):
         for replacement in (None, {}, {"version": True}, {"version": 2},
                             {"version": 1, "scope": "device_check_coverage", "devices": []}):
