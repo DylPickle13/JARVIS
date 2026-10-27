@@ -24,6 +24,11 @@ class ParallelWatchTests(unittest.TestCase):
         self.store.save('led-config.json', {'enabled': True})
         self.keyboard, self.mouse, self.display = Mock(), Mock(), Mock()
         self.led = Mock(return_value=True)
+        # Controller behaviour under an already-confirmed arrival; the two-check
+        # gate itself is covered by test_watch.NearbyGateTests.
+        gate = patch('watch.nearby_confirmed', return_value=True)
+        gate.start()
+        self.addCleanup(gate.stop)
 
     def step(self, at=100, mode='nearby', **kwargs):
         defaults = dict(now=lambda: at, get_presence=lambda: presence(mode),

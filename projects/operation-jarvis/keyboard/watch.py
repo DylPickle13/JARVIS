@@ -26,6 +26,7 @@ HEALTH_AGE = 30  # Includes bounded presence + HID calls; not presence freshness
 QUEUE_LIMIT = 64
 STARTUP_GRACE = 30
 FAILURE_DELAY = 60
+NEARBY_GAP = 15  # Two distinct nearby checks must be this close to confirm arrival.
 COMPONENTS = {'keyboard', 'mouse', 'display', 'led', 'watcher', 'storage'}
 
 
@@ -170,6 +171,22 @@ def snapshot(store):
     return value
 
 
+def nearby_confirmed(store, location, at):
+    """Owner-requested two-check arrival rule; away and failures pass through unchanged.
+
+    A first nearby reading (after away, unknown, a gap or watcher start) holds every
+    controller untouched for that pass. Corrupt gate state fails closed to one hold.
+    """
+    gate = store.load('presence-gate.json', None)
+    valid = (type(gate) is dict and set(gate) == {'version', 'last', 'at'}
+             and gate['version'] == 1 and gate['last'] in (None, 'nearby', 'away')
+             and cycle.finite(gate['at']))
+    confirmed = (location != 'nearby' or (
+        valid and gate['last'] == 'nearby' and 0 < at - gate['at'] <= NEARBY_GAP))
+    store.save('presence-gate.json', {'version': 1, 'last': location, 'at': at})
+    return confirmed
+
+
 def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.send,
          mouse_apply=None, display_apply=None, led_apply=None, executor=None,
          keyboard_reconcile=None, mouse_reconcile=None, led_observe=None, display_observe=None):
@@ -226,6 +243,18 @@ def step(store, *, now=time.time, get_presence=cycle.read_presence, apply=cycle.
                 diagnosed = True
             raise
         return payload
+
+    try:
+        location = cycle.basement(shared_presence())
+    except cycle.CycleError:
+        location = None  # Controllers still observe and latch the shared failure.
+    current = now()
+    if not cycle.finite(current):
+        raise cycle.CycleError('state')
+    if not nearby_confirmed(store, location, current):
+        value['heartbeat'] = current  # Healthy hold: no controller or arrival work.
+        store.save('watcher.json', value)
+        return
 
     runners = (
         lambda: cycle.run_once(store, now=now, get_presence=shared_presence,

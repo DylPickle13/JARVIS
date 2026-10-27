@@ -123,6 +123,11 @@ class SharedWatcherTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.store = cycle.Store(Path(self.temp.name) / 'runtime')
+        # Controller behaviour under an already-confirmed arrival; the two-check
+        # gate itself is covered by test_watch.NearbyGateTests.
+        gate = patch('watch.nearby_confirmed', return_value=True)
+        gate.start()
+        self.addCleanup(gate.stop)
 
     def test_one_presence_fetch_for_two_devices_and_mouse_ignores_keyboard_fault(self):
         fetch = Mock(return_value=presence())

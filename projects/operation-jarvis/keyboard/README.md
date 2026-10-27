@@ -20,7 +20,7 @@ The existing lighting protocol and presets are preserved. The CLI now supports a
 
 Healthy runs are silent. The first failure produces one error, continuing failures stay silent, and confirmed recovery produces one success result. Private persisted state survives process restarts; uncertain write outcomes block further writes pending acknowledgment.
 
-**Both away → white ripples:** the first fresh away report applies `ripples`, `#FFFFFF`, highest brightness and medium speed once; the mouse switches off. **Either nearby → rotation resumes** on the first fresh nearby report. The collector's 10-second nearby hold is unchanged; the extra keyboard debounce is removed. Unknown/stale leaves lighting unchanged. The former black-RGB away behavior has been superseded. See [automation behavior, controls and limitations](docs/AUTOMATION.md).
+**Both away → white ripples:** the first fresh away report applies `ripples`, `#FFFFFF`, highest brightness and medium speed once; the mouse switches off. **Either nearby → rotation resumes** after two consecutive fresh nearby checks (watcher-wide arrival rule). The collector's 10-second nearby hold is unchanged; the extra keyboard debounce is removed. Unknown/stale leaves lighting unchanged. The former black-RGB away behavior has been superseded. See [automation behavior, controls and limitations](docs/AUTOMATION.md).
 
 ## Custom Karabiner bridge
 

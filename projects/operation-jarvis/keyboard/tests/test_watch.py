@@ -119,6 +119,11 @@ class WatchTests(unittest.TestCase):
         self.mouse_patch = patch('mouse_cycle.send')
         self.mouse_sender = self.mouse_patch.start()
         self.addCleanup(self.mouse_patch.stop)
+        # Controller behaviour under an already-confirmed arrival; the two-check
+        # gate itself is covered by test_watch.NearbyGateTests.
+        gate = patch('watch.nearby_confirmed', return_value=True)
+        gate.start()
+        self.addCleanup(gate.stop)
 
     def relay(self, now):
         output = io.StringIO()
@@ -375,3 +380,61 @@ class WatchTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NearbyGateTests(unittest.TestCase):
+    """Owner-requested rule: arrival needs two distinct nearby checks; away is unchanged."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.store = cycle.Store(Path(self.temp.name) / 'runtime')
+        self.store.save('display-config.json', {'enabled': True})
+        self.store.save('display-state.json', dict(display_cycle.initial(), mode='away'))
+        self.keyboard, self.mouse, self.display = Mock(), Mock(), Mock()
+
+    def step(self, at, mode='nearby', get_presence=None):
+        watch.step(self.store, now=lambda: at, get_presence=get_presence or (lambda: presence(mode)),
+                   apply=self.keyboard, mouse_apply=self.mouse, display_apply=self.display,
+                   display_observe=Mock(return_value=None))
+
+    def test_first_nearby_holds_everything_then_second_applies(self):
+        self.step(100)
+        for device in (self.keyboard, self.mouse, self.display):
+            device.assert_not_called()
+        self.assertEqual(self.store.load('watcher.json', {})['heartbeat'], 100)
+        self.step(103)
+        self.keyboard.assert_called_once()
+        self.mouse.assert_called_once_with('steady')
+        self.display.assert_called_once_with('wake')
+
+    def test_away_applies_on_first_check_and_resets_confirmation(self):
+        self.step(100); self.step(103)
+        self.keyboard.reset_mock(); self.mouse.reset_mock()
+        self.step(106, 'away')
+        self.mouse.assert_called_once_with('off')
+        self.assertEqual(self.keyboard.call_args[0][0]['effect'], 'ripples')
+        self.mouse.reset_mock()
+        self.step(109)
+        self.mouse.assert_not_called()  # A lone nearby blip after away is held.
+        self.step(112)
+        self.mouse.assert_called_once_with('steady')
+
+    def test_failed_read_or_gap_breaks_confirmation(self):
+        def broken():
+            raise cycle.CycleError('presence')
+        self.step(100)
+        self.step(103, get_presence=broken)
+        self.step(106)
+        self.mouse.assert_not_called()
+        self.step(106 + watch.NEARBY_GAP + 1)
+        self.mouse.assert_not_called()
+        self.step(106 + watch.NEARBY_GAP + 4)
+        self.mouse.assert_called_once_with('steady')
+
+    def test_corrupt_gate_state_fails_closed_to_one_hold(self):
+        self.store.save('presence-gate.json', {'last': 'nearby'})
+        self.step(100)
+        self.mouse.assert_not_called()
+        self.step(103)
+        self.mouse.assert_called_once_with('steady')
