@@ -99,6 +99,14 @@ starts empty: no unknown nearby device is automatically attributed to Dylan.
 
 - States: `nearby`, `away` (from this sensor, not necessarily away from home), `unknown`.
 - EWMA smoothing and per-device enter/exit thresholds; either device qualifies.
+- Arrival confirmation (owner-requested): a device not already within its nearby hold
+  must stay at/above `enterRssi` across readings at least 3 seconds apart, with no weak
+  reading or >15-second gap between, before it reports nearby. A single strong
+  advertisement no longer starts the 10-second hold. Exit hysteresis (`exitRssi`)
+  applies only once confirmed. Adds roughly 3 seconds to genuine arrivals.
+- Private diagnostics: `transitions.jsonl` (0600, last 1000 lines, local only) records
+  state/source changes with smoothed RSSI by alias, plus `confirmed` and
+  `rejected-spike` events. No identifiers; never returned by the endpoint or tools.
 - Retain nearby for 10 seconds after the last qualifying reading. Both must expire
   before reporting away. The three-second publish interval adds up to three seconds
   of reporting latency; brief advertising gaps may now cause false departures.

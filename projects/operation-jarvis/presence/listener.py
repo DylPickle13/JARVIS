@@ -12,7 +12,26 @@ import time
 import uuid
 
 ROOT = Path.home() / "Library/Application Support/JARVIS/presence"
-from policy import Presence, atomic_json
+from policy import Presence, append_log, atomic_json
+
+LOG = ROOT / "transitions.jsonl"
+
+
+def log_changes(policy, snapshot, previous, path=LOG):
+    """Record state/source changes and arrival-confirmation events; never published."""
+    events, policy.events = policy.events, []
+    key = (snapshot['state'], tuple(snapshot['sources']))
+    entries = [{'at': round(snapshot['updatedAt'], 1), 'kind': e['kind'], 'source': e['source'],
+                'rssi': e['rssi']} for e in events]
+    if key != previous:
+        entries.append({'at': round(snapshot['updatedAt'], 1), 'kind': 'state', 'state': key[0],
+                        'sources': list(key[1]), 'rssi': policy.rssi()})
+    for entry in entries:
+        try:
+            append_log(path, entry)
+        except (OSError, ValueError):
+            break  # Diagnostics must never stop presence publishing.
+    return key
 
 
 def load_devices(path):
@@ -97,8 +116,11 @@ async def run(discover=False):
                 await asyncio.sleep(30)
                 atomic_json(ROOT / "candidates.json", candidates)
             else:
+                previous = None
                 while True:
-                    atomic_json(ROOT / "state.json", policy.snapshot(time.monotonic()))
+                    snapshot = policy.snapshot(time.monotonic())
+                    atomic_json(ROOT / "state.json", snapshot)
+                    previous = log_changes(policy, snapshot, previous)
                     await asyncio.sleep(3)
     finally:
         if not discover:

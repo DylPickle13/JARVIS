@@ -18,12 +18,61 @@ class Tests(unittest.TestCase):
         self.assertEqual(p.snapshot(0)['state'], 'unknown')
         p.observe('other', -30, 1)
         self.assertEqual(p.snapshot(1)['state'], 'unknown')
+        p.observe('watch', -60, 0)
         p.observe('watch', -60, 2)
+        self.assertEqual(p.snapshot(2)['state'], 'unknown')  # Not yet confirmed.
+        p.observe('watch', -60, 3)
+        p.observe('iphone', -60, 6)
         p.observe('iphone', -60, 9)
         self.assertEqual(p.snapshot(11)['sources'], ['iphone', 'watch'])
-        self.assertEqual(p.snapshot(12)['sources'], ['iphone'])
+        self.assertEqual(p.snapshot(13)['sources'], ['iphone'])
         self.assertEqual(p.snapshot(18.9)['state'], 'nearby')
         self.assertEqual(p.snapshot(19)['state'], 'away')
+
+    def test_single_strong_spike_never_reports_nearby(self):
+        p = Presence({'watch': {'uuid': 'WATCH', 'enterRssi': -65, 'exitRssi': -70}}, started=0)
+        p.observe('watch', -50, 20)
+        p.observe('watch', -50, 21)  # Still under three seconds.
+        p.observe('watch', -90, 22)
+        p.observe('watch', -90, 22.5)
+        for now in (21, 22, 25, 31):
+            self.assertEqual(p.snapshot(now)['state'], 'away')
+        self.assertEqual([e['kind'] for e in p.events], ['rejected-spike'])
+
+    def test_weak_reading_or_gap_restarts_confirmation(self):
+        p = Presence({'watch': {'uuid': 'WATCH', 'enterRssi': -65, 'exitRssi': -70}}, started=0)
+        p.observe('watch', -50, 20)
+        p.observe('watch', -100, 21)
+        p.observe('watch', -40, 22)
+        self.assertEqual(p.snapshot(24)['state'], 'away')
+        p.observe('watch', -40, 40)  # Gap beyond CONFIRM_GAP restarts.
+        self.assertEqual(p.snapshot(41)['state'], 'away')
+        p.observe('watch', -40, 43)
+        self.assertEqual(p.snapshot(43)['state'], 'nearby')
+
+    def test_confirmed_device_keeps_exit_hysteresis_and_hold(self):
+        p = Presence({'watch': {'uuid': 'WATCH', 'enterRssi': -65, 'exitRssi': -70}}, started=0)
+        for t in (20, 23):
+            p.observe('watch', -60, t)
+        p.observe('watch', -68, 30)  # Between thresholds: stays qualifying once confirmed.
+        self.assertEqual(p.snapshot(39.9)['state'], 'nearby')
+        self.assertEqual(p.snapshot(40)['state'], 'away')
+
+    def test_transition_log_is_private_bounded_and_rssi_local_only(self):
+        import listener
+        p = Presence({'watch': {'uuid': 'WATCH', 'enterRssi': -65, 'exitRssi': -70}}, started=0)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'transitions.jsonl'
+            for t in (20, 23):
+                p.observe('watch', -60, t)
+            key = listener.log_changes(p, p.snapshot(23), None, path)
+            self.assertEqual(listener.log_changes(p, p.snapshot(24), key, path), key)
+            rows = [json.loads(line) for line in path.read_text().splitlines()]
+            self.assertEqual([r['kind'] for r in rows], ['confirmed', 'state'])
+            self.assertEqual(rows[1]['sources'], ['watch'])
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertNotIn('WATCH', path.read_text())
+            self.assertNotIn('rssi', p.snapshot(24))
 
     def test_no_enrollment_never_away(self):
         self.assertEqual(Presence({}, started=0).snapshot(999)['state'], 'unknown')
