@@ -479,7 +479,8 @@ class MinecraftTests(unittest.TestCase):
             config.write_text(json.dumps({'source': str(self.source), 'state_dir': str(self.state),
                               'repository': str(self.base / 'repository'), 'password_file': str(password),
                               'rclone_config': str(self.base / 'rclone.conf'), 'host': 'fixture',
-                              'restic': shutil.which('restic'), 'minecraft': self.settings}))
+                              'restic': shutil.which('restic'), 'minecraft': self.settings,
+                              'pi_sessions': None}))
             backup = b.Backup(config, 120)
             with backup.locked(), patch.object(MinecraftCheckpoint, 'running_info', return_value=None):
                 backup.run(['init'])

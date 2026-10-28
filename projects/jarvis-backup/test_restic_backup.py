@@ -39,12 +39,16 @@ class BackupTests(unittest.TestCase):
         self.db.execute('CREATE TABLE records(value TEXT)')
         self.db.execute("INSERT INTO records VALUES ('committed-in-wal')")
         self.db.commit()
+        self.sessions = self.base / 'pi-sessions-live'
+        (self.sessions / '--fixture--').mkdir(parents=True)
+        (self.sessions / '--fixture--/2026-01-01_old.jsonl').write_text('{"type":"session"}\n')
         self.password = self.base / 'password'
         self.password.write_text('test-only-password')
         self.password.chmod(0o600)
         self.config = self.base / 'config.json'
         self.config.write_text(json.dumps({
             'source': str(self.root), 'state_dir': str(self.base / 'state'), 'minecraft': None,
+            'pi_sessions': str(self.sessions),
             'repository': str(self.base / 'repository'),
             'password_file': str(self.password), 'rclone_config': str(self.base / 'rclone.conf'),
             'host': 'test-host', 'restic': shutil.which('restic') or '/opt/homebrew/bin/restic'
@@ -257,6 +261,44 @@ class BackupTests(unittest.TestCase):
         self.assertNotIn('saved and verified', output.getvalue())
         self.assertNotIn('Drive backup job: completed', output.getvalue())
 
+    def test_mirror_files_skips_unchanged_and_mirrors_deletions(self):
+        target = self.base / 'mirror'
+        keep = self.sessions / '--fixture--/2026-01-01_old.jsonl'
+        gone = self.sessions / '--fixture--/2026-01-02_gone.jsonl'
+        gone.write_text('{}\n')
+        (self.sessions / 'link.jsonl').symlink_to(keep)
+        self.assertEqual(b.mirror_files(self.sessions, target)[0], 2)
+        self.assertFalse((target / 'link.jsonl').exists())
+        inode = (target / '--fixture--/2026-01-01_old.jsonl').stat().st_ino
+        gone.unlink()
+        with keep.open('a') as handle:
+            handle.write('{"appended":true}\n')
+        os.utime(keep, ns=(time.time_ns(), time.time_ns() + 10**9))
+        b.mirror_files(self.sessions, target)
+        self.assertFalse((target / '--fixture--/2026-01-02_gone.jsonl').exists())
+        self.assertEqual((target / '--fixture--/2026-01-01_old.jsonl').read_text(), keep.read_text())
+        unchanged_inode = (target / '--fixture--/2026-01-01_old.jsonl').stat().st_ino
+        b.mirror_files(self.sessions, target)
+        self.assertEqual((target / '--fixture--/2026-01-01_old.jsonl').stat().st_ino, unchanged_inode)
+        self.assertNotEqual(inode, unchanged_inode)
+        self.assertEqual(keep.read_text().count('\n'), 2)
+
+    def test_clone_or_copy_preserves_content_and_mtime(self):
+        src = self.sessions / '--fixture--/2026-01-01_old.jsonl'
+        dst = self.base / 'cloned.jsonl'
+        method = b.clone_or_copy(src, dst)
+        self.assertIn(method, ('clone', 'copy'))
+        self.assertEqual(dst.read_bytes(), src.read_bytes())
+        self.assertEqual(dst.stat().st_mtime_ns, src.stat().st_mtime_ns)
+        # Copy-on-write: changing the clone must never alter the source.
+        dst.write_text('changed\n')
+        self.assertEqual(src.read_text(), '{"type":"session"}\n')
+
+    def test_missing_pi_sessions_folder_rejected(self):
+        shutil.rmtree(self.sessions)
+        with self.assertRaisesRegex(RuntimeError, 'Pi sessions folder missing'):
+            b.Backup(self.config, 120).validate_source()
+
     @unittest.skipUnless(shutil.which('restic'), 'restic required for integration test')
     def test_local_repository_end_to_end(self):
         backup = b.Backup(self.config, 120)
@@ -286,6 +328,8 @@ class BackupTests(unittest.TestCase):
             self.assertIn(str(source), listing)
             self.assertNotIn(str(self.dbpath), listing)
             self.assertIn(str(backup.stage / 'projects/operation-jarvis/data/scheduler/scheduler.sqlite'), listing)
+            self.assertIn(str(backup.pi_sessions_stage / '--fixture--/2026-01-01_old.jsonl'), listing)
+            self.assertTrue((self.sessions / '--fixture--/2026-01-01_old.jsonl').exists())
             backup.maintain(dry_run=True)
             self.assertEqual(len(backup.snapshots()), 2)
             backup.maintain()

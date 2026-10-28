@@ -26,6 +26,7 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_CONFIG = Path.home() / '.config/jarvis-backup/config.json'
 DEFAULT_TIMEOUT_SECONDS = 60 * 60
 TAG = 'jarvis-recovery-v1'
+DEFAULT_PI_SESSIONS = '~/.pi/agent/sessions'
 SQLITE_HEADER = b'SQLite format 3\x00'
 
 
@@ -122,6 +123,63 @@ def snapshot_database(source, target, deadline):
         temp.unlink(missing_ok=True)
 
 
+def clone_or_copy(src, dst):
+    """APFS copy-on-write clone (shares blocks, ~no extra space); plain copy otherwise."""
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.clonefile(os.fsencode(src), os.fsencode(dst), 0) == 0:
+            shutil.copystat(src, dst)
+            return 'clone'
+    except (AttributeError, OSError):
+        pass
+    shutil.copy2(src, dst)
+    return 'copy'
+
+
+def mirror_files(source, target):
+    """Copy regular files into target, skipping unchanged ones; never modifies source.
+
+    Unchanged copies keep their inode/mtime so Restic can skip rereading them.
+    """
+    target.mkdir(parents=True, exist_ok=True, mode=0o700)
+    seen, count, total = set(), 0, 0
+    for dirpath, dirnames, filenames in os.walk(source):
+        here = Path(dirpath)
+        dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
+        for name in filenames:
+            src = here / name
+            st = src.lstat()
+            if not stat.S_ISREG(st.st_mode):
+                continue
+            rel = src.relative_to(source)
+            dst = target / rel
+            seen.add(rel)
+            count += 1
+            total += st.st_size
+            try:
+                dst_st = dst.lstat()
+                if dst_st.st_size == st.st_size and dst_st.st_mtime_ns == st.st_mtime_ns:
+                    continue
+            except FileNotFoundError:
+                pass
+            dst.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            temp = dst.with_name(f'.{dst.name}.tmp')
+            temp.unlink(missing_ok=True)
+            clone_or_copy(src, temp)
+            temp.replace(dst)
+    # Mirror deletions in staging only; older snapshots retain removed sessions.
+    for dirpath, dirnames, filenames in os.walk(target, topdown=False):
+        here = Path(dirpath)
+        for name in filenames:
+            path = here / name
+            if path.relative_to(target) not in seen:
+                path.unlink()
+        if here != target and not any(here.iterdir()):
+            here.rmdir()
+    return count, total
+
+
 class Backup:
     def __init__(self, config_path, timeout):
         self.config = json.loads(Path(config_path).expanduser().read_text())
@@ -136,6 +194,10 @@ class Backup:
         # Explicit null is only for installations/fixtures without Minecraft.
         self.minecraft_settings = self.config.get('minecraft', self.policy.get('minecraft'))
         self.minecraft_stage = self.state / 'minecraft'
+        # Private Pi transcripts live outside the checkout; explicit null disables.
+        sessions = self.config.get('pi_sessions', DEFAULT_PI_SESSIONS)
+        self.pi_sessions = Path(sessions).expanduser().resolve() if sessions else None
+        self.pi_sessions_stage = self.state / 'pi-sessions'
         self.deadline = time.monotonic() + timeout
         self.lock_fd = None
         self.env = os.environ.copy()
@@ -221,6 +283,8 @@ class Backup:
             raise RuntimeError('Recovery password must not be inside backup source')
         if self.minecraft_settings:
             MinecraftCheckpoint(self.root, self.state, self.minecraft_settings, self.deadline).validate()
+        if self.pi_sessions and not self.pi_sessions.is_dir():
+            raise RuntimeError(f'Pi sessions folder missing: {self.pi_sessions}; refusing an incomplete backup')
 
     def plan(self):
         self.validate_source()
@@ -257,6 +321,17 @@ class Backup:
             omitted.extend([db, Path(str(db) + '-wal'), Path(str(db) + '-shm'), Path(str(db) + '-journal')])
         for rel in self.policy['restore_samples']:
             manifest['samples'].append({'relative_path': rel, 'sha256': digest(self.root / rel)})
+        if self.pi_sessions:
+            session_count, session_bytes = mirror_files(self.pi_sessions, self.pi_sessions_stage)
+            staged = sorted(p for p in self.pi_sessions_stage.rglob('*.jsonl') if p.is_file())
+            # Oldest transcript is effectively immutable: a stable restore sample.
+            sample = staged[0] if staged else None
+            manifest['pi_sessions'] = {
+                'source': str(self.pi_sessions), 'stage': str(self.pi_sessions_stage),
+                'files': session_count, 'bytes': session_bytes,
+                'samples': [{'relative_path': sample.relative_to(self.pi_sessions_stage).as_posix(),
+                             'sha256': digest(sample)}] if sample else []}
+            print(f'Pi sessions staged: {session_count:,} files ({human_size(session_bytes)}).', flush=True)
         save_json(self.stage / 'manifest.json', manifest)
         excludes = self.state / 'excludes.txt'
         excludes.write_text('\n'.join(literal_pattern(p) for p in omitted) + '\n')
@@ -266,6 +341,8 @@ class Backup:
         sources = [str(self.root), str(self.stage)]
         if minecraft:
             sources.append(str(self.minecraft_stage))
+        if self.pi_sessions:
+            sources.append(str(self.pi_sessions_stage))
         output = self.run(['backup', '--json', '--host', self.config['host'], '--tag', TAG,
                            '--group-by', 'host,tags', '--exclude-file', str(excludes),
                            *sources], retries=3)
@@ -320,6 +397,15 @@ class Backup:
                     if rel.is_absolute() or '..' in rel.parts:
                         raise RuntimeError('Unsafe Minecraft restore sample path')
                     args.extend(['--include', str(stage / rel)])
+            sessions = snapshot_manifest.get('pi_sessions')
+            if sessions:
+                if Path(sessions['stage']) != self.pi_sessions_stage:
+                    raise RuntimeError('Unexpected Pi sessions staging path in restore manifest')
+                for item in sessions['samples']:
+                    rel = Path(item['relative_path'])
+                    if rel.is_absolute() or '..' in rel.parts:
+                        raise RuntimeError('Unsafe Pi session restore sample path')
+                    args.extend(['--include', str(self.pi_sessions_stage / rel)])
             self.run(args, retries=2)
             restored_stage = Path(tmp) / str(self.stage).lstrip('/')
             manifest = json.loads((restored_stage / 'manifest.json').read_text())
@@ -340,6 +426,11 @@ class Backup:
                     if digest(restored_minecraft / item['relative_path']) != item['sha256']:
                         raise RuntimeError('Restored Minecraft world/player/region checksum mismatch')
                 print(f'Minecraft restore checks passed: {len(minecraft["samples"])} world/player/region samples.', flush=True)
+            if sessions:
+                restored_sessions = Path(tmp) / str(self.pi_sessions_stage).lstrip('/')
+                for item in sessions['samples']:
+                    if digest(restored_sessions / item['relative_path']) != item['sha256']:
+                        raise RuntimeError('Restored Pi session checksum mismatch')
         self.record(last_restore_test_at=utcnow())
 
     def nightly(self):

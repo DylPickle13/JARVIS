@@ -53,6 +53,19 @@ macOS Keychain, external symlink targets, other machines and media libraries
 require separate coverage. Add an independent Time Machine/external-disk copy
 for protection against loss of the Drive account or destructive access.
 
+## Pi session transcripts
+
+The nightly job also backs up `~/.pi/agent/sessions` (config key `pi_sessions`;
+`null` disables). Each run mirrors regular files into private staging at
+`~/.local/state/jarvis-backup/pi-sessions/` as APFS copy-on-write clones
+(near-zero extra disk; plain copy fallback off APFS; unchanged files skipped and kept
+as-is so Restic does not reread them; files removed from the source are removed
+from staging only) and adds that folder as a Restic source. Live transcripts are
+never modified or deleted; removed sessions stay recoverable from older snapshots
+under normal retention. Restore verification checks the oldest transcript's
+checksum. A missing sessions folder fails the backup rather than silently
+skipping it.
+
 ## SQLite consistency
 
 Included `.sqlite`, `.sqlite3`, and `.db` files with SQLite headers are copied
@@ -132,7 +145,8 @@ passed in2m21s with both obsolete links absent. Added-data weekly rotating-quart
 maintenance timing remains unmeasured. Nightly samples are not full-world proof.
 
 The policy excludes local recovery/download copies, generated Paper bootstrap
-caches, logs and private Pi session transcripts **without deleting them**.
+caches and logs **without deleting them**. In-checkout Minecraft bot Pi sessions
+remain excluded.
 It keeps the DH SQLite database, worlds, plugins, security/Floodgate files,
 legacy recovery password, source/Git history, Java and private Node/Pi plus bot
 dependencies (explicit exceptions to the generic `node_modules` exclusion).
