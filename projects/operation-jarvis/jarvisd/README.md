@@ -1,8 +1,11 @@
-> **Single active release (2026-10-24 EDT):** `20261024T125911Z-barn-receipt-settle`
-> is the only installed jarvisd deployment. Daemon, watchdog (`resurrector.sh`),
-> frame health worker and the bundled read-only security reader (`security-reader/`)
-> all run from it; earlier releases were removed. It adds settlement of stale Barn
-> Door receipts (status only, never re-sent). Older release names below are history.
+> **Single active release (2026-10-27 EDT):** `20261025T210452Z-presence-pause-marker`
+> is the only release referenced by the daemon and watchdog plists. On 2026-10-27 the
+> owner-requested consolidation (`consolidate.py`, report `consolidation-report.json`
+> in that release) moved the daemon WorkingDirectory, `JARVISD_SECURITY_CLI`
+> (`security-reader/`, copied unchanged) and the watchdog (`resurrector.sh`,
+> byte-identical) off `20261024T125911Z-barn-receipt-settle`, which is now unreferenced
+> and retained only as rollback material. Scheduler runner, smart-actions CLI and the
+> interpreter intentionally remain live-repo paths. Older release names below are history.
 >
 > **Deployment checkpoint (2026-09-19):** `20260919T215836Z-room-session10`.
 > CLI/Pi device writes use authenticated loopback `/api/v1/local-control`;

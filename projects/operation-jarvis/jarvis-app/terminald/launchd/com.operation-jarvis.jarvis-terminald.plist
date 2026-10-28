@@ -7,7 +7,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/python3</string>
+    <string>/Users/dylanrapanan/Library/Application Support/JARVIS/runtime/services-py313/bin/python</string>
     <string>/Users/dylanrapanan/JARVIS/projects/operation-jarvis/jarvis-app/terminald/jarvis_terminald.py</string>
   </array>
 
