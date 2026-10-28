@@ -66,6 +66,26 @@ class MinecraftTests(unittest.TestCase):
                 self.assertFalse(self.checkpoint.marker.exists())
                 self.assertFalse(self.checkpoint.stage.exists())
 
+    def test_auto_host_follows_current_lan_ip_without_relaxing_security(self):
+        properties = self.root / 'server/server.properties'
+        original = properties.read_text()
+        settings = dict(self.settings, java_host='auto')
+        checkpoint = MinecraftCheckpoint(self.source, self.state, settings, time.monotonic() + 60)
+        with patch('minecraft_checkpoint.current_lan_ip', return_value='192.168.21.110'):
+            checkpoint.validate()
+            for value in ('192.168.21.198', '0.0.0.0', ''):
+                with self.subTest(value=value):
+                    properties.write_text(original.replace('server-ip=192.168.21.110', f'server-ip={value}'))
+                    with self.assertRaisesRegex(RuntimeError, 'server-ip: expected .*found'):
+                        checkpoint.validate()
+            properties.write_text(original.replace('enforce-whitelist=true', 'enforce-whitelist=false'))
+            with self.assertRaisesRegex(RuntimeError, 'enforce-whitelist: expected .*found'):
+                checkpoint.validate()
+        properties.write_text(original)
+        with patch('minecraft_checkpoint.current_lan_ip', return_value=None):
+            with self.assertRaisesRegex(RuntimeError, 'LAN address'):
+                checkpoint.validate()
+
     def test_lan_change_requires_explicit_matching_policy_without_relaxing_security(self):
         properties = self.root / 'server/server.properties'
         original = properties.read_text()

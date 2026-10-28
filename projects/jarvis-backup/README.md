@@ -83,12 +83,15 @@ links remain valid. This implementation lives in
 `projects/jarvis-backup/` without an old-folder symlink. Stored scheduler command
 paths were migrated in place; IDs, names, schedules and history were preserved.
 
-The policy pins the approved Java endpoint to `192.168.21.165:25565` and checks
-`server.properties` against it, including whitelist/security settings. A future
-LAN address migration must explicitly update `minecraft.java_host` in this
-policy (or an existing local Minecraft config override) after reviewing the
-server's actual listener identity. Never auto-accept a changed address, wildcard
-bind or security setting to make a failed job pass. Mismatch errors name the
+**2026-10-28:** `minecraft.java_host` is `"auto"`: the approved Java endpoint is
+this Mac's *current* LAN IPv4 (en0, then en1) on port 25565, because the
+owner-approved Paper login autostart (`bin/autostart.sh`) rewrites `server-ip`
+when DHCP moves the Mac. This replaced the literal pin (last `192.168.21.103`),
+which failed the 2026-10-28 run after the address moved. `server.properties` must
+still bind exactly that address — empty/`0.0.0.0`/any other host fails — and
+whitelist/online-mode/port checks are unchanged. A literal IP in `java_host`
+remains supported for a pinned setup. Never auto-accept a wildcard bind or
+changed security setting to make a failed job pass. Mismatch errors name the
 setting and expected/actual values; no credentials are included.
 
 Before a live backup, verify the Paper listener PID, executable, working

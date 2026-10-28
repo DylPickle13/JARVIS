@@ -20,6 +20,16 @@ def sha256(path):
     return h.hexdigest()
 
 
+def current_lan_ip():
+    """This Mac's LAN IPv4 (en0, then en1), matching bin/autostart.sh / router-forward.sh."""
+    for iface in ('en0', 'en1'):
+        result = subprocess.run(['ipconfig', 'getifaddr', iface], capture_output=True, text=True)
+        ip = result.stdout.strip()
+        if result.returncode == 0 and ip:
+            return ip
+    return None
+
+
 class MinecraftCheckpoint:
     def __init__(self, source, state, settings, deadline, lock_fd=None):
         self.source = Path(source).resolve()
@@ -51,8 +61,16 @@ class MinecraftCheckpoint:
         properties = dict(line.split('=', 1) for line in
                           (self.root / 'server/server.properties').read_text().splitlines()
                           if '=' in line and not line.startswith('#'))
+        java_host = self.settings['java_host']
+        if java_host == 'auto':
+            # The Paper autostart rewrites server-ip when DHCP moves the Mac, so the
+            # approved endpoint is this host's *current* LAN address: still LAN-bound,
+            # never empty/0.0.0.0/another host.
+            java_host = current_lan_ip()
+            if not java_host:
+                raise RuntimeError('Cannot determine this Mac\'s LAN address for the Minecraft endpoint check')
         expected = {'server-port': str(self.settings['java_port']),
-                    'server-ip': self.settings['java_host'], 'online-mode': 'false',
+                    'server-ip': java_host, 'online-mode': 'false',
                     'white-list': 'true', 'enforce-whitelist': 'true'}
         mismatches = [f'{key}: expected {value!r}, found {properties.get(key)!r}'
                       for key, value in expected.items() if properties.get(key) != value]
