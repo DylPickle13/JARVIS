@@ -9,7 +9,10 @@ both implementations. Migration keeps the existing Drive tarball untouched.
 - Implementation: `projects/jarvis-backup/`.
 - Source: `/Users/dylanrapanan/JARVIS` (whole checkout, not just projects).
 - Repository: `rclone:jarvis-drive:restic-mac-mini-64`.
-- Drive parent: [JARVIS Backups](https://drive.google.com/drive/folders/1L6arvVqmmmELCcnzMtkcxAgjwLIFuCAZ).
+- Drive parent: [JARVIS Backups](https://drive.google.com/drive/folders/1L6arvVqmmmELCcnzMtkcxAgjwLIFuCAZ)
+  (lives at `My Drive/Backups/JARVIS Backups`; both the rclone remote and the
+  rollback `drive_backup_projects.py` pin it by folder ID, so its location in
+  My Drive doesn't matter).
 - Local config: `~/.config/jarvis-backup/config.json`.
 - Dedicated rclone credentials: `~/.config/jarvis-backup/rclone.conf`.
 - Encryption password: `~/.config/jarvis-backup/restic-password`.

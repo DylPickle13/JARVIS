@@ -28,6 +28,10 @@ DEFAULT_JARVIS_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROJECTS_DIR = DEFAULT_JARVIS_ROOT / "projects"
 DEFAULT_BACKUP_NAME = "JARVIS-projects-backup.tar.gz"
 DEFAULT_DRIVE_FOLDER_NAME = "JARVIS Backups"
+# Pinned by ID (same folder the Restic rclone remote pins) so moving it inside My Drive
+# (e.g. into My Drive/Backups) doesn't make a rollback run create a new root folder.
+# Set DRIVE_BACKUP_FOLDER_ID="" to fall back to name lookup under --drive-parent-id.
+DEFAULT_DRIVE_FOLDER_ID = "1L6arvVqmmmELCcnzMtkcxAgjwLIFuCAZ"
 DEFAULT_LOCK_FILE = Path("/tmp/jarvis-projects-drive-backup.lock")
 
 
@@ -209,7 +213,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--projects-dir", default=os.environ.get("PROJECTS_DIR", str(DEFAULT_PROJECTS_DIR)))
     parser.add_argument("--backup-name", default=os.environ.get("DRIVE_BACKUP_NAME", DEFAULT_BACKUP_NAME))
     parser.add_argument("--drive-folder-name", default=os.environ.get("DRIVE_BACKUP_FOLDER_NAME", DEFAULT_DRIVE_FOLDER_NAME))
-    parser.add_argument("--drive-folder-id", default=os.environ.get("DRIVE_BACKUP_FOLDER_ID"))
+    parser.add_argument("--drive-folder-id", default=os.environ.get("DRIVE_BACKUP_FOLDER_ID", DEFAULT_DRIVE_FOLDER_ID))
     parser.add_argument("--drive-parent-id", default=os.environ.get("DRIVE_BACKUP_PARENT_ID", "root"))
     parser.add_argument("--tmp-dir", default=os.environ.get("BACKUP_TMPDIR"))
     parser.add_argument("--lock-file", default=os.environ.get("BACKUP_LOCK_FILE", str(DEFAULT_LOCK_FILE)))
