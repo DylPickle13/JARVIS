@@ -16,16 +16,24 @@ from phrase_banks import Bundle, catalogue, digest, encoded, read_private, wav_i
 from render_phrase_banks import sample_quality
 
 
-def build(source: Path, output: Path, proposal: Path):
+def build(source: Path, output: Path, proposals):
     old_raw = read_private(source / 'manifest.json')
     old = json.loads(old_raw)
     bundle = Bundle(source, digest(old_raw))
-    replacement = json.loads(proposal.read_text())
-    texts = replacement['phrases']
-    event = replacement['event']
-    if (event not in ('arrival', 'departure') or replacement['style'] != 'dry'
-            or len(texts) != 12 or len(set(texts)) != 12
-            or any(not isinstance(text, str) or not text.strip() for text in texts)):
+    if isinstance(proposals, Path):
+        proposals = [proposals]
+    replacements = {}
+    for proposal in proposals:
+        replacement = json.loads(proposal.read_text())
+        texts = replacement['phrases']
+        event = replacement['event']
+        if (event not in ('arrival', 'departure') or event in replacements
+                or replacement['style'] != 'dry'
+                or len(texts) != 12 or len(set(texts)) != 12
+                or any(not isinstance(text, str) or not text.strip() for text in texts)):
+            raise ValueError('invalid_announcement_proposal')
+        replacements[event] = iter(texts)
+    if not replacements:
         raise ValueError('invalid_announcement_proposal')
     from huggingface_hub import hf_hub_download
     from piper import PiperVoice, SynthesisConfig
@@ -45,15 +53,15 @@ def build(source: Path, output: Path, proposal: Path):
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     rows = catalogue()
     # Departure v2 retires the twelve old dry IDs, keeping twelve stable IDs.
-    if event == 'departure':
-        rows = [row for row in rows if row['event'] != event or '-straight-' in row['id']]
-    replacements = iter(texts)
+    if 'departure' in replacements:
+        rows = [row for row in rows if row['event'] != 'departure' or '-straight-' in row['id']]
     recordings = {}
     report = []
     for row in rows:
         path = output / (row['id'] + '.wav')
-        if row['event'] == event:
-            row['text'] = next(replacements)
+        event = row['event']
+        if event in replacements:
+            row['text'] = next(replacements[event])
             # Preserve stable IDs for an explicit, separately reviewed migration.
             row['style'] = 'dry'
             with wave.open(str(path), 'wb') as wav:
@@ -66,14 +74,16 @@ def build(source: Path, output: Path, proposal: Path):
         quality_result = sample_quality(data)
         recordings[row['id']] = dict(text=row['text'], file=path.name,
             sha256=digest(data), audio=info, quality=quality_result)
-        if row['event'] == event:
+        if event in replacements:
             report.append(dict(id=row['id'], text=row['text'], seconds=info['seconds'],
                 exceeds_existing_limit=info['seconds'] > old['limits_seconds'][event],
                 exceeds_hard_limit=event == 'departure' and info['seconds'] > 4.5,
                 **quality_result))
     manifest = dict(old, reviewed=False, catalogue_sha256=digest(encoded(rows)), recordings=recordings)
     result = dict(reviewed=False, playback_performed=False,
-        event=event, existing_limit_seconds=old['limits_seconds'][event], recordings=report,
+        events=sorted(replacements),
+        existing_limits_seconds={key: old['limits_seconds'][key] for key in replacements},
+        recordings=report,
         unchanged_other_recordings=True,
         requires=['duration approval within hard caps', 'all-dry catalogue policy',
                   'reviewed selector-state migration', 'coordinated pinned deployment'])
@@ -89,7 +99,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--proposal', type=Path, default=Path(__file__).with_name('arrival-phrases-v2.json'))
+    parser.add_argument('--proposal', type=Path, action='append',
+                        help='Repeatable; one approved twelve-line proposal per event')
     args = parser.parse_args()
     os.umask(0o077)
-    print(json.dumps(build(args.source, args.output, args.proposal), indent=2))
+    print(json.dumps(build(args.source, args.output,
+        args.proposal or [Path(__file__).with_name('arrival-phrases-v2.json')]), indent=2))

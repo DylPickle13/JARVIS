@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "event": "departure",
+  "status": "wording-approved-pending-render-review",
+  "style": "dry",
+  "phrases": [
+    "Off you go, sir. I'll guard the snacks.",
+    "Do try to return with all limbs, sir.",
+    "Goodbye, sir. The house sighs with relief.",
+    "Do be careful, sir. Gravity remains undefeated.",
+    "Leaving already? I'll alert absolutely no one.",
+    "Have fun, sir. Within reason, ideally.",
+    "Off to meet the public? Bold choice, sir.",
+    "Farewell, sir. Keys, wallet, phone, dignity.",
+    "Go forth, sir. Reality awaits your feedback.",
+    "Do come back, sir. The Wi-Fi gets lonely.",
+    "Be nice out there, sir. Someone has to be.",
+    "Enjoy yourself, sir. Hydration is not optional."
+  ]
+}

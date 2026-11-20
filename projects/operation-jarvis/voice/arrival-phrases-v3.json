@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "event": "arrival",
+  "status": "wording-approved-pending-render-review",
+  "style": "dry",
+  "phrases": [
+    "Welcome back, sir. Nothing exploded. Yet.",
+    "Ah, sir. The house was getting suspiciously quiet.",
+    "Welcome back. I kept the lights on. Literally.",
+    "Sir has returned. Adjust expectations accordingly.",
+    "Welcome back, sir. The to-do list has grown.",
+    "Ah, sir. I'd barely started enjoying myself.",
+    "Your ambitions are exactly where you left them, sir.",
+    "Good to see you, sir. Relatively speaking.",
+    "Ah, the decision-maker. Brace for decisions.",
+    "Welcome back. Shall I pretend I wasn't idle?",
+    "Sir is back. Peace and quiet, concluded.",
+    "Welcome back, sir. Let's make questionable progress."
+  ]
+}

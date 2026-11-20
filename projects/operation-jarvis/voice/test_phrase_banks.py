@@ -70,7 +70,7 @@ class BankTests(unittest.TestCase):
         self.assertEqual(len(rows), 72)
         import voice_lines
         for event, text in [('wake', voice_lines.WAKE_ACK), ('processing', voice_lines.PROCESSING_ACK),
-                            ('arrival', 'Ah, my favourite source of technical difficulties.'), ('departure', 'Off you go, sir. Try not to become a documentary.')]:
+                            ('arrival', 'Welcome back, sir. Nothing exploded. Yet.'), ('departure', "Off you go, sir. I'll guard the snacks.")]:
             self.assertEqual(self.bundle.default(event).text, text)
         self.assertFalse(any(row['text'] in (voice_lines.REQUEST_FAILURE, voice_lines.RENDER_FAILURE) for row in rows))
 

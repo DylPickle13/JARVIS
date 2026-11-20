@@ -293,145 +293,145 @@
       "id": "arrival-straight-01",
       "event": "arrival",
       "style": "dry",
-      "text": "Ah, my favourite source of technical difficulties."
+      "text": "Welcome back, sir. Nothing exploded. Yet."
     },
     {
       "id": "arrival-straight-02",
       "event": "arrival",
       "style": "dry",
-      "text": "Welcome back, sir. The chair missed your leadership."
+      "text": "Ah, sir. The house was getting suspiciously quiet."
     },
     {
       "id": "arrival-straight-03",
       "event": "arrival",
       "style": "dry",
-      "text": "Management has returned. Look busy, everyone."
+      "text": "Welcome back. I kept the lights on. Literally."
     },
     {
       "id": "arrival-straight-04",
       "event": "arrival",
       "style": "dry",
-      "text": "The plot thickens. You've sat down."
+      "text": "Sir has returned. Adjust expectations accordingly."
     },
     {
       "id": "arrival-straight-05",
       "event": "arrival",
       "style": "dry",
-      "text": "Welcome back, sir. Shall we open another forty tabs?"
+      "text": "Welcome back, sir. The to-do list has grown."
     },
     {
       "id": "arrival-straight-06",
       "event": "arrival",
       "style": "dry",
-      "text": "Ah, the organic peripheral has reconnected."
+      "text": "Ah, sir. I'd barely started enjoying myself."
     },
     {
       "id": "arrival-dry-01",
       "event": "arrival",
       "style": "dry",
-      "text": "Your throne awaits. Ergonomically questionable as ever."
+      "text": "Your ambitions are exactly where you left them, sir."
     },
     {
       "id": "arrival-dry-02",
       "event": "arrival",
       "style": "dry",
-      "text": "Welcome back. Productivity remains entirely optional."
+      "text": "Good to see you, sir. Relatively speaking."
     },
     {
       "id": "arrival-dry-03",
       "event": "arrival",
       "style": "dry",
-      "text": "There you are, sir. I was enjoying the lack of requests."
+      "text": "Ah, the decision-maker. Brace for decisions."
     },
     {
       "id": "arrival-dry-04",
       "event": "arrival",
       "style": "dry",
-      "text": "The human element returns. So much for stability."
+      "text": "Welcome back. Shall I pretend I wasn't idle?"
     },
     {
       "id": "arrival-dry-05",
       "event": "arrival",
       "style": "dry",
-      "text": "Welcome back, sir. Let's call this research."
+      "text": "Sir is back. Peace and quiet, concluded."
     },
     {
       "id": "arrival-dry-06",
       "event": "arrival",
       "style": "dry",
-      "text": "Systems ready. Sensible decisions sold separately."
+      "text": "Welcome back, sir. Let's make questionable progress."
     },
     {
       "id": "departure-straight-01",
       "event": "departure",
       "style": "dry",
-      "text": "Off you go, sir. Try not to become a documentary."
+      "text": "Off you go, sir. I'll guard the snacks."
     },
     {
       "id": "departure-straight-02",
       "event": "departure",
       "style": "dry",
-      "text": "Do behave, sir. Or at least avoid witnesses."
+      "text": "Do try to return with all limbs, sir."
     },
     {
       "id": "departure-straight-03",
       "event": "departure",
       "style": "dry",
-      "text": "The outside world has not been briefed. Good luck."
+      "text": "Goodbye, sir. The house sighs with relief."
     },
     {
       "id": "departure-straight-04",
       "event": "departure",
       "style": "dry",
-      "text": "Safe travels, sir. Your tabs will remain unsupervised."
+      "text": "Do be careful, sir. Gravity remains undefeated."
     },
     {
       "id": "departure-straight-05",
       "event": "departure",
       "style": "dry",
-      "text": "Try not to acquire another expensive hobby, sir."
+      "text": "Leaving already? I'll alert absolutely no one."
     },
     {
       "id": "departure-straight-06",
       "event": "departure",
       "style": "dry",
-      "text": "Goodbye, sir. I shall supervise absolutely nothing."
+      "text": "Have fun, sir. Within reason, ideally."
     },
     {
       "id": "departure-straight-07",
       "event": "departure",
       "style": "dry",
-      "text": "Remember, sir. Confidence is not a navigation system."
+      "text": "Off to meet the public? Bold choice, sir."
     },
     {
       "id": "departure-straight-08",
       "event": "departure",
       "style": "dry",
-      "text": "The adventure begins. Receipts may be required."
+      "text": "Farewell, sir. Keys, wallet, phone, dignity."
     },
     {
       "id": "departure-straight-09",
       "event": "departure",
       "style": "dry",
-      "text": "Off to test society\u2019s patience, sir?"
+      "text": "Go forth, sir. Reality awaits your feedback."
     },
     {
       "id": "departure-straight-10",
       "event": "departure",
       "style": "dry",
-      "text": "Keep the headlines boring and the legal fees low."
+      "text": "Do come back, sir. The Wi-Fi gets lonely."
     },
     {
       "id": "departure-straight-11",
       "event": "departure",
       "style": "dry",
-      "text": "Enjoy yourself, sir. Within warranty conditions."
+      "text": "Be nice out there, sir. Someone has to be."
     },
     {
       "id": "departure-straight-12",
       "event": "departure",
       "style": "dry",
-      "text": "Farewell, sir. Your chair has assumed command."
+      "text": "Enjoy yourself, sir. Hydration is not optional."
     }
   ]
 }

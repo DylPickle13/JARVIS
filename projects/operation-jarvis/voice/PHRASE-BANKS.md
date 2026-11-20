@@ -10,6 +10,21 @@ straight and half dry humour. Arrival v2 retains stable IDs (including historica
 IDs) to preserve shuffle progress. This is not
 live model-generated wording. Fixed errors and ordinary responses are excluded.
 
+## Arrival/departure v3 approval
+
+The owner approved twelve new dry-humour arrival lines and twelve new dry-humour
+doorbell farewells (with six owner-approved swaps that keep the arrival
+room-return and farewell no-weather/no-vehicle rules). Stable IDs are unchanged;
+only text and audio change. Arrival clips span **2.438–3.100 s** under the
+unchanged 3.379 s ceiling; departure clips span **1.962–2.926 s** under the
+unchanged 3.367 s ceiling and 4.5 s hard cap. Wake/processing recordings,
+settings, padding and limits are unchanged. No test audio was played.
+
+`render_arrival_update.py` now accepts repeated `--proposal` files to stage both
+events in one bundle. `migrate_catalogue_text.py` is the explicit offline
+text-only migration: identical event/ID/style membership, rebinds each bag's
+catalogue hash, and preserves remaining/last progress and all claims.
+
 ## Arrival v2 approval
 
 The owner approved twelve all-humour arrival replacements and a **3.379-second**

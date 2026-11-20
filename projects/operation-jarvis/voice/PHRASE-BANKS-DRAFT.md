@@ -4,13 +4,13 @@
 
 ## Selection and review rules
 
-- **72** lines: 24 wake, 24 processing, 12 arrival, and 12 departure. Arrival and departure v2 are entirely dry humour; wake and processing retain their **50% straight / 50% dry-humour** split: 24 straight and 48 dry overall.
+- **72** lines: 24 wake, 24 processing, 12 arrival, and 12 departure. Arrival and departure v3 are entirely dry humour; wake and processing retain their **50% straight / 50% dry-humour** split: 24 straight and 48 dry overall.
 - Kept the strongest straight lines rather than adjective swaps and repeated response/reply templates. Added distinct, understated humour instead of merely making the same sentences more formal.
 - Humour is intentional persona/metaphor, not a factual status report. No line reports a completed action, a ready response, an actual tool consultation, household security, or a fault. Keep delivery deadpan rather than adding laughs, sound effects, or comic pauses.
 - Wake lines invite a request without claiming it has already been understood. Processing lines also work for steering; they do not depend on an existing answer or promise a successful result.
 - Arrival remains a room/computer-presence return, not confirmed arrival home. No absence-length remarks, time-of-day remarks, or questions requiring a response.
 - Farewells are general good wishes and playful parting advice. No vehicle, destination, weather, security, or monitoring claims.
-- Arrival v2 uses longer owner-approved lines with a **3.379-second** raw audio ceiling. Departure v2 spans 2.171–3.367 seconds under the approved 4.5-second hard cap. Wake and processing retain their original approved durations below 2.8 seconds. Playback speed and padding are unchanged; see the implementation report for exact ranges.
+- Arrival v3 spans 2.438–3.100 seconds under the unchanged **3.379-second** raw ceiling. Departure v3 spans 1.962–2.926 seconds under the unchanged 3.367-second bundle ceiling and 4.5-second hard cap. Wake and processing retain their original approved durations below 2.8 seconds. Playback speed and padding are unchanged; see the implementation report for exact ranges.
 - Startup, reconnect, quick-return, and time-of-day announcements remain removed. The two failure messages stay exact and outside all banks.
 - The protected legacy departure phrase/WAV/hash validation stays unchanged by default. The implemented opt-in bank requires its own reviewed recordings and pinned metadata; it does not bypass attempt, identity, timing or playback validation.
 - This is the prewritten wording source, not live model generation. The implemented opt-in path selects approved pre-rendered recordings without live generation or synthesis.
@@ -85,34 +85,34 @@ Shared with steering; no completed-answer or completed-action claims.
 
 Room/computer return, not a claim that the owner has just entered the house.
 
-### Dry humour — 12 (owner-approved replacement)
+### Dry humour — 12 (owner-approved v3 replacement)
 
-1. Ah, my favourite source of technical difficulties.
-2. Welcome back, sir. The chair missed your leadership.
-3. Management has returned. Look busy, everyone.
-4. The plot thickens. You've sat down.
-5. Welcome back, sir. Shall we open another forty tabs?
-6. Ah, the organic peripheral has reconnected.
-7. Your throne awaits. Ergonomically questionable as ever.
-8. Welcome back. Productivity remains entirely optional.
-9. There you are, sir. I was enjoying the lack of requests.
-10. The human element returns. So much for stability.
-11. Welcome back, sir. Let's call this research.
-12. Systems ready. Sensible decisions sold separately.
+1. Welcome back, sir. Nothing exploded. Yet.
+2. Ah, sir. The house was getting suspiciously quiet.
+3. Welcome back. I kept the lights on. Literally.
+4. Sir has returned. Adjust expectations accordingly.
+5. Welcome back, sir. The to-do list has grown.
+6. Ah, sir. I'd barely started enjoying myself.
+7. Your ambitions are exactly where you left them, sir.
+8. Good to see you, sir. Relatively speaking.
+9. Ah, the decision-maker. Brace for decisions.
+10. Welcome back. Shall I pretend I wasn't idle?
+11. Sir is back. Peace and quiet, concluded.
+12. Welcome back, sir. Let's make questionable progress.
 
 ## 4. Departure farewells — 12
 
-### Dry humour — 12 (owner-approved replacement)
+### Dry humour — 12 (owner-approved v3 replacement)
 
-1. Off you go, sir. Try not to become a documentary.
-2. Do behave, sir. Or at least avoid witnesses.
-3. The outside world has not been briefed. Good luck.
-4. Safe travels, sir. Your tabs will remain unsupervised.
-5. Try not to acquire another expensive hobby, sir.
-6. Goodbye, sir. I shall supervise absolutely nothing.
-7. Remember, sir. Confidence is not a navigation system.
-8. The adventure begins. Receipts may be required.
-9. Off to test society’s patience, sir?
-10. Keep the headlines boring and the legal fees low.
-11. Enjoy yourself, sir. Within warranty conditions.
-12. Farewell, sir. Your chair has assumed command.
+1. Off you go, sir. I'll guard the snacks.
+2. Do try to return with all limbs, sir.
+3. Goodbye, sir. The house sighs with relief.
+4. Do be careful, sir. Gravity remains undefeated.
+5. Leaving already? I'll alert absolutely no one.
+6. Have fun, sir. Within reason, ideally.
+7. Off to meet the public? Bold choice, sir.
+8. Farewell, sir. Keys, wallet, phone, dignity.
+9. Go forth, sir. Reality awaits your feedback.
+10. Do come back, sir. The Wi-Fi gets lonely.
+11. Be nice out there, sir. Someone has to be.
+12. Enjoy yourself, sir. Hydration is not optional.
