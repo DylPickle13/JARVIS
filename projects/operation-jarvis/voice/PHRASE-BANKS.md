@@ -25,6 +25,13 @@ events in one bundle. `migrate_catalogue_text.py` is the explicit offline
 text-only migration: identical event/ID/style membership, rebinds each bag's
 catalogue hash, and preserves remaining/last progress and all claims.
 
+Deployment verified: consumers paused while idle with a private rollback snapshot;
+the text-only migration rebound 4 bags and preserved all 45 claims; both room
+servers report the `approved-v3` manifest with zero selection failures, both
+listeners returned online, Session 10 remained intact, and the farewell watcher
+returned to observing with 12 validated clips and no pending attempt or fault.
+No household audio was played for testing.
+
 ## Arrival v2 approval
 
 The owner approved twelve all-humour arrival replacements and a **3.379-second**

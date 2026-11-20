@@ -1,7 +1,7 @@
 {
   "version": 1,
   "event": "arrival",
-  "status": "wording-approved-pending-render-review",
+  "status": "approved-deployed-verified",
   "style": "dry",
   "phrases": [
     "Welcome back, sir. Nothing exploded. Yet.",

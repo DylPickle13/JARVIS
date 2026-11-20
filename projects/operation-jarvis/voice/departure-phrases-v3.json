@@ -1,7 +1,7 @@
 {
   "version": 1,
   "event": "departure",
-  "status": "wording-approved-pending-render-review",
+  "status": "approved-deployed-verified",
   "style": "dry",
   "phrases": [
     "Off you go, sir. I'll guard the snacks.",
