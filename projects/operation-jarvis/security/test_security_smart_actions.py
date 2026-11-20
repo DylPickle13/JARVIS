@@ -290,6 +290,18 @@ class SmartTests(unittest.TestCase):
         self.assertEqual(s.cloud_code({}), 0)
         with self.assertRaises(s.SmartError):s.cloud_code({'error_code': 'oops'})
 
+    def test_http_401_maps_to_reauthentication_required(self):
+        import urllib.error
+        c = s.Cloud.__new__(s.Cloud)
+        c.requests = 0
+        c.opener = Mock()
+        c.opener.open.side_effect = urllib.error.HTTPError('https://fake.tplinknbu.com', 401, 'Unauthorized', {}, None)
+        with self.assertRaisesRegex(s.SmartError, 'cloud_reauthentication_required'):
+            c.send('GET', 'https://fake.tplinknbu.com/v1/smarts?page=0&pageSize=20', {})
+        c.opener.open.side_effect = urllib.error.HTTPError('https://fake.tplinknbu.com', 500, 'Error', {}, None)
+        with self.assertRaises(urllib.error.HTTPError):
+            c.send('GET', 'https://fake.tplinknbu.com/v1/smarts?page=0&pageSize=20', {})
+
     def test_session_reuse_and_explicit_login_only(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(s, 'STORAGE', Path(directory)):
             c = s.Cloud.__new__(s.Cloud)

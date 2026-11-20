@@ -22,6 +22,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -325,8 +326,16 @@ class Cloud:
         if data is not None and len(data) > MAX_BYTES:
             raise SmartError('cloud_request_too_large')
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
-        with self.opener.open(req, timeout=8) as response:
-            payload = response.read(MAX_BYTES + 1)
+        try:
+            with self.opener.open(req, timeout=8) as response:
+                payload = response.read(MAX_BYTES + 1)
+        except urllib.error.HTTPError as exc:
+            # TP-Link signals an expired/revoked token with HTTP 401 rather than
+            # an in-body error code. Writes stay governed by run(): any failure
+            # after write_started is still reported as an unknown outcome.
+            if exc.code == 401:
+                raise SmartError('cloud_reauthentication_required') from None
+            raise
         if len(payload) > MAX_BYTES:
             raise SmartError('cloud_response_too_large')
         result = parse_json(payload) if payload else {}
