@@ -26,9 +26,16 @@ function compactJson(value: unknown): string {
   return truncate(JSON.stringify(value, null, 2));
 }
 
+// Browser tools share one selected tab and a FIFO bridge queue. Mutating tools pace
+// before enqueueing, so parallel sibling calls could reorder (e.g. a screenshot or
+// wait queued ahead of the click sent before it). Any sequential tool makes Pi run
+// the whole assistant batch in source order.
+const BROWSER_EXECUTION_MODE = "sequential" as const;
+
 export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: ExtensionContext) => BrowserManager) {
   pi.registerTool({
     name: "browser_status",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Status",
     description: "Return shared automation tabs, control leases, and this Pi session's selected tab. Other Pi sessions have independent selections.",
     parameters: Type.Object({}),
@@ -40,6 +47,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_open",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Open",
     description: "Open a URL in this Pi session's selected automation tab, or create a new tab if none is selected. Other sessions can see tabs but cannot control your leased tabs. newTab creates another tab.",
     parameters: Type.Object({
@@ -60,6 +68,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_screenshot",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Screenshot",
     description: "Capture the current visible browser page as a PNG image for visual reasoning. Supports viewport, full-page, or element screenshots.",
     parameters: Type.Object({
@@ -80,6 +89,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_click",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Click",
     description: "Click the visible browser page by viewport coordinates, CSS selector, or visible text. Coordinates should come from the latest screenshot.",
     parameters: Type.Object({
@@ -103,6 +113,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_type",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Type",
     description: "Type text into the focused editable web-page element, or first focus a CSS selector. Fails if no editable element is focused. Supports clearing the field first. For URL navigation, use browser_open instead of typing into the browser address bar.",
     parameters: Type.Object({
@@ -122,6 +133,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_upload",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Upload",
     description: "Upload one or more explicitly approved local files through the visible browser, using an input[type=file] selector or a visible upload control that opens a file chooser.",
     parameters: Type.Object({
@@ -147,6 +159,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_key",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Key",
     description: "Press a keyboard key or shortcut in the active web page, e.g. Enter, Escape, Tab, ArrowDown, Control+A. Meta+T/Control+T and Meta+W/Control+W are emulated as tab open/close actions. For URL navigation, use browser_open instead of address-bar shortcuts.",
     parameters: Type.Object({ key: Type.String({ description: "Playwright key name or shortcut, e.g. Enter, Escape, Tab, ArrowDown, Control+A." }) }),
@@ -160,6 +173,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_scroll",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Scroll",
     description: "Scroll the current browser page with mouse-wheel-like movement.",
     parameters: Type.Object({
@@ -178,6 +192,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_wait",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Wait",
     description: "Wait for time, visible selector/text, or page load state in the browser.",
     parameters: Type.Object({
@@ -196,6 +211,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_extract",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Extract",
     description: "Extract readable text and optional links from the current browser page or a CSS selector. Safer than arbitrary page evaluation.",
     parameters: Type.Object({
@@ -212,6 +228,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_tabs",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Tabs",
     description: "List all shared automation tabs; switch selects and leases a tab for this Pi session only. Other sessions' leased tabs cannot be controlled or closed. Release hands off control without closing the tab. Prefer stable tabId; index refers to your last returned tab list. Switching retains your other leases; release them when done.",
     parameters: Type.Object({
@@ -228,6 +245,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
 
   pi.registerTool({
     name: "browser_close",
+    executionMode: BROWSER_EXECUTION_MODE,
     label: "Browser Close",
     description: "Close this Pi session's selected tab (all:false), or release all this session's tab leases without closing tabs (all:true, default). The shared browser bridge stays alive.",
     parameters: Type.Object({ all: Type.Optional(Type.Boolean({ description: "Release this session's tab leases without closing tabs. Defaults to true. false closes only this session's selected tab." })) }),
