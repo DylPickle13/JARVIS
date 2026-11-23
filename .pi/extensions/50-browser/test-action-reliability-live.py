@@ -67,7 +67,7 @@ try:
             assert result['valueVerified'] and result['inputMethod'] == 'fill'
     for session in (A, B):
         assert call(session, '/extract', {'selector':'#mirror', 'maxText':10000})['text'] == values[session]
-    # Validate real wheel delivery, not just command success, on nested and page scrollers.
+    # Validate actual scroll movement, not just command success, on nested and page scrollers.
     for session in (A, B):
         call(session, '/scroll', {'direction':'down', 'amount':300, 'x':150, 'y':280})
         assert int(call(session, '/extract', {'selector':'#nested-y'})['text']) > 0
@@ -87,7 +87,7 @@ try:
     assert call(B, '/extract', {'selector':'#mirror', 'maxText':10000})['text'] == values[B]
     call(A, '/tabs', {'action':'switch', 'tabId':created[A]})
     assert call(A, '/extract', {'selector':'#mirror', 'maxText':10000})['text'] == values[A]
-    print('PASS: simultaneous verified long fields, nested/page wheel delivery, local failure isolation, retained drafts')
+    print('PASS: simultaneous verified long fields, nested/page scrolling, local failure isolation, retained drafts')
 finally:
     # If execution is uncertain, preserve evidence and do not force cleanup or
     # restart/reselect around the fence. Only the owner can authorize recovery.

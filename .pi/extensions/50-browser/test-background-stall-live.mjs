@@ -68,7 +68,8 @@ try {
   await step('single-wheel',()=>backend.handle('/scroll',{direction:'down',amount:400,x:500,y:400},session));
   await pause(1000);
   const wheel=await step('after-wheel',async()=>JSON.parse((await backend.handle('/extract',{selector:'#stats'},session)).text));
-  assert(wheel.wheels===1&&wheel.scrollY>0,'Wheel was missing or repeated');
+  // browser_scroll is a script scroll now (no wheel event); verify real movement.
+  assert(wheel.wheels===0&&wheel.scrollY>0,'Scroll did not move the page');
   const final=await backend.handle('/status',{},session);
   assert(report.originalTabIds.every(id=>final.pages.some(p=>p.tabId===id)),'Original work tab disappeared');
   await backend.handle('/close',{all:false},session);

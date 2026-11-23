@@ -1,5 +1,47 @@
 # JARVIS browser bridge
 
+## Frame-free scroll and selector clicks — 2026-11-23
+
+Chrome stops drawing the automation window while it sits on a macOS Space the
+owner is not viewing. Wheel input (`browser_scroll`) and Playwright's
+requestAnimationFrame stability check (selector `browser_click`) both wait for
+a drawn frame, so they hung there: scrolls hit the 15 s deadline and reset the
+whole bridge; selector clicks timed out "waiting for element to be visible,
+enabled and stable". Coordinate clicks, typing, keys, extraction, uploads and
+screenshots never depended on frames.
+
+`background-input.mjs` (serialized into the fixed MCP action like
+`verified-input.mjs`):
+- `browser_scroll` scrolls with an instant script scroll on the innermost
+  container under the point that can move (default: viewport centre), else the
+  page, and reports the pixels actually moved (`movedX`/`movedY`). No wheel event
+  or mouse move is sent. If the page does not run the scroll within 8 s it fails
+  as a local `TimeoutError` (session-fenced), before the outer deadline would
+  reset the bridge.
+- Selector/text `browser_click` scrolls the element into view with script, then
+  checks attached/visible/enabled, stability (two samples 100 ms apart on
+  Node-side timers) and that the element (or its label) receives the click at its
+  centre, and only then sends a real mouse click there. A covered, moving,
+  disabled or hidden target is retried until the timeout and never clicked; no
+  force or synthetic DOM click is used.
+
+Public tool schemas/descriptions are unchanged; the scroll result text now states
+the actual movement. Known gap: element screenshots (`browser_screenshot` with a
+selector) still use Playwright's frame-based stability wait. Site animations
+(e.g. dropdown popups) may still render slowly while the window is out of view,
+and pages receive `scroll` events only at the next drawn frame, so scroll-driven
+lazy loading can lag until the window is visible.
+
+Live result 2026-11-23 16:03 UTC (deployed; bridge-only restart): fixture tab shown,
+then the owner switched the Dell display away; page reported `hidden`. Nested and
+page script scrolls (300/600 px) and a below-the-fold selector click completed in
+~1 s each, no wheel events, no bridge reset. Session 3 then completed Aviva's
+remaining steps with frame-free selector clicks.
+
+Offline: `test-background-input.mjs`. Live (opt-in, production bridge, localhost
+fixture only): `JARVIS_TEST_BACKGROUND_INPUT=1 python3 test-background-input-live.py`
+with the automation window out of view.
+
 ## Recurring stall investigation — 2026-10-11
 
 A read-only Workday element screenshot reproduced the stability-wait stall;

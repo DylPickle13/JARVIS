@@ -186,7 +186,9 @@ export function registerBrowserTools(pi: ExtensionAPI, getBrowser: (ctx: Extensi
       if (signal?.aborted) throw new Error("browser_scroll cancelled");
       await pace();
       const result = await getBrowser(ctx).scroll(params as any);
-      return { content: [{ type: "text", text: `Scrolled ${result.direction} ${result.amount}px.\n${result.title || "(untitled)"}\n${result.url}` }], details: result };
+      const moved = result.direction === "left" || result.direction === "right" ? result.movedX : result.movedY;
+      const actual = moved === undefined ? "" : moved === 0 ? " Nothing moved (already at the edge or not scrollable)." : ` Moved ${Math.abs(moved)}px${result.container === "element" ? " in a scrollable panel" : ""}.`;
+      return { content: [{ type: "text", text: `Scrolled ${result.direction} ${result.amount}px.${actual}\n${result.title || "(untitled)"}\n${result.url}` }], details: result };
     },
   });
 

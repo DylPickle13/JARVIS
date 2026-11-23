@@ -12,11 +12,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { BrowserSessions, validateTabInventory } from './browser-sessions.mjs';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { verifiedType } from './verified-input.mjs';
+import { backgroundScroll, backgroundClick } from './background-input.mjs';
 import { actionDeadlineMs, isLocalActionFailure, failureKind } from './action-policy.mjs';
 
 // Fixed implementation only: callers cannot submit code to the MCP server.
 // Never adopt the seed page (which may be the extension's connection tab).
-export async function extensionAction(seed, action, b, typeAction = verifiedType) {
+export async function extensionAction(seed, action, b, typeAction = verifiedType, input = {scroll:backgroundScroll, click:backgroundClick}) {
   const context = seed.context();
   let state = context.__jarvisOwnedTabs;
   if (!state) {
@@ -190,9 +191,8 @@ export async function extensionAction(seed, action, b, typeAction = verifiedType
     const options = {button:b.button || 'left',clickCount:Math.max(1,Math.min(Number(b.clicks || 1),3)),timeout};
     let x=b.x,y=b.y;
     if (b.selector || b.text !== undefined) {
-      const l=locator(p); const box=await l.boundingBox();
-      if (box) {x=box.x+box.width/2;y=box.y+box.height/2;}
-      await l.click(options);
+      // Frame-free actionability: works while the automation window is on a hidden Space.
+      ({x,y}=await input.click(p, locator(p), options, timeout));
     } else {
       if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('Click target required');
       await p.mouse.click(x,y,options);
@@ -239,10 +239,8 @@ export async function extensionAction(seed, action, b, typeAction = verifiedType
     await p.keyboard.press(k); return info(p);
   }
   if (action === '/scroll') {
-    const amount=Math.max(50,Math.min(Number(b.amount ?? 700),3000)),direction=b.direction || 'down';
-    if (b.x !== undefined && b.y !== undefined) await p.mouse.move(b.x,b.y);
-    await p.mouse.wheel(direction==='left' ? -amount : direction==='right' ? amount : 0,direction==='up' ? -amount : direction==='down' ? amount : 0);
-    return {...await info(p),amount,direction};
+    // Script scroll, not a wheel event: Chrome holds wheel input for a drawn frame.
+    return {...await info(p),...await input.scroll(p, b)};
   }
   if (action === '/wait') {
     if (b.ms) await p.waitForTimeout(Math.max(0,Math.min(Number(b.ms),60000)));
@@ -379,7 +377,7 @@ export class ExtensionBrowserBackend {
     const started=Date.now(), operationId=++this.operationSequence;
     const fields={operationId,action:timed ? path : 'preflight',tabId:Number.isSafeInteger(body.targetTabId) ? body.targetTabId : null};
     if (timed) this.diagnostic('action-start',{...fields,deadlineMs:actionDeadlineMs(path,body)});
-    const code=`async (page) => await (${extensionAction.toString()})(page, ${JSON.stringify(path)}, ${JSON.stringify(body)}, (${verifiedType.toString()}))`;
+    const code=`async (page) => await (${extensionAction.toString()})(page, ${JSON.stringify(path)}, ${JSON.stringify(body)}, (${verifiedType.toString()}), {scroll:(${backgroundScroll.toString()}), click:(${backgroundClick.toString()})})`;
     try {
       const result=parseToolResult(await this.client.callTool({name:this.runTool,arguments:{code}},undefined,{timeout:actionDeadlineMs(path, body)}));
       if (timed) this.diagnostic('action-end',{...fields,durationMs:Date.now()-started,outcome:'completed'});

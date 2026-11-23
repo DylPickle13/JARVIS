@@ -217,7 +217,7 @@ export class DaemonBrowserManager {
     return this.request("/key", { method: "POST", body: { key } });
   }
 
-  async scroll(params: { direction?: "up" | "down" | "left" | "right"; amount?: number; x?: number; y?: number }): Promise<{ url: string; title: string; amount: number; direction: string }> {
+  async scroll(params: { direction?: "up" | "down" | "left" | "right"; amount?: number; x?: number; y?: number }): Promise<{ url: string; title: string; amount: number; direction: string; movedX?: number; movedY?: number; container?: "page" | "element" }> {
     return this.request("/scroll", { method: "POST", body: params });
   }
 
