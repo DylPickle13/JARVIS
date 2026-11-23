@@ -42,16 +42,20 @@ private struct Arguments {
     let requestedLocale: Locale
     let fileURL: URL?
     let contextualStrings: [String]
+    let sampleRate: Double
+    let finalizeEvery: Double?
 
     init(_ raw: [String]) throws {
-        guard let command = raw.first, ["health", "install-assets", "transcribe"].contains(command) else {
-            throw CLIError("usage: jarvis-apple-asr <health|install-assets|transcribe> [--engine speech|dictation] [--locale en-CA] [--file input.wav] [--context phrase]")
+        guard let command = raw.first, ["health", "install-assets", "transcribe", "stream"].contains(command) else {
+            throw CLIError("usage: jarvis-apple-asr <health|install-assets|transcribe|stream> [--engine speech|dictation] [--locale en-CA] [--file input.wav] [--context phrase] [--sample-rate 16000] [--finalize-every 10]")
         }
 
         var engine = Engine.speech
         var localeIdentifier = "en-CA"
         var fileURL: URL?
         var contexts: [String] = []
+        var sampleRate = 16000.0
+        var finalizeEvery: Double?
         var index = 1
         while index < raw.count {
             let option = raw[index]
@@ -71,6 +75,16 @@ private struct Arguments {
                 if !phrase.isEmpty, !contexts.contains(phrase), contexts.count < 100 {
                     contexts.append(phrase)
                 }
+            case "--sample-rate":
+                guard let rate = Double(value), rate > 0 else {
+                    throw CLIError("invalid sample rate: \(value)")
+                }
+                sampleRate = rate
+            case "--finalize-every":
+                guard let seconds = Double(value), seconds > 0 else {
+                    throw CLIError("invalid finalize interval: \(value)")
+                }
+                finalizeEvery = seconds
             default:
                 throw CLIError("unknown option: \(option)")
             }
@@ -86,6 +100,8 @@ private struct Arguments {
         self.requestedLocale = Locale(identifier: localeIdentifier)
         self.fileURL = fileURL
         self.contextualStrings = contexts
+        self.sampleRate = sampleRate
+        self.finalizeEvery = finalizeEvery
     }
 }
 
@@ -154,6 +170,184 @@ private func collectDictationResults(_ transcriber: DictationTranscriber) async 
         transcript += String(result.text.characters)
     }
     return transcript.split(whereSeparator: \Character.isWhitespace).joined(separator: " ")
+}
+
+// MARK: - Stream mode (resident dictation worker)
+
+/// Lock-guarded stream-time clock, updated by the PCM reader thread.
+/// Stream time (not wall clock) drives `finalizeAndFinish(through:)` so the
+/// worker stays correct even when it fast-forwards through a backlog.
+private final class StreamClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var time: Double = 0
+    func set(_ t: Double) {
+        lock.lock()
+        time = t
+        lock.unlock()
+    }
+    func get() -> Double {
+        lock.lock()
+        defer { lock.unlock() }
+        return time
+    }
+}
+
+/// Reads 16-bit mono PCM from stdin and yields `AnalyzerInput` buffers
+/// (300 ms chunks) stamped with stream time, for `SpeechAnalyzer.analyzeSequence(_:)`.
+/// NOTE: `AnalyzerInput`'s buffer inits require **Int16 PCM** (the framework
+/// traps on Float32 — "Failed precondition: Audio sample data must be 16-bit
+/// signed integers"), so the buffer is built as `.pcmFormatInt16` and the
+/// stdin bytes (already Int16) are copied in directly.
+private func makeStdinPCMStream(sampleRate: Double, chunkFrames: Int, clock: StreamClock) -> AsyncStream<AnalyzerInput> {
+    let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+    guard let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: sampleRate, channels: 1, interleaved: false) else {
+        continuation.finish()
+        return stream
+    }
+    Thread.detachNewThread {
+        let handle = FileHandle.standardInput
+        var carry = [Int16]()
+        var nextSample: Int64 = 0
+        let timescale = Int32(sampleRate)
+        while true {
+            let data = handle.readData(ofLength: 4096)
+            if data.isEmpty { break }
+            data.withUnsafeBytes { raw in
+                carry.append(contentsOf: raw.bindMemory(to: Int16.self))
+            }
+            while carry.count >= chunkFrames {
+                let frame = Array(carry.prefix(chunkFrames))
+                carry.removeFirst(chunkFrames)
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(chunkFrames)) else { continue }
+                buffer.frameLength = AVAudioFrameCount(chunkFrames)
+                for (i, s) in frame.enumerated() {
+                    buffer.int16ChannelData![0][i] = s
+                }
+                // Sample-accurate timestamps (no Double drift — the framework
+                // rejects inputs whose start "overlaps or precedes" the prior).
+                let input = AnalyzerInput(
+                    buffer: buffer,
+                    bufferStartTime: CMTime(value: nextSample, timescale: timescale)
+                )
+                nextSample += Int64(chunkFrames)
+                clock.set(Double(nextSample) / sampleRate)
+                continuation.yield(input)
+            }
+        }
+        // Flush the tail (partial chunk) so the final words reach the engine.
+        if carry.count > 0,
+           let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(carry.count)) {
+            buffer.frameLength = AVAudioFrameCount(carry.count)
+            for (i, s) in carry.enumerated() {
+                buffer.int16ChannelData![0][i] = s
+            }
+            let input = AnalyzerInput(
+                buffer: buffer,
+                bufferStartTime: CMTime(value: nextSample, timescale: timescale)
+            )
+            clock.set(Double(nextSample) / sampleRate)
+            continuation.yield(input)
+        }
+        continuation.finish()
+    }
+    return stream
+}
+
+/// Consumes the dictation results stream, emitting one JSON line per result.
+/// Each result carries its stream-time range; the server maps stream time to
+/// wall clock and merges overlapping ranges (revisable-partials safe).
+private func consumeDictationResults(_ module: DictationTranscriber) async {
+    do {
+        var seq = 0
+        for try await result in module.results {
+            emitJSON([
+                "type": "result",
+                "seq": seq,
+                "text": String(result.text.characters),
+                "tStart": CMTimeGetSeconds(result.range.start),
+                "tEnd": CMTimeGetSeconds(result.range.end),
+                "finalizedAt": CMTimeGetSeconds(result.resultsFinalizationTime),
+            ])
+            seq += 1
+        }
+    } catch {
+        emitJSON(["type": "result-error", "error": error.localizedDescription], to: .standardError)
+    }
+}
+
+private func stream(arguments: Arguments) async throws -> [String: Any] {
+    guard arguments.engine == .dictation else {
+        throw CLIError("stream mode supports the dictation engine only")
+    }
+    let chunkFrames = Int((arguments.sampleRate * 0.3).rounded())  // 300 ms
+    let locale = try await selectedDictationLocale(arguments.requestedLocale)
+    let module = dictationModule(locale: locale)
+    try await requireInstalled([module], locale: locale)
+
+    let compatible = await module.availableCompatibleAudioFormats
+    let summary = compatible.map { String(format: "%.0fHz/%dch", $0.sampleRate, Int($0.channelCount)) }
+    FileHandle.standardError.write(Data(("compatible formats: \(summary.joined(separator: ", "))\n").utf8))
+
+    // Start consuming results before feeding, mirroring the transcribe path.
+    async let resultsDone: Void = consumeDictationResults(module)
+    let analyzer = SpeechAnalyzer(
+        modules: [module],
+        options: .init(priority: .userInitiated, modelRetention: .lingering)
+    )
+    try await configureContext(analyzer, phrases: arguments.contextualStrings)
+
+    emitJSON([
+        "type": "started",
+        "engine": arguments.engine.backendName,
+        "locale": locale.identifier,
+        "sampleRate": Int(arguments.sampleRate),
+        "chunkMs": Int((Double(chunkFrames) / arguments.sampleRate) * 1000),
+    ])
+
+    let clock = StreamClock()
+    let input = makeStdinPCMStream(sampleRate: arguments.sampleRate, chunkFrames: chunkFrames, clock: clock)
+    do {
+        let feedDone = StreamClock()
+        let feedTask = Task {
+            do {
+                _ = try await analyzer.analyzeSequence(input)
+            } catch {
+                emitJSON(["type": "analyze-error", "error": error.localizedDescription], to: .standardError)
+            }
+            feedDone.set(1)
+        }
+        // Rolling finalization: the dictation engine only emits a result when
+        // an utterance is complete (silence-gated), so periodically finalize
+        // "through" the current stream time to flush completed utterances.
+        // NOTE: `finalize(through:)` is non-terminal — the analyzer keeps
+        // accepting input afterwards. (`finalizeAndFinish(through:)` ends the
+        // sequence, which would kill the rolling stream.)
+        if let every = arguments.finalizeEvery, every > 0 {
+            var lastFinalized = 0.0
+            while feedDone.get() < 1 {
+                try await Task.sleep(for: .seconds(1))
+                let t = clock.get()
+                if t - lastFinalized >= every {
+                    do {
+                        try await analyzer.finalize(
+                            through: CMTime(value: Int64(t * arguments.sampleRate), timescale: Int32(arguments.sampleRate))
+                        )
+                        lastFinalized = t
+                    } catch {
+                        emitJSON(["type": "finalize-error", "error": error.localizedDescription], to: .standardError)
+                    }
+                }
+            }
+        }
+        await feedTask.value
+        try await analyzer.finalizeAndFinishThroughEndOfInput()
+    } catch {
+        emitJSON(["type": "analyze-error", "error": error.localizedDescription], to: .standardError)
+        await analyzer.cancelAndFinishNow()
+    }
+    await resultsDone
+    emitJSON(["type": "done"])
+    return ["ok": true, "command": "stream"]
 }
 
 private func configureContext(_ analyzer: SpeechAnalyzer, phrases: [String]) async throws {
@@ -320,6 +514,8 @@ private struct JarvisAppleASR {
                 response = try await install(arguments: arguments)
             case "transcribe":
                 response = try await transcribe(arguments: arguments)
+            case "stream":
+                response = try await stream(arguments: arguments)
             default:
                 throw CLIError("unsupported command: \(arguments.command)")
             }
