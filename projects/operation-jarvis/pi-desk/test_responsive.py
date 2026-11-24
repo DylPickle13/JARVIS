@@ -241,7 +241,7 @@ class WorkspaceTests(unittest.TestCase):
     def test_all_sessions_all_modes_and_identity_preservation(self):
         name = workspace.create(5, 184, 45)
         client, slave = self.attach(name)
-        for width, count in ((184, 3), (140, 2), (150, 3), (80, 1), (190, 3)):
+        for width, count in ((184, 3), (110, 2), (150, 3), (80, 1), (190, 3)):
             before = self.identities(name)
             self.resize(client, slave, width)
             self.assertEqual(self.focus(name), 5)
@@ -777,7 +777,7 @@ class WorkspaceTests(unittest.TestCase):
         wide_client, wide_tty = self.attach(wide)
         small_client, small_tty = self.attach(small, 80, 35)
         before = self.identities(wide)
-        self.resize(small_client, small_tty, 140)
+        self.resize(small_client, small_tty, 110)
         desktop.choose(8, small_client.pid)
         self.assertEqual(self.visible(wide), (1, 2, 3))
         self.assertEqual(self.focus(wide), 2)
@@ -953,7 +953,7 @@ class WorkspaceTests(unittest.TestCase):
         client, slave = self.attach(name)
         self.install_test_navigation()
         client_name = core.tmux('list-clients', '-F', '#{client_name}').stdout.strip()
-        for width in (184, 140, 80):
+        for width in (184, 110, 80):
             self.resize(client, slave, width)
             expected = 1
             for direction in [1] * 11 + [-1] * 11:
@@ -1025,7 +1025,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(rows)
         pid, name = rows.split('\t')
         before = self.identities(name)
-        for width, count in ((140, 2), (150, 3), (80, 1), (190, 3)):
+        for width, count in ((110, 2), (150, 3), (80, 1), (190, 3)):
             fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 45, width, 0, 0))
             os.kill(int(pid), signal.SIGWINCH)
             for _ in range(200):
