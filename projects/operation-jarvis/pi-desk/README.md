@@ -231,6 +231,18 @@ clipboard transport. Remote-shell clipboard behaviour is described in the bridge
 README. The shared installer ships the bridge but never installs it automatically
 or rewrites VS Code settings.
 
+### Character widths
+
+The viewer's tmux counts cell widths per codepoint, matching VS Code's xterm.js:
+Indic/Thai/Sinhala spacing vowel signs (Unicode `Mc`) are one cell each, and
+emoji + VS16 (`⚠️`) is one cell. tmux 3.7's default clustering counted `বাংলা`
+as 2 cells where VS Code draws 5; that overflow wrapped the bottom-right cell
+and scrolled the whole terminal (missing header, garbage bottom rows).
+Settings: `codepoint-widths` and `variation-selector-always-wide` in
+`config/tmux.conf`; regression test: `test_cell_widths.py`. Hosted agent tmux is
+unchanged, so affected lines may still misdraw inside one pane until redrawn.
+Multi-codepoint emoji (ZWJ families, skin tones, flags) still differ.
+
 ### Terminal tab title
 
 Pi Desk sets the outer terminal title to `pi-desk` while its tmux viewer is attached,
